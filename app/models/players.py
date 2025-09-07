@@ -2,7 +2,7 @@ from sqlmodel import SQLModel, Field, create_engine
 from typing import Literal, Annotated
 from datetime import date
 
-BIRTH_YEAR = Annotated[data, Field(..., ge=date(1980, 1, 1))]
+BIRTH_YEAR = Annotated[date, Field(..., ge=date(1980, 1, 1))]
 
 class Player(SQLModel, table=True):
     # do you need to specify autoincrement?
