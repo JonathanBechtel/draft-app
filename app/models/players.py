@@ -1,4 +1,4 @@
-from sqlmodel import SQLModel, Field, create_engine
+from sqlmodel import SQLModel, Field
 from typing import Literal, Annotated
 from datetime import date
 
