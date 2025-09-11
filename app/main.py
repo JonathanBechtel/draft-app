@@ -3,38 +3,23 @@ Main entry point for FastAPI application.
 """
 
 from fastapi import FastAPI
-from enum import Enum
-from datetime import date
-from pydantic import BaseModel, Field
-from typing import Annotated
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
-class Position(str, Enum):
-    f = "forward"
-    c = "center"
-    g = "guard"
+from app.routes import players, ui
 
-birth_year = Annotated[date, Field(..., ge=date(1980, 1, 1))]
+# load in app details
+app = FastAPI(title = "Mini Draft Guru")
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+app.state.templates = Jinja2Templates(directory="app/templates")
+app.include_router(players.router)
+app.include_router(ui.router)
 
-class Player(BaseModel):
-    name: str
-    position: Position
-    school: str
-    age: int
-    birth_year: birth_year
+@app.get("/health")
+async def health_check():
+    """Health Check Endpoint"""
+    return {"status": "ok"}
 
-app = FastAPI()
-
-@app.delete("/players/{player_id}"):
-async def delete_player(player_id):
-    """Delete a player from the application"""
-    pass
-
-@app.post("/players/")
-async def create_player(player: Player):
-    """Post request to store a players information"""
-    return player
-
-@app.get("/players"):
-async def list_players():
-    """List all players from the database"""
-    pass
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

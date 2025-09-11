@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini DraftGuru</title>
+    <link rel="stylesheet" href="/static/css/app.css" />
+    <style>
+      /* tiny tweaks for the toy page */
+      form.grid { display:grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap:12px; }
+      form.grid label { font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+      form.grid input, form.grid select { width:100%; padding:8px 10px; border-radius:10px; border:1px solid #374151; background:#0f1623; color:var(--ink); }
+      table { width:100%; border-collapse:collapse; margin-top:16px; }
+      th, td { text-align:left; padding:10px 12px; border-bottom:1px solid #1f2937; }
+      th { color:var(--muted); font-weight:600; }
+      .actions button { padding:6px 10px; border-radius:8px; background:#334155; color:var(--ink); border:0; cursor:pointer; }
+      .card { background:var(--card); padding:20px; border-radius:16px; box-shadow:0 10px 24px rgba(0,0,0,0.35); }
+      .stack { display:grid; gap:16px; }
+      .page-title { margin:0 0 8px; }
+    </style>
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="/" class="logo">Mini DraftGuru</a>
+    </header>
+
+    <main class="container stack">
+      <!-- FORM CARD -->
+      <section class="card" id="player-form-card">
+        <h1 class="page-title">Add a Player</h1>
+        <form id="player-form" class="grid" autocomplete="off">
+          <div>
+            <label for="name">Name</label>
+            <input id="name" name="name" required placeholder="Cooper Example" />
+          </div>
+
+          <div>
+            <label for="position">Position</label>
+            <select id="position" name="position" required>
+              <option value="">Select…</option>
+              <option value="forward">Forward</option>
+              <option value="center">Center</option>
+              <option value="guard">Guard</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="school">School</label>
+            <input id="school" name="school" required placeholder="Duke" />
+          </div>
+
+          <div>
+            <label for="birth_date">Birth date</label>
+            <input id="birth_date" name="birth_date" type="date" min="1980-01-01" required />
+          </div>
+
+          <div>
+            <label>&nbsp;</label>
+            <button type="submit">Save Player</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- TABLE CARD -->
+      <section class="card">
+        <h2 class="page-title">Players</h2>
+        <table aria-label="Players">
+          <thead>
+            <tr>
+              <th style="width:60px">ID</th>
+              <th>Name</th>
+              <th>Pos</th>
+              <th>School</th>
+              <th>Age</th>
+              <th>Birth date</th>
+              <th style="width:100px">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="players-tbody">
+            {# optional server-render if you pass `players` from FastAPI #}
+            {% if players %}
+              {% for p in players %}
+              <tr id="row-{{ p.id }}">
+                <td>{{ p.id }}</td>
+                <td>{{ p.name }}</td>
+                <td>{{ p.position }}</td>
+                <td>{{ p.school }}</td>
+                <td>{{ p.age if p.age is defined else "" }}</td>
+                <td>{{ p.birth_date }}</td>
+                <td class="actions">
+                  <button type="button" data-id="{{ p.id }}" class="btn-delete">Delete</button>
+                </td>
+              </tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <script>
+      // helpers
+      function yearsFrom(dateStr) {
+        const d = new Date(dateStr);
+        const today = new Date();
+        const days = (today - d) / (1000*60*60*24);
+        return Math.round((days / 365.2425) * 100) / 100; // 2 decimals
+      }
+
+      function rowHTML(p) {
+        const age = (p.age !== undefined && p.age !== null) ? p.age : yearsFrom(p.birth_date);
+        return `
+          <tr id="row-${p.id}">
+            <td>${p.id ?? ""}</td>
+            <td>${p.name}</td>
+            <td>${p.position}</td>
+            <td>${p.school}</td>
+            <td>${age}</td>
+            <td>${p.birth_date}</td>
+            <td class="actions"><button type="button" data-id="${p.id}" class="btn-delete">Delete</button></td>
+          </tr>`;
+      }
+
+      function addOrReplaceRow(p) {
+        const tbody = document.getElementById('players-tbody');
+        const existing = document.getElementById(`row-${p.id}`);
+        (existing ? existing : tbody.insertRow(-1)).outerHTML = rowHTML(p);
+      }
+
+      // initial fetch if server didn't prerender
+      document.addEventListener('DOMContentLoaded', async () => {
+        const tbody = document.getElementById('players-tbody');
+        if (!tbody.children.length) {
+          const res = await fetch('/players');
+          if (res.ok) {
+            const data = await res.json();
+            data.forEach(addOrReplaceRow);
+          }
+        }
+      });
+
+      // form submit -> POST /players
+      document.getElementById('player-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = e.currentTarget;
+        const payload = {
+          name: form.name.value.trim(),
+          position: form.position.value,
+          school: form.school.value.trim(),
+          birth_date: form.birth_date.value, // ISO yyyy-mm-dd
+        };
+        if (!payload.name || !payload.position || !payload.school || !payload.birth_date) return;
+
+        const res = await fetch('/players', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          const player = await res.json();
+          addOrReplaceRow(player);
+          form.reset();
+        } else {
+          const err = await res.text();
+          alert('Failed to save: ' + err);
+        }
+      });
+
+      // table delegation -> DELETE /players/{id}
+      document.addEventListener('click', async (e) => {
+        if (!e.target.matches('.btn-delete')) return;
+        const id = e.target.dataset.id;
+        if (!confirm('Delete this player?')) return;
+
+        const res = await fetch(`/players/${id}`, { method: 'DELETE' });
+        if (res.ok || res.status === 204) {
+          document.getElementById(`row-${id}`)?.remove();
+        } else {
+          const err = await res.text();
+          alert('Failed to delete: ' + err);
+        }
+      });
+    </script>
+  </body>
+</html>

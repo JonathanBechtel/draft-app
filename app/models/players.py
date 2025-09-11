@@ -1,17 +1,47 @@
-from sqlmodel import SQLModel, Field
-from typing import Literal, Annotated
+from sqlmodel import SQLModel, Field as SQLField
+from typing import Optional, Annotated
 from datetime import date
+from pydantic import (computed_field, 
+                      Field as PydField,
+                        field_validator)
 
-BIRTH_YEAR = Annotated[date, Field(..., ge=date(1980, 1, 1))]
+from enum import Enum
 
-class Player(SQLModel, table=True):
-    # do you need to specify autoincrement?
-    id: int = Field(default=None, primary_key=True)
+from app.models.base import SoftDeleteMixin
+
+class Position(str, Enum):
+    g = "Guard"
+    f = "Forward"
+    c = "Center"
+
+BIRTH_DATE = Annotated[date, PydField(..., ge=date(1980, 1, 1))]
+
+class PlayerBase(SQLModel):
     name: str
-    position: str = Literal["forward", "center", "guard"]
+    position: Position
     school: str
-    age: int = Field(default=18, ge=18)
-    birth_year = BIRTH_YEAR
+    birth_date: BIRTH_DATE
+
+    @field_validator("birth_date")
+    @classmethod
+    def not_in_future(cls, v: date) -> date:
+        if v > date.today():
+            raise ValueError("birth_date cannot be in the future")
+        return v
+
+class Player(PlayerBase, SoftDeleteMixin, table=True):
+    id: Optional[int] = SQLField(default=None, primary_key=True)
+
+class PlayerRead(PlayerBase):
+        
+    @computed_field
+    @property
+    def age(self) -> float:
+        days = (date.today() - self.birth_date).days
+        return round(days / 365.2425, 2)
+
+class PlayerCreate(PlayerBase):
+    pass
 
 
 
