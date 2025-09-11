@@ -8,6 +8,10 @@ from fastapi.templating import Jinja2Templates
 
 from app.routes import players, ui
 
+from app.logging import setup_logging
+from app.config import settings
+setup_logging(level=settings.log_level, access_log=settings.access_log)
+
 # load in app details
 app = FastAPI(title = "Mini Draft Guru")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")

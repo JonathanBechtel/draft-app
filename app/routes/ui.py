@@ -8,6 +8,6 @@ async def home(request: Request):
     """Render the Home Page"""
 
     players = []
-    return request.app.state.TemplateResponse("base.html",
+    return request.app.state.templates.TemplateResponse("base.html",
             {"request": request, "players": players})
 

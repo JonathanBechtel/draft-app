@@ -10,9 +10,9 @@ from enum import Enum
 from app.models.base import SoftDeleteMixin
 
 class Position(str, Enum):
-    g = "Guard"
-    f = "Forward"
-    c = "Center"
+    g = "guard"
+    f = "forward"
+    c = "center"
 
 BIRTH_DATE = Annotated[date, PydField(..., ge=date(1980, 1, 1))]
 
