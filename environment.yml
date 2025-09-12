@@ -7,3 +7,4 @@ dependencies:
  - fastapi
  - sqlmodel
  - pydantic-settings
+ - psycopg

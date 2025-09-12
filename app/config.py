@@ -3,14 +3,13 @@ from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    database_url: str = "sqlite:///./draftguru.db"
-    secret_key: str = "changeme"
-
+    database_url: str
+    secret_key: str
     env: Literal["dev","test","prod"] = "dev"
-    debug: bool = False                # optional override
+    debug: bool = False
     log_level: str = "INFO"
     access_log: bool = True
-    sql_echo: bool = False             # show SQL in logs (dev only)
+    sql_echo: bool = True
 
     @property
     def is_dev(self) -> bool:
