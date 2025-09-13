@@ -1,7 +1,7 @@
 import logging
 
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.models.players import Player, PlayerCreate, PlayerRead
 from app.utils.db_async import get_session
@@ -12,10 +12,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=['players'])
 
-@router.delete("/players/{player_id}")
+@router.delete("/players/{player_id}", status_code = 204)
 async def delete_player(player_id: int, 
-                        db: AsyncSession = Depends(get_session),
-                        status_code = 204):
+                        db: AsyncSession = Depends(get_session)):
     """Delete a player from the application"""
     player = await db.get(Player, player_id)
     if not player:
