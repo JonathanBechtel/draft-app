@@ -19,5 +19,13 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db():
     """Initialize the database (create tables)."""
+    # Ensure models are imported so metadata is fully populated
+    # Import locally to avoid circular imports at module import time
+    from app.models import players  # noqa: F401
+
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+
+async def dispose_engine() -> None:
+    """Dispose of the async engine and its connection pool."""
+    await engine.dispose()

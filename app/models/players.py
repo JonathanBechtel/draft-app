@@ -33,6 +33,7 @@ class Player(PlayerBase, SoftDeleteMixin, table=True):
     id: Optional[int] = SQLField(default=None, primary_key=True)
 
 class PlayerRead(PlayerBase):
+    id: int
         
     @computed_field
     @property

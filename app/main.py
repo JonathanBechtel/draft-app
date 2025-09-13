@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.routes import players, ui
-from app.utils.db_async import init_db
+from app.utils.db_async import init_db, dispose_engine
 
 from app.logging import setup_logging
 from app.config import settings
@@ -18,23 +18,37 @@ logger = logging.getLogger(__name__)
 
 setup_logging(level=settings.log_level, access_log=settings.access_log)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: create tables in development only
+    if settings.is_dev:
+        logger.info("Running init_db()…")
+        try:
+            await init_db()
+            logger.info("DB ready.")
+        except Exception:
+            logger.exception("init_db failed")
+            raise
+    else:
+        logger.info("Skipping init_db() outside development environment")
+
+    # Hand control to the application
+    yield
+
+    # Shutdown: dispose engine cleanly
+    try:
+        logger.info("Disposing DB engine…")
+        await dispose_engine()
+        logger.info("DB engine disposed.")
+    except Exception:
+        logger.exception("Failed to dispose DB engine")
+
 # load in app details
-app = FastAPI(title = "Mini Draft Guru")
+app = FastAPI(title = "Mini Draft Guru", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.state.templates = Jinja2Templates(directory="app/templates")
 app.include_router(players.router)
 app.include_router(ui.router)
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("Running init_db()…")
-    try:
-        await init_db()
-        logger.info("DB ready.")
-    except Exception:
-        logger.exception("init_db failed")
-        raise
-    yield
 
 @app.get("/health")
 async def health_check():
