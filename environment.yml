@@ -8,3 +8,4 @@ dependencies:
  - sqlmodel
  - pydantic-settings
  - psycopg
+ - asyncpg

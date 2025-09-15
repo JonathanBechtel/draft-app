@@ -3,12 +3,11 @@ import logging
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.models.players import Player, PlayerCreate, PlayerRead
+from app.models.players import PlayerCreate, PlayerRead
+from app.schemas.players import PlayerTable
 from app.utils.db_async import get_session
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=['players'])
 
@@ -16,18 +15,18 @@ router = APIRouter(tags=['players'])
 async def delete_player(player_id: int, 
                         db: AsyncSession = Depends(get_session)):
     """Delete a player from the application"""
-    player = await db.get(Player, player_id)
-    if not player:
-        raise HTTPException(status_code=404, detail="Player not found")
 
     async with db.begin():
+        player = await db.get(PlayerTable, player_id)
+        if not player:
+            raise HTTPException(status_code=404, detail="Player not found")
         await db.delete(player)
 
 # TO LEARN:  nuance of when / why to include the status code
 @router.post("/players", response_model = PlayerRead, status_code = 201)
 async def create_player(player: PlayerCreate, db: AsyncSession = Depends(get_session)):
     """Post request to store a players information"""
-    db_player = Player(**player.model_dump())
+    db_player = PlayerTable(**player.model_dump())
 
     async with db.begin():
         db.add(db_player)
@@ -37,5 +36,5 @@ async def create_player(player: PlayerCreate, db: AsyncSession = Depends(get_ses
 @router.get("/players", response_model = List[PlayerRead])
 async def list_players(db: AsyncSession = Depends(get_session)):
     """List all players from the database"""
-    results = await db.execute(select(Player).order_by(Player.name))
+    results = await db.execute(select(PlayerTable).order_by(PlayerTable.name))
     return results.scalars().all()

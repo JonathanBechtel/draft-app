@@ -8,9 +8,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.routes import players, ui
-from app.utils.db_async import init_db, dispose_engine
+from app.utils.db_async import init_db, dispose_engine, describe_database_url, DATABASE_URL
 
-from app.logging import setup_logging
+from app.logging_config import setup_logging
 from app.config import settings
 
 import logging
@@ -23,6 +23,7 @@ async def lifespan(app: FastAPI):
     # Startup: create tables in development only
     if settings.is_dev:
         logger.info("Running init_db()…")
+        logger.info(f"DB target: {describe_database_url(DATABASE_URL)}")
         try:
             await init_db()
             logger.info("DB ready.")

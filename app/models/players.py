@@ -1,4 +1,6 @@
 from sqlmodel import SQLModel, Field as SQLField
+from sqlalchemy import Column
+from sqlalchemy import Enum as SAEnum
 from typing import Optional, Annotated
 from datetime import date
 from pydantic import (computed_field, 
@@ -18,7 +20,14 @@ BIRTH_DATE = Annotated[date, PydField(..., ge=date(1980, 1, 1))]
 
 class PlayerBase(SQLModel):
     name: str
-    position: Position
+    # Keep Pydantic field name "position", map DB column to "player_position"
+    position: Position = SQLField(
+        sa_column=Column(
+            "player_position",
+            SAEnum(Position, name="player_position_enum"),
+            nullable=False,
+        )
+    )
     school: str
     birth_date: BIRTH_DATE
 
@@ -28,9 +37,6 @@ class PlayerBase(SQLModel):
         if v > date.today():
             raise ValueError("birth_date cannot be in the future")
         return v
-
-class Player(PlayerBase, SoftDeleteMixin, table=True):
-    id: Optional[int] = SQLField(default=None, primary_key=True)
 
 class PlayerRead(PlayerBase):
     id: int
@@ -43,7 +49,6 @@ class PlayerRead(PlayerBase):
 
 class PlayerCreate(PlayerBase):
     pass
-
 
 
 
