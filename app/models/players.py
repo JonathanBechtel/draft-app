@@ -1,22 +1,12 @@
 from sqlmodel import SQLModel, Field as SQLField
 from sqlalchemy import Column
 from sqlalchemy import Enum as SAEnum
-from typing import Optional, Annotated
 from datetime import date
 from pydantic import (computed_field, 
-                      Field as PydField,
                         field_validator)
 
-from enum import Enum
+from app.models.fields import Position, BIRTH_DATE
 
-from app.models.base import SoftDeleteMixin
-
-class Position(str, Enum):
-    g = "guard"
-    f = "forward"
-    c = "center"
-
-BIRTH_DATE = Annotated[date, PydField(..., ge=date(1980, 1, 1))]
 
 class PlayerBase(SQLModel):
     name: str

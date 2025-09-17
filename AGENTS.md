@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `app/` contains FastAPI code split into `routes/`, `models/`, `schemas/`, `services/`, and `utils/`; favor adding new endpoints in a dedicated router module and keep DB models in `schemas/`.
+- `app/` contains FastAPI code split into `routes/`, `models/`, `schemas/`, `services/`, and `utils/`; keep request/response shapes alongside shared field helpers in `app/models/` (for example `app/models/fields.py`) and persistable tables plus mixins in `app/schemas/` (`app/schemas/base.py`).
 - `tests/` is ready for pytest suites; mirror the `app/` layout so fixtures and helpers stay close to the code they cover.
 - `alembic/` holds migration scripts; use it when schema changes extend beyond SQLModel auto-creation.
 - `docs/` stores project notes such as `v_1_roadmap.md`; add any architecture decisions here.
