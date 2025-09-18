@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini DraftGuru</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+  </head>
+  <body>
+    <header>
+      <h1>Mini DraftGuru</h1>
+    </header>
+
+    <main>
+      <section>
+        <h2>Add a Player</h2>
+        <form id="player-form">
+          <label>
+            Name
+            <input id="name" name="name" required placeholder="Cooper Example">
+          </label>
+
+          <label>
+            Position
+            <select id="position" name="position" required>
+              <option value="">Select…</option>
+              <option value="forward">Forward</option>
+              <option value="center">Center</option>
+              <option value="guard">Guard</option>
+            </select>
+          </label>
+
+          <label>
+            School
+            <input id="school" name="school" required placeholder="Duke">
+          </label>
+
+          <label>
+            Birth date
+            <input id="birth_date" name="birth_date" type="date" min="1980-01-01" required>
+          </label>
+
+          <button type="submit">Save Player</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Players</h2>
+        <table aria-label="Players">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Pos</th>
+              <th>School</th>
+              <th>Age</th>
+              <th>Birth date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="players-tbody">
+            {% if players %}
+              {% for p in players %}
+              <tr id="row-{{ p.id }}">
+                <td>{{ p.id }}</td>
+                <td>{{ p.name }}</td>
+                <td>{{ p.position }}</td>
+                <td>{{ p.school }}</td>
+                <td>{{ p.age if p.age is defined else "" }}</td>
+                <td>{{ p.birth_date }}</td>
+                <td><button type="button" data-id="{{ p.id }}" class="btn-delete">Delete</button></td>
+              </tr>
+              {% endfor %}
+            {% endif %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <script>
+      function yearsFrom(dateStr){const d=new Date(dateStr);const t=new Date();const days=(t-d)/86400000;return Math.round(days/365.2425*100)/100;}
+      function rowHTML(p){const age=(p.age??yearsFrom(p.birth_date));return `
+        <tr id="row-${p.id}">
+          <td>${p.id??""}</td><td>${p.name}</td><td>${p.position}</td>
+          <td>${p.school}</td><td>${age}</td><td>${p.birth_date}</td>
+          <td><button type="button" data-id="${p.id}" class="btn-delete">Delete</button></td>
+        </tr>`;}
+      function addOrReplaceRow(p){const tb=document.getElementById('players-tbody');const ex=document.getElementById(`row-${p.id}`);(ex?ex:tb.insertRow(-1)).outerHTML=rowHTML(p);}
+
+      document.addEventListener('DOMContentLoaded', async () => {
+        const tb=document.getElementById('players-tbody');
+        if (!tb.children.length){const r=await fetch('/players'); if(r.ok){(await r.json()).forEach(addOrReplaceRow);}}
+      });
+
+      document.getElementById('player-form').addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const f=e.currentTarget;
+        const payload={name:f.name.value.trim(), position:f.position.value, school:f.school.value.trim(), birth_date:f.birth_date.value};
+        const r=await fetch('/players', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+        if(r.ok){addOrReplaceRow(await r.json()); f.reset();} else {alert('Failed to save');}
+      });
+
+      document.addEventListener('click', async (e)=>{
+        if(!e.target.matches('.btn-delete')) return;
+        const id=e.target.dataset.id;
+        if(!confirm('Delete this player?')) return;
+        const r=await fetch(`/players/${id}`, {method:'DELETE'});
+        if(r.ok||r.status===204){document.getElementById(`row-${id}`)?.remove();} else {alert('Failed to delete');}
+      });
+    </script>
+  </body>
+</html>
