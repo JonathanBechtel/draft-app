@@ -5,7 +5,7 @@ from typing import Optional
 from sqlmodel import Field as SQLField
 
 from app.models.players import PlayerBase
-from app.models.base import SoftDeleteMixin
+from app.schemas.base import SoftDeleteMixin
 
 class PlayerTable(PlayerBase, SoftDeleteMixin, table=True):
     id: Optional[int] = SQLField(default=None, primary_key=True)

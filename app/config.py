@@ -17,8 +17,9 @@ class Settings(BaseSettings):
     
     model_config = SettingsConfigDict(
         env_file=".env",
-        env_prefix="",          # no prefix
-        case_sensitive=False    # <-- accept LOG_LEVEL as log_level, etc.
+        env_prefix="",        
+        case_sensitive=False,    
+        extra="ignore",         
     )
 
 settings = Settings()

@@ -4,7 +4,7 @@ FastAPI + SQLModel skeleton for a draft analytics app. Async DB access, clean st
 
 ## Quick Start
 
-- Create environment (Conda):
+- Create environment (Conda) — installs app dependencies plus dev/test tools:
   - `conda env create -f environment.yml`
   - `conda activate draftguru`
 
@@ -22,6 +22,24 @@ Alternative run commands:
 - `uvicorn app.main:app --reload --host 0.0.0.0 --port 8000`
 - `python -m uvicorn app.main:app --reload`
 - `python app/main.py` (no reload)
+- Optional pip install (outside Conda):
+  - `pip install -e .` (runtime only)
+  - `pip install -e .[dev]` (runtime + lint/test tooling)
+
+- Refresh `requirements.txt` snapshot (e.g., for deployment targets without Conda):
+  - `conda run --no-capture-output -n draftguru python -m pip freeze --exclude-editable > requirements.txt`
+
+## Testing
+
+Integration tests target the same Postgres stack used in development. Configure a safe database (for example, a dedicated Neon branch) and opt in explicitly before running pytest:
+
+```bash
+export TEST_DATABASE_URL="postgresql+asyncpg://user:pass@host:5432/draftguru_test"
+export PYTEST_ALLOW_DB=1
+pytest
+```
+
+`TEST_DATABASE_URL` overrides `DATABASE_URL` for the suite; omit it to reuse your default .env value. The guard flag prevents accidentally pointing tests at production. The fixtures create and drop tables around each test run, so the target database must be writable.
 
 ## Endpoints
 

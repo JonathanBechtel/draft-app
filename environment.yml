@@ -1,11 +1,14 @@
 name: draftguru
-channels: 
- - conda-forge
- - defaults
+channels:
+  - conda-forge
+  - defaults
 dependencies:
- - python=3.12
- - fastapi
- - sqlmodel
- - pydantic-settings
- - psycopg
- - asyncpg
+  - python=3.12
+  - fastapi
+  - sqlmodel
+  - pydantic-settings
+  - psycopg
+  - asyncpg
+  - pip
+  - pip:
+      - -e .[dev]
