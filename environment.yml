@@ -4,7 +4,7 @@ channels:
   - defaults
 dependencies:
   - python=3.12
-  - fastapi
+  - fastapi[standard]
   - sqlmodel
   - pydantic-settings
   - psycopg
