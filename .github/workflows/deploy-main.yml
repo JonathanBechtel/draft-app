@@ -13,7 +13,7 @@ jobs:
 
     # Optional: show a "deployment" link on the repo UI
     environment:
-      name: production
+      name: draft-app-stage
       url: https://draft-app.fly.dev
 
     steps:
