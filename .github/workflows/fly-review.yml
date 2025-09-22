@@ -37,4 +37,10 @@ jobs:
           name: pr-${{ github.event.number }}-${{ github.event.repository.name }}
           region: ${{ env.FLY_REGION }}
           org: ${{ env.FLY_ORG }}
+          secrets:
+            ENV=dev
+            LOG_LEVEL=INFO
+            ACCESS_LOG=true
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            SECRET_KEY=${{ secrets.DEV_SECRET_KEY }}
 
