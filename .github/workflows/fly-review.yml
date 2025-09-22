@@ -22,11 +22,7 @@ jobs:
     # Deploying apps with this "review" environment allows the URL for the app to be displayed in the PR UI.
     # Feel free to change the name of this environment.
     environment:
-<<<<<<< HEAD
       name: draft-app-dev
-=======
-      name: 'Draft App Dev'
->>>>>>> d0e1a3f (fix: update review app environment name and derive app name dynamically)
       # The script in the `deploy` sets the URL output for each review app.
       url: ${{ steps.deploy.outputs.url }}
 
@@ -45,10 +41,7 @@ jobs:
       - name: Deploy PR app to Fly.io
         id: deploy
         uses: superfly/fly-pr-review-apps@1.2.0
-<<<<<<< HEAD
-=======
         with:
           name: ${{ env.REVIEW_APP_NAME }}
           org: ${{ env.FLY_ORG }}
           region: ${{ env.FLY_REGION }}
->>>>>>> d0e1a3f (fix: update review app environment name and derive app name dynamically)
