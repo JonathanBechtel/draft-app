@@ -9,7 +9,7 @@ description = "FastAPI + SQLModel skeleton for a draft analytics app."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi",
+    "fastapi[standard]",
     "sqlmodel",
     "pydantic-settings",
     "psycopg",
