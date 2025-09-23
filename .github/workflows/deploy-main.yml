@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency:
       group: fly-main-deploy
-      cancel-in-progress: false
+      cancel-in-progress: true
 
     environment:
       name: draft-app-stage
@@ -26,9 +26,19 @@ jobs:
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@v1
 
+      - name: Ensure secrets exist on app
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl secrets set \
+            DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            SECRET_KEY='${{ secrets.SECRET_KEY }}' \
+            ENV=prod \
+            LOG_LEVEL=INFO \
+            ACCESS_LOG=false
+
       - name: Deploy
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          FLY_ACCESS_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           flyctl deploy --remote-only
