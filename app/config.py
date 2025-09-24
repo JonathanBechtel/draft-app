@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     database_url: str
     secret_key: str
-    env: Literal["dev","test","prod"] = "dev"
+    env: Literal["dev","stage","prod"]
     debug: bool = False
     log_level: str = "INFO"
     access_log: bool = True
