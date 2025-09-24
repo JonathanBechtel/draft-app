@@ -1,0 +1,54 @@
+name: Deploy to Fly (prod)
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy (SHA, tag, or branch)"
+        required: false
+        default: "main"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: fly-prod-deploy
+      cancel-in-progress: false
+
+    environment:
+      name: production
+      url: https://draft-app-prod.fly.dev
+
+    steps:
+      - name: Checkout desired ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Assert Fly token present
+        run: test -n "${{ secrets.FLY_API_TOKEN }}" || (echo "Missing FLY_API_TOKEN secret"; exit 1)
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@v1
+
+      # Set prod secrets on the prod app (idempotent; safe to run every deploy)
+      - name: Ensure prod secrets exist
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl secrets set \
+            DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            SECRET_KEY='${{ secrets.SECRET_KEY }}' \
+            ENV=prod \
+            LOG_LEVEL=INFO \
+            ACCESS_LOG=false \
+            --app draft-app-prod
+
+      - name: Deploy to prod
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy \
+            --config fly.prod.toml \
+            --remote-only \
+            --app draft-app-prod
