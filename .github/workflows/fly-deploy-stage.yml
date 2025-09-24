@@ -1,4 +1,4 @@
-name: Deploy to Fly (main)
+name: Deploy to Fly (stage)
 
 on:
   push:
@@ -25,17 +25,6 @@ jobs:
 
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@v1
-
-      - name: Ensure secrets exist on app
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          flyctl secrets set \
-            DATABASE_URL='${{ secrets.DATABASE_URL }}' \
-            SECRET_KEY='${{ secrets.SECRET_KEY }}' \
-            ENV=stage \
-            LOG_LEVEL=INFO \
-            ACCESS_LOG=false
 
       - name: Deploy
         env:
