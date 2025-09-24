@@ -33,7 +33,6 @@ jobs:
         id: deploy
         uses: superfly/fly-pr-review-apps@1.2.1
         with:
-          token: ${{ secrets.FLY_API_TOKEN }}
           name: pr-${{ github.event.number }}-${{ github.event.repository.name }}
           region: ${{ env.FLY_REGION }}
           org: ${{ env.FLY_ORG }}
@@ -42,5 +41,5 @@ jobs:
             LOG_LEVEL=INFO
             ACCESS_LOG=true
             DATABASE_URL=${{ secrets.DATABASE_URL }}
-            SECRET_KEY=${{ secrets.DEV_SECRET_KEY }}
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
 

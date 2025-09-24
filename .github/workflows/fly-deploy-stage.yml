@@ -33,7 +33,7 @@ jobs:
           flyctl secrets set \
             DATABASE_URL='${{ secrets.DATABASE_URL }}' \
             SECRET_KEY='${{ secrets.SECRET_KEY }}' \
-            ENV=prod \
+            ENV=stage \
             LOG_LEVEL=INFO \
             ACCESS_LOG=false
 
