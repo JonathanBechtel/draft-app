@@ -16,7 +16,7 @@ jobs:
       cancel-in-progress: false
 
     environment:
-      name: production
+      name: draft-app-prod
       url: https://draft-app-prod.fly.dev
 
     steps:
