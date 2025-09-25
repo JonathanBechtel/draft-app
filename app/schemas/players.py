@@ -8,4 +8,6 @@ from app.models.players import PlayerBase
 from app.schemas.base import SoftDeleteMixin
 
 class PlayerTable(PlayerBase, SoftDeleteMixin, table=True):
+    __tablename__ = "players"
+
     id: Optional[int] = SQLField(default=None, primary_key=True)

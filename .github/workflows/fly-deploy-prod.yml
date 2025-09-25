@@ -31,6 +31,22 @@ jobs:
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@v1
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install app & Alembic
+        run: |
+          python -m pip install --upgrade pip
+          pip install . alembic
+
+      - name: Run Alembic migrations (prod)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          alembic upgrade head
+
       # Set prod secrets on the prod app (idempotent; safe to run every deploy)
       - name: Ensure prod secrets exist
         env:

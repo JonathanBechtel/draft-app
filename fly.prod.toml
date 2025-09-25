@@ -4,6 +4,9 @@ primary_region = 'ewr'
 
 [build]
 
+[deploy]
+  release_command = "/app/.venv/bin/alembic upgrade head"
+
 [http_service]
   internal_port = 8080
   force_https = true

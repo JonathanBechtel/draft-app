@@ -9,6 +9,7 @@ dependencies:
   - pydantic-settings
   - psycopg
   - asyncpg
+  - alembic
   - pip
   - pip:
       - -e .[dev]
