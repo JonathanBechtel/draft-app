@@ -21,11 +21,11 @@ def _normalize_db_url(url: str) -> str:
         driver = (u.drivername or "").lower()
         # If an explicit driver is present (e.g., postgresql+psycopg), respect it.
         if "+" in driver:
-            return str(u)
+            return u.render_as_string(hide_password=False)
         # Otherwise, normalize bare postgres/postgresql to asyncpg for async engines.
         if driver in ("postgres", "postgresql"):
             u = u.set(drivername="postgresql+asyncpg")
-        return str(u)
+        return u.render_as_string(hide_password=False)
     except Exception:
         # Fallback string-level normalization for odd/partial URLs
         if url.startswith("postgresql+asyncpg://"):
