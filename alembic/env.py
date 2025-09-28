@@ -1,8 +1,10 @@
 """Alembic environment configuration for DraftGuru."""
 import asyncio
 import os
+import ssl
 from logging.config import fileConfig
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from alembic import context
 from dotenv import load_dotenv
@@ -25,6 +27,29 @@ load_dotenv(env_path, override=False)
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     raise RuntimeError("DATABASE_URL is required for Alembic migrations")
+
+
+split_result = urlsplit(DB_URL)
+query_params = dict(parse_qsl(split_result.query, keep_blank_values=True))
+sslmode = query_params.pop("sslmode", None)
+
+DB_URL = urlunsplit(
+    split_result._replace(query=urlencode(query_params, doseq=True))
+)
+
+connect_args = {}
+if sslmode:
+    normalized = sslmode.lower()
+    if normalized == "disable":
+        connect_args["ssl"] = False
+    elif normalized in {"require", "verify-full", "verify-ca", "prefer", "allow"}:
+        ssl_context = ssl.create_default_context()
+        if normalized == "verify-ca":
+            ssl_context.check_hostname = False
+        connect_args["ssl"] = ssl_context
+    else:
+        # Fallback to default SSL context for any unrecognized value
+        connect_args["ssl"] = ssl.create_default_context()
 
 config.set_main_option("sqlalchemy.url", DB_URL)
 
@@ -60,7 +85,10 @@ def do_run_migrations(connection) -> None:
 async def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     connectable: AsyncEngine = create_async_engine(
-        DB_URL, poolclass=pool.NullPool, future=True
+        DB_URL,
+        poolclass=pool.NullPool,
+        future=True,
+        connect_args=connect_args,
     )
 
     async with connectable.connect() as connection:
