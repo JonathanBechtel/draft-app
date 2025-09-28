@@ -4,44 +4,38 @@ import ssl
 from typing import Any, AsyncGenerator, Dict, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
 from app.config import settings
 
-def _normalize_db_url(url: str) -> str:
-    """Ensure an async-capable PostgreSQL driver is selected when using Postgres.
-
-    If the URL is plain "postgresql://..." or the alias "postgres://...",
-    switch to the asyncpg driver via "postgresql+asyncpg://...".
-    """
+def _normalize_db_url(url: str) -> URL:
+    """Return a URL object with an asyncpg driver when targeting Postgres."""
     try:
         u = make_url(url)
-        driver = (u.drivername or "").lower()
-        # If an explicit driver is present (e.g., postgresql+psycopg), respect it.
-        if "+" in driver:
-            return u.render_as_string(hide_password=False)
-        # Otherwise, normalize bare postgres/postgresql to asyncpg for async engines.
-        if driver in ("postgres", "postgresql"):
-            u = u.set(drivername="postgresql+asyncpg")
-        return u.render_as_string(hide_password=False)
-    except Exception:
-        # Fallback string-level normalization for odd/partial URLs
-        if url.startswith("postgresql+asyncpg://"):
-            return url
+    except Exception as exc:  # pragma: no cover - extremely malformed URL
+        # Attempt minimal normalization for common postgres aliases before re-raising.
         if url.startswith("postgresql://"):
-            return "postgresql+asyncpg://" + url.split("://", 1)[1]
-        if url.startswith("postgres://"):
-            return "postgresql+asyncpg://" + url.split("://", 1)[1]
-        return url
+            u = make_url("postgresql+asyncpg://" + url.split("://", 1)[1])
+        elif url.startswith("postgres://"):
+            u = make_url("postgresql+asyncpg://" + url.split("://", 1)[1])
+        else:
+            raise exc
+
+    driver = (u.drivername or "").lower()
+    if "+" not in driver and driver in ("postgres", "postgresql"):
+        u = u.set(drivername="postgresql+asyncpg")
+
+    return u
 
 
 def _prepare_asyncpg_connection(url: str) -> Tuple[str, Dict[str, Any]]:
     """Strip unsupported query args and derive asyncpg connect kwargs."""
 
     normalized_url = _normalize_db_url(url)
-    split = urlsplit(normalized_url)
+    rendered_url = normalized_url.render_as_string(hide_password=False)
+    split = urlsplit(rendered_url)
     query_pairs = parse_qsl(split.query, keep_blank_values=True)
 
     sslmode = None
