@@ -15,10 +15,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Store the enum names (g, f, c) as used by SAEnum(Position) defaults.
     player_position_enum = postgresql.ENUM(
-        "guard",
-        "forward",
-        "center",
+        "g",
+        "f",
+        "c",
         name="player_position_enum",
         create_type=False,
     )
@@ -28,11 +29,7 @@ def upgrade() -> None:
         "players",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
         sa.Column("name", sa.String(), nullable=False),
-        sa.Column(
-            "player_position",
-            player_position_enum,
-            nullable=False,
-        ),
+        sa.Column("player_position", player_position_enum, nullable=False),
         sa.Column("school", sa.String(), nullable=False),
         sa.Column("birth_date", sa.Date(), nullable=False),
         sa.Column("deleted_at", sa.DateTime(), nullable=True),
@@ -41,12 +38,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_players_deleted_at", table_name="players")
+    # In case the index was already removed, drop with IF EXISTS to tolerate drift.
+    op.execute(sa.text("DROP INDEX IF EXISTS ix_players_deleted_at"))
     op.drop_table("players")
     player_position_enum = postgresql.ENUM(
-        "guard",
-        "forward",
-        "center",
+        "g",
+        "f",
+        "c",
         name="player_position_enum",
         create_type=False,
     )

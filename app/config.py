@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     access_log: bool = True
     sql_echo: bool = True
+    auto_init_db: bool = True
 
     @property
     def is_dev(self) -> bool:
