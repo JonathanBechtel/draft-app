@@ -38,7 +38,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_players_deleted_at", table_name="players")
+    # In case the index was already removed, drop with IF EXISTS to tolerate drift.
+    op.execute(sa.text("DROP INDEX IF EXISTS ix_players_deleted_at"))
     op.drop_table("players")
     player_position_enum = postgresql.ENUM(
         "g",
