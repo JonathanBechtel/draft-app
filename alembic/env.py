@@ -43,10 +43,10 @@ if sslmode:
     if normalized == "disable":
         connect_args["ssl"] = False
     elif normalized in {"require", "verify-full", "verify-ca", "prefer", "allow"}:
-        context = ssl.create_default_context()
+        ssl_context = ssl.create_default_context()
         if normalized == "verify-ca":
-            context.check_hostname = False
-        connect_args["ssl"] = context
+            ssl_context.check_hostname = False
+        connect_args["ssl"] = ssl_context
     else:
         # Fallback to default SSL context for any unrecognized value
         connect_args["ssl"] = ssl.create_default_context()
