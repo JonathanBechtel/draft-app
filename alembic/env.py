@@ -32,10 +32,10 @@ if not DB_URL:
 split_result = urlsplit(DB_URL)
 query_params = dict(parse_qsl(split_result.query, keep_blank_values=True))
 sslmode = query_params.pop("sslmode", None)
+query_params.pop("channel_binding", None)
 
-DB_URL = urlunsplit(
-    split_result._replace(query=urlencode(query_params, doseq=True))
-)
+clean_query = urlencode(query_params, doseq=True)
+DB_URL = urlunsplit(split_result._replace(query=clean_query)).rstrip("?")
 
 connect_args = {}
 if sslmode:
@@ -50,6 +50,8 @@ if sslmode:
     else:
         # Fallback to default SSL context for any unrecognized value
         connect_args["ssl"] = ssl.create_default_context()
+
+# asyncpg doesn't accept a channel_binding kwarg; removing it from the URL is enough.
 
 config.set_main_option("sqlalchemy.url", DB_URL)
 
