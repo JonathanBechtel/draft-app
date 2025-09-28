@@ -15,12 +15,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Align enum values with app.models.fields.Position values
-    # ("guard", "forward", "center") to keep a single source of truth.
+    # Store the enum names (g, f, c) as used by SAEnum(Position) defaults.
     player_position_enum = postgresql.ENUM(
-        "guard",
-        "forward",
-        "center",
+        "g",
+        "f",
+        "c",
         name="player_position_enum",
         create_type=False,
     )
@@ -42,9 +41,9 @@ def downgrade() -> None:
     op.drop_index("ix_players_deleted_at", table_name="players")
     op.drop_table("players")
     player_position_enum = postgresql.ENUM(
-        "guard",
-        "forward",
-        "center",
+        "g",
+        "f",
+        "c",
         name="player_position_enum",
         create_type=False,
     )

@@ -40,6 +40,3 @@ class PlayerRead(PlayerBase):
 class PlayerCreate(PlayerBase):
     pass
 
-
-
-
