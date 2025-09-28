@@ -63,11 +63,24 @@ def _prepare_asyncpg_connection(url: str) -> Tuple[str, Dict[str, Any]]:
         mode = sslmode.lower()
         if mode == "disable":
             connect_args["ssl"] = False
-        else:
+        elif mode in {"allow", "prefer"}:
+            # asyncpg defaults to negotiating TLS when the server requires it, so we
+            # simply avoid forcing a context and let the driver perform the fallback.
+            pass
+        elif mode == "require":
             ssl_context = ssl.create_default_context()
-            if mode == "verify-ca":
-                ssl_context.check_hostname = False
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
             connect_args["ssl"] = ssl_context
+        elif mode == "verify-ca":
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            connect_args["ssl"] = ssl_context
+        elif mode == "verify-full":
+            connect_args["ssl"] = ssl.create_default_context()
+        else:
+            # Unknown value—fall back to a secure default.
+            connect_args["ssl"] = ssl.create_default_context()
 
     return cleaned_url, connect_args
 
