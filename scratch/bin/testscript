@@ -1,0 +1,4 @@
+#!/usr/bin/env python3
+import sys,os
+print(os.getcwd())
+print(sys.path)

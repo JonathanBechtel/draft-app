@@ -26,6 +26,14 @@ Alternative run commands:
   - `pip install -e .` (runtime only)
   - `pip install -e .[dev]` (runtime + lint/test tooling)
 
+- Run database migrations with Alembic (requires `DATABASE_URL` pointing at the target Neon branch or Postgres instance):
+  - `export DATABASE_URL="postgresql+asyncpg://user:pass@host/db?sslmode=require"`
+  - `make mig.up` — upgrade to the latest revision
+  - `make mig.revision m="describe change"` — autogenerate a new revision file
+  - `make mig.history` — view migration history
+  - `make mig.current` — show the current revision applied to the database
+  - `make mig.down` — revert the most recent revision (use with care!)
+
 - Refresh `requirements.txt` snapshot (e.g., for deployment targets without Conda):
   - `conda run --no-capture-output -n draftguru python -m pip freeze --exclude-editable > requirements.txt`
 
