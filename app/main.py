@@ -2,6 +2,7 @@
 Main entry point for FastAPI application.
 """
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -20,8 +21,13 @@ setup_logging(level=settings.log_level, access_log=settings.access_log)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: create tables in development only
-    if settings.is_dev:
+    should_init_db = (
+        settings.is_dev
+        and settings.auto_init_db
+        and not os.getenv("FLY_APP_NAME")
+    )
+
+    if should_init_db:
         logger.info("Running init_db()…")
         logger.info(f"DB target: {describe_database_url(DATABASE_URL)}")
         try:
@@ -31,7 +37,7 @@ async def lifespan(app: FastAPI):
             logger.exception("init_db failed")
             raise
     else:
-        logger.info("Skipping init_db() outside development environment")
+        logger.info("Skipping init_db(); auto_init_db disabled or managed deployment detected")
 
     # Hand control to the application
     yield

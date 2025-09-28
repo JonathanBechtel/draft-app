@@ -28,6 +28,7 @@
 ## Configuration Tips
 - Copy `.env.example` to `.env` and supply `DATABASE_URL`, `SECRET_KEY`, and optional toggles (`DEBUG`, `ACCESS_LOG`, `SQL_ECHO`); never commit real secrets.
 - Use `describe_database_url()` logs to verify connection targets, and prefer async-friendly drivers (`postgresql+asyncpg`).
+- `AUTO_INIT_DB` defaults to `true` for local convenience but is ignored automatically on Fly deployments; set it to `false` (or change `ENV` to `stage`/`prod`) when relying exclusively on Alembic migrations.
 
 ## Migration Workflow
 - Define and adjust persistable tables in `app/schemas/`; these SQLModel classes are the canonical schema definition that Alembic inspects.

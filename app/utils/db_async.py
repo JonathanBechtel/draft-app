@@ -1,5 +1,7 @@
 """Async SQLAlchemy engine and session helpers."""
 
+import importlib
+import pkgutil
 import ssl
 from typing import Any, AsyncGenerator, Dict, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -9,6 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlmodel import SQLModel
 
 from app.config import settings
+from app import schemas as schemas_pkg
+
+
+def load_schema_modules() -> None:
+    """Ensure every app.schemas module is imported so metadata is current."""
+
+    package_path = getattr(schemas_pkg, "__path__", [])
+    package_prefix = schemas_pkg.__name__ + "."
+    for _, module_name, _ in pkgutil.walk_packages(package_path, package_prefix):
+        importlib.import_module(module_name)
 
 def _normalize_db_url(url: str) -> URL:
     """Return a URL object with an asyncpg driver when targeting Postgres."""
@@ -97,8 +109,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 async def init_db():
     """Initialize the database (create tables)."""
     # Ensure models are imported so metadata is fully populated
-    # Import locally to avoid circular imports at module import time
-    from app.schemas import players  # noqa: F401
+    load_schema_modules()
 
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
