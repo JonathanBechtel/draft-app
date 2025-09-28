@@ -16,9 +16,9 @@ depends_on = None
 
 def upgrade() -> None:
     player_position_enum = postgresql.ENUM(
-        "guard",
-        "forward",
-        "center",
+        "g",
+        "f",
+        "c",
         name="player_position_enum",
         create_type=False,
     )
@@ -44,9 +44,9 @@ def downgrade() -> None:
     op.drop_index("ix_players_deleted_at", table_name="players")
     op.drop_table("players")
     player_position_enum = postgresql.ENUM(
-        "guard",
-        "forward",
-        "center",
+        "g",
+        "f",
+        "c",
         name="player_position_enum",
         create_type=False,
     )
