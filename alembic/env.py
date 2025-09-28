@@ -2,8 +2,10 @@
 import asyncio
 import os
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
+from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import SQLModel
@@ -15,6 +17,10 @@ config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Load local .env file when present so local migrations work without manual exports.
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(env_path, override=False)
 
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:

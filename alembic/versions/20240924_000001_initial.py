@@ -6,6 +6,7 @@ Create Date: 2024-09-24 00:00:01
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 revision = "20240924_000001"
 down_revision = None
@@ -14,13 +15,22 @@ depends_on = None
 
 
 def upgrade() -> None:
+    player_position_enum = postgresql.ENUM(
+        "guard",
+        "forward",
+        "center",
+        name="player_position_enum",
+        create_type=False,
+    )
+    player_position_enum.create(op.get_bind(), checkfirst=True)
+
     op.create_table(
         "players",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
         sa.Column("name", sa.String(), nullable=False),
         sa.Column(
             "player_position",
-            sa.Enum("guard", "forward", "center", name="player_position_enum"),
+            player_position_enum,
             nullable=False,
         ),
         sa.Column("school", sa.String(), nullable=False),
@@ -33,4 +43,11 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_index("ix_players_deleted_at", table_name="players")
     op.drop_table("players")
-    op.execute("DROP TYPE IF EXISTS player_position_enum")
+    player_position_enum = postgresql.ENUM(
+        "guard",
+        "forward",
+        "center",
+        name="player_position_enum",
+        create_type=False,
+    )
+    player_position_enum.drop(op.get_bind(), checkfirst=True)
