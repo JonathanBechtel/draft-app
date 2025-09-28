@@ -39,16 +39,25 @@ DB_URL = urlunsplit(split_result._replace(query=clean_query)).rstrip("?")
 
 connect_args = {}
 if sslmode:
-    normalized = sslmode.lower()
-    if normalized == "disable":
+    mode = sslmode.lower()
+    if mode == "disable":
         connect_args["ssl"] = False
-    elif normalized in {"require", "verify-full", "verify-ca", "prefer", "allow"}:
+    elif mode in {"allow", "prefer"}:
+        # Let asyncpg negotiate; these modes permit fallback to plain connections.
+        pass
+    elif mode == "require":
         ssl_context = ssl.create_default_context()
-        if normalized == "verify-ca":
-            ssl_context.check_hostname = False
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
         connect_args["ssl"] = ssl_context
+    elif mode == "verify-ca":
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        connect_args["ssl"] = ssl_context
+    elif mode == "verify-full":
+        connect_args["ssl"] = ssl.create_default_context()
     else:
-        # Fallback to default SSL context for any unrecognized value
+        # Unknown value—fall back to a secure default.
         connect_args["ssl"] = ssl.create_default_context()
 
 # asyncpg doesn't accept a channel_binding kwarg; removing it from the URL is enough.

@@ -1,11 +1,12 @@
-"""
-Connection to the database using SQLAlchemy's async capabilities.
-"""
-from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlmodel import SQLModel
-from sqlalchemy.engine import make_url
+"""Async SQLAlchemy engine and session helpers."""
 
+import ssl
+from typing import Any, AsyncGenerator, Dict, Tuple
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlmodel import SQLModel
 
 from app.config import settings
 
@@ -35,13 +36,63 @@ def _normalize_db_url(url: str) -> str:
             return "postgresql+asyncpg://" + url.split("://", 1)[1]
         return url
 
-print("DATABASE_URL (raw):", settings.database_url)
-logger = settings.log_level
-# DATABASE_URL = _normalize_db_url(settings.database_url)
 
-DATABASE_URL = settings.database_url
+def _prepare_asyncpg_connection(url: str) -> Tuple[str, Dict[str, Any]]:
+    """Strip unsupported query args and derive asyncpg connect kwargs."""
 
-engine = create_async_engine(DATABASE_URL, echo=settings.sql_echo, pool_pre_ping=True)
+    normalized_url = _normalize_db_url(url)
+    split = urlsplit(normalized_url)
+    query_pairs = parse_qsl(split.query, keep_blank_values=True)
+
+    sslmode = None
+    filtered_pairs = []
+    for key, value in query_pairs:
+        if key == "sslmode":
+            sslmode = value
+            continue
+        if key == "channel_binding":
+            # asyncpg does not accept this kwarg; drop it.
+            continue
+        filtered_pairs.append((key, value))
+
+    cleaned_query = urlencode(filtered_pairs, doseq=True)
+    cleaned_url = urlunsplit(split._replace(query=cleaned_query)).rstrip("?")
+
+    connect_args: Dict[str, Any] = {}
+    if sslmode:
+        mode = sslmode.lower()
+        if mode == "disable":
+            connect_args["ssl"] = False
+        elif mode in {"allow", "prefer"}:
+            # asyncpg defaults to negotiating TLS when the server requires it, so we
+            # simply avoid forcing a context and let the driver perform the fallback.
+            pass
+        elif mode == "require":
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            connect_args["ssl"] = ssl_context
+        elif mode == "verify-ca":
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            connect_args["ssl"] = ssl_context
+        elif mode == "verify-full":
+            connect_args["ssl"] = ssl.create_default_context()
+        else:
+            # Unknown value—fall back to a secure default.
+            connect_args["ssl"] = ssl.create_default_context()
+
+    return cleaned_url, connect_args
+
+
+DATABASE_URL, CONNECT_ARGS = _prepare_asyncpg_connection(settings.database_url)
+
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=settings.sql_echo,
+    pool_pre_ping=True,
+    connect_args=CONNECT_ARGS,
+)
 SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
