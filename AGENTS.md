@@ -28,3 +28,12 @@
 ## Configuration Tips
 - Copy `.env.example` to `.env` and supply `DATABASE_URL`, `SECRET_KEY`, and optional toggles (`DEBUG`, `ACCESS_LOG`, `SQL_ECHO`); never commit real secrets.
 - Use `describe_database_url()` logs to verify connection targets, and prefer async-friendly drivers (`postgresql+asyncpg`).
+
+## Migration Workflow
+- Define and adjust persistable tables in `app/schemas/`; these SQLModel classes are the canonical schema definition that Alembic inspects.
+- Alembic auto-imports every schema module via `alembic/env.py`, so placing a new table module under `app/schemas/` is enough to make it discoverable for autogenerate.
+- Generate revisions with `alembic revision --autogenerate -m "<message>"`; review the diff Alembic proposes and edit as needed so the upgrade/downgrade pairs mirror the SQLModel changes.
+- **New tables only:** call `SQLModel.metadata.create_all(bind=..., tables=[MyTable.__table__])` in upgrade (and `drop_all` in downgrade) to create or tear down whole tables exactly as defined. Only use this when introducing or fully removing a table.
+- **Existing tables:** keep the autogenerate-produced `op.*` statements (`op.add_column`, `op.alter_column`, `op.create_index`, etc.) so the migration performs the minimal DDL to reach the updated SQLModel shape. Never drop/recreate a production table just to change columns or constraints.
+- For custom types or data backfills, keep the logic alongside the structural operations and tear down enum types by calling the column's `.type.drop` when needed.
+- Test every revision against a disposable database: run `alembic upgrade head`, sanity-check the schema, then `alembic downgrade base` to confirm clean teardowns before sharing the change.

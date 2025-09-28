@@ -1,6 +1,8 @@
 """Alembic environment configuration for DraftGuru."""
 import asyncio
+import importlib
 import os
+import pkgutil
 import ssl
 from logging.config import fileConfig
 from pathlib import Path
@@ -12,8 +14,18 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import SQLModel
 
-# Import models so SQLModel metadata is populated.
-from app.schemas import players  # noqa: F401
+from app import schemas as schemas_pkg
+
+
+def load_schema_modules() -> None:
+    """Import every module in app.schemas to populate SQLModel metadata."""
+    package_path = getattr(schemas_pkg, "__path__", [])
+    package_prefix = schemas_pkg.__name__ + "."
+    for _, module_name, _ in pkgutil.walk_packages(package_path, package_prefix):
+        importlib.import_module(module_name)
+
+
+load_schema_modules()
 
 config = context.config
 
