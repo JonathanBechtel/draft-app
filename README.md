@@ -34,8 +34,9 @@ Alternative run commands:
   - `make mig.current` — show the current revision applied to the database
   - `make mig.down` — revert the most recent revision (use with care!)
 
-- Refresh `requirements.txt` snapshot (e.g., for deployment targets without Conda):
+- Refresh `requirements.txt` snapshot (pin exact versions for CI/pip installs):
   - `conda run --no-capture-output -n draftguru python -m pip freeze --exclude-editable > requirements.txt`
+  - CI will detect a non-empty `requirements.txt`, install it first, then install the app with `--no-deps` to avoid re-resolving.
 
 ## Testing
 
