@@ -1,8 +1,8 @@
-import logging, logging.config
+from logging.config import dictConfig
 
 def setup_logging(level: str = "INFO", access_log: bool = True):
     level = level.upper()
-    logging.config.dictConfig({
+    dictConfig({
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
