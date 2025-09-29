@@ -31,7 +31,7 @@ class PlayerBase(SQLModel):
 class PlayerRead(PlayerBase):
     id: int
         
-    @computed_field
+    @computed_field  # type: ignore[misc]
     @property
     def age(self) -> float:
         days = (date.today() - self.birth_date).days
@@ -39,4 +39,3 @@ class PlayerRead(PlayerBase):
 
 class PlayerCreate(PlayerBase):
     pass
-
