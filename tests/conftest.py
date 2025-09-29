@@ -1,7 +1,6 @@
 """Pytest fixtures aligned with the live Postgres stack."""
 import asyncio
 import os
-from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 import pytest
