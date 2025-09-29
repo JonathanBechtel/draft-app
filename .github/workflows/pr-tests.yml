@@ -1,0 +1,110 @@
+name: PR Tests
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests-fork:
+    # Safe path for PRs from forks: no secrets, ephemeral Postgres service
+    if: ${{ github.event.pull_request.head.repo.fork == true }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: draftguru_test
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      # App/test config
+      ENV: stage
+      DEBUG: "0"
+      ACCESS_LOG: "0"
+      SQL_ECHO: "0"
+      AUTO_INIT_DB: "0"  # rely on Alembic + test fixtures
+      SECRET_KEY: test
+      # DB config (use service container)
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/draftguru_test
+      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/draftguru_test
+      PYTEST_ALLOW_DB: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Conda (draftguru)
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: draftguru
+          environment-file: environment.yml
+          miniforge-variant: Mambaforge
+          use-mamba: true
+
+      - name: Alembic upgrade head
+        run: conda run --no-capture-output -n draftguru alembic upgrade head
+
+      - name: Run tests
+        run: conda run --no-capture-output -n draftguru pytest -q
+
+  tests-secrets:
+    # Same-repo PRs: use environment secrets from draft-app-stage
+    if: ${{ github.event.pull_request.head.repo.fork == false }}
+    runs-on: ubuntu-latest
+    environment: draft-app-dev
+    env:
+      ENV: dev
+      DEBUG: "0"
+      ACCESS_LOG: "0"
+      SQL_ECHO: "0"
+      AUTO_INIT_DB: "0"  # rely on Alembic + test fixtures
+      PYTEST_ALLOW_DB: "1"
+      # SECRET_KEY may be provided by the environment; default to test if missing
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Conda (draftguru)
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: draftguru
+          environment-file: environment.yml
+          miniforge-variant: Mambaforge
+          use-mamba: true
+
+      - name: Prepare DB URLs from environment secrets
+        # Prefer TEST_DATABASE_URL (from draft-app-dev), fallback to DATABASE_URL
+        run: |
+          if [ -n "${{ secrets.TEST_DATABASE_URL }}" ]; then
+            echo "DATABASE_URL=${{ secrets.TEST_DATABASE_URL }}" >> $GITHUB_ENV
+            echo "TEST_DATABASE_URL=${{ secrets.TEST_DATABASE_URL }}" >> $GITHUB_ENV
+          elif [ -n "${{ secrets.DATABASE_URL }}" ]; then
+            echo "DATABASE_URL=${{ secrets.DATABASE_URL }}" >> $GITHUB_ENV
+            echo "TEST_DATABASE_URL=${{ secrets.DATABASE_URL }}" >> $GITHUB_ENV
+          else
+            echo "No database URL secret found. Please define TEST_DATABASE_URL (preferred) or DATABASE_URL in the draft-app-dev environment." >&2
+            exit 1
+          fi
+          if [ -z "${{ secrets.SECRET_KEY }}" ]; then
+            echo "SECRET_KEY=test" >> $GITHUB_ENV
+          fi
+
+      - name: Alembic upgrade head
+        run: conda run --no-capture-output -n draftguru alembic upgrade head
+
+      - name: Run tests
+        run: conda run --no-capture-output -n draftguru pytest -q
