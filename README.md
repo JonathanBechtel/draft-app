@@ -34,8 +34,20 @@ Alternative run commands:
   - `make mig.current` — show the current revision applied to the database
   - `make mig.down` — revert the most recent revision (use with care!)
 
-- Refresh `requirements.txt` snapshot (e.g., for deployment targets without Conda):
-  - `conda run --no-capture-output -n draftguru python -m pip freeze --exclude-editable > requirements.txt`
+- Pin versions for CI (pip-friendly):
+  - Generate a constraints file from your active env that avoids conda-specific file URLs:
+    ```bash
+    conda run --no-capture-output -n draftguru python - <<'PY'
+    try:
+        from importlib.metadata import distributions  # Python 3.8+
+    except Exception:  # pragma: no cover
+        from importlib_metadata import distributions  # backport
+    pins = sorted({f"{d.metadata['Name']}=={d.version}" for d in distributions() if d.metadata.get('Name')})
+    print("\n".join(pins))
+    PY
+    ```
+    Save the output to `constraints.txt` and commit it.
+  - CI prefers `constraints.txt`; if missing, it falls back to a pip-friendly `requirements.txt` (no `@ file:` entries). Otherwise it installs from project metadata.
 
 ## Testing
 

@@ -9,21 +9,21 @@ description = "FastAPI + SQLModel skeleton for a draft analytics app."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi[standard]",
-    "sqlmodel",
-    "pydantic-settings",
-    "psycopg",
-    "asyncpg",
-    "alembic>=1.13",
+    "fastapi[standard]==0.116.1",
+    "sqlmodel==0.0.24",
+    "pydantic-settings==2.10.1",
+    "psycopg==3.2.9",
+    "asyncpg==0.30.0",
+    "alembic==1.16.5",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest",
-    "pytest-asyncio",
-    "httpx",
-    "ruff",
-    "mypy",
+    "pytest==8.4.2",
+    "pytest-asyncio==1.2.0",
+    "httpx==0.28.1",
+    "ruff==0.13.0",
+    "mypy==1.18.1",
 ]
 
 [tool.setuptools.packages.find]
