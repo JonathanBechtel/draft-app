@@ -51,7 +51,7 @@ jobs:
         with:
           activate-environment: draftguru
           environment-file: environment.yml
-          miniforge-variant: Mambaforge
+          miniforge-variant: Miniforge3
           use-mamba: true
 
       - name: Alembic upgrade head
@@ -83,7 +83,7 @@ jobs:
         with:
           activate-environment: draftguru
           environment-file: environment.yml
-          miniforge-variant: Mambaforge
+          miniforge-variant: Miniforge3
           use-mamba: true
 
       - name: Prepare DB URLs from environment secrets
