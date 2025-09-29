@@ -57,12 +57,16 @@ jobs:
       - name: Install dependencies (pinned if available)
         run: |
           python -m pip install --upgrade pip
-          if [ -s requirements.txt ]; then
+          if [ -s constraints.txt ]; then
+            echo "Installing pinned constraints.txt"
+            pip install -r constraints.txt
+            pip install -e . --no-deps
+          elif [ -s requirements.txt ] && ! grep -q "@ file:" requirements.txt; then
             echo "Installing pinned requirements.txt"
             pip install -r requirements.txt
             pip install -e . --no-deps
           else
-            echo "requirements.txt empty or missing; installing from project metadata"
+            echo "No pip-friendly pins found; installing from project metadata"
             pip install -e .[dev]
           fi
 
@@ -101,12 +105,16 @@ jobs:
       - name: Install dependencies (pinned if available)
         run: |
           python -m pip install --upgrade pip
-          if [ -s requirements.txt ]; then
+          if [ -s constraints.txt ]; then
+            echo "Installing pinned constraints.txt"
+            pip install -r constraints.txt
+            pip install -e . --no-deps
+          elif [ -s requirements.txt ] && ! grep -q "@ file:" requirements.txt; then
             echo "Installing pinned requirements.txt"
             pip install -r requirements.txt
             pip install -e . --no-deps
           else
-            echo "requirements.txt empty or missing; installing from project metadata"
+            echo "No pip-friendly pins found; installing from project metadata"
             pip install -e .[dev]
           fi
 
