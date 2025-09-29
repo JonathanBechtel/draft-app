@@ -1,19 +1,32 @@
 """Pytest fixtures aligned with the live Postgres stack."""
 import asyncio
 import os
-from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 
+from alembic import command
+from alembic.config import Config
+from dotenv import load_dotenv
 from httpx import AsyncClient, ASGITransport
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
-from sqlmodel import SQLModel
-from dotenv import load_dotenv
 
 load_dotenv()
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _make_alembic_config(database_url: str) -> Config:
+    """Return an Alembic config object bound to the provided database."""
+
+    os.environ["DATABASE_URL"] = database_url
+    config = Config(str(PROJECT_ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(PROJECT_ROOT / "alembic"))
+    config.set_main_option("sqlalchemy.url", database_url)
+    return config
 
 
 def _load_database_url() -> str:
@@ -47,36 +60,28 @@ def database_url() -> str:
 @pytest_asyncio.fixture(scope="session")
 async def async_engine(database_url: str) -> AsyncGenerator[AsyncEngine, None]:
     """Yield an async engine bound to the integration-test database."""
-    # Ensure SQLModel metadata is populated before creating tables.
-    from app.schemas import players  # noqa: F401  # pylint: disable=unused-import
-
     engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
-    async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
-        await conn.run_sync(SQLModel.metadata.create_all)
     try:
         yield engine
     finally:
-        async with engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.drop_all)
         await engine.dispose()
 
 
 @pytest_asyncio.fixture()
-async def db_session(async_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
+async def db_session(async_engine: AsyncEngine, database_url: str) -> AsyncGenerator[AsyncSession, None]:
     """Provide a clean transactional session for each test."""
-    session_factory = async_sessionmaker(async_engine, expire_on_commit=False, class_=AsyncSession)
+    alembic_config = _make_alembic_config(database_url)
+    command.downgrade(alembic_config, "base")
+    command.upgrade(alembic_config, "head")
 
-    # Rebuild metadata for each test to ensure isolation across runs.
-    async with async_engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
-        await conn.run_sync(SQLModel.metadata.create_all)
+    session_factory = async_sessionmaker(async_engine, expire_on_commit=False, class_=AsyncSession)
 
     async with session_factory() as session:
         try:
             yield session
         finally:
             await session.rollback()
+            command.downgrade(alembic_config, "base")
 
 
 @pytest_asyncio.fixture()
