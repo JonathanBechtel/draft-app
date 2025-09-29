@@ -46,19 +46,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Conda (draftguru)
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          activate-environment: draftguru
-          environment-file: environment.yml
-          miniforge-variant: Miniforge3
-          use-mamba: true
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
 
       - name: Alembic upgrade head
-        run: conda run --no-capture-output -n draftguru alembic upgrade head
+        run: alembic upgrade head
 
       - name: Run tests
-        run: conda run --no-capture-output -n draftguru pytest -q
+        run: pytest -q
 
   tests-secrets:
     # Same-repo PRs: use environment secrets from draft-app-stage
@@ -78,13 +83,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Conda (draftguru)
-        uses: conda-incubator/setup-miniconda@v3
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          activate-environment: draftguru
-          environment-file: environment.yml
-          miniforge-variant: Miniforge3
-          use-mamba: true
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
 
       - name: Prepare DB URLs from environment secrets
         # Prefer TEST_DATABASE_URL (from draft-app-dev), fallback to DATABASE_URL
@@ -104,7 +114,7 @@ jobs:
           fi
 
       - name: Alembic upgrade head
-        run: conda run --no-capture-output -n draftguru alembic upgrade head
+        run: alembic upgrade head
 
       - name: Run tests
-        run: conda run --no-capture-output -n draftguru pytest -q
+        run: pytest -q
