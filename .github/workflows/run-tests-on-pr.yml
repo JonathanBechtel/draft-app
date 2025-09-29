@@ -6,6 +6,18 @@ on:
       - main
 
 jobs:
+
+  debug-context:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Debug PR context
+        run: |
+          echo "github.actor: ${{ github.actor }}"
+          echo "PR author: ${{ github.event.pull_request.user.login }}"
+          echo "Head repo owner: ${{ github.event.pull_request.head.repo.owner.login }}"
+          echo "Head repo full name: ${{ github.event.pull_request.head.repo.full_name }}"
+          echo "Base repo full name: ${{ github.repository }}"
+
   test:
     runs-on: ubuntu-latest
     env:
