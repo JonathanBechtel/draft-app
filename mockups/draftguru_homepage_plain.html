@@ -64,9 +64,27 @@
       align-items: center;
       justify-content: space-between;
     }
+    /* Footer styles */
+    .footer {
+      background: #E8B4A8;
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+      margin-top: 4rem;
+    }
+    .footer-content {
+      max-width: 80rem;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    /* Section divider */
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(148, 163, 184, 0.3) 20%, rgba(148, 163, 184, 0.3) 80%, transparent);
+      margin: 3rem 0;
+    }
   </style>
 </head>
-<body class="min-h-screen bg-gradient-to-b from-white to-slate-50 text-slate-900 pb-8">
+<body class="min-h-screen bg-gradient-to-b from-white to-slate-50 text-slate-900">
   <!-- Top Nav -->
   <nav class="navbar">
     <div class="navbar-content">
@@ -108,6 +126,8 @@
     </div>
   </div>
 
+  <div class="section-divider"></div>
+
   <!-- Consensus Mock Draft -->
   <section>
     <h2 class="text-2xl font-semibold ty-mono caps pl-2 border-l-4 border-emerald-500/80 mb-4">Consensus Mock Draft</h2>
@@ -132,11 +152,15 @@
     </div>
   </section>
 
+  <div class="section-divider"></div>
+
   <!-- Top Prospects -->
   <section class="space-y-3">
     <h3 class="text-2xl font-semibold ty-mono caps pl-2 border-l-4 border-indigo-500/80 mb-4">Top Prospects</h3>
     <div id="prospects" class="grid grid-cols-2 md:grid-cols-3 gap-4"></div>
   </section>
+
+  <div class="section-divider"></div>
 
   <!-- VS Arena -->
   <section>
@@ -179,11 +203,15 @@
     </div>
   </section>
 
+  <div class="section-divider"></div>
+
   <!-- Live Draft Buzz -->
   <section>
     <h3 class="text-2xl font-semibold ty-mono caps pl-2 border-l-4 border-cyan-500/70 mb-4">Live Draft Buzz</h3>
     <div id="feed" class="flex flex-col gap-3 max-h-[520px] overflow-y-auto pr-1"></div>
   </section>
+
+  <div class="section-divider"></div>
 
   <!-- Draft Position Specials -->
   <section>
@@ -376,5 +404,52 @@
     `;
   </script>
   </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-6">
+        <div>
+          <h4 class="font-semibold ty-mono caps text-slate-800 mb-3">About</h4>
+          <ul class="space-y-2 text-sm text-slate-700">
+            <li><a href="#" class="hover:text-slate-900">Our Story</a></li>
+            <li><a href="#" class="hover:text-slate-900">Team</a></li>
+            <li><a href="#" class="hover:text-slate-900">Careers</a></li>
+            <li><a href="#" class="hover:text-slate-900">Press</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-semibold ty-mono caps text-slate-800 mb-3">Resources</h4>
+          <ul class="space-y-2 text-sm text-slate-700">
+            <li><a href="#" class="hover:text-slate-900">Draft Guide</a></li>
+            <li><a href="#" class="hover:text-slate-900">Mock Drafts</a></li>
+            <li><a href="#" class="hover:text-slate-900">Player Rankings</a></li>
+            <li><a href="#" class="hover:text-slate-900">Analytics</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-semibold ty-mono caps text-slate-800 mb-3">Community</h4>
+          <ul class="space-y-2 text-sm text-slate-700">
+            <li><a href="#" class="hover:text-slate-900">Forums</a></li>
+            <li><a href="#" class="hover:text-slate-900">Discord</a></li>
+            <li><a href="#" class="hover:text-slate-900">Twitter</a></li>
+            <li><a href="#" class="hover:text-slate-900">Newsletter</a></li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="font-semibold ty-mono caps text-slate-800 mb-3">Legal</h4>
+          <ul class="space-y-2 text-sm text-slate-700">
+            <li><a href="#" class="hover:text-slate-900">Terms of Service</a></li>
+            <li><a href="#" class="hover:text-slate-900">Privacy Policy</a></li>
+            <li><a href="#" class="hover:text-slate-900">Cookie Policy</a></li>
+            <li><a href="#" class="hover:text-slate-900">Disclaimer</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="border-t border-slate-700/20 pt-6 text-center">
+        <p class="text-sm text-slate-700">&copy; 2025 DraftGuru. All rights reserved. Stay informed, draft smarter.</p>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>
