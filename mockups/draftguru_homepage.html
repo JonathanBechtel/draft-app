@@ -752,6 +752,253 @@
     }
 
     /* ============================================================================
+       HEAD-TO-HEAD COMPARISON (SHARED STYLES)
+       Integrated player comparison with fuchsia theme
+       ========================================================================= */
+    .h2h-controls-row {
+      display: flex;
+      align-items: end;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .h2h-control {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      flex: 1;
+      min-width: 250px;
+    }
+
+    .h2h-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-600);
+      font-weight: 600;
+    }
+
+    .h2h-select {
+      width: 100%;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .h2h-select:focus {
+      outline: none;
+      border-color: var(--color-accent-fuchsia);
+      box-shadow: 0 0 0 2px rgba(217, 70, 239, 0.2);
+    }
+
+    /* Category tabs */
+    .h2h-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .h2h-tab {
+      padding: 0.5rem 1rem;
+      background: var(--color-white);
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      font-weight: 600;
+    }
+
+    .h2h-tab:hover {
+      background: var(--color-slate-50);
+      border-color: var(--color-slate-400);
+    }
+
+    .h2h-tab.active {
+      background: #fae8ff;
+      border-color: var(--color-accent-fuchsia);
+      color: #86198f;
+    }
+
+    /* Comparison card */
+    .h2h-card {
+      position: relative;
+      overflow: hidden;
+      /* Dot-matrix background pattern */
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(217, 70, 239, 0.08) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    .h2h-content {
+      position: relative;
+      padding: 1.5rem;
+    }
+
+    /* Similarity badge */
+    .h2h-similarity-badge {
+      position: absolute;
+      top: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      background: #fae8ff;
+      color: #86198f;
+      border: 2px solid var(--color-accent-fuchsia);
+      z-index: 10;
+      box-shadow: 0 2px 4px rgba(217, 70, 239, 0.2);
+    }
+
+    /* Comparison container with photos */
+    .h2h-comparison-container {
+      display: flex;
+      flex-direction: column;
+      margin-top: 3.5rem;
+      margin-bottom: 1rem;
+    }
+
+    /* Photos row above table */
+    .h2h-photos-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Spacer to separate photos */
+    .h2h-photos-spacer {
+      /* Empty spacer in the middle */
+    }
+
+    /* Player photos */
+    .h2h-player-photo {
+      flex-shrink: 0;
+      text-align: center;
+    }
+
+    .h2h-player-photo img {
+      width: 150px;
+      height: 150px;
+      border-radius: 0.75rem;
+      object-fit: cover;
+      border: 3px solid var(--color-accent-fuchsia);
+      box-shadow: 0 4px 8px rgba(217, 70, 239, 0.2);
+      transition: transform var(--transition-speed);
+    }
+
+    .h2h-player-photo img:hover {
+      transform: scale(1.05);
+    }
+
+    .h2h-photo-name {
+      margin-top: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-slate-700);
+    }
+
+    /* Comparison table */
+    .h2h-comparison-table {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .h2h-comparison-table table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    .h2h-comparison-table thead th {
+      padding: 0.75rem;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+      border-bottom: 2px solid var(--color-slate-200);
+      font-weight: 600;
+    }
+
+    .h2h-comparison-table tbody td {
+      padding: 0.875rem 0.75rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .h2h-comparison-table tbody tr:hover {
+      background: var(--color-slate-50);
+    }
+
+    .h2h-value {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .h2h-value.winner {
+      color: var(--color-accent-fuchsia);
+      font-weight: 800;
+      background: #fae8ff;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+    }
+
+    .h2h-value.loser {
+      color: var(--color-slate-500);
+    }
+
+    /* Winner banner */
+    .h2h-winner-banner {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      border-radius: 0.375rem;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.875rem;
+    }
+
+    .h2h-winner-banner.winner-a {
+      background: #fae8ff;
+      color: #86198f;
+      border: 2px solid var(--color-accent-fuchsia);
+    }
+
+    .h2h-winner-banner.winner-b {
+      background: #cffafe;
+      color: #155e75;
+      border: 2px solid var(--color-accent-cyan);
+    }
+
+    .h2h-winner-banner.tie {
+      background: var(--color-slate-100);
+      color: var(--color-slate-800);
+      border: 2px solid var(--color-slate-300);
+    }
+
+    /* ============================================================================
        LIVE DRAFT BUZZ / FEED
        News feed with article snippets
        ========================================================================= */
@@ -940,6 +1187,47 @@
         justify-self: center;
       }
 
+      .h2h-controls-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .h2h-control {
+        min-width: 100%;
+      }
+
+      .h2h-tabs {
+        gap: 0.375rem;
+      }
+
+      .h2h-tab {
+        font-size: 0.6875rem;
+        padding: 0.375rem 0.75rem;
+      }
+
+      .h2h-similarity-badge {
+        font-size: 0.75rem;
+        padding: 0.375rem 0.75rem;
+      }
+
+      .h2h-comparison-container {
+        margin-top: 3rem;
+      }
+
+      .h2h-photos-row {
+        grid-template-columns: 1fr auto 1fr;
+        margin-bottom: 1rem;
+      }
+
+      .h2h-player-photo img {
+        width: 120px;
+        height: 120px;
+      }
+
+      .h2h-photo-name {
+        font-size: 0.75rem;
+      }
+
       .footer-grid {
         grid-template-columns: 1fr;
       }
@@ -1068,60 +1356,83 @@
     <!-- ==========================================================================
          VS ARENA (PLAYER COMPARISON)
          Interactive head-to-head player comparison tool
-         Features toggle modes and dynamic metric comparison
          ========================================================================== -->
     <section class="section">
-      <!-- Section header with toggle buttons -->
-      <div class="vs-header">
-        <div class="vs-title">
-          <!-- Swords icon -->
-          <svg class="icon icon-lg" style="color: var(--color-accent-indigo);" viewBox="0 0 24 24">
-            <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
-            <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
-            <path d="M3 6l7 7"></path>
-          </svg>
-          <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia); margin: 0;">
-            VS Arena
-          </h3>
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+        <!-- Swords icon -->
+        <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+          <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+          <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+          <path d="M3 6l7 7"></path>
+        </svg>
+        VS Arena
+      </h2>
+      <p class="section-subtitle">Compare top draft prospects head-to-head across key metrics</p>
+
+      <!-- Player Selectors Row -->
+      <div class="h2h-controls-row">
+        <!-- Player A Selector -->
+        <div class="h2h-control">
+          <label class="h2h-label" for="playerA">Player A</label>
+          <select id="playerA" class="h2h-select"></select>
         </div>
 
-        <!-- Mode toggle buttons -->
-        <div class="vs-toggles">
-          <button class="toggle-button active" data-mode="Measurables">Measurables</button>
-          <button class="toggle-button" data-mode="Production">Production</button>
-          <button class="toggle-button" data-mode="Rank Delta">Rank Delta</button>
+        <!-- Player B Selector -->
+        <div class="h2h-control">
+          <label class="h2h-label" for="playerB">Player B</label>
+          <select id="playerB" class="h2h-select"></select>
         </div>
       </div>
 
-      <!-- VS Arena card with scanlines effect -->
-      <div class="card card-ring card-ring-fuchsia vs-arena-card">
-        <!-- Scanlines overlay for retro effect -->
+      <!-- Category Tabs -->
+      <div class="h2h-tabs">
+        <button class="h2h-tab active" data-category="anthropometrics">Anthropometrics</button>
+        <button class="h2h-tab" data-category="combinePerformance">Combine Performance</button>
+        <button class="h2h-tab" data-category="advancedStats">Advanced Stats</button>
+      </div>
+
+      <!-- VS Arena card -->
+      <div class="card card-ring card-ring-fuchsia h2h-card">
         <div class="scanlines"></div>
 
-        <div class="vs-content">
-          <!-- Player selectors -->
-          <div class="vs-selectors">
-            <select id="playerA" class="vs-select" aria-label="Select first player"></select>
-            <div class="vs-badge">VS</div>
-            <select id="playerB" class="vs-select" aria-label="Select second player"></select>
+        <div class="h2h-content">
+          <!-- Similarity Score Badge -->
+          <div id="h2hSimilarityBadge" class="h2h-similarity-badge">
+            Select Players
           </div>
 
-          <!-- Comparison table - will be populated by JavaScript -->
-          <div class="comparison-table">
-            <table>
-              <thead>
-                <tr>
-                  <th id="headerA" class="text-right"></th>
-                  <th class="text-center">Metric</th>
-                  <th id="headerB" class="text-left"></th>
-                </tr>
-              </thead>
-              <tbody id="comparisonBody"></tbody>
-            </table>
+          <!-- Player Photos and Comparison -->
+          <div class="h2h-comparison-container">
+            <!-- Player Photos Row -->
+            <div class="h2h-photos-row">
+              <div class="h2h-player-photo">
+                <img id="h2hPhotoA" src="https://placehold.co/200x200/edf2f7/1f2937?text=Player+A" alt="Player A" />
+                <div class="h2h-photo-name" id="h2hPhotoNameA">Player A</div>
+              </div>
+              <div class="h2h-photos-spacer"></div>
+              <div class="h2h-player-photo">
+                <img id="h2hPhotoB" src="https://placehold.co/200x200/edf2f7/1f2937?text=Player+B" alt="Player B" />
+                <div class="h2h-photo-name" id="h2hPhotoNameB">Player B</div>
+              </div>
+            </div>
+
+            <!-- Comparison Table -->
+            <div class="h2h-comparison-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th id="headerA" class="text-right"></th>
+                    <th class="text-center">Metric</th>
+                    <th id="headerB" class="text-left"></th>
+                  </tr>
+                </thead>
+                <tbody id="comparisonBody"></tbody>
+              </table>
+            </div>
           </div>
 
-          <!-- Winner declaration - will be populated by JavaScript -->
-          <div id="winnerDeclaration"></div>
+          <!-- Winner Declaration -->
+          <div id="winnerDeclaration" class="h2h-winner-banner"></div>
         </div>
       </div>
     </section>
@@ -1266,20 +1577,6 @@
       { source: "BR", title: "Flagg off-ball value and scheme versatility", time: "1h", tag: "Riser" },
     ];
 
-    // Comparison metrics for VS Arena
-    const COMPARISON_METRICS = [
-      { name: "Height", unit: "in" },
-      { name: "Weight", unit: "lbs" },
-      { name: "Wingspan", unit: "in" },
-      { name: "Vertical Leap", unit: "in" },
-      { name: "Points Per Game", unit: "" },
-      { name: "Rebounds Per Game", unit: "" },
-      { name: "Assists Per Game", unit: "" },
-      { name: "FG%", unit: "%" }
-    ];
-
-    // Current comparison mode
-    let currentComparisonMode = "Measurables";
 
     /**
      * ============================================================================
@@ -1462,21 +1759,82 @@
 
     /**
      * ============================================================================
-     * VS ARENA MODULE
-     * Handles player comparison functionality
+     * HEAD-TO-HEAD COMPARISON MODULE (VS ARENA)
+     * Handles player comparison functionality with photos and category tabs
      * ============================================================================
      */
-    const VSArenaModule = {
+    const HeadToHeadModule = {
       selectedPlayerA: null,
       selectedPlayerB: null,
+      currentCategory: 'anthropometrics',
+
+      // Player data with full stats
+      playerData: {
+        'Cooper Flagg': {
+          img: 'https://placehold.co/200x200/d946ef/ffffff?text=Cooper+Flagg',
+          anthropometrics: { height: 81, weight: 205, wingspan: 86, standingReach: 108 },
+          combinePerformance: { verticalLeap: 38.5, lane: 10.8, shuttle: 2.9, bench: 12 },
+          advancedStats: { per: 28.4, ts: 61.2, orb: 12.8, drb: 18.5, ast: 23.1, stl: 3.2, blk: 5.8, tov: 12.4 }
+        },
+        'Ace Bailey': {
+          img: 'https://placehold.co/200x200/d946ef/ffffff?text=Ace+Bailey',
+          anthropometrics: { height: 79, weight: 196, wingspan: 83, standingReach: 104 },
+          combinePerformance: { verticalLeap: 41.0, lane: 10.5, shuttle: 2.8, bench: 10 },
+          advancedStats: { per: 26.8, ts: 58.7, orb: 8.4, drb: 15.2, ast: 18.6, stl: 2.8, blk: 3.1, tov: 14.2 }
+        },
+        'Zachary Rioux': {
+          img: 'https://placehold.co/200x200/d946ef/ffffff?text=Zachary+Rioux',
+          anthropometrics: { height: 84, weight: 245, wingspan: 89, standingReach: 112 },
+          combinePerformance: { verticalLeap: 32.5, lane: 11.8, shuttle: 3.2, bench: 15 },
+          advancedStats: { per: 24.2, ts: 64.5, orb: 18.2, drb: 22.4, ast: 8.5, stl: 1.4, blk: 8.9, tov: 9.8 }
+        },
+        'Matas Buzelis': {
+          img: 'https://placehold.co/200x200/d946ef/ffffff?text=Matas+Buzelis',
+          anthropometrics: { height: 82, weight: 210, wingspan: 87, standingReach: 109 },
+          combinePerformance: { verticalLeap: 36.0, lane: 11.0, shuttle: 3.0, bench: 11 },
+          advancedStats: { per: 25.6, ts: 59.8, orb: 10.2, drb: 16.8, ast: 20.4, stl: 2.5, blk: 4.2, tov: 11.6 }
+        },
+        'KJ Evans Jr.': {
+          img: 'https://placehold.co/200x200/d946ef/ffffff?text=KJ+Evans+Jr',
+          anthropometrics: { height: 80, weight: 215, wingspan: 84, standingReach: 106 },
+          combinePerformance: { verticalLeap: 35.0, lane: 11.2, shuttle: 3.1, bench: 13 },
+          advancedStats: { per: 23.8, ts: 56.4, orb: 14.6, drb: 19.2, ast: 14.8, stl: 2.1, blk: 3.8, tov: 10.2 }
+        }
+      },
+
+      // Category metrics definitions
+      categoryMetrics: {
+        anthropometrics: [
+          { key: 'height', label: 'Height', unit: '"', higherIsBetter: true },
+          { key: 'weight', label: 'Weight', unit: ' lbs', higherIsBetter: true },
+          { key: 'wingspan', label: 'Wingspan', unit: '"', higherIsBetter: true },
+          { key: 'standingReach', label: 'Standing Reach', unit: '"', higherIsBetter: true }
+        ],
+        combinePerformance: [
+          { key: 'verticalLeap', label: 'Vertical Leap', unit: '"', higherIsBetter: true },
+          { key: 'lane', label: 'Lane Agility', unit: 's', higherIsBetter: false },
+          { key: 'shuttle', label: '3/4 Shuttle', unit: 's', higherIsBetter: false },
+          { key: 'bench', label: 'Bench Press', unit: ' reps', higherIsBetter: true }
+        ],
+        advancedStats: [
+          { key: 'per', label: 'PER', unit: '', higherIsBetter: true },
+          { key: 'ts', label: 'TS%', unit: '%', higherIsBetter: true },
+          { key: 'orb', label: 'ORB%', unit: '%', higherIsBetter: true },
+          { key: 'drb', label: 'DRB%', unit: '%', higherIsBetter: true },
+          { key: 'ast', label: 'AST%', unit: '%', higherIsBetter: true },
+          { key: 'stl', label: 'STL%', unit: '%', higherIsBetter: true },
+          { key: 'blk', label: 'BLK%', unit: '%', higherIsBetter: true },
+          { key: 'tov', label: 'TOV%', unit: '%', higherIsBetter: false }
+        ]
+      },
 
       /**
-       * Initialize VS Arena with player selectors and comparison
+       * Initialize Head-to-Head module
        */
       init() {
         this.populateSelectors();
         this.setupEventListeners();
-        this.updateComparison();
+        this.renderComparison();
       },
 
       /**
@@ -1486,143 +1844,156 @@
         const playerASelect = document.getElementById('playerA');
         const playerBSelect = document.getElementById('playerB');
 
-        PLAYERS.forEach((player) => {
+        Object.keys(this.playerData).forEach((playerName) => {
           const optionA = document.createElement('option');
-          optionA.value = player.name;
-          optionA.textContent = player.name;
+          optionA.value = playerName;
+          optionA.textContent = playerName;
           playerASelect.appendChild(optionA);
 
           const optionB = document.createElement('option');
-          optionB.value = player.name;
-          optionB.textContent = player.name;
+          optionB.value = playerName;
+          optionB.textContent = playerName;
           playerBSelect.appendChild(optionB);
         });
 
         // Set default selections
-        playerASelect.value = PLAYERS[0].name;
-        playerBSelect.value = PLAYERS[1].name;
-        this.selectedPlayerA = PLAYERS[0].name;
-        this.selectedPlayerB = PLAYERS[1].name;
+        const playerNames = Object.keys(this.playerData);
+        playerASelect.value = playerNames[0];
+        playerBSelect.value = playerNames[1];
+        this.selectedPlayerA = playerNames[0];
+        this.selectedPlayerB = playerNames[1];
       },
 
       /**
-       * Setup event listeners for selectors and toggles
+       * Setup event listeners
        */
       setupEventListeners() {
         // Player selectors
         document.getElementById('playerA').addEventListener('change', (e) => {
           this.selectedPlayerA = e.target.value;
-          this.updateComparison();
+          this.renderComparison();
         });
 
         document.getElementById('playerB').addEventListener('change', (e) => {
           this.selectedPlayerB = e.target.value;
-          this.updateComparison();
+          this.renderComparison();
         });
 
-        // Mode toggle buttons
-        const toggleButtons = document.querySelectorAll('.toggle-button');
-        toggleButtons.forEach((button) => {
-          button.addEventListener('click', () => {
-            // Remove active class from all buttons
-            toggleButtons.forEach((btn) => btn.classList.remove('active'));
-            // Add active class to clicked button
-            button.classList.add('active');
-            // Update current mode
-            currentComparisonMode = button.dataset.mode;
-            // Re-render comparison
-            this.updateComparison();
+        // Category tabs
+        const tabs = document.querySelectorAll('.h2h-tab');
+        tabs.forEach((tab) => {
+          tab.addEventListener('click', () => {
+            tabs.forEach((t) => t.classList.remove('active'));
+            tab.classList.add('active');
+            this.currentCategory = tab.dataset.category;
+            this.renderComparison();
           });
         });
       },
 
       /**
-       * Generate a dummy comparison value for a metric
-       * @param {Object} metric - Metric definition
-       * @returns {string} Generated value
+       * Calculate similarity score between two players
        */
-      generateComparisonValue(metric) {
-        const name = metric.name;
+      calculateSimilarity(playerAData, playerBData) {
+        const metrics = this.categoryMetrics[this.currentCategory];
+        let totalDiff = 0;
+        let count = 0;
 
-        if (name.includes("Height")) return (78 + Math.floor(Math.random() * 6)).toFixed(0);
-        if (name.includes("Weight")) return (200 + Math.floor(Math.random() * 40)).toFixed(0);
-        if (name.includes("Wingspan")) return (82 + Math.floor(Math.random() * 8)).toFixed(0);
-        if (name.includes("Vertical")) return (30 + Math.floor(Math.random() * 12)).toFixed(1);
-        if (name.includes("Points")) return (15 + Math.random() * 15).toFixed(1);
-        if (name.includes("Rebounds")) return (5 + Math.random() * 8).toFixed(1);
-        if (name.includes("Assists")) return (2 + Math.random() * 6).toFixed(1);
-        if (name.includes("FG%")) return (40 + Math.random() * 20).toFixed(1);
+        metrics.forEach((metric) => {
+          const valA = playerAData[metric.key];
+          const valB = playerBData[metric.key];
+          if (valA !== undefined && valB !== undefined) {
+            const diff = Math.abs(valA - valB);
+            const avg = (valA + valB) / 2;
+            const percentDiff = avg !== 0 ? (diff / avg) * 100 : 0;
+            totalDiff += percentDiff;
+            count++;
+          }
+        });
 
-        return (Math.random() * 100).toFixed(1);
+        const avgDiff = count > 0 ? totalDiff / count : 0;
+        const similarity = Math.max(0, 100 - avgDiff);
+        return Math.round(similarity);
       },
 
       /**
-       * Update the comparison table and winner declaration
+       * Render the complete comparison
        */
-      updateComparison() {
-        const comparisonBody = document.getElementById('comparisonBody');
-        const headerA = document.getElementById('headerA');
-        const headerB = document.getElementById('headerB');
-        const winnerDeclaration = document.getElementById('winnerDeclaration');
+      renderComparison() {
+        if (!this.selectedPlayerA || !this.selectedPlayerB) return;
 
-        // Update headers
-        headerA.textContent = this.selectedPlayerA;
-        headerB.textContent = this.selectedPlayerB;
+        const playerAData = this.playerData[this.selectedPlayerA][this.currentCategory];
+        const playerBData = this.playerData[this.selectedPlayerB][this.currentCategory];
 
+        // Update photos
+        document.getElementById('h2hPhotoA').src = this.playerData[this.selectedPlayerA].img;
+        document.getElementById('h2hPhotoB').src = this.playerData[this.selectedPlayerB].img;
+        document.getElementById('h2hPhotoNameA').textContent = this.selectedPlayerA;
+        document.getElementById('h2hPhotoNameB').textContent = this.selectedPlayerB;
+
+        // Update similarity badge
+        const similarity = this.calculateSimilarity(playerAData, playerBData);
+        document.getElementById('h2hSimilarityBadge').textContent = `${similarity}% Similar`;
+
+        // Update table headers
+        document.getElementById('headerA').textContent = this.selectedPlayerA;
+        document.getElementById('headerB').textContent = this.selectedPlayerB;
+
+        // Render comparison table
+        const metrics = this.categoryMetrics[this.currentCategory];
         let rowsHTML = '';
         let winsA = 0;
         let winsB = 0;
 
-        // Generate comparison rows
-        COMPARISON_METRICS.forEach((metric) => {
-          const valueA = this.generateComparisonValue(metric);
-          const valueB = this.generateComparisonValue(metric);
-          const numA = parseFloat(valueA);
-          const numB = parseFloat(valueB);
+        metrics.forEach((metric) => {
+          const valueA = playerAData[metric.key];
+          const valueB = playerBData[metric.key];
 
-          // Determine winner for this metric
-          const isWinnerA = numA > numB;
-          const isWinnerB = numB > numA;
+          // Determine winner based on metric type
+          let isWinnerA, isWinnerB;
+          if (metric.higherIsBetter) {
+            isWinnerA = valueA > valueB;
+            isWinnerB = valueB > valueA;
+          } else {
+            isWinnerA = valueA < valueB;
+            isWinnerB = valueB < valueA;
+          }
 
           if (isWinnerA) winsA++;
           if (isWinnerB) winsB++;
 
-          // Build classes for styling
-          const classA = isWinnerA
-            ? 'comparison-value winner winner-a'
-            : 'comparison-value loser';
-          const classB = isWinnerB
-            ? 'comparison-value winner winner-b'
-            : 'comparison-value loser';
+          // Build classes for styling with fuchsia winner theme
+          const classA = isWinnerA ? 'h2h-value winner' : 'h2h-value loser';
+          const classB = isWinnerB ? 'h2h-value winner' : 'h2h-value loser';
 
           rowsHTML += `
             <tr>
               <td class="text-right ${classA}">${valueA}${metric.unit}</td>
-              <td class="text-center">${metric.name}</td>
+              <td class="text-center">${metric.label}</td>
               <td class="text-left ${classB}">${valueB}${metric.unit}</td>
             </tr>
           `;
         });
 
-        comparisonBody.innerHTML = rowsHTML;
+        document.getElementById('comparisonBody').innerHTML = rowsHTML;
 
-        // Determine overall winner
-        const totalMetrics = COMPARISON_METRICS.length;
+        // Render winner banner
+        const totalMetrics = metrics.length;
         let bannerText = '';
         let bannerClass = '';
 
         if (winsA > winsB) {
-          bannerText = `Winner: ${this.selectedPlayerA} — ${winsA}/${totalMetrics}`;
-          bannerClass = 'winner-banner winner-a';
+          bannerText = `🏆 ${this.selectedPlayerA} wins — ${winsA}/${totalMetrics} categories`;
+          bannerClass = 'h2h-winner-banner winner-a';
         } else if (winsB > winsA) {
-          bannerText = `Winner: ${this.selectedPlayerB} — ${winsB}/${totalMetrics}`;
-          bannerClass = 'winner-banner winner-b';
+          bannerText = `🏆 ${this.selectedPlayerB} wins — ${winsB}/${totalMetrics} categories`;
+          bannerClass = 'h2h-winner-banner winner-b';
         } else {
-          bannerText = `Tie — ${winsA}/${totalMetrics} each`;
-          bannerClass = 'winner-banner tie';
+          bannerText = `⚔️ Tie — ${winsA}/${totalMetrics} categories each`;
+          bannerClass = 'h2h-winner-banner tie';
         }
 
-        winnerDeclaration.innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
+        document.getElementById('winnerDeclaration').innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
       }
     };
 
@@ -1709,7 +2080,7 @@
       TickerModule.init();
       MockTableModule.init();
       ProspectsModule.init();
-      VSArenaModule.init();
+      HeadToHeadModule.init();
       FeedModule.init();
       SpecialsModule.init();
     });
