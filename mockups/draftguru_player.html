@@ -633,6 +633,422 @@
     }
 
     /* ============================================================================
+       PERFORMANCE SECTION
+       Percentile bars showing player rankings across metrics
+       ========================================================================= */
+    .perf-controls-row {
+      display: flex;
+      align-items: end;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .perf-control {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .perf-control-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-top: 1.75rem;
+    }
+
+    .perf-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-600);
+      font-weight: 600;
+    }
+
+    .perf-select {
+      width: 100%;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .perf-select:focus {
+      outline: none;
+      border-color: var(--color-accent-emerald);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+    }
+
+    .perf-checkbox {
+      width: 1.25rem;
+      height: 1.25rem;
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.25rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      appearance: none;
+      position: relative;
+    }
+
+    .perf-checkbox:checked {
+      background: var(--color-accent-emerald);
+      border-color: var(--color-accent-emerald);
+    }
+
+    .perf-checkbox:checked::after {
+      content: "";
+      position: absolute;
+      left: 0.25rem;
+      top: 0.0625rem;
+      width: 0.375rem;
+      height: 0.625rem;
+      border: solid white;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    .perf-checkbox:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+    }
+
+    .perf-checkbox-label {
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* Category tabs */
+    .perf-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .perf-tab {
+      padding: 0.5rem 1rem;
+      background: var(--color-white);
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      font-weight: 600;
+    }
+
+    .perf-tab:hover {
+      background: var(--color-slate-50);
+      border-color: var(--color-slate-400);
+    }
+
+    .perf-tab.active {
+      background: #d1fae5;
+      border-color: var(--color-accent-emerald);
+      color: #065f46;
+    }
+
+    /* Percentile card */
+    .perf-card {
+      position: relative;
+      overflow: hidden;
+      /* Dot-matrix background pattern */
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(16, 185, 129, 0.08) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    .perf-content {
+      position: relative;
+      padding: 1.5rem;
+    }
+
+    .perf-bars-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* Individual percentile bar row */
+    .perf-bar-row {
+      display: grid;
+      grid-template-columns: 180px 1fr 120px;
+      gap: 1rem;
+      align-items: center;
+      padding: 0.75rem;
+      background: var(--color-white);
+      border-radius: 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      transition: all var(--transition-speed);
+    }
+
+    .perf-bar-row:hover {
+      background: var(--color-slate-50);
+      transform: translateX(4px);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .perf-metric-label {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-700);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Bar container and fill */
+    .perf-bar-track {
+      position: relative;
+      height: 1.5rem;
+      background: var(--color-slate-100);
+      border-radius: 9999px;
+      overflow: hidden;
+      border: 1px solid var(--color-slate-200);
+    }
+
+    .perf-bar-fill {
+      height: 100%;
+      background: linear-gradient(to right, var(--color-accent-emerald), var(--color-accent-cyan));
+      border-radius: 9999px;
+      transition: width 0.4s ease-out;
+      position: relative;
+    }
+
+    /* Percentile marker on bar */
+    .perf-bar-fill::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: rgba(255, 255, 255, 0.8);
+    }
+
+    /* Color variations based on percentile */
+    .perf-bar-fill.elite {
+      background: linear-gradient(to right, #059669, #10b981);
+    }
+
+    .perf-bar-fill.good {
+      background: linear-gradient(to right, #0ea5e9, #06b6d4);
+    }
+
+    .perf-bar-fill.average {
+      background: linear-gradient(to right, #f59e0b, #fbbf24);
+    }
+
+    .perf-bar-fill.below-average {
+      background: linear-gradient(to right, #ef4444, #f87171);
+    }
+
+    /* Value and percentile display */
+    .perf-values {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.125rem;
+    }
+
+    .perf-actual-value {
+      font-family: var(--font-mono);
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .perf-percentile-value {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-slate-600);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .perf-percentile-value.elite {
+      color: #059669;
+    }
+
+    .perf-percentile-value.good {
+      color: #0ea5e9;
+    }
+
+    .perf-percentile-value.average {
+      color: #f59e0b;
+    }
+
+    .perf-percentile-value.below-average {
+      color: #ef4444;
+    }
+
+    /* ============================================================================
+       SHARE/EXPORT TOOLBAR
+       Fixed bottom action bar for sharing and exporting
+       ========================================================================= */
+    .share-toolbar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 999;
+      background: linear-gradient(to top, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.95));
+      backdrop-filter: blur(8px);
+      border-top: 2px solid var(--color-accent-cyan);
+      box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.1);
+      transform: translateY(0);
+      transition: transform 0.3s ease-out;
+    }
+
+    .share-toolbar.hidden {
+      transform: translateY(100%);
+    }
+
+    .share-toolbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* Share button base styles */
+    .share-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.625rem 1.25rem;
+      border-radius: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      border: 2px solid;
+      outline: none;
+    }
+
+    .share-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .share-btn:active {
+      transform: translateY(0);
+    }
+
+    .share-btn .icon {
+      width: 1.125rem;
+      height: 1.125rem;
+    }
+
+    /* Primary button (Export Card) */
+    .share-btn-primary {
+      background: var(--color-accent-cyan);
+      color: var(--color-white);
+      border-color: var(--color-accent-cyan);
+    }
+
+    .share-btn-primary:hover {
+      background: #0891b2;
+      border-color: #0891b2;
+    }
+
+    /* Twitter button */
+    .share-btn-twitter {
+      background: #1DA1F2;
+      color: var(--color-white);
+      border-color: #1DA1F2;
+    }
+
+    .share-btn-twitter:hover {
+      background: #1a8cd8;
+      border-color: #1a8cd8;
+    }
+
+    /* Secondary button (Copy Link) */
+    .share-btn-secondary {
+      background: var(--color-white);
+      color: var(--color-slate-700);
+      border-color: var(--color-slate-300);
+    }
+
+    .share-btn-secondary:hover {
+      background: var(--color-slate-50);
+      border-color: var(--color-slate-400);
+      color: var(--color-slate-900);
+    }
+
+    /* Icon-only button (Close) */
+    .share-btn-icon-only {
+      background: transparent;
+      color: var(--color-slate-600);
+      border-color: transparent;
+      padding: 0.5rem;
+      margin-left: auto;
+    }
+
+    .share-btn-icon-only:hover {
+      background: var(--color-slate-100);
+      color: var(--color-slate-900);
+    }
+
+    .share-btn-text {
+      display: inline-block;
+    }
+
+    /* Toast notification */
+    .copy-toast {
+      position: fixed;
+      bottom: 6rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: var(--color-slate-900);
+      color: var(--color-white);
+      padding: 0.75rem 1.25rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s ease-out;
+    }
+
+    .copy-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .copy-toast .icon {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+
+    /* ============================================================================
        PLAYER COMPARISONS SECTION
        Find similar players based on various criteria
        ========================================================================= */
@@ -640,7 +1056,7 @@
       display: flex;
       align-items: end;
       gap: 1.5rem;
-      margin-bottom: 2rem;
+      margin-bottom: 1rem;
       flex-wrap: wrap;
     }
 
@@ -666,6 +1082,40 @@
       letter-spacing: 0.06em;
       color: var(--color-slate-600);
       font-weight: 600;
+    }
+
+    /* Category tabs for comparisons */
+    .comp-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .comp-tab {
+      padding: 0.5rem 1rem;
+      background: var(--color-white);
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      font-weight: 600;
+    }
+
+    .comp-tab:hover {
+      background: var(--color-slate-50);
+      border-color: var(--color-slate-400);
+    }
+
+    .comp-tab.active {
+      background: #cffafe;
+      border-color: var(--color-accent-cyan);
+      color: #155e75;
     }
 
     .comp-select {
@@ -728,8 +1178,8 @@
     /* Comparison results grid - reuses prospect card styles */
     .comp-results-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 1rem;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
     }
 
     /* Similarity badge - positioned top-right on cards */
@@ -1079,8 +1529,18 @@
         padding-top: 0;
       }
 
+      .comp-tabs {
+        gap: 0.375rem;
+      }
+
+      .comp-tab {
+        font-size: 0.6875rem;
+        padding: 0.375rem 0.75rem;
+      }
+
       .comp-results-grid {
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
       }
 
       .comp-comparison-view {
@@ -1089,6 +1549,61 @@
 
       .comp-comparison-body {
         padding: 1rem;
+      }
+
+      .perf-controls-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .perf-control {
+        min-width: 100%;
+      }
+
+      .perf-control-checkbox {
+        padding-top: 0;
+      }
+
+      .perf-tabs {
+        gap: 0.375rem;
+      }
+
+      .perf-tab {
+        font-size: 0.6875rem;
+        padding: 0.375rem 0.75rem;
+      }
+
+      .perf-bar-row {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+      }
+
+      .perf-values {
+        align-items: flex-start;
+      }
+
+      .share-toolbar-content {
+        padding: 0.75rem 1rem;
+        gap: 0.5rem;
+      }
+
+      .share-btn {
+        padding: 0.5rem 0.875rem;
+        font-size: 0.75rem;
+      }
+
+      .share-btn-text {
+        display: none;
+      }
+
+      .share-btn-icon-only {
+        margin-left: 0;
+      }
+
+      .copy-toast {
+        bottom: 5rem;
+        font-size: 0.75rem;
+        padding: 0.625rem 1rem;
       }
     }
   </style>
@@ -1276,6 +1791,63 @@
     <div class="section-divider"></div>
 
     <!-- ==========================================================================
+         PERFORMANCE SECTION
+         Player's percentile rankings across key metrics
+         ========================================================================== -->
+    <section class="section">
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
+        <!-- Bar chart icon -->
+        <svg class="icon icon-lg" style="color: var(--color-accent-emerald); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+          <line x1="12" y1="20" x2="12" y2="10"></line>
+          <line x1="18" y1="20" x2="18" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="16"></line>
+        </svg>
+        Performance
+      </h2>
+      <p class="section-subtitle">Ranking relative to selected cohort and position</p>
+
+      <!-- Controls Row -->
+      <div class="perf-controls-row">
+        <!-- Cohort Selector -->
+        <div class="perf-control">
+          <label class="perf-label" for="perfCohort">Compare To</label>
+          <select id="perfCohort" class="perf-select">
+            <option value="currentDraft">Current Draft Class</option>
+            <option value="allTimeDraft">All Time Draft</option>
+            <option value="currentNBA">Current NBA Players</option>
+            <option value="allTimeNBA">All Time NBA Players</option>
+          </select>
+        </div>
+
+        <!-- Position Filter Toggle -->
+        <div class="perf-control-checkbox">
+          <input type="checkbox" id="perfPositionFilter" class="perf-checkbox" checked />
+          <label for="perfPositionFilter" class="perf-checkbox-label">Same Position Only</label>
+        </div>
+      </div>
+
+      <!-- Category Tabs -->
+      <div class="perf-tabs">
+        <button class="perf-tab active" data-category="anthropometrics">Anthropometrics</button>
+        <button class="perf-tab" data-category="combinePerformance">Combine Performance</button>
+        <button class="perf-tab" data-category="advancedStats">Advanced Stats</button>
+      </div>
+
+      <!-- Percentile Bars Card -->
+      <div class="card card-ring card-ring-emerald perf-card">
+        <!-- Dot-matrix background and scanlines -->
+        <div class="scanlines"></div>
+
+        <div class="perf-content">
+          <!-- Percentile bars will be populated by JavaScript -->
+          <div id="perfBarsContainer" class="perf-bars-container"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
          PLAYER COMPARISONS SECTION
          Find similar players based on various criteria
          ========================================================================== -->
@@ -1292,16 +1864,6 @@
 
       <!-- Controls Row -->
       <div class="comp-controls-row">
-        <!-- Comparison Type Dropdown -->
-        <div class="comp-control">
-          <label class="comp-label" for="compType">Compare By</label>
-          <select id="compType" class="comp-select">
-            <option value="anthropometrics">Anthropometrics</option>
-            <option value="combine">Combine Performance</option>
-            <option value="advancedStats">Advanced Stats</option>
-          </select>
-        </div>
-
         <!-- Comparison Pool Dropdown -->
         <div class="comp-control">
           <label class="comp-label" for="compPool">Compare To</label>
@@ -1318,6 +1880,13 @@
           <input type="checkbox" id="compPositionFilter" class="comp-checkbox" />
           <label for="compPositionFilter" class="comp-checkbox-label">Same Position Only</label>
         </div>
+      </div>
+
+      <!-- Category Tabs -->
+      <div class="comp-tabs">
+        <button class="comp-tab active" data-category="anthropometrics">Anthropometrics</button>
+        <button class="comp-tab" data-category="combinePerformance">Combine Performance</button>
+        <button class="comp-tab" data-category="advancedStats">Advanced Stats</button>
       </div>
 
       <!-- Comparison Results Grid -->
@@ -1415,6 +1984,61 @@
       </div>
     </div>
   </footer>
+
+  <!-- ============================================================================
+       SHARE/EXPORT TOOLBAR
+       Fixed bottom action bar for sharing and exporting player data
+       ========================================================================= -->
+  <div id="shareToolbar" class="share-toolbar">
+    <div class="share-toolbar-content">
+      <!-- Export Card Button -->
+      <button class="share-btn share-btn-primary" id="exportCardBtn" aria-label="Export player card to PNG">
+        <!-- Download icon -->
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        <span class="share-btn-text">Export Card</span>
+      </button>
+
+      <!-- Share on Twitter Button -->
+      <button class="share-btn share-btn-twitter" id="shareTwitterBtn" aria-label="Share on Twitter">
+        <!-- Twitter/X icon -->
+        <svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path>
+        </svg>
+        <span class="share-btn-text">Share</span>
+      </button>
+
+      <!-- Copy Link Button -->
+      <button class="share-btn share-btn-secondary" id="copyLinkBtn" aria-label="Copy shareable link">
+        <!-- Link icon -->
+        <svg class="icon" viewBox="0 0 24 24">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+        </svg>
+        <span class="share-btn-text">Copy Link</span>
+      </button>
+
+      <!-- Close Toolbar Button (optional) -->
+      <button class="share-btn share-btn-icon-only" id="closeToolbarBtn" aria-label="Close toolbar" title="Close">
+        <!-- X icon -->
+        <svg class="icon" viewBox="0 0 24 24">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Toast notification for copy feedback -->
+    <div id="copyToast" class="copy-toast">
+      <svg class="icon" style="color: var(--color-accent-emerald);" viewBox="0 0 24 24">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+      Link copied to clipboard!
+    </div>
+  </div>
 
   <!-- ============================================================================
        JAVASCRIPT
@@ -1545,6 +2169,50 @@
 
     /**
      * ============================================================================
+     * PERFORMANCE DATA
+     * Mock percentile data for different metric categories
+     * ============================================================================
+     */
+
+    const PERCENTILE_DATA = {
+      anthropometrics: [
+        { metric: "Height", value: "6'9\"", percentile: 92, unit: "" },
+        { metric: "Weight", value: "205", percentile: 78, unit: "lbs" },
+        { metric: "Wingspan", value: "7'2\"", percentile: 95, unit: "" },
+        { metric: "Standing Reach", value: "9'2\"", percentile: 94, unit: "" },
+        { metric: "Hand Length", value: "9.5", percentile: 88, unit: "in" },
+        { metric: "Hand Width", value: "10.25", percentile: 90, unit: "in" },
+        { metric: "Body Fat %", value: "6.2", percentile: 85, unit: "%" },
+      ],
+      combinePerformance: [
+        { metric: "Lane Agility", value: "10.84", percentile: 89, unit: "sec" },
+        { metric: "3/4 Sprint", value: "3.15", percentile: 91, unit: "sec" },
+        { metric: "Max Vertical", value: "36.0", percentile: 87, unit: "in" },
+        { metric: "Standing Vertical", value: "30.5", percentile: 83, unit: "in" },
+        { metric: "Bench Press", value: "12", percentile: 68, unit: "reps" },
+        { metric: "Shuttle Run", value: "2.98", percentile: 92, unit: "sec" },
+      ],
+      advancedStats: [
+        { metric: "Points Per Game", value: "21.4", percentile: 96, unit: "PPG" },
+        { metric: "Rebounds Per Game", value: "8.9", percentile: 93, unit: "RPG" },
+        { metric: "Assists Per Game", value: "4.1", percentile: 88, unit: "APG" },
+        { metric: "Steals Per Game", value: "1.8", percentile: 90, unit: "SPG" },
+        { metric: "Blocks Per Game", value: "1.6", percentile: 89, unit: "BPG" },
+        { metric: "FG%", value: "52.3", percentile: 85, unit: "%" },
+        { metric: "3PT%", value: "38.1", percentile: 79, unit: "%" },
+        { metric: "FT%", value: "78.5", percentile: 72, unit: "%" },
+        { metric: "PER", value: "28.6", percentile: 97, unit: "" },
+        { metric: "True Shooting %", value: "61.2", percentile: 94, unit: "%" },
+        { metric: "Usage Rate", value: "28.4", percentile: 91, unit: "%" },
+        { metric: "Win Shares", value: "6.8", percentile: 95, unit: "" },
+        { metric: "Box Plus/Minus", value: "+8.9", percentile: 96, unit: "" },
+        { metric: "Offensive Rating", value: "118", percentile: 92, unit: "" },
+        { metric: "Defensive Rating", value: "96", percentile: 93, unit: "" },
+      ]
+    };
+
+    /**
+     * ============================================================================
      * PLAYER COMPARISONS DATA
      * Mock comparison data for demonstration
      * ============================================================================
@@ -1598,6 +2266,22 @@
         similarity: 68,
         img: "https://placehold.co/320x420/edf2f7/1f2937?text=Jonathan+Kuminga",
         stats: { ht: "80", ws: "86", vert: "35" }
+      },
+      {
+        name: "Jabari Smith Jr.",
+        position: "F",
+        school: "Auburn (2022)",
+        similarity: 72,
+        img: "https://placehold.co/320x420/edf2f7/1f2937?text=Jabari+Smith+Jr",
+        stats: { ht: "82", ws: "87", vert: "32" }
+      },
+      {
+        name: "Scottie Barnes",
+        position: "F",
+        school: "Florida State (2021)",
+        similarity: 70,
+        img: "https://placehold.co/320x420/edf2f7/1f2937?text=Scottie+Barnes",
+        stats: { ht: "80", ws: "90", vert: "34" }
       }
     ];
 
@@ -1625,10 +2309,18 @@
        * Setup event listeners for controls
        */
       setupEventListeners() {
-        // Comparison type dropdown
-        document.getElementById('compType').addEventListener('change', (e) => {
-          this.currentType = e.target.value;
-          this.renderResults();
+        // Comparison type tabs
+        document.querySelectorAll('.comp-tab').forEach((tab) => {
+          tab.addEventListener('click', (e) => {
+            // Remove active class from all tabs
+            document.querySelectorAll('.comp-tab').forEach((t) => t.classList.remove('active'));
+            // Add active class to clicked tab
+            tab.classList.add('active');
+            // Update current type
+            this.currentType = tab.dataset.category;
+            // Re-render results
+            this.renderResults();
+          });
         });
 
         // Comparison pool dropdown
@@ -1790,13 +2482,255 @@
 
     /**
      * ============================================================================
+     * PERFORMANCE MODULE
+     * Handles percentile visualization and interactions
+     * ============================================================================
+     */
+    const PerformanceModule = {
+      currentCategory: 'anthropometrics',
+      currentCohort: 'currentDraft',
+      positionAdjusted: true,
+
+      /**
+       * Initialize the module
+       */
+      init() {
+        this.setupEventListeners();
+        this.renderPercentiles();
+      },
+
+      /**
+       * Setup event listeners for controls
+       */
+      setupEventListeners() {
+        // Cohort selector
+        document.getElementById('perfCohort').addEventListener('change', (e) => {
+          this.currentCohort = e.target.value;
+          this.renderPercentiles();
+        });
+
+        // Position filter checkbox
+        document.getElementById('perfPositionFilter').addEventListener('change', (e) => {
+          this.positionAdjusted = e.target.checked;
+          this.renderPercentiles();
+        });
+
+        // Category tabs
+        document.querySelectorAll('.perf-tab').forEach((tab) => {
+          tab.addEventListener('click', (e) => {
+            // Remove active class from all tabs
+            document.querySelectorAll('.perf-tab').forEach((t) => t.classList.remove('active'));
+            // Add active class to clicked tab
+            tab.classList.add('active');
+            // Update current category
+            this.currentCategory = tab.dataset.category;
+            // Re-render percentiles
+            this.renderPercentiles();
+          });
+        });
+      },
+
+      /**
+       * Render percentile bars for the current category
+       */
+      renderPercentiles() {
+        const container = document.getElementById('perfBarsContainer');
+        const data = PERCENTILE_DATA[this.currentCategory];
+
+        container.innerHTML = data.map((item) => this.renderPercentileBar(item)).join('');
+      },
+
+      /**
+       * Render a single percentile bar
+       * @param {Object} item - Metric data
+       * @returns {string} HTML string
+       */
+      renderPercentileBar(item) {
+        const percentile = item.percentile;
+        const colorClass = this.getPercentileColorClass(percentile);
+        const displayValue = item.unit ? `${item.value} ${item.unit}` : item.value;
+
+        return `
+          <div class="perf-bar-row">
+            <div class="perf-metric-label">${item.metric}</div>
+            <div class="perf-bar-track">
+              <div class="perf-bar-fill ${colorClass}" style="width: ${percentile}%"></div>
+            </div>
+            <div class="perf-values">
+              <div class="perf-actual-value">${displayValue}</div>
+              <div class="perf-percentile-value ${colorClass}">${percentile}th %ile</div>
+            </div>
+          </div>
+        `;
+      },
+
+      /**
+       * Get color class based on percentile value
+       * @param {number} percentile - Percentile value (0-100)
+       * @returns {string} CSS class name
+       */
+      getPercentileColorClass(percentile) {
+        if (percentile >= 90) return 'elite';
+        if (percentile >= 75) return 'good';
+        if (percentile >= 50) return 'average';
+        return 'below-average';
+      }
+    };
+
+    /**
+     * ============================================================================
+     * SHARE/EXPORT TOOLBAR MODULE
+     * Handles sharing and export functionality
+     * ============================================================================
+     */
+    const ShareToolbarModule = {
+      /**
+       * Initialize the module
+       */
+      init() {
+        this.setupEventListeners();
+      },
+
+      /**
+       * Setup event listeners for toolbar buttons
+       */
+      setupEventListeners() {
+        // Export Card button
+        document.getElementById('exportCardBtn').addEventListener('click', () => {
+          this.exportCard();
+        });
+
+        // Share on Twitter button
+        document.getElementById('shareTwitterBtn').addEventListener('click', () => {
+          this.shareOnTwitter();
+        });
+
+        // Copy Link button
+        document.getElementById('copyLinkBtn').addEventListener('click', () => {
+          this.copyLink();
+        });
+
+        // Close Toolbar button
+        document.getElementById('closeToolbarBtn').addEventListener('click', () => {
+          this.closeToolbar();
+        });
+      },
+
+      /**
+       * Export player card to PNG
+       * In production, this would use html2canvas or similar library
+       */
+      exportCard() {
+        console.log('Export card functionality triggered');
+
+        // Simulate export process
+        const playerName = PLAYER_DATA.name.replace(/\s+/g, '_');
+        const filename = `${playerName}_DraftGuru_Card.png`;
+
+        // In a real implementation, you would:
+        // 1. Use html2canvas to capture the player card section
+        // 2. Convert canvas to blob
+        // 3. Trigger download using a temporary link
+
+        // For now, show a console message and alert
+        alert(`Export functionality would save:\n${filename}\n\nIn production, this would use html2canvas to capture and download the player card as a PNG image.`);
+      },
+
+      /**
+       * Share player profile on Twitter
+       */
+      shareOnTwitter() {
+        const playerName = PLAYER_DATA.name;
+        const url = window.location.href;
+
+        // Construct Twitter intent URL with pre-filled text
+        const text = `Check out ${playerName}'s draft profile on DraftGuru! 🏀`;
+        const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+
+        // Open Twitter in new window
+        window.open(twitterUrl, '_blank', 'width=550,height=420');
+      },
+
+      /**
+       * Copy shareable link to clipboard
+       */
+      async copyLink() {
+        const url = window.location.href;
+
+        try {
+          // Use Clipboard API to copy URL
+          await navigator.clipboard.writeText(url);
+
+          // Show success toast
+          this.showToast();
+        } catch (err) {
+          // Fallback for browsers that don't support Clipboard API
+          console.error('Failed to copy link:', err);
+
+          // Try fallback method
+          this.copyLinkFallback(url);
+        }
+      },
+
+      /**
+       * Fallback method for copying link (older browsers)
+       * @param {string} text - Text to copy
+       */
+      copyLinkFallback(text) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        try {
+          document.execCommand('copy');
+          this.showToast();
+        } catch (err) {
+          console.error('Fallback copy failed:', err);
+          alert('Failed to copy link. Please copy manually:\n' + text);
+        }
+
+        document.body.removeChild(textarea);
+      },
+
+      /**
+       * Show toast notification
+       */
+      showToast() {
+        const toast = document.getElementById('copyToast');
+        toast.classList.add('show');
+
+        // Hide after 3 seconds
+        setTimeout(() => {
+          toast.classList.remove('show');
+        }, 3000);
+      },
+
+      /**
+       * Close/hide the toolbar
+       */
+      closeToolbar() {
+        const toolbar = document.getElementById('shareToolbar');
+        toolbar.classList.add('hidden');
+
+        // Optional: Add a button to show it again
+        // Or automatically show it when scrolling back up
+      }
+    };
+
+    /**
+     * ============================================================================
      * APPLICATION INITIALIZATION
      * Initialize all modules when DOM is ready
      * ============================================================================
      */
     document.addEventListener('DOMContentLoaded', () => {
       populatePlayerData();
+      PerformanceModule.init();
       PlayerComparisonsModule.init();
+      ShareToolbarModule.init();
     });
   </script>
 
