@@ -182,22 +182,34 @@
     </div>
     <div class="relative card shadow-xl overflow-hidden ring-2 ring-fuchsia-300/60">
       <div class="absolute inset-0 scanlines"></div>
-      <div class="card-content grid grid-cols-1 sm:grid-cols-3 gap-4 items-end relative">
-        <select id="playerA" class="bg-white border rounded-md px-3 py-2"></select>
-        <div class="flex justify-center">
-          <div class="text-[10px] md:text-xs px-3 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 ty-mono caps">VS</div>
-        </div>
-        <select id="playerB" class="bg-white border rounded-md px-3 py-2"></select>
-
-        <div class="sm:col-span-3 grid grid-cols-3 gap-3 pt-2">
-          <div id="meterA" class="w-full"></div>
-          <div class="flex items-center justify-center"><span class="text-xs text-slate-600 ty-mono caps">VS</span></div>
-          <div id="meterB" class="w-full"></div>
+      <div class="card-content relative">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end mb-6">
+          <select id="playerA" class="bg-white border rounded-md px-3 py-2"></select>
+          <div class="flex justify-center">
+            <div class="text-[10px] md:text-xs px-3 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 ty-mono caps">VS</div>
+          </div>
+          <select id="playerB" class="bg-white border rounded-md px-3 py-2"></select>
         </div>
 
-        <div class="sm:col-span-3 flex justify-between pt-2">
-          <button class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-md ty-mono caps">Compare</button>
-          <button class="border px-4 py-2 rounded-md ty-mono caps">Advanced Stats</button>
+        <!-- Comparison Table -->
+        <div id="comparisonTable" class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b-2 border-slate-200">
+                <th id="headerA" class="p-3 text-right ty-mono caps text-xs text-slate-600 w-[35%]"></th>
+                <th class="p-3 text-center ty-mono caps text-xs text-slate-600 w-[30%]">Metric</th>
+                <th id="headerB" class="p-3 text-left ty-mono caps text-xs text-slate-600 w-[35%]"></th>
+              </tr>
+            </thead>
+            <tbody id="comparisonBody">
+              <!-- Populated by JavaScript -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Winner Declaration -->
+        <div id="winnerDeclaration" class="mt-4 p-3 rounded-md text-center ty-mono">
+          <!-- Populated by JavaScript -->
         </div>
       </div>
     </div>
@@ -245,6 +257,17 @@
     ];
     const STAT_MODES = ["Measurables","Production","Rank Delta"];
     let currentMode = "Measurables";
+
+    const COMPARISON_METRICS = [
+      { name: "Height", unit: "in" },
+      { name: "Weight", unit: "lbs" },
+      { name: "Wingspan", unit: "in" },
+      { name: "Vertical Leap", unit: "in" },
+      { name: "Points Per Game", unit: "" },
+      { name: "Rebounds Per Game", unit: "" },
+      { name: "Assists Per Game", unit: "" },
+      { name: "FG%", unit: "%" }
+    ];
 
     const risersFallersTicker = [...MOCK_PICKS]
       .map((p) => ({ name: p.name, change: p.change }))
@@ -350,18 +373,90 @@
     });
     playerA.value = PLAYERS[0].name;
     playerB.value = PLAYERS[1].name;
-    const meterA = document.getElementById('meterA');
-    const meterB = document.getElementById('meterB');
 
-    function updateMeters() {
-      const a = PLAYERS.find(p => p.name === playerA.value);
-      const b = PLAYERS.find(p => p.name === playerB.value);
-      makeMeter(meterA, labelFor(currentMode, "A"), scoreFor(currentMode, a), "emerald");
-      makeMeter(meterB, labelFor(currentMode, "B"), scoreFor(currentMode, b), "indigo");
+    // Generate dummy comparison data
+    function generateDummyValue(metric) {
+      if (metric.name.includes("Height")) return (78 + Math.floor(Math.random() * 6)).toFixed(0);
+      if (metric.name.includes("Weight")) return (200 + Math.floor(Math.random() * 40)).toFixed(0);
+      if (metric.name.includes("Wingspan")) return (82 + Math.floor(Math.random() * 8)).toFixed(0);
+      if (metric.name.includes("Vertical")) return (30 + Math.floor(Math.random() * 12)).toFixed(1);
+      if (metric.name.includes("Reach")) return (100 + Math.floor(Math.random() * 10)).toFixed(0);
+      if (metric.name.includes("Points")) return (15 + Math.random() * 15).toFixed(1);
+      if (metric.name.includes("Rebounds")) return (5 + Math.random() * 8).toFixed(1);
+      if (metric.name.includes("Assists")) return (2 + Math.random() * 6).toFixed(1);
+      if (metric.name.includes("Steals")) return (0.8 + Math.random() * 2).toFixed(1);
+      if (metric.name.includes("Blocks")) return (0.5 + Math.random() * 2.5).toFixed(1);
+      if (metric.name.includes("FG%")) return (40 + Math.random() * 20).toFixed(1);
+      if (metric.name.includes("3P%")) return (30 + Math.random() * 15).toFixed(1);
+      if (metric.name.includes("FT%")) return (70 + Math.random() * 20).toFixed(1);
+      if (metric.name.includes("PER")) return (15 + Math.random() * 15).toFixed(1);
+      if (metric.name.includes("True Shooting")) return (52 + Math.random() * 15).toFixed(1);
+      if (metric.name.includes("Usage")) return (18 + Math.random() * 12).toFixed(1);
+      if (metric.name.includes("Offensive Rating")) return (105 + Math.random() * 20).toFixed(1);
+      if (metric.name.includes("Defensive Rating")) return (95 + Math.random() * 20).toFixed(1);
+      if (metric.name.includes("Win Shares")) return (2 + Math.random() * 8).toFixed(1);
+      if (metric.name.includes("VORP")) return (1 + Math.random() * 5).toFixed(1);
+      return (Math.random() * 100).toFixed(1);
     }
-    updateMeters();
-    playerA.addEventListener('change', updateMeters);
-    playerB.addEventListener('change', updateMeters);
+
+    function updateComparison() {
+      const comparisonBody = document.getElementById('comparisonBody');
+      const headerA = document.getElementById('headerA');
+      const headerB = document.getElementById('headerB');
+      const winnerDeclaration = document.getElementById('winnerDeclaration');
+
+      // Update headers with player names
+      headerA.textContent = playerA.value;
+      headerB.textContent = playerB.value;
+
+      let html = '';
+      let winsA = 0;
+      let winsB = 0;
+
+      COMPARISON_METRICS.forEach(metric => {
+        const valA = generateDummyValue(metric);
+        const valB = generateDummyValue(metric);
+        const numA = parseFloat(valA);
+        const numB = parseFloat(valB);
+        const betterA = numA > numB;
+        const betterB = numB > numA;
+
+        if (betterA) winsA++;
+        if (betterB) winsB++;
+
+        html += `
+          <tr class="border-b border-slate-200 hover:bg-slate-50">
+            <td class="p-3 text-right num ty-mono text-base ${betterA ? 'font-extrabold text-emerald-700 bg-emerald-100' : 'text-slate-500'}">${valA}${metric.unit}</td>
+            <td class="p-3 text-center text-slate-700 font-medium">${metric.name}</td>
+            <td class="p-3 text-left num ty-mono text-base ${betterB ? 'font-extrabold text-indigo-600 bg-indigo-50' : 'text-slate-500'}">${valB}${metric.unit}</td>
+          </tr>
+        `;
+      });
+
+      comparisonBody.innerHTML = html;
+
+      // Determine winner and display
+      const totalMetrics = COMPARISON_METRICS.length;
+      let winnerText = '';
+      let winnerClass = '';
+
+      if (winsA > winsB) {
+        winnerText = `Winner: ${playerA.value} — ${winsA}/${totalMetrics}`;
+        winnerClass = 'bg-emerald-100 text-emerald-800 font-bold';
+      } else if (winsB > winsA) {
+        winnerText = `Winner: ${playerB.value} — ${winsB}/${totalMetrics}`;
+        winnerClass = 'bg-indigo-100 text-indigo-800 font-bold';
+      } else {
+        winnerText = `Tie — ${winsA}/${totalMetrics} each`;
+        winnerClass = 'bg-slate-100 text-slate-800 font-bold';
+      }
+
+      winnerDeclaration.innerHTML = `<span class="${winnerClass} px-4 py-2 rounded-md inline-block">${winnerText}</span>`;
+    }
+
+    updateComparison();
+    playerA.addEventListener('change', updateComparison);
+    playerB.addEventListener('change', updateComparison);
 
     // Toggle handling
     const toggles = Array.from(document.querySelectorAll('.toggle'));
@@ -369,7 +464,7 @@
       btn.addEventListener('click', () => {
         currentMode = btn.getAttribute('data-mode');
         toggles.forEach(b => b.setAttribute('data-active', String(b === btn)));
-        updateMeters();
+        updateComparison();
       });
     });
 
