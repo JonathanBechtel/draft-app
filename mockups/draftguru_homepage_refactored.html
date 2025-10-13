@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DraftGuru — NBA Draft Analytics</title>
+
+  <!-- Google Fonts: Russo One (headings) and Azeret Mono (monospace) -->
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       CSS CUSTOM PROPERTIES
+       Centralized color palette and typography for easy theming
+       ========================================================================= */
+    :root {
+      /* Typography */
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      /* Primary Colors */
+      --color-primary: #4A7FB8;        /* Blue navbar */
+      --color-secondary: #E8B4A8;      /* Peach footer */
+      --color-accent-emerald: #10b981; /* Success/positive */
+      --color-accent-rose: #f43f5e;    /* Error/negative */
+      --color-accent-indigo: #6366f1;  /* Interactive elements */
+      --color-accent-cyan: #06b6d4;    /* Info sections */
+      --color-accent-amber: #f59e0b;   /* Warnings/highlights */
+      --color-accent-fuchsia: #d946ef; /* Special features */
+
+      /* Neutral Colors */
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      /* Layout */
+      --max-width: 1280px;
+      --content-width: 80%;
+      --spacing-unit: 1rem;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    /* ============================================================================
+       RESET & BASE STYLES
+       Normalize browser defaults and set foundational styles
+       ========================================================================= */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ============================================================================
+       TYPOGRAPHY
+       Font styles, sizes, and text utilities
+       ========================================================================= */
+    .heading-font {
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .mono-font {
+      font-family: var(--font-mono);
+    }
+
+    .uppercase {
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* Tabular numbers for consistent width (great for tables and metrics) */
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       LAYOUT UTILITIES
+       Grid, flex, spacing, and container utilities
+       ========================================================================= */
+    .container {
+      max-width: 1152px; /* 72rem */
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section {
+      margin-bottom: 4rem;
+    }
+
+    .section-header {
+      font-size: 1.5rem;
+      font-weight: 600;
+      padding-left: 0.5rem;
+      border-left: 4px solid;
+      margin-bottom: 1rem;
+    }
+
+    .section-subtitle {
+      font-size: 0.875rem;
+      color: var(--color-slate-500);
+      margin-bottom: 1rem;
+      padding-left: 0.5rem;
+    }
+
+    /* Decorative divider between sections */
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(
+        to right,
+        transparent,
+        rgba(148, 163, 184, 0.3) 20%,
+        rgba(148, 163, 184, 0.3) 80%,
+        transparent
+      );
+      margin: 3rem 0;
+    }
+
+    /* ============================================================================
+       NAVIGATION BAR
+       Fixed top navigation with search functionality
+       ========================================================================= */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: var(--color-primary);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .navbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .navbar-brand h1 {
+      font-size: 1.875rem;
+      color: var(--color-white);
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .navbar-search {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .search-input {
+      width: 288px; /* 18rem */
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #93c5fd;
+      color: var(--color-slate-900);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      outline: none;
+      transition: all var(--transition-speed);
+    }
+
+    .search-input:focus {
+      border-color: var(--color-white);
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+    }
+
+    .search-input::placeholder {
+      color: var(--color-slate-500);
+    }
+
+    .search-button {
+      width: 2.5rem;
+      height: 2.5rem;
+      background: #fbbf24;
+      color: #1e3a8a;
+      border: none;
+      border-radius: 0.375rem;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: background var(--transition-speed);
+    }
+
+    .search-button:hover {
+      background: #fcd34d;
+    }
+
+    /* ============================================================================
+       FOOTER
+       Bottom footer with links and copyright
+       ========================================================================= */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+      margin-top: 4rem;
+    }
+
+    .footer-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+
+    .footer-column ul {
+      list-style: none;
+    }
+
+    .footer-column ul li {
+      margin-bottom: 0.5rem;
+    }
+
+    .footer-column a {
+      color: var(--color-slate-700);
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: color var(--transition-speed);
+    }
+
+    .footer-column a:hover {
+      color: var(--color-slate-900);
+    }
+
+    .footer-copyright {
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       CARDS
+       Reusable card component for content sections
+       ========================================================================= */
+    .card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 1rem 1.25rem 0.25rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .card-content {
+      padding: 1rem;
+    }
+
+    /* Enhanced card with colored ring outline */
+    .card-ring {
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 2px solid;
+      outline-offset: -2px;
+    }
+
+    .card-ring-emerald { outline-color: rgba(16, 185, 129, 0.6); }
+    .card-ring-indigo { outline-color: rgba(99, 102, 241, 0.6); }
+    .card-ring-fuchsia { outline-color: rgba(217, 70, 239, 0.6); }
+    .card-ring-cyan { outline-color: rgba(6, 182, 212, 0.5); }
+    .card-ring-amber { outline-color: rgba(245, 158, 11, 0.6); }
+
+    /* ============================================================================
+       TICKER / MARKET MOVES
+       Animated scrolling ticker for risers and fallers
+       ========================================================================= */
+    .ticker-container {
+      border-radius: var(--border-radius);
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-white);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      /* Tile background pattern */
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.06) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+      outline: 2px solid rgba(99, 102, 241, 0.6);
+    }
+
+    .ticker-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+    }
+
+    .ticker-header span:first-of-type {
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .ticker-header span:last-of-type {
+      color: var(--color-slate-500);
+      font-family: var(--font-mono);
+    }
+
+    .ticker-wrapper {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ticker-content {
+      display: flex;
+      gap: 2rem;
+      white-space: nowrap;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      animation: tickerScroll 35s linear infinite;
+    }
+
+    @keyframes tickerScroll {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    .ticker-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-right: 2rem;
+      border-right: 1px dotted rgba(203, 213, 225, 0.8);
+    }
+
+    .ticker-item strong {
+      font-family: var(--font-mono);
+      color: var(--color-slate-900);
+    }
+
+    .ticker-change {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ticker-change.positive { color: var(--color-accent-emerald); }
+    .ticker-change.negative { color: var(--color-accent-rose); }
+
+    /* ============================================================================
+       TABLES
+       Data tables for mock draft and comparisons
+       ========================================================================= */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    thead th {
+      padding: 0.5rem;
+      text-align: left;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.75rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--color-slate-200);
+      transition: background var(--transition-speed);
+    }
+
+    tbody tr:hover {
+      background: rgba(248, 250, 252, 0.7);
+    }
+
+    tbody td {
+      padding: 0.5rem;
+    }
+
+    .table-link {
+      color: var(--color-accent-indigo);
+      text-decoration: none;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .table-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Change indicators in tables */
+    .change-positive { color: #15803d; } /* emerald-700 */
+    .change-negative { color: #be123c; } /* rose-700 */
+    .change-neutral { color: var(--color-slate-500); }
+
+    /* ============================================================================
+       PROSPECT CARDS
+       Grid of player prospect cards with hover effects
+       ========================================================================= */
+    .prospects-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .prospect-card {
+      position: relative;
+      border-radius: 1rem;
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 2px solid rgba(99, 102, 241, 0.6);
+      transition: transform var(--transition-speed);
+    }
+
+    .prospect-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .prospect-image-wrapper {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .prospect-image {
+      width: 100%;
+      height: 192px; /* 12rem */
+      object-fit: cover;
+      transition: filter var(--transition-speed);
+    }
+
+    .prospect-card:hover .prospect-image {
+      filter: brightness(1.05);
+    }
+
+    /* Badge for riser/faller status */
+    .prospect-badge {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      font-size: 0.625rem;
+      font-weight: 600;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+    }
+
+    .prospect-badge.riser {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .prospect-badge.faller {
+      background: #ffe4e6;
+      color: #9f1239;
+    }
+
+    /* Pixel corner accents on hover */
+    .prospect-card::before,
+    .prospect-card::after {
+      content: "";
+      position: absolute;
+      width: 1rem;
+      height: 1rem;
+      opacity: 0;
+      transition: opacity var(--transition-speed);
+      z-index: 10;
+    }
+
+    .prospect-card::before {
+      top: -0.25rem;
+      left: -0.25rem;
+      background: linear-gradient(45deg, transparent 50%, var(--color-accent-indigo) 50%);
+    }
+
+    .prospect-card::after {
+      bottom: -0.25rem;
+      right: -0.25rem;
+      background: linear-gradient(225deg, transparent 50%, var(--color-accent-emerald) 50%);
+    }
+
+    .prospect-card:hover::before,
+    .prospect-card:hover::after {
+      opacity: 1;
+    }
+
+    .prospect-info {
+      padding: 0.75rem;
+    }
+
+    .prospect-name {
+      font-weight: 600;
+      line-height: 1.25;
+      margin-bottom: 0.25rem;
+    }
+
+    .prospect-meta {
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+
+    /* Stats grid for each prospect */
+    .prospect-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      font-size: 0.6875rem;
+    }
+
+    .stat-pill {
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+      color: var(--color-slate-700);
+      text-align: center;
+    }
+
+    .stat-pill .label {
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-right: 0.25rem;
+    }
+
+    .stat-pill .value {
+      font-weight: 500;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       VS ARENA / PLAYER COMPARISON
+       Interactive player comparison section with toggles
+       ========================================================================= */
+    .vs-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .vs-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .vs-toggles {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    /* Toggle button styles */
+    .toggle-button {
+      height: 2rem;
+      padding: 0 0.75rem;
+      font-size: 0.75rem;
+      border-width: 1px;
+      border-style: solid;
+      border-radius: 0.375rem;
+      background: var(--color-white);
+      color: var(--color-slate-700);
+      border-color: var(--color-slate-300);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .toggle-button.active {
+      background: #eef2ff;
+      color: #4338ca;
+      border-color: #a5b4fc;
+    }
+
+    .toggle-button:hover:not(.active) {
+      background: var(--color-slate-50);
+    }
+
+    /* VS Arena card with scanlines overlay effect */
+    .vs-arena-card {
+      position: relative;
+    }
+
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 1) 0,
+        rgba(0, 0, 0, 1) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      opacity: 0.05;
+      pointer-events: none;
+    }
+
+    .vs-content {
+      position: relative;
+      padding: 1rem;
+    }
+
+    /* Player selectors */
+    .vs-selectors {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 1rem;
+      align-items: end;
+      margin-bottom: 1.5rem;
+    }
+
+    .vs-select {
+      width: 100%;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+
+    .vs-badge {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 0.25rem;
+      background: #eef2ff;
+      color: var(--color-accent-indigo);
+      border: 1px solid #c7d2fe;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* Comparison table styles */
+    .comparison-table {
+      overflow-x: auto;
+      margin-bottom: 1rem;
+    }
+
+    .comparison-table thead th {
+      padding: 0.75rem;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+    }
+
+    .comparison-table tbody td {
+      padding: 0.75rem;
+    }
+
+    .comparison-table tbody tr {
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .comparison-table tbody tr:hover {
+      background: var(--color-slate-50);
+    }
+
+    .comparison-value {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 1rem;
+    }
+
+    .comparison-value.winner {
+      font-weight: 800;
+    }
+
+    .comparison-value.winner-a {
+      color: #15803d;
+      background: #d1fae5;
+    }
+
+    .comparison-value.winner-b {
+      color: #4338ca;
+      background: #eef2ff;
+    }
+
+    .comparison-value.loser {
+      color: var(--color-slate-500);
+    }
+
+    /* Winner declaration banner */
+    .winner-banner {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      border-radius: 0.375rem;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-weight: 700;
+    }
+
+    .winner-banner.winner-a {
+      background: #d1fae5;
+      color: #15803d;
+    }
+
+    .winner-banner.winner-b {
+      background: #eef2ff;
+      color: #4338ca;
+    }
+
+    .winner-banner.tie {
+      background: var(--color-slate-100);
+      color: var(--color-slate-800);
+    }
+
+    /* ============================================================================
+       LIVE DRAFT BUZZ / FEED
+       News feed with article snippets
+       ========================================================================= */
+    .feed-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-height: 520px;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+
+    .feed-item {
+      background: var(--color-white);
+      padding: 0.75rem;
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      outline: 1px solid rgba(6, 182, 212, 0.5);
+      transition: background var(--transition-speed);
+    }
+
+    .feed-item:hover {
+      background: var(--color-slate-50);
+    }
+
+    .feed-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.25;
+      margin-bottom: 0.25rem;
+    }
+
+    .feed-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    .feed-tag {
+      margin-left: auto;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      border: 1px solid;
+      font-size: 0.6875rem;
+    }
+
+    .feed-tag.riser {
+      color: #15803d;
+      border-color: #a7f3d0;
+      background: #d1fae5;
+    }
+
+    .feed-tag.faller {
+      color: #be123c;
+      border-color: #fecdd3;
+      background: #ffe4e6;
+    }
+
+    /* ============================================================================
+       DRAFT POSITION SPECIALS
+       Betting odds and promotional content
+       ========================================================================= */
+    .specials-container {
+      background: var(--color-white);
+      padding: 1rem;
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 1px solid rgba(245, 158, 11, 0.6);
+    }
+
+    .specials-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .special-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .special-odds {
+      color: var(--color-accent-indigo);
+      font-weight: 600;
+    }
+
+    .specials-cta {
+      width: 100%;
+      background: var(--color-accent-emerald);
+      color: var(--color-white);
+      padding: 0.5rem 1rem;
+      border-radius: 0.375rem;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--transition-speed);
+      margin-bottom: 0.5rem;
+    }
+
+    .specials-cta:hover {
+      background: #059669;
+    }
+
+    .specials-disclaimer {
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      text-align: center;
+    }
+
+    /* ============================================================================
+       ICONS (SVG)
+       Inline SVG icon utilities
+       ========================================================================= */
+    .icon {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .icon-lg {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+
+    .icon-xl {
+      width: 1.5rem;
+      height: 1.5rem;
+    }
+
+    /* ============================================================================
+       UTILITY CLASSES
+       Spacing, alignment, and other helpers
+       ========================================================================= */
+    .mt-28 {
+      margin-top: 7rem; /* Account for fixed navbar */
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .text-left {
+      text-align: left;
+    }
+
+    /* ============================================================================
+       RESPONSIVE DESIGN
+       Mobile-first breakpoints
+       ========================================================================= */
+    @media (max-width: 768px) {
+      .navbar-brand h1 {
+        font-size: 1.5rem;
+      }
+
+      .search-input {
+        width: 200px;
+      }
+
+      .section-header {
+        font-size: 1.25rem;
+      }
+
+      .prospects-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      }
+
+      .vs-selectors {
+        grid-template-columns: 1fr;
+      }
+
+      .vs-badge {
+        justify-self: center;
+      }
+
+      .footer-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================================
+       NAVIGATION BAR
+       Fixed top navigation with branding and search
+       ========================================================================= -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <!-- Brand / Logo -->
+      <div class="navbar-brand">
+        <!-- Sparkles icon -->
+        <svg class="icon icon-xl" style="color: #fbbf24;" viewBox="0 0 24 24" stroke-width="2.5">
+          <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z"/>
+          <path d="M5 16l.7 1.6L7.3 18l-1.6.7L5 20l-.7-1.3L3 18l1.3-.4L5 16zM19 16l.7 1.6L21.3 18l-1.6.7L19 20l-.7-1.3L17 18l1.3-.4L19 16z"/>
+        </svg>
+        <h1>DraftGuru</h1>
+      </div>
+
+      <!-- Search bar -->
+      <div class="navbar-search">
+        <input
+          type="text"
+          id="search"
+          class="search-input"
+          placeholder="Search prospects…"
+          aria-label="Search prospects"
+        />
+        <button class="search-button" aria-label="Search">
+          <!-- Search icon -->
+          <svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============================================================================
+       MAIN CONTENT CONTAINER
+       All page sections wrapped in a centered container
+       ========================================================================= -->
+  <main class="container mt-28">
+
+    <!-- ==========================================================================
+         MARKET MOVES TICKER
+         Scrolling ticker showing player stock changes (risers/fallers)
+         ========================================================================== -->
+    <section class="section">
+      <div class="ticker-container">
+        <!-- Ticker header with icon and label -->
+        <div class="ticker-header">
+          <!-- Activity icon -->
+          <svg class="icon" style="color: var(--color-accent-emerald);" viewBox="0 0 24 24">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <span>Market Moves</span>
+          <span>(Risers &amp; Fallers)</span>
+        </div>
+
+        <!-- Ticker content - will be populated by JavaScript -->
+        <div class="ticker-wrapper">
+          <div id="ticker" class="ticker-content"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         CONSENSUS MOCK DRAFT
+         Aggregated mock draft picks from multiple expert sources
+         ========================================================================== -->
+    <section class="section">
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
+        Consensus Mock Draft
+      </h2>
+      <p class="section-subtitle">Averaged from 15 expert boards • updated hourly</p>
+
+      <div class="card card-ring card-ring-emerald">
+        <div class="card-content">
+          <!-- Mock draft table - will be populated by JavaScript -->
+          <div style="overflow-x: auto;">
+            <table id="mockTable">
+              <thead>
+                <tr>
+                  <th>Pick</th>
+                  <th>Player</th>
+                  <th>Pos</th>
+                  <th>Team</th>
+                  <th>Avg</th>
+                  <th>Δ</th>
+                  <th>Odds</th>
+                </tr>
+              </thead>
+              <tbody id="mockTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         TOP PROSPECTS
+         Grid of top prospect player cards with stats
+         ========================================================================== -->
+    <section class="section">
+      <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-indigo);">
+        Top Prospects
+      </h3>
+
+      <!-- Prospects grid - will be populated by JavaScript -->
+      <div id="prospectsGrid" class="prospects-grid"></div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         VS ARENA (PLAYER COMPARISON)
+         Interactive head-to-head player comparison tool
+         Features toggle modes and dynamic metric comparison
+         ========================================================================== -->
+    <section class="section">
+      <!-- Section header with toggle buttons -->
+      <div class="vs-header">
+        <div class="vs-title">
+          <!-- Swords icon -->
+          <svg class="icon icon-lg" style="color: var(--color-accent-indigo);" viewBox="0 0 24 24">
+            <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+            <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+            <path d="M3 6l7 7"></path>
+          </svg>
+          <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia); margin: 0;">
+            VS Arena
+          </h3>
+        </div>
+
+        <!-- Mode toggle buttons -->
+        <div class="vs-toggles">
+          <button class="toggle-button active" data-mode="Measurables">Measurables</button>
+          <button class="toggle-button" data-mode="Production">Production</button>
+          <button class="toggle-button" data-mode="Rank Delta">Rank Delta</button>
+        </div>
+      </div>
+
+      <!-- VS Arena card with scanlines effect -->
+      <div class="card card-ring card-ring-fuchsia vs-arena-card">
+        <!-- Scanlines overlay for retro effect -->
+        <div class="scanlines"></div>
+
+        <div class="vs-content">
+          <!-- Player selectors -->
+          <div class="vs-selectors">
+            <select id="playerA" class="vs-select" aria-label="Select first player"></select>
+            <div class="vs-badge">VS</div>
+            <select id="playerB" class="vs-select" aria-label="Select second player"></select>
+          </div>
+
+          <!-- Comparison table - will be populated by JavaScript -->
+          <div class="comparison-table">
+            <table>
+              <thead>
+                <tr>
+                  <th id="headerA" class="text-right"></th>
+                  <th class="text-center">Metric</th>
+                  <th id="headerB" class="text-left"></th>
+                </tr>
+              </thead>
+              <tbody id="comparisonBody"></tbody>
+            </table>
+          </div>
+
+          <!-- Winner declaration - will be populated by JavaScript -->
+          <div id="winnerDeclaration"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         LIVE DRAFT BUZZ
+         Real-time news feed with draft-related articles and updates
+         ========================================================================== -->
+    <section class="section">
+      <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+        Live Draft Buzz
+      </h3>
+
+      <!-- Feed container - will be populated by JavaScript -->
+      <div id="feedContainer" class="feed-container"></div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         DRAFT POSITION SPECIALS
+         Betting odds and promotional content (for entertainment purposes)
+         ========================================================================== -->
+    <section class="section">
+      <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-amber);">
+        Draft Position Specials
+      </h3>
+      <p class="section-subtitle">Powered by FanDuel • 21+</p>
+
+      <div class="specials-container">
+        <!-- Specials list - will be populated by JavaScript -->
+        <div id="specialsList" class="specials-list"></div>
+
+        <button class="specials-cta">Claim Bonus</button>
+        <p class="specials-disclaimer">Gambling Problem? Call 1-800-GAMBLER</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================================================================
+       FOOTER
+       Site-wide footer with links and copyright information
+       ========================================================================= -->
+  <footer class="footer">
+    <div class="footer-content">
+      <!-- Footer navigation grid -->
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Our Story</a></li>
+            <li><a href="#">Team</a></li>
+            <li><a href="#">Careers</a></li>
+            <li><a href="#">Press</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="#">Draft Guide</a></li>
+            <li><a href="#">Mock Drafts</a></li>
+            <li><a href="#">Player Rankings</a></li>
+            <li><a href="#">Analytics</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="#">Forums</a></li>
+            <li><a href="#">Discord</a></li>
+            <li><a href="#">Twitter</a></li>
+            <li><a href="#">Newsletter</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Legal</h4>
+          <ul>
+            <li><a href="#">Terms of Service</a></li>
+            <li><a href="#">Privacy Policy</a></li>
+            <li><a href="#">Cookie Policy</a></li>
+            <li><a href="#">Disclaimer</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Copyright -->
+      <div class="footer-copyright">
+        <p>&copy; 2025 DraftGuru. All rights reserved. Stay informed, draft smarter.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ============================================================================
+       JAVASCRIPT
+       All interactive functionality and data rendering
+       ========================================================================= -->
+  <script>
+    /**
+     * ============================================================================
+     * DATA LAYER
+     * Mock data for demonstration purposes
+     * In production, this would come from API endpoints
+     * ============================================================================
+     */
+
+    // Mock draft picks data
+    const MOCK_PICKS = [
+      { pick: 1, name: "Cooper Flagg", position: "F", college: "Duke", avgRank: 1.2, change: +1 },
+      { pick: 2, name: "Ace Bailey", position: "G/F", college: "Rutgers", avgRank: 2.8, change: -1 },
+      { pick: 3, name: "Zachary Rioux", position: "C", college: "Kentucky", avgRank: 3.4, change: +2 },
+      { pick: 4, name: "Matas Buzelis", position: "F", college: "G League", avgRank: 4.1, change: 0 },
+      { pick: 5, name: "KJ Evans Jr.", position: "F", college: "Oregon", avgRank: 5.7, change: -2 },
+    ];
+
+    // Extended player data with measurables and production stats
+    const PLAYERS = MOCK_PICKS.map((player) => ({
+      ...player,
+      // Placeholder image URL
+      img: `https://placehold.co/320x420/edf2f7/1f2937?text=${encodeURIComponent(player.name)}`,
+      // Physical measurables (height, wingspan, vertical leap)
+      measurables: {
+        ht: 80 + (player.pick % 3),
+        ws: 84 + (player.pick % 5),
+        vert: 34 + (player.pick % 7)
+      },
+      // Production stats (points, rebounds, assists)
+      prod: {
+        pts: 18 + player.pick,
+        reb: 7 + (player.pick % 4),
+        ast: 3 + (player.pick % 5)
+      },
+    }));
+
+    // Live feed / news items
+    const FEED_ITEMS = [
+      { source: "@DraftExpress", title: "Ace Bailey wingspan causes chaos at Elite Camp", time: "3m", tag: "Riser" },
+      { source: "No Ceilings", title: "Rioux rim deterrence study: early returns", time: "12m", tag: "Riser" },
+      { source: "The Ringer", title: "Buzelis fit questions with top-5 teams", time: "27m", tag: "Faller" },
+      { source: "BR", title: "Flagg off-ball value and scheme versatility", time: "1h", tag: "Riser" },
+    ];
+
+    // Comparison metrics for VS Arena
+    const COMPARISON_METRICS = [
+      { name: "Height", unit: "in" },
+      { name: "Weight", unit: "lbs" },
+      { name: "Wingspan", unit: "in" },
+      { name: "Vertical Leap", unit: "in" },
+      { name: "Points Per Game", unit: "" },
+      { name: "Rebounds Per Game", unit: "" },
+      { name: "Assists Per Game", unit: "" },
+      { name: "FG%", unit: "%" }
+    ];
+
+    // Current comparison mode
+    let currentComparisonMode = "Measurables";
+
+    /**
+     * ============================================================================
+     * TICKER MODULE
+     * Renders and animates the market moves ticker
+     * ============================================================================
+     */
+    const TickerModule = {
+      /**
+       * Initialize the ticker with player change data
+       */
+      init() {
+        const tickerElement = document.getElementById('ticker');
+        const tickerData = this.prepareTickerData();
+        tickerElement.innerHTML = this.renderTicker(tickerData);
+      },
+
+      /**
+       * Prepare ticker data by sorting players by change magnitude
+       * @returns {Array} Sorted ticker items
+       */
+      prepareTickerData() {
+        return [...MOCK_PICKS]
+          .map((player) => ({ name: player.name, change: player.change }))
+          .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+      },
+
+      /**
+       * Render ticker HTML (duplicated for seamless infinite scroll)
+       * @param {Array} data - Ticker items
+       * @returns {string} HTML string
+       */
+      renderTicker(data) {
+        const chunk = data.map((item) => {
+          const changeClass = item.change > 0 ? 'positive' : 'negative';
+          const changeSymbol = item.change > 0 ? '▲' : '▼';
+
+          return `
+            <span class="ticker-item">
+              <strong>${item.name}</strong>
+              <span class="ticker-change ${changeClass}">
+                ${changeSymbol} ${Math.abs(item.change)}
+              </span>
+            </span>
+          `;
+        }).join('');
+
+        // Duplicate content for seamless loop
+        return chunk + chunk;
+      }
+    };
+
+    /**
+     * ============================================================================
+     * MOCK DRAFT TABLE MODULE
+     * Renders the consensus mock draft table
+     * ============================================================================
+     */
+    const MockTableModule = {
+      /**
+       * Initialize the mock draft table
+       */
+      init() {
+        const tbody = document.getElementById('mockTableBody');
+        tbody.innerHTML = this.renderTableRows();
+      },
+
+      /**
+       * Render table rows for each mock pick
+       * @returns {string} HTML string
+       */
+      renderTableRows() {
+        return MOCK_PICKS.map((pick) => {
+          const changeClass = pick.change > 0
+            ? 'change-positive'
+            : pick.change < 0
+            ? 'change-negative'
+            : 'change-neutral';
+
+          const changeSymbol = pick.change > 0
+            ? '▲'
+            : pick.change < 0
+            ? '▼'
+            : '=';
+
+          return `
+            <tr>
+              <td class="tabular-nums mono-font" style="font-weight: 500;">${pick.pick}</td>
+              <td>${pick.name}</td>
+              <td>${pick.position}</td>
+              <td>${pick.college}</td>
+              <td class="tabular-nums mono-font">${pick.avgRank.toFixed(1)}</td>
+              <td class="tabular-nums mono-font ${changeClass}">
+                ${changeSymbol} ${Math.abs(pick.change)}
+              </td>
+              <td>
+                <a href="#" class="table-link">Bet −110</a>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+    };
+
+    /**
+     * ============================================================================
+     * PROSPECTS GRID MODULE
+     * Renders the grid of top prospect cards
+     * ============================================================================
+     */
+    const ProspectsModule = {
+      /**
+       * Initialize the prospects grid
+       */
+      init() {
+        const grid = document.getElementById('prospectsGrid');
+        grid.innerHTML = this.renderProspects();
+      },
+
+      /**
+       * Render all prospect cards
+       * @returns {string} HTML string
+       */
+      renderProspects() {
+        return PLAYERS.map((player) => {
+          const badge = player.change !== 0
+            ? this.renderBadge(player.change)
+            : '';
+
+          return `
+            <div class="prospect-card">
+              <div class="prospect-image-wrapper">
+                <img
+                  src="${player.img}"
+                  alt="${player.name}"
+                  class="prospect-image"
+                />
+                ${badge}
+              </div>
+              <div class="prospect-info">
+                <h4 class="prospect-name">${player.name}</h4>
+                <p class="prospect-meta">${player.position} • ${player.college}</p>
+                <div class="prospect-stats">
+                  ${this.renderStatPill('HT', `${player.measurables.ht}"`)}
+                  ${this.renderStatPill('WS', `${player.measurables.ws}"`)}
+                  ${this.renderStatPill('VRT', `${player.measurables.vert}"`)}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      },
+
+      /**
+       * Render riser/faller badge
+       * @param {number} change - Position change value
+       * @returns {string} HTML string
+       */
+      renderBadge(change) {
+        const badgeClass = change > 0 ? 'riser' : 'faller';
+        const badgeText = change > 0 ? 'Riser' : 'Faller';
+        return `<span class="prospect-badge ${badgeClass}">${badgeText}</span>`;
+      },
+
+      /**
+       * Render a single stat pill
+       * @param {string} label - Stat label
+       * @param {string} value - Stat value
+       * @returns {string} HTML string
+       */
+      renderStatPill(label, value) {
+        return `
+          <div class="stat-pill">
+            <span class="label">${label}</span>
+            <span class="value">${value}</span>
+          </div>
+        `;
+      }
+    };
+
+    /**
+     * ============================================================================
+     * VS ARENA MODULE
+     * Handles player comparison functionality
+     * ============================================================================
+     */
+    const VSArenaModule = {
+      selectedPlayerA: null,
+      selectedPlayerB: null,
+
+      /**
+       * Initialize VS Arena with player selectors and comparison
+       */
+      init() {
+        this.populateSelectors();
+        this.setupEventListeners();
+        this.updateComparison();
+      },
+
+      /**
+       * Populate player dropdown selectors
+       */
+      populateSelectors() {
+        const playerASelect = document.getElementById('playerA');
+        const playerBSelect = document.getElementById('playerB');
+
+        PLAYERS.forEach((player) => {
+          const optionA = document.createElement('option');
+          optionA.value = player.name;
+          optionA.textContent = player.name;
+          playerASelect.appendChild(optionA);
+
+          const optionB = document.createElement('option');
+          optionB.value = player.name;
+          optionB.textContent = player.name;
+          playerBSelect.appendChild(optionB);
+        });
+
+        // Set default selections
+        playerASelect.value = PLAYERS[0].name;
+        playerBSelect.value = PLAYERS[1].name;
+        this.selectedPlayerA = PLAYERS[0].name;
+        this.selectedPlayerB = PLAYERS[1].name;
+      },
+
+      /**
+       * Setup event listeners for selectors and toggles
+       */
+      setupEventListeners() {
+        // Player selectors
+        document.getElementById('playerA').addEventListener('change', (e) => {
+          this.selectedPlayerA = e.target.value;
+          this.updateComparison();
+        });
+
+        document.getElementById('playerB').addEventListener('change', (e) => {
+          this.selectedPlayerB = e.target.value;
+          this.updateComparison();
+        });
+
+        // Mode toggle buttons
+        const toggleButtons = document.querySelectorAll('.toggle-button');
+        toggleButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            // Remove active class from all buttons
+            toggleButtons.forEach((btn) => btn.classList.remove('active'));
+            // Add active class to clicked button
+            button.classList.add('active');
+            // Update current mode
+            currentComparisonMode = button.dataset.mode;
+            // Re-render comparison
+            this.updateComparison();
+          });
+        });
+      },
+
+      /**
+       * Generate a dummy comparison value for a metric
+       * @param {Object} metric - Metric definition
+       * @returns {string} Generated value
+       */
+      generateComparisonValue(metric) {
+        const name = metric.name;
+
+        if (name.includes("Height")) return (78 + Math.floor(Math.random() * 6)).toFixed(0);
+        if (name.includes("Weight")) return (200 + Math.floor(Math.random() * 40)).toFixed(0);
+        if (name.includes("Wingspan")) return (82 + Math.floor(Math.random() * 8)).toFixed(0);
+        if (name.includes("Vertical")) return (30 + Math.floor(Math.random() * 12)).toFixed(1);
+        if (name.includes("Points")) return (15 + Math.random() * 15).toFixed(1);
+        if (name.includes("Rebounds")) return (5 + Math.random() * 8).toFixed(1);
+        if (name.includes("Assists")) return (2 + Math.random() * 6).toFixed(1);
+        if (name.includes("FG%")) return (40 + Math.random() * 20).toFixed(1);
+
+        return (Math.random() * 100).toFixed(1);
+      },
+
+      /**
+       * Update the comparison table and winner declaration
+       */
+      updateComparison() {
+        const comparisonBody = document.getElementById('comparisonBody');
+        const headerA = document.getElementById('headerA');
+        const headerB = document.getElementById('headerB');
+        const winnerDeclaration = document.getElementById('winnerDeclaration');
+
+        // Update headers
+        headerA.textContent = this.selectedPlayerA;
+        headerB.textContent = this.selectedPlayerB;
+
+        let rowsHTML = '';
+        let winsA = 0;
+        let winsB = 0;
+
+        // Generate comparison rows
+        COMPARISON_METRICS.forEach((metric) => {
+          const valueA = this.generateComparisonValue(metric);
+          const valueB = this.generateComparisonValue(metric);
+          const numA = parseFloat(valueA);
+          const numB = parseFloat(valueB);
+
+          // Determine winner for this metric
+          const isWinnerA = numA > numB;
+          const isWinnerB = numB > numA;
+
+          if (isWinnerA) winsA++;
+          if (isWinnerB) winsB++;
+
+          // Build classes for styling
+          const classA = isWinnerA
+            ? 'comparison-value winner winner-a'
+            : 'comparison-value loser';
+          const classB = isWinnerB
+            ? 'comparison-value winner winner-b'
+            : 'comparison-value loser';
+
+          rowsHTML += `
+            <tr>
+              <td class="text-right ${classA}">${valueA}${metric.unit}</td>
+              <td class="text-center">${metric.name}</td>
+              <td class="text-left ${classB}">${valueB}${metric.unit}</td>
+            </tr>
+          `;
+        });
+
+        comparisonBody.innerHTML = rowsHTML;
+
+        // Determine overall winner
+        const totalMetrics = COMPARISON_METRICS.length;
+        let bannerText = '';
+        let bannerClass = '';
+
+        if (winsA > winsB) {
+          bannerText = `Winner: ${this.selectedPlayerA} — ${winsA}/${totalMetrics}`;
+          bannerClass = 'winner-banner winner-a';
+        } else if (winsB > winsA) {
+          bannerText = `Winner: ${this.selectedPlayerB} — ${winsB}/${totalMetrics}`;
+          bannerClass = 'winner-banner winner-b';
+        } else {
+          bannerText = `Tie — ${winsA}/${totalMetrics} each`;
+          bannerClass = 'winner-banner tie';
+        }
+
+        winnerDeclaration.innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
+      }
+    };
+
+    /**
+     * ============================================================================
+     * FEED MODULE
+     * Renders the live draft buzz news feed
+     * ============================================================================
+     */
+    const FeedModule = {
+      /**
+       * Initialize the feed
+       */
+      init() {
+        const feedContainer = document.getElementById('feedContainer');
+        feedContainer.innerHTML = this.renderFeed();
+      },
+
+      /**
+       * Render all feed items
+       * @returns {string} HTML string
+       */
+      renderFeed() {
+        return FEED_ITEMS.map((item) => {
+          const tagClass = item.tag === 'Riser' ? 'riser' : 'faller';
+
+          return `
+            <div class="feed-item">
+              <p class="feed-title">${item.title}</p>
+              <div class="feed-meta">
+                ${item.source}
+                <!-- ChevronRight icon -->
+                <svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+                ${item.time}
+                <span class="feed-tag ${tagClass}">${item.tag}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    };
+
+    /**
+     * ============================================================================
+     * SPECIALS MODULE
+     * Renders draft position betting specials
+     * ============================================================================
+     */
+    const SpecialsModule = {
+      /**
+       * Initialize the specials section
+       */
+      init() {
+        const specialsList = document.getElementById('specialsList');
+        specialsList.innerHTML = this.renderSpecials();
+      },
+
+      /**
+       * Render special betting items
+       * @returns {string} HTML string
+       */
+      renderSpecials() {
+        return MOCK_PICKS.slice(0, 4).map((pick) => {
+          const odds = (pick.pick + 50) * 10;
+          return `
+            <div class="special-item">
+              <span>${pick.name} Top ${pick.pick}</span>
+              <span class="special-odds">+${odds}</span>
+            </div>
+          `;
+        }).join('');
+      }
+    };
+
+    /**
+     * ============================================================================
+     * APPLICATION INITIALIZATION
+     * Initialize all modules when DOM is ready
+     * ============================================================================
+     */
+    document.addEventListener('DOMContentLoaded', () => {
+      TickerModule.init();
+      MockTableModule.init();
+      ProspectsModule.init();
+      VSArenaModule.init();
+      FeedModule.init();
+      SpecialsModule.init();
+    });
+  </script>
+
+</body>
+</html>
