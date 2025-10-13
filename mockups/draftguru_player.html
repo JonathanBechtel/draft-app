@@ -1,0 +1,3243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cooper Flagg — Player Profile | DraftGuru</title>
+
+  <!-- Google Fonts: Russo One (headings) and Azeret Mono (monospace) -->
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       CSS CUSTOM PROPERTIES
+       Centralized color palette and typography for easy theming
+       ========================================================================= */
+    :root {
+      /* Typography */
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      /* Primary Colors */
+      --color-primary: #4A7FB8;        /* Blue navbar */
+      --color-secondary: #E8B4A8;      /* Peach footer */
+      --color-accent-emerald: #10b981; /* Success/positive */
+      --color-accent-rose: #f43f5e;    /* Error/negative */
+      --color-accent-indigo: #6366f1;  /* Interactive elements */
+      --color-accent-cyan: #06b6d4;    /* Info sections */
+      --color-accent-amber: #f59e0b;   /* Warnings/highlights */
+      --color-accent-fuchsia: #d946ef; /* Special features */
+
+      /* Neutral Colors */
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      /* Layout */
+      --max-width: 1280px;
+      --content-width: 80%;
+      --spacing-unit: 1rem;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    /* ============================================================================
+       RESET & BASE STYLES
+       Normalize browser defaults and set foundational styles
+       ========================================================================= */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ============================================================================
+       TYPOGRAPHY
+       Font styles, sizes, and text utilities
+       ========================================================================= */
+    .heading-font {
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .mono-font {
+      font-family: var(--font-mono);
+    }
+
+    .uppercase {
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* Tabular numbers for consistent width (great for tables and metrics) */
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       LAYOUT UTILITIES
+       Grid, flex, spacing, and container utilities
+       ========================================================================= */
+    .container {
+      max-width: 1152px; /* 72rem */
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section {
+      margin-bottom: 4rem;
+    }
+
+    .section-header {
+      font-size: 1.5rem;
+      font-weight: 600;
+      padding-left: 0.5rem;
+      border-left: 4px solid;
+      margin-bottom: 1rem;
+    }
+
+    .section-subtitle {
+      font-size: 0.875rem;
+      color: var(--color-slate-500);
+      margin-bottom: 1rem;
+      padding-left: 0.5rem;
+    }
+
+    /* Decorative divider between sections */
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(
+        to right,
+        transparent,
+        rgba(148, 163, 184, 0.3) 20%,
+        rgba(148, 163, 184, 0.3) 80%,
+        transparent
+      );
+      margin: 3rem 0;
+    }
+
+    /* ============================================================================
+       NAVIGATION BAR
+       Fixed top navigation with search functionality
+       ========================================================================= */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: var(--color-primary);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .navbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .navbar-brand h1 {
+      font-size: 1.875rem;
+      color: var(--color-white);
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .navbar-search {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .search-input {
+      width: 288px; /* 18rem */
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #93c5fd;
+      color: var(--color-slate-900);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      outline: none;
+      transition: all var(--transition-speed);
+    }
+
+    .search-input:focus {
+      border-color: var(--color-white);
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+    }
+
+    .search-input::placeholder {
+      color: var(--color-slate-500);
+    }
+
+    .search-button {
+      width: 2.5rem;
+      height: 2.5rem;
+      background: #fbbf24;
+      color: #1e3a8a;
+      border: none;
+      border-radius: 0.375rem;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: background var(--transition-speed);
+    }
+
+    .search-button:hover {
+      background: #fcd34d;
+    }
+
+    /* ============================================================================
+       FOOTER
+       Bottom footer with links and copyright
+       ========================================================================= */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+      margin-top: 4rem;
+    }
+
+    .footer-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+
+    .footer-column ul {
+      list-style: none;
+    }
+
+    .footer-column ul li {
+      margin-bottom: 0.5rem;
+    }
+
+    .footer-column a {
+      color: var(--color-slate-700);
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: color var(--transition-speed);
+    }
+
+    .footer-column a:hover {
+      color: var(--color-slate-900);
+    }
+
+    .footer-copyright {
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       CARDS
+       Reusable card component for content sections
+       ========================================================================= */
+    .card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 1rem 1.25rem 0.25rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .card-content {
+      padding: 1rem;
+    }
+
+    /* Enhanced card with colored ring outline */
+    .card-ring {
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 2px solid;
+      outline-offset: -2px;
+    }
+
+    .card-ring-emerald { outline-color: rgba(16, 185, 129, 0.6); }
+    .card-ring-indigo { outline-color: rgba(99, 102, 241, 0.6); }
+    .card-ring-fuchsia { outline-color: rgba(217, 70, 239, 0.6); }
+    .card-ring-cyan { outline-color: rgba(6, 182, 212, 0.5); }
+    .card-ring-amber { outline-color: rgba(245, 158, 11, 0.6); }
+
+    /* ============================================================================
+       ICONS (SVG)
+       Inline SVG icon utilities
+       ========================================================================= */
+    .icon {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .icon-lg {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+
+    .icon-xl {
+      width: 1.5rem;
+      height: 1.5rem;
+    }
+
+    /* ============================================================================
+       UTILITY CLASSES
+       Spacing, alignment, and other helpers
+       ========================================================================= */
+    .mt-28 {
+      margin-top: 7rem; /* Account for fixed navbar */
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .text-left {
+      text-align: left;
+    }
+
+    /* ============================================================================
+       PLAYER PAGE: PERSONAL INFO SECTION
+       Two-column layout with photo on left, bio + scoreboard stacked on right
+       ========================================================================= */
+    .personal-info-grid {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    /* Left column: Photo only */
+    .player-photo-wrapper {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    /* Right column: Bio and scoreboard stacked */
+    .player-info-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      height: 100%;
+    }
+
+    .player-photo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 2px solid rgba(99, 102, 241, 0.4);
+      outline-offset: -2px;
+    }
+
+    .player-bio {
+      background: var(--color-white);
+      padding: 1.25rem;
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      flex-shrink: 0;
+    }
+
+    .bio-header {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-600);
+      font-weight: 600;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .player-primary-meta {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--color-slate-600);
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .player-secondary-meta {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      font-size: 0.875rem;
+    }
+
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .meta-label {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.125rem;
+    }
+
+    .meta-value {
+      color: var(--color-slate-900);
+      font-weight: 500;
+    }
+
+    /* Right column: Sports Scoreboard */
+    .sports-scoreboard {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 2px solid rgba(245, 158, 11, 0.6);
+      outline-offset: -2px;
+      position: relative;
+      overflow: hidden;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      /* Dot-matrix background pattern */
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(245, 158, 11, 0.08) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    /* Scanlines overlay for retro effect */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 1) 0,
+        rgba(0, 0, 0, 1) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      opacity: 0.05;
+      pointer-events: none;
+    }
+
+    .scoreboard-header {
+      position: relative;
+      padding: 1rem 1.25rem;
+      background: linear-gradient(to right, #fef3c7, #fde68a);
+      border-bottom: 2px solid var(--color-accent-amber);
+    }
+
+    .scoreboard-title {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-900);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .scoreboard-content {
+      position: relative;
+      padding: 1.5rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    /* Metric panels */
+    .scoreboard-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .scoreboard-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .metric-panel {
+      background: var(--color-slate-50);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      text-align: center;
+      transition: all var(--transition-speed);
+      position: relative;
+    }
+
+    .metric-panel:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Pixel corner accents on hover */
+    .metric-panel::before,
+    .metric-panel::after {
+      content: "";
+      position: absolute;
+      width: 0.75rem;
+      height: 0.75rem;
+      opacity: 0;
+      transition: opacity var(--transition-speed);
+    }
+
+    .metric-panel::before {
+      top: -0.25rem;
+      left: -0.25rem;
+      background: linear-gradient(45deg, transparent 50%, var(--color-accent-amber) 50%);
+    }
+
+    .metric-panel::after {
+      bottom: -0.25rem;
+      right: -0.25rem;
+      background: linear-gradient(225deg, transparent 50%, var(--color-accent-emerald) 50%);
+    }
+
+    .metric-panel:hover::before,
+    .metric-panel:hover::after {
+      opacity: 1;
+    }
+
+    .metric-label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+
+    .metric-value {
+      font-family: var(--font-mono);
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--color-slate-900);
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric-value.large {
+      font-size: 3rem;
+    }
+
+    .metric-subtext {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+      margin-top: 0.25rem;
+    }
+
+    /* Change indicator */
+    .change-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-top: 0.25rem;
+    }
+
+    .change-indicator.positive {
+      color: var(--color-accent-emerald);
+    }
+
+    .change-indicator.negative {
+      color: var(--color-accent-rose);
+    }
+
+    .change-indicator.neutral {
+      color: var(--color-slate-500);
+    }
+
+    /* Buzz meter */
+    .buzz-meter {
+      width: 100%;
+      height: 0.5rem;
+      background: var(--color-slate-200);
+      border-radius: 9999px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .buzz-fill {
+      height: 100%;
+      background: linear-gradient(to right, var(--color-accent-emerald), var(--color-accent-cyan));
+      transition: width var(--transition-speed);
+    }
+
+    /* Wide panel for certain metrics */
+    .metric-panel-wide {
+      grid-column: span 2;
+    }
+
+    /* ============================================================================
+       PERFORMANCE SECTION
+       Percentile bars showing player rankings across metrics
+       ========================================================================= */
+    .perf-controls-row {
+      display: flex;
+      align-items: end;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .perf-control {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .perf-control-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-top: 1.75rem;
+    }
+
+    .perf-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-600);
+      font-weight: 600;
+    }
+
+    .perf-select {
+      width: 100%;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .perf-select:focus {
+      outline: none;
+      border-color: var(--color-accent-emerald);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+    }
+
+    .perf-checkbox {
+      width: 1.25rem;
+      height: 1.25rem;
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.25rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      appearance: none;
+      position: relative;
+    }
+
+    .perf-checkbox:checked {
+      background: var(--color-accent-emerald);
+      border-color: var(--color-accent-emerald);
+    }
+
+    .perf-checkbox:checked::after {
+      content: "";
+      position: absolute;
+      left: 0.25rem;
+      top: 0.0625rem;
+      width: 0.375rem;
+      height: 0.625rem;
+      border: solid white;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    .perf-checkbox:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+    }
+
+    .perf-checkbox-label {
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* Category tabs */
+    .perf-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .perf-tab {
+      padding: 0.5rem 1rem;
+      background: var(--color-white);
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      font-weight: 600;
+    }
+
+    .perf-tab:hover {
+      background: var(--color-slate-50);
+      border-color: var(--color-slate-400);
+    }
+
+    .perf-tab.active {
+      background: #d1fae5;
+      border-color: var(--color-accent-emerald);
+      color: #065f46;
+    }
+
+    /* Percentile card */
+    .perf-card {
+      position: relative;
+      overflow: hidden;
+      /* Dot-matrix background pattern */
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(16, 185, 129, 0.08) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    .perf-content {
+      position: relative;
+      padding: 1.5rem;
+    }
+
+    .perf-bars-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* Individual percentile bar row */
+    .perf-bar-row {
+      display: grid;
+      grid-template-columns: 180px 1fr 120px;
+      gap: 1rem;
+      align-items: center;
+      padding: 0.75rem;
+      background: var(--color-white);
+      border-radius: 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      transition: all var(--transition-speed);
+    }
+
+    .perf-bar-row:hover {
+      background: var(--color-slate-50);
+      transform: translateX(4px);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .perf-metric-label {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-700);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Bar container and fill */
+    .perf-bar-track {
+      position: relative;
+      height: 1.5rem;
+      background: var(--color-slate-100);
+      border-radius: 9999px;
+      overflow: hidden;
+      border: 1px solid var(--color-slate-200);
+    }
+
+    .perf-bar-fill {
+      height: 100%;
+      background: linear-gradient(to right, var(--color-accent-emerald), var(--color-accent-cyan));
+      border-radius: 9999px;
+      transition: width 0.4s ease-out;
+      position: relative;
+    }
+
+    /* Percentile marker on bar */
+    .perf-bar-fill::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: rgba(255, 255, 255, 0.8);
+    }
+
+    /* Color variations based on percentile */
+    .perf-bar-fill.elite {
+      background: linear-gradient(to right, #059669, #10b981);
+    }
+
+    .perf-bar-fill.good {
+      background: linear-gradient(to right, #0ea5e9, #06b6d4);
+    }
+
+    .perf-bar-fill.average {
+      background: linear-gradient(to right, #f59e0b, #fbbf24);
+    }
+
+    .perf-bar-fill.below-average {
+      background: linear-gradient(to right, #ef4444, #f87171);
+    }
+
+    /* Value and percentile display */
+    .perf-values {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.125rem;
+    }
+
+    .perf-actual-value {
+      font-family: var(--font-mono);
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .perf-percentile-value {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-slate-600);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .perf-percentile-value.elite {
+      color: #059669;
+    }
+
+    .perf-percentile-value.good {
+      color: #0ea5e9;
+    }
+
+    .perf-percentile-value.average {
+      color: #f59e0b;
+    }
+
+    .perf-percentile-value.below-average {
+      color: #ef4444;
+    }
+
+    /* ============================================================================
+       HEAD-TO-HEAD COMPARISON SECTION
+       Integrated player comparison with fuchsia theme
+       ========================================================================= */
+    .h2h-controls-row {
+      display: flex;
+      align-items: end;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .h2h-control {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      flex: 1;
+      min-width: 250px;
+    }
+
+    .h2h-control-button {
+      display: flex;
+      align-items: end;
+      padding-bottom: 0.125rem;
+    }
+
+    .h2h-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-600);
+      font-weight: 600;
+    }
+
+    .h2h-select {
+      width: 100%;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .h2h-select:focus {
+      outline: none;
+      border-color: var(--color-accent-fuchsia);
+      box-shadow: 0 0 0 2px rgba(217, 70, 239, 0.2);
+    }
+
+    .h2h-swap-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--color-white);
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      font-weight: 600;
+    }
+
+    .h2h-swap-btn:hover {
+      background: #fae8ff;
+      border-color: var(--color-accent-fuchsia);
+      color: #86198f;
+    }
+
+    /* Category tabs */
+    .h2h-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .h2h-tab {
+      padding: 0.5rem 1rem;
+      background: var(--color-white);
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      font-weight: 600;
+    }
+
+    .h2h-tab:hover {
+      background: var(--color-slate-50);
+      border-color: var(--color-slate-400);
+    }
+
+    .h2h-tab.active {
+      background: #fae8ff;
+      border-color: var(--color-accent-fuchsia);
+      color: #86198f;
+    }
+
+    /* Comparison card */
+    .h2h-card {
+      position: relative;
+      overflow: hidden;
+      /* Dot-matrix background pattern */
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(217, 70, 239, 0.08) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    .h2h-content {
+      position: relative;
+      padding: 1.5rem;
+    }
+
+    /* Similarity badge */
+    .h2h-similarity-badge {
+      position: absolute;
+      top: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      background: #fae8ff;
+      color: #86198f;
+      border: 2px solid var(--color-accent-fuchsia);
+      z-index: 10;
+      box-shadow: 0 2px 4px rgba(217, 70, 239, 0.2);
+    }
+
+    /* Comparison container with photos */
+    .h2h-comparison-container {
+      display: flex;
+      flex-direction: column;
+      margin-top: 3.5rem;
+      margin-bottom: 1rem;
+    }
+
+    /* Photos row above table */
+    .h2h-photos-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Spacer to separate photos */
+    .h2h-photos-spacer {
+      /* Empty spacer in the middle */
+    }
+
+    /* Player photos */
+    .h2h-player-photo {
+      flex-shrink: 0;
+      text-align: center;
+    }
+
+    .h2h-player-photo img {
+      width: 150px;
+      height: 150px;
+      border-radius: 0.75rem;
+      object-fit: cover;
+      border: 3px solid var(--color-accent-fuchsia);
+      box-shadow: 0 4px 8px rgba(217, 70, 239, 0.2);
+      transition: transform var(--transition-speed);
+    }
+
+    .h2h-player-photo img:hover {
+      transform: scale(1.05);
+    }
+
+    .h2h-photo-name {
+      margin-top: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-slate-700);
+    }
+
+    /* Comparison table */
+    .h2h-comparison-table {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .h2h-comparison-table table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    .h2h-comparison-table thead th {
+      padding: 0.75rem;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+      border-bottom: 2px solid var(--color-slate-200);
+      font-weight: 600;
+    }
+
+    .h2h-comparison-table tbody td {
+      padding: 0.875rem 0.75rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .h2h-comparison-table tbody tr:hover {
+      background: var(--color-slate-50);
+    }
+
+    .h2h-value {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .h2h-value.winner {
+      color: var(--color-accent-fuchsia);
+      font-weight: 800;
+      background: #fae8ff;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+    }
+
+    .h2h-value.loser {
+      color: var(--color-slate-500);
+    }
+
+    /* Winner banner */
+    .h2h-winner-banner {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      border-radius: 0.375rem;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.875rem;
+    }
+
+    .h2h-winner-banner.winner-a {
+      background: #fae8ff;
+      color: #86198f;
+      border: 2px solid var(--color-accent-fuchsia);
+    }
+
+    .h2h-winner-banner.winner-b {
+      background: #cffafe;
+      color: #155e75;
+      border: 2px solid var(--color-accent-cyan);
+    }
+
+    .h2h-winner-banner.tie {
+      background: var(--color-slate-100);
+      color: var(--color-slate-800);
+      border: 2px solid var(--color-slate-300);
+    }
+
+    /* ============================================================================
+       PLAYER COMPARISONS SECTION
+       Find similar players based on various criteria
+       ========================================================================= */
+    .comp-controls-row {
+      display: flex;
+      align-items: end;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .comp-control {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .comp-control-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-top: 1.75rem;
+    }
+
+    .comp-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-600);
+      font-weight: 600;
+    }
+
+    /* Category tabs for comparisons */
+    .comp-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .comp-tab {
+      padding: 0.5rem 1rem;
+      background: var(--color-white);
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      font-weight: 600;
+    }
+
+    .comp-tab:hover {
+      background: var(--color-slate-50);
+      border-color: var(--color-slate-400);
+    }
+
+    .comp-tab.active {
+      background: #cffafe;
+      border-color: var(--color-accent-cyan);
+      color: #155e75;
+    }
+
+    .comp-select {
+      width: 100%;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .comp-select:focus {
+      outline: none;
+      border-color: var(--color-accent-indigo);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    .comp-checkbox {
+      width: 1.25rem;
+      height: 1.25rem;
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.25rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      appearance: none;
+      position: relative;
+    }
+
+    .comp-checkbox:checked {
+      background: var(--color-accent-indigo);
+      border-color: var(--color-accent-indigo);
+    }
+
+    .comp-checkbox:checked::after {
+      content: "";
+      position: absolute;
+      left: 0.25rem;
+      top: 0.0625rem;
+      width: 0.375rem;
+      height: 0.625rem;
+      border: solid white;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    .comp-checkbox:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    .comp-checkbox-label {
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* Comparison results grid - reuses prospect card styles */
+    .comp-results-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+    }
+
+    /* Similarity badge - positioned top-right on cards */
+    .similarity-badge {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      padding: 0.375rem 0.625rem;
+      border-radius: 9999px;
+      z-index: 20;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .similarity-badge-high {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+
+    .similarity-badge-good {
+      background: #cffafe;
+      color: #155e75;
+      border: 1px solid #a5f3fc;
+    }
+
+    .similarity-badge-moderate {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+
+    .similarity-badge-weak {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+
+    /* Compare button within cards */
+    .comp-compare-btn {
+      width: 100%;
+      background: var(--color-accent-indigo);
+      color: var(--color-white);
+      border: none;
+      border-radius: 0.375rem;
+      padding: 0.625rem 1rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.375rem;
+      margin-top: 0.75rem;
+    }
+
+    .comp-compare-btn:hover {
+      background: #4f46e5;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3);
+    }
+
+    /* Comparison view modal/section */
+    .comp-comparison-view {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 2000;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      padding: 2rem;
+      overflow-y: auto;
+    }
+
+    .comp-comparison-view.active {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .comp-comparison-content {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      max-width: 900px;
+      width: 100%;
+      position: relative;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    .comp-comparison-header {
+      padding: 1.5rem;
+      border-bottom: 2px solid var(--color-accent-fuchsia);
+      background: linear-gradient(to right, #fae8ff, #f5d0fe);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .comp-comparison-title {
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-900);
+      font-weight: 700;
+    }
+
+    .comp-close-btn {
+      width: 2rem;
+      height: 2rem;
+      background: rgba(0, 0, 0, 0.1);
+      border: none;
+      border-radius: 0.375rem;
+      cursor: pointer;
+      transition: background var(--transition-speed);
+      display: grid;
+      place-items: center;
+    }
+
+    .comp-close-btn:hover {
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .comp-comparison-body {
+      padding: 2rem;
+      position: relative;
+      overflow: hidden;
+      /* Dot-matrix background pattern */
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(217, 70, 239, 0.08) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    /* Scanlines for comparison view */
+    .comp-comparison-body::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 1) 0,
+        rgba(0, 0, 0, 1) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      opacity: 0.05;
+      pointer-events: none;
+    }
+
+    /* Comparison table within modal */
+    .comp-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    .comp-table thead th {
+      padding: 0.75rem;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+      border-bottom: 2px solid var(--color-slate-200);
+    }
+
+    .comp-table tbody td {
+      padding: 0.875rem 0.75rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .comp-table tbody tr:hover {
+      background: var(--color-slate-50);
+    }
+
+    .comp-table-value {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .comp-table-value.winner {
+      color: var(--color-accent-fuchsia);
+      font-weight: 800;
+    }
+
+    /* Reuse prospect card styles from homepage for comparison cards */
+    .prospect-card {
+      position: relative;
+      border-radius: 1rem;
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 2px solid rgba(99, 102, 241, 0.6);
+      transition: transform var(--transition-speed);
+      background: var(--color-white);
+    }
+
+    .prospect-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .prospect-image-wrapper {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .prospect-image {
+      width: 100%;
+      height: 192px;
+      object-fit: cover;
+      transition: filter var(--transition-speed);
+    }
+
+    .prospect-card:hover .prospect-image {
+      filter: brightness(1.05);
+    }
+
+    /* Pixel corner accents on hover */
+    .prospect-card::before,
+    .prospect-card::after {
+      content: "";
+      position: absolute;
+      width: 1rem;
+      height: 1rem;
+      opacity: 0;
+      transition: opacity var(--transition-speed);
+      z-index: 10;
+    }
+
+    .prospect-card::before {
+      top: -0.25rem;
+      left: -0.25rem;
+      background: linear-gradient(45deg, transparent 50%, var(--color-accent-indigo) 50%);
+    }
+
+    .prospect-card::after {
+      bottom: -0.25rem;
+      right: -0.25rem;
+      background: linear-gradient(225deg, transparent 50%, var(--color-accent-emerald) 50%);
+    }
+
+    .prospect-card:hover::before,
+    .prospect-card:hover::after {
+      opacity: 1;
+    }
+
+    .prospect-info {
+      padding: 0.75rem;
+    }
+
+    .prospect-name {
+      font-weight: 600;
+      line-height: 1.25;
+      margin-bottom: 0.25rem;
+    }
+
+    .prospect-meta {
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+
+    .prospect-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      font-size: 0.6875rem;
+    }
+
+    .stat-pill {
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+      color: var(--color-slate-700);
+      text-align: center;
+    }
+
+    .stat-pill .label {
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-right: 0.25rem;
+    }
+
+    .stat-pill .value {
+      font-weight: 500;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       RESPONSIVE DESIGN
+       Mobile-first breakpoints
+       ========================================================================= */
+    @media (max-width: 768px) {
+      .navbar-brand h1 {
+        font-size: 1.5rem;
+      }
+
+      .search-input {
+        width: 200px;
+      }
+
+      .personal-info-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .player-photo {
+        max-width: 400px;
+        margin: 0 auto;
+      }
+
+      .scoreboard-row {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-panel-wide {
+        grid-column: span 1;
+      }
+
+      .metric-value {
+        font-size: 2rem;
+      }
+
+      .metric-value.large {
+        font-size: 2.5rem;
+      }
+
+      .comp-controls-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .comp-control {
+        min-width: 100%;
+      }
+
+      .comp-control-checkbox {
+        padding-top: 0;
+      }
+
+      .comp-tabs {
+        gap: 0.375rem;
+      }
+
+      .comp-tab {
+        font-size: 0.6875rem;
+        padding: 0.375rem 0.75rem;
+      }
+
+      .comp-results-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+      }
+
+      .comp-comparison-view {
+        padding: 1rem;
+      }
+
+      .comp-comparison-body {
+        padding: 1rem;
+      }
+
+      .perf-controls-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .perf-control {
+        min-width: 100%;
+      }
+
+      .perf-control-checkbox {
+        padding-top: 0;
+      }
+
+      .perf-tabs {
+        gap: 0.375rem;
+      }
+
+      .perf-tab {
+        font-size: 0.6875rem;
+        padding: 0.375rem 0.75rem;
+      }
+
+      .perf-bar-row {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+      }
+
+      .perf-values {
+        align-items: flex-start;
+      }
+
+      .h2h-controls-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .h2h-control {
+        min-width: 100%;
+      }
+
+      .h2h-control-button {
+        align-items: stretch;
+        padding-bottom: 0;
+      }
+
+      .h2h-swap-btn {
+        justify-content: center;
+      }
+
+      .h2h-tabs {
+        gap: 0.375rem;
+      }
+
+      .h2h-tab {
+        font-size: 0.6875rem;
+        padding: 0.375rem 0.75rem;
+      }
+
+      .h2h-similarity-badge {
+        font-size: 0.75rem;
+        padding: 0.375rem 0.75rem;
+      }
+
+      .h2h-comparison-container {
+        margin-top: 3rem;
+      }
+
+      .h2h-photos-row {
+        grid-template-columns: 1fr auto 1fr;
+        margin-bottom: 1rem;
+      }
+
+      .h2h-player-photo img {
+        width: 120px;
+        height: 120px;
+      }
+
+      .h2h-photo-name {
+        font-size: 0.75rem;
+      }
+    }
+
+    /* ============================================================================
+       PLAYER NEWS FEED
+       News feed with article snippets
+       ========================================================================= */
+    .feed-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-height: 520px;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+
+    .feed-item {
+      background: var(--color-white);
+      padding: 0.75rem;
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      outline: 1px solid rgba(6, 182, 212, 0.5);
+      transition: background var(--transition-speed);
+    }
+
+    .feed-item:hover {
+      background: var(--color-slate-50);
+    }
+
+    .feed-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.25;
+      margin-bottom: 0.25rem;
+    }
+
+    .feed-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    .feed-tag {
+      margin-left: auto;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      border: 1px solid;
+      font-size: 0.6875rem;
+    }
+
+    .feed-tag.riser {
+      color: #15803d;
+      border-color: #a7f3d0;
+      background: #d1fae5;
+    }
+
+    .feed-tag.faller {
+      color: #be123c;
+      border-color: #fecdd3;
+      background: #ffe4e6;
+    }
+
+    .feed-tag.analysis {
+      color: #1e40af;
+      border-color: #bfdbfe;
+      background: #dbeafe;
+    }
+
+    .feed-tag.highlight {
+      color: #92400e;
+      border-color: #fde68a;
+      background: #fef3c7;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================================
+       NAVIGATION BAR
+       Fixed top navigation with branding and search
+       ========================================================================= -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <!-- Brand / Logo -->
+      <div class="navbar-brand">
+        <!-- Sparkles icon -->
+        <svg class="icon icon-xl" style="color: #fbbf24;" viewBox="0 0 24 24" stroke-width="2.5">
+          <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z"/>
+          <path d="M5 16l.7 1.6L7.3 18l-1.6.7L5 20l-.7-1.3L3 18l1.3-.4L5 16zM19 16l.7 1.6L21.3 18l-1.6.7L19 20l-.7-1.3L17 18l1.3-.4L19 16z"/>
+        </svg>
+        <h1>DraftGuru</h1>
+      </div>
+
+      <!-- Search bar -->
+      <div class="navbar-search">
+        <input
+          type="text"
+          id="search"
+          class="search-input"
+          placeholder="Search prospects…"
+          aria-label="Search prospects"
+        />
+        <button class="search-button" aria-label="Search">
+          <!-- Search icon -->
+          <svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============================================================================
+       MAIN CONTENT CONTAINER
+       All page sections wrapped in a centered container
+       ========================================================================= -->
+  <main class="container mt-28">
+
+    <!-- ==========================================================================
+         PERSONAL INFO SECTION
+         Player photograph, biography, and sports scoreboard
+         ========================================================================== -->
+    <section class="section">
+      <h2 id="pageHeader" class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-indigo);">
+        Cooper Flagg — Player Profile
+      </h2>
+
+      <div class="personal-info-grid">
+
+        <!-- LEFT COLUMN: Photo Only -->
+        <div class="player-photo-wrapper">
+          <!-- Player photograph -->
+          <img
+            id="playerPhoto"
+            class="player-photo"
+            src="https://placehold.co/400x533/edf2f7/1f2937?text=Cooper+Flagg"
+            alt="Cooper Flagg"
+          />
+        </div>
+
+        <!-- RIGHT COLUMN: Bio + Scoreboard Stacked -->
+        <div class="player-info-stack">
+
+          <!-- Biographical information -->
+          <div class="player-bio">
+            <h3 class="bio-header">Bio</h3>
+
+            <div id="playerPrimaryMeta" class="player-primary-meta">
+              Forward • Duke • 6'9" • 205 lbs
+            </div>
+
+            <div class="player-secondary-meta">
+              <div class="meta-item">
+                <span class="meta-label">Age</span>
+                <span id="playerAge" class="meta-value">19</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Class</span>
+                <span id="playerClass" class="meta-value">Freshman</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Hometown</span>
+                <span id="playerHometown" class="meta-value">Newport, ME</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Wingspan</span>
+                <span id="playerWingspan" class="meta-value">7'2"</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sports Scoreboard -->
+        <div class="sports-scoreboard">
+          <!-- Scanlines overlay -->
+          <div class="scanlines"></div>
+
+          <!-- Scoreboard header -->
+          <div class="scoreboard-header">
+            <div class="scoreboard-title">
+              <!-- Activity icon -->
+              <svg class="icon" viewBox="0 0 24 24">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              Draft Analytics Dashboard
+            </div>
+          </div>
+
+          <!-- Scoreboard content -->
+          <div class="scoreboard-content">
+
+            <!-- Top row: Primary metrics -->
+            <div class="scoreboard-row">
+
+              <!-- Consensus Mock Position -->
+              <div class="metric-panel">
+                <span class="metric-label">Consensus Mock</span>
+                <div class="metric-value large" id="consensusRank">1</div>
+                <div class="change-indicator positive" id="consensusChange">
+                  <span>▲</span>
+                  <span>1</span>
+                </div>
+              </div>
+
+              <!-- Draft Buzz Score -->
+              <div class="metric-panel metric-panel-wide">
+                <span class="metric-label">Draft Buzz Score</span>
+                <div class="metric-value" id="buzzScore">94</div>
+                <div class="metric-subtext">Volume Index</div>
+                <div class="buzz-meter">
+                  <div class="buzz-fill" id="buzzFill" style="width: 94%;"></div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Bottom row: Supporting metrics -->
+            <div class="scoreboard-row">
+
+              <!-- True Draft Position -->
+              <div class="metric-panel">
+                <span class="metric-label">True Position</span>
+                <div class="metric-value" id="truePosition">1</div>
+                <div class="metric-subtext" id="trueRange">± 0.3</div>
+              </div>
+
+              <!-- Expected Wins Added -->
+              <div class="metric-panel">
+                <span class="metric-label">Exp. Wins Added</span>
+                <div class="metric-value" id="winsAdded">+8.2</div>
+                <div class="metric-subtext">Year 1 Impact</div>
+              </div>
+
+              <!-- Stock Trend -->
+              <div class="metric-panel">
+                <span class="metric-label">7-Day Trend</span>
+                <div class="change-indicator positive" id="trendIndicator">
+                  <svg class="icon-lg" viewBox="0 0 24 24" style="width: 2rem; height: 2rem;">
+                    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                    <polyline points="17 6 23 6 23 12"></polyline>
+                  </svg>
+                </div>
+                <div class="metric-subtext">Rising</div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+
+        </div>
+
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         PERFORMANCE SECTION
+         Player's percentile rankings across key metrics
+         ========================================================================== -->
+    <section class="section">
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
+        <!-- Bar chart icon -->
+        <svg class="icon icon-lg" style="color: var(--color-accent-emerald); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+          <line x1="12" y1="20" x2="12" y2="10"></line>
+          <line x1="18" y1="20" x2="18" y2="4"></line>
+          <line x1="6" y1="20" x2="6" y2="16"></line>
+        </svg>
+        Performance
+      </h2>
+      <p class="section-subtitle">Ranking relative to selected cohort and position</p>
+
+      <!-- Controls Row -->
+      <div class="perf-controls-row">
+        <!-- Cohort Selector -->
+        <div class="perf-control">
+          <label class="perf-label" for="perfCohort">Compare To</label>
+          <select id="perfCohort" class="perf-select">
+            <option value="currentDraft">Current Draft Class</option>
+            <option value="allTimeDraft">All Time Draft</option>
+            <option value="currentNBA">Current NBA Players</option>
+            <option value="allTimeNBA">All Time NBA Players</option>
+          </select>
+        </div>
+
+        <!-- Position Filter Toggle -->
+        <div class="perf-control-checkbox">
+          <input type="checkbox" id="perfPositionFilter" class="perf-checkbox" checked />
+          <label for="perfPositionFilter" class="perf-checkbox-label">Same Position Only</label>
+        </div>
+      </div>
+
+      <!-- Category Tabs -->
+      <div class="perf-tabs">
+        <button class="perf-tab active" data-category="anthropometrics">Anthropometrics</button>
+        <button class="perf-tab" data-category="combinePerformance">Combine Performance</button>
+        <button class="perf-tab" data-category="advancedStats">Advanced Stats</button>
+      </div>
+
+      <!-- Percentile Bars Card -->
+      <div class="card card-ring card-ring-emerald perf-card">
+        <!-- Dot-matrix background and scanlines -->
+        <div class="scanlines"></div>
+
+        <div class="perf-content">
+          <!-- Percentile bars will be populated by JavaScript -->
+          <div id="perfBarsContainer" class="perf-bars-container"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         PLAYER COMPARISONS SECTION
+         Find similar players based on various criteria
+         ========================================================================== -->
+    <section class="section">
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+        <!-- Copy icon -->
+        <svg class="icon icon-lg" style="color: var(--color-accent-cyan); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+        Player Comparisons
+      </h2>
+      <p class="section-subtitle">Find similar players based on measurables, performance, or advanced stats</p>
+
+      <!-- Controls Row -->
+      <div class="comp-controls-row">
+        <!-- Comparison Pool Dropdown -->
+        <div class="comp-control">
+          <label class="comp-label" for="compPool">Compare To</label>
+          <select id="compPool" class="comp-select">
+            <option value="currentDraft">Current Draft Class</option>
+            <option value="allTimeDraft">All-Time Draft</option>
+            <option value="currentNBA">Current NBA Players</option>
+            <option value="allTimeNBA">All-Time NBA Players</option>
+          </select>
+        </div>
+
+        <!-- Position Filter Checkbox -->
+        <div class="comp-control-checkbox">
+          <input type="checkbox" id="compPositionFilter" class="comp-checkbox" />
+          <label for="compPositionFilter" class="comp-checkbox-label">Same Position Only</label>
+        </div>
+      </div>
+
+      <!-- Category Tabs -->
+      <div class="comp-tabs">
+        <button class="comp-tab active" data-category="anthropometrics">Anthropometrics</button>
+        <button class="comp-tab" data-category="combinePerformance">Combine Performance</button>
+        <button class="comp-tab" data-category="advancedStats">Advanced Stats</button>
+      </div>
+
+      <!-- Comparison Results Grid -->
+      <div id="compResultsGrid" class="comp-results-grid">
+        <!-- Will be populated by JavaScript -->
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         HEAD-TO-HEAD COMPARISON SECTION
+         Interactive player comparison with category toggles
+         ========================================================================== -->
+    <section class="section">
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+        <!-- Swords icon -->
+        <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+          <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+          <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+          <path d="M3 6l7 7"></path>
+        </svg>
+        Head-to-Head Comparison
+      </h2>
+      <p class="section-subtitle">Compare Cooper Flagg against similar players across key metrics</p>
+
+      <!-- Comparison Controls -->
+      <div class="h2h-controls-row">
+        <!-- Player Selector -->
+        <div class="h2h-control">
+          <label class="h2h-label" for="h2hPlayerSelect">Compare Against</label>
+          <select id="h2hPlayerSelect" class="h2h-select">
+            <!-- Will be populated by JavaScript -->
+          </select>
+        </div>
+
+        <!-- Swap Button -->
+        <div class="h2h-control-button">
+          <button id="h2hSwapBtn" class="h2h-swap-btn" aria-label="Swap players">
+            <!-- Swap icon -->
+            <svg class="icon" viewBox="0 0 24 24">
+              <polyline points="17 1 21 5 17 9"></polyline>
+              <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+              <polyline points="7 23 3 19 7 15"></polyline>
+              <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+            </svg>
+            <span>Swap</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Category Tabs -->
+      <div class="h2h-tabs">
+        <button class="h2h-tab active" data-category="anthropometrics">Anthropometrics</button>
+        <button class="h2h-tab" data-category="combinePerformance">Combine Performance</button>
+        <button class="h2h-tab" data-category="advancedStats">Advanced Stats</button>
+      </div>
+
+      <!-- Comparison Card -->
+      <div class="card card-ring card-ring-fuchsia h2h-card">
+        <!-- Scanlines overlay -->
+        <div class="scanlines"></div>
+
+        <div class="h2h-content">
+          <!-- Similarity Score Badge -->
+          <div id="h2hSimilarityBadge" class="h2h-similarity-badge">
+            92% Match
+          </div>
+
+          <!-- Player Photos and Comparison -->
+          <div class="h2h-comparison-container">
+            <!-- Player Photos Row -->
+            <div class="h2h-photos-row">
+              <div class="h2h-player-photo">
+                <img id="h2hPhotoA" src="https://placehold.co/200x200/edf2f7/1f2937?text=Cooper+Flagg" alt="Cooper Flagg" />
+                <div class="h2h-photo-name" id="h2hPhotoNameA">Cooper Flagg</div>
+              </div>
+              <div class="h2h-photos-spacer"></div>
+              <div class="h2h-player-photo">
+                <img id="h2hPhotoB" src="https://placehold.co/200x200/edf2f7/1f2937?text=Comparison" alt="Comparison Player" />
+                <div class="h2h-photo-name" id="h2hPhotoNameB">Comparison</div>
+              </div>
+            </div>
+
+            <!-- Comparison Table -->
+            <div class="h2h-comparison-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th id="h2hPlayerA" class="text-right">Cooper Flagg</th>
+                    <th class="text-center">Metric</th>
+                    <th id="h2hPlayerB" class="text-left">Comparison</th>
+                  </tr>
+                </thead>
+                <tbody id="h2hTableBody">
+                  <!-- Will be populated by JavaScript -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Winner Declaration -->
+          <div id="h2hWinnerDeclaration" class="h2h-winner-banner">
+            <!-- Will be populated by JavaScript -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         PLAYER NEWS FEED
+         Latest news and updates about this player
+         ========================================================================== -->
+    <section class="section">
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+        <!-- Newspaper icon -->
+        <svg class="icon icon-lg" style="color: var(--color-accent-cyan); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+          <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <path d="M2 13h8"></path>
+          <path d="M2 17h8"></path>
+          <path d="M2 21h8"></path>
+        </svg>
+        Latest News & Updates
+      </h2>
+      <p class="section-subtitle">Recent coverage and analysis of Cooper Flagg</p>
+
+      <!-- News feed container -->
+      <div id="playerFeedContainer" class="feed-container"></div>
+    </section>
+
+  </main>
+
+  <!-- Comparison View Modal -->
+  <div id="comparisonModal" class="comp-comparison-view">
+    <div class="comp-comparison-content">
+      <!-- Header -->
+      <div class="comp-comparison-header">
+        <div class="comp-comparison-title" id="comparisonTitle">
+          Player Comparison
+        </div>
+        <button class="comp-close-btn" id="closeComparison" aria-label="Close comparison">
+          <!-- X icon -->
+          <svg class="icon" viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="comp-comparison-body">
+        <table class="comp-table">
+          <thead>
+            <tr>
+              <th class="text-right" id="compPlayerA">Cooper Flagg</th>
+              <th class="text-center">Metric</th>
+              <th class="text-left" id="compPlayerB">Comparison</th>
+            </tr>
+          </thead>
+          <tbody id="compTableBody">
+            <!-- Will be populated by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================================
+       FOOTER
+       Site-wide footer with links and copyright information
+       ========================================================================= -->
+  <footer class="footer">
+    <div class="footer-content">
+      <!-- Footer navigation grid -->
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Our Story</a></li>
+            <li><a href="#">Team</a></li>
+            <li><a href="#">Careers</a></li>
+            <li><a href="#">Press</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="#">Draft Guide</a></li>
+            <li><a href="#">Mock Drafts</a></li>
+            <li><a href="#">Player Rankings</a></li>
+            <li><a href="#">Analytics</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="#">Forums</a></li>
+            <li><a href="#">Discord</a></li>
+            <li><a href="#">Twitter</a></li>
+            <li><a href="#">Newsletter</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Legal</h4>
+          <ul>
+            <li><a href="#">Terms of Service</a></li>
+            <li><a href="#">Privacy Policy</a></li>
+            <li><a href="#">Cookie Policy</a></li>
+            <li><a href="#">Disclaimer</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Copyright -->
+      <div class="footer-copyright">
+        <p>&copy; 2025 DraftGuru. All rights reserved. Stay informed, draft smarter.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ============================================================================
+       JAVASCRIPT
+       All interactive functionality and data rendering
+       ========================================================================= -->
+  <script>
+    /**
+     * ============================================================================
+     * DATA LAYER
+     * Mock player data for demonstration
+     * In production, this would come from API endpoints
+     * ============================================================================
+     */
+
+    const PLAYER_DATA = {
+      name: "Cooper Flagg",
+      position: "Forward",
+      college: "Duke",
+      height: "6'9\"",
+      weight: "205 lbs",
+      age: 19,
+      class: "Freshman",
+      hometown: "Newport, ME",
+      wingspan: "7'2\"",
+      photoUrl: "https://placehold.co/400x533/edf2f7/1f2937?text=Cooper+Flagg",
+
+      // Scoreboard metrics
+      metrics: {
+        consensusRank: 1,
+        consensusChange: +1,
+        buzzScore: 94,
+        truePosition: 1.0,
+        trueRange: 0.3,
+        winsAdded: 8.2,
+        trendDirection: "rising" // "rising", "falling", "neutral"
+      }
+    };
+
+    /**
+     * ============================================================================
+     * PAGE INITIALIZATION
+     * Populate player data on page load
+     * ============================================================================
+     */
+    document.addEventListener('DOMContentLoaded', () => {
+      populatePlayerData();
+    });
+
+    /**
+     * Populate all player data fields
+     */
+    function populatePlayerData() {
+      const player = PLAYER_DATA;
+
+      // Update page header
+      document.getElementById('pageHeader').textContent = `${player.name} — Player Profile`;
+
+      // Update photo
+      document.getElementById('playerPhoto').src = player.photoUrl;
+      document.getElementById('playerPhoto').alt = player.name;
+
+      // Update bio
+      document.getElementById('playerPrimaryMeta').textContent =
+        `${player.position} • ${player.college} • ${player.height} • ${player.weight}`;
+
+      document.getElementById('playerAge').textContent = player.age;
+      document.getElementById('playerClass').textContent = player.class;
+      document.getElementById('playerHometown').textContent = player.hometown;
+      document.getElementById('playerWingspan').textContent = player.wingspan;
+
+      // Update scoreboard metrics
+      const metrics = player.metrics;
+
+      document.getElementById('consensusRank').textContent = metrics.consensusRank;
+
+      // Consensus change indicator
+      const changeEl = document.getElementById('consensusChange');
+      if (metrics.consensusChange > 0) {
+        changeEl.className = 'change-indicator positive';
+        changeEl.innerHTML = `<span>▲</span><span>${metrics.consensusChange}</span>`;
+      } else if (metrics.consensusChange < 0) {
+        changeEl.className = 'change-indicator negative';
+        changeEl.innerHTML = `<span>▼</span><span>${Math.abs(metrics.consensusChange)}</span>`;
+      } else {
+        changeEl.className = 'change-indicator neutral';
+        changeEl.innerHTML = `<span>=</span><span>0</span>`;
+      }
+
+      // Buzz score
+      document.getElementById('buzzScore').textContent = metrics.buzzScore;
+      document.getElementById('buzzFill').style.width = `${metrics.buzzScore}%`;
+
+      // True position
+      document.getElementById('truePosition').textContent = metrics.truePosition.toFixed(1);
+      document.getElementById('trueRange').textContent = `± ${metrics.trueRange}`;
+
+      // Wins added
+      const winsValue = metrics.winsAdded >= 0 ? `+${metrics.winsAdded}` : metrics.winsAdded;
+      document.getElementById('winsAdded').textContent = winsValue;
+
+      // Trend indicator
+      const trendEl = document.getElementById('trendIndicator');
+      if (metrics.trendDirection === 'rising') {
+        trendEl.className = 'change-indicator positive';
+        trendEl.innerHTML = `
+          <svg class="icon-lg" viewBox="0 0 24 24" style="width: 2rem; height: 2rem;">
+            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+            <polyline points="17 6 23 6 23 12"></polyline>
+          </svg>
+        `;
+      } else if (metrics.trendDirection === 'falling') {
+        trendEl.className = 'change-indicator negative';
+        trendEl.innerHTML = `
+          <svg class="icon-lg" viewBox="0 0 24 24" style="width: 2rem; height: 2rem;">
+            <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
+            <polyline points="17 18 23 18 23 12"></polyline>
+          </svg>
+        `;
+      } else {
+        trendEl.className = 'change-indicator neutral';
+        trendEl.innerHTML = `
+          <svg class="icon-lg" viewBox="0 0 24 24" style="width: 2rem; height: 2rem;">
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        `;
+      }
+    }
+
+    /**
+     * ============================================================================
+     * PERFORMANCE DATA
+     * Mock percentile data for different metric categories
+     * ============================================================================
+     */
+
+    const PERCENTILE_DATA = {
+      anthropometrics: [
+        { metric: "Height", value: "6'9\"", percentile: 92, unit: "" },
+        { metric: "Weight", value: "205", percentile: 78, unit: "lbs" },
+        { metric: "Wingspan", value: "7'2\"", percentile: 95, unit: "" },
+        { metric: "Standing Reach", value: "9'2\"", percentile: 94, unit: "" },
+        { metric: "Hand Length", value: "9.5", percentile: 88, unit: "in" },
+        { metric: "Hand Width", value: "10.25", percentile: 90, unit: "in" },
+        { metric: "Body Fat %", value: "6.2", percentile: 85, unit: "%" },
+      ],
+      combinePerformance: [
+        { metric: "Lane Agility", value: "10.84", percentile: 89, unit: "sec" },
+        { metric: "3/4 Sprint", value: "3.15", percentile: 91, unit: "sec" },
+        { metric: "Max Vertical", value: "36.0", percentile: 87, unit: "in" },
+        { metric: "Standing Vertical", value: "30.5", percentile: 83, unit: "in" },
+        { metric: "Bench Press", value: "12", percentile: 68, unit: "reps" },
+        { metric: "Shuttle Run", value: "2.98", percentile: 92, unit: "sec" },
+      ],
+      advancedStats: [
+        { metric: "Points Per Game", value: "21.4", percentile: 96, unit: "PPG" },
+        { metric: "Rebounds Per Game", value: "8.9", percentile: 93, unit: "RPG" },
+        { metric: "Assists Per Game", value: "4.1", percentile: 88, unit: "APG" },
+        { metric: "Steals Per Game", value: "1.8", percentile: 90, unit: "SPG" },
+        { metric: "Blocks Per Game", value: "1.6", percentile: 89, unit: "BPG" },
+        { metric: "FG%", value: "52.3", percentile: 85, unit: "%" },
+        { metric: "3PT%", value: "38.1", percentile: 79, unit: "%" },
+        { metric: "FT%", value: "78.5", percentile: 72, unit: "%" },
+        { metric: "PER", value: "28.6", percentile: 97, unit: "" },
+        { metric: "True Shooting %", value: "61.2", percentile: 94, unit: "%" },
+        { metric: "Usage Rate", value: "28.4", percentile: 91, unit: "%" },
+        { metric: "Win Shares", value: "6.8", percentile: 95, unit: "" },
+        { metric: "Box Plus/Minus", value: "+8.9", percentile: 96, unit: "" },
+        { metric: "Offensive Rating", value: "118", percentile: 92, unit: "" },
+        { metric: "Defensive Rating", value: "96", percentile: 93, unit: "" },
+      ]
+    };
+
+    /**
+     * ============================================================================
+     * PLAYER COMPARISONS DATA
+     * Mock comparison data for demonstration
+     * ============================================================================
+     */
+
+    const COMPARISON_DATA = [
+      {
+        name: "Chet Holmgren",
+        position: "F/C",
+        school: "Gonzaga (2022)",
+        similarity: 92,
+        img: "https://placehold.co/320x420/edf2f7/1f2937?text=Chet+Holmgren",
+        stats: { ht: "84", ws: "90", vert: "28" }
+      },
+      {
+        name: "Jaren Jackson Jr.",
+        position: "F",
+        school: "Michigan State (2018)",
+        similarity: 87,
+        img: "https://placehold.co/320x420/edf2f7/1f2937?text=Jaren+Jackson+Jr",
+        stats: { ht: "83", ws: "88", vert: "33" }
+      },
+      {
+        name: "Evan Mobley",
+        position: "F/C",
+        school: "USC (2021)",
+        similarity: 85,
+        img: "https://placehold.co/320x420/edf2f7/1f2937?text=Evan+Mobley",
+        stats: { ht: "84", ws: "87", vert: "30" }
+      },
+      {
+        name: "Paolo Banchero",
+        position: "F",
+        school: "Duke (2022)",
+        similarity: 78,
+        img: "https://placehold.co/320x420/edf2f7/1f2937?text=Paolo+Banchero",
+        stats: { ht: "82", ws: "85", vert: "29" }
+      },
+      {
+        name: "Franz Wagner",
+        position: "F",
+        school: "Michigan (2021)",
+        similarity: 74,
+        img: "https://placehold.co/320x420/edf2f7/1f2937?text=Franz+Wagner",
+        stats: { ht: "82", ws: "84", vert: "31" }
+      },
+      {
+        name: "Jonathan Kuminga",
+        position: "F",
+        school: "G League (2021)",
+        similarity: 68,
+        img: "https://placehold.co/320x420/edf2f7/1f2937?text=Jonathan+Kuminga",
+        stats: { ht: "80", ws: "86", vert: "35" }
+      },
+      {
+        name: "Jabari Smith Jr.",
+        position: "F",
+        school: "Auburn (2022)",
+        similarity: 72,
+        img: "https://placehold.co/320x420/edf2f7/1f2937?text=Jabari+Smith+Jr",
+        stats: { ht: "82", ws: "87", vert: "32" }
+      },
+      {
+        name: "Scottie Barnes",
+        position: "F",
+        school: "Florida State (2021)",
+        similarity: 70,
+        img: "https://placehold.co/320x420/edf2f7/1f2937?text=Scottie+Barnes",
+        stats: { ht: "80", ws: "90", vert: "34" }
+      }
+    ];
+
+    /**
+     * ============================================================================
+     * PLAYER COMPARISONS MODULE
+     * Handles player comparison functionality
+     * ============================================================================
+     */
+    const PlayerComparisonsModule = {
+      currentType: 'anthropometrics',
+      currentPool: 'currentDraft',
+      positionFilter: false,
+      selectedCompPlayer: null,
+
+      /**
+       * Initialize the module
+       */
+      init() {
+        this.setupEventListeners();
+        this.renderResults();
+      },
+
+      /**
+       * Setup event listeners for controls
+       */
+      setupEventListeners() {
+        // Comparison type tabs
+        document.querySelectorAll('.comp-tab').forEach((tab) => {
+          tab.addEventListener('click', (e) => {
+            // Remove active class from all tabs
+            document.querySelectorAll('.comp-tab').forEach((t) => t.classList.remove('active'));
+            // Add active class to clicked tab
+            tab.classList.add('active');
+            // Update current type
+            this.currentType = tab.dataset.category;
+            // Re-render results
+            this.renderResults();
+          });
+        });
+
+        // Comparison pool dropdown
+        document.getElementById('compPool').addEventListener('change', (e) => {
+          this.currentPool = e.target.value;
+          this.renderResults();
+        });
+
+        // Position filter checkbox
+        document.getElementById('compPositionFilter').addEventListener('change', (e) => {
+          this.positionFilter = e.target.checked;
+          this.renderResults();
+        });
+
+        // Close comparison modal
+        document.getElementById('closeComparison').addEventListener('click', () => {
+          this.closeComparison();
+        });
+
+        // Close modal when clicking outside
+        document.getElementById('comparisonModal').addEventListener('click', (e) => {
+          if (e.target.id === 'comparisonModal') {
+            this.closeComparison();
+          }
+        });
+      },
+
+      /**
+       * Render comparison results
+       */
+      renderResults() {
+        const grid = document.getElementById('compResultsGrid');
+        grid.innerHTML = COMPARISON_DATA.map(player => this.renderCompCard(player)).join('');
+
+        // Add event listeners to compare buttons
+        document.querySelectorAll('.comp-compare-btn').forEach((btn, index) => {
+          btn.addEventListener('click', () => {
+            this.showComparison(COMPARISON_DATA[index]);
+          });
+        });
+      },
+
+      /**
+       * Render a single comparison card
+       * @param {Object} player - Player data
+       * @returns {string} HTML string
+       */
+      renderCompCard(player) {
+        // Determine similarity badge class
+        let badgeClass = 'similarity-badge-weak';
+        if (player.similarity >= 90) badgeClass = 'similarity-badge-high';
+        else if (player.similarity >= 75) badgeClass = 'similarity-badge-good';
+        else if (player.similarity >= 60) badgeClass = 'similarity-badge-moderate';
+
+        return `
+          <div class="prospect-card">
+            <div class="prospect-image-wrapper">
+              <img
+                src="${player.img}"
+                alt="${player.name}"
+                class="prospect-image"
+              />
+              <span class="similarity-badge ${badgeClass}">${player.similarity}% Match</span>
+            </div>
+            <div class="prospect-info">
+              <h4 class="prospect-name">${player.name}</h4>
+              <p class="prospect-meta">${player.position} • ${player.school}</p>
+              <div class="prospect-stats">
+                <div class="stat-pill">
+                  <span class="label">HT</span>
+                  <span class="value">${player.stats.ht}"</span>
+                </div>
+                <div class="stat-pill">
+                  <span class="label">WS</span>
+                  <span class="value">${player.stats.ws}"</span>
+                </div>
+                <div class="stat-pill">
+                  <span class="label">VRT</span>
+                  <span class="value">${player.stats.vert}"</span>
+                </div>
+              </div>
+              <button class="comp-compare-btn">
+                <!-- VS icon -->
+                <svg class="icon" style="width: 0.875rem; height: 0.875rem;" viewBox="0 0 24 24">
+                  <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+                  <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+                  <path d="M3 6l7 7"></path>
+                </svg>
+                Compare
+              </button>
+            </div>
+          </div>
+        `;
+      },
+
+      /**
+       * Show comparison modal
+       * @param {Object} compPlayer - Player to compare against
+       */
+      showComparison(compPlayer) {
+        this.selectedCompPlayer = compPlayer;
+
+        // Update modal title
+        document.getElementById('comparisonTitle').textContent =
+          `${PLAYER_DATA.name} vs. ${compPlayer.name}`;
+
+        // Update table headers
+        document.getElementById('compPlayerA').textContent = PLAYER_DATA.name;
+        document.getElementById('compPlayerB').textContent = compPlayer.name;
+
+        // Render comparison table
+        this.renderComparisonTable();
+
+        // Show modal
+        document.getElementById('comparisonModal').classList.add('active');
+        document.body.style.overflow = 'hidden';
+      },
+
+      /**
+       * Close comparison modal
+       */
+      closeComparison() {
+        document.getElementById('comparisonModal').classList.remove('active');
+        document.body.style.overflow = '';
+      },
+
+      /**
+       * Render comparison table
+       */
+      renderComparisonTable() {
+        const tbody = document.getElementById('compTableBody');
+        const compPlayer = this.selectedCompPlayer;
+
+        // Mock comparison metrics based on current type
+        const metrics = [
+          { name: 'Height', valueA: PLAYER_DATA.height, valueB: '7\'1"' },
+          { name: 'Weight', valueA: PLAYER_DATA.weight, valueB: '195 lbs' },
+          { name: 'Wingspan', valueA: PLAYER_DATA.wingspan, valueB: compPlayer.stats.ws + '"' },
+          { name: 'Vertical Leap', valueA: '36"', valueB: compPlayer.stats.vert + '"' },
+          { name: 'Standing Reach', valueA: '9\'2"', valueB: '9\'0"' },
+          { name: 'Draft Position', valueA: '#1', valueB: '#2' }
+        ];
+
+        tbody.innerHTML = metrics.map(metric => {
+          const isWinnerA = Math.random() > 0.5;
+          const classA = isWinnerA ? 'comp-table-value winner' : 'comp-table-value';
+          const classB = !isWinnerA ? 'comp-table-value winner' : 'comp-table-value';
+
+          return `
+            <tr>
+              <td class="text-right ${classA}">${metric.valueA}</td>
+              <td class="text-center">${metric.name}</td>
+              <td class="text-left ${classB}">${metric.valueB}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    };
+
+    /**
+     * ============================================================================
+     * PERFORMANCE MODULE
+     * Handles percentile visualization and interactions
+     * ============================================================================
+     */
+    const PerformanceModule = {
+      currentCategory: 'anthropometrics',
+      currentCohort: 'currentDraft',
+      positionAdjusted: true,
+
+      /**
+       * Initialize the module
+       */
+      init() {
+        this.setupEventListeners();
+        this.renderPercentiles();
+      },
+
+      /**
+       * Setup event listeners for controls
+       */
+      setupEventListeners() {
+        // Cohort selector
+        document.getElementById('perfCohort').addEventListener('change', (e) => {
+          this.currentCohort = e.target.value;
+          this.renderPercentiles();
+        });
+
+        // Position filter checkbox
+        document.getElementById('perfPositionFilter').addEventListener('change', (e) => {
+          this.positionAdjusted = e.target.checked;
+          this.renderPercentiles();
+        });
+
+        // Category tabs
+        document.querySelectorAll('.perf-tab').forEach((tab) => {
+          tab.addEventListener('click', (e) => {
+            // Remove active class from all tabs
+            document.querySelectorAll('.perf-tab').forEach((t) => t.classList.remove('active'));
+            // Add active class to clicked tab
+            tab.classList.add('active');
+            // Update current category
+            this.currentCategory = tab.dataset.category;
+            // Re-render percentiles
+            this.renderPercentiles();
+          });
+        });
+      },
+
+      /**
+       * Render percentile bars for the current category
+       */
+      renderPercentiles() {
+        const container = document.getElementById('perfBarsContainer');
+        const data = PERCENTILE_DATA[this.currentCategory];
+
+        container.innerHTML = data.map((item) => this.renderPercentileBar(item)).join('');
+      },
+
+      /**
+       * Render a single percentile bar
+       * @param {Object} item - Metric data
+       * @returns {string} HTML string
+       */
+      renderPercentileBar(item) {
+        const percentile = item.percentile;
+        const colorClass = this.getPercentileColorClass(percentile);
+        const displayValue = item.unit ? `${item.value} ${item.unit}` : item.value;
+
+        return `
+          <div class="perf-bar-row">
+            <div class="perf-metric-label">${item.metric}</div>
+            <div class="perf-bar-track">
+              <div class="perf-bar-fill ${colorClass}" style="width: ${percentile}%"></div>
+            </div>
+            <div class="perf-values">
+              <div class="perf-actual-value">${displayValue}</div>
+              <div class="perf-percentile-value ${colorClass}">${percentile}th %ile</div>
+            </div>
+          </div>
+        `;
+      },
+
+      /**
+       * Get color class based on percentile value
+       * @param {number} percentile - Percentile value (0-100)
+       * @returns {string} CSS class name
+       */
+      getPercentileColorClass(percentile) {
+        if (percentile >= 90) return 'elite';
+        if (percentile >= 75) return 'good';
+        if (percentile >= 50) return 'average';
+        return 'below-average';
+      }
+    };
+
+    /**
+     * ============================================================================
+     * HEAD-TO-HEAD COMPARISON MODULE
+     * Integrated player comparison with category toggles
+     * ============================================================================
+     */
+    const HeadToHeadModule = {
+      currentCategory: 'anthropometrics',
+      playerA: PLAYER_DATA.name,
+      playerB: null,
+      isSwapped: false,
+
+      /**
+       * Initialize the module
+       */
+      init() {
+        this.populatePlayerSelector();
+        this.setupEventListeners();
+        // Set default comparison to first player
+        if (COMPARISON_DATA.length > 0) {
+          this.playerB = COMPARISON_DATA[0].name;
+          document.getElementById('h2hPlayerSelect').value = this.playerB;
+          this.renderComparison();
+        }
+      },
+
+      /**
+       * Populate player selector dropdown
+       */
+      populatePlayerSelector() {
+        const select = document.getElementById('h2hPlayerSelect');
+        select.innerHTML = COMPARISON_DATA.map(player =>
+          `<option value="${player.name}">${player.name}</option>`
+        ).join('');
+      },
+
+      /**
+       * Setup event listeners
+       */
+      setupEventListeners() {
+        // Player selector
+        document.getElementById('h2hPlayerSelect').addEventListener('change', (e) => {
+          this.playerB = e.target.value;
+          this.renderComparison();
+        });
+
+        // Swap button
+        document.getElementById('h2hSwapBtn').addEventListener('click', () => {
+          this.isSwapped = !this.isSwapped;
+          this.renderComparison();
+        });
+
+        // Category tabs
+        document.querySelectorAll('.h2h-tab').forEach((tab) => {
+          tab.addEventListener('click', () => {
+            // Remove active class from all tabs
+            document.querySelectorAll('.h2h-tab').forEach((t) => t.classList.remove('active'));
+            // Add active class to clicked tab
+            tab.classList.add('active');
+            // Update current category
+            this.currentCategory = tab.dataset.category;
+            // Re-render comparison
+            this.renderComparison();
+          });
+        });
+      },
+
+      /**
+       * Render the comparison
+       */
+      renderComparison() {
+        const comparisonPlayer = COMPARISON_DATA.find(p => p.name === this.playerB);
+        if (!comparisonPlayer) return;
+
+        // Update headers
+        const playerAName = this.isSwapped ? this.playerB : this.playerA;
+        const playerBName = this.isSwapped ? this.playerA : this.playerB;
+
+        document.getElementById('h2hPlayerA').textContent = playerAName;
+        document.getElementById('h2hPlayerB').textContent = playerBName;
+
+        // Update photos
+        const playerAImg = this.isSwapped ? comparisonPlayer.img : PLAYER_DATA.photo;
+        const playerBImg = this.isSwapped ? PLAYER_DATA.photo : comparisonPlayer.img;
+
+        document.getElementById('h2hPhotoA').src = playerAImg;
+        document.getElementById('h2hPhotoA').alt = playerAName;
+        document.getElementById('h2hPhotoB').src = playerBImg;
+        document.getElementById('h2hPhotoB').alt = playerBName;
+
+        document.getElementById('h2hPhotoNameA').textContent = playerAName;
+        document.getElementById('h2hPhotoNameB').textContent = playerBName;
+
+        // Update similarity badge
+        document.getElementById('h2hSimilarityBadge').textContent = `${comparisonPlayer.similarity}% Match`;
+
+        // Render comparison table
+        this.renderTable(comparisonPlayer);
+      },
+
+      /**
+       * Render comparison table
+       * @param {Object} comparisonPlayer - The player being compared
+       */
+      renderTable(comparisonPlayer) {
+        const tbody = document.getElementById('h2hTableBody');
+        const metrics = this.getMetricsForCategory();
+
+        let winsA = 0;
+        let winsB = 0;
+
+        const rows = metrics.map(metric => {
+          // Generate mock values for demonstration
+          const valueA = this.generateValue(metric, PLAYER_DATA.name);
+          const valueB = this.generateValue(metric, comparisonPlayer.name);
+
+          const numA = parseFloat(valueA);
+          const numB = parseFloat(valueB);
+
+          // Determine winner (higher is better for most metrics)
+          const isWinnerA = numA > numB;
+          const isWinnerB = numB > numA;
+
+          if (isWinnerA) winsA++;
+          if (isWinnerB) winsB++;
+
+          // Apply swap logic
+          const displayValueA = this.isSwapped ? valueB : valueA;
+          const displayValueB = this.isSwapped ? valueA : valueB;
+          const displayWinnerA = this.isSwapped ? isWinnerB : isWinnerA;
+          const displayWinnerB = this.isSwapped ? isWinnerA : isWinnerB;
+
+          const classA = displayWinnerA ? 'h2h-value winner' : 'h2h-value loser';
+          const classB = displayWinnerB ? 'h2h-value winner' : 'h2h-value loser';
+
+          return `
+            <tr>
+              <td class="text-right"><span class="${classA}">${displayValueA}${metric.unit}</span></td>
+              <td class="text-center" style="color: var(--color-slate-600);">${metric.name}</td>
+              <td class="text-left"><span class="${classB}">${displayValueB}${metric.unit}</span></td>
+            </tr>
+          `;
+        }).join('');
+
+        tbody.innerHTML = rows;
+
+        // Update winner declaration
+        this.renderWinnerDeclaration(winsA, winsB, metrics.length);
+      },
+
+      /**
+       * Get metrics for current category
+       * @returns {Array} Metrics array
+       */
+      getMetricsForCategory() {
+        const metricsMap = {
+          anthropometrics: [
+            { name: "Height", unit: "\"" },
+            { name: "Weight", unit: " lbs" },
+            { name: "Wingspan", unit: "\"" },
+            { name: "Standing Reach", unit: "\"" },
+            { name: "Hand Length", unit: "\"" },
+            { name: "Hand Width", unit: "\"" },
+          ],
+          combinePerformance: [
+            { name: "Lane Agility", unit: " sec" },
+            { name: "3/4 Sprint", unit: " sec" },
+            { name: "Max Vertical", unit: "\"" },
+            { name: "Standing Vertical", unit: "\"" },
+            { name: "Bench Press", unit: " reps" },
+            { name: "Shuttle Run", unit: " sec" },
+          ],
+          advancedStats: [
+            { name: "Points Per Game", unit: "" },
+            { name: "Rebounds Per Game", unit: "" },
+            { name: "Assists Per Game", unit: "" },
+            { name: "FG%", unit: "%" },
+            { name: "3PT%", unit: "%" },
+            { name: "PER", unit: "" },
+            { name: "True Shooting %", unit: "%" },
+            { name: "Usage Rate", unit: "%" },
+          ]
+        };
+
+        return metricsMap[this.currentCategory] || metricsMap.anthropometrics;
+      },
+
+      /**
+       * Generate mock value for a metric
+       * @param {Object} metric - Metric definition
+       * @param {string} playerName - Player name for seeding
+       * @returns {string} Generated value
+       */
+      generateValue(metric) {
+        const name = metric.name;
+
+        if (name.includes("Height")) return (78 + Math.floor(Math.random() * 6)).toFixed(0);
+        if (name.includes("Weight")) return (200 + Math.floor(Math.random() * 40)).toFixed(0);
+        if (name.includes("Wingspan")) return (82 + Math.floor(Math.random() * 8)).toFixed(0);
+        if (name.includes("Standing Reach")) return (108 + Math.floor(Math.random() * 6)).toFixed(0);
+        if (name.includes("Hand")) return (8 + Math.random() * 2).toFixed(1);
+        if (name.includes("Agility") || name.includes("Sprint") || name.includes("Shuttle")) return (2.8 + Math.random() * 1).toFixed(2);
+        if (name.includes("Vertical")) return (28 + Math.random() * 12).toFixed(1);
+        if (name.includes("Bench")) return Math.floor(8 + Math.random() * 12);
+        if (name.includes("Points")) return (15 + Math.random() * 15).toFixed(1);
+        if (name.includes("Rebounds")) return (5 + Math.random() * 8).toFixed(1);
+        if (name.includes("Assists")) return (2 + Math.random() * 6).toFixed(1);
+        if (name.includes("FG%") || name.includes("3PT%")) return (35 + Math.random() * 20).toFixed(1);
+        if (name.includes("PER")) return (15 + Math.random() * 15).toFixed(1);
+        if (name.includes("True Shooting")) return (50 + Math.random() * 15).toFixed(1);
+        if (name.includes("Usage")) return (20 + Math.random() * 15).toFixed(1);
+
+        return (Math.random() * 100).toFixed(1);
+      },
+
+      /**
+       * Render winner declaration banner
+       * @param {number} winsA - Wins for player A
+       * @param {number} winsB - Wins for player B
+       * @param {number} total - Total metrics
+       */
+      renderWinnerDeclaration(winsA, winsB, total) {
+        const winnerDiv = document.getElementById('h2hWinnerDeclaration');
+        const playerAName = this.isSwapped ? this.playerB : this.playerA;
+        const playerBName = this.isSwapped ? this.playerA : this.playerB;
+
+        let bannerText = '';
+        let bannerClass = '';
+
+        if (winsA > winsB) {
+          bannerText = `${playerAName} wins ${winsA}-${winsB} (${total} metrics)`;
+          bannerClass = 'h2h-winner-banner winner-a';
+        } else if (winsB > winsA) {
+          bannerText = `${playerBName} wins ${winsB}-${winsA} (${total} metrics)`;
+          bannerClass = 'h2h-winner-banner winner-b';
+        } else {
+          bannerText = `Tie — ${winsA}-${winsB} (${total} metrics)`;
+          bannerClass = 'h2h-winner-banner tie';
+        }
+
+        winnerDiv.innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
+      }
+    };
+
+    /**
+     * ============================================================================
+     * PLAYER FEED MODULE
+     * Renders player-specific news feed
+     * ============================================================================
+     */
+    const PlayerFeedModule = {
+      // Player-specific news items
+      feedItems: [
+        {
+          source: "@DraftExpress",
+          title: "Cooper Flagg dominates in Duke scrimmage with 28 points, 12 rebounds",
+          time: "2h",
+          tag: "Highlight"
+        },
+        {
+          source: "ESPN",
+          title: "Flagg's defensive versatility makes him the clear #1 pick",
+          time: "5h",
+          tag: "Analysis"
+        },
+        {
+          source: "The Athletic",
+          title: "How Cooper Flagg's playmaking compares to past top picks",
+          time: "8h",
+          tag: "Analysis"
+        },
+        {
+          source: "@NBADraftWass",
+          title: "Cooper Flagg wingspan measured at 7'2\" at Duke Pro Day",
+          time: "12h",
+          tag: "Riser"
+        },
+        {
+          source: "Bleacher Report",
+          title: "Flagg shows improved three-point shooting in recent workouts",
+          time: "1d",
+          tag: "Highlight"
+        },
+        {
+          source: "The Ringer",
+          title: "Breaking down Cooper Flagg's strengths and weaknesses",
+          time: "2d",
+          tag: "Analysis"
+        },
+        {
+          source: "@JonGivony",
+          title: "NBA scouts rave about Flagg's basketball IQ and work ethic",
+          time: "2d",
+          tag: "Riser"
+        },
+        {
+          source: "Sports Illustrated",
+          title: "Cooper Flagg's path to becoming college basketball's best player",
+          time: "3d",
+          tag: "Analysis"
+        }
+      ],
+
+      /**
+       * Initialize the player feed
+       */
+      init() {
+        const feedContainer = document.getElementById('playerFeedContainer');
+        if (feedContainer) {
+          feedContainer.innerHTML = this.renderFeed();
+        }
+      },
+
+      /**
+       * Render all feed items
+       * @returns {string} HTML string
+       */
+      renderFeed() {
+        return this.feedItems.map((item) => {
+          const tagClass = this.getTagClass(item.tag);
+
+          return `
+            <div class="feed-item">
+              <p class="feed-title">${item.title}</p>
+              <div class="feed-meta">
+                ${item.source}
+                <!-- ChevronRight icon -->
+                <svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+                ${item.time}
+                <span class="feed-tag ${tagClass}">${item.tag}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      },
+
+      /**
+       * Get CSS class for tag type
+       * @param {string} tag - Tag name
+       * @returns {string} CSS class
+       */
+      getTagClass(tag) {
+        const tagMap = {
+          'Riser': 'riser',
+          'Faller': 'faller',
+          'Analysis': 'analysis',
+          'Highlight': 'highlight'
+        };
+        return tagMap[tag] || 'analysis';
+      }
+    };
+
+    /**
+     * ============================================================================
+     * APPLICATION INITIALIZATION
+     * Initialize all modules when DOM is ready
+     * ============================================================================
+     */
+    document.addEventListener('DOMContentLoaded', () => {
+      populatePlayerData();
+      PerformanceModule.init();
+      PlayerComparisonsModule.init();
+      HeadToHeadModule.init();
+      PlayerFeedModule.init();
+    });
+  </script>
+
+</body>
+</html>
