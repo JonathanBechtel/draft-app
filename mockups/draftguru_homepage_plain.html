@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DraftGuru — Light Retro (Plain HTML)</title>
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root { --ty-head:'Russo One', system-ui; --ty-mono:'Azeret Mono', ui-monospace; }
+    .ty-head { font-family: var(--ty-head); letter-spacing: 0.02em; }
+    .ty-mono { font-family: var(--ty-mono); }
+    .num { font-variant-numeric: tabular-nums; }
+    .caps { text-transform: uppercase; letter-spacing: 0.06em; }
+    .tile-bg {
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(99,102,241,0.06) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+      background-position: 0 0, 0 0;
+    }
+    .pixel-border { box-shadow: 0 0 0 1px rgba(15,23,42,0.06); outline: 1px solid rgba(99,102,241,0.2); }
+    @keyframes scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    .ticker-scroll { animation: scroll 35s linear infinite; }
+    /* VS scanlines overlay helper */
+    .scanlines {
+      background-image: repeating-linear-gradient(0deg, rgba(0,0,0,1) 0, rgba(0,0,0,1) 1px, transparent 1px, transparent 3px);
+      opacity: .05;
+      pointer-events: none;
+    }
+    /* Toggle styles */
+    .toggle { height: 2rem; padding: 0 .75rem; font-size: 12px; border-width: 1px; border-radius: .375rem; }
+    .toggle[data-active="true"] { background: rgb(238,242,255); color: rgb(67,56,202); border-color: rgb(165,180,252); }
+    .toggle[data-active="false"] { background: white; color: rgb(51,65,85); border-color: rgb(203,213,225); }
+    /* Pixel corner accents */
+    .pixel-accents::before, .pixel-accents::after {
+      content:""; position: absolute; width: 1rem; height: 1rem; opacity:0; transition: opacity .2s ease;
+    }
+    .pixel-accents::before { top:-0.25rem; left:-0.25rem; background: linear-gradient(45deg,transparent 50%, #6366f1 50%); }
+    .pixel-accents::after { bottom:-0.25rem; right:-0.25rem; background: linear-gradient(225deg,transparent 50%, #22c55e 50%); }
+    .group:hover .pixel-accents::before, .group:hover .pixel-accents::after { opacity: 1; }
+    /* Card helpers (shadcn-esque) */
+    .card { background:white; border-radius: 0.75rem; }
+    .card-header { padding: 1rem 1.25rem 0.25rem; }
+    .card-content { padding: 0.75rem 1rem 1rem; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-white to-slate-50 text-slate-900 pt-12 px-6 pb-8 rounded-2xl">
+  <div class="max-w-6xl mx-auto w-full lg:w-[80%] space-y-16">
+  <!-- Top Nav -->
+  <header class="flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <!-- Sparkles icon -->
+      <svg class="w-5 h-5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z"/>
+        <path d="M5 16l.7 1.6L7.3 18l-1.6.7L5 20l-.7-1.3L3 18l1.3-.4L5 16zM19 16l.7 1.6L21.3 18l-1.6.7L19 20l-.7-1.3L17 18l1.3-.4L19 16z"/>
+      </svg>
+      <h1 class="text-2xl md:text-3xl tracking-tight ty-head">DraftGuru</h1>
+    </div>
+    <div class="flex items-center gap-2">
+      <input id="search" placeholder="Search prospects…" class="w-72 border rounded-md px-3 py-2" />
+      <button class="border rounded-md w-10 h-10 grid place-items-center">
+        <!-- Search icon -->
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Riser/Faller Ticker -->
+  <div class="rounded-xl border bg-white shadow-sm overflow-hidden tile-bg outline outline-2 outline-indigo-300/60">
+    <div class="flex items-center gap-3 px-4 py-2 text-sm border-b bg-slate-50">
+      <!-- Activity icon -->
+      <svg class="w-4 h-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+      </svg>
+      <span class="font-semibold ty-mono caps tracking-wide">Market Moves</span>
+      <span class="text-slate-500 ty-mono">(Risers &amp; Fallers)</span>
+    </div>
+    <div class="relative overflow-hidden">
+      <div id="ticker" class="flex gap-8 ticker-scroll whitespace-nowrap px-4 py-2 text-sm text-slate-700"></div>
+    </div>
+  </div>
+
+  <!-- Consensus Mock Draft -->
+  <section>
+    <h2 class="text-2xl font-semibold ty-mono caps pl-2 border-l-4 border-emerald-500/80 mb-4">Consensus Mock Draft</h2>
+    <p class="text-sm text-slate-500 mb-4 pl-2">Averaged from 15 expert boards • updated hourly</p>
+    <div class="card shadow-xl ring-2 ring-emerald-300/60">
+      <div class="card-content overflow-x-auto">
+        <table class="min-w-full whitespace-nowrap text-sm" id="mock-table">
+          <thead>
+            <tr class="border-b">
+              <th class="p-2 text-left font-semibold ty-mono caps text-[12px]">Pick</th>
+              <th class="p-2 text-left font-semibold ty-mono caps text-[12px]">Player</th>
+              <th class="p-2 text-left font-semibold ty-mono caps text-[12px]">Pos</th>
+              <th class="p-2 text-left font-semibold ty-mono caps text-[12px]">Team</th>
+              <th class="p-2 text-left font-semibold ty-mono caps text-[12px]">Avg</th>
+              <th class="p-2 text-left font-semibold ty-mono caps text-[12px]">Δ</th>
+              <th class="p-2 text-left font-semibold ty-mono caps text-[12px]">Odds</th>
+            </tr>
+          </thead>
+          <tbody id="mock-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- Top Prospects -->
+  <section class="space-y-3">
+    <h3 class="text-2xl font-semibold ty-mono caps pl-2 border-l-4 border-indigo-500/80 mb-4">Top Prospects</h3>
+    <div id="prospects" class="grid grid-cols-2 md:grid-cols-3 gap-4"></div>
+  </section>
+
+  <!-- VS Arena -->
+  <section>
+    <div class="flex items-center justify-between gap-4 mb-4">
+      <div class="flex items-center gap-2">
+        <!-- Swords icon -->
+        <svg class="w-5 h-5 text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+          <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+          <path d="M3 6l7 7"></path>
+        </svg>
+        <h3 class="text-2xl font-semibold ty-mono caps pl-2 border-l-4 border-fuchsia-500/80">VS Arena</h3>
+      </div>
+      <div class="flex items-center gap-1">
+        <button class="toggle" data-mode="Measurables" data-active="true">Measurables</button>
+        <button class="toggle" data-mode="Production" data-active="false">Production</button>
+        <button class="toggle" data-mode="Rank Delta" data-active="false">Rank Delta</button>
+      </div>
+    </div>
+    <div class="relative card shadow-xl overflow-hidden ring-2 ring-fuchsia-300/60">
+      <div class="absolute inset-0 scanlines"></div>
+      <div class="card-content grid grid-cols-1 sm:grid-cols-3 gap-4 items-end relative">
+        <select id="playerA" class="bg-white border rounded-md px-3 py-2"></select>
+        <div class="flex justify-center">
+          <div class="text-[10px] md:text-xs px-3 py-1 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 ty-mono caps">VS</div>
+        </div>
+        <select id="playerB" class="bg-white border rounded-md px-3 py-2"></select>
+
+        <div class="sm:col-span-3 grid grid-cols-3 gap-3 pt-2">
+          <div id="meterA" class="w-full"></div>
+          <div class="flex items-center justify-center"><span class="text-xs text-slate-600 ty-mono caps">VS</span></div>
+          <div id="meterB" class="w-full"></div>
+        </div>
+
+        <div class="sm:col-span-3 flex justify-between pt-2">
+          <button class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-md ty-mono caps">Compare</button>
+          <button class="border px-4 py-2 rounded-md ty-mono caps">Advanced Stats</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Live Draft Buzz -->
+  <section>
+    <h3 class="text-2xl font-semibold ty-mono caps pl-2 border-l-4 border-cyan-500/70 mb-4">Live Draft Buzz</h3>
+    <div id="feed" class="flex flex-col gap-3 max-h-[520px] overflow-y-auto pr-1"></div>
+  </section>
+
+  <!-- Draft Position Specials -->
+  <section>
+    <h3 class="text-2xl font-semibold ty-mono caps pl-2 border-l-4 border-amber-500/80 mb-4">Draft Position Specials</h3>
+    <p class="text-sm text-slate-500 mb-4 pl-2">Powered by FanDuel • 21+</p>
+    <div class="card bg-white shadow-xl ring-1 ring-amber-400/60">
+      <div id="specials" class="card-content space-y-2 text-sm"></div>
+    </div>
+  </section>
+
+  <script>
+    // ----- Data (mirrors the React version) -----
+    const MOCK_PICKS = [
+      { pick: 1, name: "Cooper Flagg", position: "F", college: "Duke", avgRank: 1.2, change: +1 },
+      { pick: 2, name: "Ace Bailey", position: "G/F", college: "Rutgers", avgRank: 2.8, change: -1 },
+      { pick: 3, name: "Zachary Rioux", position: "C", college: "Kentucky", avgRank: 3.4, change: +2 },
+      { pick: 4, name: "Matas Buzelis", position: "F", college: "G League", avgRank: 4.1, change: 0 },
+      { pick: 5, name: "KJ Evans Jr.", position: "F", college: "Oregon", avgRank: 5.7, change: -2 },
+    ];
+    const PLAYERS = MOCK_PICKS.map((p) => ({
+      ...p,
+      img: `https://placehold.co/320x420/edf2f7/1f2937?text=${encodeURIComponent(p.name)}`,
+      measurables: { ht: 80 + (p.pick % 3), ws: 84 + (p.pick % 5), vert: 34 + (p.pick % 7) },
+      prod: { pts: 18 + p.pick, reb: 7 + (p.pick % 4), ast: 3 + (p.pick % 5) },
+    }));
+    const FEED = [
+      { source: "@DraftExpress", title: "Ace Bailey wingspan causes chaos at Elite Camp", time: "3m", tag: "Riser" },
+      { source: "No Ceilings", title: "Rioux rim deterrence study: early returns", time: "12m", tag: "Riser" },
+      { source: "The Ringer", title: "Buzelis fit questions with top-5 teams", time: "27m", tag: "Faller" },
+      { source: "BR", title: "Flagg off-ball value and scheme versatility", time: "1h", tag: "Riser" },
+    ];
+    const STAT_MODES = ["Measurables","Production","Rank Delta"];
+    let currentMode = "Measurables";
+
+    const risersFallersTicker = [...MOCK_PICKS]
+      .map((p) => ({ name: p.name, change: p.change }))
+      .sort((a, b) => b.change - a.change);
+
+    // ----- Helpers -----
+    function labelFor(mode, side) {
+      if (mode === "Measurables") return `Explosive PWR (${side})`;
+      if (mode === "Production") return `Box Score DPS (${side})`;
+      return `Consensus Δ Score (${side})`;
+    }
+    function scoreFor(mode, p) {
+      if (mode === "Measurables") {
+        const s = p.measurables.vert * 1.2 + p.measurables.ws * 0.6 + p.measurables.ht * 0.4;
+        return Math.round((s / 160) * 100);
+      }
+      if (mode === "Production") {
+        const s = p.prod.pts * 0.6 + p.prod.reb * 0.3 + p.prod.ast * 0.3;
+        return Math.round((s / 40) * 100);
+      }
+      const delta = (6 - p.pick) * 5 + (p.change ?? 0) * 8;
+      return Math.max(0, Math.min(100, delta + 40));
+    }
+    function makeMeter(el, label, value, accent) {
+      const pct = Math.min(100, Math.max(0, value));
+      const bar = accent === "emerald" ? "bg-emerald-500" : "bg-indigo-500";
+      el.innerHTML = `
+        <div class="flex justify-between text-[11px] text-slate-600 mb-1">
+          <span>${label}</span><span>${pct}%</span>
+        </div>
+        <div class="h-2.5 bg-slate-200 rounded overflow-hidden">
+          <div class="h-full ${bar}" style="width:${pct}%"></div>
+        </div>
+      `;
+    }
+
+    // ----- Build Ticker -----
+    const ticker = document.getElementById('ticker');
+    function renderTickerChunk() {
+      return risersFallersTicker.map((t) => `
+        <span class="flex items-center gap-2 pr-8 border-r border-dotted border-slate-300/80">
+          <b class="text-slate-900 ty-mono">${t.name}</b>
+          <span class="${t.change>0?"text-emerald-600":"text-rose-600"} num ty-mono">${t.change>0?"▲":"▼"} ${Math.abs(t.change)}</span>
+        </span>
+      `).join('');
+    }
+    ticker.innerHTML = renderTickerChunk() + renderTickerChunk();
+
+    // ----- Build Mock Table -----
+    const tbody = document.getElementById('mock-body');
+    tbody.innerHTML = MOCK_PICKS.map((p) => `
+      <tr class="border-b hover:bg-slate-50/70">
+        <td class="p-2 font-medium num ty-mono">${p.pick}</td>
+        <td class="p-2">${p.name}</td>
+        <td class="p-2">${p.position}</td>
+        <td class="p-2">${p.college}</td>
+        <td class="p-2 num ty-mono">${p.avgRank.toFixed(1)}</td>
+        <td class="p-2 num ty-mono ${p.change>0?"text-emerald-700":p.change<0?"text-rose-700":"text-slate-500"}">
+          ${p.change>0?"▲":p.change<0?"▼":"="} ${Math.abs(p.change)}
+        </td>
+        <td class="p-2"><a href="#" class="text-indigo-700 hover:underline ty-mono caps">Bet −110</a></td>
+      </tr>
+    `).join('');
+
+    // ----- Build Prospects Grid -----
+    const prospects = document.getElementById('prospects');
+    prospects.innerHTML = PLAYERS.map((pl) => `
+      <div class="group">
+        <div class="card rounded-2xl overflow-hidden shadow-lg pixel-border ring-2 ring-indigo-300/60 relative">
+          <div class="relative">
+            <img src="${pl.img}" alt="${pl.name}" class="h-48 w-full object-cover transition duration-200 group-hover:brightness-105" />
+            ${pl.change !== 0 ? `
+              <span class="absolute top-3 right-3 text-[10px] font-semibold px-2 py-1 rounded-full ${pl.change>0?"bg-emerald-100 text-emerald-700":"bg-rose-100 text-rose-700"}">
+                ${pl.change>0?"Riser":"Faller"}
+              </span>` : ""}
+            <span class="pixel-accents absolute inset-0"></span>
+          </div>
+          <div class="card-content p-3">
+            <h4 class="font-semibold leading-tight">${pl.name}</h4>
+            <p class="text-xs text-slate-500">${pl.position} • ${pl.college}</p>
+            <div class="mt-2 grid grid-cols-3 gap-2 text-[11px]">
+              ${statPill("HT", `${pl.measurables.ht}"`)}
+              ${statPill("WS", `${pl.measurables.ws}"`)}
+              ${statPill("VRT", `${pl.measurables.vert}"`)}
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+    function statPill(label, value) {
+      return `<div class="px-2 py-1 rounded border border-slate-200 text-slate-700 bg-slate-50 text-center">
+        <span class="text-[10px] text-slate-500 mr-1">${label}</span>
+        <span class="font-medium ty-mono num">${value}</span>
+      </div>`;
+    }
+
+    // ----- VS Arena -----
+    const playerA = document.getElementById('playerA');
+    const playerB = document.getElementById('playerB');
+    PLAYERS.forEach(pl => {
+      const optA = document.createElement('option'); optA.value = pl.name; optA.textContent = pl.name; playerA.appendChild(optA);
+      const optB = document.createElement('option'); optB.value = pl.name; optB.textContent = pl.name; playerB.appendChild(optB);
+    });
+    playerA.value = PLAYERS[0].name;
+    playerB.value = PLAYERS[1].name;
+    const meterA = document.getElementById('meterA');
+    const meterB = document.getElementById('meterB');
+
+    function updateMeters() {
+      const a = PLAYERS.find(p => p.name === playerA.value);
+      const b = PLAYERS.find(p => p.name === playerB.value);
+      makeMeter(meterA, labelFor(currentMode, "A"), scoreFor(currentMode, a), "emerald");
+      makeMeter(meterB, labelFor(currentMode, "B"), scoreFor(currentMode, b), "indigo");
+    }
+    updateMeters();
+    playerA.addEventListener('change', updateMeters);
+    playerB.addEventListener('change', updateMeters);
+
+    // Toggle handling
+    const toggles = Array.from(document.querySelectorAll('.toggle'));
+    toggles.forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentMode = btn.getAttribute('data-mode');
+        toggles.forEach(b => b.setAttribute('data-active', String(b === btn)));
+        updateMeters();
+      });
+    });
+
+    // ----- Live Draft Buzz -----
+    const feed = document.getElementById('feed');
+    feed.innerHTML = FEED.map((f) => `
+      <div class="card p-3 hover:bg-slate-50 ring-1 ring-cyan-300/50">
+        <p class="text-sm font-semibold leading-tight">${f.title}</p>
+        <div class="text-[11px] text-slate-500 flex items-center gap-2 mt-1">
+          ${f.source}
+          <!-- ChevronRight icon -->
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+          ${f.time}
+          <span class="ml-auto px-1.5 py-0.5 rounded border ${f.tag==="Riser"?"text-emerald-700 border-emerald-200 bg-emerald-50":"text-rose-700 border-rose-200 bg-rose-50"}">${f.tag}</span>
+        </div>
+      </div>
+    `).join('');
+
+    // ----- Draft Position Specials -----
+    const specials = document.getElementById('specials');
+    specials.innerHTML = `
+      ${MOCK_PICKS.slice(0,4).map(p => `
+        <div class="flex items-center justify-between">
+          <span>${p.name} Top ${p.pick}</span>
+          <span class="text-indigo-700">+${(p.pick + 50) * 10}</span>
+        </div>
+      `).join('')}
+      <button class="w-full bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-md">Claim Bonus</button>
+      <p class="text-[10px] text-slate-500">Gambling Problem? Call 1-800-GAMBLER</p>
+    `;
+  </script>
+  </div>
+</body>
+</html>
