@@ -24,6 +24,20 @@ ARGS ?=
 scrape:
 	$(PYTHON) scripts/nba_draft_scraper.py $(if $(YEAR),--year $(YEAR),) --source $(SOURCE) --out-dir $(OUT) $(ARGS)
 
+# Lint & format
+.PHONY: fmt lint fix precommit
+fmt:
+	ruff format .
+
+lint:
+	ruff check .
+
+fix:
+	ruff check --fix .
+
+precommit:
+	pre-commit run -a
+
 mig.revision:
 	alembic revision --autogenerate -m "$(m)"
 
