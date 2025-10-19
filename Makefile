@@ -1,7 +1,7 @@
 HOST ?= 0.0.0.0
 PORT ?= 8000
 
-.PHONY: dev run mig.revision mig.up mig.down mig.history mig.current
+.PHONY: dev run mig.revision mig.up mig.down mig.history mig.current scrape
 
 # Start FastAPI with auto-reload (development)
 dev:
@@ -10,6 +10,19 @@ dev:
 # Start FastAPI without reload (production-like)
 run:
 	python -m uvicorn app.main:app --host $(HOST) --port $(PORT)
+
+# Scrape NBA Draft Combine data
+# Usage:
+#   make scrape               # all seasons and sources (default)
+#   make scrape YEAR=2024-25  # single season
+#   make scrape SOURCE=anthro # specific source (all seasons unless YEAR set)
+#   make scrape OUT=outdir    # custom output directory
+PYTHON ?= python
+SOURCE ?= all
+OUT ?= scraper/output
+ARGS ?=
+scrape:
+	$(PYTHON) scripts/nba_draft_scraper.py $(if $(YEAR),--year $(YEAR),) --source $(SOURCE) --out-dir $(OUT) $(ARGS)
 
 mig.revision:
 	alembic revision --autogenerate -m "$(m)"

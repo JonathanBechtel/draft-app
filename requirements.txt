@@ -18,6 +18,8 @@ hpack @ file:///home/conda/feedstock_root/build_artifacts/hpack_1737618293087/wo
 httpcore @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_httpcore_1745602916/work
 httptools @ file:///Users/runner/miniforge3/conda-bld/httptools_1756754398008/work
 httpx @ file:///home/conda/feedstock_root/build_artifacts/httpx_1733663348460/work
+beautifulsoup4==4.12.3
+playwright==1.47.0
 hyperframe @ file:///home/conda/feedstock_root/build_artifacts/hyperframe_1737618333194/work
 idna @ file:///home/conda/feedstock_root/build_artifacts/idna_1733211830134/work
 iniconfig==2.1.0

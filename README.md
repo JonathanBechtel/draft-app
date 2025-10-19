@@ -73,3 +73,7 @@ pytest
 - Lifespan: In development, the app creates missing tables at startup; on shutdown, it disposes the DB engine.
 - DB: Async SQLAlchemy + SQLModel; write operations are wrapped in `async with db.begin():` for atomic commits/rollbacks.
 - Schemas: Separate create/read models to avoid overposting and to keep response shapes stable.
+
+## Scraper
+
+This repo includes a CLI scraper for NBA Draft Combine data (shooting, anthro, agility). See docs/scraper.md for installation, usage, and troubleshooting.
