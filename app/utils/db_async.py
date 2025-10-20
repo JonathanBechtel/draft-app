@@ -22,6 +22,7 @@ def load_schema_modules() -> None:
     for _, module_name, _ in pkgutil.walk_packages(package_path, package_prefix):
         importlib.import_module(module_name)
 
+
 def _normalize_db_url(url: str) -> URL:
     """Return a URL object with an asyncpg driver when targeting Postgres."""
     try:
@@ -99,12 +100,16 @@ engine = create_async_engine(
     pool_pre_ping=True,
     connect_args=CONNECT_ARGS,
 )
-SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False, class_=AsyncSession)
+SessionLocal = async_sessionmaker(
+    bind=engine, expire_on_commit=False, class_=AsyncSession
+)
+
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     """Yield an async database session."""
     async with SessionLocal() as session:
         yield session
+
 
 async def init_db():
     """Initialize the database (create tables)."""
@@ -114,9 +119,11 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
+
 async def dispose_engine() -> None:
     """Dispose of the async engine and its connection pool."""
     await engine.dispose()
+
 
 def describe_database_url(url: str) -> str:
     """Return a sanitized, human-readable description of the DB URL for logging.

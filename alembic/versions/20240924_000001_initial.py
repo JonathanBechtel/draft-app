@@ -4,7 +4,8 @@ Revision ID: 20240924_000001
 Revises:
 Create Date: 2024-09-24 00:00:01
 """
-from alembic import op
+
+from alembic import op  # type: ignore[attr-defined]
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 

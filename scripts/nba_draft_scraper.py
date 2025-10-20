@@ -14,9 +14,13 @@ from playwright.sync_api import sync_playwright
 # Web page URL templates (HTML tables)
 # ------------------------------
 SHOOTING_URL = "https://www.nba.com/stats/draft/combine-shooting-drills?SeasonYear={season_year_shooting}"
-SHOOTING_SPOT_URL = "https://www.nba.com/stats/draft/combine-spot-shooting?SeasonYear={season_year}"
+SHOOTING_SPOT_URL = (
+    "https://www.nba.com/stats/draft/combine-spot-shooting?SeasonYear={season_year}"
+)
 ANTHRO_URL = "https://www.nba.com/stats/draft/combine-anthro?SeasonYear={season_year}"
-AGILITY_URL = "https://www.nba.com/stats/draft/combine-strength-agility?SeasonYear={season_year}"
+AGILITY_URL = (
+    "https://www.nba.com/stats/draft/combine-strength-agility?SeasonYear={season_year}"
+)
 
 
 # ------------------------------
@@ -110,7 +114,14 @@ def parse_height_like_to_inches(value: str) -> Optional[float]:
 
 
 SUFFIXES = {
-    "jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v",
+    "jr",
+    "jr.",
+    "sr",
+    "sr.",
+    "ii",
+    "iii",
+    "iv",
+    "v",
 }
 PREFIXES = {"mr", "mrs", "ms", "miss", "dr", "sir", "dame"}
 
@@ -158,7 +169,13 @@ def parse_name_full(name: str, reversed_order: bool = False) -> NameParts:
         first_name = first_tokens[0] if first_tokens else None
         middle_name = " ".join(first_tokens[1:]) if len(first_tokens) > 1 else None
 
-        return NameParts(prefix=prefix_local, first_name=first_name, middle_name=middle_name, last_name=last_name, suffix=suffix_local)
+        return NameParts(
+            prefix=prefix_local,
+            first_name=first_name,
+            middle_name=middle_name,
+            last_name=last_name,
+            suffix=suffix_local,
+        )
 
     # Forward order: Prefix First Middle Last Suffix
     tokens = [_tidy_token(t) for t in n.split() if _tidy_token(t)]
@@ -171,12 +188,20 @@ def parse_name_full(name: str, reversed_order: bool = False) -> NameParts:
     if not tokens:
         return NameParts(prefix=prefix, suffix=suffix)
     if len(tokens) == 1:
-        return NameParts(prefix=prefix, first_name=tokens[0], last_name=None, suffix=suffix)
+        return NameParts(
+            prefix=prefix, first_name=tokens[0], last_name=None, suffix=suffix
+        )
     # Heuristic: first token = first_name, last token = last_name, rest = middle
     first_name = tokens[0]
     last_name = tokens[-1]
     middle_name = " ".join(tokens[1:-1]) if len(tokens) > 2 else None
-    return NameParts(prefix=prefix, first_name=first_name, middle_name=middle_name, last_name=last_name, suffix=suffix)
+    return NameParts(
+        prefix=prefix,
+        first_name=first_name,
+        middle_name=middle_name,
+        last_name=last_name,
+        suffix=suffix,
+    )
 
 
 def cell_text(td: Tag) -> str:
@@ -231,6 +256,7 @@ def save_csv(rows: List[Dict[str, object]], out_path: Path) -> None:
 # ------------------------------
 # HTML table parsers (web scraping)
 # ------------------------------
+
 
 def parse_table_grouped_headers(table: Tag) -> List[str]:
     """Parse a table with two header rows: a group row and a subheader row."""
@@ -339,7 +365,10 @@ def parse_simple_table_html(html: str, season_year: str) -> List[Dict[str, objec
         tds = tr.find_all("td")
         if not tds:
             continue
-        raw = {headers[i]: cell_text(td) if i < len(headers) else None for i, td in enumerate(tds)}
+        raw = {
+            headers[i]: cell_text(td) if i < len(headers) else None
+            for i, td in enumerate(tds)
+        }
         name_key = next((h for h in headers if h in {"player", "player_name"}), None)
         raw_name = raw.get(name_key) if name_key else None
         name_parts = parse_name_full(raw_name or "", reversed_order=False)
@@ -382,7 +411,11 @@ def fetch_html(url: str, timeout: float = 30.0) -> str:
         return r.text
 
 
-def fetch_html_headless(url: str, timeout: float = 30.0, wait_selector: str = "table.Crom_table__p1iZz, table thead th[field]") -> str:
+def fetch_html_headless(
+    url: str,
+    timeout: float = 30.0,
+    wait_selector: str = "table.Crom_table__p1iZz, table thead th[field]",
+) -> str:
     """Render the page via headless Chromium and return the HTML once tables are present.
 
     Tries to accept cookie banners and waits for table + rows. Uses a generic
@@ -425,15 +458,17 @@ def fetch_html_headless(url: str, timeout: float = 30.0, wait_selector: str = "t
             }
             """
         )
-        page.set_extra_http_headers({
-            "Accept": DEFAULT_HEADERS.get("Accept", "text/html"),
-            "Accept-Language": "en-US,en;q=0.9",
-            # Client hints to look more like a real browser
-            "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not=A?Brand";v="99"',
-            "sec-ch-ua-mobile": "?0",
-            "sec-ch-ua-platform": '"macOS"',
-            "Upgrade-Insecure-Requests": "1",
-        })
+        page.set_extra_http_headers(
+            {
+                "Accept": DEFAULT_HEADERS.get("Accept", "text/html"),
+                "Accept-Language": "en-US,en;q=0.9",
+                # Client hints to look more like a real browser
+                "sec-ch-ua": '"Chromium";v="124", "Google Chrome";v="124", "Not=A?Brand";v="99"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"macOS"',
+                "Upgrade-Insecure-Requests": "1",
+            }
+        )
         page.goto(url, timeout=timeout * 1000, wait_until="domcontentloaded")
         # Accept cookie banner if present (OneTrust)
         try:
@@ -470,9 +505,15 @@ def fetch_html_headless(url: str, timeout: float = 30.0, wait_selector: str = "t
 
 NBA_API_ROOT = "https://stats.nba.com/stats"
 ANTHRO_API = NBA_API_ROOT + "/draftcombineanthro?LeagueID=00&SeasonYear={season_year}"
-AGILITY_API = NBA_API_ROOT + "/draftcombinedrillresults?LeagueID=00&SeasonYear={season_year}"
-SHOOTING_API = NBA_API_ROOT + "/draftcombineshooting?LeagueID=00&SeasonYear={shooting_year}"
-SHOOTING_SPOT_API = NBA_API_ROOT + "/draftcombinespotshooting?LeagueID=00&SeasonYear={season_year}"
+AGILITY_API = (
+    NBA_API_ROOT + "/draftcombinedrillresults?LeagueID=00&SeasonYear={season_year}"
+)
+SHOOTING_API = (
+    NBA_API_ROOT + "/draftcombineshooting?LeagueID=00&SeasonYear={shooting_year}"
+)
+SHOOTING_SPOT_API = (
+    NBA_API_ROOT + "/draftcombinespotshooting?LeagueID=00&SeasonYear={season_year}"
+)
 
 NBA_API_HEADERS = {
     "User-Agent": DEFAULT_HEADERS["User-Agent"],
@@ -506,9 +547,14 @@ def _result_rows(payload: dict) -> Tuple[List[str], List[List[object]]]:
     return [], []
 
 
-def _rows_to_dicts(headers: List[str], rows: List[List[object]]) -> List[Dict[str, object]]:
+def _rows_to_dicts(
+    headers: List[str], rows: List[List[object]]
+) -> List[Dict[str, object]]:
     keys = [to_snake(h) for h in headers]
-    return [{keys[i]: row[i] if i < len(row) else None for i in range(len(keys))} for row in rows]
+    return [
+        {keys[i]: row[i] if i < len(row) else None for i in range(len(keys))}
+        for row in rows
+    ]
 
 
 def _add_name_parts(d: Dict[str, object], season_year: str) -> Dict[str, object]:
@@ -551,7 +597,12 @@ def season_arg_to_values(season_arg: str) -> Tuple[str, str]:
     raise ValueError("Season must be 'YYYY-YY' or 'YYYY'. e.g., '2024-25'.")
 
 
-def scrape_shooting(season_arg: str, html_override: Optional[str] = None, timeout: float = 30.0, headless: bool = True) -> List[Dict[str, object]]:
+def scrape_shooting(
+    season_arg: str,
+    html_override: Optional[str] = None,
+    timeout: float = 30.0,
+    headless: bool = True,
+) -> List[Dict[str, object]]:
     season_year, shooting_year = season_arg_to_values(season_arg)
     if html_override is not None:
         html = html_override
@@ -559,7 +610,11 @@ def scrape_shooting(season_arg: str, html_override: Optional[str] = None, timeou
     # Try HTML first
     try:
         url = SHOOTING_URL.format(season_year_shooting=shooting_year)
-        html = fetch_html_headless(url, timeout=timeout) if headless else fetch_html(url, timeout=timeout)
+        html = (
+            fetch_html_headless(url, timeout=timeout)
+            if headless
+            else fetch_html(url, timeout=timeout)
+        )
         rows = parse_shooting_html(html, season_year=season_year)
         if rows:
             return rows
@@ -568,7 +623,11 @@ def scrape_shooting(season_arg: str, html_override: Optional[str] = None, timeou
     # Try alternate spot-shooting page (older seasons)
     try:
         url = SHOOTING_SPOT_URL.format(season_year=season_year)
-        html = fetch_html_headless(url, timeout=timeout) if headless else fetch_html(url, timeout=timeout)
+        html = (
+            fetch_html_headless(url, timeout=timeout)
+            if headless
+            else fetch_html(url, timeout=timeout)
+        )
         rows = parse_shooting_html(html, season_year=season_year)
         if rows:
             return rows
@@ -576,7 +635,9 @@ def scrape_shooting(season_arg: str, html_override: Optional[str] = None, timeou
         pass
     # Fallback: Stats API
     try:
-        data = fetch_stats_json(SHOOTING_API.format(shooting_year=shooting_year), timeout=timeout)
+        data = fetch_stats_json(
+            SHOOTING_API.format(shooting_year=shooting_year), timeout=timeout
+        )
         headers, rset = _result_rows(data)
         dicts = _rows_to_dicts(headers, rset)
         out = [{k: normalize_value(k, v) for k, v in d.items()} for d in dicts]
@@ -585,7 +646,9 @@ def scrape_shooting(season_arg: str, html_override: Optional[str] = None, timeou
         pass
     # Fallback 2: Spot Shooting API for older seasons (uses YYYY-YY)
     try:
-        data = fetch_stats_json(SHOOTING_SPOT_API.format(season_year=season_year), timeout=timeout)
+        data = fetch_stats_json(
+            SHOOTING_SPOT_API.format(season_year=season_year), timeout=timeout
+        )
         headers, rset = _result_rows(data)
         dicts = _rows_to_dicts(headers, rset)
         out = [{k: normalize_value(k, v) for k, v in d.items()} for d in dicts]
@@ -594,14 +657,23 @@ def scrape_shooting(season_arg: str, html_override: Optional[str] = None, timeou
         return []
 
 
-def scrape_anthro(season_arg: str, html_override: Optional[str] = None, timeout: float = 30.0, headless: bool = True) -> List[Dict[str, object]]:
+def scrape_anthro(
+    season_arg: str,
+    html_override: Optional[str] = None,
+    timeout: float = 30.0,
+    headless: bool = True,
+) -> List[Dict[str, object]]:
     season_year, _ = season_arg_to_values(season_arg)
     if html_override is not None:
         html = html_override
         return parse_simple_table_html(html, season_year=season_year)
     try:
         url = ANTHRO_URL.format(season_year=season_year)
-        html = fetch_html_headless(url, timeout=timeout) if headless else fetch_html(url, timeout=timeout)
+        html = (
+            fetch_html_headless(url, timeout=timeout)
+            if headless
+            else fetch_html(url, timeout=timeout)
+        )
         rows = parse_simple_table_html(html, season_year=season_year)
         if rows:
             return rows
@@ -609,7 +681,9 @@ def scrape_anthro(season_arg: str, html_override: Optional[str] = None, timeout:
         pass
     # Fallback: API
     try:
-        data = fetch_stats_json(ANTHRO_API.format(season_year=season_year), timeout=timeout)
+        data = fetch_stats_json(
+            ANTHRO_API.format(season_year=season_year), timeout=timeout
+        )
         headers, rset = _result_rows(data)
         dicts = _rows_to_dicts(headers, rset)
         # convert heights to inches
@@ -618,21 +692,34 @@ def scrape_anthro(season_arg: str, html_override: Optional[str] = None, timeout:
             dd = {k: normalize_value(k, v) for k, v in d.items()}
             for hk in list(dd.keys()):
                 if any(x in hk for x in ["height", "wingspan", "reach"]):
-                    dd[hk] = parse_height_like_to_inches(str(dd[hk])) if dd.get(hk) is not None else None
+                    dd[hk] = (
+                        parse_height_like_to_inches(str(dd[hk]))
+                        if dd.get(hk) is not None
+                        else None
+                    )
             out.append(_add_name_parts(dd, season_year))
         return out
     except Exception:
         return []
 
 
-def scrape_agility(season_arg: str, html_override: Optional[str] = None, timeout: float = 30.0, headless: bool = True) -> List[Dict[str, object]]:
+def scrape_agility(
+    season_arg: str,
+    html_override: Optional[str] = None,
+    timeout: float = 30.0,
+    headless: bool = True,
+) -> List[Dict[str, object]]:
     season_year, _ = season_arg_to_values(season_arg)
     if html_override is not None:
         html = html_override
         return parse_simple_table_html(html, season_year=season_year)
     try:
         url = AGILITY_URL.format(season_year=season_year)
-        html = fetch_html_headless(url, timeout=timeout) if headless else fetch_html(url, timeout=timeout)
+        html = (
+            fetch_html_headless(url, timeout=timeout)
+            if headless
+            else fetch_html(url, timeout=timeout)
+        )
         rows = parse_simple_table_html(html, season_year=season_year)
         if rows:
             return rows
@@ -640,7 +727,9 @@ def scrape_agility(season_arg: str, html_override: Optional[str] = None, timeout
         pass
     # Fallback: API
     try:
-        data = fetch_stats_json(AGILITY_API.format(season_year=season_year), timeout=timeout)
+        data = fetch_stats_json(
+            AGILITY_API.format(season_year=season_year), timeout=timeout
+        )
         headers, rset = _result_rows(data)
         dicts = _rows_to_dicts(headers, rset)
         out = [{k: normalize_value(k, v) for k, v in d.items()} for d in dicts]
@@ -661,7 +750,9 @@ def _all_seasons() -> List[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Scrape NBA Draft Combine data (shooting, anthro, agility)")
+    parser = argparse.ArgumentParser(
+        description="Scrape NBA Draft Combine data (shooting, anthro, agility)"
+    )
     parser.add_argument(
         "--year",
         dest="season",
@@ -745,7 +836,9 @@ def main() -> None:
                 )
                 save_csv(rows, out_dir / f"{season}_shooting.csv")
                 if args.verbose or not rows:
-                    print(f"[info] shooting: saved {len(rows)} rows -> {out_dir / f'{season}_shooting.csv'}")
+                    print(
+                        f"[info] shooting: saved {len(rows)} rows -> {out_dir / f'{season}_shooting.csv'}"
+                    )
             except Exception as e:
                 print(f"[warn] shooting {season}: {e}")
 
@@ -761,7 +854,9 @@ def main() -> None:
                 )
                 save_csv(rows, out_dir / f"{season}_anthro.csv")
                 if args.verbose or not rows:
-                    print(f"[info] anthro: saved {len(rows)} rows -> {out_dir / f'{season}_anthro.csv'}")
+                    print(
+                        f"[info] anthro: saved {len(rows)} rows -> {out_dir / f'{season}_anthro.csv'}"
+                    )
             except Exception as e:
                 print(f"[warn] anthro {season}: {e}")
 
@@ -777,7 +872,9 @@ def main() -> None:
                 )
                 save_csv(rows, out_dir / f"{season}_agility.csv")
                 if args.verbose or not rows:
-                    print(f"[info] agility: saved {len(rows)} rows -> {out_dir / f'{season}_agility.csv'}")
+                    print(
+                        f"[info] agility: saved {len(rows)} rows -> {out_dir / f'{season}_agility.csv'}"
+                    )
             except Exception as e:
                 print(f"[warn] agility {season}: {e}")
 
