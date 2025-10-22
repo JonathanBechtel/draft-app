@@ -1,4 +1,5 @@
 """Pytest fixtures aligned with the live Postgres stack."""
+
 import asyncio
 import os
 from typing import AsyncGenerator
@@ -8,7 +9,12 @@ import pytest_asyncio
 
 from httpx import AsyncClient, ASGITransport
 from pydantic import ValidationError
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlmodel import SQLModel
 from dotenv import load_dotenv
 
@@ -18,7 +24,7 @@ load_dotenv()
 def _load_database_url() -> str:
     """Resolve the database URL for tests, enforcing an explicit opt-in."""
     test_db_url = os.getenv("TEST_DATABASE_URL")
-    pytest_allow_db = int(os.getenv("PYTEST_ALLOW_DB"))
+    pytest_allow_db = int(os.getenv("PYTEST_ALLOW_DB", "0"))
     if not test_db_url:
         pytest.skip("No TEST_DATABASE_URL or DATABASE_URL is configured for tests.")
     if pytest_allow_db != 1:
@@ -26,11 +32,12 @@ def _load_database_url() -> str:
             "Running integration tests requires setting PYTEST_ALLOW_DB=1 to"
             " confirm the configured database is safe to mutate."
         )
-    return test_db_url
+    # mypy: test_db_url is str after the guard above
+    return test_db_url  # type: ignore[return-value]
 
 
 @pytest.fixture(scope="session")
-def event_loop() -> AsyncGenerator[asyncio.AbstractEventLoop, None]:
+def event_loop():
     """Provide a dedicated event loop for the async test session."""
     loop = asyncio.new_event_loop()
     yield loop
@@ -64,7 +71,9 @@ async def async_engine(database_url: str) -> AsyncGenerator[AsyncEngine, None]:
 @pytest_asyncio.fixture()
 async def db_session(async_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
     """Provide a clean transactional session for each test."""
-    session_factory = async_sessionmaker(async_engine, expire_on_commit=False, class_=AsyncSession)
+    session_factory = async_sessionmaker(
+        async_engine, expire_on_commit=False, class_=AsyncSession
+    )
 
     # Rebuild metadata for each test to ensure isolation across runs.
     async with async_engine.begin() as conn:

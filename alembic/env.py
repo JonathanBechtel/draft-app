@@ -1,4 +1,5 @@
 """Alembic environment configuration for DraftGuru."""
+
 import asyncio
 import importlib
 import os
@@ -8,7 +9,7 @@ from logging.config import fileConfig
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from alembic import context
+from alembic import context  # type: ignore[attr-defined]
 from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -49,7 +50,7 @@ query_params.pop("channel_binding", None)
 clean_query = urlencode(query_params, doseq=True)
 DB_URL = urlunsplit(split_result._replace(query=clean_query)).rstrip("?")
 
-connect_args = {}
+connect_args: dict[str, object] = {}
 if sslmode:
     mode = sslmode.lower()
     if mode == "disable":

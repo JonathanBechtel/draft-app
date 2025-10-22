@@ -2,8 +2,7 @@ from sqlmodel import SQLModel, Field as SQLField
 from sqlalchemy import Column
 from sqlalchemy import Enum as SAEnum
 from datetime import date
-from pydantic import (computed_field, 
-                        field_validator)
+from pydantic import computed_field, field_validator
 
 from app.models.fields import Position, BIRTH_DATE
 
@@ -28,14 +27,16 @@ class PlayerBase(SQLModel):
             raise ValueError("birth_date cannot be in the future")
         return v
 
+
 class PlayerRead(PlayerBase):
     id: int
-        
+
     @computed_field  # type: ignore[misc]
     @property
     def age(self) -> float:
         days = (date.today() - self.birth_date).days
         return round(days / 365.2425, 2)
+
 
 class PlayerCreate(PlayerBase):
     pass
