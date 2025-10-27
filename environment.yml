@@ -11,5 +11,6 @@ dependencies:
   - asyncpg
   - alembic
   - pip
+  - pandas
   - pip:
       - -e .[dev]

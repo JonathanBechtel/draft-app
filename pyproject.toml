@@ -25,8 +25,16 @@ dev = [
     "ruff==0.13.0",
     "mypy==1.18.1",
     "pre-commit==3.8.0",
+    "pandas-stubs"
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["app*"]
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "app.scripts.compute_metrics"
+disable_error_code = "attr-defined,arg-type,call-overload,misc"

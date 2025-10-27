@@ -15,3 +15,31 @@ class Position(str, Enum):
 
 
 BIRTH_DATE = Annotated[date, PydField(..., ge=date(1980, 1, 1))]
+
+
+class MetricSource(str, Enum):
+    combine_agility = "combine_agility"
+    combine_anthro = "combine_anthro"
+    combine_shooting = "combine_shooting"
+    advanced_stats = "advanced_stats"
+
+
+class MetricStatistic(str, Enum):
+    rank = "rank"
+    percentile = "percentile"
+    z_score = "z_score"
+    similarity = "similarity"
+    raw = "raw"
+
+
+class CohortType(str, Enum):
+    current_draft = "current_draft"
+    all_time_draft = "all_time_draft"
+    current_nba = "current_nba"
+    all_time_nba = "all_time_nba"
+
+
+class MetricCategory(str, Enum):
+    anthropometrics = "anthropometrics"
+    combine_performance = "combine_performance"
+    advanced_stats = "advanced_stats"
