@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlmodel import delete
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -389,6 +389,9 @@ class MetricRunner:
         self.specs = [spec for spec in ALL_SPECS if spec.category in self.categories]
         if not self.specs:
             raise ValueError("No metric specifications selected")
+        self.sources: List[MetricSource] = list(
+            dict.fromkeys(spec.source for spec in self.specs)
+        )
 
     @staticmethod
     def _default_run_key(season_code: Optional[str]) -> str:
@@ -401,61 +404,103 @@ class MetricRunner:
         definitions = await ensure_metric_definitions(self.session, self.specs)
 
         raw_frames = await self._load_source_frames()
-        results: List[Tuple[MetricSpec, pd.DataFrame]] = []
+        results_by_source: Dict[MetricSource, List[Tuple[MetricSpec, pd.DataFrame]]] = {
+            source: [] for source in self.sources
+        }
         diagnostics: List[Dict[str, object]] = []
-        players_seen: Set[int] = set()
+        players_by_source: Dict[MetricSource, Set[int]] = {
+            source: set() for source in self.sources
+        }
+        total_players: Set[int] = set()
 
         for spec in self.specs:
             frame = raw_frames.get(spec.source)
             spec_frame = self._prepare_spec_frame(frame, spec)
             metrics_df, diag = self._compute_metrics(spec_frame, spec)
+            diag["source"] = spec.source.value
             diagnostics.append(diag)
             if metrics_df is None:
                 continue
-            players_seen.update(metrics_df["player_id"].astype(int).tolist())
-            results.append((spec, metrics_df))
+            player_ids = metrics_df["player_id"].astype(int).tolist()
+            players_by_source[spec.source].update(player_ids)
+            total_players.update(player_ids)
+            results_by_source[spec.source].append((spec, metrics_df))
 
-        if not results:
+        if not any(results_by_source.values()):
             print("No metrics produced; exiting without snapshot.")
-            self._report(diagnostics, snapshot_id=None, population_size=0)
+            self._report(
+                diagnostics,
+                snapshots={},
+                populations={source: 0 for source in self.sources},
+                total_population=0,
+            )
             return
 
-        population_size = len(players_seen)
+        populations = {
+            source: len(players_by_source[source])
+            for source in self.sources
+            if results_by_source[source]
+        }
+        snapshot_details: Dict[MetricSource, Dict[str, object]] = {}
 
-        snapshot: Optional[MetricSnapshot] = None
         if not self.dry_run:
             if self.replace_run:
                 await self._delete_existing_run()
-            snapshot = MetricSnapshot(
-                run_key=self.run_key,
-                cohort=self.cohort,
-                season_id=self.season.id if self.season else None,
-                position_scope=self.position_scope,
-                source=MetricSource.advanced_stats,
-                population_size=population_size,
-                notes=self.notes,
-            )
-            self.session.add(snapshot)
-            await self.session.flush()
 
-            payload = self._build_values(snapshot, results, definitions)
-            if payload:
-                self.session.add_all(payload)
+            payload_buffer: List[PlayerMetricValue] = []
+            for source in self.sources:
+                source_results = results_by_source[source]
+                if not source_results:
+                    continue
+                run_key = self._run_key_for_source(source)
+                snapshot = MetricSnapshot(
+                    run_key=run_key,
+                    cohort=self.cohort,
+                    season_id=self.season.id if self.season else None,
+                    position_scope=self.position_scope,
+                    source=source,
+                    population_size=populations.get(source, 0),
+                    notes=self.notes,
+                )
+                self.session.add(snapshot)
+                await self.session.flush()
+
+                payload = self._build_values(snapshot, source_results, definitions)
+                if payload:
+                    payload_buffer.extend(payload)
+                    snapshot_details[source] = {
+                        "snapshot_id": snapshot.id,
+                        "run_key": run_key,
+                    }
+                else:
+                    print(
+                        f"Computed metrics yielded no rows for {source.value}; removing snapshot."
+                    )
+                    await self.session.delete(snapshot)
+
+            if payload_buffer:
+                self.session.add_all(payload_buffer)
                 await self.session.commit()
             else:
                 print(
                     "Computed metrics yielded no rows; rolling back snapshot creation."
                 )
-                await self.session.delete(snapshot)
                 await self.session.rollback()
-                snapshot = None
+                snapshot_details.clear()
         else:
             await self.session.rollback()
+            for source in self.sources:
+                if results_by_source[source]:
+                    snapshot_details[source] = {
+                        "snapshot_id": None,
+                        "run_key": self._run_key_for_source(source),
+                    }
 
         self._report(
             diagnostics,
-            snapshot_id=snapshot.id if snapshot else None,
-            population_size=population_size,
+            snapshots=snapshot_details,
+            populations={source: populations.get(source, 0) for source in self.sources},
+            total_population=len(total_players),
         )
 
     async def _configure_cohort(self) -> None:
@@ -476,7 +521,7 @@ class MetricRunner:
 
     async def _load_source_frames(self) -> Dict[MetricSource, pd.DataFrame]:
         frames: Dict[MetricSource, pd.DataFrame] = {}
-        relevant_sources = {spec.source for spec in self.specs}
+        relevant_sources = set(self.sources)
         if MetricSource.combine_anthro in relevant_sources:
             df = await load_anthro(self.session, self.season_ids)
             frames[MetricSource.combine_anthro] = self._apply_common_filters(df)
@@ -487,6 +532,11 @@ class MetricRunner:
             df = await load_shooting(self.session, self.season_ids)
             frames[MetricSource.combine_shooting] = self._apply_common_filters(df)
         return frames
+
+    def _run_key_for_source(self, source: MetricSource) -> str:
+        if len(self.sources) <= 1:
+            return self.run_key
+        return f"{self.run_key}:{source.value}"
 
     def _apply_common_filters(self, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
@@ -595,18 +645,29 @@ class MetricRunner:
         return metrics_df, diagnostics
 
     async def _delete_existing_run(self) -> None:
+        pattern = f"{self.run_key}:%"
         result = await self.session.exec(
-            select(MetricSnapshot).where(MetricSnapshot.run_key == self.run_key)
-        )
-        existing = result.first()
-        if not existing:
-            return
-        await self.session.exec(
-            delete(PlayerMetricValue).where(
-                PlayerMetricValue.snapshot_id == existing.id
+            select(MetricSnapshot).where(
+                or_(
+                    MetricSnapshot.run_key == self.run_key,
+                    MetricSnapshot.run_key.like(pattern),
+                )
             )
         )
-        await self.session.delete(existing)
+        snapshots = result.scalars().all()
+        if not snapshots:
+            return
+        snapshot_ids = [
+            snapshot.id for snapshot in snapshots if snapshot.id is not None
+        ]
+        if snapshot_ids:
+            await self.session.exec(
+                delete(PlayerMetricValue).where(
+                    PlayerMetricValue.snapshot_id.in_(snapshot_ids)
+                )
+            )
+        for snapshot in snapshots:
+            await self.session.delete(snapshot)
         await self.session.flush()
 
     def _build_values(
@@ -640,21 +701,38 @@ class MetricRunner:
         self,
         diagnostics: Sequence[Dict[str, object]],
         *,
-        snapshot_id: Optional[int],
-        population_size: int,
+        snapshots: Dict[MetricSource, Dict[str, object]],
+        populations: Dict[MetricSource, int],
+        total_population: int,
     ) -> None:
-        header = f"Run key: {self.run_key}"
-        if snapshot_id:
-            header += f" | Snapshot ID: {snapshot_id}"
-        else:
-            header += " | Snapshot not persisted"
-        header += f" | Population size: {population_size}"
+        header = f"Run key base: {self.run_key} | Total population: {total_population}"
         print(header)
+        for source in self.sources:
+            info = snapshots.get(source)
+            default_run_key = self._run_key_for_source(source)
+            run_key = (
+                info.get("run_key", default_run_key)
+                if info is not None
+                else default_run_key
+            )
+            snapshot_id_val = info.get("snapshot_id") if info is not None else None
+            snapshot_id = snapshot_id_val if isinstance(snapshot_id_val, int) else None
+            status = (
+                f"Snapshot ID: {snapshot_id}"
+                if snapshot_id is not None
+                else "Snapshot not persisted"
+            )
+            population = populations.get(source, 0)
+            print(
+                f" - Source {source.value}: run_key={run_key} | {status} | population={population}"
+            )
         for diag in diagnostics:
             metric_key = diag.get("metric_key")
+            diag_source = diag.get("source")
+            prefix = f"[{diag_source}] " if diag_source else ""
             if diag.get("skipped"):
                 reason = diag.get("reason", "skipped")
-                print(f" - {metric_key}: skipped ({reason})")
+                print(f"   - {prefix}{metric_key}: skipped ({reason})")
             else:
                 parts = [
                     f"count={diag.get('count')}",
@@ -665,7 +743,7 @@ class MetricRunner:
                     if diag.get("std") is not None
                     else "std=na",
                 ]
-                print(f" - {metric_key}: " + ", ".join(parts))
+                print(f"   - {prefix}{metric_key}: " + ", ".join(parts))
 
 
 async def main_async(argv: Optional[Sequence[str]] = None) -> None:
