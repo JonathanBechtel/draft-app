@@ -274,9 +274,7 @@ async def ensure_metric_definitions(
 ) -> Dict[str, MetricDefinition]:
     keys = [spec.metric_key for spec in specs]
     result = await session.execute(
-        select(MetricDefinition).where(
-            MetricDefinition.__table__.c.metric_key.in_(keys)
-        )
+        select(MetricDefinition).where(MetricDefinition.metric_key.in_(keys))
     )
     existing = result.unique().scalars().all()
     existing_map = {row.metric_key: row for row in existing}
@@ -318,7 +316,7 @@ async def load_anthro(
         CombineAnthro.weight_lb,
     )
     if season_ids:
-        stmt = stmt.where(CombineAnthro.__table__.c.season_id.in_(season_ids))
+        stmt = stmt.where(CombineAnthro.season_id.in_(season_ids))
     result = await session.execute(stmt)
     rows = result.mappings().all()
     return pd.DataFrame(rows)
@@ -339,7 +337,7 @@ async def load_agility(
         CombineAgility.bench_press_reps,
     )
     if season_ids:
-        stmt = stmt.where(CombineAgility.__table__.c.season_id.in_(season_ids))
+        stmt = stmt.where(CombineAgility.season_id.in_(season_ids))
     result = await session.execute(stmt)
     rows = result.mappings().all()
     return pd.DataFrame(rows)
@@ -357,7 +355,7 @@ async def load_shooting(
         CombineShootingResult.fga,
     )
     if season_ids:
-        stmt = stmt.where(CombineShootingResult.__table__.c.season_id.in_(season_ids))
+        stmt = stmt.where(CombineShootingResult.season_id.in_(season_ids))
     result = await session.execute(stmt)
     rows = result.mappings().all()
     df = pd.DataFrame(rows)
@@ -465,12 +463,13 @@ class MetricRunner:
             if not self.season_code:
                 raise ValueError("--season is required for current_draft cohorts")
             season = await resolve_season(self.session, self.season_code)
-            if season.id is None:
+            season_id = season.id
+            if season_id is None:
                 raise ValueError(
                     f"Season {self.season_code!r} is missing a persisted identifier"
                 )
             self.season = season
-            self.season_ids = {season.id}
+            self.season_ids = {season_id}
         else:
             self.season = None
             self.season_ids = None
