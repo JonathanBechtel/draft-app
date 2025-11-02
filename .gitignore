@@ -200,7 +200,7 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 
 # Scraper outputs
-scraper/output/
+scrapers/nba_draft_combine/output
 .cursorignore
 .cursorindexingignore
 
