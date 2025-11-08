@@ -33,6 +33,19 @@ Direct calls:
 
 Outputs are written to `scraper/output/{season}_{source}.csv`. The output folder is ignored by git.
 
+### Basketball-Reference Bios (one-time enrichment)
+
+- Scrape index + player pages (respecting robots throttling):
+  - `make bio.scrape LETTERS=a,b OUT=scraper/output THROTTLE=3`
+  - Offline with local samples: `make bio.scrape LETTERS=b FROM_INDEX_DIR=scrapers/bbref FROM_PLAYER_DIR=scrapers/bbref`
+- Ingest CSV into DB (idempotent):
+  - `make bio.ingest BBIO=scraper/output/bbio_b_YYYYMMDD.csv DRY=1 VERBOSE=1`
+  - Commit updates: `make bio.ingest BBIO=scraper/output/bbio_b_YYYYMMDD.csv VERBOSE=1`
+  - Overwrite immutable conflicts (explicit): `make bio.ingest BBIO=... OVERWRITE_MASTER=1`
+  - By default CREATE_MISSING is enabled (creates players_master rows for unmatched bios). To disable for a run, pass `CREATE_MISSING=`.
+
+CSV fields include immutable facts (birthplace, school, shoots, draft info, debut) and ephemeral status (active flag, current team, height/weight), plus socials (x/instagram). Ingestion seeds `player_external_ids` for `system in {'bbr','x','instagram'}` and updates `players_master` (immutable when null by default), `player_status` (ephemeral), and `player_bio_snapshots` (audit).
+
 ## CLI Options
 
 - `--year` Optional season in `YYYY-YY`. Default scrapes all seasons.
@@ -84,4 +97,3 @@ Outputs are written to `scraper/output/{season}_{source}.csv`. The output folder
 
 - nba.com content is client-rendered and sometimes protected; headless + API fallback is used to improve reliability.
 - For dependable historical reruns, consider caching full HTML pages locally and pointing the script at those files.
-

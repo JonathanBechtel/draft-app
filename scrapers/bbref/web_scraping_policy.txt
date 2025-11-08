@@ -1,0 +1,18 @@
+Bot/Scraping/Crawler Traffic on Sports-Reference.com Sites
+October 26, 2022
+
+Update: May 29, 2024
+
+Sports Reference is primarily dependent on ad revenue, so we must ensure that actual people using web browsers have the best possible experience when using this site. Unfortunately, non-human traffic, ie bots, crawlers, scrapers, can overwhelm our servers with the number of requests they send us in a short amount of time. Therefore we are implementing rate limiting on the site. We will attempt to keep this page up to date with our current settings.
+
+Currently we will block users sending requests to:
+
+FBref and Stathead sites more often than ten requests in a minute.
+our other sites more often than twenty requests in a minute.
+This is regardless of bot type and construction and pages accessed.
+If you violate this rule your session will be in jail for up to a day.
+Why Not Provide an API?
+
+Most of our data comes from third parties who sell the data to us. As part of our agreements with them we can not provide the data available as a download on our site. We are aware that an API would mitigate some issues, but it's not our business model.
+
+For more information on data use of SR sites, see our Data Use page.
