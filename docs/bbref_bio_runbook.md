@@ -54,6 +54,9 @@ Generate the Alembic migration and apply it before first ingest:
   - `make bio.scrape LETTERS=a,b,c OUT=scraper/output THROTTLE=4`
 - Live (all letters; long-running):
   - `make bio.scrape ALL=1 OUT=scraper/output THROTTLE=4`
+- Force fetch slugs the index is missing (prospects, renamed players):
+  - `make bio.scrape OUT=scraper/output EXTRA_SLUGS=zikarro01,maluakh01`
+  - Or provide a newline-delimited file: `make bio.scrape EXTRA_SLUGS_FILE=config/missing_bbr_slugs.txt`
 - Offline (use samples in `scrapers/bbref/`):
   - `make bio.scrape LETTERS=b FROM_INDEX_FILE=scrapers/bbref/index_page_example.html FROM_PLAYER_FILE=scrapers/bbref/player_page_example.html OUT=scraper/output`
 
@@ -61,6 +64,7 @@ Notes
 - Throttling: a sleep between requests is built in; set `THROTTLE` to `>=3` seconds to honor BRef guidance. Default is 3s.
 - User-Agent: `draftguru-bio-scraper/0.1`.
 - Caching: pages are stored under `scraper/cache/` to keep reruns deterministic and reduce network load.
+- Player page URL derivation now uses the slug's leading letter instead of the index letter, so name-change edge cases (e.g., `artesro01` listed under "W") resolve correctly. When a player is entirely absent from the index pages you scrape, add the slug via `EXTRA_SLUGS` so we still hit the detail page and persist the bio.
 
 ## CSV Schema (Export)
 
@@ -73,9 +77,10 @@ Columns written by the scraper:
 ## Ingestion
 
 - Dry-run first:
-  - `make bio.ingest BBIO="$(ls -t scraper/output/bbio_*.csv | head -n1)" DRY=1 VERBOSE=1`
+  - `make bio.ingest DRY=1 VERBOSE=1` (defaults to the newest `bbio_*.csv` in `OUT`)
 - Commit:
-  - `make bio.ingest BBIO="$(ls -t scraper/output/bbio_*.csv | head -n1)" VERBOSE=1`
+  - `make bio.ingest VERBOSE=1`
+  - Override with a specific file via `BBIO=path/to/bbio_custom.csv` when needed.
 
 Behavior
 - Resolution order: external ID `bbr` → alias exact → deterministic rule-based match (last exact + first exact/initial; ambiguous names are reported).
@@ -108,4 +113,3 @@ What is written
 - Optional `only_active` ingest flag to restrict create/update to active NBA players.
 - Weekly roster refresh by re-scraping index pages at a safe cadence.
 - Promote socials to a dedicated `player_social_accounts` table when we start building feed ingestion.
-

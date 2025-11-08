@@ -29,7 +29,13 @@ def test_parse_player_html_core_fields():
     )
     assert bio.full_name.lower().startswith("lonzo")
     assert bio.birth_date == "1997-10-27"
-    assert bio.shoots is None or bio.shoots in ("Right", "Left", "right", "left")
+    assert bio.shoots == "Right"
+    assert bio.position == "Point Guard"
+    assert bio.school == "UCLA"
+    assert bio.high_school and "Chino Hills" in bio.high_school
+    assert bio.draft_year == 2017
+    assert bio.draft_round == 1
+    assert bio.draft_pick == 2
     # Instagram handle should be parsed
     if bio.social_instagram_handle:
         assert bio.social_instagram_handle == bio.social_instagram_handle.lower()
