@@ -201,6 +201,8 @@ cython_debug/
 
 # Scraper outputs
 scrapers/nba_draft_combine/output
+scraper/output/
+scraper/cache/
 .cursorignore
 .cursorindexingignore
 

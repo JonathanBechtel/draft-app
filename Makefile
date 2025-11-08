@@ -1,7 +1,7 @@
 HOST ?= 0.0.0.0
 PORT ?= 8000
 
-.PHONY: dev run mig.revision mig.up mig.down mig.history mig.current scrape ingest metrics
+.PHONY: dev run mig.revision mig.up mig.down mig.history mig.current scrape ingest metrics bio.scrape bio.ingest
 
 # Start FastAPI with auto-reload (development)
 dev:
@@ -55,6 +55,25 @@ metrics:
 	$(if $(DRY), --dry-run,) \
 	$(if $(REPLACE), --replace-run,) \
 	$(METRIC_ARGS)
+
+# Basketball-Reference player bios: scrape and ingest
+LETTERS ?=
+ALL ?=
+THROTTLE ?= 3
+CACHE ?= scraper/cache/players
+BBIO ?=
+FIX ?=
+FROM_INDEX_DIR ?=
+FROM_PLAYER_DIR ?=
+FROM_INDEX_FILE ?=
+FROM_PLAYER_FILE ?=
+CREATE_MISSING ?= 1
+
+bio.scrape:
+	$(PYTHON) scripts/bbref_bio_scraper.py $(if $(ALL),--all,) $(if $(LETTERS),--letters $(LETTERS),) --out-dir $(OUT) --throttle $(THROTTLE) $(if $(FROM_INDEX_DIR),--from-index-dir $(FROM_INDEX_DIR),) $(if $(FROM_PLAYER_DIR),--from-player-dir $(FROM_PLAYER_DIR),) $(if $(FROM_INDEX_FILE),--from-index-file $(FROM_INDEX_FILE),) $(if $(FROM_PLAYER_FILE),--from-player-file $(FROM_PLAYER_FILE),)
+
+bio.ingest:
+	$(PYTHON) scripts/ingest_player_bios.py --file $(BBIO) --cache-dir $(CACHE) $(if $(DRY),--dry-run,) $(if $(VERBOSE),--verbose,) $(if $(OVERWRITE_MASTER),--overwrite-master,) $(if $(CREATE_MISSING),--create-missing,) $(if $(FIX),--fix-ambiguities $(FIX),)
 
 # Lint & format
 .PHONY: fmt lint fix precommit

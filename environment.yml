@@ -10,6 +10,7 @@ dependencies:
   - psycopg
   - asyncpg
   - alembic
+  - beautifulsoup4
   - pip
   - pandas
   - pip:
