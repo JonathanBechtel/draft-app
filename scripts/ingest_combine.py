@@ -28,6 +28,7 @@ from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_shooting import CombineShootingResult
+from app.models.position_taxonomy import derive_position_tags
 
 
 # ------------------------------
@@ -212,10 +213,15 @@ async def ingest_anthro(session: AsyncSession, rows: List[Dict[str, str]]) -> in
             and_(CombineAnthro.player_id == pm.id, CombineAnthro.season_id == season.id)
         )
         existing = (await session.execute(stmt)).scalar_one_or_none()
+        raw_position, position_fine, position_parents = _position_triplet(
+            row.get("pos")
+        )
         payload = {
             "player_id": pm.id,
             "season_id": season.id,
-            "pos": row.get("pos"),
+            "raw_position": raw_position,
+            "position_fine": position_fine,
+            "position_parents": position_parents,
             "body_fat_pct": _to_opt_float(row.get("body_fat_pct")),
             "hand_length_in": _to_opt_float(row.get("hand_length")),
             "hand_width_in": _to_opt_float(row.get("hand_width")),
@@ -259,10 +265,15 @@ async def ingest_agility(session: AsyncSession, rows: List[Dict[str, str]]) -> i
             )
         )
         existing = (await session.execute(stmt)).scalar_one_or_none()
+        raw_position, position_fine, position_parents = _position_triplet(
+            row.get("pos")
+        )
         payload = {
             "player_id": pm.id,
             "season_id": season.id,
-            "pos": row.get("pos"),
+            "raw_position": raw_position,
+            "position_fine": position_fine,
+            "position_parents": position_parents,
             "lane_agility_time_s": _to_opt_float(row.get("lane_agility_time")),
             "shuttle_run_s": _to_opt_float(row.get("modified_lane_agility_time")),
             "three_quarter_sprint_s": _to_opt_float(row.get("three_quarter_sprint")),
@@ -309,7 +320,9 @@ async def ingest_shooting(session: AsyncSession, rows: List[Dict[str, str]]) -> 
             nba_stats_player_id=row.get("player_id") or row.get("person_id"),
             raw_player_name=row.get("player_name"),
         )
-        pos = row.get("pos")
+        raw_position, position_fine, position_parents = _position_triplet(
+            row.get("pos")
+        )
         nba_pid = _to_opt_int(row.get("player_id"))
         raw_name = row.get("player_name")
 
@@ -330,7 +343,9 @@ async def ingest_shooting(session: AsyncSession, rows: List[Dict[str, str]]) -> 
             payload = {
                 "player_id": pm.id,
                 "season_id": season.id,
-                "pos": pos,
+                "raw_position": raw_position,
+                "position_fine": position_fine,
+                "position_parents": position_parents,
                 "drill": drill_key,
                 "fgm": fgm,
                 "fga": fga,
@@ -406,3 +421,13 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+# ------------------------------
+# Helpers
+# ------------------------------
+
+
+def _position_triplet(
+    raw_pos: Optional[str],
+) -> tuple[Optional[str], Optional[str], Optional[List[str]]]:
+    fine, parents = derive_position_tags(raw_pos)
+    return raw_pos or None, fine, parents or None

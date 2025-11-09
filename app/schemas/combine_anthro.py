@@ -1,7 +1,8 @@
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 from sqlmodel import SQLModel, Field
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import UniqueConstraint, Column
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 class CombineAnthro(SQLModel, table=True):  # type: ignore[call-arg]
@@ -14,7 +15,12 @@ class CombineAnthro(SQLModel, table=True):  # type: ignore[call-arg]
     player_id: int = Field(foreign_key="players_master.id", index=True)
     season_id: int = Field(foreign_key="seasons.id", index=True)
 
-    pos: Optional[str] = Field(default=None, index=True)
+    raw_position: Optional[str] = Field(default=None, index=True)
+    position_fine: Optional[str] = Field(default=None, index=True)
+    position_parents: Optional[List[str]] = Field(
+        default=None,
+        sa_column=Column(JSONB, nullable=True),
+    )
 
     body_fat_pct: Optional[float] = Field(default=None)
     hand_length_in: Optional[float] = Field(default=None)

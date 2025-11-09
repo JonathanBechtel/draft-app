@@ -13,7 +13,6 @@ from app.models.fields import (
     MetricCategory,
     MetricSource,
     MetricStatistic,
-    Position,
 )
 
 
@@ -74,13 +73,15 @@ class MetricSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
         )
     )
     season_id: Optional[int] = Field(default=None, foreign_key="seasons.id", index=True)
-    position_scope: Optional[Position] = Field(
+    position_scope_fine: Optional[str] = Field(
         default=None,
-        sa_column=Column(
-            SAEnum(Position, name="metric_position_enum"),
-            nullable=True,
-        ),
-        description="Restrict cohort calculations to a single position",
+        description="Canonical fine-grained scope token (e.g., 'pg', 'sf_pf')",
+        index=True,
+    )
+    position_scope_parent: Optional[str] = Field(
+        default=None,
+        description="Composite scope token (guard, wing, forward, big)",
+        index=True,
     )
     source: MetricSource = Field(
         sa_column=Column(

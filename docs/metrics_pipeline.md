@@ -27,7 +27,8 @@ The CLI accepts the arguments shown below (`python -m app.scripts.compute_metric
 ```
 --cohort <cohort>            required, one of current_draft | all_time_draft | current_nba | all_time_nba
 --season <code>              required when --cohort current_draft (e.g., 2024-25)
---position-scope <pos>       optional position filter (g, f, c or guard/forward/center)
+--position-scope <pos>       optional position filter (fine: pg, sg, sf, pf, c, pg-sg...
+                             parent: guard, wing, forward, big)
 --categories <...>           optional list of metric categories (anthropometrics, combine_performance, advanced_stats)
 --run-key <text>             optional unique identifier (auto-generated timestamped key when omitted)
 --min-sample <int>           minimum cohort sample size to emit a metric (default 3)
@@ -79,7 +80,8 @@ Environment variables recognized by the target:
 
 - `COHORT` (required) – cohort slug, defaults to `current_draft`.
 - `SEASON` – season code; required when `COHORT=current_draft`.
-- `POSITION` – optional position scope (`g`, `f`, or `c`).
+- `POSITION` – optional position scope (fine tokens like `pg`, `sg`, `sf`, `pf`,
+  `c`, or parent buckets `guard`, `wing`, `forward`, `big`).
 - `RUN_KEY` – optional run identifier.
 - `CATEGORIES` – space-separated list of categories passed to
   `--categories` (e.g., `"anthropometrics combine_performance"`).

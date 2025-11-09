@@ -16,7 +16,11 @@ from app.models.fields import (
     MetricCategory,
     MetricSource,
     MetricStatistic,
-    Position,
+)
+from app.models.position_taxonomy import (
+    PositionScope,
+    PositionScopeKind,
+    resolve_position_scope,
 )
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
@@ -204,7 +208,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--position-scope",
         dest="position_scope",
-        help="Limit cohort to a position (g, f, c, guard, forward, center)",
+        help=(
+            "Limit cohort to a position (fine: pg, sg, sf, pf, c, pg-sg, etc. | "
+            "parent: guard, wing, forward, big)"
+        ),
     )
     parser.add_argument(
         "--categories",
@@ -239,19 +246,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def pick_position(value: Optional[str]) -> Optional[Position]:
-    if value is None:
-        return None
-    candidate = value.strip().lower()
-    for position in Position:
-        if candidate in {
-            position.name,
-            position.value,
-            position.name[0],
-            position.value[0],
-        }:
-            return position
-    raise ValueError(f"Unknown position scope: {value}")
+def pick_position_scope(value: Optional[str]) -> Optional[PositionScope]:
+    return resolve_position_scope(value)
 
 
 def pick_categories(values: Optional[Iterable[str]]) -> Set[MetricCategory]:
@@ -305,7 +301,9 @@ async def load_anthro(
     stmt = select(
         CombineAnthro.player_id,
         CombineAnthro.season_id,
-        CombineAnthro.pos,
+        CombineAnthro.raw_position,
+        CombineAnthro.position_fine,
+        CombineAnthro.position_parents,
         CombineAnthro.body_fat_pct,
         CombineAnthro.hand_length_in,
         CombineAnthro.hand_width_in,
@@ -328,7 +326,9 @@ async def load_agility(
     stmt = select(
         CombineAgility.player_id,
         CombineAgility.season_id,
-        CombineAgility.pos,
+        CombineAgility.raw_position,
+        CombineAgility.position_fine,
+        CombineAgility.position_parents,
         CombineAgility.lane_agility_time_s,
         CombineAgility.shuttle_run_s,
         CombineAgility.three_quarter_sprint_s,
@@ -349,7 +349,9 @@ async def load_shooting(
     stmt = select(
         CombineShootingResult.player_id,
         CombineShootingResult.season_id,
-        CombineShootingResult.pos,
+        CombineShootingResult.raw_position,
+        CombineShootingResult.position_fine,
+        CombineShootingResult.position_parents,
         CombineShootingResult.drill,
         CombineShootingResult.fgm,
         CombineShootingResult.fga,
@@ -374,7 +376,7 @@ class MetricRunner:
     def __init__(self, session, args: argparse.Namespace) -> None:
         self.session = session
         self.cohort = CohortType(args.cohort)
-        self.position_scope = pick_position(args.position_scope)
+        self.position_scope = pick_position_scope(args.position_scope)
         self.categories = pick_categories(args.categories)
         self.min_sample = max(1, args.min_sample)
         self.notes = args.notes
@@ -457,10 +459,10 @@ class MetricRunner:
                     run_key=run_key,
                     cohort=self.cohort,
                     season_id=self.season.id if self.season else None,
-                    position_scope=self.position_scope,
                     source=source,
                     population_size=populations.get(source, 0),
                     notes=self.notes,
+                    **self._position_scope_kwargs(),
                 )
                 self.session.add(snapshot)
                 await self.session.flush()
@@ -538,16 +540,32 @@ class MetricRunner:
             return self.run_key
         return f"{self.run_key}:{source.value}"
 
+    def _position_scope_kwargs(self) -> Dict[str, Optional[str]]:
+        if not self.position_scope:
+            return {}
+        if self.position_scope.kind == PositionScopeKind.fine:
+            return {"position_scope_fine": self.position_scope.value}
+        return {"position_scope_parent": self.position_scope.value}
+
     def _apply_common_filters(self, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
             return df
         filtered = df
         if self.position_scope:
-            desired = self.position_scope.name.lower()
-            pos_series = filtered.get("pos")
-            if pos_series is not None:
-                normalized = pos_series.fillna("").astype(str).str.lower()
-                filtered = filtered[normalized.str.startswith(desired)]
+            if self.position_scope.kind == PositionScopeKind.fine:
+                fine_series = filtered.get("position_fine")
+                if fine_series is None:
+                    return filtered.iloc[0:0]
+                filtered = filtered[fine_series == self.position_scope.value]
+            else:
+                parents_series = filtered.get("position_parents")
+                if parents_series is None:
+                    return filtered.iloc[0:0]
+                mask = parents_series.apply(
+                    lambda parents: isinstance(parents, list)
+                    and self.position_scope.value in parents
+                )
+                filtered = filtered[mask]
         return filtered
 
     def _prepare_spec_frame(
