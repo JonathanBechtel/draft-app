@@ -16,6 +16,10 @@ Key tables (authoritative SQLModel definitions live under `app/schemas/`):
   - `player_aliases`: known name variants, one per player; used for matching.
   - `player_external_ids`: stable external IDs (e.g., NBA Stats `PLAYER_ID`).
   - `seasons`: canonical season codes (`YYYY-YY`).
+  - `player_status`: ephemeral roster info (e.g., `is_active_nba`,
+    `nba_last_season`) sourced from Basketball Reference; metrics baselines use
+    these fields to decide whether a row belongs in the current-NBA or
+    all-time-NBA comparison sets.
 - Combine facts
   - `combine_anthro`: one row per (player, season).
   - `combine_agility`: one row per (player, season).

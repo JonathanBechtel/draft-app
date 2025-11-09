@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+import numpy as np
 import pandas as pd
 from sqlalchemy import or_, select
 from sqlmodel import delete
@@ -26,6 +27,7 @@ from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.combine_shooting import CombineShootingResult
 from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
+from app.schemas.player_status import PlayerStatus
 from app.schemas.seasons import Season
 from app.utils.db_async import SessionLocal, load_schema_modules
 
@@ -298,20 +300,30 @@ async def ensure_metric_definitions(
 async def load_anthro(
     session: "AsyncSession", season_ids: Optional[Set[int]]
 ) -> pd.DataFrame:
-    stmt = select(
-        CombineAnthro.player_id,
-        CombineAnthro.season_id,
-        CombineAnthro.raw_position,
-        CombineAnthro.position_fine,
-        CombineAnthro.position_parents,
-        CombineAnthro.body_fat_pct,
-        CombineAnthro.hand_length_in,
-        CombineAnthro.hand_width_in,
-        CombineAnthro.height_w_shoes_in,
-        CombineAnthro.height_wo_shoes_in,
-        CombineAnthro.standing_reach_in,
-        CombineAnthro.wingspan_in,
-        CombineAnthro.weight_lb,
+    stmt = (
+        select(
+            CombineAnthro.player_id,
+            CombineAnthro.season_id,
+            CombineAnthro.raw_position,
+            CombineAnthro.position_fine,
+            CombineAnthro.position_parents,
+            CombineAnthro.body_fat_pct,
+            CombineAnthro.hand_length_in,
+            CombineAnthro.hand_width_in,
+            CombineAnthro.height_w_shoes_in,
+            CombineAnthro.height_wo_shoes_in,
+            CombineAnthro.standing_reach_in,
+            CombineAnthro.wingspan_in,
+            CombineAnthro.weight_lb,
+            PlayerStatus.is_active_nba,
+            PlayerStatus.nba_last_season,
+        )
+        .select_from(CombineAnthro)
+        .join(
+            PlayerStatus,
+            PlayerStatus.player_id == CombineAnthro.player_id,
+            isouter=True,
+        )
     )
     if season_ids:
         stmt = stmt.where(CombineAnthro.season_id.in_(season_ids))
@@ -323,18 +335,28 @@ async def load_anthro(
 async def load_agility(
     session: "AsyncSession", season_ids: Optional[Set[int]]
 ) -> pd.DataFrame:
-    stmt = select(
-        CombineAgility.player_id,
-        CombineAgility.season_id,
-        CombineAgility.raw_position,
-        CombineAgility.position_fine,
-        CombineAgility.position_parents,
-        CombineAgility.lane_agility_time_s,
-        CombineAgility.shuttle_run_s,
-        CombineAgility.three_quarter_sprint_s,
-        CombineAgility.standing_vertical_in,
-        CombineAgility.max_vertical_in,
-        CombineAgility.bench_press_reps,
+    stmt = (
+        select(
+            CombineAgility.player_id,
+            CombineAgility.season_id,
+            CombineAgility.raw_position,
+            CombineAgility.position_fine,
+            CombineAgility.position_parents,
+            CombineAgility.lane_agility_time_s,
+            CombineAgility.shuttle_run_s,
+            CombineAgility.three_quarter_sprint_s,
+            CombineAgility.standing_vertical_in,
+            CombineAgility.max_vertical_in,
+            CombineAgility.bench_press_reps,
+            PlayerStatus.is_active_nba,
+            PlayerStatus.nba_last_season,
+        )
+        .select_from(CombineAgility)
+        .join(
+            PlayerStatus,
+            PlayerStatus.player_id == CombineAgility.player_id,
+            isouter=True,
+        )
     )
     if season_ids:
         stmt = stmt.where(CombineAgility.season_id.in_(season_ids))
@@ -346,15 +368,25 @@ async def load_agility(
 async def load_shooting(
     session: "AsyncSession", season_ids: Optional[Set[int]]
 ) -> pd.DataFrame:
-    stmt = select(
-        CombineShootingResult.player_id,
-        CombineShootingResult.season_id,
-        CombineShootingResult.raw_position,
-        CombineShootingResult.position_fine,
-        CombineShootingResult.position_parents,
-        CombineShootingResult.drill,
-        CombineShootingResult.fgm,
-        CombineShootingResult.fga,
+    stmt = (
+        select(
+            CombineShootingResult.player_id,
+            CombineShootingResult.season_id,
+            CombineShootingResult.raw_position,
+            CombineShootingResult.position_fine,
+            CombineShootingResult.position_parents,
+            CombineShootingResult.drill,
+            CombineShootingResult.fgm,
+            CombineShootingResult.fga,
+            PlayerStatus.is_active_nba,
+            PlayerStatus.nba_last_season,
+        )
+        .select_from(CombineShootingResult)
+        .join(
+            PlayerStatus,
+            PlayerStatus.player_id == CombineShootingResult.player_id,
+            isouter=True,
+        )
     )
     if season_ids:
         stmt = stmt.where(CombineShootingResult.season_id.in_(season_ids))
@@ -550,7 +582,7 @@ class MetricRunner:
     def _apply_common_filters(self, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
             return df
-        filtered = df
+        filtered = df.copy()
         if self.position_scope:
             if self.position_scope.kind == PositionScopeKind.fine:
                 fine_series = filtered.get("position_fine")
@@ -566,7 +598,31 @@ class MetricRunner:
                     and self.position_scope.value in parents
                 )
                 filtered = filtered[mask]
-        return filtered
+        return self._annotate_baseline(filtered)
+
+    def _annotate_baseline(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            df["baseline_flag"] = pd.Series(dtype=bool)
+            return df
+        annotated = df.copy()
+        default_false = pd.Series(False, index=annotated.index)
+        active_series = (
+            annotated.get("is_active_nba", default_false).fillna(False).astype(bool)
+        )
+        nba_history = annotated.get("nba_last_season")
+        history_series = (
+            nba_history.notna() if nba_history is not None else default_false
+        )
+
+        if self.cohort == CohortType.current_nba:
+            baseline = active_series
+        elif self.cohort == CohortType.all_time_nba:
+            baseline = (active_series | history_series).astype(bool)
+        else:
+            baseline = pd.Series(True, index=annotated.index)
+
+        annotated["baseline_flag"] = baseline.astype(bool)
+        return annotated
 
     def _prepare_spec_frame(
         self, frame: Optional[pd.DataFrame], spec: MetricSpec
@@ -578,9 +634,10 @@ class MetricRunner:
             working = working[working["drill"] == spec.drill]
         if spec.column not in working.columns:
             return pd.DataFrame(columns=["player_id", "season_id", "value"])
-        working = working[["player_id", "season_id", spec.column]].rename(
-            columns={spec.column: "value"}
-        )
+        columns = ["player_id", "season_id", spec.column]
+        if "baseline_flag" in working.columns:
+            columns.append("baseline_flag")
+        working = working[columns].rename(columns={spec.column: "value"})
         working = working.dropna(subset=["player_id", "value"])
         if working.empty:
             return working
@@ -589,6 +646,8 @@ class MetricRunner:
             working = working.sort_values("season_id").drop_duplicates(
                 subset=["player_id"], keep="last"
             )
+        if "baseline_flag" not in working.columns:
+            working["baseline_flag"] = False
         return working
 
     def _compute_metrics(
@@ -610,33 +669,62 @@ class MetricRunner:
             diagnostics["reason"] = "no_valid_values"
             return None, diagnostics
 
-        sample_count = int(df["value"].count())
+        baseline_mask = df.get("baseline_flag")
+        if baseline_mask is None:
+            baseline_mask = pd.Series(False, index=df.index)
+        baseline_mask = baseline_mask.fillna(False).astype(bool)
+        baseline_values = df.loc[baseline_mask, "value"]
+        baseline_count = int(baseline_values.count())
         diagnostics.update(
             {
-                "count": sample_count,
+                "count": baseline_count,
+                "population_count": int(df["value"].count()),
                 "skipped": False,
             }
         )
 
-        if sample_count < self.min_sample:
+        if baseline_count == 0:
+            diagnostics["skipped"] = True
+            diagnostics["reason"] = "no_active_baseline"
+            return None, diagnostics
+
+        if baseline_count < self.min_sample:
             diagnostics["skipped"] = True
             diagnostics["reason"] = f"insufficient_sample(<{self.min_sample})"
             return None, diagnostics
 
+        value_series = df["value"]
+        sorted_baseline = np.sort(baseline_values.to_numpy())
         ascending_rank = spec.lower_is_better
-        rank_series = df["value"].rank(method="dense", ascending=ascending_rank)
-        rank_pct = df["value"].rank(method="average", ascending=True, pct=True)
-        if spec.lower_is_better:
-            adjustment = 100.0 / sample_count
-            percentile_series = ((1 - rank_pct) * 100.0) + adjustment
-        else:
-            percentile_series = rank_pct * 100.0
 
-        mean = df["value"].mean()
-        std = df["value"].std(ddof=0)
+        positions = np.searchsorted(
+            sorted_baseline, value_series.to_numpy(), side="right"
+        )
+        rank_pct = positions / baseline_count
+        if spec.lower_is_better:
+            adjustment = 100.0 / baseline_count
+            percentile_vals = ((1 - rank_pct) * 100.0) + adjustment
+        else:
+            percentile_vals = rank_pct * 100.0
+        percentile_series = pd.Series(percentile_vals, index=df.index)
+
+        if ascending_rank:
+            unique_vals = np.sort(baseline_values.unique())
+            rank_positions = np.searchsorted(
+                unique_vals, value_series.to_numpy(), side="left"
+            )
+        else:
+            unique_vals = np.sort((-baseline_values).unique())
+            rank_positions = np.searchsorted(
+                unique_vals, (-value_series).to_numpy(), side="left"
+            )
+        rank_series = pd.Series(rank_positions + 1, index=df.index)
+
+        mean = baseline_values.mean()
+        std = baseline_values.std(ddof=0)
         z_scores = pd.Series([pd.NA] * len(df), index=df.index)
         if std and std > 0:
-            z = (df["value"] - mean) / std
+            z = (value_series - mean) / std
             if spec.lower_is_better:
                 z = -1 * z
             z_scores = z
@@ -645,8 +733,8 @@ class MetricRunner:
             {
                 "mean": float(mean),
                 "std": float(std) if std and std > 0 else None,
-                "min": float(df["value"].min()),
-                "max": float(df["value"].max()),
+                "min": float(baseline_values.min()),
+                "max": float(baseline_values.max()),
             }
         )
 
@@ -654,7 +742,7 @@ class MetricRunner:
             {
                 "player_id": df["player_id"].astype(int),
                 "season_id": df["season_id"],
-                "raw_value": df["value"],
+                "raw_value": value_series,
                 "rank": rank_series,
                 "percentile": percentile_series.clip(0, 100),
                 "z_score": z_scores,

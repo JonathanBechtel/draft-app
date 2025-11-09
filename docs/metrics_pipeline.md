@@ -22,6 +22,18 @@ Metrics are calculated with the pandas-based CLI at
 - writes a `MetricSnapshot` plus `PlayerMetricValue` rows (unless
   `--dry-run` is supplied).
 
+Baseline populations are cohort-aware:
+
+- `current_draft` / `all_time_draft`: compare every combine player to the full
+  combine population (subject to `--position-scope`).
+- `current_nba`: compare against players whose `player_status.is_active_nba` is
+  true.
+- `all_time_nba`: compare against anyone with NBA history (`is_active_nba` true
+  or `player_status.nba_last_season` populated).
+
+Every player with a measurement still receives outputs; the cohort only changes
+which rows define the percentile/rank/z-score distribution.
+
 The CLI accepts the arguments shown below (`python -m app.scripts.compute_metrics --help`).
 
 ```
