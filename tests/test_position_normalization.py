@@ -24,6 +24,12 @@ async def test_derive_position_tags():
     # Test taxonomy logic
     assert derive_position_tags("Point Guard") == ("pg", ["guard"])
     assert derive_position_tags("PG/SG") == ("pg_sg", ["guard"])
+    assert derive_position_tags("Small Forward and Shooting Guard") == (
+        "sg_sf",
+        ["forward", "guard", "wing"],
+    )
+    assert derive_position_tags("Center/Forward") == ("c_f", ["big", "forward"])
+    assert derive_position_tags("Guard/Forward") == ("g_f", ["forward", "guard"])
 
 
 @pytest.mark.asyncio

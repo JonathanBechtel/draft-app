@@ -43,7 +43,9 @@ _BASE_NORMALIZATION = {
     "C": "C",
     "CENTER": "C",
     "G": "G",
+    "GUARD": "G",
     "F": "F",
+    "FORWARD": "F",
 }
 
 _BASE_PARENT_MAP = {
@@ -87,7 +89,10 @@ class PositionScope:
 
 
 def _tokenize_raw_position(raw: str) -> List[str]:
-    cleaned = raw.replace("/", "-").replace(" ", "").upper()
+    # Normalize delimiters: " and " -> "-", "/" -> "-"
+    s = raw.replace(" and ", "-").replace("/", "-")
+    # Remove remaining spaces and uppercase
+    cleaned = s.replace(" ", "").upper()
     tokens = [tok for tok in cleaned.split("-") if tok]
     normalized: List[str] = []
     for token in tokens:
@@ -115,14 +120,13 @@ def derive_position_tags(raw: Optional[str]) -> tuple[Optional[str], List[str]]:
     tokens = _tokenize_raw_position(raw)
     if not tokens:
         return None, []
-    fine_token = "_".join(token.lower() for token in tokens)
-    parents: List[str] = []
-    seen = set()
-    for token in tokens:
-        for parent in _BASE_PARENT_MAP.get(token, set()):
-            if parent not in seen:
-                parents.append(parent)
-                seen.add(parent)
+
+    # Sort based on base order
+    order_index = {code: i for i, code in enumerate(_BASE_ORDER)}
+    unique = sorted(list(set(tokens)), key=lambda code: order_index.get(code, 99))
+
+    fine_token = "_".join(token.lower() for token in unique)
+    parents = get_parents_for_fine(fine_token.upper())
     return fine_token, parents
 
 
@@ -162,4 +166,4 @@ def get_parents_for_fine(fine: Optional[str]) -> List[str]:
             if parent not in seen:
                 parents.append(parent)
                 seen.add(parent)
-    return parents
+    return sorted(parents)
