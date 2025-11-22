@@ -47,20 +47,20 @@ def _categories_for_sources(sources: Set[MetricSource]) -> List[str]:
 async def seasons_with_combine_data(session: AsyncSession) -> Dict[int, str]:
     ids: Set[int] = set()
     for model in (CombineAnthro, CombineAgility, CombineShootingResult):
-        result = await session.execute(select(model.season_id).distinct())
+        stmt = select(model.season_id).distinct()  # type: ignore[call-overload]
+        result = await session.execute(stmt)
         ids.update(x for (x,) in result.all() if x is not None)
     if not ids:
         return {}
-    result = await session.execute(
-        select(Season.id, Season.code).where(cast(Any, Season.id).in_(ids))
-    )
+    stmt_season = select(Season.id, Season.code).where(cast(Any, Season.id).in_(ids))  # type: ignore[call-overload]
+    result = await session.execute(stmt_season)
     return {row[0]: row[1] for row in result.all()}
 
 
 async def existing_snapshot_keys(
     session: AsyncSession, cohorts: Set[CohortType], sources: Set[MetricSource]
 ) -> Set[Tuple[CohortType, Optional[int], MetricSource, Optional[str], Optional[str]]]:
-    stmt = select(
+    stmt = select(  # type: ignore[call-overload]
         MetricSnapshot.cohort,
         MetricSnapshot.season_id,
         MetricSnapshot.source,

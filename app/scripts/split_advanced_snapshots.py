@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
 from sqlalchemy import select, update, delete
-from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType, MetricSource
 from app.schemas.metrics import (
@@ -33,7 +33,7 @@ class WorkItem:
 async def find_advanced_snapshots(
     session: AsyncSession, cohorts: Optional[Set[CohortType]]
 ) -> List[WorkItem]:
-    stmt = select(
+    stmt = select(  # type: ignore[call-overload, misc]
         MetricSnapshot.id,
         MetricSnapshot.run_key,
         MetricSnapshot.cohort,
@@ -67,7 +67,7 @@ async def distinct_sources_for_snapshot(
     session: AsyncSession, snapshot_id: int
 ) -> List[MetricSource]:
     res = await session.execute(
-        select(MetricDefinition.source)
+        select(MetricDefinition.source)  # type: ignore[call-overload]
         .join(
             PlayerMetricValue,
             PlayerMetricValue.metric_definition_id == MetricDefinition.id,
@@ -83,7 +83,7 @@ async def ids_for_source(
 ) -> Tuple[List[int], Set[int]]:
     # Return (pmv_ids, player_ids)
     res = await session.execute(
-        select(PlayerMetricValue.id, PlayerMetricValue.player_id)
+        select(PlayerMetricValue.id, PlayerMetricValue.player_id)  # type: ignore[call-overload]
         .join(
             MetricDefinition,
             PlayerMetricValue.metric_definition_id == MetricDefinition.id,
@@ -117,14 +117,14 @@ async def split_snapshot(
         )
         if execute:
             await session.execute(
-                delete(MetricSnapshot).where(MetricSnapshot.id == item.snapshot_id)
+                delete(MetricSnapshot).where(MetricSnapshot.id == item.snapshot_id)  # type: ignore[arg-type]
             )
             await session.commit()
         return
 
     # Check if any PlayerSimilarity rows exist and handle policy
     sim_res = await session.execute(
-        select(PlayerSimilarity.id).where(
+        select(PlayerSimilarity.id).where(  # type: ignore[call-overload]
             PlayerSimilarity.snapshot_id == item.snapshot_id
         )
     )
@@ -179,7 +179,7 @@ async def split_snapshot(
 
     # Delete the original mislabeled snapshot
     await session.execute(
-        delete(MetricSnapshot).where(MetricSnapshot.id == item.snapshot_id)
+        delete(MetricSnapshot).where(MetricSnapshot.id == item.snapshot_id)  # type: ignore[arg-type]
     )
     await session.commit()
     print(
