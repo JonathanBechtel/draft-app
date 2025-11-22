@@ -29,7 +29,7 @@ from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_shooting import CombineShootingResult
 from app.schemas.positions import Position
-from app.models.position_taxonomy import derive_position_tags
+from app.models.position_taxonomy import derive_position_tags, get_parents_for_fine
 
 
 # ------------------------------
@@ -168,7 +168,8 @@ async def get_or_create_position_id(
     if pos:
         return pos.id
     # Create
-    pos = Position(code=fine_code)
+    parents = get_parents_for_fine(fine_code)
+    pos = Position(code=fine_code, parents=parents)
     session.add(pos)
     await session.flush()
     return pos.id
@@ -240,8 +241,6 @@ async def ingest_anthro(session: AsyncSession, rows: List[Dict[str, str]]) -> in
             "season_id": season.id,
             "position_id": position_id,
             "raw_position": raw_position,
-            "position_fine": position_fine,
-            "position_parents": position_parents,
             "body_fat_pct": _to_opt_float(row.get("body_fat_pct")),
             "hand_length_in": _to_opt_float(row.get("hand_length")),
             "hand_width_in": _to_opt_float(row.get("hand_width")),
@@ -294,8 +293,6 @@ async def ingest_agility(session: AsyncSession, rows: List[Dict[str, str]]) -> i
             "season_id": season.id,
             "position_id": position_id,
             "raw_position": raw_position,
-            "position_fine": position_fine,
-            "position_parents": position_parents,
             "lane_agility_time_s": _to_opt_float(row.get("lane_agility_time")),
             "shuttle_run_s": _to_opt_float(row.get("modified_lane_agility_time")),
             "three_quarter_sprint_s": _to_opt_float(row.get("three_quarter_sprint")),
@@ -368,8 +365,6 @@ async def ingest_shooting(session: AsyncSession, rows: List[Dict[str, str]]) -> 
                 "season_id": season.id,
                 "position_id": position_id,
                 "raw_position": raw_position,
-                "position_fine": position_fine,
-                "position_parents": position_parents,
                 "drill": drill_key,
                 "fgm": fgm,
                 "fga": fga,

@@ -1,8 +1,7 @@
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
 from sqlmodel import SQLModel, Field
-from sqlalchemy import UniqueConstraint, Column
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import UniqueConstraint
 
 
 class CombineShootingResult(SQLModel, table=True):  # type: ignore[call-arg]
@@ -21,11 +20,6 @@ class CombineShootingResult(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     raw_position: Optional[str] = Field(default=None, index=True)
-    position_fine: Optional[str] = Field(default=None, index=True)
-    position_parents: Optional[List[str]] = Field(
-        default=None,
-        sa_column=Column(JSONB, nullable=True),
-    )
     drill: str = Field(
         index=True,
         description="off_dribble | spot_up | three_point_star | midrange_star | three_point_side | midrange_side | free_throw",

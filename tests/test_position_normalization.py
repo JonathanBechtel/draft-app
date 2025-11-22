@@ -10,12 +10,13 @@ from app.models.position_taxonomy import derive_position_tags
 @pytest.mark.asyncio
 async def test_position_creation(db_session):
     # Test creating a position
-    pos = Position(code="PG", description="Point Guard")
+    pos = Position(code="PG", description="Point Guard", parents=["guard"])
     db_session.add(pos)
     await db_session.commit()
     await db_session.refresh(pos)
     assert pos.id is not None
     assert pos.code == "PG"
+    assert "guard" in pos.parents
 
 
 @pytest.mark.asyncio
@@ -56,13 +57,14 @@ async def test_ingest_player_bios_position_resolution(db_session):
     # Verify
     stmt = select(PlayerStatus).where(PlayerStatus.player_id == pm.id)
     status = (await db_session.execute(stmt)).scalar_one()
-    assert status.position == "Point Guard"
+    assert status.raw_position == "Point Guard"
     assert status.position_id is not None
 
     # Verify position created
     stmt = select(Position).where(Position.id == status.position_id)
     pos = (await db_session.execute(stmt)).scalar_one()
     assert pos.code == "pg"
+    assert "guard" in pos.parents
 
 
 @pytest.mark.asyncio

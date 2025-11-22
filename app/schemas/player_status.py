@@ -20,7 +20,7 @@ class PlayerStatus(SQLModel, table=True):  # type: ignore[call-arg]
     nba_last_season: Optional[str] = Field(default=None, index=True)
 
     # Listed attributes that may change
-    position: Optional[str] = Field(default=None)
+    raw_position: Optional[str] = Field(default=None)
     height_in: Optional[int] = Field(default=None)
     weight_lb: Optional[int] = Field(default=None)
 
