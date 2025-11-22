@@ -41,6 +41,8 @@ The CLI accepts the arguments shown below (`python -m app.scripts.compute_metric
 --season <code>              required when --cohort current_draft (e.g., 2024-25)
 --position-scope <pos>       optional position filter (fine: pg, sg, sf, pf, c, pg-sg...
                              parent: guard, wing, forward, big)
+--position-matrix <preset>   sweep a preset of scopes (parent = guard/wing/forward/big; fine = pg/sg/sf/pf/c + hybrids)
+--matrix-skip-baseline       skip the all-position baseline when using --position-matrix
 --categories <...>           optional list of metric categories (anthropometrics, combine_performance, advanced_stats)
 --run-key <text>             optional unique identifier (auto-generated timestamped key when omitted)
 --min-sample <int>           minimum cohort sample size to emit a metric (default 3)
@@ -76,6 +78,12 @@ python -m app.scripts.compute_metrics \
 When there is no existing run key, the script generates a timestamped one
 (`metrics_<season>_<UTC timestamp>`).
 
+To avoid running multiple commands for positional slices, supply
+`--position-matrix parent` (baseline + guard/wing/forward/big) or
+`--position-matrix fine` (pg/sg/sf/pf/c plus their common hybrids). Add
+`--matrix-skip-baseline` if you have already computed the all-position snapshot
+and only need the scoped runs.
+
 ## Makefile Target
 
 For convenience, use the `metrics` target added to the root `Makefile`.
@@ -94,6 +102,10 @@ Environment variables recognized by the target:
 - `SEASON` – season code; required when `COHORT=current_draft`.
 - `POSITION` – optional position scope (fine tokens like `pg`, `sg`, `sf`, `pf`,
   `c`, or parent buckets `guard`, `wing`, `forward`, `big`).
+- `POSITION_MATRIX` – pass `parent` or `fine` to run every scope in that preset
+  from a single command.
+- `MATRIX_SKIP_BASELINE` – set to `1` to skip the all-position baseline when
+  using `POSITION_MATRIX`.
 - `RUN_KEY` – optional run identifier.
 - `CATEGORIES` – space-separated list of categories passed to
   `--categories` (e.g., `"anthropometrics combine_performance"`).

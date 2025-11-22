@@ -38,6 +38,8 @@ COHORT ?= current_draft
 RUN_KEY ?=
 SEASON ?=
 POSITION ?=
+POSITION_MATRIX ?=
+MATRIX_SKIP_BASELINE ?=
 CATEGORIES ?=
 MIN_SAMPLE ?=
 NOTES ?=
@@ -49,6 +51,8 @@ metrics:
 	$(PYTHON) -m app.scripts.compute_metrics --cohort $(COHORT) \
 	$(if $(SEASON), --season $(SEASON),) \
 	$(if $(POSITION), --position-scope $(POSITION),) \
+	$(if $(POSITION_MATRIX), --position-matrix $(POSITION_MATRIX),) \
+	$(if $(MATRIX_SKIP_BASELINE), --matrix-skip-baseline,) \
 	$(if $(CATEGORIES), --categories $(CATEGORIES),) \
 	$(if $(RUN_KEY), --run-key $(RUN_KEY),) \
 	$(if $(MIN_SAMPLE), --min-sample $(MIN_SAMPLE),) \

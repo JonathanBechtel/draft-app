@@ -3,12 +3,11 @@ from __future__ import annotations
 import argparse
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import or_, select
+from sqlalchemy import select, func
 from sqlmodel import delete
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -21,6 +20,7 @@ from app.models.fields import (
 from app.models.position_taxonomy import (
     PositionScope,
     PositionScopeKind,
+    preset_scope_tokens,
     resolve_position_scope,
 )
 from app.schemas.combine_agility import CombineAgility
@@ -195,6 +195,14 @@ SHOOTING_SPECS: Tuple[MetricSpec, ...] = tuple(
 ALL_SPECS: Tuple[MetricSpec, ...] = ANTHRO_SPECS + AGILITY_SPECS + SHOOTING_SPECS
 
 
+@dataclass(frozen=True)
+class ScopePlanEntry:
+    display: str
+    scope: Optional[PositionScope]
+    label: Optional[str]
+    append_suffix: bool
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compute DraftGuru metric snapshots.")
     parser.add_argument(
@@ -216,10 +224,34 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--position-matrix",
+        choices=["parent", "fine"],
+        help=(
+            "Run a full sweep of position scopes (parent: guard/wing/forward/big; "
+            "fine: pg/sg/sf/pf/c + common hybrids)."
+        ),
+    )
+    parser.add_argument(
+        "--matrix-skip-baseline",
+        action="store_true",
+        help=(
+            "When set alongside --position-matrix, skip the all-positions baseline run."
+        ),
+    )
+    parser.add_argument(
         "--categories",
         nargs="+",
         choices=[c.value for c in MetricCategory],
         help="Metric categories to compute (defaults to all)",
+    )
+    parser.add_argument(
+        "--sources",
+        nargs="+",
+        choices=[s.value for s in MetricSource],
+        help=(
+            "Limit computation to specific metric sources within the selected "
+            "categories (e.g., combine_anthro, combine_agility, combine_shooting)."
+        ),
     )
     parser.add_argument(
         "--run-key",
@@ -409,34 +441,111 @@ class MetricRunner:
         self.session = session
         self.cohort = CohortType(args.cohort)
         self.position_scope = pick_position_scope(args.position_scope)
+        self.position_matrix = args.position_matrix
+        self.matrix_skip_baseline = args.matrix_skip_baseline
         self.categories = pick_categories(args.categories)
+        self._source_filters: Optional[Set[MetricSource]] = (
+            {MetricSource(v) for v in args.sources}
+            if getattr(args, "sources", None)
+            else None
+        )
         self.min_sample = max(1, args.min_sample)
         self.notes = args.notes
         self.dry_run = args.dry_run
         self.replace_run = args.replace_run
         self.season_code = args.season
-        self.run_key = args.run_key or self._default_run_key(self.season_code)
+        self.base_run_key = args.run_key or self._default_run_key()
 
         self.season: Optional[Season] = None
         self.season_ids: Optional[Set[int]] = None
 
         self.specs = [spec for spec in ALL_SPECS if spec.category in self.categories]
+        if self._source_filters is not None:
+            self.specs = [
+                spec for spec in self.specs if spec.source in self._source_filters
+            ]
         if not self.specs:
             raise ValueError("No metric specifications selected")
         self.sources: List[MetricSource] = list(
             dict.fromkeys(spec.source for spec in self.specs)
         )
+        self.scope_plan = self._build_scope_plan()
 
-    @staticmethod
-    def _default_run_key(season_code: Optional[str]) -> str:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        season_part = season_code or "all"
-        return f"metrics_{season_part}_{stamp}"
+    def _default_run_key(self) -> str:
+        season_part = self.season_code or "all"
+        cohort_part = self.cohort.value
+        return f"cohort={cohort_part}|season={season_part}"
+
+    def _compose_scope_run_key(self, entry: ScopePlanEntry) -> str:
+        token = entry.label if entry.label else "all"
+        return f"{self.base_run_key}|pos={token}|min={self.min_sample}"
+
+    def _build_scope_plan(self) -> List[ScopePlanEntry]:
+        if self.position_matrix and self.position_scope:
+            raise ValueError(
+                "--position-scope cannot be combined with --position-matrix"
+            )
+        plan: List[ScopePlanEntry] = []
+        if self.position_matrix:
+            tokens = preset_scope_tokens(self.position_matrix)
+            if not self.matrix_skip_baseline:
+                plan.append(
+                    ScopePlanEntry(
+                        display="all",
+                        scope=None,
+                        label=None,
+                        append_suffix=False,
+                    )
+                )
+            for token in tokens:
+                scope = resolve_position_scope(token)
+                if scope is None:
+                    continue
+                plan.append(
+                    ScopePlanEntry(
+                        display=token,
+                        scope=scope,
+                        label=token,
+                        append_suffix=True,
+                    )
+                )
+            return plan
+
+        display = self.position_scope.value if self.position_scope else "all"
+        plan.append(
+            ScopePlanEntry(
+                display=display,
+                scope=self.position_scope,
+                label=self.position_scope.value if self.position_scope else None,
+                append_suffix=False,
+            )
+        )
+        return plan
 
     async def run(self) -> None:
         await self._configure_cohort()
         definitions = await ensure_metric_definitions(self.session, self.specs)
+        any_scope_ran = False
+        for entry in self.scope_plan:
+            scope_run_key = self._compose_scope_run_key(entry)
+            self.position_scope = entry.scope
+            print(f"\n=== Position scope: {entry.display} ===")
+            scope_success = await self._execute_scope(
+                definitions=definitions,
+                run_key_base=scope_run_key,
+                scope_label=entry.display,
+            )
+            any_scope_ran = any_scope_ran or scope_success
+        if not any_scope_ran:
+            print("No metrics produced for any requested position scope.")
 
+    async def _execute_scope(
+        self,
+        *,
+        definitions: Dict[str, MetricDefinition],
+        run_key_base: str,
+        scope_label: str,
+    ) -> bool:
         raw_frames = await self._load_source_frames()
         results_by_source: Dict[MetricSource, List[Tuple[MetricSpec, pd.DataFrame]]] = {
             source: [] for source in self.sources
@@ -461,14 +570,16 @@ class MetricRunner:
             results_by_source[spec.source].append((spec, metrics_df))
 
         if not any(results_by_source.values()):
-            print("No metrics produced; exiting without snapshot.")
+            print("No metrics produced; skipping snapshot creation for this scope.")
             self._report(
                 diagnostics,
                 snapshots={},
                 populations={source: 0 for source in self.sources},
                 total_population=0,
+                run_key_base=run_key_base,
+                scope_label=scope_label,
             )
-            return
+            return False
 
         populations = {
             source: len(players_by_source[source])
@@ -479,14 +590,15 @@ class MetricRunner:
 
         if not self.dry_run:
             if self.replace_run:
-                await self._delete_existing_run()
+                await self._delete_existing_run(run_key_base)
 
             payload_buffer: List[PlayerMetricValue] = []
             for source in self.sources:
                 source_results = results_by_source[source]
                 if not source_results:
                     continue
-                run_key = self._run_key_for_source(source)
+                run_key = self._run_key_for_source(source, run_key_base)
+                version = await self._next_version(source, run_key)
                 snapshot = MetricSnapshot(
                     run_key=run_key,
                     cohort=self.cohort,
@@ -494,6 +606,8 @@ class MetricRunner:
                     source=source,
                     population_size=populations.get(source, 0),
                     notes=self.notes,
+                    version=version,
+                    is_current=False,
                     **self._position_scope_kwargs(),
                 )
                 self.session.add(snapshot)
@@ -527,7 +641,7 @@ class MetricRunner:
                 if results_by_source[source]:
                     snapshot_details[source] = {
                         "snapshot_id": None,
-                        "run_key": self._run_key_for_source(source),
+                        "run_key": self._run_key_for_source(source, run_key_base),
                     }
 
         self._report(
@@ -535,7 +649,10 @@ class MetricRunner:
             snapshots=snapshot_details,
             populations={source: populations.get(source, 0) for source in self.sources},
             total_population=len(total_players),
+            run_key_base=run_key_base,
+            scope_label=scope_label,
         )
+        return True
 
     async def _configure_cohort(self) -> None:
         if self.cohort == CohortType.current_draft:
@@ -567,10 +684,9 @@ class MetricRunner:
             frames[MetricSource.combine_shooting] = self._apply_common_filters(df)
         return frames
 
-    def _run_key_for_source(self, source: MetricSource) -> str:
-        if len(self.sources) <= 1:
-            return self.run_key
-        return f"{self.run_key}:{source.value}"
+    def _run_key_for_source(self, source: MetricSource, run_key_base: str) -> str:
+        # Keep a shared run_key across sources; source is captured in the snapshot's column
+        return run_key_base
 
     def _position_scope_kwargs(self) -> Dict[str, Optional[str]]:
         if not self.position_scope:
@@ -750,15 +866,9 @@ class MetricRunner:
         )
         return metrics_df, diagnostics
 
-    async def _delete_existing_run(self) -> None:
-        pattern = f"{self.run_key}:%"
-        result = await self.session.exec(
-            select(MetricSnapshot).where(
-                or_(
-                    MetricSnapshot.run_key == self.run_key,
-                    MetricSnapshot.run_key.like(pattern),
-                )
-            )
+    async def _delete_existing_run(self, run_key_base: str) -> None:
+        result = await self.session.execute(
+            select(MetricSnapshot).where(MetricSnapshot.run_key == run_key_base)
         )
         snapshots = result.scalars().all()
         if not snapshots:
@@ -767,7 +877,7 @@ class MetricRunner:
             snapshot.id for snapshot in snapshots if snapshot.id is not None
         ]
         if snapshot_ids:
-            await self.session.exec(
+            await self.session.execute(
                 delete(PlayerMetricValue).where(
                     PlayerMetricValue.snapshot_id.in_(snapshot_ids)
                 )
@@ -775,6 +885,15 @@ class MetricRunner:
         for snapshot in snapshots:
             await self.session.delete(snapshot)
         await self.session.flush()
+
+    async def _next_version(self, source: MetricSource, run_key: str) -> int:
+        result = await self.session.execute(
+            select(func.max(MetricSnapshot.version)).where(
+                MetricSnapshot.source == source, MetricSnapshot.run_key == run_key
+            )
+        )
+        max_ver = result.scalar()
+        return int(max_ver or 0) + 1
 
     def _build_values(
         self,
@@ -810,12 +929,17 @@ class MetricRunner:
         snapshots: Dict[MetricSource, Dict[str, object]],
         populations: Dict[MetricSource, int],
         total_population: int,
+        run_key_base: str,
+        scope_label: str,
     ) -> None:
-        header = f"Run key base: {self.run_key} | Total population: {total_population}"
+        header = (
+            f"Run key base: {run_key_base} | Scope: {scope_label} | "
+            f"Total population: {total_population}"
+        )
         print(header)
         for source in self.sources:
             info = snapshots.get(source)
-            default_run_key = self._run_key_for_source(source)
+            default_run_key = self._run_key_for_source(source, run_key_base)
             run_key = (
                 info.get("run_key", default_run_key)
                 if info is not None

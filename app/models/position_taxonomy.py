@@ -56,6 +56,29 @@ _BASE_PARENT_MAP = {
     "C": {"big"},
 }
 
+PARENT_SCOPE_PRESET: List[str] = ["guard", "wing", "forward", "big"]
+
+FINE_SCOPE_PRESET: List[str] = [
+    "pg",
+    "sg",
+    "sf",
+    "pf",
+    "c",
+    "pg-sg",
+    "sg-sf",
+    "sf-pf",
+    "pf-c",
+]
+
+
+def preset_scope_tokens(kind: str) -> List[str]:
+    kind = kind.strip().lower()
+    if kind == "parent":
+        return PARENT_SCOPE_PRESET.copy()
+    if kind == "fine":
+        return FINE_SCOPE_PRESET.copy()
+    raise ValueError(f"Unknown position matrix kind: {kind}")
+
 
 @dataclass(frozen=True)
 class PositionScope:
