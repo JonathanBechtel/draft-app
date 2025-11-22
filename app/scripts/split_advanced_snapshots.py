@@ -42,7 +42,7 @@ async def find_advanced_snapshots(
         MetricSnapshot.position_scope_fine,
         MetricSnapshot.notes,
         MetricSnapshot.calculated_at,
-    ).where(MetricSnapshot.source == MetricSource.advanced_stats)
+    ).where(MetricSnapshot.source == MetricSource.advanced_stats)  # type: ignore[arg-type]
     if cohorts:
         stmt = stmt.where(cast(Any, MetricSnapshot.cohort).in_(list(cohorts)))
     result = await session.execute(stmt)
@@ -90,7 +90,7 @@ async def ids_for_source(
         )
         .where(
             PlayerMetricValue.snapshot_id == snapshot_id,
-            MetricDefinition.source == source,
+            MetricDefinition.source == source,  # type: ignore[arg-type]
         )
     )
     pmv_ids: List[int] = []

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
 from sqlalchemy import select
-from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType, MetricCategory, MetricSource
 from app.models.position_taxonomy import (

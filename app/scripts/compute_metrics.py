@@ -709,9 +709,9 @@ class MetricRunner:
                 parents_series = filtered.get("position_parents")
                 if parents_series is None:
                     return filtered.iloc[0:0]
+                scope_val = self.position_scope.value
                 mask = parents_series.apply(
-                    lambda parents: isinstance(parents, list)
-                    and self.position_scope.value in parents
+                    lambda parents: isinstance(parents, list) and scope_val in parents
                 )
                 filtered = filtered[mask]
         return self._annotate_baseline(filtered)
