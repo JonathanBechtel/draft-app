@@ -16,7 +16,7 @@ from app.models.position_taxonomy import (
 )
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
-from app.schemas.combine_shooting import CombineShootingResult
+from app.schemas.combine_shooting import CombineShooting
 from app.schemas.metrics import MetricSnapshot
 from app.schemas.seasons import Season
 from app.scripts.compute_metrics import main_async as compute_metrics_main
@@ -46,7 +46,7 @@ def _categories_for_sources(sources: Set[MetricSource]) -> List[str]:
 
 async def seasons_with_combine_data(session: AsyncSession) -> Dict[int, str]:
     ids: Set[int] = set()
-    for model in (CombineAnthro, CombineAgility, CombineShootingResult):
+    for model in (CombineAnthro, CombineAgility, CombineShooting):
         stmt = select(model.season_id).distinct()  # type: ignore[call-overload]
         result = await session.execute(stmt)
         ids.update(x for (x,) in result.all() if x is not None)

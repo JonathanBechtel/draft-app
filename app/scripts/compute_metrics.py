@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
+from itertools import chain
 
 import numpy as np
 import pandas as pd
@@ -25,9 +26,10 @@ from app.models.position_taxonomy import (
 )
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
-from app.schemas.combine_shooting import CombineShootingResult
+from app.schemas.combine_shooting import CombineShooting, SHOOTING_DRILL_COLUMNS
 from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
 from app.schemas.player_status import PlayerStatus
+from app.schemas.positions import Position
 from app.schemas.seasons import Season
 from app.utils.db_async import SessionLocal, load_schema_modules
 
@@ -337,8 +339,8 @@ async def load_anthro(
             CombineAnthro.player_id,
             CombineAnthro.season_id,
             CombineAnthro.raw_position,
-            CombineAnthro.position_fine,
-            CombineAnthro.position_parents,
+            Position.code.label("position_fine"),
+            cast(Any, Position.parents).label("position_parents"),
             CombineAnthro.body_fat_pct,
             CombineAnthro.hand_length_in,
             CombineAnthro.hand_width_in,
@@ -351,6 +353,7 @@ async def load_anthro(
             PlayerStatus.nba_last_season,
         )
         .select_from(CombineAnthro)
+        .join(Position, Position.id == CombineAnthro.position_id, isouter=True)
         .join(
             PlayerStatus,
             PlayerStatus.player_id == CombineAnthro.player_id,
@@ -372,8 +375,8 @@ async def load_agility(
             CombineAgility.player_id,
             CombineAgility.season_id,
             CombineAgility.raw_position,
-            CombineAgility.position_fine,
-            CombineAgility.position_parents,
+            Position.code.label("position_fine"),
+            cast(Any, Position.parents).label("position_parents"),
             CombineAgility.lane_agility_time_s,
             CombineAgility.shuttle_run_s,
             CombineAgility.three_quarter_sprint_s,
@@ -384,6 +387,7 @@ async def load_agility(
             PlayerStatus.nba_last_season,
         )
         .select_from(CombineAgility)
+        .join(Position, Position.id == CombineAgility.position_id, isouter=True)
         .join(
             PlayerStatus,
             PlayerStatus.player_id == CombineAgility.player_id,
@@ -400,31 +404,60 @@ async def load_agility(
 async def load_shooting(
     session: "AsyncSession", season_ids: Optional[Set[int]]
 ) -> pd.DataFrame:
+    drill_columns = list(chain.from_iterable(SHOOTING_DRILL_COLUMNS.values()))
+    select_columns = [
+        CombineShooting.player_id,
+        CombineShooting.season_id,
+        CombineShooting.raw_position,
+        CombineShooting.position_id,
+        Position.code.label("position_fine"),
+        cast(Any, Position.parents).label("position_parents"),
+        PlayerStatus.is_active_nba,
+        PlayerStatus.nba_last_season,
+    ] + [getattr(CombineShooting, col) for col in drill_columns]
     stmt = (
-        select(
-            CombineShootingResult.player_id,
-            CombineShootingResult.season_id,
-            CombineShootingResult.raw_position,
-            CombineShootingResult.position_fine,
-            CombineShootingResult.position_parents,
-            CombineShootingResult.drill,
-            CombineShootingResult.fgm,
-            CombineShootingResult.fga,
-            PlayerStatus.is_active_nba,
-            PlayerStatus.nba_last_season,
-        )
-        .select_from(CombineShootingResult)
+        select(*select_columns)
+        .select_from(CombineShooting)
+        .join(Position, Position.id == CombineShooting.position_id, isouter=True)
         .join(
             PlayerStatus,
-            PlayerStatus.player_id == CombineShootingResult.player_id,
+            PlayerStatus.player_id == CombineShooting.player_id,
             isouter=True,
         )
     )
     if season_ids:
-        stmt = stmt.where(CombineShootingResult.season_id.in_(season_ids))
+        stmt = stmt.where(CombineShooting.season_id.in_(season_ids))
     result = await session.execute(stmt)
     rows = result.mappings().all()
-    df = pd.DataFrame(rows)
+    wide_df = pd.DataFrame(rows)
+    if wide_df.empty:
+        return wide_df
+
+    records: List[Dict[str, object]] = []
+    for _, row in wide_df.iterrows():
+        base = {
+            "player_id": row["player_id"],
+            "season_id": row["season_id"],
+            "raw_position": row.get("raw_position"),
+            "position_fine": row.get("position_fine"),
+            "position_parents": row.get("position_parents"),
+            "is_active_nba": row.get("is_active_nba"),
+            "nba_last_season": row.get("nba_last_season"),
+        }
+        for drill, (fgm_col, fga_col) in SHOOTING_DRILL_COLUMNS.items():
+            fgm = row.get(fgm_col)
+            fga = row.get(fga_col)
+            if pd.isna(fgm):
+                fgm = None
+            if pd.isna(fga):
+                fga = None
+            if fgm is None and fga is None:
+                continue
+            entry = dict(base)
+            entry.update({"drill": drill, "fgm": fgm, "fga": fga})
+            records.append(entry)
+
+    df = pd.DataFrame(records)
     if df.empty:
         return df
     df["fg_pct"] = df.apply(
