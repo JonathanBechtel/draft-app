@@ -1,4 +1,4 @@
-# Mini Draft Guru (draft-app)
+# Draft Guru
 
 FastAPI + SQLModel skeleton for a draft analytics app. Async DB access, clean startup/shutdown, and simple Players endpoints.
 
