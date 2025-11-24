@@ -64,23 +64,24 @@ jobs:
 
       - name: Type check (mypy)
         run: mypy app --ignore-missing-imports
+
       - name: Reset test database (drop schema)
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
         run: |
           python - <<'PY'
-import os
-import psycopg
+            import os
+            import psycopg
 
-raw_url = os.environ["DATABASE_URL"]
-url = raw_url.replace("+asyncpg", "")
-conn = psycopg.connect(url, autocommit=True)
-with conn.cursor() as cur:
-    cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
-    cur.execute("CREATE SCHEMA public;")
-conn.close()
-print("Reset schema public in test database")
-PY
+            raw_url = os.environ["DATABASE_URL"]
+            url = raw_url.replace("+asyncpg", "")
+            conn = psycopg.connect(url, autocommit=True)
+            with conn.cursor() as cur:
+                cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
+                cur.execute("CREATE SCHEMA public;")
+            conn.close()
+            print("Reset schema public in test database")
+          PY
 
       - name: Alembic upgrade head
         run: alembic upgrade head
@@ -147,18 +148,18 @@ PY
           DATABASE_URL: ${{ env.DATABASE_URL }}
         run: |
           python - <<'PY'
-import os
-import psycopg
+            import os
+            import psycopg
 
-raw_url = os.environ["DATABASE_URL"]
-url = raw_url.replace("+asyncpg", "")
-conn = psycopg.connect(url, autocommit=True)
-with conn.cursor() as cur:
-    cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
-    cur.execute("CREATE SCHEMA public;")
-conn.close()
-print("Reset schema public in test database")
-PY
+            raw_url = os.environ["DATABASE_URL"]
+            url = raw_url.replace("+asyncpg", "")
+            conn = psycopg.connect(url, autocommit=True)
+            with conn.cursor() as cur:
+                cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
+                cur.execute("CREATE SCHEMA public;")
+            conn.close()
+            print("Reset schema public in test database")
+          PY
 
       - name: Alembic upgrade head
         run: alembic upgrade head
