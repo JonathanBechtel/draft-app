@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 import httpx
 from bs4 import BeautifulSoup
@@ -164,19 +164,35 @@ def parse_index_html(letter: str, html: str) -> List[IndexRow]:
 def _text_after_strong(p, label: str) -> Optional[str]:
     if not p:
         return None
-    strong = p.find("strong")
-    if not strong:
-        return None
-    if strong.get_text(strip=True).rstrip(":").lower() != label.lower().rstrip(":"):
-        return None
-    # Get the text in p after the strong
-    texts: List[str] = []
-    for node in strong.next_siblings:
-        if getattr(node, "name", None) == "br":
-            break
-        texts.append(getattr(node, "get_text", lambda **k: str(node))(strip=True))
-    combined = " ".join(t for t in texts if t).strip(" ,\n\t")
-    return combined or None
+    target = label.lower().rstrip(":").strip()
+    for strong in p.find_all("strong"):
+        text = strong.get_text(" ", strip=True).lower().rstrip(":").strip()
+        if text != target:
+            continue
+        chunks: List[str] = []
+        for node in strong.next_siblings:
+            node_name = getattr(node, "name", None)
+            if node_name in {"strong", "br"}:
+                break
+            raw = (
+                node.get_text(" ", strip=True)
+                if hasattr(node, "get_text")
+                else str(node)
+            )
+            raw = raw.replace("\xa0", " ")
+            if not raw:
+                continue
+            if "▪" in raw:
+                raw = raw.split("▪", 1)[0]
+                if raw.strip():
+                    chunks.append(raw.strip())
+                break
+            chunks.append(raw.strip())
+        combined = " ".join(chunk for chunk in chunks if chunk)
+        combined = re.sub(r"\s+", " ", combined).strip(" ,\n\t")
+        if combined:
+            return combined
+    return None
 
 
 def _parse_height_weight(meta_div) -> Tuple[Optional[int], Optional[int]]:
@@ -267,7 +283,7 @@ def _parse_draft(
     m_r = re.search(r"(\d+)(?:st|nd|rd|th)\s+round", txt)
     if m_r:
         rnd = int(m_r.group(1))
-    m_p = re.search(r"\((\d+)\s+pick", txt)
+    m_p = re.search(r"\((\d+)(?:st|nd|rd|th)?\s+pick", txt)
     if m_p:
         pk = int(m_p.group(1))
     return year, rnd, pk, team
@@ -294,21 +310,23 @@ def parse_player_html(letter: str, slug: str, html: str, source_url: str) -> Pla
         for p in meta_div.find_all("p"):
             s = _text_after_strong(p, "Shoots")
             if s:
-                shoots = s.split()[0] if s else None
+                shoots = s.split()[0]
             s2 = _text_after_strong(p, "College")
             if s2:
                 # collect anchors or plain text
                 anchors = [a.get_text(strip=True) for a in p.find_all("a")]
                 school = ", ".join(anchors) if anchors else s2
-            s3 = _text_after_strong(p, "High School")
+            s3 = _text_after_strong(p, "High School") or _text_after_strong(
+                p, "High Schools"
+            )
             if s3:
                 high_school = s3
             s4 = _text_after_strong(p, "Team")
             if s4:
-                current_team = p.get_text(" ", strip=True).split(":", 1)[-1].strip()
+                current_team = s4
             s5 = _text_after_strong(p, "Position")
             if s5:
-                position = p.get_text(" ", strip=True).split(":", 1)[-1].strip()
+                position = s5
             s6 = _text_after_strong(p, "NBA Debut")
             if s6:
                 # extract a date like October 19, 2017
@@ -417,6 +435,44 @@ def _parse_slug_from_player_html(html: str) -> Optional[Tuple[str, str]]:
     return None
 
 
+def _fetch_player_html(
+    slug: str,
+    source_url: str,
+    cache_dir: Path,
+    client: Optional[httpx.Client],
+    refresh: bool,
+    throttle: float,
+    verbose: bool,
+) -> str:
+    cache_path = cache_dir / f"{slug}.html"
+    if not refresh and cache_path.exists():
+        if verbose:
+            print(f"[cache] player {slug}")
+        return cache_path.read_text(encoding="utf-8", errors="ignore")
+    if client is None:
+        return (
+            cache_path.read_text(encoding="utf-8", errors="ignore")
+            if cache_path.exists()
+            else ""
+        )
+    try:
+        if verbose:
+            print(f"[info] fetch player {source_url}")
+        resp = client.get(source_url)
+        resp.raise_for_status()
+        html = resp.text
+        _save_text(cache_path, html)
+        if throttle > 0:
+            time.sleep(throttle)
+        return html
+    except Exception as exc:
+        if verbose:
+            print(f"[warn] failed to fetch {source_url}: {exc}")
+        if cache_path.exists():
+            return cache_path.read_text(encoding="utf-8", errors="ignore")
+        return ""
+
+
 def scrape_letters(
     letters: Iterable[str],
     out_dir: Path,
@@ -428,11 +484,13 @@ def scrape_letters(
     verbose: bool = False,
     timeout: float = 30.0,
     refresh: bool = False,
+    extra_slugs: Optional[Iterable[str]] = None,
 ) -> List[Dict[str, object]]:
     client = _client(timeout=timeout)
     cache_dir = Path("scraper/cache")
     player_cache_dir = cache_dir / "players"
     rows_out: List[Dict[str, object]] = []
+    seen_slugs: Set[str] = set()
     # Optional: sample slug restriction when using a single player sample file
     sample_slug: Optional[str] = None
     sample_letter: Optional[str] = None
@@ -503,11 +561,12 @@ def scrape_letters(
                     ]
 
         for idx in idx_rows:
+            if not idx.slug:
+                continue
             # Build basic record from index
             is_active, last_season = _derive_season_from_index(idx)
-            source_url = (
-                f"https://www.basketball-reference.com/players/{letter}/{idx.slug}.html"
-            )
+            slug_letter = idx.slug[0]
+            source_url = f"https://www.basketball-reference.com/players/{slug_letter}/{idx.slug}.html"
             # Fetch or read player page
             if from_player_file and from_player_file.exists():
                 phtml = from_player_file.read_text(encoding="utf-8", errors="ignore")
@@ -516,27 +575,15 @@ def scrape_letters(
                     encoding="utf-8", errors="ignore"
                 )
             else:
-                try:
-                    cache_path = player_cache_dir / f"{idx.slug}.html"
-                    if not refresh and cache_path.exists():
-                        phtml = cache_path.read_text(encoding="utf-8", errors="ignore")
-                        if verbose:
-                            print(f"[cache] player {idx.slug}")
-                    else:
-                        if verbose:
-                            print(f"[info] fetch player {source_url}")
-                        resp = client.get(source_url)
-                        resp.raise_for_status()
-                        phtml = resp.text
-                        _save_text(cache_path, phtml)
-                        time.sleep(throttle)
-                except Exception:
-                    # fallback to cache if present
-                    phtml = (
-                        cache_path.read_text(encoding="utf-8", errors="ignore")
-                        if cache_path.exists()
-                        else ""
-                    )
+                phtml = _fetch_player_html(
+                    slug=idx.slug,
+                    source_url=source_url,
+                    cache_dir=player_cache_dir,
+                    client=client,
+                    refresh=refresh,
+                    throttle=throttle,
+                    verbose=verbose,
+                )
 
             bio = parse_player_html(letter, idx.slug, phtml, source_url)
             # Carry index hints
@@ -555,6 +602,36 @@ def scrape_letters(
                 bio.position = idx.pos
 
             rows_out.append(bio.__dict__)
+            seen_slugs.add(idx.slug)
+
+    if extra_slugs:
+        for slug in extra_slugs:
+            normalized = slug.strip().lower()
+            if not normalized or normalized in seen_slugs:
+                continue
+            slug_letter = normalized[0]
+            source_url = f"https://www.basketball-reference.com/players/{slug_letter}/{normalized}.html"
+            if from_player_dir and (from_player_dir / f"{normalized}.html").exists():
+                phtml = (from_player_dir / f"{normalized}.html").read_text(
+                    encoding="utf-8", errors="ignore"
+                )
+            else:
+                phtml = _fetch_player_html(
+                    slug=normalized,
+                    source_url=source_url,
+                    cache_dir=player_cache_dir,
+                    client=client,
+                    refresh=refresh,
+                    throttle=throttle,
+                    verbose=verbose,
+                )
+            if not phtml:
+                if verbose:
+                    print(f"[warn] no HTML for slug {normalized}; skipping")
+                continue
+            bio = parse_player_html(slug_letter, normalized, phtml, source_url)
+            rows_out.append(bio.__dict__)
+            seen_slugs.add(normalized)
     return rows_out
 
 
@@ -610,8 +687,50 @@ def main() -> None:
         default=None,
         help="Single player HTML file to parse for a sample player (e.g., player_page_example.html)",
     )
+    parser.add_argument(
+        "--extra-slugs",
+        type=str,
+        default="",
+        help="Comma-separated list of BRef slugs to fetch even if the index pages omit them",
+    )
+    parser.add_argument(
+        "--extra-slugs-file",
+        type=str,
+        default=None,
+        help="Path to a newline-delimited file of additional BRef slugs to scrape",
+    )
 
     args = parser.parse_args()
+    extra_slugs: List[str] = []
+    if args.extra_slugs:
+        extra_slugs.extend(
+            [
+                slug.strip().lower()
+                for slug in args.extra_slugs.split(",")
+                if slug.strip()
+            ]
+        )
+    if args.extra_slugs_file:
+        slug_path = Path(args.extra_slugs_file)
+        if not slug_path.exists():
+            raise SystemExit(f"extra slugs file not found: {slug_path}")
+        extra_slugs.extend(
+            [
+                line.strip().lower()
+                for line in slug_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+        )
+    # preserve order while deduplicating
+    seen_extra: Set[str] = set()
+    deduped_extra: List[str] = []
+    for slug in extra_slugs:
+        if slug in seen_extra:
+            continue
+        seen_extra.add(slug)
+        deduped_extra.append(slug)
+    extra_slugs = deduped_extra
+
     letters: List[str]
     if args.all_letters:
         letters = [chr(c) for c in range(ord("a"), ord("z") + 1)]
@@ -619,8 +738,8 @@ def main() -> None:
         letters = [
             token.strip().lower() for token in args.letters.split(",") if token.strip()
         ]
-        if not letters:
-            raise SystemExit("Must pass --letters or --all")
+        if not letters and not extra_slugs:
+            raise SystemExit("Must pass --letters/--all or provide --extra-slugs")
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -640,10 +759,16 @@ def main() -> None:
         verbose=args.verbose,
         timeout=args.timeout,
         refresh=args.refresh,
+        extra_slugs=extra_slugs,
     )
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d")
-    scope = "all" if args.all_letters else ("".join(letters))
+    if args.all_letters:
+        scope = "all"
+    elif letters:
+        scope = "".join(letters)
+    else:
+        scope = "custom"
     out_path = out_dir / f"bbio_{scope}_{ts}.csv"
     # Write CSV
     fieldnames = [

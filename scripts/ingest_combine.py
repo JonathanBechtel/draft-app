@@ -27,7 +27,9 @@ from app.schemas.player_aliases import PlayerAlias
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.combine_agility import CombineAgility
-from app.schemas.combine_shooting import CombineShootingResult
+from app.schemas.combine_shooting import CombineShooting, SHOOTING_DRILL_COLUMNS
+from app.schemas.positions import Position
+from app.models.position_taxonomy import derive_position_tags, get_parents_for_fine
 
 
 # ------------------------------
@@ -155,6 +157,24 @@ async def get_or_create_player(
     return pm3
 
 
+async def get_or_create_position_id(
+    session: AsyncSession, fine_code: Optional[str]
+) -> Optional[int]:
+    if not fine_code:
+        return None
+    stmt = select(Position).where(Position.code == fine_code)
+    res = await session.execute(stmt)
+    pos = res.scalar_one_or_none()
+    if pos:
+        return pos.id
+    # Create
+    parents = get_parents_for_fine(fine_code)
+    pos = Position(code=fine_code, parents=parents)
+    session.add(pos)
+    await session.flush()
+    return pos.id
+
+
 # ------------------------------
 # CSV Readers
 # ------------------------------
@@ -212,10 +232,15 @@ async def ingest_anthro(session: AsyncSession, rows: List[Dict[str, str]]) -> in
             and_(CombineAnthro.player_id == pm.id, CombineAnthro.season_id == season.id)
         )
         existing = (await session.execute(stmt)).scalar_one_or_none()
+        raw_position, position_fine, position_parents = _position_triplet(
+            row.get("pos")
+        )
+        position_id = await get_or_create_position_id(session, position_fine)
         payload = {
             "player_id": pm.id,
             "season_id": season.id,
-            "pos": row.get("pos"),
+            "position_id": position_id,
+            "raw_position": raw_position,
             "body_fat_pct": _to_opt_float(row.get("body_fat_pct")),
             "hand_length_in": _to_opt_float(row.get("hand_length")),
             "hand_width_in": _to_opt_float(row.get("hand_width")),
@@ -259,10 +284,15 @@ async def ingest_agility(session: AsyncSession, rows: List[Dict[str, str]]) -> i
             )
         )
         existing = (await session.execute(stmt)).scalar_one_or_none()
+        raw_position, position_fine, position_parents = _position_triplet(
+            row.get("pos")
+        )
+        position_id = await get_or_create_position_id(session, position_fine)
         payload = {
             "player_id": pm.id,
             "season_id": season.id,
-            "pos": row.get("pos"),
+            "position_id": position_id,
+            "raw_position": raw_position,
             "lane_agility_time_s": _to_opt_float(row.get("lane_agility_time")),
             "shuttle_run_s": _to_opt_float(row.get("modified_lane_agility_time")),
             "three_quarter_sprint_s": _to_opt_float(row.get("three_quarter_sprint")),
@@ -309,40 +339,49 @@ async def ingest_shooting(session: AsyncSession, rows: List[Dict[str, str]]) -> 
             nba_stats_player_id=row.get("player_id") or row.get("person_id"),
             raw_player_name=row.get("player_name"),
         )
-        pos = row.get("pos")
+        raw_position, position_fine, position_parents = _position_triplet(
+            row.get("pos")
+        )
+        position_id = await get_or_create_position_id(session, position_fine)
         nba_pid = _to_opt_int(row.get("player_id"))
         raw_name = row.get("player_name")
 
+        payload: Dict[str, Optional[int] | Optional[str]] = {
+            "player_id": pm.id,
+            "season_id": season.id,
+            "position_id": position_id,
+            "raw_position": raw_position,
+            "nba_stats_player_id": nba_pid,
+            "raw_player_name": raw_name,
+        }
         for drill_key, base in SHOOTING_MAP:
             fgm = _to_opt_int(row.get(f"{base}_made"))
             fga = _to_opt_int(row.get(f"{base}_attempt"))
-            if fgm is None and fga is None:
-                # skip absent drill
-                continue
-            stmt = select(CombineShootingResult).where(
-                and_(
-                    CombineShootingResult.player_id == pm.id,
-                    CombineShootingResult.season_id == season.id,
-                    CombineShootingResult.drill == drill_key,
-                )
+            col_pair = SHOOTING_DRILL_COLUMNS[drill_key]
+            payload[col_pair[0]] = fgm
+            payload[col_pair[1]] = fga
+
+        has_data = any(
+            payload[col] is not None
+            for columns in SHOOTING_DRILL_COLUMNS.values()
+            for col in columns
+        )
+        if not has_data:
+            continue
+
+        stmt = select(CombineShooting).where(
+            and_(
+                CombineShooting.player_id == pm.id,
+                CombineShooting.season_id == season.id,
             )
-            existing = (await session.execute(stmt)).scalar_one_or_none()
-            payload = {
-                "player_id": pm.id,
-                "season_id": season.id,
-                "pos": pos,
-                "drill": drill_key,
-                "fgm": fgm,
-                "fga": fga,
-                "nba_stats_player_id": nba_pid,
-                "raw_player_name": raw_name,
-            }
-            if existing:
-                for k, v in payload.items():
-                    setattr(existing, k, v)
-            else:
-                session.add(CombineShootingResult(**payload))
-            count += 1
+        )
+        existing = (await session.execute(stmt)).scalar_one_or_none()
+        if existing:
+            for k, v in payload.items():
+                setattr(existing, k, v)
+        else:
+            session.add(CombineShooting(**payload))  # type: ignore[arg-type]
+        count += 1
     return count
 
 
@@ -406,3 +445,13 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+# ------------------------------
+# Helpers
+# ------------------------------
+
+
+def _position_triplet(
+    raw_pos: Optional[str],
+) -> tuple[Optional[str], Optional[str], Optional[List[str]]]:
+    fine, parents = derive_position_tags(raw_pos)
+    return raw_pos or None, fine, parents or None

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import Column, Index, UniqueConstraint
+from sqlalchemy import Column, Index, UniqueConstraint, text, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import Enum as SAEnum
 from sqlmodel import Field, SQLModel
@@ -13,7 +13,7 @@ from app.models.fields import (
     MetricCategory,
     MetricSource,
     MetricStatistic,
-    Position,
+    SimilarityDimension,
 )
 
 
@@ -60,7 +60,23 @@ class MetricDefinition(SQLModel, table=True):  # type: ignore[call-arg]
 
 class MetricSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
     __tablename__ = "metric_snapshots"
-    __table_args__ = (UniqueConstraint("run_key", name="uq_metric_snapshots_run"),)
+    __table_args__ = (
+        # Unique version within a (source, run_key) group
+        UniqueConstraint(
+            "source",
+            "run_key",
+            "version",
+            name="uq_metric_snapshots_src_run_ver",
+        ),
+        # Partial unique index to enforce one current per (source, run_key)
+        Index(
+            "uq_metric_snapshots_current",
+            "source",
+            "run_key",
+            unique=True,
+            postgresql_where=text("is_current = true"),
+        ),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     run_key: str = Field(
@@ -74,13 +90,15 @@ class MetricSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
         )
     )
     season_id: Optional[int] = Field(default=None, foreign_key="seasons.id", index=True)
-    position_scope: Optional[Position] = Field(
+    position_scope_fine: Optional[str] = Field(
         default=None,
-        sa_column=Column(
-            SAEnum(Position, name="metric_position_enum"),
-            nullable=True,
-        ),
-        description="Restrict cohort calculations to a single position",
+        description="Canonical fine-grained scope token (e.g., 'pg', 'sf_pf')",
+        index=True,
+    )
+    position_scope_parent: Optional[str] = Field(
+        default=None,
+        description="Composite scope token (guard, wing, forward, big)",
+        index=True,
     )
     source: MetricSource = Field(
         sa_column=Column(
@@ -95,6 +113,11 @@ class MetricSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
     expires_at: Optional[datetime] = Field(default=None)
     notes: Optional[str] = Field(
         default=None, description="Optional commentary about the run"
+    )
+    # Versioning and selection controls
+    version: int = Field(description="Monotonic version within (source, run_key)")
+    is_current: bool = Field(
+        default=False, description="Marks the active snapshot within (source, run_key)"
     )
 
 
@@ -120,7 +143,9 @@ class PlayerMetricValue(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    snapshot_id: int = Field(foreign_key="metric_snapshots.id", index=True)
+    snapshot_id: int = Field(
+        sa_column=Column(ForeignKey("metric_snapshots.id", ondelete="CASCADE"))
+    )
     metric_definition_id: int = Field(foreign_key="metric_definitions.id", index=True)
     player_id: int = Field(foreign_key="players_master.id", index=True)
     raw_value: Optional[float] = Field(default=None)
@@ -145,8 +170,8 @@ class PlayerSimilarity(SQLModel, table=True):  # type: ignore[call-arg]
             "snapshot_id",
             "anchor_player_id",
             "comparison_player_id",
-            "category",
-            name="uq_player_similarity_anchor_comp_cat",
+            "dimension",
+            name="uq_player_similarity_anchor_comp_dim",
         ),
         Index(
             "ix_player_similarity_anchor_snapshot",
@@ -154,24 +179,33 @@ class PlayerSimilarity(SQLModel, table=True):  # type: ignore[call-arg]
             "snapshot_id",
         ),
         Index(
-            "ix_player_similarity_category_snapshot",
-            "category",
+            "ix_player_similarity_dimension_snapshot",
+            "dimension",
+            "snapshot_id",
+        ),
+        Index(
+            "ix_player_similarity_comparison_snapshot",
+            "comparison_player_id",
             "snapshot_id",
         ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    snapshot_id: int = Field(foreign_key="metric_snapshots.id", index=True)
-    category: MetricCategory = Field(
+    snapshot_id: int = Field(
+        sa_column=Column(ForeignKey("metric_snapshots.id", ondelete="CASCADE"))
+    )
+    dimension: SimilarityDimension = Field(
         sa_column=Column(
-            SAEnum(MetricCategory, name="similarity_category_enum"),
+            SAEnum(SimilarityDimension, name="similarity_dimension_enum"),
             nullable=False,
         ),
     )
     anchor_player_id: int = Field(foreign_key="players_master.id", index=True)
     comparison_player_id: int = Field(foreign_key="players_master.id", index=True)
-    similarity_score: float = Field(
-        description="Similarity value (0-100 or unit interval)"
+    similarity_score: float = Field(description="Similarity value scaled 0-100")
+    distance: Optional[float] = Field(default=None, description="Raw distance value")
+    overlap_pct: Optional[float] = Field(
+        default=None, description="Shared metric coverage fraction"
     )
     rank_within_anchor: Optional[int] = Field(
         default=None, description="Ordering within the anchor's neighbour list"

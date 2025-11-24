@@ -10,6 +10,9 @@ class PlayerStatus(SQLModel, table=True):  # type: ignore[call-arg]
 
     id: Optional[int] = Field(default=None, primary_key=True)
     player_id: int = Field(foreign_key="players_master.id", index=True)
+    position_id: Optional[int] = Field(
+        default=None, foreign_key="positions.id", index=True
+    )
 
     # Ephemeral state
     is_active_nba: Optional[bool] = Field(default=None, index=True)
@@ -17,7 +20,7 @@ class PlayerStatus(SQLModel, table=True):  # type: ignore[call-arg]
     nba_last_season: Optional[str] = Field(default=None, index=True)
 
     # Listed attributes that may change
-    position: Optional[str] = Field(default=None)
+    raw_position: Optional[str] = Field(default=None)
     height_in: Optional[int] = Field(default=None)
     weight_lb: Optional[int] = Field(default=None)
 

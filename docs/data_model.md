@@ -16,10 +16,36 @@ Key tables (authoritative SQLModel definitions live under `app/schemas/`):
   - `player_aliases`: known name variants, one per player; used for matching.
   - `player_external_ids`: stable external IDs (e.g., NBA Stats `PLAYER_ID`).
   - `seasons`: canonical season codes (`YYYY-YY`).
+  - `player_status`: ephemeral roster info (e.g., `is_active_nba`,
+    `nba_last_season`) sourced from Basketball Reference; metrics baselines use
+    these fields to decide whether a row belongs in the current-NBA or
+    all-time-NBA comparison sets.
 - Combine facts
   - `combine_anthro`: one row per (player, season).
   - `combine_agility`: one row per (player, season).
   - `combine_shooting_results`: one row per (player, season, drill).
+  - Each combine table now stores `raw_position` (verbatim feed value), `position_fine`
+    (canonical token like `pg`, `sf_pf`), and `position_parents` (JSON array of
+    guard/wing/forward/big buckets). Fine tokens normalize delimiters (`PG-SG`,
+    `pg/sg`, etc.) and automatically seed parent groups so downstream jobs can
+    filter by either resolution without re-parsing the raw feed text.
+
+## Position Taxonomy
+
+- Guards: `pg`, `sg`, and hybrid `pg_sg` / `sg_pg` map to the `guard` parent.
+- Wings: positions that include `sf` (e.g., `sg_sf`, `sf`, `sf_pf`) inherit the
+  `wing` parent, while `sf` + `pf` hybrids are also tagged as `forward`.
+- Forwards: `sf`, `pf`, `sf_pf`, `pf_sf` normalize to `forward` and, when they
+  include `sf`, also keep the `wing` label for perimeter comps.
+- Bigs: any token containing `pf` or `c` seeds the `big` parent. Pure `pf`
+  entries are tagged as both `forward` and `big`, enabling stretch-four vs
+  frontcourt-only comparisons.
+
+`position_parents` stores all applicable parents for each row, so a small
+forward (`sf`) will appear in both wing and forward scopes, while a center/power
+forward hybrid (`c_pf`) lands solely in the big bucket. New helper utilities in
+`app/models/position_taxonomy.py` centralize this mapping for ingest, metrics,
+and similarity jobs.
 
 ## Why a Canonical Player Table
 
@@ -61,7 +87,9 @@ Every fact row also stores `raw_player_name` (and optional `nba_stats_player_id`
 
 - Lengths in inches (anthro heights/wingspan/reach; agility verticals).
 - Times in seconds; bench as integer reps; body fat as percentage (0–100).
-- `pos` is preserved exactly as provided (e.g., `SG-SF`).
+- `raw_position` mirrors the feed token verbatim (e.g., `SG-SF`), while
+  `position_fine`/`position_parents` expose the normalized taxonomy for
+  downstream use.
 
 ## Example: Stitching Sources
 

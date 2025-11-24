@@ -13,8 +13,11 @@ class CombineAgility(SQLModel, table=True):  # type: ignore[call-arg]
     id: Optional[int] = Field(default=None, primary_key=True)
     player_id: int = Field(foreign_key="players_master.id", index=True)
     season_id: int = Field(foreign_key="seasons.id", index=True)
+    position_id: Optional[int] = Field(
+        default=None, foreign_key="positions.id", index=True
+    )
 
-    pos: Optional[str] = Field(default=None, index=True)
+    raw_position: Optional[str] = Field(default=None, index=True)
 
     lane_agility_time_s: Optional[float] = Field(default=None)
     shuttle_run_s: Optional[float] = Field(default=None)

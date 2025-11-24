@@ -19,6 +19,8 @@ from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.player_bio_snapshots import PlayerBioSnapshot
 from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
+from app.schemas.positions import Position
+from app.models.position_taxonomy import derive_position_tags, get_parents_for_fine
 from app.utils.db_async import SessionLocal
 
 
@@ -290,7 +292,22 @@ async def _upsert_status(db: AsyncSession, player_id: int, row: BioRow) -> None:
     status.is_active_nba = row.is_active_nba
     status.current_team = row.current_team
     status.nba_last_season = row.nba_last_season
-    status.position = row.position
+    status.raw_position = row.position
+
+    # Resolve position_id
+    if row.position:
+        fine, _ = derive_position_tags(row.position)
+        if fine:
+            # Find or create position
+            pos_res = await db.execute(select(Position).where(Position.code == fine))
+            pos = pos_res.scalar_one_or_none()
+            if not pos:
+                parents = get_parents_for_fine(fine)
+                pos = Position(code=fine, parents=parents)
+                db.add(pos)
+                await db.flush()
+            status.position_id = pos.id
+
     status.height_in = int(row.height_in) if row.height_in is not None else None
     status.weight_lb = int(row.weight_lb) if row.weight_lb is not None else None
     status.source = "bbr"

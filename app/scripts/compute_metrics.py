@@ -3,11 +3,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
+from itertools import chain
 
+import numpy as np
 import pandas as pd
-from sqlalchemy import or_, select
+from sqlalchemy import select, func
 from sqlmodel import delete
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -16,12 +17,19 @@ from app.models.fields import (
     MetricCategory,
     MetricSource,
     MetricStatistic,
-    Position,
+)
+from app.models.position_taxonomy import (
+    PositionScope,
+    PositionScopeKind,
+    preset_scope_tokens,
+    resolve_position_scope,
 )
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
-from app.schemas.combine_shooting import CombineShootingResult
+from app.schemas.combine_shooting import CombineShooting, SHOOTING_DRILL_COLUMNS
 from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
+from app.schemas.player_status import PlayerStatus
+from app.schemas.positions import Position
 from app.schemas.seasons import Season
 from app.utils.db_async import SessionLocal, load_schema_modules
 
@@ -189,6 +197,14 @@ SHOOTING_SPECS: Tuple[MetricSpec, ...] = tuple(
 ALL_SPECS: Tuple[MetricSpec, ...] = ANTHRO_SPECS + AGILITY_SPECS + SHOOTING_SPECS
 
 
+@dataclass(frozen=True)
+class ScopePlanEntry:
+    display: str
+    scope: Optional[PositionScope]
+    label: Optional[str]
+    append_suffix: bool
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compute DraftGuru metric snapshots.")
     parser.add_argument(
@@ -204,13 +220,40 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--position-scope",
         dest="position_scope",
-        help="Limit cohort to a position (g, f, c, guard, forward, center)",
+        help=(
+            "Limit cohort to a position (fine: pg, sg, sf, pf, c, pg-sg, etc. | "
+            "parent: guard, wing, forward, big)"
+        ),
+    )
+    parser.add_argument(
+        "--position-matrix",
+        choices=["parent", "fine"],
+        help=(
+            "Run a full sweep of position scopes (parent: guard/wing/forward/big; "
+            "fine: pg/sg/sf/pf/c + common hybrids)."
+        ),
+    )
+    parser.add_argument(
+        "--matrix-skip-baseline",
+        action="store_true",
+        help=(
+            "When set alongside --position-matrix, skip the all-positions baseline run."
+        ),
     )
     parser.add_argument(
         "--categories",
         nargs="+",
         choices=[c.value for c in MetricCategory],
         help="Metric categories to compute (defaults to all)",
+    )
+    parser.add_argument(
+        "--sources",
+        nargs="+",
+        choices=[s.value for s in MetricSource],
+        help=(
+            "Limit computation to specific metric sources within the selected "
+            "categories (e.g., combine_anthro, combine_agility, combine_shooting)."
+        ),
     )
     parser.add_argument(
         "--run-key",
@@ -239,19 +282,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def pick_position(value: Optional[str]) -> Optional[Position]:
-    if value is None:
-        return None
-    candidate = value.strip().lower()
-    for position in Position:
-        if candidate in {
-            position.name,
-            position.value,
-            position.name[0],
-            position.value[0],
-        }:
-            return position
-    raise ValueError(f"Unknown position scope: {value}")
+def pick_position_scope(value: Optional[str]) -> Optional[PositionScope]:
+    return resolve_position_scope(value)
 
 
 def pick_categories(values: Optional[Iterable[str]]) -> Set[MetricCategory]:
@@ -302,18 +334,31 @@ async def ensure_metric_definitions(
 async def load_anthro(
     session: "AsyncSession", season_ids: Optional[Set[int]]
 ) -> pd.DataFrame:
-    stmt = select(
-        CombineAnthro.player_id,
-        CombineAnthro.season_id,
-        CombineAnthro.pos,
-        CombineAnthro.body_fat_pct,
-        CombineAnthro.hand_length_in,
-        CombineAnthro.hand_width_in,
-        CombineAnthro.height_w_shoes_in,
-        CombineAnthro.height_wo_shoes_in,
-        CombineAnthro.standing_reach_in,
-        CombineAnthro.wingspan_in,
-        CombineAnthro.weight_lb,
+    stmt = (
+        select(
+            CombineAnthro.player_id,
+            CombineAnthro.season_id,
+            CombineAnthro.raw_position,
+            Position.code.label("position_fine"),
+            cast(Any, Position.parents).label("position_parents"),
+            CombineAnthro.body_fat_pct,
+            CombineAnthro.hand_length_in,
+            CombineAnthro.hand_width_in,
+            CombineAnthro.height_w_shoes_in,
+            CombineAnthro.height_wo_shoes_in,
+            CombineAnthro.standing_reach_in,
+            CombineAnthro.wingspan_in,
+            CombineAnthro.weight_lb,
+            PlayerStatus.is_active_nba,
+            PlayerStatus.nba_last_season,
+        )
+        .select_from(CombineAnthro)
+        .join(Position, Position.id == CombineAnthro.position_id, isouter=True)
+        .join(
+            PlayerStatus,
+            PlayerStatus.player_id == CombineAnthro.player_id,
+            isouter=True,
+        )
     )
     if season_ids:
         stmt = stmt.where(CombineAnthro.season_id.in_(season_ids))
@@ -325,16 +370,29 @@ async def load_anthro(
 async def load_agility(
     session: "AsyncSession", season_ids: Optional[Set[int]]
 ) -> pd.DataFrame:
-    stmt = select(
-        CombineAgility.player_id,
-        CombineAgility.season_id,
-        CombineAgility.pos,
-        CombineAgility.lane_agility_time_s,
-        CombineAgility.shuttle_run_s,
-        CombineAgility.three_quarter_sprint_s,
-        CombineAgility.standing_vertical_in,
-        CombineAgility.max_vertical_in,
-        CombineAgility.bench_press_reps,
+    stmt = (
+        select(
+            CombineAgility.player_id,
+            CombineAgility.season_id,
+            CombineAgility.raw_position,
+            Position.code.label("position_fine"),
+            cast(Any, Position.parents).label("position_parents"),
+            CombineAgility.lane_agility_time_s,
+            CombineAgility.shuttle_run_s,
+            CombineAgility.three_quarter_sprint_s,
+            CombineAgility.standing_vertical_in,
+            CombineAgility.max_vertical_in,
+            CombineAgility.bench_press_reps,
+            PlayerStatus.is_active_nba,
+            PlayerStatus.nba_last_season,
+        )
+        .select_from(CombineAgility)
+        .join(Position, Position.id == CombineAgility.position_id, isouter=True)
+        .join(
+            PlayerStatus,
+            PlayerStatus.player_id == CombineAgility.player_id,
+            isouter=True,
+        )
     )
     if season_ids:
         stmt = stmt.where(CombineAgility.season_id.in_(season_ids))
@@ -346,19 +404,60 @@ async def load_agility(
 async def load_shooting(
     session: "AsyncSession", season_ids: Optional[Set[int]]
 ) -> pd.DataFrame:
-    stmt = select(
-        CombineShootingResult.player_id,
-        CombineShootingResult.season_id,
-        CombineShootingResult.pos,
-        CombineShootingResult.drill,
-        CombineShootingResult.fgm,
-        CombineShootingResult.fga,
+    drill_columns = list(chain.from_iterable(SHOOTING_DRILL_COLUMNS.values()))
+    select_columns = [
+        CombineShooting.player_id,
+        CombineShooting.season_id,
+        CombineShooting.raw_position,
+        CombineShooting.position_id,
+        Position.code.label("position_fine"),
+        cast(Any, Position.parents).label("position_parents"),
+        PlayerStatus.is_active_nba,
+        PlayerStatus.nba_last_season,
+    ] + [getattr(CombineShooting, col) for col in drill_columns]
+    stmt = (
+        select(*select_columns)
+        .select_from(CombineShooting)
+        .join(Position, Position.id == CombineShooting.position_id, isouter=True)
+        .join(
+            PlayerStatus,
+            PlayerStatus.player_id == CombineShooting.player_id,
+            isouter=True,
+        )
     )
     if season_ids:
-        stmt = stmt.where(CombineShootingResult.season_id.in_(season_ids))
+        stmt = stmt.where(CombineShooting.season_id.in_(season_ids))
     result = await session.execute(stmt)
     rows = result.mappings().all()
-    df = pd.DataFrame(rows)
+    wide_df = pd.DataFrame(rows)
+    if wide_df.empty:
+        return wide_df
+
+    records: List[Dict[str, object]] = []
+    for _, row in wide_df.iterrows():
+        base = {
+            "player_id": row["player_id"],
+            "season_id": row["season_id"],
+            "raw_position": row.get("raw_position"),
+            "position_fine": row.get("position_fine"),
+            "position_parents": row.get("position_parents"),
+            "is_active_nba": row.get("is_active_nba"),
+            "nba_last_season": row.get("nba_last_season"),
+        }
+        for drill, (fgm_col, fga_col) in SHOOTING_DRILL_COLUMNS.items():
+            fgm = row.get(fgm_col)
+            fga = row.get(fga_col)
+            if pd.isna(fgm):
+                fgm = None
+            if pd.isna(fga):
+                fga = None
+            if fgm is None and fga is None:
+                continue
+            entry = dict(base)
+            entry.update({"drill": drill, "fgm": fgm, "fga": fga})
+            records.append(entry)
+
+    df = pd.DataFrame(records)
     if df.empty:
         return df
     df["fg_pct"] = df.apply(
@@ -374,35 +473,112 @@ class MetricRunner:
     def __init__(self, session, args: argparse.Namespace) -> None:
         self.session = session
         self.cohort = CohortType(args.cohort)
-        self.position_scope = pick_position(args.position_scope)
+        self.position_scope = pick_position_scope(args.position_scope)
+        self.position_matrix = args.position_matrix
+        self.matrix_skip_baseline = args.matrix_skip_baseline
         self.categories = pick_categories(args.categories)
+        self._source_filters: Optional[Set[MetricSource]] = (
+            {MetricSource(v) for v in args.sources}
+            if getattr(args, "sources", None)
+            else None
+        )
         self.min_sample = max(1, args.min_sample)
         self.notes = args.notes
         self.dry_run = args.dry_run
         self.replace_run = args.replace_run
         self.season_code = args.season
-        self.run_key = args.run_key or self._default_run_key(self.season_code)
+        self.base_run_key = args.run_key or self._default_run_key()
 
         self.season: Optional[Season] = None
         self.season_ids: Optional[Set[int]] = None
 
         self.specs = [spec for spec in ALL_SPECS if spec.category in self.categories]
+        if self._source_filters is not None:
+            self.specs = [
+                spec for spec in self.specs if spec.source in self._source_filters
+            ]
         if not self.specs:
             raise ValueError("No metric specifications selected")
         self.sources: List[MetricSource] = list(
             dict.fromkeys(spec.source for spec in self.specs)
         )
+        self.scope_plan = self._build_scope_plan()
 
-    @staticmethod
-    def _default_run_key(season_code: Optional[str]) -> str:
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        season_part = season_code or "all"
-        return f"metrics_{season_part}_{stamp}"
+    def _default_run_key(self) -> str:
+        season_part = self.season_code or "all"
+        cohort_part = self.cohort.value
+        return f"cohort={cohort_part}|season={season_part}"
+
+    def _compose_scope_run_key(self, entry: ScopePlanEntry) -> str:
+        token = entry.label if entry.label else "all"
+        return f"{self.base_run_key}|pos={token}|min={self.min_sample}"
+
+    def _build_scope_plan(self) -> List[ScopePlanEntry]:
+        if self.position_matrix and self.position_scope:
+            raise ValueError(
+                "--position-scope cannot be combined with --position-matrix"
+            )
+        plan: List[ScopePlanEntry] = []
+        if self.position_matrix:
+            tokens = preset_scope_tokens(self.position_matrix)
+            if not self.matrix_skip_baseline:
+                plan.append(
+                    ScopePlanEntry(
+                        display="all",
+                        scope=None,
+                        label=None,
+                        append_suffix=False,
+                    )
+                )
+            for token in tokens:
+                scope = resolve_position_scope(token)
+                if scope is None:
+                    continue
+                plan.append(
+                    ScopePlanEntry(
+                        display=token,
+                        scope=scope,
+                        label=token,
+                        append_suffix=True,
+                    )
+                )
+            return plan
+
+        display = self.position_scope.value if self.position_scope else "all"
+        plan.append(
+            ScopePlanEntry(
+                display=display,
+                scope=self.position_scope,
+                label=self.position_scope.value if self.position_scope else None,
+                append_suffix=False,
+            )
+        )
+        return plan
 
     async def run(self) -> None:
         await self._configure_cohort()
         definitions = await ensure_metric_definitions(self.session, self.specs)
+        any_scope_ran = False
+        for entry in self.scope_plan:
+            scope_run_key = self._compose_scope_run_key(entry)
+            self.position_scope = entry.scope
+            print(f"\n=== Position scope: {entry.display} ===")
+            scope_success = await self._execute_scope(
+                definitions=definitions,
+                run_key_base=scope_run_key,
+                scope_label=entry.display,
+            )
+            any_scope_ran = any_scope_ran or scope_success
+        if not any_scope_ran:
+            print("No metrics produced for any requested position scope.")
 
+    async def _execute_scope(
+        self,
+        *,
+        definitions: Dict[str, MetricDefinition],
+        run_key_base: str,
+        scope_label: str,
+    ) -> bool:
         raw_frames = await self._load_source_frames()
         results_by_source: Dict[MetricSource, List[Tuple[MetricSpec, pd.DataFrame]]] = {
             source: [] for source in self.sources
@@ -427,14 +603,16 @@ class MetricRunner:
             results_by_source[spec.source].append((spec, metrics_df))
 
         if not any(results_by_source.values()):
-            print("No metrics produced; exiting without snapshot.")
+            print("No metrics produced; skipping snapshot creation for this scope.")
             self._report(
                 diagnostics,
                 snapshots={},
                 populations={source: 0 for source in self.sources},
                 total_population=0,
+                run_key_base=run_key_base,
+                scope_label=scope_label,
             )
-            return
+            return False
 
         populations = {
             source: len(players_by_source[source])
@@ -445,22 +623,25 @@ class MetricRunner:
 
         if not self.dry_run:
             if self.replace_run:
-                await self._delete_existing_run()
+                await self._delete_existing_run(run_key_base)
 
             payload_buffer: List[PlayerMetricValue] = []
             for source in self.sources:
                 source_results = results_by_source[source]
                 if not source_results:
                     continue
-                run_key = self._run_key_for_source(source)
+                run_key = self._run_key_for_source(source, run_key_base)
+                version = await self._next_version(source, run_key)
                 snapshot = MetricSnapshot(
                     run_key=run_key,
                     cohort=self.cohort,
                     season_id=self.season.id if self.season else None,
-                    position_scope=self.position_scope,
                     source=source,
                     population_size=populations.get(source, 0),
                     notes=self.notes,
+                    version=version,
+                    is_current=False,
+                    **self._position_scope_kwargs(),
                 )
                 self.session.add(snapshot)
                 await self.session.flush()
@@ -493,7 +674,7 @@ class MetricRunner:
                 if results_by_source[source]:
                     snapshot_details[source] = {
                         "snapshot_id": None,
-                        "run_key": self._run_key_for_source(source),
+                        "run_key": self._run_key_for_source(source, run_key_base),
                     }
 
         self._report(
@@ -501,7 +682,10 @@ class MetricRunner:
             snapshots=snapshot_details,
             populations={source: populations.get(source, 0) for source in self.sources},
             total_population=len(total_players),
+            run_key_base=run_key_base,
+            scope_label=scope_label,
         )
+        return True
 
     async def _configure_cohort(self) -> None:
         if self.cohort == CohortType.current_draft:
@@ -533,22 +717,61 @@ class MetricRunner:
             frames[MetricSource.combine_shooting] = self._apply_common_filters(df)
         return frames
 
-    def _run_key_for_source(self, source: MetricSource) -> str:
-        if len(self.sources) <= 1:
-            return self.run_key
-        return f"{self.run_key}:{source.value}"
+    def _run_key_for_source(self, source: MetricSource, run_key_base: str) -> str:
+        # Keep a shared run_key across sources; source is captured in the snapshot's column
+        return run_key_base
+
+    def _position_scope_kwargs(self) -> Dict[str, Optional[str]]:
+        if not self.position_scope:
+            return {}
+        if self.position_scope.kind == PositionScopeKind.fine:
+            return {"position_scope_fine": self.position_scope.value}
+        return {"position_scope_parent": self.position_scope.value}
 
     def _apply_common_filters(self, df: pd.DataFrame) -> pd.DataFrame:
         if df.empty:
             return df
-        filtered = df
+        filtered = df.copy()
         if self.position_scope:
-            desired = self.position_scope.name.lower()
-            pos_series = filtered.get("pos")
-            if pos_series is not None:
-                normalized = pos_series.fillna("").astype(str).str.lower()
-                filtered = filtered[normalized.str.startswith(desired)]
-        return filtered
+            if self.position_scope.kind == PositionScopeKind.fine:
+                fine_series = filtered.get("position_fine")
+                if fine_series is None:
+                    return filtered.iloc[0:0]
+                filtered = filtered[fine_series == self.position_scope.value]
+            else:
+                parents_series = filtered.get("position_parents")
+                if parents_series is None:
+                    return filtered.iloc[0:0]
+                scope_val = self.position_scope.value
+                mask = parents_series.apply(
+                    lambda parents: isinstance(parents, list) and scope_val in parents
+                )
+                filtered = filtered[mask]
+        return self._annotate_baseline(filtered)
+
+    def _annotate_baseline(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            df["baseline_flag"] = pd.Series(dtype=bool)
+            return df
+        annotated = df.copy()
+        default_false = pd.Series(False, index=annotated.index)
+        active_series = (
+            annotated.get("is_active_nba", default_false).fillna(False).astype(bool)
+        )
+        nba_history = annotated.get("nba_last_season")
+        history_series = (
+            nba_history.notna() if nba_history is not None else default_false
+        )
+
+        if self.cohort == CohortType.current_nba:
+            baseline = active_series
+        elif self.cohort == CohortType.all_time_nba:
+            baseline = (active_series | history_series).astype(bool)
+        else:
+            baseline = pd.Series(True, index=annotated.index)
+
+        annotated["baseline_flag"] = baseline.astype(bool)
+        return annotated
 
     def _prepare_spec_frame(
         self, frame: Optional[pd.DataFrame], spec: MetricSpec
@@ -560,9 +783,10 @@ class MetricRunner:
             working = working[working["drill"] == spec.drill]
         if spec.column not in working.columns:
             return pd.DataFrame(columns=["player_id", "season_id", "value"])
-        working = working[["player_id", "season_id", spec.column]].rename(
-            columns={spec.column: "value"}
-        )
+        columns = ["player_id", "season_id", spec.column]
+        if "baseline_flag" in working.columns:
+            columns.append("baseline_flag")
+        working = working[columns].rename(columns={spec.column: "value"})
         working = working.dropna(subset=["player_id", "value"])
         if working.empty:
             return working
@@ -571,6 +795,8 @@ class MetricRunner:
             working = working.sort_values("season_id").drop_duplicates(
                 subset=["player_id"], keep="last"
             )
+        if "baseline_flag" not in working.columns:
+            working["baseline_flag"] = False
         return working
 
     def _compute_metrics(
@@ -592,33 +818,62 @@ class MetricRunner:
             diagnostics["reason"] = "no_valid_values"
             return None, diagnostics
 
-        sample_count = int(df["value"].count())
+        baseline_mask = df.get("baseline_flag")
+        if baseline_mask is None:
+            baseline_mask = pd.Series(False, index=df.index)
+        baseline_mask = baseline_mask.fillna(False).astype(bool)
+        baseline_values = df.loc[baseline_mask, "value"]
+        baseline_count = int(baseline_values.count())
         diagnostics.update(
             {
-                "count": sample_count,
+                "count": baseline_count,
+                "population_count": int(df["value"].count()),
                 "skipped": False,
             }
         )
 
-        if sample_count < self.min_sample:
+        if baseline_count == 0:
+            diagnostics["skipped"] = True
+            diagnostics["reason"] = "no_active_baseline"
+            return None, diagnostics
+
+        if baseline_count < self.min_sample:
             diagnostics["skipped"] = True
             diagnostics["reason"] = f"insufficient_sample(<{self.min_sample})"
             return None, diagnostics
 
+        value_series = df["value"]
+        sorted_baseline = np.sort(baseline_values.to_numpy())
         ascending_rank = spec.lower_is_better
-        rank_series = df["value"].rank(method="dense", ascending=ascending_rank)
-        rank_pct = df["value"].rank(method="average", ascending=True, pct=True)
-        if spec.lower_is_better:
-            adjustment = 100.0 / sample_count
-            percentile_series = ((1 - rank_pct) * 100.0) + adjustment
-        else:
-            percentile_series = rank_pct * 100.0
 
-        mean = df["value"].mean()
-        std = df["value"].std(ddof=0)
+        positions = np.searchsorted(
+            sorted_baseline, value_series.to_numpy(), side="right"
+        )
+        rank_pct = positions / baseline_count
+        if spec.lower_is_better:
+            adjustment = 100.0 / baseline_count
+            percentile_vals = ((1 - rank_pct) * 100.0) + adjustment
+        else:
+            percentile_vals = rank_pct * 100.0
+        percentile_series = pd.Series(percentile_vals, index=df.index)
+
+        if ascending_rank:
+            unique_vals = np.sort(baseline_values.unique())
+            rank_positions = np.searchsorted(
+                unique_vals, value_series.to_numpy(), side="left"
+            )
+        else:
+            unique_vals = np.sort((-baseline_values).unique())
+            rank_positions = np.searchsorted(
+                unique_vals, (-value_series).to_numpy(), side="left"
+            )
+        rank_series = pd.Series(rank_positions + 1, index=df.index)
+
+        mean = baseline_values.mean()
+        std = baseline_values.std(ddof=0)
         z_scores = pd.Series([pd.NA] * len(df), index=df.index)
         if std and std > 0:
-            z = (df["value"] - mean) / std
+            z = (value_series - mean) / std
             if spec.lower_is_better:
                 z = -1 * z
             z_scores = z
@@ -627,8 +882,8 @@ class MetricRunner:
             {
                 "mean": float(mean),
                 "std": float(std) if std and std > 0 else None,
-                "min": float(df["value"].min()),
-                "max": float(df["value"].max()),
+                "min": float(baseline_values.min()),
+                "max": float(baseline_values.max()),
             }
         )
 
@@ -636,7 +891,7 @@ class MetricRunner:
             {
                 "player_id": df["player_id"].astype(int),
                 "season_id": df["season_id"],
-                "raw_value": df["value"],
+                "raw_value": value_series,
                 "rank": rank_series,
                 "percentile": percentile_series.clip(0, 100),
                 "z_score": z_scores,
@@ -644,15 +899,9 @@ class MetricRunner:
         )
         return metrics_df, diagnostics
 
-    async def _delete_existing_run(self) -> None:
-        pattern = f"{self.run_key}:%"
-        result = await self.session.exec(
-            select(MetricSnapshot).where(
-                or_(
-                    MetricSnapshot.run_key == self.run_key,
-                    MetricSnapshot.run_key.like(pattern),
-                )
-            )
+    async def _delete_existing_run(self, run_key_base: str) -> None:
+        result = await self.session.execute(
+            select(MetricSnapshot).where(MetricSnapshot.run_key == run_key_base)
         )
         snapshots = result.scalars().all()
         if not snapshots:
@@ -661,7 +910,7 @@ class MetricRunner:
             snapshot.id for snapshot in snapshots if snapshot.id is not None
         ]
         if snapshot_ids:
-            await self.session.exec(
+            await self.session.execute(
                 delete(PlayerMetricValue).where(
                     PlayerMetricValue.snapshot_id.in_(snapshot_ids)
                 )
@@ -669,6 +918,15 @@ class MetricRunner:
         for snapshot in snapshots:
             await self.session.delete(snapshot)
         await self.session.flush()
+
+    async def _next_version(self, source: MetricSource, run_key: str) -> int:
+        result = await self.session.execute(
+            select(func.max(MetricSnapshot.version)).where(
+                MetricSnapshot.source == source, MetricSnapshot.run_key == run_key
+            )
+        )
+        max_ver = result.scalar()
+        return int(max_ver or 0) + 1
 
     def _build_values(
         self,
@@ -704,12 +962,17 @@ class MetricRunner:
         snapshots: Dict[MetricSource, Dict[str, object]],
         populations: Dict[MetricSource, int],
         total_population: int,
+        run_key_base: str,
+        scope_label: str,
     ) -> None:
-        header = f"Run key base: {self.run_key} | Total population: {total_population}"
+        header = (
+            f"Run key base: {run_key_base} | Scope: {scope_label} | "
+            f"Total population: {total_population}"
+        )
         print(header)
         for source in self.sources:
             info = snapshots.get(source)
-            default_run_key = self._run_key_for_source(source)
+            default_run_key = self._run_key_for_source(source, run_key_base)
             run_key = (
                 info.get("run_key", default_run_key)
                 if info is not None

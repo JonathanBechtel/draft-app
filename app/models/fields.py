@@ -43,3 +43,10 @@ class MetricCategory(str, Enum):
     anthropometrics = "anthropometrics"
     combine_performance = "combine_performance"
     advanced_stats = "advanced_stats"
+
+
+class SimilarityDimension(str, Enum):
+    anthro = "anthro"
+    combine = "combine"
+    shooting = "shooting"
+    composite = "composite"
