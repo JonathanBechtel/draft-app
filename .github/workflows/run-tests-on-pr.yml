@@ -70,17 +70,17 @@ jobs:
           DATABASE_URL: ${{ env.DATABASE_URL }}
         run: |
           python - <<'PY'
-  import os
-  import psycopg
+import os
+import psycopg
 
-  raw_url = os.environ["DATABASE_URL"]
-  url = raw_url.replace("+asyncpg", "")
-  conn = psycopg.connect(url, autocommit=True)
-  with conn.cursor() as cur:
-      cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
-      cur.execute("CREATE SCHEMA public;")
-  conn.close()
-  print("Reset schema public in test database")
+raw_url = os.environ["DATABASE_URL"]
+url = raw_url.replace("+asyncpg", "")
+conn = psycopg.connect(url, autocommit=True)
+with conn.cursor() as cur:
+    cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
+    cur.execute("CREATE SCHEMA public;")
+conn.close()
+print("Reset schema public in test database")
           PY
 
       - name: Alembic upgrade head
@@ -148,17 +148,17 @@ jobs:
           DATABASE_URL: ${{ env.DATABASE_URL }}
         run: |
           python - <<'PY'
-  import os
-  import psycopg
+import os
+import psycopg
 
-  raw_url = os.environ["DATABASE_URL"]
-  url = raw_url.replace("+asyncpg", "")
-  conn = psycopg.connect(url, autocommit=True)
-  with conn.cursor() as cur:
-      cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
-      cur.execute("CREATE SCHEMA public;")
-  conn.close()
-  print("Reset schema public in test database")
+raw_url = os.environ["DATABASE_URL"]
+url = raw_url.replace("+asyncpg", "")
+conn = psycopg.connect(url, autocommit=True)
+with conn.cursor() as cur:
+    cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
+    cur.execute("CREATE SCHEMA public;")
+conn.close()
+print("Reset schema public in test database")
           PY
 
       - name: Alembic upgrade head
