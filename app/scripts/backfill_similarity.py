@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from typing import Optional, Sequence, Set
+from typing import Any, Optional, Sequence, Set
 
 from sqlalchemy import select
 
@@ -86,7 +86,8 @@ async def run(argv: Optional[Sequence[str]] = None) -> None:
             result = await session.execute(stmt)
             target_snapshots = list(result.scalars())
         else:
-            stmt = select(MetricSnapshot).where(MetricSnapshot.is_current)
+            is_current_clause: Any = MetricSnapshot.is_current
+            stmt = select(MetricSnapshot).where(is_current_clause.is_(True))
             if args.sources:
                 selected_sources: Set[MetricSource] = {
                     MetricSource(s) for s in args.sources
