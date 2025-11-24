@@ -13,6 +13,7 @@ from app.models.fields import (
     MetricCategory,
     MetricSource,
     MetricStatistic,
+    SimilarityDimension,
 )
 
 
@@ -169,8 +170,8 @@ class PlayerSimilarity(SQLModel, table=True):  # type: ignore[call-arg]
             "snapshot_id",
             "anchor_player_id",
             "comparison_player_id",
-            "category",
-            name="uq_player_similarity_anchor_comp_cat",
+            "dimension",
+            name="uq_player_similarity_anchor_comp_dim",
         ),
         Index(
             "ix_player_similarity_anchor_snapshot",
@@ -178,8 +179,13 @@ class PlayerSimilarity(SQLModel, table=True):  # type: ignore[call-arg]
             "snapshot_id",
         ),
         Index(
-            "ix_player_similarity_category_snapshot",
-            "category",
+            "ix_player_similarity_dimension_snapshot",
+            "dimension",
+            "snapshot_id",
+        ),
+        Index(
+            "ix_player_similarity_comparison_snapshot",
+            "comparison_player_id",
             "snapshot_id",
         ),
     )
@@ -188,16 +194,18 @@ class PlayerSimilarity(SQLModel, table=True):  # type: ignore[call-arg]
     snapshot_id: int = Field(
         sa_column=Column(ForeignKey("metric_snapshots.id", ondelete="CASCADE"))
     )
-    category: MetricCategory = Field(
+    dimension: SimilarityDimension = Field(
         sa_column=Column(
-            SAEnum(MetricCategory, name="similarity_category_enum"),
+            SAEnum(SimilarityDimension, name="similarity_dimension_enum"),
             nullable=False,
         ),
     )
     anchor_player_id: int = Field(foreign_key="players_master.id", index=True)
     comparison_player_id: int = Field(foreign_key="players_master.id", index=True)
-    similarity_score: float = Field(
-        description="Similarity value (0-100 or unit interval)"
+    similarity_score: float = Field(description="Similarity value scaled 0-100")
+    distance: Optional[float] = Field(default=None, description="Raw distance value")
+    overlap_pct: Optional[float] = Field(
+        default=None, description="Shared metric coverage fraction"
     )
     rank_within_anchor: Optional[int] = Field(
         default=None, description="Ordering within the anchor's neighbour list"
