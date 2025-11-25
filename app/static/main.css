@@ -1,0 +1,10 @@
+:root {
+  --font-heading: 'Russo One', system-ui, sans-serif;
+  --font-mono: 'Azeret Mono', ui-monospace, monospace;
+  --font-body: system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+}
