@@ -19,6 +19,13 @@ from app.services.metrics import (
     get_comparison_metrics,
     get_metric_definitions,
 )
+from app.services.homepage import (
+    get_market_moves,
+    get_consensus_mock_draft,
+    get_news_feed_items,
+    get_draft_specials,
+    get_homepage_data,
+)
 
 __all__ = [
     # Player services
@@ -38,4 +45,10 @@ __all__ = [
     "get_similar_players",
     "get_comparison_metrics",
     "get_metric_definitions",
+    # Homepage services
+    "get_market_moves",
+    "get_consensus_mock_draft",
+    "get_news_feed_items",
+    "get_draft_specials",
+    "get_homepage_data",
 ]

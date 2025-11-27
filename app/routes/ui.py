@@ -12,6 +12,7 @@ from app.config import settings
 from app.utils.db_async import get_session
 from app.services import player as player_service
 from app.services import metrics as metrics_service
+from app.services import homepage as homepage_service
 
 router = APIRouter()
 
@@ -32,12 +33,10 @@ async def home(
     - Live Draft Buzz feed (feature-flagged)
     - Draft Position Specials (feature-flagged, off by default)
     """
-    # Get top prospects for the grid
-    prospects = []
-    if settings.FEATURE_TOP_PROSPECTS:
-        prospects = await player_service.get_top_prospects(db, limit=6)
+    # Get all homepage data
+    homepage_data = await homepage_service.get_homepage_data(db)
 
-    # Get players for comparison dropdowns
+    # Get players for comparison dropdowns (separate call as it's needed for VS Arena)
     comparison_players = []
     if settings.FEATURE_VS_ARENA:
         comparison_players = await player_service.get_players_for_comparison(
@@ -49,13 +48,12 @@ async def home(
         {
             "request": request,
             "settings": settings,
-            "prospects": prospects,
+            "prospects": homepage_data["prospects"],
             "comparison_players": comparison_players,
-            # Placeholder data for features not yet fully implemented
-            "market_moves": [],
-            "mock_draft": [],
-            "news_items": [],
-            "specials": [],
+            "market_moves": homepage_data["market_moves"],
+            "mock_draft": homepage_data["mock_draft"],
+            "news_items": homepage_data["news_items"],
+            "specials": homepage_data["specials"],
         },
     )
 

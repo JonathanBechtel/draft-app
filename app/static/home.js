@@ -106,6 +106,14 @@ async function fetchAndDisplayComparison(playerAId, playerBId, category) {
   const similarityBadge = document.getElementById('h2hSimilarityBadge');
   const winnerDeclaration = document.getElementById('winnerDeclaration');
 
+  // Map category tabs to API category values
+  const categoryMap = {
+    'anthropometrics': 'anthropometrics',
+    'combine': 'combine_performance',
+    'advanced': 'advanced_stats'
+  };
+  const apiCategory = categoryMap[category] || category;
+
   // Show loading state
   if (comparisonBody) {
     comparisonBody.innerHTML = `
@@ -119,18 +127,27 @@ async function fetchAndDisplayComparison(playerAId, playerBId, category) {
 
   try {
     // Fetch comparison data from API
-    const response = await fetch(`/api/players/compare?player_a=${playerAId}&player_b=${playerBId}&category=${category}`);
+    const url = `/api/players/compare?player_a=${playerAId}&player_b=${playerBId}` +
+                (apiCategory ? `&category=${apiCategory}` : '');
+    const response = await fetch(url);
 
     if (!response.ok) {
-      // If API doesn't exist yet, use placeholder data
+      // If API returns error or no data, use placeholder data
       displayPlaceholderComparisonData(playerAId, playerBId, category);
       return;
     }
 
     const data = await response.json();
+
+    // If no comparison data available, use placeholder
+    if (!data.comparisons || data.comparisons.length === 0) {
+      displayPlaceholderComparisonData(playerAId, playerBId, category);
+      return;
+    }
+
     displayComparisonData(data);
   } catch (error) {
-    console.log('API not available, using placeholder data');
+    console.log('API not available, using placeholder data:', error);
     displayPlaceholderComparisonData(playerAId, playerBId, category);
   }
 }
