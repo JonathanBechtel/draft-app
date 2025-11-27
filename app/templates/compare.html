@@ -2,6 +2,10 @@
 
 {% block title %}Compare Players{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="/static/player.css">
+{% endblock %}
+
 {% block content %}
 
 <section class="section">
@@ -13,7 +17,7 @@
 
 <!-- Player Selection -->
 <section class="section">
-  <div class="h2h-controls">
+  <div class="h2h-controls-row">
     <div class="h2h-control">
       <label class="h2h-label" for="playerA">Player A</label>
       <select id="playerA" class="h2h-select" onchange="updateCompareUrl()">
@@ -24,6 +28,18 @@
         </option>
         {% endfor %}
       </select>
+    </div>
+
+    <div class="h2h-control-button">
+      <button type="button" class="h2h-swap-btn" onclick="swapPlayers()" aria-label="Swap players">
+        <svg class="icon" viewBox="0 0 24 24">
+          <polyline points="17 1 21 5 17 9"></polyline>
+          <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+          <polyline points="7 23 3 19 7 15"></polyline>
+          <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+        </svg>
+        <span>Swap</span>
+      </button>
     </div>
 
     <div class="h2h-control">
@@ -54,15 +70,16 @@
       </div>
       {% endif %}
 
-      <!-- Player Photos -->
-      <div class="h2h-comparison" style="margin-top: 3.5rem;">
-        <div class="h2h-photos">
+      <!-- Player Photos and Comparison -->
+      <div class="h2h-comparison-container">
+        <!-- Player Photos Row -->
+        <div class="h2h-photos-row">
           <div class="h2h-player-photo">
             {% set img_a = player_a.image_url or "https://placehold.co/150x150/edf2f7/1f2937?text=" ~ (player_a.display_name|urlencode) %}
             <img src="{{ img_a }}" alt="{{ player_a.display_name }}" />
             <div class="h2h-photo-name">{{ player_a.display_name }}</div>
           </div>
-          <div></div>
+          <div class="h2h-photos-spacer"></div>
           <div class="h2h-player-photo">
             {% set img_b = player_b.image_url or "https://placehold.co/150x150/edf2f7/1f2937?text=" ~ (player_b.display_name|urlencode) %}
             <img src="{{ img_b }}" alt="{{ player_b.display_name }}" />
@@ -71,7 +88,7 @@
         </div>
 
         <!-- Comparison Table -->
-        <div class="h2h-table">
+        <div class="h2h-comparison-table">
           <table>
             <thead>
               <tr>
@@ -109,22 +126,22 @@
             </tbody>
           </table>
         </div>
-
-        <!-- Winner Declaration -->
-        {% if comparison.wins_a > comparison.wins_b %}
-        <div class="h2h-winner-banner h2h-winner-banner--a">
-          {{ player_a.display_name }} wins {{ comparison.wins_a }} - {{ comparison.wins_b }}
-        </div>
-        {% elif comparison.wins_b > comparison.wins_a %}
-        <div class="h2h-winner-banner h2h-winner-banner--b">
-          {{ player_b.display_name }} wins {{ comparison.wins_b }} - {{ comparison.wins_a }}
-        </div>
-        {% else %}
-        <div class="h2h-winner-banner h2h-winner-banner--tie">
-          It's a tie! {{ comparison.wins_a }} - {{ comparison.wins_b }}
-        </div>
-        {% endif %}
       </div>
+
+      <!-- Winner Declaration -->
+      {% if comparison.wins_a > comparison.wins_b %}
+      <div class="h2h-winner-banner h2h-winner-banner--a">
+        {{ player_a.display_name }} wins {{ comparison.wins_a }} - {{ comparison.wins_b }}
+      </div>
+      {% elif comparison.wins_b > comparison.wins_a %}
+      <div class="h2h-winner-banner h2h-winner-banner--b">
+        {{ player_b.display_name }} wins {{ comparison.wins_b }} - {{ comparison.wins_a }}
+      </div>
+      {% else %}
+      <div class="h2h-winner-banner h2h-winner-banner--tie">
+        It's a tie! {{ comparison.wins_a }} - {{ comparison.wins_b }}
+      </div>
+      {% endif %}
     </div>
   </div>
 </section>
@@ -162,6 +179,15 @@ function updateCompareUrl() {
   if (playerA && playerB) {
     window.location.href = `/compare?player_a=${playerA}&player_b=${playerB}`;
   }
+}
+
+function swapPlayers() {
+  const playerA = document.getElementById('playerA');
+  const playerB = document.getElementById('playerB');
+  const tempValue = playerA.value;
+  playerA.value = playerB.value;
+  playerB.value = tempValue;
+  updateCompareUrl();
 }
 </script>
 {% endblock %}

@@ -6,10 +6,17 @@
 
 <section class="section">
   <h1 class="section-header heading-font" style="border-left-color: var(--color-accent-indigo); font-size: 2rem;">
-    Search Results
+    <!-- Search icon -->
+    <svg class="icon icon-lg" style="color: var(--color-accent-indigo); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="8"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+    Search Prospects
   </h1>
   {% if query %}
   <p class="section-subtitle">Showing results for "{{ query }}"</p>
+  {% else %}
+  <p class="section-subtitle">Find players by name</p>
   {% endif %}
 </section>
 
@@ -23,6 +30,7 @@
       placeholder="Search prospects..."
       class="search-input"
       style="flex: 1; width: auto;"
+      autofocus
     />
     <button type="submit" class="search-button">
       <svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
@@ -36,6 +44,8 @@
 <!-- Search Results -->
 {% if results %}
 <section class="section">
+  <p class="section-subtitle">{{ results|length }} prospect{{ 's' if results|length != 1 else '' }} found</p>
+
   <div class="prospects-grid">
     {% for player in results %}
     <a href="/player/{{ player.id }}" class="prospect-card" style="text-decoration: none; color: inherit;">
@@ -49,7 +59,20 @@
       </div>
       <div class="prospect-card__info">
         <h4 class="prospect-card__name">{{ player.display_name }}</h4>
-        <p class="prospect-card__meta">{{ player.school or 'N/A' }}{% if player.draft_year %} &bull; {{ player.draft_year }}{% endif %}</p>
+        <p class="prospect-card__meta">
+          {{ player.position or '' }}
+          {% if player.position and player.school %} &bull; {% endif %}
+          {{ player.school or '' }}
+          {% if player.draft_year %} &bull; {{ player.draft_year }}{% endif %}
+        </p>
+        {% if player.id %}
+        <div class="prospect-card__stats">
+          <div class="stat-pill">
+            <span class="stat-pill__label">ID</span>
+            <span class="stat-pill__value mono-font tabular-nums">#{{ player.id }}</span>
+          </div>
+        </div>
+        {% endif %}
       </div>
     </a>
     {% endfor %}
@@ -57,25 +80,39 @@
 </section>
 {% elif query %}
 <section class="section">
-  <div class="empty-state">
-    <div class="empty-state__icon">🔍</div>
-    <h3 class="empty-state__title">No Results Found</h3>
-    <p class="empty-state__message">No prospects matching "{{ query }}" were found. Try a different search term.</p>
+  <div class="card" style="padding: 3rem; text-align: center;">
+    <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;">
+      <svg class="icon" viewBox="0 0 24 24" style="width: 3rem; height: 3rem;">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+    </div>
+    <h3 class="mono-font uppercase" style="color: var(--color-slate-700); margin-bottom: 0.5rem;">No Results Found</h3>
+    <p style="color: var(--color-slate-500);">
+      No prospects matching "{{ query }}" were found. Try a different search term.
+    </p>
   </div>
 </section>
 {% else %}
 <section class="section">
-  <div class="empty-state">
-    <div class="empty-state__icon">🔍</div>
-    <h3 class="empty-state__title">Start Searching</h3>
-    <p class="empty-state__message">Enter a player name to search for prospects.</p>
+  <div class="card" style="padding: 3rem; text-align: center;">
+    <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.5;">
+      <svg class="icon" viewBox="0 0 24 24" style="width: 3rem; height: 3rem;">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+    </div>
+    <h3 class="mono-font uppercase" style="color: var(--color-slate-700); margin-bottom: 0.5rem;">Search for Prospects</h3>
+    <p style="color: var(--color-slate-500);">
+      Enter a player name in the search box above to find prospects.
+    </p>
   </div>
 </section>
 {% endif %}
 
 <!-- Back to Home Link -->
 <section class="section" style="text-align: center;">
-  <a href="/" style="color: var(--color-accent-indigo);">&larr; Back to Home</a>
+  <a href="/" class="btn btn--secondary">&larr; Back to Home</a>
 </section>
 
 {% endblock %}
