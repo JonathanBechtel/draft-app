@@ -1,189 +1,459 @@
 {% extends "base.html" %}
 
-{% block title %}{{ player.display_name }}{% endblock %}
+{% block title %}{{ player.display_name }} — Player Profile{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/player.css">
+{% endblock %}
 
 {% block content %}
 
-<!-- Player Detail Page - Placeholder structure for Phase 3 -->
+<!-- ==========================================================================
+     PERSONAL INFO SECTION
+     Player photograph, biography, and sports scoreboard
+     ========================================================================== -->
 <section class="section">
-  <h1 class="section-header heading-font" style="border-left-color: var(--color-accent-indigo); font-size: 2rem;">
-    {{ player.display_name }}
-  </h1>
+  <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-indigo);">
+    {{ player.display_name }} — Player Profile
+  </h2>
 
-  <div class="card card--ring card--ring-indigo">
-    <div class="card__content">
-      <div style="display: grid; grid-template-columns: 200px 1fr; gap: 2rem;">
-        <!-- Player Photo -->
-        <div>
-          {% set img_url = player.image_url or "https://placehold.co/200x260/edf2f7/1f2937?text=" ~ (player.display_name|urlencode) %}
-          <img
-            src="{{ img_url }}"
-            alt="{{ player.display_name }}"
-            style="width: 100%; border-radius: var(--border-radius);"
-          />
+  <div class="personal-info-grid">
+
+    <!-- LEFT COLUMN: Photo Only -->
+    <div class="player-photo-wrapper">
+      {% set img_url = player.image_url or "https://placehold.co/400x533/edf2f7/1f2937?text=" ~ (player.display_name|urlencode) %}
+      <img
+        class="player-photo"
+        src="{{ img_url }}"
+        alt="{{ player.display_name }}"
+      />
+    </div>
+
+    <!-- RIGHT COLUMN: Bio + Scoreboard Stacked -->
+    <div class="player-info-stack">
+
+      <!-- Biographical information -->
+      <div class="player-bio">
+        <h3 class="bio-header">Bio</h3>
+
+        <div class="player-primary-meta">
+          {{ player.position or 'N/A' }} • {{ player.school or 'N/A' }}
+          {% if player.anthropometrics and player.anthropometrics.height_wo_shoes %}
+            • {{ "%.0f"|format(player.anthropometrics.height_wo_shoes // 12) }}'{{ "%.0f"|format(player.anthropometrics.height_wo_shoes % 12) }}"
+          {% endif %}
+          {% if player.anthropometrics and player.anthropometrics.weight %}
+            • {{ "%.0f"|format(player.anthropometrics.weight) }} lbs
+          {% endif %}
         </div>
 
-        <!-- Player Bio -->
-        <div>
-          <h2 class="mono-font uppercase" style="color: var(--color-slate-600); font-size: 0.875rem; margin-bottom: 1rem;">
-            Player Bio
-          </h2>
+        <div class="player-secondary-meta">
+          <div class="meta-item">
+            <span class="meta-label">Age</span>
+            <span class="meta-value">{{ player.age or 'N/A' }}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Class</span>
+            <span class="meta-value">{{ player.class_year or 'N/A' }}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Hometown</span>
+            <span class="meta-value">
+              {% if player.birth_city %}{{ player.birth_city }}{% endif %}
+              {% if player.birth_state_province %}, {{ player.birth_state_province }}{% endif %}
+              {% if not player.birth_city and not player.birth_state_province %}N/A{% endif %}
+            </span>
+          </div>
+          {% if player.anthropometrics and player.anthropometrics.wingspan %}
+          <div class="meta-item">
+            <span class="meta-label">Wingspan</span>
+            <span class="meta-value">{{ "%.0f"|format(player.anthropometrics.wingspan // 12) }}'{{ "%.1f"|format(player.anthropometrics.wingspan % 12) }}"</span>
+          </div>
+          {% endif %}
+          {% if player.draft_year %}
+          <div class="meta-item">
+            <span class="meta-label">Draft Year</span>
+            <span class="meta-value">{{ player.draft_year }}</span>
+          </div>
+          {% endif %}
+          {% if player.shoots %}
+          <div class="meta-item">
+            <span class="meta-label">Shoots</span>
+            <span class="meta-value">{{ player.shoots }}</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
 
-          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
-            <div>
-              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Position</span>
-              <p style="font-weight: 500;">{{ player.position or 'N/A' }}</p>
-            </div>
-            <div>
-              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">School</span>
-              <p style="font-weight: 500;">{{ player.school or 'N/A' }}</p>
-            </div>
-            <div>
-              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Age</span>
-              <p style="font-weight: 500;">{{ player.age or 'N/A' }}</p>
-            </div>
-            <div>
-              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Birthplace</span>
-              <p style="font-weight: 500;">{{ player.birth_city or '' }}{% if player.birth_state_province %}, {{ player.birth_state_province }}{% endif %}{% if player.birth_country %}, {{ player.birth_country }}{% endif %}</p>
-            </div>
-            {% if player.draft_year %}
-            <div>
-              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Draft Year</span>
-              <p style="font-weight: 500;">{{ player.draft_year }}</p>
-            </div>
-            {% endif %}
-            {% if player.draft_pick %}
-            <div>
-              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Draft Pick</span>
-              <p style="font-weight: 500;">Round {{ player.draft_round or '?' }}, Pick {{ player.draft_pick }}</p>
-            </div>
-            {% endif %}
-            {% if player.shoots %}
-            <div>
-              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Shoots</span>
-              <p style="font-weight: 500;">{{ player.shoots }}</p>
-            </div>
-            {% endif %}
+      <!-- Sports Scoreboard -->
+      {% if settings.FEATURE_PLAYER_SCOREBOARD %}
+      <div class="sports-scoreboard">
+        <!-- Scanlines overlay -->
+        <div class="scanlines"></div>
+
+        <!-- Scoreboard header -->
+        <div class="scoreboard-header">
+          <div class="scoreboard-title">
+            <!-- Activity icon -->
+            <svg class="icon" viewBox="0 0 24 24">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+            </svg>
+            Draft Analytics Dashboard
           </div>
         </div>
+
+        <!-- Scoreboard content -->
+        <div class="scoreboard-content">
+
+          <!-- Top row: Primary metrics -->
+          <div class="scoreboard-row">
+
+            <!-- Consensus Mock Position -->
+            <div class="metric-panel">
+              <span class="metric-label">Consensus Mock</span>
+              <div class="metric-value large">{{ player.consensus_rank or '?' }}</div>
+              {% if player.rank_change %}
+              <div class="change-indicator {{ 'positive' if player.rank_change > 0 else ('negative' if player.rank_change < 0 else 'neutral') }}">
+                <span>{{ '▲' if player.rank_change > 0 else ('▼' if player.rank_change < 0 else '=') }}</span>
+                <span>{{ player.rank_change|abs if player.rank_change else '0' }}</span>
+              </div>
+              {% else %}
+              <div class="change-indicator neutral">
+                <span>=</span>
+                <span>0</span>
+              </div>
+              {% endif %}
+            </div>
+
+            <!-- Draft Buzz Score -->
+            <div class="metric-panel metric-panel-wide">
+              <span class="metric-label">Draft Buzz Score</span>
+              {% set buzz_score = player.buzz_score or (75 + (player.id|default(0) % 25)) %}
+              <div class="metric-value">{{ buzz_score }}</div>
+              <div class="metric-subtext">Volume Index</div>
+              <div class="buzz-meter">
+                <div class="buzz-fill" style="width: {{ buzz_score }}%;"></div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Bottom row: Supporting metrics -->
+          <div class="scoreboard-row">
+
+            <!-- True Draft Position -->
+            <div class="metric-panel">
+              <span class="metric-label">True Position</span>
+              <div class="metric-value">{{ player.true_position or player.consensus_rank or '?' }}</div>
+              <div class="metric-subtext">± {{ player.position_range or '0.5' }}</div>
+            </div>
+
+            <!-- Expected Wins Added -->
+            <div class="metric-panel">
+              <span class="metric-label">Exp. Wins Added</span>
+              {% set wins_added = player.wins_added or (5.0 + (player.id|default(0) % 40) / 10) %}
+              <div class="metric-value">+{{ "%.1f"|format(wins_added) }}</div>
+              <div class="metric-subtext">Year 1 Impact</div>
+            </div>
+
+            <!-- Stock Trend -->
+            <div class="metric-panel">
+              <span class="metric-label">7-Day Trend</span>
+              {% set trend = player.trend_direction or 'rising' %}
+              <div class="change-indicator {{ 'positive' if trend == 'rising' else ('negative' if trend == 'falling' else 'neutral') }}">
+                {% if trend == 'rising' %}
+                <svg class="icon-lg" viewBox="0 0 24 24" style="width: 2rem; height: 2rem;">
+                  <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                  <polyline points="17 6 23 6 23 12"></polyline>
+                </svg>
+                {% elif trend == 'falling' %}
+                <svg class="icon-lg" viewBox="0 0 24 24" style="width: 2rem; height: 2rem;">
+                  <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
+                  <polyline points="17 18 23 18 23 12"></polyline>
+                </svg>
+                {% else %}
+                <svg class="icon-lg" viewBox="0 0 24 24" style="width: 2rem; height: 2rem;">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                {% endif %}
+              </div>
+              <div class="metric-subtext">{{ trend|capitalize }}</div>
+            </div>
+
+          </div>
+
+        </div>
       </div>
+      {% endif %}
+
     </div>
+
   </div>
 </section>
 
-<!-- Anthropometrics Section -->
-{% if player.anthropometrics %}
+<div class="section-divider"></div>
+
+<!-- ==========================================================================
+     PERFORMANCE SECTION
+     Player's percentile rankings across key metrics
+     ========================================================================== -->
+{% if settings.FEATURE_PLAYER_PERCENTILES %}
 <section class="section">
-  <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-amber);">
-    Anthropometrics
+  <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
+    <!-- Bar chart icon -->
+    <svg class="icon icon-lg" style="color: var(--color-accent-emerald); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+      <line x1="12" y1="20" x2="12" y2="10"></line>
+      <line x1="18" y1="20" x2="18" y2="4"></line>
+      <line x1="6" y1="20" x2="6" y2="16"></line>
+    </svg>
+    Performance
   </h2>
+  <p class="section-subtitle">Ranking relative to selected cohort and position</p>
 
-  <div class="card card--ring card--ring-amber">
-    <div class="card__content">
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem;">
-        {% if player.anthropometrics.height_wo_shoes %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Height (no shoes)</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.anthropometrics.height_wo_shoes) }}"</span>
-        </div>
-        {% endif %}
-        {% if player.anthropometrics.wingspan %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Wingspan</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.anthropometrics.wingspan) }}"</span>
-        </div>
-        {% endif %}
-        {% if player.anthropometrics.standing_reach %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Standing Reach</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.anthropometrics.standing_reach) }}"</span>
-        </div>
-        {% endif %}
-        {% if player.anthropometrics.weight %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Weight</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.0f"|format(player.anthropometrics.weight) }} lbs</span>
-        </div>
-        {% endif %}
-        {% if player.anthropometrics.body_fat_pct %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Body Fat</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.anthropometrics.body_fat_pct) }}%</span>
-        </div>
-        {% endif %}
-        {% if player.anthropometrics.hand_length %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Hand Length</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.2f"|format(player.anthropometrics.hand_length) }}"</span>
-        </div>
-        {% endif %}
-        {% if player.anthropometrics.hand_width %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Hand Width</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.2f"|format(player.anthropometrics.hand_width) }}"</span>
-        </div>
-        {% endif %}
-      </div>
+  <!-- Controls Row -->
+  <div class="perf-controls-row">
+    <!-- Cohort Selector -->
+    <div class="perf-control">
+      <label class="perf-label" for="perfCohort">Compare To</label>
+      <select id="perfCohort" class="perf-select">
+        <option value="currentDraft">Current Draft Class</option>
+        <option value="allTimeDraft">All Time Draft</option>
+        <option value="currentNBA">Current NBA Players</option>
+        <option value="allTimeNBA">All Time NBA Players</option>
+      </select>
+    </div>
+
+    <!-- Position Filter Toggle -->
+    <div class="perf-control-checkbox">
+      <input type="checkbox" id="perfPositionFilter" class="perf-checkbox" checked />
+      <label for="perfPositionFilter" class="perf-checkbox-label">Same Position Only</label>
+    </div>
+  </div>
+
+  <!-- Category Tabs -->
+  <div class="perf-tabs">
+    <button class="perf-tab active" data-category="anthropometrics">Anthropometrics</button>
+    <button class="perf-tab" data-category="combinePerformance">Combine Performance</button>
+    <button class="perf-tab" data-category="advancedStats">Advanced Stats</button>
+  </div>
+
+  <!-- Percentile Bars Card -->
+  <div class="card card--ring card--ring-emerald perf-card">
+    <!-- Scanlines overlay -->
+    <div class="scanlines"></div>
+
+    <div class="perf-content">
+      <!-- Percentile bars will be populated by JavaScript -->
+      <div id="perfBarsContainer" class="perf-bars-container" data-player-id="{{ player.id }}"></div>
     </div>
   </div>
 </section>
+
+<div class="section-divider"></div>
 {% endif %}
 
-<!-- Agility Section -->
-{% if player.agility %}
+<!-- ==========================================================================
+     PLAYER COMPARISONS SECTION
+     Find similar players based on various criteria
+     ========================================================================== -->
+{% if settings.FEATURE_PLAYER_COMPARISONS %}
 <section class="section">
   <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
-    Combine Performance
+    <!-- Copy icon -->
+    <svg class="icon icon-lg" style="color: var(--color-accent-cyan); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+    </svg>
+    Player Comparisons
   </h2>
+  <p class="section-subtitle">Find similar players based on measurables, performance, or advanced stats</p>
 
-  <div class="card card--ring card--ring-cyan">
-    <div class="card__content">
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem;">
-        {% if player.agility.lane_agility_time %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Lane Agility</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.2f"|format(player.agility.lane_agility_time) }}s</span>
-        </div>
-        {% endif %}
-        {% if player.agility.three_quarter_sprint %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">3/4 Sprint</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.2f"|format(player.agility.three_quarter_sprint) }}s</span>
-        </div>
-        {% endif %}
-        {% if player.agility.standing_vertical %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Standing Vert</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.agility.standing_vertical) }}"</span>
-        </div>
-        {% endif %}
-        {% if player.agility.max_vertical %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Max Vert</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.agility.max_vertical) }}"</span>
-        </div>
-        {% endif %}
-        {% if player.agility.bench_press_reps %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Bench Press</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ player.agility.bench_press_reps }} reps</span>
-        </div>
-        {% endif %}
-        {% if player.agility.shuttle_run %}
-        <div class="stat-pill">
-          <span class="stat-pill__label">Shuttle Run</span>
-          <span class="stat-pill__value mono-font tabular-nums">{{ "%.2f"|format(player.agility.shuttle_run) }}s</span>
-        </div>
-        {% endif %}
+  <!-- Controls Row -->
+  <div class="comp-controls-row">
+    <!-- Comparison Pool Dropdown -->
+    <div class="comp-control">
+      <label class="comp-label" for="compPool">Compare To</label>
+      <select id="compPool" class="comp-select">
+        <option value="currentDraft">Current Draft Class</option>
+        <option value="allTimeDraft">All-Time Draft</option>
+        <option value="currentNBA">Current NBA Players</option>
+        <option value="allTimeNBA">All-Time NBA Players</option>
+      </select>
+    </div>
+
+    <!-- Position Filter Checkbox -->
+    <div class="comp-control-checkbox">
+      <input type="checkbox" id="compPositionFilter" class="comp-checkbox" />
+      <label for="compPositionFilter" class="comp-checkbox-label">Same Position Only</label>
+    </div>
+  </div>
+
+  <!-- Category Tabs -->
+  <div class="comp-tabs">
+    <button class="comp-tab active" data-category="anthropometrics">Anthropometrics</button>
+    <button class="comp-tab" data-category="combinePerformance">Combine Performance</button>
+    <button class="comp-tab" data-category="advancedStats">Advanced Stats</button>
+  </div>
+
+  <!-- Comparison Results Grid -->
+  <div id="compResultsGrid" class="comp-results-grid" data-player-id="{{ player.id }}">
+    <!-- Will be populated by JavaScript -->
+  </div>
+</section>
+
+<div class="section-divider"></div>
+{% endif %}
+
+<!-- ==========================================================================
+     HEAD-TO-HEAD COMPARISON SECTION
+     Interactive player comparison with category toggles
+     ========================================================================== -->
+{% if settings.FEATURE_PLAYER_H2H %}
+<section class="section">
+  <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+    <!-- Swords icon -->
+    <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+      <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+      <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+      <path d="M3 6l7 7"></path>
+    </svg>
+    Head-to-Head Comparison
+  </h2>
+  <p class="section-subtitle">Compare {{ player.display_name }} against similar players across key metrics</p>
+
+  <!-- Comparison Controls -->
+  <div class="h2h-controls-row">
+    <!-- Player Selector -->
+    <div class="h2h-control">
+      <label class="h2h-label" for="h2hPlayerSelect">Compare Against</label>
+      <select id="h2hPlayerSelect" class="h2h-select">
+        {% for p in comparison_players %}
+        <option value="{{ p.id }}">{{ p.display_name }} ({{ p.position or 'N/A' }})</option>
+        {% else %}
+        <option value="">Loading players...</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Swap Button -->
+    <div class="h2h-control-button">
+      <button id="h2hSwapBtn" class="h2h-swap-btn" aria-label="Swap players">
+        <!-- Swap icon -->
+        <svg class="icon" viewBox="0 0 24 24">
+          <polyline points="17 1 21 5 17 9"></polyline>
+          <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+          <polyline points="7 23 3 19 7 15"></polyline>
+          <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+        </svg>
+        <span>Swap</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Category Tabs -->
+  <div class="h2h-tabs">
+    <button class="h2h-tab h2h-tab--active" data-category="anthropometrics">Anthropometrics</button>
+    <button class="h2h-tab" data-category="combine">Combine Performance</button>
+    <button class="h2h-tab" data-category="advanced">Advanced Stats</button>
+  </div>
+
+  <!-- Comparison Card -->
+  <div class="card card--ring card--ring-fuchsia h2h-card">
+    <!-- Scanlines overlay -->
+    <div class="scanlines"></div>
+
+    <div class="h2h-content">
+      <!-- Similarity Score Badge -->
+      <div id="h2hSimilarityBadge" class="h2h-similarity-badge">
+        Select Player
       </div>
+
+      <!-- Player Photos and Comparison -->
+      <div class="h2h-comparison-container">
+        <!-- Player Photos Row -->
+        <div class="h2h-photos-row">
+          <div class="h2h-player-photo">
+            {% set img_a = player.image_url or "https://placehold.co/150x150/edf2f7/1f2937?text=" ~ (player.display_name|urlencode) %}
+            <img id="h2hPhotoA" src="{{ img_a }}" alt="{{ player.display_name }}" />
+            <div class="h2h-photo-name" id="h2hPhotoNameA">{{ player.display_name }}</div>
+          </div>
+          <div class="h2h-photos-spacer"></div>
+          <div class="h2h-player-photo">
+            <img id="h2hPhotoB" src="https://placehold.co/150x150/edf2f7/1f2937?text=Select+Player" alt="Comparison Player" />
+            <div class="h2h-photo-name" id="h2hPhotoNameB">Select Player</div>
+          </div>
+        </div>
+
+        <!-- Comparison Table -->
+        <div class="h2h-comparison-table">
+          <table>
+            <thead>
+              <tr>
+                <th id="headerA" class="text-right">{{ player.display_name }}</th>
+                <th class="text-center">Metric</th>
+                <th id="headerB" class="text-left">Comparison</th>
+              </tr>
+            </thead>
+            <tbody id="comparisonBody">
+              <tr>
+                <td colspan="3" class="text-center" style="padding: 2rem; color: var(--color-slate-500);">
+                  Select a player to compare
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Winner Declaration -->
+      <div id="winnerDeclaration"></div>
     </div>
   </div>
 </section>
+
+<div class="section-divider"></div>
+{% endif %}
+
+<!-- ==========================================================================
+     PLAYER NEWS FEED
+     Latest news and updates about this player
+     ========================================================================== -->
+{% if settings.FEATURE_PLAYER_NEWS %}
+<section class="section">
+  <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+    <!-- Newspaper icon -->
+    <svg class="icon icon-lg" style="color: var(--color-accent-cyan); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+      <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+      <path d="M2 13h8"></path>
+      <path d="M2 17h8"></path>
+      <path d="M2 21h8"></path>
+    </svg>
+    Latest News & Updates
+  </h2>
+  <p class="section-subtitle">Recent coverage and analysis of {{ player.display_name }}</p>
+
+  <!-- News feed container -->
+  <div id="playerFeedContainer" class="feed-container" data-player-id="{{ player.id }}"></div>
+</section>
+
+<div class="section-divider"></div>
 {% endif %}
 
 <!-- Back to Home Link -->
 <section class="section" style="text-align: center;">
-  <a href="/" style="color: var(--color-accent-indigo);">&larr; Back to All Prospects</a>
+  <a href="/" class="btn btn--secondary">&larr; Back to All Prospects</a>
 </section>
 
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/player.js"></script>
+<script>
+  // Initialize H2H module with current player ID
+  document.addEventListener('DOMContentLoaded', () => {
+    {% if settings.FEATURE_PLAYER_H2H %}
+    HeadToHeadModule.init({{ player.id }});
+    {% endif %}
+  });
+</script>
 {% endblock %}
