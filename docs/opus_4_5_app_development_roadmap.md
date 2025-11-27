@@ -234,7 +234,7 @@ class ConsensusRank(SQLModel, table=True):
 | Aspect | Details |
 |--------|---------|
 | **Purpose** | News/updates feed for draft coverage |
-| **Data Source** | New table required: `news_items` |
+| **Data Source** | Substack RSS feeds → `news_items` table |
 | **API Endpoint** | `GET /api/v1/news?limit=10` |
 | **Template** | Partial: `_feed_item.html` |
 | **JS Module** | Optional: Polling for real-time updates |
@@ -246,17 +246,93 @@ class NewsItem(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(index=True)
-    source: str = Field(description="Publication/author name")
-    source_url: Optional[str] = Field(default=None)
+    source: str = Field(description="Substack/publication name")
+    source_url: str = Field(description="Link to original article")
+    guid: str = Field(unique=True, description="RSS guid for deduplication")
     player_id: Optional[int] = Field(default=None, foreign_key="players_master.id")
     tag: Optional[str] = Field(default=None, description="riser|faller|analysis|highlight")
-    published_at: datetime = Field(default_factory=datetime.utcnow)
+    summary: Optional[str] = Field(default=None, description="RSS description/excerpt")
+    published_at: datetime
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
-**Placeholder Strategy:**
-- Seed with static mock data
-- Future: RSS ingestion service for @DraftExpress, The Ringer, etc.
+**Data Source: Substack RSS Feeds**
+
+The news feed will be populated by ingesting from configured Substack RSS feeds:
+
+```python
+# app/config.py
+class Settings(BaseSettings):
+    # Substack feeds to ingest (add your subscriptions here)
+    NEWS_RSS_FEEDS: list[str] = [
+        "https://example.substack.com/feed",  # Replace with real feeds
+        # "https://anotherdraft.substack.com/feed",
+    ]
+    NEWS_INGEST_INTERVAL_MINUTES: int = 30
+```
+
+**RSS Ingestion Service:**
+```python
+# app/services/news.py
+import feedparser
+from datetime import datetime
+
+async def ingest_rss_feeds(db: AsyncSession):
+    """
+    Fetch and parse configured Substack RSS feeds.
+    Called on app startup and/or via scheduled job.
+    """
+    for feed_url in settings.NEWS_RSS_FEEDS:
+        feed = feedparser.parse(feed_url)
+        source_name = feed.feed.get("title", "Unknown")
+
+        for entry in feed.entries:
+            # Skip if already exists (by guid)
+            existing = await db.exec(
+                select(NewsItem).where(NewsItem.guid == entry.id)
+            )
+            if existing.first():
+                continue
+
+            item = NewsItem(
+                title=entry.title,
+                source=source_name,
+                source_url=entry.link,
+                guid=entry.id,
+                summary=entry.get("summary", "")[:500],  # Truncate
+                published_at=datetime(*entry.published_parsed[:6]),
+                player_id=await match_player_from_title(db, entry.title),  # Optional
+                tag=classify_article_tag(entry.title, entry.summary),  # Optional
+            )
+            db.add(item)
+
+        await db.commit()
+```
+
+**Player Matching (Optional Enhancement):**
+```python
+async def match_player_from_title(db: AsyncSession, title: str) -> Optional[int]:
+    """Attempt to match article to a player by name in title."""
+    # Query players_master, check if display_name appears in title
+    # Return player_id if match found, None otherwise
+    pass
+
+def classify_article_tag(title: str, summary: str) -> Optional[str]:
+    """Heuristic classification based on keywords."""
+    text = (title + " " + summary).lower()
+    if any(w in text for w in ["rises", "rising", "stock up", "impresses"]):
+        return "riser"
+    if any(w in text for w in ["falls", "falling", "stock down", "concern"]):
+        return "faller"
+    if any(w in text for w in ["analysis", "breakdown", "film study"]):
+        return "analysis"
+    return "highlight"  # Default
+```
+
+**Launch Requirements:**
+- Configure at least 1-2 Substack RSS feed URLs in `NEWS_RSS_FEEDS`
+- Run initial ingestion to populate `news_items` table
+- If no feeds configured, section shows empty state or is hidden via feature flag
 
 #### 6. Draft Position Specials (Affiliate Banner)
 
@@ -398,21 +474,25 @@ class ConsensusRank(SQLModel, table=True):
 ```
 
 #### 2. `news_items`
-Draft-related news and updates.
+Draft-related news ingested from Substack RSS feeds.
 
 ```python
 # app/schemas/news.py
 class NewsItem(SQLModel, table=True):
     __tablename__ = "news_items"
+    __table_args__ = (
+        UniqueConstraint("guid", name="uq_news_items_guid"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    title: str
-    source: str
-    source_url: Optional[str] = Field(default=None)
+    title: str = Field(index=True)
+    source: str = Field(description="Substack/publication name from feed")
+    source_url: str = Field(description="Link to original article")
+    guid: str = Field(index=True, description="RSS guid for deduplication")
     player_id: Optional[int] = Field(default=None, foreign_key="players_master.id")
     tag: Optional[str] = Field(default=None)  # riser|faller|analysis|highlight
-    summary: Optional[str] = Field(default=None)
-    published_at: datetime
+    summary: Optional[str] = Field(default=None, description="RSS description/excerpt")
+    published_at: datetime = Field(index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 ```
 
@@ -736,15 +816,124 @@ async def home(request: Request, db: AsyncSession = Depends(get_session)):
 - Gradually roll out features as business/legal requirements are met
 - Easy A/B testing potential
 
-### Features Likely Hidden at Launch
+### Implementation Philosophy: Build Everything
 
-| Feature | Reason | Launch Hidden |
-|---------|--------|---------------|
-| Affiliate Specials | Legal/partnership requirements | **Yes** |
-| Share Cards (PNG) | Requires additional implementation | **Yes** |
-| News Feed | Needs RSS ingestion pipeline | Maybe |
-| Market Ticker | Needs historical rank data | Maybe |
-| Buzz Score | Needs sentiment service | **Yes** (show placeholder or hide)
+> **Important:** All features in the mockups will be built. Nothing is skipped. Features that aren't ready for production will either:
+> 1. **Use placeholder data** - Functional UI with mock/generated data
+> 2. **Be feature-flagged** - Built but hidden until business requirements are met
+> 3. **Both** - Built with placeholders AND hidden until ready
+
+This ensures:
+- Complete UI is implemented and testable
+- Easy transition when real data/integrations become available
+- No throwaway work - everything built will be used
+
+### Feature Launch States
+
+| Feature | Built | Placeholder Data | Feature Flag | Launch State |
+|---------|-------|------------------|--------------|--------------|
+| Consensus Mock Draft | Yes | Seeded from combine ranks | `FEATURE_CONSENSUS_MOCK` | **Visible** with placeholder |
+| Top Prospects | Yes | DB data + placeholder images | `FEATURE_TOP_PROSPECTS` | **Visible** |
+| Market Ticker | Yes | Mock rank changes | `FEATURE_MARKET_TICKER` | **Visible** with placeholder |
+| VS Arena | Yes | Real similarity data | `FEATURE_VS_ARENA` | **Visible** |
+| News Feed | Yes | Substack RSS ingestion | `FEATURE_NEWS_FEED` | **Visible** (requires feed config) |
+| Affiliate Specials | Yes | Hardcoded sample odds | `FEATURE_AFFILIATE_SPECIALS` | **Hidden** until legal ready |
+| Player Scoreboard | Yes | Placeholder metrics | `FEATURE_PLAYER_SCOREBOARD` | **Visible** with placeholder |
+| Buzz Score | Yes | Random 60-99 value | Part of scoreboard | **Visible** with placeholder |
+| Share Cards (PNG) | Yes | Full implementation | `FEATURE_SHARE_CARDS` | **Hidden** until QA complete |
+
+### Transition Guide: Placeholder to Production
+
+Each feature with placeholder data includes a clear upgrade path:
+
+#### Consensus Mock Draft
+**Current:** Seeded from existing combine/metric data
+**To Production:**
+1. Set up external mock draft API integration or admin ingestion
+2. Create scheduled job to update `consensus_ranks` table
+3. No code changes needed - UI reads from same table
+
+```python
+# Transition: Add to app/services/consensus.py
+async def ingest_external_mocks(sources: list[str]):
+    """Fetch and aggregate from external mock draft APIs."""
+    # Implementation when APIs are available
+    pass
+```
+
+#### News Feed
+**Current:** Substack RSS ingestion built-in (requires feed URLs configured)
+**At Launch:**
+1. Add Substack feed URLs to `NEWS_RSS_FEEDS` in environment/config
+2. Run initial ingestion (happens on app startup or manually)
+3. News appears immediately from configured feeds
+
+**Enhancements (post-launch):**
+1. Add more feed sources beyond Substack
+2. Improve player name matching heuristics
+3. Add scheduled background job for periodic refresh
+4. Implement manual tag override in admin (if needed)
+
+```python
+# Optional: Add scheduled refresh via APScheduler or similar
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+scheduler = AsyncIOScheduler()
+scheduler.add_job(ingest_rss_feeds, 'interval', minutes=30)
+scheduler.start()
+```
+
+#### Market Ticker (Rank Changes)
+**Current:** Mock/computed delta between snapshots
+**To Production:**
+1. Ensure `metric_snapshots` has historical data with timestamps
+2. Query compares `is_current=True` vs previous snapshot
+3. No code changes if snapshots are being created regularly
+
+#### Buzz Score
+**Current:** Random value 60-99
+**To Production:**
+1. Set `BUZZ_SERVICE_URL` in environment
+2. Implement `_fetch_buzz_score()` in `ExternalDataService`
+3. Service automatically uses real data when URL is configured
+
+```python
+# Already scaffolded - just implement the fetch:
+async def _fetch_buzz_score(self, player_id: int) -> int:
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(f"{settings.BUZZ_SERVICE_URL}/player/{player_id}")
+        return resp.json()["score"]
+```
+
+#### Affiliate Specials
+**Current:** Hardcoded odds, feature-flagged OFF
+**To Production:**
+1. Complete legal review and partnership agreements
+2. Set `SPORTSBOOK_API_KEY` if using live API
+3. Or update admin interface to manage odds manually
+4. Set `FEATURE_AFFILIATE_SPECIALS=True`
+
+#### Player Images
+**Current:** `placehold.co` URLs with player names
+**To Production:**
+1. Add `image_url` column to `players_master` (migration exists in plan)
+2. Upload images to CDN, store URLs in DB
+3. Update `IMAGE_CDN_BASE_URL` setting
+4. Template already handles: `{{ player.image_url or placeholder_url(player) }}`
+
+```jinja2
+{# Already designed for transition #}
+{% set img_url = player.image_url or
+   "https://placehold.co/320x420/edf2f7/1f2937?text=" ~ player.display_name|urlencode %}
+<img src="{{ img_url }}" alt="{{ player.display_name }}">
+```
+
+#### Share Cards (PNG Export)
+**Current:** Built but hidden
+**To Production:**
+1. Test PNG generation thoroughly
+2. Verify social media preview compatibility
+3. Set `FEATURE_SHARE_CARDS=True`
 
 ---
 
@@ -818,9 +1007,10 @@ async def home(request: Request, db: AsyncSession = Depends(get_session)):
 
 5. **News Feed**
    - Create `news_items` table migration
-   - Seed sample data
+   - Implement RSS ingestion service (`feedparser` dependency)
    - Implement `GET /api/v1/news`
    - Create `_feed_item.html` partial
+   - Add empty state UI when no feeds configured
 
 **Testing Focus:** API endpoints return correct data, homepage displays all sections.
 
