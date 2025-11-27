@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+
+<!-- ============================================================================
+     MARKET MOVES TICKER
+     Scrolling ticker showing player stock changes (risers/fallers)
+     ============================================================================ -->
+{% if settings.FEATURE_MARKET_TICKER %}
+<section class="section">
+  <div class="ticker">
+    <!-- Ticker header with icon and label -->
+    <div class="ticker__header">
+      <!-- Activity icon -->
+      <svg class="icon" style="color: var(--color-accent-emerald);" viewBox="0 0 24 24">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+      </svg>
+      <span>Market Moves</span>
+      <span>(Risers &amp; Fallers)</span>
+    </div>
+
+    <!-- Ticker content -->
+    <div class="ticker__wrapper">
+      <div id="ticker" class="ticker__content">
+        {% if market_moves %}
+          {% for move in market_moves %}
+          <span class="ticker__item">
+            <strong>{{ move.name }}</strong>
+            <span class="ticker__change ticker__change--{{ 'positive' if move.change > 0 else 'negative' }}">
+              {{ '▲' if move.change > 0 else '▼' }} {{ move.change|abs }}
+            </span>
+          </span>
+          {% endfor %}
+          {# Duplicate for seamless loop #}
+          {% for move in market_moves %}
+          <span class="ticker__item">
+            <strong>{{ move.name }}</strong>
+            <span class="ticker__change ticker__change--{{ 'positive' if move.change > 0 else 'negative' }}">
+              {{ '▲' if move.change > 0 else '▼' }} {{ move.change|abs }}
+            </span>
+          </span>
+          {% endfor %}
+        {% else %}
+          {# Placeholder data when no real data available #}
+          <span class="ticker__item">
+            <strong>Sample Player</strong>
+            <span class="ticker__change ticker__change--positive">▲ 3</span>
+          </span>
+          <span class="ticker__item">
+            <strong>Another Prospect</strong>
+            <span class="ticker__change ticker__change--negative">▼ 2</span>
+          </span>
+          <span class="ticker__item">
+            <strong>Rising Star</strong>
+            <span class="ticker__change ticker__change--positive">▲ 5</span>
+          </span>
+          <span class="ticker__item">
+            <strong>Draft Pick</strong>
+            <span class="ticker__change ticker__change--negative">▼ 1</span>
+          </span>
+          {# Duplicate for seamless loop #}
+          <span class="ticker__item">
+            <strong>Sample Player</strong>
+            <span class="ticker__change ticker__change--positive">▲ 3</span>
+          </span>
+          <span class="ticker__item">
+            <strong>Another Prospect</strong>
+            <span class="ticker__change ticker__change--negative">▼ 2</span>
+          </span>
+          <span class="ticker__item">
+            <strong>Rising Star</strong>
+            <span class="ticker__change ticker__change--positive">▲ 5</span>
+          </span>
+          <span class="ticker__item">
+            <strong>Draft Pick</strong>
+            <span class="ticker__change ticker__change--negative">▼ 1</span>
+          </span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+{% endif %}
+
+<!-- ============================================================================
+     CONSENSUS MOCK DRAFT
+     Aggregated mock draft picks from multiple expert sources
+     ============================================================================ -->
+{% if settings.FEATURE_CONSENSUS_MOCK %}
+<section class="section">
+  <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
+    Consensus Mock Draft
+  </h2>
+  <p class="section-subtitle">Averaged from expert boards</p>
+
+  <div class="card card--ring card--ring-emerald">
+    <div class="card__content">
+      {% if mock_draft %}
+      <div style="overflow-x: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Pick</th>
+              <th>Player</th>
+              <th>Pos</th>
+              <th>School</th>
+              <th>Avg</th>
+              <th>Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pick in mock_draft %}
+            <tr>
+              <td class="tabular-nums mono-font" style="font-weight: 500;">{{ pick.rank }}</td>
+              <td>
+                <a href="/player/{{ pick.player_id }}">{{ pick.name }}</a>
+              </td>
+              <td>{{ pick.position }}</td>
+              <td>{{ pick.school }}</td>
+              <td class="tabular-nums mono-font">{{ "%.1f"|format(pick.avg_rank) }}</td>
+              <td class="tabular-nums mono-font change--{{ 'positive' if pick.change > 0 else ('negative' if pick.change < 0 else 'neutral') }}">
+                {{ '▲' if pick.change > 0 else ('▼' if pick.change < 0 else '=') }} {{ pick.change|abs }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-state__icon">📊</div>
+        <h3 class="empty-state__title">Coming Soon</h3>
+        <p class="empty-state__message">Consensus mock draft data will be available shortly.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+{% endif %}
+
+<!-- ============================================================================
+     TOP PROSPECTS
+     Grid of top prospect player cards with stats
+     ============================================================================ -->
+{% if settings.FEATURE_TOP_PROSPECTS %}
+<section class="section">
+  <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-indigo);">
+    Top Prospects
+  </h3>
+
+  {% if prospects %}
+  <div class="prospects-grid">
+    {% for prospect in prospects %}
+    <a href="/player/{{ prospect.id }}" class="prospect-card" style="text-decoration: none; color: inherit;">
+      <div class="prospect-card__image-wrapper">
+        {% set img_url = prospect.image_url or "https://placehold.co/320x192/edf2f7/1f2937?text=" ~ (prospect.display_name|urlencode) %}
+        <img
+          src="{{ img_url }}"
+          alt="{{ prospect.display_name }}"
+          class="prospect-card__image"
+        />
+        {% if prospect.change and prospect.change != 0 %}
+        <span class="prospect-card__badge prospect-card__badge--{{ 'riser' if prospect.change > 0 else 'faller' }}">
+          {{ 'Riser' if prospect.change > 0 else 'Faller' }}
+        </span>
+        {% endif %}
+      </div>
+      <div class="prospect-card__info">
+        <h4 class="prospect-card__name">{{ prospect.display_name }}</h4>
+        <p class="prospect-card__meta">{{ prospect.position or 'N/A' }} &bull; {{ prospect.school or 'N/A' }}</p>
+        <div class="prospect-card__stats">
+          {% if prospect.measurables.height %}
+          <div class="stat-pill">
+            <span class="stat-pill__label">HT</span>
+            <span class="stat-pill__value">{{ "%.0f"|format(prospect.measurables.height) }}"</span>
+          </div>
+          {% endif %}
+          {% if prospect.measurables.wingspan %}
+          <div class="stat-pill">
+            <span class="stat-pill__label">WS</span>
+            <span class="stat-pill__value">{{ "%.0f"|format(prospect.measurables.wingspan) }}"</span>
+          </div>
+          {% endif %}
+          {% if prospect.measurables.weight %}
+          <div class="stat-pill">
+            <span class="stat-pill__label">WT</span>
+            <span class="stat-pill__value">{{ "%.0f"|format(prospect.measurables.weight) }}</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state__icon">🏀</div>
+    <h3 class="empty-state__title">No Prospects</h3>
+    <p class="empty-state__message">Player data will appear here once available.</p>
+  </div>
+  {% endif %}
+</section>
+
+<div class="section-divider"></div>
+{% endif %}
+
+<!-- ============================================================================
+     VS ARENA (PLAYER COMPARISON)
+     Interactive head-to-head player comparison tool
+     ============================================================================ -->
+{% if settings.FEATURE_VS_ARENA %}
+<section class="section">
+  <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+    <!-- Swords icon -->
+    <svg class="icon icon--lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block; vertical-align: middle;" viewBox="0 0 24 24">
+      <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+      <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+      <path d="M3 6l7 7"></path>
+    </svg>
+    VS Arena
+  </h2>
+  <p class="section-subtitle">Compare top draft prospects head-to-head across key metrics</p>
+
+  <!-- Player Selectors Row -->
+  <div class="h2h-controls">
+    <!-- Player A Selector -->
+    <div class="h2h-control">
+      <label class="h2h-label" for="playerA">Player A</label>
+      <select id="playerA" class="h2h-select">
+        <option value="">Select player...</option>
+        {% for player in comparison_players %}
+        <option value="{{ player.id }}">{{ player.display_name }} ({{ player.school or 'N/A' }})</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Player B Selector -->
+    <div class="h2h-control">
+      <label class="h2h-label" for="playerB">Player B</label>
+      <select id="playerB" class="h2h-select">
+        <option value="">Select player...</option>
+        {% for player in comparison_players %}
+        <option value="{{ player.id }}">{{ player.display_name }} ({{ player.school or 'N/A' }})</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <!-- Category Tabs -->
+  <div class="h2h-tabs">
+    <button class="h2h-tab h2h-tab--active" data-category="anthropometrics">Anthropometrics</button>
+    <button class="h2h-tab" data-category="combine">Combine Performance</button>
+    <button class="h2h-tab" data-category="advanced">Advanced Stats</button>
+  </div>
+
+  <!-- VS Arena card -->
+  <div class="card card--ring card--ring-fuchsia h2h-card">
+    <div class="scanlines"></div>
+
+    <div class="h2h-content">
+      <!-- Similarity Score Badge -->
+      <div id="h2hSimilarityBadge" class="h2h-similarity-badge">
+        Select Players
+      </div>
+
+      <!-- Player Photos and Comparison -->
+      <div class="h2h-comparison">
+        <!-- Player Photos Row -->
+        <div class="h2h-photos">
+          <div class="h2h-player-photo">
+            <img id="h2hPhotoA" src="https://placehold.co/150x150/edf2f7/1f2937?text=Player+A" alt="Player A" />
+            <div class="h2h-photo-name" id="h2hPhotoNameA">Player A</div>
+          </div>
+          <div></div>
+          <div class="h2h-player-photo">
+            <img id="h2hPhotoB" src="https://placehold.co/150x150/edf2f7/1f2937?text=Player+B" alt="Player B" />
+            <div class="h2h-photo-name" id="h2hPhotoNameB">Player B</div>
+          </div>
+        </div>
+
+        <!-- Comparison Table -->
+        <div class="h2h-table">
+          <table>
+            <thead>
+              <tr>
+                <th id="headerA" class="text-right">Player A</th>
+                <th class="text-center">Metric</th>
+                <th id="headerB" class="text-left">Player B</th>
+              </tr>
+            </thead>
+            <tbody id="comparisonBody">
+              <tr>
+                <td colspan="3" class="text-center" style="padding: 2rem; color: var(--color-slate-500);">
+                  Select two players to compare
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Winner Declaration -->
+      <div id="winnerDeclaration"></div>
+    </div>
+  </div>
+</section>
+
+<div class="section-divider"></div>
+{% endif %}
+
+<!-- ============================================================================
+     LIVE DRAFT BUZZ
+     Real-time news feed with draft-related articles and updates
+     ============================================================================ -->
+{% if settings.FEATURE_NEWS_FEED %}
+<section class="section">
+  <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+    Live Draft Buzz
+  </h3>
+
+  {% if news_items %}
+  <div class="feed">
+    {% for item in news_items %}
+    <a href="{{ item.source_url }}" target="_blank" rel="noopener" class="feed__item" style="text-decoration: none; color: inherit;">
+      <p class="feed__title">{{ item.title }}</p>
+      <div class="feed__meta">
+        {{ item.source }}
+        <svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+        {{ item.time_ago or 'Recently' }}
+        {% if item.tag %}
+        <span class="feed__tag feed__tag--{{ item.tag }}">{{ item.tag|capitalize }}</span>
+        {% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-state__icon">📰</div>
+    <h3 class="empty-state__title">No News Yet</h3>
+    <p class="empty-state__message">Draft buzz and news will appear here when available.</p>
+  </div>
+  {% endif %}
+</section>
+
+<div class="section-divider"></div>
+{% endif %}
+
+<!-- ============================================================================
+     DRAFT POSITION SPECIALS
+     Betting odds and promotional content (for entertainment purposes)
+     Feature-flagged OFF by default until legal review complete
+     ============================================================================ -->
+{% if settings.FEATURE_AFFILIATE_SPECIALS %}
+<section class="section">
+  <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-amber);">
+    Draft Position Specials
+  </h3>
+  <p class="section-subtitle">Powered by FanDuel &bull; 21+</p>
+
+  <div class="specials">
+    <div class="specials__list">
+      {% if specials %}
+        {% for special in specials %}
+        <div class="specials__item">
+          <span>{{ special.name }} {{ special.position }}</span>
+          <span class="specials__odds">{{ special.odds }}</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        {# Placeholder specials #}
+        <div class="specials__item">
+          <span>Top Prospect #1 Pick</span>
+          <span class="specials__odds">+150</span>
+        </div>
+        <div class="specials__item">
+          <span>Rising Star Top 5</span>
+          <span class="specials__odds">-200</span>
+        </div>
+        <div class="specials__item">
+          <span>Draft Sleeper Lottery</span>
+          <span class="specials__odds">+300</span>
+        </div>
+      {% endif %}
+    </div>
+
+    <button class="specials__cta">Claim Bonus</button>
+    <p class="specials__disclaimer">Gambling Problem? Call 1-800-GAMBLER</p>
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="/static/home.js"></script>
+{% endblock %}

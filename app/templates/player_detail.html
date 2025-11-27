@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}{{ player.display_name }}{% endblock %}
+
+{% block content %}
+
+<!-- Player Detail Page - Placeholder structure for Phase 3 -->
+<section class="section">
+  <h1 class="section-header heading-font" style="border-left-color: var(--color-accent-indigo); font-size: 2rem;">
+    {{ player.display_name }}
+  </h1>
+
+  <div class="card card--ring card--ring-indigo">
+    <div class="card__content">
+      <div style="display: grid; grid-template-columns: 200px 1fr; gap: 2rem;">
+        <!-- Player Photo -->
+        <div>
+          {% set img_url = player.image_url or "https://placehold.co/200x260/edf2f7/1f2937?text=" ~ (player.display_name|urlencode) %}
+          <img
+            src="{{ img_url }}"
+            alt="{{ player.display_name }}"
+            style="width: 100%; border-radius: var(--border-radius);"
+          />
+        </div>
+
+        <!-- Player Bio -->
+        <div>
+          <h2 class="mono-font uppercase" style="color: var(--color-slate-600); font-size: 0.875rem; margin-bottom: 1rem;">
+            Player Bio
+          </h2>
+
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;">
+            <div>
+              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Position</span>
+              <p style="font-weight: 500;">{{ player.position or 'N/A' }}</p>
+            </div>
+            <div>
+              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">School</span>
+              <p style="font-weight: 500;">{{ player.school or 'N/A' }}</p>
+            </div>
+            <div>
+              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Age</span>
+              <p style="font-weight: 500;">{{ player.age or 'N/A' }}</p>
+            </div>
+            <div>
+              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Birthplace</span>
+              <p style="font-weight: 500;">{{ player.birth_city or '' }}{% if player.birth_state_province %}, {{ player.birth_state_province }}{% endif %}{% if player.birth_country %}, {{ player.birth_country }}{% endif %}</p>
+            </div>
+            {% if player.draft_year %}
+            <div>
+              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Draft Year</span>
+              <p style="font-weight: 500;">{{ player.draft_year }}</p>
+            </div>
+            {% endif %}
+            {% if player.draft_pick %}
+            <div>
+              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Draft Pick</span>
+              <p style="font-weight: 500;">Round {{ player.draft_round or '?' }}, Pick {{ player.draft_pick }}</p>
+            </div>
+            {% endif %}
+            {% if player.shoots %}
+            <div>
+              <span class="mono-font" style="font-size: 0.6875rem; color: var(--color-slate-500); text-transform: uppercase;">Shoots</span>
+              <p style="font-weight: 500;">{{ player.shoots }}</p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Anthropometrics Section -->
+{% if player.anthropometrics %}
+<section class="section">
+  <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-amber);">
+    Anthropometrics
+  </h2>
+
+  <div class="card card--ring card--ring-amber">
+    <div class="card__content">
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem;">
+        {% if player.anthropometrics.height_wo_shoes %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Height (no shoes)</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.anthropometrics.height_wo_shoes) }}"</span>
+        </div>
+        {% endif %}
+        {% if player.anthropometrics.wingspan %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Wingspan</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.anthropometrics.wingspan) }}"</span>
+        </div>
+        {% endif %}
+        {% if player.anthropometrics.standing_reach %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Standing Reach</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.anthropometrics.standing_reach) }}"</span>
+        </div>
+        {% endif %}
+        {% if player.anthropometrics.weight %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Weight</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.0f"|format(player.anthropometrics.weight) }} lbs</span>
+        </div>
+        {% endif %}
+        {% if player.anthropometrics.body_fat_pct %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Body Fat</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.anthropometrics.body_fat_pct) }}%</span>
+        </div>
+        {% endif %}
+        {% if player.anthropometrics.hand_length %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Hand Length</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.2f"|format(player.anthropometrics.hand_length) }}"</span>
+        </div>
+        {% endif %}
+        {% if player.anthropometrics.hand_width %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Hand Width</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.2f"|format(player.anthropometrics.hand_width) }}"</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- Agility Section -->
+{% if player.agility %}
+<section class="section">
+  <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+    Combine Performance
+  </h2>
+
+  <div class="card card--ring card--ring-cyan">
+    <div class="card__content">
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 1rem;">
+        {% if player.agility.lane_agility_time %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Lane Agility</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.2f"|format(player.agility.lane_agility_time) }}s</span>
+        </div>
+        {% endif %}
+        {% if player.agility.three_quarter_sprint %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">3/4 Sprint</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.2f"|format(player.agility.three_quarter_sprint) }}s</span>
+        </div>
+        {% endif %}
+        {% if player.agility.standing_vertical %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Standing Vert</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.agility.standing_vertical) }}"</span>
+        </div>
+        {% endif %}
+        {% if player.agility.max_vertical %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Max Vert</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.1f"|format(player.agility.max_vertical) }}"</span>
+        </div>
+        {% endif %}
+        {% if player.agility.bench_press_reps %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Bench Press</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ player.agility.bench_press_reps }} reps</span>
+        </div>
+        {% endif %}
+        {% if player.agility.shuttle_run %}
+        <div class="stat-pill">
+          <span class="stat-pill__label">Shuttle Run</span>
+          <span class="stat-pill__value mono-font tabular-nums">{{ "%.2f"|format(player.agility.shuttle_run) }}s</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<!-- Back to Home Link -->
+<section class="section" style="text-align: center;">
+  <a href="/" style="color: var(--color-accent-indigo);">&larr; Back to All Prospects</a>
+</section>
+
+{% endblock %}

@@ -1,84 +1,125 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mini DraftGuru</title>
-    <link rel="stylesheet" href="/static/main.css">
-    {% block extra_css %}{% endblock %}
-  </head>
-  <body>
-    <header>
-      <h1>DraftGuru: Demo Change</h1>
-    </header>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}DraftGuru{% endblock %} | NBA Draft Analytics</title>
 
-    <main>
-      <section>
-        <h2>Add a Player</h2>
-        <form id="player-form">
-          <label>
-            Name
-            <input id="name" name="name" required placeholder="Cooper Example">
-          </label>
+  <!-- Google Fonts: Russo One (headings) and Azeret Mono (monospace) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
 
-          <label>
-            Position
-            <select id="position" name="position" required>
-              <option value="">Select…</option>
-              <option value="forward">Forward</option>
-              <option value="center">Center</option>
-              <option value="guard">Guard</option>
-            </select>
-          </label>
+  <!-- Main CSS -->
+  <link rel="stylesheet" href="/static/main.css">
 
-          <label>
-            School
-            <input id="school" name="school" required placeholder="Duke">
-          </label>
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
 
-          <label>
-            Birth date
-            <input id="birth_date" name="birth_date" type="date" min="1980-01-01" required>
-          </label>
+  <!-- ============================================================================
+       NAVIGATION BAR
+       Fixed top navigation with branding and search
+       ============================================================================ -->
+  <nav class="navbar">
+    <div class="navbar__content">
+      <!-- Brand / Logo -->
+      <a href="/" class="navbar__brand">
+        <!-- Sparkles icon -->
+        <svg class="icon icon--xl" style="color: #fbbf24;" viewBox="0 0 24 24" stroke-width="2.5">
+          <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z"/>
+          <path d="M5 16l.7 1.6L7.3 18l-1.6.7L5 20l-.7-1.3L3 18l1.3-.4L5 16zM19 16l.7 1.6L21.3 18l-1.6.7L19 20l-.7-1.3L17 18l1.3-.4L19 16z"/>
+        </svg>
+        <h1>DraftGuru</h1>
+      </a>
 
-          <button type="submit">Save Player</button>
-        </form>
-      </section>
+      <!-- Search bar -->
+      {% if settings.FEATURE_SEARCH %}
+      <div class="navbar__search">
+        <input
+          type="text"
+          id="search"
+          class="search-input"
+          placeholder="Search prospects..."
+          aria-label="Search prospects"
+        />
+        <button class="search-button" aria-label="Search">
+          <!-- Search icon -->
+          <svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+      </div>
+      {% endif %}
+    </div>
+  </nav>
 
-      <section>
-        <h2>Players</h2>
-        <table aria-label="Players">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Pos</th>
-              <th>School</th>
-              <th>Age</th>
-              <th>Birth date</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="players-tbody">
-            {% if players %}
-              {% for p in players %}
-              <tr id="row-{{ p.id }}">
-                <td>{{ p.id }}</td>
-                <td>{{ p.name }}</td>
-                <td>{{ p.position }}</td>
-                <td>{{ p.school }}</td>
-                <td>{{ p.age if p.age is defined else "" }}</td>
-                <td>{{ p.birth_date }}</td>
-                <td><button type="button" data-id="{{ p.id }}" class="btn-delete">Delete</button></td>
-              </tr>
-              {% endfor %}
-            {% endif %}
-          </tbody>
-        </table>
-      </section>
-    </main>
+  <!-- ============================================================================
+       MAIN CONTENT CONTAINER
+       All page sections wrapped in a centered container
+       ============================================================================ -->
+  <main class="container mt-28">
+    {% block content %}{% endblock %}
+  </main>
 
-    <script src="/static/main.js"></script>
-    {% block extra_js %}{% endblock %}
-  </body>
+  <!-- ============================================================================
+       FOOTER
+       Site-wide footer with links and copyright information
+       ============================================================================ -->
+  <footer class="footer">
+    <div class="footer__content">
+      <!-- Footer navigation grid -->
+      <div class="footer__grid">
+        <div class="footer__column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Our Story</a></li>
+            <li><a href="#">Team</a></li>
+            <li><a href="#">Careers</a></li>
+            <li><a href="#">Press</a></li>
+          </ul>
+        </div>
+        <div class="footer__column">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="#">Draft Guide</a></li>
+            <li><a href="#">Mock Drafts</a></li>
+            <li><a href="#">Player Rankings</a></li>
+            <li><a href="#">Analytics</a></li>
+          </ul>
+        </div>
+        <div class="footer__column">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="#">Forums</a></li>
+            <li><a href="#">Discord</a></li>
+            <li><a href="#">Twitter</a></li>
+            <li><a href="#">Newsletter</a></li>
+          </ul>
+        </div>
+        <div class="footer__column">
+          <h4>Legal</h4>
+          <ul>
+            <li><a href="#">Terms of Service</a></li>
+            <li><a href="#">Privacy Policy</a></li>
+            <li><a href="#">Cookie Policy</a></li>
+            <li><a href="#">Disclaimer</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Copyright -->
+      <div class="footer__copyright">
+        <p>&copy; 2025 DraftGuru. All rights reserved. Stay informed, draft smarter.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Main JavaScript -->
+  <script src="/static/main.js"></script>
+
+  {% block extra_js %}{% endblock %}
+
+</body>
 </html>
