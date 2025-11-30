@@ -61,7 +61,7 @@ async def search_players(
             PlayerMaster.display_name,
             PlayerMaster.slug,
             PlayerMaster.school,
-        )  # type: ignore[arg-type]
+        )  # type: ignore[call-overload]
         .where(
             PlayerMaster.display_name.ilike(search_pattern)  # type: ignore[union-attr]
         )
