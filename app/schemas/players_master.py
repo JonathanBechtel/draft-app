@@ -7,6 +7,7 @@ class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
     __tablename__ = "players_master"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    slug: Optional[str] = Field(default=None, unique=True, index=True)
 
     prefix: Optional[str] = Field(default=None)
     first_name: Optional[str] = Field(default=None, index=True)

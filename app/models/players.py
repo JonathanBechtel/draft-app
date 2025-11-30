@@ -1,3 +1,4 @@
+from typing import Optional
 from sqlmodel import SQLModel, Field as SQLField
 from sqlalchemy import Column
 from sqlalchemy import Enum as SAEnum
@@ -5,6 +6,15 @@ from datetime import date
 from pydantic import computed_field, field_validator
 
 from app.models.fields import Position, BIRTH_DATE
+
+
+class PlayerSearchResult(SQLModel):
+    """Response model for player search results."""
+
+    id: int
+    display_name: Optional[str] = None
+    slug: Optional[str] = None
+    school: Optional[str] = None
 
 
 class PlayerBase(SQLModel):
