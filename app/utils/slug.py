@@ -2,12 +2,13 @@
 
 import re
 import unicodedata
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.players_master import PlayerMaster
+if TYPE_CHECKING:
+    pass
 
 
 def generate_slug(name: str) -> str:
@@ -42,6 +43,12 @@ def generate_slug(name: str) -> str:
     return collapsed.strip("-")
 
 
+def _base_slug(name: str) -> str:
+    """Return a normalized base slug or a safe fallback."""
+    base_slug = generate_slug(name)
+    return base_slug or "player"
+
+
 async def generate_unique_slug(
     name: str,
     db: AsyncSession,
@@ -57,9 +64,10 @@ async def generate_unique_slug(
     Returns:
         Unique slug (e.g., "john-smith" or "john-smith-2")
     """
-    base_slug = generate_slug(name)
-    if not base_slug:
-        base_slug = "player"
+    # Lazy import to avoid circular dependency
+    from app.schemas.players_master import PlayerMaster
+
+    base_slug = _base_slug(name)
 
     # Check if base slug is available
     candidate = base_slug
@@ -81,6 +89,33 @@ async def generate_unique_slug(
         candidate = f"{base_slug}-{suffix}"
 
 
+def generate_unique_slug_from_connection(
+    name: str,
+    connection,
+    exclude_id: Optional[int] = None,
+) -> str:
+    """Generate a unique slug using a synchronous SQLAlchemy connection."""
+    # Lazy import to avoid circular dependency
+    from app.schemas.players_master import PlayerMaster
+
+    base_slug = _base_slug(name)
+    candidate = base_slug
+    suffix = 1
+
+    while True:
+        query = select(PlayerMaster.id).where(PlayerMaster.slug == candidate)
+        if exclude_id is not None:
+            query = query.where(PlayerMaster.id != exclude_id)
+
+        result = connection.execute(query)
+        existing = result.scalar_one_or_none()
+        if existing is None:
+            return candidate
+
+        suffix += 1
+        candidate = f"{base_slug}-{suffix}"
+
+
 def generate_slug_sync(name: str, existing_slugs: set[str]) -> str:
     """Synchronous slug generation with collision handling for migrations.
 
@@ -91,9 +126,7 @@ def generate_slug_sync(name: str, existing_slugs: set[str]) -> str:
     Returns:
         Unique slug not in existing_slugs
     """
-    base_slug = generate_slug(name)
-    if not base_slug:
-        base_slug = "player"
+    base_slug = _base_slug(name)
 
     candidate = base_slug
     suffix = 1
