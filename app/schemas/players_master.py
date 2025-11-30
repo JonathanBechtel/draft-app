@@ -1,6 +1,9 @@
 from typing import Optional
 from datetime import datetime, date
 from sqlmodel import SQLModel, Field
+from sqlalchemy import event, text
+
+from app.utils.slug import generate_slug
 
 
 class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
@@ -39,3 +42,40 @@ class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+@event.listens_for(PlayerMaster, "before_insert")
+def generate_slug_before_insert(
+    mapper,  # type: ignore[no-untyped-def]
+    connection,  # type: ignore[no-untyped-def]
+    target: PlayerMaster,
+) -> None:
+    """Auto-generate slug from display_name if not provided.
+
+    Handles collisions by appending numeric suffix (-2, -3, etc.).
+    """
+    if target.slug is not None:
+        return  # Slug already set, don't override
+
+    if not target.display_name:
+        return  # No display_name to generate from
+
+    base_slug = generate_slug(target.display_name)
+    if not base_slug:
+        base_slug = "player"
+
+    # Check for collisions
+    candidate = base_slug
+    suffix = 1
+
+    while True:
+        result = connection.execute(
+            text("SELECT 1 FROM players_master WHERE slug = :slug LIMIT 1"),
+            {"slug": candidate},
+        )
+        if result.fetchone() is None:
+            break  # No collision, use this slug
+        suffix += 1
+        candidate = f"{base_slug}-{suffix}"
+
+    target.slug = candidate

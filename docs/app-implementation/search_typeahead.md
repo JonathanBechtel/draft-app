@@ -95,6 +95,23 @@ Implemented typeahead search functionality that filters player names as the user
 .search-results-empty  /* "No players found" message */
 ```
 
+## Auto-Slug Generation on Insert
+
+A SQLAlchemy `before_insert` event listener on `PlayerMaster` automatically generates slugs:
+
+```python
+@event.listens_for(PlayerMaster, "before_insert")
+def generate_slug_before_insert(mapper, connection, target):
+    # Auto-generates slug from display_name if not provided
+    # Handles collisions by appending -2, -3, etc.
+```
+
+**Behavior:**
+- If `slug` is already set, it's preserved (no override)
+- If `display_name` is empty, no slug is generated
+- Collision checking queries DB and appends suffix if needed
+- Works for any code path that inserts `PlayerMaster` records
+
 ## Slug Utility Functions
 
 ### `generate_slug(name: str) -> str`
