@@ -74,7 +74,7 @@ async def generate_unique_slug(
     suffix = 1
 
     while True:
-        query = select(PlayerMaster.id).where(PlayerMaster.slug == candidate)
+        query = select(PlayerMaster.id).where(PlayerMaster.slug == candidate)  # type: ignore[arg-type]
         if exclude_id is not None:
             query = query.where(PlayerMaster.id != exclude_id)
 
@@ -103,7 +103,7 @@ def generate_unique_slug_from_connection(
     suffix = 1
 
     while True:
-        query = select(PlayerMaster.id).where(PlayerMaster.slug == candidate)
+        query = select(PlayerMaster.id).where(PlayerMaster.slug == candidate)  # type: ignore[arg-type]
         if exclude_id is not None:
             query = query.where(PlayerMaster.id != exclude_id)
 
