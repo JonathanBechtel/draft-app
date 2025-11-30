@@ -1,0 +1,59 @@
+{# SVG Icon Macros - import with {% from 'partials/icons.html' import icon_sparkles, icon_search %} #}
+
+{% macro icon_sparkles(size='xl') %}
+<svg class="icon icon-{{ size }}" style="color: #fbbf24;" viewBox="0 0 24 24" stroke-width="2.5">
+  <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z"/>
+  <path d="M5 16l.7 1.6L7.3 18l-1.6.7L5 20l-.7-1.3L3 18l1.3-.4L5 16zM19 16l.7 1.6L21.3 18l-1.6.7L19 20l-.7-1.3L17 18l1.3-.4L19 16z"/>
+</svg>
+{% endmacro %}
+
+{% macro icon_search() %}
+<svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
+  <circle cx="11" cy="11" r="8"></circle>
+  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+</svg>
+{% endmacro %}
+
+{% macro icon_activity() %}
+<svg class="icon" style="color: var(--color-accent-emerald);" viewBox="0 0 24 24">
+  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+</svg>
+{% endmacro %}
+
+{% macro icon_swords() %}
+<svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); display: inline-block;" viewBox="0 0 24 24">
+  <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+  <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+  <path d="M3 6l7 7"></path>
+</svg>
+{% endmacro %}
+
+{% macro icon_bar_chart() %}
+<svg class="icon icon-lg" viewBox="0 0 24 24">
+  <line x1="12" y1="20" x2="12" y2="10"></line>
+  <line x1="18" y1="20" x2="18" y2="4"></line>
+  <line x1="6" y1="20" x2="6" y2="16"></line>
+</svg>
+{% endmacro %}
+
+{% macro icon_chevron_right() %}
+<svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
+  <polyline points="9 18 15 12 9 6"></polyline>
+</svg>
+{% endmacro %}
+
+{% macro icon_close() %}
+<svg class="icon" viewBox="0 0 24 24">
+  <line x1="18" y1="6" x2="6" y2="18"></line>
+  <line x1="6" y1="6" x2="18" y2="18"></line>
+</svg>
+{% endmacro %}
+
+{% macro icon_swap() %}
+<svg class="icon" viewBox="0 0 24 24">
+  <polyline points="17 1 21 5 17 9"></polyline>
+  <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+  <polyline points="7 23 3 19 7 15"></polyline>
+  <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+</svg>
+{% endmacro %}

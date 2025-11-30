@@ -1,0 +1,507 @@
+/* ============================================================================
+   HOME.CSS - Homepage-specific styles
+   ========================================================================= */
+
+/* ============================================================================
+   TICKER / MARKET MOVES
+   Animated scrolling ticker for risers and fallers
+   ========================================================================= */
+.ticker-container {
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-slate-200);
+  background: var(--color-white);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  /* Tile background pattern */
+  background-image:
+    linear-gradient(#ffffff, #ffffff),
+    radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.06) 1px, transparent 1px);
+  background-size: 100% 100%, 12px 12px;
+  outline: 2px solid rgba(99, 102, 241, 0.6);
+}
+
+.ticker-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-bottom: 1px solid var(--color-slate-200);
+  background: var(--color-slate-50);
+}
+
+.ticker-header span:first-of-type {
+  font-weight: 600;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ticker-header span:last-of-type {
+  color: var(--color-slate-500);
+  font-family: var(--font-mono);
+}
+
+.ticker-wrapper {
+  position: relative;
+  overflow: hidden;
+}
+
+.ticker-content {
+  display: flex;
+  gap: 2rem;
+  white-space: nowrap;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  animation: tickerScroll 35s linear infinite;
+}
+
+@keyframes tickerScroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+.ticker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-right: 2rem;
+  border-right: 1px dotted rgba(203, 213, 225, 0.8);
+}
+
+.ticker-item strong {
+  font-family: var(--font-mono);
+  color: var(--color-slate-900);
+}
+
+.ticker-change {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.ticker-change.positive { color: var(--color-accent-emerald); }
+.ticker-change.negative { color: var(--color-accent-rose); }
+
+/* ============================================================================
+   TABLES
+   Data tables for mock draft and comparisons
+   ========================================================================= */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+thead th {
+  padding: 0.5rem;
+  text-align: left;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.75rem;
+  border-bottom: 1px solid var(--color-slate-200);
+}
+
+tbody tr {
+  border-bottom: 1px solid var(--color-slate-200);
+  transition: background var(--transition-speed);
+}
+
+tbody tr:hover {
+  background: rgba(248, 250, 252, 0.7);
+}
+
+tbody td {
+  padding: 0.5rem;
+}
+
+.table-link {
+  color: var(--color-accent-indigo);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.table-link:hover {
+  text-decoration: underline;
+}
+
+/* Change indicators in tables */
+.change-positive { color: #15803d; } /* emerald-700 */
+.change-negative { color: #be123c; } /* rose-700 */
+.change-neutral { color: var(--color-slate-500); }
+
+/* ============================================================================
+   PROSPECT CARDS
+   Grid of player prospect cards with hover effects
+   ========================================================================= */
+.prospects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.prospect-card {
+  position: relative;
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  outline: 2px solid rgba(99, 102, 241, 0.6);
+  transition: transform var(--transition-speed);
+}
+
+.prospect-card:hover {
+  transform: translateY(-2px);
+}
+
+.prospect-image-wrapper {
+  position: relative;
+  overflow: hidden;
+}
+
+.prospect-image {
+  width: 100%;
+  height: 192px; /* 12rem */
+  object-fit: cover;
+  transition: filter var(--transition-speed);
+}
+
+.prospect-card:hover .prospect-image {
+  filter: brightness(1.05);
+}
+
+/* Badge for riser/faller status */
+.prospect-badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+}
+
+.prospect-badge.riser {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.prospect-badge.faller {
+  background: #ffe4e6;
+  color: #9f1239;
+}
+
+/* Pixel corner accents on hover */
+.prospect-card::before,
+.prospect-card::after {
+  content: "";
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  opacity: 0;
+  transition: opacity var(--transition-speed);
+  z-index: 10;
+}
+
+.prospect-card::before {
+  top: -0.25rem;
+  left: -0.25rem;
+  background: linear-gradient(45deg, transparent 50%, var(--color-accent-indigo) 50%);
+}
+
+.prospect-card::after {
+  bottom: -0.25rem;
+  right: -0.25rem;
+  background: linear-gradient(225deg, transparent 50%, var(--color-accent-emerald) 50%);
+}
+
+.prospect-card:hover::before,
+.prospect-card:hover::after {
+  opacity: 1;
+}
+
+.prospect-info {
+  padding: 0.75rem;
+}
+
+.prospect-name {
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 0.25rem;
+}
+
+.prospect-meta {
+  font-size: 0.75rem;
+  color: var(--color-slate-500);
+  margin-bottom: 0.5rem;
+}
+
+/* Stats grid for each prospect */
+.prospect-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  font-size: 0.6875rem;
+}
+
+.stat-pill {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--color-slate-200);
+  background: var(--color-slate-50);
+  color: var(--color-slate-700);
+  text-align: center;
+}
+
+.stat-pill .label {
+  font-size: 0.625rem;
+  color: var(--color-slate-500);
+  margin-right: 0.25rem;
+}
+
+.stat-pill .value {
+  font-weight: 500;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+   VS ARENA / PLAYER COMPARISON
+   Interactive player comparison section with toggles
+   ========================================================================= */
+.vs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.vs-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vs-toggles {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Toggle button styles */
+.toggle-button {
+  height: 2rem;
+  padding: 0 0.75rem;
+  font-size: 0.75rem;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 0.375rem;
+  background: var(--color-white);
+  color: var(--color-slate-700);
+  border-color: var(--color-slate-300);
+  cursor: pointer;
+  transition: all var(--transition-speed);
+}
+
+.toggle-button.active {
+  background: #eef2ff;
+  color: #4338ca;
+  border-color: #a5b4fc;
+}
+
+.toggle-button:hover:not(.active) {
+  background: var(--color-slate-50);
+}
+
+/* VS Arena card */
+.vs-arena-card {
+  position: relative;
+}
+
+.vs-content {
+  position: relative;
+  padding: 1rem;
+}
+
+/* Player selectors */
+.vs-selectors {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 1rem;
+  align-items: end;
+  margin-bottom: 1.5rem;
+}
+
+.vs-select {
+  width: 100%;
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-300);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.vs-badge {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  background: #eef2ff;
+  color: var(--color-accent-indigo);
+  border: 1px solid #c7d2fe;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Comparison table styles */
+.comparison-table {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.comparison-table thead th {
+  padding: 0.75rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.75rem;
+  color: var(--color-slate-600);
+}
+
+.comparison-table tbody td {
+  padding: 0.75rem;
+}
+
+.comparison-table tbody tr {
+  border-bottom: 1px solid var(--color-slate-200);
+}
+
+.comparison-table tbody tr:hover {
+  background: var(--color-slate-50);
+}
+
+.comparison-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+}
+
+.comparison-value.winner {
+  font-weight: 800;
+}
+
+.comparison-value.winner-a {
+  color: #15803d;
+  background: #d1fae5;
+}
+
+.comparison-value.winner-b {
+  color: #4338ca;
+  background: #eef2ff;
+}
+
+.comparison-value.loser {
+  color: var(--color-slate-500);
+}
+
+/* Winner declaration banner */
+.winner-banner {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.winner-banner.winner-a {
+  background: #d1fae5;
+  color: #15803d;
+}
+
+.winner-banner.winner-b {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.winner-banner.tie {
+  background: var(--color-slate-100);
+  color: var(--color-slate-800);
+}
+
+/* ============================================================================
+   DRAFT POSITION SPECIALS
+   Betting odds and promotional content
+   ========================================================================= */
+.specials-container {
+  background: var(--color-white);
+  padding: 1rem;
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  outline: 1px solid rgba(245, 158, 11, 0.6);
+}
+
+.specials-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+}
+
+.special-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.special-odds {
+  color: var(--color-accent-indigo);
+  font-weight: 600;
+}
+
+.specials-cta {
+  width: 100%;
+  background: var(--color-accent-emerald);
+  color: var(--color-white);
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition-speed);
+  margin-bottom: 0.5rem;
+}
+
+.specials-cta:hover {
+  background: #059669;
+}
+
+.specials-disclaimer {
+  font-size: 0.625rem;
+  color: var(--color-slate-500);
+  text-align: center;
+}
+
+/* ============================================================================
+   RESPONSIVE DESIGN - HOMEPAGE
+   Mobile-first breakpoints for homepage components
+   ========================================================================= */
+@media (max-width: 768px) {
+  .prospects-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
+  .vs-selectors {
+    grid-template-columns: 1fr;
+  }
+
+  .vs-badge {
+    justify-self: center;
+  }
+}

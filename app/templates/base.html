@@ -1,84 +1,29 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mini DraftGuru</title>
-    <link rel="stylesheet" href="/static/main.css">
-    {% block extra_css %}{% endblock %}
-  </head>
-  <body>
-    <header>
-      <h1>DraftGuru: Demo Change</h1>
-    </header>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}DraftGuru — NBA Draft Analytics{% endblock %}</title>
 
-    <main>
-      <section>
-        <h2>Add a Player</h2>
-        <form id="player-form">
-          <label>
-            Name
-            <input id="name" name="name" required placeholder="Cooper Example">
-          </label>
+  <!-- Google Fonts: Russo One (headings) and Azeret Mono (monospace) -->
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
 
-          <label>
-            Position
-            <select id="position" name="position" required>
-              <option value="">Select…</option>
-              <option value="forward">Forward</option>
-              <option value="center">Center</option>
-              <option value="guard">Guard</option>
-            </select>
-          </label>
+  <!-- Global Styles -->
+  <link rel="stylesheet" href="{{ url_for('static', path='main.css') }}">
 
-          <label>
-            School
-            <input id="school" name="school" required placeholder="Duke">
-          </label>
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
 
-          <label>
-            Birth date
-            <input id="birth_date" name="birth_date" type="date" min="1980-01-01" required>
-          </label>
+  {% include 'partials/navbar.html' %}
 
-          <button type="submit">Save Player</button>
-        </form>
-      </section>
+  {% block content %}{% endblock %}
 
-      <section>
-        <h2>Players</h2>
-        <table aria-label="Players">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Pos</th>
-              <th>School</th>
-              <th>Age</th>
-              <th>Birth date</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="players-tbody">
-            {% if players %}
-              {% for p in players %}
-              <tr id="row-{{ p.id }}">
-                <td>{{ p.id }}</td>
-                <td>{{ p.name }}</td>
-                <td>{{ p.position }}</td>
-                <td>{{ p.school }}</td>
-                <td>{{ p.age if p.age is defined else "" }}</td>
-                <td>{{ p.birth_date }}</td>
-                <td><button type="button" data-id="{{ p.id }}" class="btn-delete">Delete</button></td>
-              </tr>
-              {% endfor %}
-            {% endif %}
-          </tbody>
-        </table>
-      </section>
-    </main>
+  {% include 'partials/footer.html' %}
 
-    <script src="/static/main.js"></script>
-    {% block extra_js %}{% endblock %}
-  </body>
+  <!-- Global Scripts -->
+  <script src="{{ url_for('static', path='main.js') }}"></script>
+
+  {% block extra_js %}{% endblock %}
+</body>
 </html>

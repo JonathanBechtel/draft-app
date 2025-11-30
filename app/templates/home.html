@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}DraftGuru — NBA Draft Analytics{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/home.css') }}">
+{% endblock %}
+
+{% block content %}
+<!-- Main Content Container -->
+<main class="container mt-28">
+
+  <!-- ==========================================================================
+       MARKET MOVES TICKER
+       Scrolling ticker showing player stock changes (risers/fallers)
+       ========================================================================== -->
+  <section class="section">
+    <div class="ticker-container">
+      <!-- Ticker header with icon and label -->
+      <div class="ticker-header">
+        <!-- Activity icon -->
+        <svg class="icon" style="color: var(--color-accent-emerald);" viewBox="0 0 24 24">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+        </svg>
+        <span>Market Moves</span>
+        <span>(Risers &amp; Fallers)</span>
+      </div>
+
+      <!-- Ticker content - populated by JavaScript -->
+      <div class="ticker-wrapper">
+        <div id="ticker" class="ticker-content"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       CONSENSUS MOCK DRAFT
+       Aggregated mock draft picks from multiple expert sources
+       ========================================================================== -->
+  <section class="section">
+    <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
+      Consensus Mock Draft
+    </h2>
+    <p class="section-subtitle">Averaged from 15 expert boards • updated hourly</p>
+
+    <div class="card card-ring card-ring-emerald">
+      <div class="card-content">
+        <!-- Mock draft table - populated by JavaScript -->
+        <div style="overflow-x: auto;">
+          <table id="mockTable">
+            <thead>
+              <tr>
+                <th>Pick</th>
+                <th>Player</th>
+                <th>Pos</th>
+                <th>Team</th>
+                <th>Avg</th>
+                <th>Δ</th>
+                <th>Odds</th>
+              </tr>
+            </thead>
+            <tbody id="mockTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       TOP PROSPECTS
+       Grid of top prospect player cards with stats
+       ========================================================================== -->
+  <section class="section">
+    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-indigo);">
+      Top Prospects
+    </h3>
+
+    <!-- Prospects grid - populated by JavaScript -->
+    <div id="prospectsGrid" class="prospects-grid"></div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       VS ARENA (PLAYER COMPARISON)
+       Interactive head-to-head player comparison tool
+       ========================================================================== -->
+  <section class="section">
+    <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+      <!-- Swords icon -->
+      <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+        <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+        <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+        <path d="M3 6l7 7"></path>
+      </svg>
+      VS Arena
+    </h2>
+    <p class="section-subtitle">Compare top draft prospects head-to-head across key metrics</p>
+
+    <!-- Player Selectors Row -->
+    <div class="h2h-controls-row">
+      <!-- Player A Selector -->
+      <div class="h2h-control">
+        <label class="h2h-label" for="playerA">Player A</label>
+        <select id="playerA" class="h2h-select"></select>
+      </div>
+
+      <!-- Player B Selector -->
+      <div class="h2h-control">
+        <label class="h2h-label" for="playerB">Player B</label>
+        <select id="playerB" class="h2h-select"></select>
+      </div>
+    </div>
+
+    <!-- Category Tabs -->
+    <div class="h2h-tabs">
+      <button class="h2h-tab active" data-category="anthropometrics">Anthropometrics</button>
+      <button class="h2h-tab" data-category="combinePerformance">Combine Performance</button>
+      <button class="h2h-tab" data-category="advancedStats">Advanced Stats</button>
+    </div>
+
+    <!-- VS Arena card -->
+    <div class="card card-ring card-ring-fuchsia h2h-card">
+      <div class="scanlines"></div>
+
+      <div class="h2h-content">
+        <!-- Similarity Score Badge -->
+        <div id="h2hSimilarityBadge" class="h2h-similarity-badge">
+          Select Players
+        </div>
+
+        <!-- Player Photos and Comparison -->
+        <div class="h2h-comparison-container">
+          <!-- Player Photos Row -->
+          <div class="h2h-photos-row">
+            <div class="h2h-player-photo">
+              <img id="h2hPhotoA" src="https://placehold.co/200x200/edf2f7/1f2937?text=Player+A" alt="Player A" />
+              <div class="h2h-photo-name" id="h2hPhotoNameA">Player A</div>
+            </div>
+            <div class="h2h-photos-spacer"></div>
+            <div class="h2h-player-photo">
+              <img id="h2hPhotoB" src="https://placehold.co/200x200/edf2f7/1f2937?text=Player+B" alt="Player B" />
+              <div class="h2h-photo-name" id="h2hPhotoNameB">Player B</div>
+            </div>
+          </div>
+
+          <!-- Comparison Table -->
+          <div class="h2h-comparison-table">
+            <table>
+              <thead>
+                <tr>
+                  <th id="headerA" class="text-right"></th>
+                  <th class="text-center">Metric</th>
+                  <th id="headerB" class="text-left"></th>
+                </tr>
+              </thead>
+              <tbody id="comparisonBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Winner Declaration -->
+        <div id="winnerDeclaration"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       LIVE DRAFT BUZZ
+       Real-time news feed with draft-related articles and updates
+       ========================================================================== -->
+  <section class="section">
+    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+      Live Draft Buzz
+    </h3>
+
+    <!-- Feed container - populated by JavaScript -->
+    <div id="feedContainer" class="feed-container"></div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       DRAFT POSITION SPECIALS
+       Betting odds and promotional content (for entertainment purposes)
+       ========================================================================== -->
+  <section class="section">
+    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-amber);">
+      Draft Position Specials
+    </h3>
+    <p class="section-subtitle">Powered by FanDuel • 21+</p>
+
+    <div class="specials-container">
+      <!-- Specials list - populated by JavaScript -->
+      <div id="specialsList" class="specials-list"></div>
+
+      <button class="specials-cta">Claim Bonus</button>
+      <p class="specials-disclaimer">Gambling Problem? Call 1-800-GAMBLER</p>
+    </div>
+  </section>
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Server-side data injection
+  window.MOCK_PICKS = {{ mock_picks | tojson | safe }};
+  window.PLAYERS = {{ players | tojson | safe }};
+  window.FEED_ITEMS = {{ feed_items | tojson | safe }};
+</script>
+<script src="{{ url_for('static', path='js/home.js') }}"></script>
+{% endblock %}

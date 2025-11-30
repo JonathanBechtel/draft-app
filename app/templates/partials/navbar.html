@@ -1,0 +1,32 @@
+{# Navigation Bar - Fixed top with branding and search #}
+<nav class="navbar">
+  <div class="navbar-content">
+    <!-- Brand / Logo -->
+    <a href="/" class="navbar-brand">
+      <!-- Sparkles icon -->
+      <svg class="icon icon-xl" style="color: #fbbf24;" viewBox="0 0 24 24" stroke-width="2.5">
+        <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z"/>
+        <path d="M5 16l.7 1.6L7.3 18l-1.6.7L5 20l-.7-1.3L3 18l1.3-.4L5 16zM19 16l.7 1.6L21.3 18l-1.6.7L19 20l-.7-1.3L17 18l1.3-.4L19 16z"/>
+      </svg>
+      <h1>DraftGuru</h1>
+    </a>
+
+    <!-- Search bar -->
+    <div class="navbar-search">
+      <input
+        type="text"
+        id="search"
+        class="search-input"
+        placeholder="Search prospects…"
+        aria-label="Search prospects"
+      />
+      <button class="search-button" aria-label="Search">
+        <!-- Search icon -->
+        <svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
+</nav>

@@ -1,0 +1,396 @@
+{% extends "base.html" %}
+
+{% block title %}{{ player.name }} — Player Profile | DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+{% endblock %}
+
+{% block content %}
+<!-- Main Content Container -->
+<main class="container mt-28">
+
+  <!-- ==========================================================================
+       PERSONAL INFO SECTION
+       Player photograph, biography, and sports scoreboard
+       ========================================================================== -->
+  <section class="section">
+    <h2 id="pageHeader" class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-indigo);">
+      {{ player.name }} — Player Profile
+    </h2>
+
+    <div class="personal-info-grid">
+
+      <!-- LEFT COLUMN: Photo Only -->
+      <div class="player-photo-wrapper">
+        <img
+          id="playerPhoto"
+          class="player-photo"
+          src="{{ player.photo_url }}"
+          alt="{{ player.name }}"
+        />
+      </div>
+
+      <!-- RIGHT COLUMN: Bio + Scoreboard Stacked -->
+      <div class="player-info-stack">
+
+        <!-- Biographical information -->
+        <div class="player-bio">
+          <h3 class="bio-header">Bio</h3>
+
+          <div id="playerPrimaryMeta" class="player-primary-meta">
+            {{ player.position }} • {{ player.college }} • {{ player.height }} • {{ player.weight }}
+          </div>
+
+          <div class="player-secondary-meta">
+            <div class="meta-item">
+              <span class="meta-label">Age</span>
+              <span id="playerAge" class="meta-value">{{ player.age }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Class</span>
+              <span id="playerClass" class="meta-value">{{ player.class }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Hometown</span>
+              <span id="playerHometown" class="meta-value">{{ player.hometown }}</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Wingspan</span>
+              <span id="playerWingspan" class="meta-value">{{ player.wingspan }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sports Scoreboard -->
+        <div class="sports-scoreboard">
+          <!-- Scanlines overlay -->
+          <div class="scanlines"></div>
+
+          <!-- Scoreboard header -->
+          <div class="scoreboard-header">
+            <div class="scoreboard-title">
+              <!-- Activity icon -->
+              <svg class="icon" viewBox="0 0 24 24">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              Draft Analytics Dashboard
+            </div>
+          </div>
+
+          <!-- Scoreboard content -->
+          <div class="scoreboard-content">
+
+            <!-- Top row: Primary metrics -->
+            <div class="scoreboard-row">
+
+              <!-- Consensus Mock Position -->
+              <div class="metric-panel">
+                <span class="metric-label">Consensus Mock</span>
+                <div class="metric-value large" id="consensusRank">{{ player.metrics.consensusRank }}</div>
+                <div class="change-indicator {{ 'positive' if player.metrics.consensusChange > 0 else 'negative' if player.metrics.consensusChange < 0 else 'neutral' }}" id="consensusChange">
+                  <span>{{ '▲' if player.metrics.consensusChange > 0 else '▼' if player.metrics.consensusChange < 0 else '=' }}</span>
+                  <span>{{ player.metrics.consensusChange | abs }}</span>
+                </div>
+              </div>
+
+              <!-- Draft Buzz Score -->
+              <div class="metric-panel metric-panel-wide">
+                <span class="metric-label">Draft Buzz Score</span>
+                <div class="metric-value" id="buzzScore">{{ player.metrics.buzzScore }}</div>
+                <div class="metric-subtext">Volume Index</div>
+                <div class="buzz-meter">
+                  <div class="buzz-fill" id="buzzFill" style="width: {{ player.metrics.buzzScore }}%;"></div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Bottom row: Supporting metrics -->
+            <div class="scoreboard-row">
+
+              <!-- True Draft Position -->
+              <div class="metric-panel">
+                <span class="metric-label">True Position</span>
+                <div class="metric-value" id="truePosition">{{ player.metrics.truePosition }}</div>
+                <div class="metric-subtext" id="trueRange">± {{ player.metrics.trueRange }}</div>
+              </div>
+
+              <!-- Expected Wins Added -->
+              <div class="metric-panel">
+                <span class="metric-label">Exp. Wins Added</span>
+                <div class="metric-value" id="winsAdded">+{{ player.metrics.winsAdded }}</div>
+                <div class="metric-subtext">Year 1 Impact</div>
+              </div>
+
+              <!-- Stock Trend -->
+              <div class="metric-panel">
+                <span class="metric-label">7-Day Trend</span>
+                <div class="change-indicator {{ 'positive' if player.metrics.trendDirection == 'rising' else 'negative' }}" id="trendIndicator">
+                  <svg class="icon-lg" viewBox="0 0 24 24" style="width: 2rem; height: 2rem;">
+                    {% if player.metrics.trendDirection == 'rising' %}
+                    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                    <polyline points="17 6 23 6 23 12"></polyline>
+                    {% else %}
+                    <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
+                    <polyline points="17 18 23 18 23 12"></polyline>
+                    {% endif %}
+                  </svg>
+                </div>
+                <div class="metric-subtext">{{ 'Rising' if player.metrics.trendDirection == 'rising' else 'Falling' }}</div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       PERFORMANCE SECTION
+       Percentile bars showing player rankings
+       ========================================================================== -->
+  <section class="section">
+    <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
+      <!-- Bar chart icon -->
+      <svg class="icon icon-lg" style="color: var(--color-accent-emerald); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+        <line x1="12" y1="20" x2="12" y2="10"></line>
+        <line x1="18" y1="20" x2="18" y2="4"></line>
+        <line x1="6" y1="20" x2="6" y2="16"></line>
+      </svg>
+      Performance Metrics
+    </h2>
+    <p class="section-subtitle">Percentile rankings vs current draft class</p>
+
+    <!-- Controls row -->
+    <div class="perf-controls-row">
+      <div class="perf-control">
+        <label class="perf-label" for="perfCohort">Compare Against</label>
+        <select id="perfCohort" class="perf-select">
+          <option value="currentDraft">Current Draft Class</option>
+          <option value="historical">Historical Prospects</option>
+          <option value="nbaPlayers">Active NBA Players</option>
+        </select>
+      </div>
+      <div class="perf-control-checkbox">
+        <input type="checkbox" id="perfPositionAdjusted" class="perf-checkbox" checked />
+        <label for="perfPositionAdjusted" class="perf-checkbox-label">Position Adjusted</label>
+      </div>
+    </div>
+
+    <!-- Category tabs -->
+    <div class="perf-tabs">
+      <button class="perf-tab active" data-category="anthropometrics">Anthropometrics</button>
+      <button class="perf-tab" data-category="combinePerformance">Combine Performance</button>
+      <button class="perf-tab" data-category="advancedStats">Advanced Stats</button>
+    </div>
+
+    <!-- Percentile card -->
+    <div class="card card-ring card-ring-emerald perf-card">
+      <div class="scanlines"></div>
+      <div class="perf-content">
+        <div id="perfBarsContainer" class="perf-bars-container">
+          <!-- Populated by JavaScript -->
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       HEAD-TO-HEAD COMPARISON
+       Compare this player against another prospect
+       ========================================================================== -->
+  <section class="section">
+    <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+      <!-- Swords icon -->
+      <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+        <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+        <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+        <path d="M3 6l7 7"></path>
+      </svg>
+      Head-to-Head Comparison
+    </h2>
+    <p class="section-subtitle">Compare {{ player.name }} against other prospects</p>
+
+    <!-- Controls row -->
+    <div class="h2h-controls-row">
+      <!-- Player A (fixed) -->
+      <div class="h2h-control">
+        <label class="h2h-label">Player A</label>
+        <div class="h2h-select" style="background: var(--color-slate-100); cursor: not-allowed;">
+          {{ player.name }}
+        </div>
+      </div>
+
+      <!-- Swap button -->
+      <div class="h2h-control-button">
+        <button id="h2hSwapBtn" class="h2h-swap-btn">
+          <svg class="icon" viewBox="0 0 24 24">
+            <polyline points="17 1 21 5 17 9"></polyline>
+            <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+            <polyline points="7 23 3 19 7 15"></polyline>
+            <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+          </svg>
+          Swap
+        </button>
+      </div>
+
+      <!-- Player B selector -->
+      <div class="h2h-control">
+        <label class="h2h-label" for="h2hPlayerB">Player B</label>
+        <select id="h2hPlayerB" class="h2h-select">
+          <!-- Populated by JavaScript -->
+        </select>
+      </div>
+    </div>
+
+    <!-- Category tabs -->
+    <div class="h2h-tabs">
+      <button class="h2h-tab active" data-category="anthropometrics">Anthropometrics</button>
+      <button class="h2h-tab" data-category="combinePerformance">Combine Performance</button>
+      <button class="h2h-tab" data-category="advancedStats">Advanced Stats</button>
+    </div>
+
+    <!-- H2H Card -->
+    <div class="card card-ring card-ring-fuchsia h2h-card">
+      <div class="scanlines"></div>
+
+      <div class="h2h-content">
+        <!-- Similarity Score Badge -->
+        <div id="h2hSimilarityBadge" class="h2h-similarity-badge">
+          Select Players
+        </div>
+
+        <!-- Player Photos and Comparison -->
+        <div class="h2h-comparison-container">
+          <!-- Player Photos Row -->
+          <div class="h2h-photos-row">
+            <div class="h2h-player-photo">
+              <img id="h2hPhotoA" src="{{ player.photo_url }}" alt="{{ player.name }}" />
+              <div class="h2h-photo-name" id="h2hPhotoNameA">{{ player.name }}</div>
+            </div>
+            <div class="h2h-photos-spacer"></div>
+            <div class="h2h-player-photo">
+              <img id="h2hPhotoB" src="https://placehold.co/200x200/edf2f7/1f2937?text=Player+B" alt="Player B" />
+              <div class="h2h-photo-name" id="h2hPhotoNameB">Player B</div>
+            </div>
+          </div>
+
+          <!-- Comparison Table -->
+          <div class="h2h-comparison-table">
+            <table>
+              <thead>
+                <tr>
+                  <th id="h2hHeaderA" class="text-right">{{ player.name }}</th>
+                  <th class="text-center">Metric</th>
+                  <th id="h2hHeaderB" class="text-left">Player B</th>
+                </tr>
+              </thead>
+              <tbody id="h2hComparisonBody">
+                <!-- Populated by JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Winner Declaration -->
+        <div id="h2hWinnerDeclaration"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       PLAYER COMPARISONS
+       Find similar players based on various criteria
+       ========================================================================== -->
+  <section class="section">
+    <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+      Player Comparisons
+    </h2>
+    <p class="section-subtitle">Similar players based on physical and statistical profiles</p>
+
+    <!-- Controls row -->
+    <div class="comp-controls-row">
+      <div class="comp-control">
+        <label class="comp-label" for="compPool">Similarity Pool</label>
+        <select id="compPool" class="comp-select">
+          <option value="currentDraft">Current Draft Class</option>
+          <option value="historical">Historical Prospects</option>
+          <option value="nbaPlayers">Active NBA Players</option>
+        </select>
+      </div>
+      <div class="comp-control-checkbox">
+        <input type="checkbox" id="compPositionFilter" class="comp-checkbox" />
+        <label for="compPositionFilter" class="comp-checkbox-label">Same Position Only</label>
+      </div>
+    </div>
+
+    <!-- Category tabs -->
+    <div class="comp-tabs">
+      <button class="comp-tab active" data-category="anthropometrics">Anthropometrics</button>
+      <button class="comp-tab" data-category="combinePerformance">Combine Performance</button>
+      <button class="comp-tab" data-category="advancedStats">Advanced Stats</button>
+    </div>
+
+    <!-- Results grid -->
+    <div id="compResultsGrid" class="comp-results-grid">
+      <!-- Populated by JavaScript -->
+    </div>
+  </section>
+
+  <!-- Comparison Modal -->
+  <div id="compComparisonView" class="comp-comparison-view">
+    <div class="comp-comparison-content">
+      <div class="comp-comparison-header">
+        <h3 id="compComparisonTitle" class="comp-comparison-title">Comparison</h3>
+        <button id="compCloseBtn" class="comp-close-btn">
+          <svg class="icon" viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div id="compComparisonBody" class="comp-comparison-body">
+        <!-- Populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       PLAYER NEWS FEED
+       Player-specific news and updates
+       ========================================================================== -->
+  <section class="section">
+    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+      {{ player.name }} News
+    </h3>
+
+    <!-- Feed container -->
+    <div id="playerFeedContainer" class="feed-container">
+      <!-- Populated by JavaScript -->
+    </div>
+  </section>
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Server-side data injection
+  window.PLAYER_DATA = {{ player | tojson | safe }};
+  window.PERCENTILE_DATA = {{ percentile_data | tojson | safe }};
+  window.COMPARISON_DATA = {{ comparison_data | tojson | safe }};
+  window.PLAYER_FEED = {{ player_feed | tojson | safe }};
+</script>
+<script src="{{ url_for('static', path='js/player-detail.js') }}"></script>
+{% endblock %}
