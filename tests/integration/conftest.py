@@ -9,6 +9,7 @@ import pytest_asyncio
 
 from httpx import AsyncClient, ASGITransport
 from pydantic import ValidationError
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -81,21 +82,30 @@ async def async_engine(database_url: str) -> AsyncGenerator[AsyncEngine, None]:
 
 @pytest_asyncio.fixture()
 async def db_session(async_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
-    """Provide a clean transactional session for each test."""
-    session_factory = async_sessionmaker(
-        async_engine, expire_on_commit=False, class_=AsyncSession
-    )
+    """Provide a clean transactional session for each test without per-test DDL."""
+    async with async_engine.connect() as connection:
+        # Wrap each test in a transaction; roll back afterwards to keep a pristine schema.
+        trans = await connection.begin()
+        session_factory = async_sessionmaker(
+            bind=connection, expire_on_commit=False, class_=AsyncSession
+        )
+        session = session_factory()
+        # Start a savepoint so test code can call commit without closing the outer transaction.
+        await session.begin_nested()
 
-    # Rebuild metadata for each test to ensure isolation across runs.
-    async with async_engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
-        await conn.run_sync(SQLModel.metadata.create_all)
+        @event.listens_for(session.sync_session, "after_transaction_end")
+        def restart_savepoint(sess, transaction):  # type: ignore[unused-argument]
+            if transaction.nested and not transaction._parent.nested:
+                sess.begin_nested()
 
-    async with session_factory() as session:
         try:
             yield session
         finally:
-            await session.rollback()
+            await session.close()
+            await trans.rollback()
+            event.remove(
+                session.sync_session, "after_transaction_end", restart_savepoint
+            )
 
 
 @pytest_asyncio.fixture()
