@@ -200,7 +200,26 @@ async def test_player_detail_hometown_formats_correctly(app_client, db_session):
     assert response.status_code == 200
     assert "Los Angeles, CA" in response.text
 
-    # Check international player
+    # Check international player with city
     response = await app_client.get("/players/intl-player")
     assert response.status_code == 200
     assert "Paris, France" in response.text
+
+
+@pytest.mark.asyncio
+async def test_player_detail_shows_country_when_no_city(app_client, db_session):
+    """International players with only country show country name as hometown."""
+    from app.schemas.players_master import PlayerMaster
+
+    # International player with only country (no city)
+    player = PlayerMaster(
+        display_name="Mystery Intl",
+        slug="mystery-intl",
+        birth_country="Australia",
+    )
+    db_session.add(player)
+    await db_session.commit()
+
+    response = await app_client.get("/players/mystery-intl")
+    assert response.status_code == 200
+    assert "Australia" in response.text

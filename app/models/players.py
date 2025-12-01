@@ -148,7 +148,8 @@ class PlayerProfileRead(SQLModel):
     def hometown(self) -> Optional[str]:
         """Compose hometown from city and state/country.
 
-        Returns 'City, State' for US players, 'City, Country' for international.
+        Returns 'City, State' for US players, 'City, Country' for international,
+        or just 'Country' if only country is known and it's not USA.
         """
         parts = []
         if self.birth_city:
@@ -157,7 +158,11 @@ class PlayerProfileRead(SQLModel):
             parts.append(self.birth_state_province)
         elif self.birth_country and self.birth_country != "USA":
             parts.append(self.birth_country)
-        return ", ".join(parts) if parts else None
+
+        if parts:
+            return ", ".join(parts)
+
+        return None
 
     @computed_field  # type: ignore[misc]
     @property
