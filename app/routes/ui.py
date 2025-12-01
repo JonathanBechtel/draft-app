@@ -3,8 +3,12 @@
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.services.player_service import get_player_profile_by_slug
+from app.utils.db_async import get_session
 
 router = APIRouter()
 
@@ -160,36 +164,48 @@ async def home(request: Request):
 
 
 @router.get("/players/{slug}", response_class=HTMLResponse)
-async def player_detail(request: Request, slug: str):
+async def player_detail(
+    request: Request,
+    slug: str,
+    db: AsyncSession = Depends(get_session),
+):
     """Render the Player Detail page with bio, scoreboard, percentiles, comps, and news.
 
     Uses slug-based routing (e.g., /players/cooper-flagg).
     For duplicate names, append a numeric suffix (e.g., john-smith-2).
     """
+    # Fetch player profile from database
+    player_profile = await get_player_profile_by_slug(db, slug)
 
-    # Hardcoded placeholder data - backend connection added later
-    # In production, fetch player by slug from database
+    if not player_profile:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    # Build player dict for template
+    player_name = player_profile.display_name or "Unknown Player"
     player = {
-        "id": 1,
-        "slug": slug,
-        "name": "Cooper Flagg",
-        "position": "Forward",
-        "college": "Duke",
-        "height": "6'9\"",
-        "weight": "205 lbs",
-        "age": 18,
-        "class": "Freshman",
-        "hometown": "Newport, ME",
-        "wingspan": "7'2\"",
-        "photo_url": "https://placehold.co/400x533/edf2f7/1f2937?text=Cooper+Flagg",
+        "id": player_profile.id,
+        "slug": player_profile.slug,
+        "name": player_name,
+        "position": player_profile.position,
+        "college": player_profile.school,
+        "high_school": player_profile.high_school,
+        "shoots": player_profile.shoots,
+        "height": player_profile.height_formatted,
+        "weight": player_profile.weight_formatted,
+        "age": player_profile.age_formatted,
+        "hometown": player_profile.hometown,
+        "wingspan": player_profile.wingspan_formatted,
+        # Placeholder photo URL until photo_url field is added
+        "photo_url": f"https://placehold.co/400x533/edf2f7/1f2937?text={player_name.replace(' ', '+')}",
+        # Metrics set to None to hide scoreboard (no data sources yet)
         "metrics": {
-            "consensusRank": 1,
-            "consensusChange": 1,
-            "buzzScore": 94,
-            "truePosition": 1.0,
-            "trueRange": 0.3,
-            "winsAdded": 8.2,
-            "trendDirection": "rising",
+            "consensusRank": None,
+            "consensusChange": None,
+            "buzzScore": None,
+            "truePosition": None,
+            "trueRange": None,
+            "winsAdded": None,
+            "trendDirection": None,
         },
     }
 
