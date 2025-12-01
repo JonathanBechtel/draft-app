@@ -120,16 +120,17 @@ const PerformanceModule = {
   currentCategory: 'anthropometrics',
   currentCohort: 'currentDraft',
   positionAdjusted: true,
+  cache: {},
 
   /**
    * Initialize performance module
    */
   init() {
     const perfContainer = document.getElementById('perfBarsContainer');
-    if (!perfContainer || !window.PERCENTILE_DATA) return;
+    if (!perfContainer || !window.PLAYER_DATA) return;
 
     this.setupEventListeners();
-    this.renderPercentiles();
+    this.fetchAndRender();
   },
 
   /**
@@ -141,7 +142,7 @@ const PerformanceModule = {
     if (cohortSelect) {
       cohortSelect.addEventListener('change', (e) => {
         this.currentCohort = e.target.value;
-        this.renderPercentiles();
+        this.fetchAndRender();
       });
     }
 
@@ -150,7 +151,7 @@ const PerformanceModule = {
     if (positionCheckbox) {
       positionCheckbox.addEventListener('change', (e) => {
         this.positionAdjusted = e.target.checked;
-        this.renderPercentiles();
+        this.fetchAndRender();
       });
     }
 
@@ -161,9 +162,67 @@ const PerformanceModule = {
         tabs.forEach((t) => t.classList.remove('active'));
         tab.classList.add('active');
         this.currentCategory = tab.dataset.category;
-        this.renderPercentiles();
+        this.fetchAndRender();
       });
     });
+  },
+
+  /**
+   * Map UI values to API query params
+   */
+  mapCohort() {
+    const map = {
+      currentDraft: 'current_draft',
+      historical: 'all_time_draft',
+      nbaPlayers: 'current_nba',
+      allTimeNba: 'all_time_nba',
+    };
+    return map[this.currentCohort] || 'current_draft';
+  },
+
+  mapCategory() {
+    const map = {
+      anthropometrics: 'anthropometrics',
+      combinePerformance: 'combine_performance',
+      advancedStats: 'advanced_stats',
+    };
+    return map[this.currentCategory] || 'anthropometrics';
+  },
+
+  cacheKey() {
+    return `${this.mapCohort()}|${this.mapCategory()}|${this.positionAdjusted}`;
+  },
+
+  /**
+   * Fetch metrics from API (with simple caching)
+   */
+  async fetchAndRender() {
+    const key = this.cacheKey();
+    if (this.cache[key]) {
+      this.renderPercentiles(this.cache[key]);
+      return;
+    }
+
+    const slug = window.PLAYER_DATA.slug;
+    const params = new URLSearchParams({
+      cohort: this.mapCohort(),
+      category: this.mapCategory(),
+      position_adjusted: this.positionAdjusted ? 'true' : 'false',
+    });
+
+    try {
+      const response = await fetch(`/api/players/${encodeURIComponent(slug)}/metrics?${params.toString()}`);
+      if (!response.ok) {
+        this.renderPercentiles({ metrics: [] });
+        return;
+      }
+      const data = await response.json();
+      this.cache[key] = data;
+      this.renderPercentiles(data);
+    } catch (err) {
+      console.error('Failed to load metrics', err);
+      this.renderPercentiles({ metrics: [] });
+    }
   },
 
   /**
@@ -179,24 +238,44 @@ const PerformanceModule = {
   /**
    * Render percentile bars
    */
-  renderPercentiles() {
+  renderPercentiles(data) {
     const container = document.getElementById('perfBarsContainer');
     if (!container) return;
 
-    const data = window.PERCENTILE_DATA[this.currentCategory] || [];
+    const rows = (data && data.metrics) || [];
+    const populationSize = data && data.population_size ? data.population_size : null;
 
-    const html = data.map((item) => {
-      const percentileClass = this.getPercentileClass(item.percentile);
+    if (!rows.length) {
+      container.innerHTML = '<div class="empty-state">No metrics available for this view.</div>';
+      return;
+    }
+
+    // Header row
+    let html = `
+      <div class="perf-header-row">
+        <span class="perf-header-label">Percentile</span>
+        <span class="perf-header-label">Value</span>
+      </div>
+    `;
+
+    html += rows.map((item) => {
+      const percentileValue = item.percentile ?? 0;
+      const percentileClass = this.getPercentileClass(percentileValue);
+      const value = item.value !== null && item.value !== undefined ? item.value : '—';
+      const unit = item.unit || '';
+      const rank = item.rank;
 
       return `
         <div class="perf-bar-row">
           <div class="perf-metric-label">${item.metric}</div>
           <div class="perf-bar-track">
-            <div class="perf-bar-fill ${percentileClass}" style="width: ${item.percentile}%;"></div>
+            <div class="perf-bar-fill ${percentileClass}" style="width: ${percentileValue}%;">
+              <span class="perf-bar-overlay">${percentileValue}th</span>
+            </div>
           </div>
           <div class="perf-values">
-            <span class="perf-actual-value">${item.value}${item.unit}</span>
-            <span class="perf-percentile-value ${percentileClass}">${item.percentile}th</span>
+            <span class="perf-actual-value">${value}${unit}</span>
+            ${rank && populationSize ? `<span class="perf-rank-value">#${rank} of ${populationSize}</span>` : ''}
           </div>
         </div>
       `;
