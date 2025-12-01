@@ -505,111 +505,63 @@ const PlayerComparisonsModule = {
 /**
  * ============================================================================
  * HEAD-TO-HEAD MODULE (PLAYER DETAIL VERSION)
- * H2H comparison with swap functionality and fixed Player A
+ * H2H comparison with live metrics and fixed Player A
  * ============================================================================
  */
 const HeadToHeadModule = {
+  currentCategory: 'anthropometrics',
   selectedPlayerA: null,
   selectedPlayerB: null,
-  currentCategory: 'anthropometrics',
-
-  // Player data with full stats (reuses data from homepage)
-  playerData: {},
-
-  // Category metrics definitions
-  categoryMetrics: {
-    anthropometrics: [
-      { key: 'height', label: 'Height', unit: '"', higherIsBetter: true },
-      { key: 'weight', label: 'Weight', unit: ' lbs', higherIsBetter: true },
-      { key: 'wingspan', label: 'Wingspan', unit: '"', higherIsBetter: true },
-      { key: 'standingReach', label: 'Standing Reach', unit: '"', higherIsBetter: true }
-    ],
-    combinePerformance: [
-      { key: 'verticalLeap', label: 'Vertical Leap', unit: '"', higherIsBetter: true },
-      { key: 'lane', label: 'Lane Agility', unit: 's', higherIsBetter: false },
-      { key: 'shuttle', label: '3/4 Shuttle', unit: 's', higherIsBetter: false },
-      { key: 'bench', label: 'Bench Press', unit: ' reps', higherIsBetter: true }
-    ],
-    advancedStats: [
-      { key: 'per', label: 'PER', unit: '', higherIsBetter: true },
-      { key: 'ts', label: 'TS%', unit: '%', higherIsBetter: true },
-      { key: 'ast', label: 'AST%', unit: '%', higherIsBetter: true },
-      { key: 'blk', label: 'BLK%', unit: '%', higherIsBetter: true }
-    ]
-  },
+  players: {},
+  cache: {},
+  searchTimeout: null,
 
   /**
    * Initialize the H2H module
    */
   init() {
-    const playerBSelect = document.getElementById('h2hPlayerB');
-    if (!playerBSelect) return;
+    const playerBInput = document.getElementById('h2hPlayerB');
+    if (!playerBInput || !window.PLAYER_DATA) return;
 
-    // Build player data from comparison data
-    this.buildPlayerData();
-    this.populateSelector();
-    this.setupEventListeners();
-    this.renderComparison();
+    this.selectedPlayerA = window.PLAYER_DATA.slug;
+    this.players[this.selectedPlayerA] = {
+      slug: window.PLAYER_DATA.slug,
+      name: window.PLAYER_DATA.name,
+      photo: window.PLAYER_DATA.photo_url
+    };
+
+    this.loadPlayers()
+      .then(() => {
+        this.setupEventListeners();
+        // Pre-select the first available player (if any) to show an initial comparison.
+        const first = Object.keys(this.players).find((slug) => slug !== this.selectedPlayerA);
+        if (first) {
+          this.selectedPlayerB = first;
+          document.getElementById('h2hPlayerB').value = this.players[first].name;
+        }
+        return this.renderComparison();
+      })
+      .catch((err) => console.error('Failed to initialize head-to-head module', err));
   },
 
   /**
-   * Build player data from various sources
+   * Fetch available players for selection
    */
-  buildPlayerData() {
-    // Add current player
-    if (window.PLAYER_DATA) {
-      const p = window.PLAYER_DATA;
-      this.playerData[p.name] = {
-        img: p.photo_url,
-        anthropometrics: { height: 81, weight: 205, wingspan: 86, standingReach: 108 },
-        combinePerformance: { verticalLeap: 38.5, lane: 10.8, shuttle: 2.9, bench: 12 },
-        advancedStats: { per: 28.4, ts: 61.2, ast: 23.1, blk: 5.8 }
-      };
-      this.selectedPlayerA = p.name;
-    }
-
-    // Add comparison players
-    if (window.COMPARISON_DATA) {
-      window.COMPARISON_DATA.forEach((comp) => {
-        this.playerData[comp.name] = {
-          img: comp.img,
-          anthropometrics: {
-            height: parseInt(comp.stats.ht) || 80,
-            weight: 210,
-            wingspan: parseInt(comp.stats.ws) || 84,
-            standingReach: 106
-          },
-          combinePerformance: {
-            verticalLeap: parseInt(comp.stats.vert) || 34,
-            lane: 11.0,
-            shuttle: 3.0,
-            bench: 10
-          },
-          advancedStats: { per: 24.0, ts: 58.0, ast: 18.0, blk: 4.0 }
+  async loadPlayers() {
+    try {
+      const resp = await fetch('/players');
+      if (!resp.ok) return;
+      const players = await resp.json();
+      players.forEach((p) => {
+        if (p.slug === this.selectedPlayerA) return;
+        this.players[p.slug] = {
+          slug: p.slug,
+          name: p.display_name,
+          photo: `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(p.display_name)}`
         };
       });
-    }
-  },
-
-  /**
-   * Populate player B selector
-   */
-  populateSelector() {
-    const select = document.getElementById('h2hPlayerB');
-    if (!select) return;
-
-    select.innerHTML = '';
-    Object.keys(this.playerData).forEach((name) => {
-      if (name !== this.selectedPlayerA) {
-        const option = document.createElement('option');
-        option.value = name;
-        option.textContent = name;
-        select.appendChild(option);
-      }
-    });
-
-    if (select.options.length > 0) {
-      this.selectedPlayerB = select.options[0].value;
+    } catch (err) {
+      console.error('Failed to load players list', err);
     }
   },
 
@@ -617,29 +569,28 @@ const HeadToHeadModule = {
    * Setup event listeners
    */
   setupEventListeners() {
-    // Player B selector
-    const select = document.getElementById('h2hPlayerB');
-    if (select) {
-      select.addEventListener('change', (e) => {
-        this.selectedPlayerB = e.target.value;
+    const input = document.getElementById('h2hPlayerB');
+    const results = document.getElementById('h2hPlayerResults');
+    if (input && results) {
+      input.addEventListener('input', (e) => {
+        const term = e.target.value.trim();
+        if (this.searchTimeout) clearTimeout(this.searchTimeout);
+        this.searchTimeout = setTimeout(() => this.searchPlayers(term), 150);
+      });
+
+      results.addEventListener('click', (e) => {
+        const option = e.target.closest('[data-slug]');
+        if (!option) return;
+        const slug = option.getAttribute('data-slug');
+        const name = option.getAttribute('data-name');
+        this.selectedPlayerB = slug;
+        input.value = name;
+        results.innerHTML = '';
+        results.classList.remove('active');
         this.renderComparison();
       });
     }
 
-    // Swap button
-    const swapBtn = document.getElementById('h2hSwapBtn');
-    if (swapBtn) {
-      swapBtn.addEventListener('click', () => {
-        const temp = this.selectedPlayerA;
-        this.selectedPlayerA = this.selectedPlayerB;
-        this.selectedPlayerB = temp;
-        this.populateSelector();
-        document.getElementById('h2hPlayerB').value = this.selectedPlayerB;
-        this.renderComparison();
-      });
-    }
-
-    // Category tabs
     const tabs = document.querySelectorAll('.h2h-tab');
     tabs.forEach((tab) => {
       tab.addEventListener('click', () => {
@@ -651,71 +602,151 @@ const HeadToHeadModule = {
     });
   },
 
-  /**
-   * Calculate similarity score
-   */
-  calculateSimilarity(playerAData, playerBData) {
-    const metrics = this.categoryMetrics[this.currentCategory];
-    let totalDiff = 0;
-    let count = 0;
+  async searchPlayers(term) {
+    const results = document.getElementById('h2hPlayerResults');
+    if (!results) return;
+    if (term.length < 2) {
+      results.innerHTML = '';
+      results.classList.remove('active');
+      return;
+    }
 
-    metrics.forEach((metric) => {
-      const valA = playerAData[metric.key];
-      const valB = playerBData[metric.key];
-      if (valA !== undefined && valB !== undefined) {
-        const diff = Math.abs(valA - valB);
-        const avg = (valA + valB) / 2;
-        const percentDiff = avg !== 0 ? (diff / avg) * 100 : 0;
-        totalDiff += percentDiff;
-        count++;
+    try {
+      const resp = await fetch(`/players/search?q=${encodeURIComponent(term)}`);
+      if (!resp.ok) return;
+      const matches = await resp.json();
+      const filtered = matches.filter((p) => p.slug !== this.selectedPlayerA);
+      if (!filtered.length) {
+        results.innerHTML = '<div class="search-results-empty">No matches</div>';
+        results.classList.add('active');
+        return;
       }
+
+      results.innerHTML = filtered
+        .map(
+          (p) => `
+          <div class="search-result-item" data-slug="${p.slug}" data-name="${p.display_name}">
+            <div class="search-result-name">${p.display_name}</div>
+            <div class="search-result-school">${p.school || ''}</div>
+          </div>`
+        )
+        .join('');
+      results.classList.add('active');
+    } catch (err) {
+      console.error('Player search failed', err);
+    }
+  },
+
+  mapCategoryToApi() {
+    const map = {
+      anthropometrics: 'anthropometrics',
+      combinePerformance: 'combine_performance'
+    };
+    return map[this.currentCategory] || 'anthropometrics';
+  },
+
+  cacheKey() {
+    return `${this.selectedPlayerA}|${this.selectedPlayerB}|${this.currentCategory}`;
+  },
+
+  async fetchComparison() {
+    if (!this.selectedPlayerA || !this.selectedPlayerB) return null;
+    const key = this.cacheKey();
+    if (this.cache[key]) return this.cache[key];
+
+    const params = new URLSearchParams({
+      player_a: this.selectedPlayerA,
+      player_b: this.selectedPlayerB,
+      category: this.mapCategoryToApi()
     });
 
-    const avgDiff = count > 0 ? totalDiff / count : 0;
-    return Math.max(0, Math.round(100 - avgDiff));
+    try {
+      const resp = await fetch(`/api/players/head-to-head?${params.toString()}`);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      this.cache[key] = data;
+      return data;
+    } catch (err) {
+      console.error('Failed to fetch head-to-head data', err);
+      return null;
+    }
+  },
+
+  resolvePhoto(slug) {
+    const player = this.players[slug];
+    if (player && player.photo) return player.photo;
+    const name = player ? player.name : slug;
+    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+  },
+
+  resolveName(slug) {
+    const player = this.players[slug];
+    return player ? player.name : slug;
   },
 
   /**
    * Render comparison
    */
-  renderComparison() {
+  async renderComparison() {
     if (!this.selectedPlayerA || !this.selectedPlayerB) return;
-    if (!this.playerData[this.selectedPlayerA] || !this.playerData[this.selectedPlayerB]) return;
 
-    const playerAData = this.playerData[this.selectedPlayerA][this.currentCategory];
-    const playerBData = this.playerData[this.selectedPlayerB][this.currentCategory];
+    const data = await this.fetchComparison();
+    const comparisonBody = document.getElementById('h2hComparisonBody');
+    const winnerTarget = document.getElementById('h2hWinnerDeclaration');
+    if (!data || !comparisonBody || !winnerTarget) return;
 
-    // Update photos
-    document.getElementById('h2hPhotoA').src = this.playerData[this.selectedPlayerA].img;
-    document.getElementById('h2hPhotoB').src = this.playerData[this.selectedPlayerB].img;
-    document.getElementById('h2hPhotoNameA').textContent = this.selectedPlayerA;
-    document.getElementById('h2hPhotoNameB').textContent = this.selectedPlayerB;
+    // Update photos and names
+    document.getElementById('h2hPhotoA').src = this.resolvePhoto(this.selectedPlayerA);
+    document.getElementById('h2hPhotoB').src = this.resolvePhoto(this.selectedPlayerB);
+    document.getElementById('h2hPhotoNameA').textContent = this.resolveName(this.selectedPlayerA);
+    document.getElementById('h2hPhotoNameB').textContent = this.resolveName(this.selectedPlayerB);
+    document.getElementById('h2hHeaderA').textContent = this.resolveName(this.selectedPlayerA);
+    document.getElementById('h2hHeaderB').textContent = this.resolveName(this.selectedPlayerB);
 
     // Update similarity badge
-    const similarity = this.calculateSimilarity(playerAData, playerBData);
-    document.getElementById('h2hSimilarityBadge').textContent = `${similarity}% Similar`;
+    const badge = document.getElementById('h2hSimilarityBadge');
+    if (badge) {
+      if (data.similarity && data.similarity.score !== undefined && data.similarity.score !== null) {
+        badge.textContent = `${Math.round(data.similarity.score)}% Similar`;
+      } else {
+        badge.textContent = 'No similarity available';
+      }
+    }
 
-    // Update table headers
-    document.getElementById('h2hHeaderA').textContent = this.selectedPlayerA;
-    document.getElementById('h2hHeaderB').textContent = this.selectedPlayerB;
+    const metrics = (data.metrics || []).filter(
+      (m) =>
+        m.raw_value_a !== null &&
+        m.raw_value_a !== undefined &&
+        m.raw_value_b !== null &&
+        m.raw_value_b !== undefined
+    );
 
-    // Render comparison table
-    const metrics = this.categoryMetrics[this.currentCategory];
+    if (!metrics.length) {
+      comparisonBody.innerHTML =
+        '<tr><td colspan="3" class="text-center empty-state">No shared metrics available.</td></tr>';
+      winnerTarget.innerHTML = '';
+      return;
+    }
+
     let rowsHTML = '';
     let winsA = 0;
     let winsB = 0;
 
     metrics.forEach((metric) => {
-      const valueA = playerAData[metric.key];
-      const valueB = playerBData[metric.key];
+      const valueA = metric.raw_value_a;
+      const valueB = metric.raw_value_b;
+      const lowerIsBetter = metric.lower_is_better;
 
-      let isWinnerA, isWinnerB;
-      if (metric.higherIsBetter) {
-        isWinnerA = valueA > valueB;
-        isWinnerB = valueB > valueA;
-      } else {
-        isWinnerA = valueA < valueB;
-        isWinnerB = valueB < valueA;
+      let isWinnerA = false;
+      let isWinnerB = false;
+      if (valueA !== null && valueB !== null) {
+        if (lowerIsBetter) {
+          isWinnerA = valueA < valueB;
+          isWinnerB = valueB < valueA;
+        } else {
+          isWinnerA = valueA > valueB;
+          isWinnerB = valueB > valueA;
+        }
       }
 
       if (isWinnerA) winsA++;
@@ -723,35 +754,37 @@ const HeadToHeadModule = {
 
       const classA = isWinnerA ? 'h2h-value winner' : 'h2h-value loser';
       const classB = isWinnerB ? 'h2h-value winner' : 'h2h-value loser';
+      const displayA = metric.display_value_a ?? '—';
+      const displayB = metric.display_value_b ?? '—';
+      const unit = metric.unit || '';
 
       rowsHTML += `
         <tr>
-          <td class="text-right ${classA}">${valueA}${metric.unit}</td>
-          <td class="text-center">${metric.label}</td>
-          <td class="text-left ${classB}">${valueB}${metric.unit}</td>
+          <td class="text-right ${classA}">${displayA}${unit}</td>
+          <td class="text-center">${metric.metric}</td>
+          <td class="text-left ${classB}">${displayB}${unit}</td>
         </tr>
       `;
     });
 
-    document.getElementById('h2hComparisonBody').innerHTML = rowsHTML;
+    comparisonBody.innerHTML = rowsHTML;
 
-    // Render winner banner
     const totalMetrics = metrics.length;
     let bannerText = '';
     let bannerClass = '';
 
     if (winsA > winsB) {
-      bannerText = `🏆 ${this.selectedPlayerA} wins — ${winsA}/${totalMetrics} categories`;
+      bannerText = `🏆 ${this.resolveName(this.selectedPlayerA)} wins — ${winsA}/${totalMetrics} categories`;
       bannerClass = 'h2h-winner-banner winner-a';
     } else if (winsB > winsA) {
-      bannerText = `🏆 ${this.selectedPlayerB} wins — ${winsB}/${totalMetrics} categories`;
+      bannerText = `🏆 ${this.resolveName(this.selectedPlayerB)} wins — ${winsB}/${totalMetrics} categories`;
       bannerClass = 'h2h-winner-banner winner-b';
     } else {
       bannerText = `⚔️ Tie — ${winsA}/${totalMetrics} categories each`;
       bannerClass = 'h2h-winner-banner tie';
     }
 
-    document.getElementById('h2hWinnerDeclaration').innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
+    winnerTarget.innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
   }
 };
 

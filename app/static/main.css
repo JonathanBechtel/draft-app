@@ -167,6 +167,14 @@ body {
   position: relative;
 }
 
+.search-box {
+  position: relative;
+}
+
+.search-box .search-results {
+  right: 0;
+}
+
 .search-input {
   width: 288px; /* 18rem */
   background: rgba(255, 255, 255, 0.9);
