@@ -22,7 +22,7 @@ async def list_players(
             PlayerMaster.display_name,
             PlayerMaster.slug,
             PlayerMaster.school,
-        ).order_by(PlayerMaster.display_name)
+        ).order_by(PlayerMaster.display_name)  # type: ignore[call-overload]
     )
     return [
         PlayerSearchResult(
