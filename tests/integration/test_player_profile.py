@@ -1,0 +1,206 @@
+"""Integration tests for player profile page functionality."""
+
+from datetime import date
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_player_detail_returns_profile_data(app_client, db_session):
+    """Player detail page returns real profile data from database."""
+    from app.schemas.players_master import PlayerMaster
+    from app.schemas.player_status import PlayerStatus
+    from app.schemas.positions import Position
+
+    # Create test position
+    position = Position(code="F", description="Forward")
+    db_session.add(position)
+    await db_session.flush()
+
+    # Create test player with full bio data
+    player = PlayerMaster(
+        display_name="Test Player",
+        slug="test-player",
+        birthdate=date(2005, 3, 15),
+        birth_city="Portland",
+        birth_state_province="OR",
+        birth_country="USA",
+        school="Oregon",
+        high_school="Grant High School",
+        shoots="R",
+    )
+    db_session.add(player)
+    await db_session.flush()
+
+    # Create player status with physical measurements
+    status = PlayerStatus(
+        player_id=player.id,
+        position_id=position.id,
+        height_in=81,  # 6'9"
+        weight_lb=205,
+    )
+    db_session.add(status)
+    await db_session.commit()
+
+    # Request player detail page
+    response = await app_client.get("/players/test-player")
+
+    assert response.status_code == 200
+    content = response.text
+
+    # Verify bio fields are present
+    assert "Test Player" in content
+    assert "F" in content  # Position code
+    assert "Oregon" in content  # College
+    assert "Grant High School" in content  # High school
+    assert "R" in content  # Shoots
+    assert (
+        "6'9\"" in content or "6&#39;9&#34;" in content
+    )  # Height (may be HTML escaped as decimal entities)
+    assert "205 lbs" in content  # Weight
+    assert "Portland, OR" in content  # Hometown
+
+
+@pytest.mark.asyncio
+async def test_player_detail_shows_age_in_years_months_days(app_client, db_session):
+    """Player age is displayed in 'Xy Xm Xd' format."""
+    from app.schemas.players_master import PlayerMaster
+
+    # Create player born exactly 19 years, 6 months, 10 days ago (approximately)
+    # We'll just verify the format pattern is present
+    player = PlayerMaster(
+        display_name="Young Prospect",
+        slug="young-prospect",
+        birthdate=date(2005, 6, 15),
+        school="Duke",
+    )
+    db_session.add(player)
+    await db_session.commit()
+
+    response = await app_client.get("/players/young-prospect")
+
+    assert response.status_code == 200
+    # Age should contain the pattern Xy Xm Xd (e.g., "19y 5m 16d")
+    import re
+
+    age_pattern = r"\d+y \d+m \d+d"
+    assert re.search(age_pattern, response.text), "Age should be in 'Xy Xm Xd' format"
+
+
+@pytest.mark.asyncio
+async def test_player_detail_returns_404_for_missing_slug(app_client):
+    """Player detail returns 404 for non-existent slug."""
+    response = await app_client.get("/players/non-existent-player")
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_player_detail_handles_missing_fields_gracefully(app_client, db_session):
+    """Player detail page renders when optional fields are missing."""
+    from app.schemas.players_master import PlayerMaster
+
+    # Create minimal player with only required fields
+    player = PlayerMaster(
+        display_name="Minimal Player",
+        slug="minimal-player",
+    )
+    db_session.add(player)
+    await db_session.commit()
+
+    response = await app_client.get("/players/minimal-player")
+
+    assert response.status_code == 200
+    assert "Minimal Player" in response.text
+
+
+@pytest.mark.asyncio
+async def test_player_detail_hides_scoreboard_when_no_metrics(app_client, db_session):
+    """Draft Analytics Scoreboard is hidden when metrics are not available."""
+    from app.schemas.players_master import PlayerMaster
+
+    player = PlayerMaster(
+        display_name="No Metrics Player",
+        slug="no-metrics-player",
+        school="UCLA",
+    )
+    db_session.add(player)
+    await db_session.commit()
+
+    response = await app_client.get("/players/no-metrics-player")
+
+    assert response.status_code == 200
+    # Scoreboard should not be present (it's hidden when consensusRank is None)
+    assert "Draft Analytics Dashboard" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_player_detail_shows_wingspan_from_combine(app_client, db_session):
+    """Player wingspan is fetched from CombineAnthro table."""
+    from app.schemas.players_master import PlayerMaster
+    from app.schemas.combine_anthro import CombineAnthro
+    from app.schemas.seasons import Season
+
+    # Create season
+    season = Season(code="2024-25", start_year=2024, end_year=2025)
+    db_session.add(season)
+    await db_session.flush()
+
+    # Create player
+    player = PlayerMaster(
+        display_name="Long Arms",
+        slug="long-arms",
+        school="Kentucky",
+    )
+    db_session.add(player)
+    await db_session.flush()
+
+    # Create combine anthro data with wingspan
+    anthro = CombineAnthro(
+        player_id=player.id,
+        season_id=season.id,
+        wingspan_in=86.5,  # 7'2.5"
+    )
+    db_session.add(anthro)
+    await db_session.commit()
+
+    response = await app_client.get("/players/long-arms")
+
+    assert response.status_code == 200
+    # Wingspan should be displayed (86.5" = 7'2.5" with half-inch precision)
+    assert "7'2.5\"" in response.text or "7&#39;2.5&#34;" in response.text
+
+
+@pytest.mark.asyncio
+async def test_player_detail_hometown_formats_correctly(app_client, db_session):
+    """Hometown is formatted as 'City, State' for US or 'City, Country' for international."""
+    from app.schemas.players_master import PlayerMaster
+
+    # US player
+    us_player = PlayerMaster(
+        display_name="US Player",
+        slug="us-player",
+        birth_city="Los Angeles",
+        birth_state_province="CA",
+        birth_country="USA",
+    )
+    db_session.add(us_player)
+
+    # International player
+    intl_player = PlayerMaster(
+        display_name="Intl Player",
+        slug="intl-player",
+        birth_city="Paris",
+        birth_country="France",
+    )
+    db_session.add(intl_player)
+    await db_session.commit()
+
+    # Check US player
+    response = await app_client.get("/players/us-player")
+    assert response.status_code == 200
+    assert "Los Angeles, CA" in response.text
+
+    # Check international player
+    response = await app_client.get("/players/intl-player")
+    assert response.status_code == 200
+    assert "Paris, France" in response.text

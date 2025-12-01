@@ -39,29 +39,49 @@
           <h3 class="bio-header">Bio</h3>
 
           <div id="playerPrimaryMeta" class="player-primary-meta">
-            {{ player.position }} • {{ player.college }} • {{ player.height }} • {{ player.weight }}
+            {% set meta_parts = [] %}
+            {% if player.position %}{% set _ = meta_parts.append(player.position) %}{% endif %}
+            {% if player.college %}{% set _ = meta_parts.append(player.college) %}{% endif %}
+            {% if player.height %}{% set _ = meta_parts.append(player.height) %}{% endif %}
+            {% if player.weight %}{% set _ = meta_parts.append(player.weight) %}{% endif %}
+            {{ meta_parts | join(' • ') if meta_parts else 'Bio information unavailable' }}
           </div>
 
           <div class="player-secondary-meta">
+            {% if player.age %}
             <div class="meta-item">
               <span class="meta-label">Age</span>
               <span id="playerAge" class="meta-value">{{ player.age }}</span>
             </div>
-            <div class="meta-item">
-              <span class="meta-label">Class</span>
-              <span id="playerClass" class="meta-value">{{ player.class }}</span>
-            </div>
+            {% endif %}
+            {% if player.hometown %}
             <div class="meta-item">
               <span class="meta-label">Hometown</span>
               <span id="playerHometown" class="meta-value">{{ player.hometown }}</span>
             </div>
+            {% endif %}
+            {% if player.high_school %}
+            <div class="meta-item">
+              <span class="meta-label">High School</span>
+              <span id="playerHighSchool" class="meta-value">{{ player.high_school }}</span>
+            </div>
+            {% endif %}
+            {% if player.shoots %}
+            <div class="meta-item">
+              <span class="meta-label">Shoots</span>
+              <span id="playerShoots" class="meta-value">{{ player.shoots }}</span>
+            </div>
+            {% endif %}
+            {% if player.wingspan %}
             <div class="meta-item">
               <span class="meta-label">Wingspan</span>
               <span id="playerWingspan" class="meta-value">{{ player.wingspan }}</span>
             </div>
+            {% endif %}
           </div>
         </div>
 
+        {% if player.metrics.consensusRank is not none %}
         <!-- Sports Scoreboard -->
         <div class="sports-scoreboard">
           <!-- Scanlines overlay -->
@@ -143,6 +163,7 @@
             </div>
           </div>
         </div>
+        {% endif %}
 
       </div>
     </div>
