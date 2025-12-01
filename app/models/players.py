@@ -1,12 +1,8 @@
 from datetime import date, timedelta
 from typing import Optional
 
-from pydantic import computed_field, field_validator
-from sqlalchemy import Column
-from sqlalchemy import Enum as SAEnum
-from sqlmodel import SQLModel, Field as SQLField
-
-from app.models.fields import Position, BIRTH_DATE
+from pydantic import computed_field
+from sqlmodel import SQLModel
 
 
 class PlayerSearchResult(SQLModel):
@@ -16,41 +12,6 @@ class PlayerSearchResult(SQLModel):
     display_name: Optional[str] = None
     slug: Optional[str] = None
     school: Optional[str] = None
-
-
-class PlayerBase(SQLModel):
-    name: str
-    # Keep Pydantic field name "position", map DB column to "player_position"
-    position: Position = SQLField(
-        sa_column=Column(
-            "player_position",
-            SAEnum(Position, name="player_position_enum"),
-            nullable=False,
-        )
-    )
-    school: str
-    birth_date: BIRTH_DATE
-
-    @field_validator("birth_date")
-    @classmethod
-    def not_in_future(cls, v: date) -> date:
-        if v > date.today():
-            raise ValueError("birth_date cannot be in the future")
-        return v
-
-
-class PlayerRead(PlayerBase):
-    id: int
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def age(self) -> float:
-        days = (date.today() - self.birth_date).days
-        return round(days / 365.2425, 2)
-
-
-class PlayerCreate(PlayerBase):
-    pass
 
 
 class PlayerProfileRead(SQLModel):
@@ -148,7 +109,8 @@ class PlayerProfileRead(SQLModel):
     def hometown(self) -> Optional[str]:
         """Compose hometown from city and state/country.
 
-        Returns 'City, State' for US players, 'City, Country' for international.
+        Returns 'City, State' for US players, 'City, Country' for international,
+        or just 'Country' if only country is known and it's not USA.
         """
         parts = []
         if self.birth_city:
@@ -157,7 +119,11 @@ class PlayerProfileRead(SQLModel):
             parts.append(self.birth_state_province)
         elif self.birth_country and self.birth_country != "USA":
             parts.append(self.birth_country)
-        return ", ".join(parts) if parts else None
+
+        if parts:
+            return ", ".join(parts)
+
+        return None
 
     @computed_field  # type: ignore[misc]
     @property

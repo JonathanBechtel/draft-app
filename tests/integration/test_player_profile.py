@@ -200,7 +200,65 @@ async def test_player_detail_hometown_formats_correctly(app_client, db_session):
     assert response.status_code == 200
     assert "Los Angeles, CA" in response.text
 
-    # Check international player
+    # Check international player with city
     response = await app_client.get("/players/intl-player")
     assert response.status_code == 200
     assert "Paris, France" in response.text
+
+
+@pytest.mark.asyncio
+async def test_player_detail_hides_literal_null_college(app_client, db_session):
+    """College rendered as None should not display the string 'null'."""
+    from app.schemas.players_master import PlayerMaster
+    from app.schemas.positions import Position
+    from app.schemas.player_status import PlayerStatus
+
+    # Create position and player with a literal 'null' school value
+    position = Position(code="C", description="Center")
+    db_session.add(position)
+    await db_session.flush()
+
+    player = PlayerMaster(
+        display_name="Intl Big",
+        slug="intl-big",
+        school="null",  # legacy string value that should be treated as missing
+        birth_country="France",
+    )
+    db_session.add(player)
+    await db_session.flush()
+
+    status = PlayerStatus(
+        player_id=player.id,
+        position_id=position.id,
+        height_in=85,
+        weight_lb=258,
+    )
+    db_session.add(status)
+    await db_session.commit()
+
+    response = await app_client.get("/players/intl-big")
+    assert response.status_code == 200
+    # Bio line should display position, height, weight but NOT "null" for missing college
+    # Check that the primary meta shows "C • 7'1" • 258 lbs" (no null)
+    assert "C • 7" in response.text or "C • 7&#39;" in response.text
+    # And make sure "null" doesn't appear as visible text (not counting JSON data)
+    assert "• null •" not in response.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_player_detail_shows_country_when_no_city(app_client, db_session):
+    """International players with only country show country name as hometown."""
+    from app.schemas.players_master import PlayerMaster
+
+    # International player with only country (no city)
+    player = PlayerMaster(
+        display_name="Mystery Intl",
+        slug="mystery-intl",
+        birth_country="Australia",
+    )
+    db_session.add(player)
+    await db_session.commit()
+
+    response = await app_client.get("/players/mystery-intl")
+    assert response.status_code == 200
+    assert "Australia" in response.text

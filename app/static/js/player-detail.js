@@ -27,6 +27,14 @@ const ScoreboardModule = {
     const player = window.PLAYER_DATA;
     const metrics = player.metrics;
 
+    const clean = (val) => {
+      if (val === null || val === undefined) return '';
+      const text = String(val).trim();
+      if (!text) return '';
+      if (['null', 'none'].includes(text.toLowerCase())) return '';
+      return text;
+    };
+
     // Update page header
     const pageHeader = document.getElementById('pageHeader');
     if (pageHeader) {
@@ -43,15 +51,21 @@ const ScoreboardModule = {
     // Update primary meta
     const playerPrimaryMeta = document.getElementById('playerPrimaryMeta');
     if (playerPrimaryMeta) {
-      playerPrimaryMeta.textContent = `${player.position} • ${player.college} • ${player.height} • ${player.weight}`;
+      const parts = [
+        clean(player.position),
+        clean(player.college),
+        clean(player.height),
+        clean(player.weight),
+      ].filter(Boolean);
+      playerPrimaryMeta.textContent = parts.length ? parts.join(' • ') : 'Bio information unavailable';
     }
 
     // Update secondary meta
     const updates = {
-      'playerAge': player.age,
-      'playerClass': player.class,
-      'playerHometown': player.hometown,
-      'playerWingspan': player.wingspan
+      'playerAge': clean(player.age),
+      'playerClass': clean(player.class),
+      'playerHometown': clean(player.hometown),
+      'playerWingspan': clean(player.wingspan)
     };
 
     Object.keys(updates).forEach((id) => {
