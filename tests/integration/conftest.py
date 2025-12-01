@@ -55,7 +55,6 @@ def database_url() -> str:
 async def async_engine(database_url: str) -> AsyncGenerator[AsyncEngine, None]:
     """Yield an async engine bound to the integration-test database."""
     # Ensure SQLModel metadata is populated before creating tables.
-    from app.schemas import players  # noqa: F401
     from app.schemas import positions  # noqa: F401
     from app.schemas import player_status  # noqa: F401
     from app.schemas import combine_anthro  # noqa: F401

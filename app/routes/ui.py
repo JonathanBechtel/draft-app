@@ -180,11 +180,14 @@ async def player_detail(
     if not player_profile:
         raise HTTPException(status_code=404, detail="Player not found")
 
-    # Helper to filter out literal "null" strings from raw data
+    # Helper to filter out literal "null"/empty strings from raw data
     def clean_null(value: str | None) -> str | None:
-        if value and value.lower() == "null":
+        if value is None:
             return None
-        return value
+        text = value.strip()
+        if not text or text.lower() in {"null", "none"}:
+            return None
+        return text
 
     # Build player dict for template
     player_name = player_profile.display_name or "Unknown Player"
