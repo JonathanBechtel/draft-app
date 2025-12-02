@@ -12,7 +12,7 @@ import pandas as pd
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.fields import MetricSource, SimilarityDimension
+from app.models.fields import CohortType, MetricSource, SimilarityDimension
 from app.schemas.metrics import (
     MetricDefinition,
     MetricSnapshot,
@@ -43,6 +43,7 @@ async def resolve_snapshot(
     snapshot_id: Optional[int],
     run_key: Optional[str],
     source: Optional[str],
+    cohort: Optional[str] = None,
 ) -> MetricSnapshot:
     if snapshot_id is not None:
         sid = int(snapshot_id)
@@ -55,12 +56,11 @@ async def resolve_snapshot(
 
     if run_key and source:
         src = MetricSource(source)
-        stmt = (
-            select(MetricSnapshot)
-            .where(MetricSnapshot.run_key == run_key)  # type: ignore[arg-type]
-            .where(MetricSnapshot.source == src)  # type: ignore[arg-type]
-            .order_by(MetricSnapshot.version.desc())  # type: ignore[attr-defined]
-        )
+        stmt = select(MetricSnapshot).where(MetricSnapshot.run_key == run_key)  # type: ignore[arg-type]
+        stmt = stmt.where(MetricSnapshot.source == src)  # type: ignore[arg-type]
+        if cohort:
+            stmt = stmt.where(MetricSnapshot.cohort == CohortType(cohort))  # type: ignore[arg-type]
+        stmt = stmt.order_by(MetricSnapshot.version.desc())  # type: ignore[attr-defined]
         result = await session.execute(stmt)
         snap = result.scalars().first()
         if not snap:
@@ -397,6 +397,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--source",
         help="Source key required when using --run-key (e.g., combine_anthro/combine_agility/combine_shooting)",
+    )
+    parser.add_argument(
+        "--cohort",
+        choices=[c.value for c in CohortType],
+        help="Optional cohort filter when resolving snapshots (e.g., global_scope)",
     )
     parser.add_argument(
         "--min-overlap",

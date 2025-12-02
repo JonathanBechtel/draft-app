@@ -37,6 +37,7 @@ class CohortType(str, Enum):
     all_time_draft = "all_time_draft"
     current_nba = "current_nba"
     all_time_nba = "all_time_nba"
+    global_scope = "global_scope"
 
 
 class MetricCategory(str, Enum):

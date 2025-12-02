@@ -1,10 +1,17 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.fields import CohortType, MetricCategory, SimilarityDimension
+from app.models.head_to_head import HeadToHeadResponse
+from app.models.metrics import PlayerMetricsResponse
 from app.models.players import PlayerSearchResult
+from app.models.similarity import PlayerSimilarityResponse
+from app.services.head_to_head_service import get_head_to_head_comparison
+from app.services.metrics_service import get_player_metrics
+from app.services.similarity_service import get_similar_players
 from app.schemas.players_master import PlayerMaster
 from app.utils.db_async import get_session
 
@@ -67,3 +74,94 @@ async def search_players(
         )
         for row in rows
     ]
+
+
+@router.get(
+    "/api/players/{slug}/metrics",
+    response_model=PlayerMetricsResponse,
+    tags=["players"],
+)
+async def get_player_metrics_handler(
+    slug: str,
+    cohort: CohortType,
+    category: MetricCategory,
+    position_adjusted: bool = True,
+    season_id: int | None = None,
+    db: AsyncSession = Depends(get_session),
+) -> PlayerMetricsResponse:
+    """Return percentile metrics for a player and cohort/category combination."""
+    try:
+        result = await get_player_metrics(
+            db=db,
+            slug=slug,
+            cohort=cohort,
+            category=category,
+            position_adjusted=position_adjusted,
+            season_id=season_id,
+        )
+    except ValueError as exc:
+        if str(exc) == "player_not_found":
+            raise HTTPException(status_code=404, detail="Player not found") from exc
+        raise
+
+    return PlayerMetricsResponse(**result)
+
+
+@router.get(
+    "/api/players/head-to-head",
+    response_model=HeadToHeadResponse,
+    tags=["players"],
+)
+async def head_to_head_comparison(
+    player_a: str = Query(..., description="Slug for player A"),
+    player_b: str = Query(..., description="Slug for player B"),
+    category: MetricCategory = Query(..., description="Metric category to compare"),
+    db: AsyncSession = Depends(get_session),
+) -> HeadToHeadResponse:
+    """Return head-to-head comparison metrics for two players."""
+    try:
+        result = await get_head_to_head_comparison(
+            db=db,
+            player_a_slug=player_a,
+            player_b_slug=player_b,
+            category=category,
+        )
+    except ValueError as exc:
+        if str(exc) == "player_not_found":
+            raise HTTPException(status_code=404, detail="Player not found") from exc
+        raise
+
+    return HeadToHeadResponse(**result)
+
+
+@router.get(
+    "/api/players/{slug}/similar",
+    response_model=PlayerSimilarityResponse,
+    tags=["players"],
+)
+async def get_similar_players_handler(
+    slug: str,
+    dimension: SimilarityDimension = Query(..., description="Similarity dimension"),
+    same_position: bool = Query(False, description="Filter to same position only"),
+    same_draft_year: bool = Query(False, description="Filter to same draft year"),
+    nba_only: bool = Query(False, description="Filter to active NBA players only"),
+    limit: int = Query(10, ge=1, le=20, description="Max similar players"),
+    db: AsyncSession = Depends(get_session),
+) -> PlayerSimilarityResponse:
+    """Return similar players for a given player and dimension."""
+    try:
+        result = await get_similar_players(
+            db=db,
+            slug=slug,
+            dimension=dimension,
+            same_position=same_position,
+            same_draft_year=same_draft_year,
+            nba_only=nba_only,
+            limit=limit,
+        )
+    except ValueError as exc:
+        if str(exc) == "player_not_found":
+            raise HTTPException(status_code=404, detail="Player not found") from exc
+        raise
+
+    return PlayerSimilarityResponse(**result)

@@ -274,40 +274,8 @@ async def player_detail(
         ],
     }
 
-    comparison_data = [
-        {
-            "name": "Chet Holmgren",
-            "position": "F/C",
-            "school": "Gonzaga (2022)",
-            "similarity": 92,
-            "img": "https://placehold.co/320x420/edf2f7/1f2937?text=Chet+Holmgren",
-            "stats": {"ht": "84", "ws": "90", "vert": "28"},
-        },
-        {
-            "name": "Jaren Jackson Jr.",
-            "position": "F",
-            "school": "Michigan State (2018)",
-            "similarity": 87,
-            "img": "https://placehold.co/320x420/edf2f7/1f2937?text=Jaren+Jackson+Jr",
-            "stats": {"ht": "83", "ws": "88", "vert": "33"},
-        },
-        {
-            "name": "Evan Mobley",
-            "position": "F/C",
-            "school": "USC (2021)",
-            "similarity": 85,
-            "img": "https://placehold.co/320x420/edf2f7/1f2937?text=Evan+Mobley",
-            "stats": {"ht": "84", "ws": "87", "vert": "30"},
-        },
-        {
-            "name": "Paolo Banchero",
-            "position": "F",
-            "school": "Duke (2022)",
-            "similarity": 78,
-            "img": "https://placehold.co/320x420/edf2f7/1f2937?text=Paolo+Banchero",
-            "stats": {"ht": "82", "ws": "85", "vert": "29"},
-        },
-    ]
+    # Comparison data is fetched via API (GET /api/players/{slug}/similar)
+    comparison_data: list = []
 
     player_feed = [
         {
