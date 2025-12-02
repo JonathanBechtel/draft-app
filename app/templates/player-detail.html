@@ -249,25 +249,19 @@
         </div>
       </div>
 
-      <!-- Swap button -->
-      <div class="h2h-control-button">
-        <button id="h2hSwapBtn" class="h2h-swap-btn">
-          <svg class="icon" viewBox="0 0 24 24">
-            <polyline points="17 1 21 5 17 9"></polyline>
-            <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
-            <polyline points="7 23 3 19 7 15"></polyline>
-            <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
-          </svg>
-          Swap
-        </button>
-      </div>
-
       <!-- Player B selector -->
       <div class="h2h-control">
         <label class="h2h-label" for="h2hPlayerB">Player B</label>
-        <select id="h2hPlayerB" class="h2h-select">
-          <!-- Populated by JavaScript -->
-        </select>
+        <div class="search-box">
+          <input
+            id="h2hPlayerB"
+            class="h2h-select"
+            type="text"
+            placeholder="Search players…"
+            autocomplete="off"
+          />
+          <div id="h2hPlayerResults" class="search-results"></div>
+        </div>
       </div>
     </div>
 
@@ -275,7 +269,6 @@
     <div class="h2h-tabs">
       <button class="h2h-tab active" data-category="anthropometrics">Anthropometrics</button>
       <button class="h2h-tab" data-category="combinePerformance">Combine Performance</button>
-      <button class="h2h-tab" data-category="advancedStats">Advanced Stats</button>
     </div>
 
     <!-- H2H Card -->

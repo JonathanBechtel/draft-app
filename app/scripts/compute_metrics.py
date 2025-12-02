@@ -215,7 +215,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--season",
-        help="Season code like 2024-25 (required for current_draft)",
+        help="Season code like 2024-25 (required for current_draft; use 'all' for global all-seasons)",
     )
     parser.add_argument(
         "--position-scope",
@@ -505,6 +505,9 @@ class MetricRunner:
         self.scope_plan = self._build_scope_plan()
 
     def _default_run_key(self) -> str:
+        if self.cohort == CohortType.global_scope:
+            season_part = (self.season_code or "all").replace(" ", "_")
+            return f"metrics_global_{season_part}"
         season_part = self.season_code or "all"
         cohort_part = self.cohort.value
         return f"cohort={cohort_part}|season={season_part}"
@@ -699,6 +702,24 @@ class MetricRunner:
                 )
             self.season = season
             self.season_ids = {season_id}
+        elif self.cohort == CohortType.global_scope:
+            if not self.season_code:
+                raise ValueError(
+                    "--season is required for global cohorts (use 'all' for all seasons)"
+                )
+            if self.season_code.lower() == "all":
+                # All seasons: no season filter
+                self.season = None
+                self.season_ids = None
+            else:
+                season = await resolve_season(self.session, self.season_code)
+                if season.id is None:
+                    raise ValueError(
+                        f"Season {self.season_code!r} is missing a persisted identifier"
+                    )
+                self.season = season
+                # Global but season-scoped
+                self.season_ids = {season.id}
         else:
             self.season = None
             self.season_ids = None
@@ -718,6 +739,9 @@ class MetricRunner:
         return frames
 
     def _run_key_for_source(self, source: MetricSource, run_key_base: str) -> str:
+        if self.cohort == CohortType.global_scope:
+            # Explicitly encode source for global runs to aid downstream selection
+            return f"{run_key_base}_{source.value}"
         # Keep a shared run_key across sources; source is captured in the snapshot's column
         return run_key_base
 
