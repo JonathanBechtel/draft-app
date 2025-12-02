@@ -132,30 +132,34 @@ async def _resolve_player(db: AsyncSession, slug: str) -> Tuple[int, str, str]:
     return row.id, row.display_name, row.slug
 
 
-async def _select_active_snapshot(
+async def _select_similarity_snapshot(
     db: AsyncSession, source: MetricSource
 ) -> Optional[MetricSnapshot]:
-    """Prefer a baseline current snapshot; fall back through other scopes/cohorts if needed."""
+    """Pick the active snapshot for a source to read similarity from, preferring global scope."""
+    # Prefer explicitly global snapshots
+    stmt_global = (
+        select(MetricSnapshot)
+        .where(MetricSnapshot.source == source)  # type: ignore[arg-type]
+        .where(MetricSnapshot.cohort == CohortType.global_scope)  # type: ignore[arg-type]
+        .where(MetricSnapshot.is_current.is_(True))  # type: ignore[attr-defined]
+        .order_by(MetricSnapshot.version.desc())  # type: ignore[attr-defined]
+        .limit(1)
+    )
+    result = await db.execute(stmt_global)  # type: ignore[var-annotated]
+    snapshot = result.scalar_one_or_none()
+    if snapshot:
+        return snapshot
 
-    def _stmt(cohort: CohortType, baseline_only: bool):  # type: ignore[valid-type]
-        stmt = (
-            select(MetricSnapshot)
-            .where(MetricSnapshot.source == source)  # type: ignore[arg-type]
-            .where(MetricSnapshot.cohort == cohort)  # type: ignore[arg-type]
-            .where(MetricSnapshot.is_current.is_(True))  # type: ignore[attr-defined]
-        )
-        if baseline_only:
-            stmt = stmt.where(MetricSnapshot.position_scope_parent.is_(None))  # type: ignore[union-attr]
-        return stmt.order_by(MetricSnapshot.version.desc()).limit(1)  # type: ignore[attr-defined]
-
-    for cohort in (CohortType.current_draft, CohortType.all_time_draft):
-        for baseline_only in (True, False):
-            stmt = _stmt(cohort, baseline_only)
-            result = await db.execute(stmt)  # type: ignore[var-annotated]
-            snapshot = result.scalar_one_or_none()
-            if snapshot:
-                return snapshot
-    return None
+    # Fallback to any current snapshot for the source
+    stmt = (
+        select(MetricSnapshot)
+        .where(MetricSnapshot.source == source)  # type: ignore[arg-type]
+        .where(MetricSnapshot.is_current.is_(True))  # type: ignore[attr-defined]
+        .order_by(MetricSnapshot.version.desc())  # type: ignore[attr-defined]
+        .limit(1)
+    )
+    result = await db.execute(stmt)  # type: ignore[var-annotated]
+    return result.scalar_one_or_none()
 
 
 async def _fetch_metric_rows(
@@ -275,7 +279,7 @@ async def get_head_to_head_comparison(
     metrics = _build_shared_metrics(metrics_raw, player_a_id, player_b_id, category)
 
     # Similarity remains snapshot-based; optional best-effort retrieval
-    snapshot = await _select_active_snapshot(db, source)
+    snapshot = await _select_similarity_snapshot(db, source)
     similarity = None
     if snapshot:
         similarity = await _fetch_similarity(

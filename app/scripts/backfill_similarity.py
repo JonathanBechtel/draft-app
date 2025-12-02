@@ -6,7 +6,7 @@ from typing import Any, Optional, Sequence, Set
 
 from sqlalchemy import select
 
-from app.models.fields import MetricSource
+from app.models.fields import CohortType, MetricSource
 from app.schemas.metrics import MetricSnapshot
 from app.scripts.compute_similarity import (
     SimilarityConfig,
@@ -30,6 +30,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         nargs="+",
         choices=[s.value for s in MetricSource],
         help="Limit to these sources when auto-selecting current snapshots",
+    )
+    parser.add_argument(
+        "--cohort",
+        choices=[c.value for c in CohortType],
+        help="Optional cohort filter when auto-selecting snapshots (e.g., global_scope)",
     )
     parser.add_argument(
         "--min-overlap",
@@ -94,6 +99,10 @@ async def run(argv: Optional[Sequence[str]] = None) -> None:
                 }
                 stmt = stmt.where(
                     MetricSnapshot.source.in_(selected_sources)  # type: ignore[attr-defined,arg-type]
+                )
+            if args.cohort:
+                stmt = stmt.where(
+                    MetricSnapshot.cohort == CohortType(args.cohort)  # type: ignore[arg-type]
                 )
             result = await session.execute(stmt)
             target_snapshots = list(result.scalars())
