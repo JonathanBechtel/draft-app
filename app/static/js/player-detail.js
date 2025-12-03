@@ -296,16 +296,18 @@ const PlayerComparisonsModule = {
   currentPool: 'currentDraft',
   positionFilter: false,
   selectedCompPlayer: null,
+  cache: {},
+  isLoading: false,
 
   /**
    * Initialize comparisons module
    */
   init() {
     const grid = document.getElementById('compResultsGrid');
-    if (!grid || !window.COMPARISON_DATA) return;
+    if (!grid || !window.PLAYER_DATA) return;
 
     this.setupEventListeners();
-    this.renderResults();
+    this.fetchAndRender();
   },
 
   /**
@@ -319,7 +321,7 @@ const PlayerComparisonsModule = {
         tabs.forEach((t) => t.classList.remove('active'));
         tab.classList.add('active');
         this.currentType = tab.dataset.category;
-        this.renderResults();
+        this.fetchAndRender();
       });
     });
 
@@ -328,7 +330,7 @@ const PlayerComparisonsModule = {
     if (poolSelect) {
       poolSelect.addEventListener('change', (e) => {
         this.currentPool = e.target.value;
-        this.renderResults();
+        this.fetchAndRender();
       });
     }
 
@@ -337,7 +339,7 @@ const PlayerComparisonsModule = {
     if (posCheckbox) {
       posCheckbox.addEventListener('change', (e) => {
         this.positionFilter = e.target.checked;
-        this.renderResults();
+        this.fetchAndRender();
       });
     }
 
@@ -362,6 +364,106 @@ const PlayerComparisonsModule = {
   },
 
   /**
+   * Map UI category to API dimension
+   */
+  mapCategoryToDimension() {
+    const map = {
+      anthropometrics: 'anthro',
+      combinePerformance: 'combine',
+      shooting: 'shooting'
+    };
+    return map[this.currentType] || 'anthro';
+  },
+
+  /**
+   * Map UI category to head-to-head API category
+   */
+  mapCategoryToH2HCategory() {
+    const map = {
+      anthropometrics: 'anthropometrics',
+      combinePerformance: 'combine_performance',
+      shooting: 'combine_performance'
+    };
+    return map[this.currentType] || 'anthropometrics';
+  },
+
+  /**
+   * Get filter params based on current pool selection
+   */
+  getPoolFilters() {
+    switch (this.currentPool) {
+      case 'currentDraft':
+        return { same_draft_year: true, nba_only: false };
+      case 'nbaPlayers':
+        return { same_draft_year: false, nba_only: true };
+      case 'historical':
+      default:
+        return { same_draft_year: false, nba_only: false };
+    }
+  },
+
+  /**
+   * Cache key for current filter state
+   */
+  cacheKey() {
+    const dimension = this.mapCategoryToDimension();
+    const poolFilters = this.getPoolFilters();
+    return `${dimension}|${this.positionFilter}|${poolFilters.same_draft_year}|${poolFilters.nba_only}`;
+  },
+
+  /**
+   * Fetch and render similarity data from API
+   */
+  async fetchAndRender() {
+    const key = this.cacheKey();
+    if (this.cache[key]) {
+      this.renderResults(this.cache[key]);
+      return;
+    }
+
+    const slug = window.PLAYER_DATA.slug;
+    const dimension = this.mapCategoryToDimension();
+    const poolFilters = this.getPoolFilters();
+    const params = new URLSearchParams({
+      dimension: dimension,
+      same_position: this.positionFilter ? 'true' : 'false',
+      same_draft_year: poolFilters.same_draft_year ? 'true' : 'false',
+      nba_only: poolFilters.nba_only ? 'true' : 'false',
+      limit: '10'
+    });
+
+    this.isLoading = true;
+    this.renderLoading();
+
+    try {
+      const response = await fetch(
+        `/api/players/${encodeURIComponent(slug)}/similar?${params.toString()}`
+      );
+      if (!response.ok) {
+        this.renderResults({ players: [] });
+        return;
+      }
+      const data = await response.json();
+      this.cache[key] = data;
+      this.renderResults(data);
+    } catch (err) {
+      console.error('Failed to load similarity data', err);
+      this.renderResults({ players: [] });
+    } finally {
+      this.isLoading = false;
+    }
+  },
+
+  /**
+   * Render loading state
+   */
+  renderLoading() {
+    const grid = document.getElementById('compResultsGrid');
+    if (!grid) return;
+    grid.innerHTML = '<div class="loading-state">Loading similar players...</div>';
+  },
+
+  /**
    * Get similarity badge class
    */
   getSimilarityBadgeClass(similarity) {
@@ -372,35 +474,38 @@ const PlayerComparisonsModule = {
   },
 
   /**
-   * Render comparison card
+   * Get similarity score level class
+   */
+  getSimilarityScoreLevel(score) {
+    if (score >= 90) return 'high';
+    if (score >= 80) return 'good';
+    return 'moderate';
+  },
+
+  /**
+   * Render comparison card for a single player
    */
   renderCompCard(player) {
-    const badgeClass = this.getSimilarityBadgeClass(player.similarity);
+    const scoreLevel = this.getSimilarityScoreLevel(player.similarity_score);
+    const photoUrl = `https://placehold.co/320x420/edf2f7/1f2937?text=${encodeURIComponent(player.display_name)}`;
+    const position = player.position || 'N/A';
+    const school = player.school || 'Unknown';
+    const draftYear = player.draft_year;
+    const schoolDisplay = draftYear ? `${school} (${draftYear})` : school;
+    const playerUrl = `/players/${player.slug}`;
 
     return `
-      <div class="prospect-card" data-player="${player.name}">
-        <div class="prospect-image-wrapper">
-          <img src="${player.img}" alt="${player.name}" class="prospect-image" />
-          <span class="similarity-badge ${badgeClass}">${player.similarity}%</span>
+      <div class="prospect-card" data-player-slug="${player.slug}">
+        <div class="prospect-card-similarity-row">
+          <span class="prospect-card-similarity-score ${scoreLevel}">${Math.round(player.similarity_score)}% Match</span>
         </div>
+        <a href="${playerUrl}" class="prospect-image-wrapper prospect-image-link">
+          <img src="${photoUrl}" alt="${player.display_name}" class="prospect-image" />
+        </a>
         <div class="prospect-info">
-          <h4 class="prospect-name">${player.name}</h4>
-          <p class="prospect-meta">${player.position} • ${player.school}</p>
-          <div class="prospect-stats">
-            <div class="stat-pill">
-              <span class="label">HT</span>
-              <span class="value">${player.stats.ht}"</span>
-            </div>
-            <div class="stat-pill">
-              <span class="label">WS</span>
-              <span class="value">${player.stats.ws}"</span>
-            </div>
-            <div class="stat-pill">
-              <span class="label">VRT</span>
-              <span class="value">${player.stats.vert}"</span>
-            </div>
-          </div>
-          <button class="comp-compare-btn" onclick="PlayerComparisonsModule.showComparison('${player.name}')">
+          <h4 class="prospect-name">${player.display_name}</h4>
+          <p class="prospect-meta">${position} • ${schoolDisplay}</p>
+          <button class="comp-compare-btn" onclick="PlayerComparisonsModule.showComparison('${player.slug}', '${player.display_name.replace(/'/g, "\\'")}')">
             <svg class="icon" viewBox="0 0 24 24">
               <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
               <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
@@ -415,36 +520,69 @@ const PlayerComparisonsModule = {
   /**
    * Render all comparison results
    */
-  renderResults() {
+  renderResults(data) {
     const grid = document.getElementById('compResultsGrid');
     if (!grid) return;
 
-    const html = window.COMPARISON_DATA.map((player) => this.renderCompCard(player)).join('');
+    const players = data.players || [];
+
+    if (!players.length) {
+      grid.innerHTML = '<div class="empty-state">No similar players found for this view.</div>';
+      return;
+    }
+
+    const html = players.map((player) => this.renderCompCard(player)).join('');
     grid.innerHTML = html;
   },
 
   /**
-   * Show detailed comparison modal
+   * Show detailed comparison modal with head-to-head data
    */
-  showComparison(playerName) {
-    this.selectedCompPlayer = window.COMPARISON_DATA.find((p) => p.name === playerName);
-    if (!this.selectedCompPlayer) return;
+  async showComparison(playerSlug, playerName) {
+    this.selectedCompPlayer = { slug: playerSlug, name: playerName };
 
     const modal = document.getElementById('compComparisonView');
     const title = document.getElementById('compComparisonTitle');
     const body = document.getElementById('compComparisonBody');
 
     if (title) {
-      title.textContent = `${window.PLAYER_DATA.name} vs ${this.selectedCompPlayer.name}`;
+      title.textContent = `${window.PLAYER_DATA.name} vs ${playerName}`;
     }
 
     if (body) {
-      body.innerHTML = this.renderComparisonTable();
+      body.innerHTML = '<div class="loading-state">Loading comparison...</div>';
     }
 
     if (modal) {
       modal.classList.add('active');
       document.body.style.overflow = 'hidden';
+    }
+
+    // Fetch head-to-head comparison data
+    const category = this.mapCategoryToH2HCategory();
+    const params = new URLSearchParams({
+      player_a: window.PLAYER_DATA.slug,
+      player_b: playerSlug,
+      category: category
+    });
+
+    try {
+      const response = await fetch(`/api/players/head-to-head?${params.toString()}`);
+      if (!response.ok) {
+        if (body) {
+          body.innerHTML = '<div class="empty-state">Unable to load comparison data.</div>';
+        }
+        return;
+      }
+      const h2hData = await response.json();
+      if (body) {
+        body.innerHTML = this.renderComparisonTable(h2hData);
+      }
+    } catch (err) {
+      console.error('Failed to load head-to-head data', err);
+      if (body) {
+        body.innerHTML = '<div class="empty-state">Unable to load comparison data.</div>';
+      }
     }
   },
 
@@ -461,37 +599,100 @@ const PlayerComparisonsModule = {
   },
 
   /**
-   * Render comparison table for modal
+   * Get similarity badge level for modal badge
    */
-  renderComparisonTable() {
-    if (!this.selectedCompPlayer) return '';
+  getSimilarityBadgeLevel(score) {
+    if (score >= 90) return 'high';
+    if (score >= 80) return 'good';
+    return 'moderate';
+  },
 
-    const player = window.PLAYER_DATA;
-    const comp = this.selectedCompPlayer;
+  /**
+   * Render comparison table for modal using head-to-head API data
+   */
+  renderComparisonTable(h2hData) {
+    if (!h2hData || !h2hData.metrics || h2hData.metrics.length === 0) {
+      return '<div class="empty-state">No shared metrics available for comparison.</div>';
+    }
 
-    // Sample metrics for comparison
-    const metrics = [
-      { label: 'Height', playerA: player.height, playerB: `${comp.stats.ht}"` },
-      { label: 'Wingspan', playerA: player.wingspan, playerB: `${comp.stats.ws}"` },
-      { label: 'Vertical', playerA: '36"', playerB: `${comp.stats.vert}"` }
-    ];
+    const playerA = h2hData.player_a;
+    const playerB = h2hData.player_b;
+    const similarity = h2hData.similarity;
 
-    const rows = metrics.map((m) => `
-      <tr>
-        <td class="text-right comp-table-value">${m.playerA}</td>
-        <td class="text-center">${m.label}</td>
-        <td class="text-left comp-table-value">${m.playerB}</td>
-      </tr>
-    `).join('');
+    let winsA = 0;
+    let winsB = 0;
+
+    const rows = h2hData.metrics.map((m) => {
+      const valueA = m.raw_value_a;
+      const valueB = m.raw_value_b;
+      const lowerIsBetter = m.lower_is_better;
+
+      let isWinnerA = false;
+      let isWinnerB = false;
+
+      if (valueA !== null && valueB !== null) {
+        if (lowerIsBetter) {
+          isWinnerA = valueA < valueB;
+          isWinnerB = valueB < valueA;
+        } else {
+          isWinnerA = valueA > valueB;
+          isWinnerB = valueB > valueA;
+        }
+      }
+
+      if (isWinnerA) winsA++;
+      if (isWinnerB) winsB++;
+
+      const tdClassA = isWinnerA ? 'text-right winner' : 'text-right';
+      const tdClassB = isWinnerB ? 'text-left winner' : 'text-left';
+      const valueClassA = isWinnerA ? 'comp-table-value winner' : 'comp-table-value';
+      const valueClassB = isWinnerB ? 'comp-table-value winner' : 'comp-table-value';
+
+      return `
+        <tr>
+          <td class="${tdClassA}"><span class="${valueClassA}">${m.display_value_a}</span></td>
+          <td class="text-center">${m.metric}</td>
+          <td class="${tdClassB}"><span class="${valueClassB}">${m.display_value_b}</span></td>
+        </tr>
+      `;
+    }).join('');
+
+    // Prominent similarity badge at top
+    const similarityBadge = similarity ? `
+      <div class="comp-similarity-display">
+        <div class="comp-similarity-badge ${this.getSimilarityBadgeLevel(similarity.score)}">
+          ${Math.round(similarity.score)}% Similar
+        </div>
+      </div>
+    ` : '';
+
+    // Determine winner banner
+    let winnerBanner = '';
+    if (winsA > 0 || winsB > 0) {
+      let bannerText, bannerClass;
+      if (winsA > winsB) {
+        bannerText = `${playerA.name} leads ${winsA}-${winsB}`;
+        bannerClass = 'comp-winner-banner winner-a';
+      } else if (winsB > winsA) {
+        bannerText = `${playerB.name} leads ${winsB}-${winsA}`;
+        bannerClass = 'comp-winner-banner winner-b';
+      } else {
+        bannerText = `Tied ${winsA}-${winsB}`;
+        bannerClass = 'comp-winner-banner tie';
+      }
+      winnerBanner = `<div class="${bannerClass}">${bannerText}</div>`;
+    }
 
     return `
       <div class="scanlines"></div>
+      ${winnerBanner}
+      ${similarityBadge}
       <table class="comp-table" style="position: relative;">
         <thead>
           <tr>
-            <th class="text-right">${player.name}</th>
+            <th class="text-right">${playerA.name}</th>
             <th class="text-center">Metric</th>
-            <th class="text-left">${comp.name}</th>
+            <th class="text-left">${playerB.name}</th>
           </tr>
         </thead>
         <tbody>

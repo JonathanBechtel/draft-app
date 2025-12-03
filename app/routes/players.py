@@ -4,12 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.fields import CohortType, MetricCategory
+from app.models.fields import CohortType, MetricCategory, SimilarityDimension
 from app.models.head_to_head import HeadToHeadResponse
 from app.models.metrics import PlayerMetricsResponse
 from app.models.players import PlayerSearchResult
+from app.models.similarity import PlayerSimilarityResponse
 from app.services.head_to_head_service import get_head_to_head_comparison
 from app.services.metrics_service import get_player_metrics
+from app.services.similarity_service import get_similar_players
 from app.schemas.players_master import PlayerMaster
 from app.utils.db_async import get_session
 
@@ -130,3 +132,36 @@ async def head_to_head_comparison(
         raise
 
     return HeadToHeadResponse(**result)
+
+
+@router.get(
+    "/api/players/{slug}/similar",
+    response_model=PlayerSimilarityResponse,
+    tags=["players"],
+)
+async def get_similar_players_handler(
+    slug: str,
+    dimension: SimilarityDimension = Query(..., description="Similarity dimension"),
+    same_position: bool = Query(False, description="Filter to same position only"),
+    same_draft_year: bool = Query(False, description="Filter to same draft year"),
+    nba_only: bool = Query(False, description="Filter to active NBA players only"),
+    limit: int = Query(10, ge=1, le=20, description="Max similar players"),
+    db: AsyncSession = Depends(get_session),
+) -> PlayerSimilarityResponse:
+    """Return similar players for a given player and dimension."""
+    try:
+        result = await get_similar_players(
+            db=db,
+            slug=slug,
+            dimension=dimension,
+            same_position=same_position,
+            same_draft_year=same_draft_year,
+            nba_only=nba_only,
+            limit=limit,
+        )
+    except ValueError as exc:
+        if str(exc) == "player_not_found":
+            raise HTTPException(status_code=404, detail="Player not found") from exc
+        raise
+
+    return PlayerSimilarityResponse(**result)
