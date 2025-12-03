@@ -138,7 +138,7 @@ async def get_similar_players(
 
     # Build query
     stmt = (
-        select(
+        select(  # type: ignore[call-overload, misc]
             PlayerSimilarity.similarity_score,
             PlayerSimilarity.rank_within_anchor,
             PlayerSimilarity.shared_position,
