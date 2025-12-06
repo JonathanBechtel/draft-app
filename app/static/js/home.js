@@ -193,127 +193,114 @@ const ProspectsModule = {
 /**
  * ============================================================================
  * HEAD-TO-HEAD COMPARISON MODULE (VS ARENA)
- * Handles player comparison functionality with photos and category tabs
+ * Handles player comparison functionality with live API data
  * ============================================================================
  */
 const HeadToHeadModule = {
+  currentCategory: 'anthropometrics',
   selectedPlayerA: null,
   selectedPlayerB: null,
-  currentCategory: 'anthropometrics',
-
-  // Player data with full stats
-  playerData: {
-    'Cooper Flagg': {
-      img: 'https://placehold.co/200x200/d946ef/ffffff?text=Cooper+Flagg',
-      anthropometrics: { height: 81, weight: 205, wingspan: 86, standingReach: 108 },
-      combinePerformance: { verticalLeap: 38.5, lane: 10.8, shuttle: 2.9, bench: 12 },
-      advancedStats: { per: 28.4, ts: 61.2, orb: 12.8, drb: 18.5, ast: 23.1, stl: 3.2, blk: 5.8, tov: 12.4 }
-    },
-    'Ace Bailey': {
-      img: 'https://placehold.co/200x200/d946ef/ffffff?text=Ace+Bailey',
-      anthropometrics: { height: 79, weight: 196, wingspan: 83, standingReach: 104 },
-      combinePerformance: { verticalLeap: 41.0, lane: 10.5, shuttle: 2.8, bench: 10 },
-      advancedStats: { per: 26.8, ts: 58.7, orb: 8.4, drb: 15.2, ast: 18.6, stl: 2.8, blk: 3.1, tov: 14.2 }
-    },
-    'Zachary Rioux': {
-      img: 'https://placehold.co/200x200/d946ef/ffffff?text=Zachary+Rioux',
-      anthropometrics: { height: 84, weight: 245, wingspan: 89, standingReach: 112 },
-      combinePerformance: { verticalLeap: 32.5, lane: 11.8, shuttle: 3.2, bench: 15 },
-      advancedStats: { per: 24.2, ts: 64.5, orb: 18.2, drb: 22.4, ast: 8.5, stl: 1.4, blk: 8.9, tov: 9.8 }
-    },
-    'Matas Buzelis': {
-      img: 'https://placehold.co/200x200/d946ef/ffffff?text=Matas+Buzelis',
-      anthropometrics: { height: 82, weight: 210, wingspan: 87, standingReach: 109 },
-      combinePerformance: { verticalLeap: 36.0, lane: 11.0, shuttle: 3.0, bench: 11 },
-      advancedStats: { per: 25.6, ts: 59.8, orb: 10.2, drb: 16.8, ast: 20.4, stl: 2.5, blk: 4.2, tov: 11.6 }
-    },
-    'KJ Evans Jr.': {
-      img: 'https://placehold.co/200x200/d946ef/ffffff?text=KJ+Evans+Jr',
-      anthropometrics: { height: 80, weight: 215, wingspan: 84, standingReach: 106 },
-      combinePerformance: { verticalLeap: 35.0, lane: 11.2, shuttle: 3.1, bench: 13 },
-      advancedStats: { per: 23.8, ts: 56.4, orb: 14.6, drb: 19.2, ast: 14.8, stl: 2.1, blk: 3.8, tov: 10.2 }
-    }
-  },
-
-  // Category metrics definitions
-  categoryMetrics: {
-    anthropometrics: [
-      { key: 'height', label: 'Height', unit: '"', higherIsBetter: true },
-      { key: 'weight', label: 'Weight', unit: ' lbs', higherIsBetter: true },
-      { key: 'wingspan', label: 'Wingspan', unit: '"', higherIsBetter: true },
-      { key: 'standingReach', label: 'Standing Reach', unit: '"', higherIsBetter: true }
-    ],
-    combinePerformance: [
-      { key: 'verticalLeap', label: 'Vertical Leap', unit: '"', higherIsBetter: true },
-      { key: 'lane', label: 'Lane Agility', unit: 's', higherIsBetter: false },
-      { key: 'shuttle', label: '3/4 Shuttle', unit: 's', higherIsBetter: false },
-      { key: 'bench', label: 'Bench Press', unit: ' reps', higherIsBetter: true }
-    ],
-    advancedStats: [
-      { key: 'per', label: 'PER', unit: '', higherIsBetter: true },
-      { key: 'ts', label: 'TS%', unit: '%', higherIsBetter: true },
-      { key: 'orb', label: 'ORB%', unit: '%', higherIsBetter: true },
-      { key: 'drb', label: 'DRB%', unit: '%', higherIsBetter: true },
-      { key: 'ast', label: 'AST%', unit: '%', higherIsBetter: true },
-      { key: 'stl', label: 'STL%', unit: '%', higherIsBetter: true },
-      { key: 'blk', label: 'BLK%', unit: '%', higherIsBetter: true },
-      { key: 'tov', label: 'TOV%', unit: '%', higherIsBetter: false }
-    ]
-  },
+  players: {},
+  cache: {},
+  searchTimeoutA: null,
+  searchTimeoutB: null,
 
   /**
    * Initialize Head-to-Head module
    */
-  init() {
-    const playerASelect = document.getElementById('playerA');
-    if (!playerASelect) return;
+  async init() {
+    const playerAInput = document.getElementById('h2hPlayerA');
+    if (!playerAInput) return;
 
-    this.populateSelectors();
-    this.setupEventListeners();
-    this.renderComparison();
+    try {
+      await this.loadPlayers();
+      this.setupEventListeners();
+
+      // Pre-select default players for initial display
+      const defaultA = 'cooper-flagg';
+      const defaultB = 'ace-bailey';
+      if (this.players[defaultA] && this.players[defaultB]) {
+        this.selectedPlayerA = defaultA;
+        this.selectedPlayerB = defaultB;
+        document.getElementById('h2hPlayerA').value = this.players[defaultA].name;
+        document.getElementById('h2hPlayerB').value = this.players[defaultB].name;
+        await this.renderComparison();
+      }
+    } catch (err) {
+      console.error('Failed to initialize head-to-head module', err);
+    }
   },
 
   /**
-   * Populate player dropdown selectors
+   * Fetch available players for selection
    */
-  populateSelectors() {
-    const playerASelect = document.getElementById('playerA');
-    const playerBSelect = document.getElementById('playerB');
-
-    Object.keys(this.playerData).forEach((playerName) => {
-      const optionA = document.createElement('option');
-      optionA.value = playerName;
-      optionA.textContent = playerName;
-      playerASelect.appendChild(optionA);
-
-      const optionB = document.createElement('option');
-      optionB.value = playerName;
-      optionB.textContent = playerName;
-      playerBSelect.appendChild(optionB);
-    });
-
-    // Set default selections
-    const playerNames = Object.keys(this.playerData);
-    playerASelect.value = playerNames[0];
-    playerBSelect.value = playerNames[1];
-    this.selectedPlayerA = playerNames[0];
-    this.selectedPlayerB = playerNames[1];
+  async loadPlayers() {
+    try {
+      const resp = await fetch('/players');
+      if (!resp.ok) return;
+      const players = await resp.json();
+      players.forEach((p) => {
+        this.players[p.slug] = {
+          slug: p.slug,
+          name: p.display_name,
+          photo: `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(p.display_name)}`
+        };
+      });
+    } catch (err) {
+      console.error('Failed to load players list', err);
+    }
   },
 
   /**
-   * Setup event listeners
+   * Setup event listeners for search inputs and tabs
    */
   setupEventListeners() {
-    // Player selectors
-    document.getElementById('playerA').addEventListener('change', (e) => {
-      this.selectedPlayerA = e.target.value;
-      this.renderComparison();
-    });
+    const inputA = document.getElementById('h2hPlayerA');
+    const inputB = document.getElementById('h2hPlayerB');
+    const resultsA = document.getElementById('h2hPlayerAResults');
+    const resultsB = document.getElementById('h2hPlayerBResults');
 
-    document.getElementById('playerB').addEventListener('change', (e) => {
-      this.selectedPlayerB = e.target.value;
-      this.renderComparison();
-    });
+    // Player A search input
+    if (inputA && resultsA) {
+      inputA.addEventListener('input', (e) => {
+        const term = e.target.value.trim();
+        if (this.searchTimeoutA) clearTimeout(this.searchTimeoutA);
+        this.searchTimeoutA = setTimeout(() => this.searchPlayers(term, 'A'), 150);
+      });
+
+      resultsA.addEventListener('click', (e) => {
+        const option = e.target.closest('[data-slug]');
+        if (!option) return;
+        const slug = option.getAttribute('data-slug');
+        const name = option.getAttribute('data-name');
+        this.selectedPlayerA = slug;
+        inputA.value = name;
+        resultsA.innerHTML = '';
+        resultsA.classList.remove('active');
+        this.renderComparison();
+      });
+    }
+
+    // Player B search input
+    if (inputB && resultsB) {
+      inputB.addEventListener('input', (e) => {
+        const term = e.target.value.trim();
+        if (this.searchTimeoutB) clearTimeout(this.searchTimeoutB);
+        this.searchTimeoutB = setTimeout(() => this.searchPlayers(term, 'B'), 150);
+      });
+
+      resultsB.addEventListener('click', (e) => {
+        const option = e.target.closest('[data-slug]');
+        if (!option) return;
+        const slug = option.getAttribute('data-slug');
+        const name = option.getAttribute('data-name');
+        this.selectedPlayerB = slug;
+        inputB.value = name;
+        resultsB.innerHTML = '';
+        resultsB.classList.remove('active');
+        this.renderComparison();
+      });
+    }
 
     // Category tabs
     const tabs = document.querySelectorAll('.h2h-tab');
@@ -328,108 +315,210 @@ const HeadToHeadModule = {
   },
 
   /**
-   * Calculate similarity score between two players
+   * Search players via API and render dropdown
+   * @param {string} term - Search term
+   * @param {string} target - 'A' or 'B' indicating which player input
    */
-  calculateSimilarity(playerAData, playerBData) {
-    const metrics = this.categoryMetrics[this.currentCategory];
-    let totalDiff = 0;
-    let count = 0;
+  async searchPlayers(term, target) {
+    const results = document.getElementById(`h2hPlayer${target}Results`);
+    if (!results) return;
 
-    metrics.forEach((metric) => {
-      const valA = playerAData[metric.key];
-      const valB = playerBData[metric.key];
-      if (valA !== undefined && valB !== undefined) {
-        const diff = Math.abs(valA - valB);
-        const avg = (valA + valB) / 2;
-        const percentDiff = avg !== 0 ? (diff / avg) * 100 : 0;
-        totalDiff += percentDiff;
-        count++;
+    if (term.length < 2) {
+      results.innerHTML = '';
+      results.classList.remove('active');
+      return;
+    }
+
+    try {
+      const resp = await fetch(`/players/search?q=${encodeURIComponent(term)}`);
+      if (!resp.ok) return;
+      const matches = await resp.json();
+
+      if (!matches.length) {
+        results.innerHTML = '<div class="search-results-empty">No matches</div>';
+        results.classList.add('active');
+        return;
       }
-    });
 
-    const avgDiff = count > 0 ? totalDiff / count : 0;
-    const similarity = Math.max(0, 100 - avgDiff);
-    return Math.round(similarity);
+      results.innerHTML = matches
+        .map(
+          (p) => `
+          <div class="search-result-item" data-slug="${p.slug}" data-name="${p.display_name}">
+            <div class="search-result-name">${p.display_name}</div>
+            <div class="search-result-school">${p.school || ''}</div>
+          </div>`
+        )
+        .join('');
+      results.classList.add('active');
+    } catch (err) {
+      console.error('Player search failed', err);
+    }
   },
 
   /**
-   * Render the complete comparison
+   * Map UI category to API category format
    */
-  renderComparison() {
+  mapCategoryToApi() {
+    const map = {
+      anthropometrics: 'anthropometrics',
+      combinePerformance: 'combine_performance',
+      shooting: 'shooting'
+    };
+    return map[this.currentCategory] || 'anthropometrics';
+  },
+
+  /**
+   * Generate cache key for current comparison
+   */
+  cacheKey() {
+    return `${this.selectedPlayerA}|${this.selectedPlayerB}|${this.currentCategory}`;
+  },
+
+  /**
+   * Fetch comparison data from API with caching
+   */
+  async fetchComparison() {
+    if (!this.selectedPlayerA || !this.selectedPlayerB) return null;
+    const key = this.cacheKey();
+    if (this.cache[key]) return this.cache[key];
+
+    const params = new URLSearchParams({
+      player_a: this.selectedPlayerA,
+      player_b: this.selectedPlayerB,
+      category: this.mapCategoryToApi()
+    });
+
+    try {
+      const resp = await fetch(`/api/players/head-to-head?${params.toString()}`);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      this.cache[key] = data;
+      return data;
+    } catch (err) {
+      console.error('Failed to fetch head-to-head data', err);
+      return null;
+    }
+  },
+
+  /**
+   * Resolve player photo URL from slug
+   */
+  resolvePhoto(slug) {
+    const player = this.players[slug];
+    if (player && player.photo) return player.photo;
+    const name = player ? player.name : slug;
+    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+  },
+
+  /**
+   * Resolve player name from slug
+   */
+  resolveName(slug) {
+    const player = this.players[slug];
+    return player ? player.name : slug;
+  },
+
+  /**
+   * Render the complete comparison from API data
+   */
+  async renderComparison() {
     if (!this.selectedPlayerA || !this.selectedPlayerB) return;
 
-    const playerAData = this.playerData[this.selectedPlayerA][this.currentCategory];
-    const playerBData = this.playerData[this.selectedPlayerB][this.currentCategory];
+    const data = await this.fetchComparison();
+    const comparisonBody = document.getElementById('h2hComparisonBody');
+    const winnerTarget = document.getElementById('h2hWinnerDeclaration');
+    if (!data || !comparisonBody || !winnerTarget) return;
 
-    // Update photos
-    document.getElementById('h2hPhotoA').src = this.playerData[this.selectedPlayerA].img;
-    document.getElementById('h2hPhotoB').src = this.playerData[this.selectedPlayerB].img;
-    document.getElementById('h2hPhotoNameA').textContent = this.selectedPlayerA;
-    document.getElementById('h2hPhotoNameB').textContent = this.selectedPlayerB;
+    // Update photos and names
+    document.getElementById('h2hPhotoA').src = this.resolvePhoto(this.selectedPlayerA);
+    document.getElementById('h2hPhotoB').src = this.resolvePhoto(this.selectedPlayerB);
+    document.getElementById('h2hPhotoNameA').textContent = this.resolveName(this.selectedPlayerA);
+    document.getElementById('h2hPhotoNameB').textContent = this.resolveName(this.selectedPlayerB);
+    document.getElementById('h2hHeaderA').textContent = this.resolveName(this.selectedPlayerA);
+    document.getElementById('h2hHeaderB').textContent = this.resolveName(this.selectedPlayerB);
 
     // Update similarity badge
-    const similarity = this.calculateSimilarity(playerAData, playerBData);
-    document.getElementById('h2hSimilarityBadge').textContent = `${similarity}% Similar`;
+    const badge = document.getElementById('h2hSimilarityBadge');
+    if (badge) {
+      if (data.similarity && data.similarity.score !== undefined && data.similarity.score !== null) {
+        badge.textContent = `${Math.round(data.similarity.score)}% Similar`;
+      } else {
+        badge.textContent = 'No similarity available';
+      }
+    }
 
-    // Update table headers
-    document.getElementById('headerA').textContent = this.selectedPlayerA;
-    document.getElementById('headerB').textContent = this.selectedPlayerB;
+    const metrics = (data.metrics || []).filter(
+      (m) =>
+        m.raw_value_a !== null &&
+        m.raw_value_a !== undefined &&
+        m.raw_value_b !== null &&
+        m.raw_value_b !== undefined
+    );
 
-    // Render comparison table
-    const metrics = this.categoryMetrics[this.currentCategory];
+    if (!metrics.length) {
+      comparisonBody.innerHTML =
+        '<tr><td colspan="3" class="text-center empty-state">No shared metrics available.</td></tr>';
+      winnerTarget.innerHTML = '';
+      return;
+    }
+
     let rowsHTML = '';
     let winsA = 0;
     let winsB = 0;
 
     metrics.forEach((metric) => {
-      const valueA = playerAData[metric.key];
-      const valueB = playerBData[metric.key];
+      const valueA = metric.raw_value_a;
+      const valueB = metric.raw_value_b;
+      const lowerIsBetter = metric.lower_is_better;
 
-      // Determine winner based on metric type
-      let isWinnerA, isWinnerB;
-      if (metric.higherIsBetter) {
-        isWinnerA = valueA > valueB;
-        isWinnerB = valueB > valueA;
-      } else {
-        isWinnerA = valueA < valueB;
-        isWinnerB = valueB < valueA;
+      let isWinnerA = false;
+      let isWinnerB = false;
+      if (valueA !== null && valueB !== null) {
+        if (lowerIsBetter) {
+          isWinnerA = valueA < valueB;
+          isWinnerB = valueB < valueA;
+        } else {
+          isWinnerA = valueA > valueB;
+          isWinnerB = valueB > valueA;
+        }
       }
 
       if (isWinnerA) winsA++;
       if (isWinnerB) winsB++;
 
-      // Build classes for styling with fuchsia winner theme
       const classA = isWinnerA ? 'h2h-value winner' : 'h2h-value loser';
       const classB = isWinnerB ? 'h2h-value winner' : 'h2h-value loser';
+      const displayA = metric.display_value_a ?? '—';
+      const displayB = metric.display_value_b ?? '—';
+      const unit = metric.unit || '';
 
       rowsHTML += `
         <tr>
-          <td class="text-right ${classA}">${valueA}${metric.unit}</td>
-          <td class="text-center">${metric.label}</td>
-          <td class="text-left ${classB}">${valueB}${metric.unit}</td>
+          <td class="text-right ${classA}">${displayA}${unit}</td>
+          <td class="text-center">${metric.metric}</td>
+          <td class="text-left ${classB}">${displayB}${unit}</td>
         </tr>
       `;
     });
 
-    document.getElementById('comparisonBody').innerHTML = rowsHTML;
+    comparisonBody.innerHTML = rowsHTML;
 
-    // Render winner banner
     const totalMetrics = metrics.length;
     let bannerText = '';
     let bannerClass = '';
 
     if (winsA > winsB) {
-      bannerText = `🏆 ${this.selectedPlayerA} wins — ${winsA}/${totalMetrics} categories`;
+      bannerText = `🏆 ${this.resolveName(this.selectedPlayerA)} wins — ${winsA}/${totalMetrics} categories`;
       bannerClass = 'h2h-winner-banner winner-a';
     } else if (winsB > winsA) {
-      bannerText = `🏆 ${this.selectedPlayerB} wins — ${winsB}/${totalMetrics} categories`;
+      bannerText = `🏆 ${this.resolveName(this.selectedPlayerB)} wins — ${winsB}/${totalMetrics} categories`;
       bannerClass = 'h2h-winner-banner winner-b';
     } else {
       bannerText = `⚔️ Tie — ${winsA}/${totalMetrics} categories each`;
       bannerClass = 'h2h-winner-banner tie';
     }
 
-    document.getElementById('winnerDeclaration').innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
+    winnerTarget.innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
   }
 };
 
