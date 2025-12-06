@@ -30,6 +30,7 @@ class PlayerMetricsResult(dict):
 _CATEGORY_TO_SOURCE: dict[MetricCategory, MetricSource] = {
     MetricCategory.anthropometrics: MetricSource.combine_anthro,
     MetricCategory.combine_performance: MetricSource.combine_agility,
+    MetricCategory.shooting: MetricSource.combine_shooting,
     MetricCategory.advanced_stats: MetricSource.advanced_stats,
 }
 

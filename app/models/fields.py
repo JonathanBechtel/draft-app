@@ -43,6 +43,7 @@ class CohortType(str, Enum):
 class MetricCategory(str, Enum):
     anthropometrics = "anthropometrics"
     combine_performance = "combine_performance"
+    shooting = "shooting"
     advanced_stats = "advanced_stats"
 
 
