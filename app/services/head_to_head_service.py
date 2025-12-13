@@ -13,6 +13,7 @@ from app.models.fields import (
 )
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
+from app.schemas.combine_shooting import CombineShooting
 from app.schemas.metrics import MetricSnapshot, PlayerSimilarity
 from app.schemas.players_master import PlayerMaster
 from app.schemas.seasons import Season
@@ -22,12 +23,14 @@ from app.services.metrics_service import format_metric_value
 CATEGORY_TO_SOURCE: dict[MetricCategory, MetricSource] = {
     MetricCategory.anthropometrics: MetricSource.combine_anthro,
     MetricCategory.combine_performance: MetricSource.combine_agility,
+    MetricCategory.shooting: MetricSource.combine_shooting,
     MetricCategory.advanced_stats: MetricSource.advanced_stats,
 }
 
 CATEGORY_TO_SIMILARITY_DIMENSION: dict[MetricCategory, SimilarityDimension] = {
     MetricCategory.anthropometrics: SimilarityDimension.anthro,
     MetricCategory.combine_performance: SimilarityDimension.combine,
+    MetricCategory.shooting: SimilarityDimension.shooting,
 }
 
 ANTHRO_SPECS: Tuple[dict, ...] = (
@@ -115,9 +118,50 @@ AGILITY_SPECS: Tuple[dict, ...] = (
     },
 )
 
+SHOOTING_SPECS: Tuple[dict, ...] = (
+    {
+        "metric_key": "off_dribble",
+        "display": "Off-Dribble",
+        "unit": None,
+        "lower": False,
+    },
+    {"metric_key": "spot_up", "display": "Spot-Up", "unit": None, "lower": False},
+    {
+        "metric_key": "three_point_star",
+        "display": "3PT Star Drill",
+        "unit": None,
+        "lower": False,
+    },
+    {
+        "metric_key": "midrange_star",
+        "display": "Mid-Range Star",
+        "unit": None,
+        "lower": False,
+    },
+    {
+        "metric_key": "three_point_side",
+        "display": "3PT Side Drill",
+        "unit": None,
+        "lower": False,
+    },
+    {
+        "metric_key": "midrange_side",
+        "display": "Mid-Range Side",
+        "unit": None,
+        "lower": False,
+    },
+    {
+        "metric_key": "free_throw",
+        "display": "Free Throws",
+        "unit": None,
+        "lower": False,
+    },
+)
+
 CATEGORY_SPECS: dict[MetricCategory, Tuple[dict, ...]] = {
     MetricCategory.anthropometrics: ANTHRO_SPECS,
     MetricCategory.combine_performance: AGILITY_SPECS,
+    MetricCategory.shooting: SHOOTING_SPECS,
 }
 
 
@@ -162,15 +206,44 @@ async def _select_similarity_snapshot(
     return result.scalar_one_or_none()
 
 
+def _get_table_for_category(category: MetricCategory):
+    """Return the SQLModel table class for a given category."""
+    if category == MetricCategory.anthropometrics:
+        return CombineAnthro
+    elif category == MetricCategory.shooting:
+        return CombineShooting
+    else:
+        return CombineAgility
+
+
+def _compute_shooting_percentages(
+    row_data: Dict[str, Optional[float]],
+) -> Dict[str, Optional[float]]:
+    """Convert FGM/FGA pairs to shooting percentages for each drill."""
+    from app.schemas.combine_shooting import SHOOTING_DRILL_COLUMNS
+
+    result: Dict[str, Optional[float]] = {}
+    for drill_key, (fgm_col, fga_col) in SHOOTING_DRILL_COLUMNS.items():
+        fgm = row_data.get(fgm_col)
+        fga = row_data.get(fga_col)
+        if fgm is not None and fga is not None and fga > 0:
+            pct = (fgm / fga) * 100
+            result[drill_key] = pct
+            # Also store FGM/FGA for display formatting
+            result[f"{drill_key}_fgm"] = fgm
+            result[f"{drill_key}_fga"] = fga
+        else:
+            result[drill_key] = None
+    return result
+
+
 async def _fetch_metric_rows(
     db: AsyncSession,
     category: MetricCategory,
     player_ids: Tuple[int, int],
 ) -> Dict[int, Dict[str, Optional[float]]]:
     """Fetch raw combine metrics for each player keyed by metric_key."""
-    table = (
-        CombineAnthro if category == MetricCategory.anthropometrics else CombineAgility
-    )
+    table = _get_table_for_category(category)
     values: Dict[int, Dict[str, Optional[float]]] = {}
 
     for player_id in player_ids:
@@ -186,8 +259,26 @@ async def _fetch_metric_rows(
         if not row:
             values[player_id] = {}
             continue
-        values[player_id] = row.dict()
+        row_data = row.dict()
+        if category == MetricCategory.shooting:
+            # Convert FGM/FGA pairs to percentages
+            values[player_id] = _compute_shooting_percentages(row_data)
+        else:
+            values[player_id] = row_data
     return values
+
+
+def _format_shooting_display(
+    drill_key: str,
+    pct: float,
+    player_metrics: Dict[str, Optional[float]],
+) -> str:
+    """Format shooting drill as 'FGM/FGA (pct%)'."""
+    fgm = player_metrics.get(f"{drill_key}_fgm")
+    fga = player_metrics.get(f"{drill_key}_fga")
+    if fgm is not None and fga is not None:
+        return f"{int(fgm)}/{int(fga)} ({pct:.0f}%)"
+    return f"{pct:.0f}%"
 
 
 def _build_shared_metrics(
@@ -204,13 +295,28 @@ def _build_shared_metrics(
         raw_b = metrics.get(player_b_id, {}).get(key)
         if raw_a is None or raw_b is None:
             continue
-        display_a, unit_a = format_metric_value(key, spec["unit"], raw_a)
-        display_b, unit_b = format_metric_value(key, spec["unit"], raw_b)
+
+        # Handle shooting display format differently
+        display_a: Optional[str]
+        display_b: Optional[str]
+        unit: str
+        if category == MetricCategory.shooting:
+            display_a = _format_shooting_display(
+                key, raw_a, metrics.get(player_a_id, {})
+            )
+            display_b = _format_shooting_display(
+                key, raw_b, metrics.get(player_b_id, {})
+            )
+            unit = ""
+        else:
+            display_a, unit = format_metric_value(key, spec["unit"], raw_a)
+            display_b, _ = format_metric_value(key, spec["unit"], raw_b)
+
         shared.append(
             {
                 "metric": spec["display"],
                 "metric_key": key,
-                "unit": unit_a,
+                "unit": unit,
                 "raw_value_a": raw_a,
                 "raw_value_b": raw_b,
                 "display_value_a": display_a,

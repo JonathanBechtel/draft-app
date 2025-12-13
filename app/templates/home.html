@@ -105,14 +105,20 @@
     <div class="h2h-controls-row">
       <!-- Player A Selector -->
       <div class="h2h-control">
-        <label class="h2h-label" for="playerA">Player A</label>
-        <select id="playerA" class="h2h-select"></select>
+        <label class="h2h-label" for="h2hPlayerA">Player A</label>
+        <div class="search-box">
+          <input id="h2hPlayerA" class="h2h-select" type="text" placeholder="Search players…" autocomplete="off" />
+          <div id="h2hPlayerAResults" class="search-results"></div>
+        </div>
       </div>
 
       <!-- Player B Selector -->
       <div class="h2h-control">
-        <label class="h2h-label" for="playerB">Player B</label>
-        <select id="playerB" class="h2h-select"></select>
+        <label class="h2h-label" for="h2hPlayerB">Player B</label>
+        <div class="search-box">
+          <input id="h2hPlayerB" class="h2h-select" type="text" placeholder="Search players…" autocomplete="off" />
+          <div id="h2hPlayerBResults" class="search-results"></div>
+        </div>
       </div>
     </div>
 
@@ -120,7 +126,7 @@
     <div class="h2h-tabs">
       <button class="h2h-tab active" data-category="anthropometrics">Anthropometrics</button>
       <button class="h2h-tab" data-category="combinePerformance">Combine Performance</button>
-      <button class="h2h-tab" data-category="advancedStats">Advanced Stats</button>
+      <button class="h2h-tab" data-category="shooting">Shooting</button>
     </div>
 
     <!-- VS Arena card -->
@@ -153,18 +159,18 @@
             <table>
               <thead>
                 <tr>
-                  <th id="headerA" class="text-right"></th>
+                  <th id="h2hHeaderA" class="text-right"></th>
                   <th class="text-center">Metric</th>
-                  <th id="headerB" class="text-left"></th>
+                  <th id="h2hHeaderB" class="text-left"></th>
                 </tr>
               </thead>
-              <tbody id="comparisonBody"></tbody>
+              <tbody id="h2hComparisonBody"></tbody>
             </table>
           </div>
         </div>
 
         <!-- Winner Declaration -->
-        <div id="winnerDeclaration"></div>
+        <div id="h2hWinnerDeclaration"></div>
       </div>
     </div>
   </section>

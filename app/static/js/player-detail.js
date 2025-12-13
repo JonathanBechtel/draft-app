@@ -184,6 +184,7 @@ const PerformanceModule = {
     const map = {
       anthropometrics: 'anthropometrics',
       combinePerformance: 'combine_performance',
+      shooting: 'shooting',
       advancedStats: 'advanced_stats',
     };
     return map[this.currentCategory] || 'anthropometrics';
@@ -382,7 +383,7 @@ const PlayerComparisonsModule = {
     const map = {
       anthropometrics: 'anthropometrics',
       combinePerformance: 'combine_performance',
-      shooting: 'combine_performance'
+      shooting: 'shooting'
     };
     return map[this.currentType] || 'anthropometrics';
   },
@@ -841,7 +842,8 @@ const HeadToHeadModule = {
   mapCategoryToApi() {
     const map = {
       anthropometrics: 'anthropometrics',
-      combinePerformance: 'combine_performance'
+      combinePerformance: 'combine_performance',
+      shooting: 'shooting'
     };
     return map[this.currentCategory] || 'anthropometrics';
   },

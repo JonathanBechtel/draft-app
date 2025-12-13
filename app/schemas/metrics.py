@@ -61,18 +61,23 @@ class MetricDefinition(SQLModel, table=True):  # type: ignore[call-arg]
 class MetricSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
     __tablename__ = "metric_snapshots"
     __table_args__ = (
-        # Unique version within a (source, run_key) group
+        # Unique version within a (cohort, source, run_key) group
         UniqueConstraint(
+            "cohort",
             "source",
             "run_key",
             "version",
             name="uq_metric_snapshots_src_run_ver",
         ),
-        # Partial unique index to enforce one current per (source, run_key)
+        # Partial unique index to enforce one current per snapshot "context":
+        # (cohort, source, season_id, position_scope_parent, position_scope_fine)
         Index(
             "uq_metric_snapshots_current",
+            "cohort",
             "source",
-            "run_key",
+            text("coalesce(season_id, -1)"),
+            text("coalesce(position_scope_parent, '__none__')"),
+            text("coalesce(position_scope_fine, '__none__')"),
             unique=True,
             postgresql_where=text("is_current = true"),
         ),
@@ -115,9 +120,14 @@ class MetricSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, description="Optional commentary about the run"
     )
     # Versioning and selection controls
-    version: int = Field(description="Monotonic version within (source, run_key)")
+    version: int = Field(
+        description="Monotonic version within (cohort, source, run_key)"
+    )
     is_current: bool = Field(
-        default=False, description="Marks the active snapshot within (source, run_key)"
+        default=False,
+        description=(
+            "Marks the active snapshot within (cohort, source, season_id, position scope)"
+        ),
     )
 
 
