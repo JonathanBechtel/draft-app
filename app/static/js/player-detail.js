@@ -383,7 +383,7 @@ const PlayerComparisonsModule = {
     const map = {
       anthropometrics: 'anthropometrics',
       combinePerformance: 'combine_performance',
-      shooting: 'combine_performance'
+      shooting: 'shooting'
     };
     return map[this.currentType] || 'anthropometrics';
   },

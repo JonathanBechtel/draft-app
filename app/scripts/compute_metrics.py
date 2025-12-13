@@ -186,7 +186,7 @@ SHOOTING_SPECS: Tuple[MetricSpec, ...] = tuple(
         metric_key=f"{drill}_fg_pct",
         display_name=f"{label} FG%",
         source=MetricSource.combine_shooting,
-        category=MetricCategory.combine_performance,
+        category=MetricCategory.shooting,
         column="fg_pct",
         unit="percent",
         drill=drill,
@@ -925,7 +925,10 @@ class MetricRunner:
 
     async def _delete_existing_run(self, run_key_base: str) -> None:
         result = await self.session.execute(
-            select(MetricSnapshot).where(MetricSnapshot.run_key == run_key_base)
+            select(MetricSnapshot).where(
+                MetricSnapshot.run_key == run_key_base,
+                MetricSnapshot.cohort == self.cohort,  # type: ignore[arg-type]
+            )
         )
         snapshots = result.scalars().all()
         if not snapshots:
@@ -946,7 +949,9 @@ class MetricRunner:
     async def _next_version(self, source: MetricSource, run_key: str) -> int:
         result = await self.session.execute(
             select(func.max(MetricSnapshot.version)).where(
-                MetricSnapshot.source == source, MetricSnapshot.run_key == run_key
+                MetricSnapshot.source == source,  # type: ignore[arg-type]
+                MetricSnapshot.run_key == run_key,
+                MetricSnapshot.cohort == self.cohort,  # type: ignore[arg-type]
             )
         )
         max_ver = result.scalar()

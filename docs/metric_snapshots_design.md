@@ -9,10 +9,11 @@ This document captures the agreed design for metric snapshots: a human‑readabl
 - Enable clean deletion of erroneous runs with `ON DELETE CASCADE`.
 
 ## Grouping & Identity
-- Group key: `(source, run_key)`
+- Versioning group: `(cohort, source, run_key)`
   - `source` is `MetricSource` (e.g., `combine_anthro`, `combine_agility`, `combine_shooting`).
-  - `run_key` encodes the cohort and arguments for the run (see below).
+  - `run_key` encodes arguments for the run (see below); cohort is captured in its own column.
 - A snapshot contains many metric definitions for a single `source`.
+- Current-selection context (what the app/UI selects against): `(cohort, source, season_id, position scope)`.
 
 ## Run Key Format (Human‑Readable)
 - Canonical format (fixed segment order, no timestamps):
@@ -29,33 +30,37 @@ This document captures the agreed design for metric snapshots: a human‑readabl
 - Matrix baseline flag (`--matrix-skip-baseline`) affects which snapshots are generated (baseline present or not), not the run key shape.
 
 ## Snapshot Columns (additions)
-- `version INT NOT NULL` — monotonically increasing within `(source, run_key)`.
-- `is_current BOOLEAN NOT NULL DEFAULT false` — marks the single snapshot in use within `(source, run_key)`.
+- `version INT NOT NULL` — monotonically increasing within `(cohort, source, run_key)`.
+- `is_current BOOLEAN NOT NULL DEFAULT false` — marks the single snapshot in use within a context (cohort + season + position scope).
 
 ## Constraints (Postgres)
-- Exactly one current per group:
-  - Partial unique index on `(source, run_key)` where `is_current = true`.
+- Exactly one current per context:
+  - Partial unique index on `(cohort, source, season_id, position_scope_parent, position_scope_fine)` where `is_current = true`.
 - Version uniqueness:
-  - Unique constraint on `(source, run_key, version)`.
+  - Unique constraint on `(cohort, source, run_key, version)`.
 - No uniqueness on `run_key` alone. Identical args across time are allowed and become higher `version` values within the same group.
 - No extra supporting indexes are required (table is small).
 
 ## Selection Semantics
-- Canonical app query: select the current snapshot for a configuration
-  - `WHERE source = :source AND run_key = :run_key AND is_current = true`.
-- Optional fallback: if there is no current, select `ORDER BY version DESC LIMIT 1`.
+- Canonical app query: select the current snapshot for a configuration (cohort + optional season + position scope)
+  - Filter to the desired context and select `is_current = true`.
+- Optional fallback: if there is no current, select the newest snapshot (e.g., `ORDER BY calculated_at DESC LIMIT 1`).
 
 ## Versioning & Promotion
-- Version is scoped to `(source, run_key)`.
+- Version is scoped to `(cohort, source, run_key)`.
 - Auto‑increment policy (choose at implementation time):
   - App‑managed: transactionally `SELECT max(version)` for the group and insert `max+1` (backed by the unique constraint).
   - DB‑managed: a small `BEFORE INSERT` trigger that sets `NEW.version = (SELECT coalesce(max(version),0)+1 FROM metric_snapshots WHERE source=NEW.source AND run_key=NEW.run_key)`.
 - Promotion to current (atomic):
-  - Single statement:
+  - Single statement (context-scoped):
     ```sql
     UPDATE metric_snapshots
     SET is_current = CASE WHEN id = :target_id THEN true ELSE false END
-    WHERE source = :source AND run_key = :run_key;
+    WHERE cohort = :cohort
+      AND source = :source
+      AND season_id IS NOT DISTINCT FROM :season_id
+      AND position_scope_parent IS NOT DISTINCT FROM :position_scope_parent
+      AND position_scope_fine IS NOT DISTINCT FROM :position_scope_fine;
     ```
   - Or two statements inside a transaction: demote current → promote target.
 - Current does not have to be the highest version (enables rollbacks).
@@ -114,4 +119,3 @@ This document captures the agreed design for metric snapshots: a human‑readabl
 - Versioning per `(source, run_key)` captures legitimate re‑runs without conflicts.
 - `is_current` + partial unique index provides an unambiguous selection for the app.
 - `ON DELETE CASCADE` enables clean removal; trigger prevents accidental deletion of the live snapshot.
-

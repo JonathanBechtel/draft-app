@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Iterable, List, Optional, Sequence, Tuple
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,6 +57,55 @@ async def _resolve_parent_scope(db: AsyncSession, player_id: int) -> Optional[st
     parents: Optional[Sequence[str]] = row.get("parents")
     if parents:
         # Use the first parent token
+        return list(parents)[0]
+
+    raw_position: Optional[str] = row.get("raw_position")
+    if raw_position:
+        _, derived_parents = derive_position_tags(raw_position)
+        if derived_parents:
+            return derived_parents[0]
+    return None
+
+
+async def _resolve_parent_scope_for_source(
+    db: AsyncSession,
+    *,
+    player_id: int,
+    source: MetricSource,
+    season_id: Optional[int],
+) -> Optional[str]:
+    """Resolve parent scope from the source table used to compute the snapshot.
+
+    We prefer the position attached to the underlying combine row (anthro/agility/shooting)
+    because snapshot cohorts are filtered by those tables during metric computation.
+    """
+    table: Any = {
+        MetricSource.combine_anthro: CombineAnthro,
+        MetricSource.combine_agility: CombineAgility,
+        MetricSource.combine_shooting: CombineShooting,
+    }.get(source)
+    if table is None:
+        return await _resolve_parent_scope(db, player_id)
+
+    stmt = (
+        select(table.raw_position, Position.parents)  # type: ignore[call-overload]
+        .select_from(table)
+        .outerjoin(Position, Position.id == table.position_id)  # type: ignore[attr-defined]
+        .join(Season, Season.id == table.season_id)  # type: ignore[attr-defined]
+        .where(table.player_id == player_id)  # type: ignore[attr-defined]
+        .order_by(desc(Season.start_year))  # type: ignore[arg-type]
+        .limit(1)
+    )
+    if season_id is not None:
+        stmt = stmt.where(table.season_id == season_id)  # type: ignore[attr-defined,arg-type]
+
+    result = await db.execute(stmt)
+    row = result.mappings().first()
+    if not row:
+        return None
+
+    parents: Optional[Sequence[str]] = row.get("parents")
+    if parents:
         return list(parents)[0]
 
     raw_position: Optional[str] = row.get("raw_position")
@@ -154,12 +203,20 @@ async def get_player_metrics(
     if source is None:
         return PlayerMetricsResult(metrics=[], snapshot_id=None)
 
-    parent_scope = (
-        await _resolve_parent_scope(db, player_id) if position_adjusted else None
-    )
     effective_season_id = season_id
     if cohort == CohortType.current_draft and effective_season_id is None:
         effective_season_id = await _latest_season_id(db, player_id)
+
+    parent_scope = (
+        await _resolve_parent_scope_for_source(
+            db,
+            player_id=player_id,
+            source=source,
+            season_id=effective_season_id,
+        )
+        if position_adjusted
+        else None
+    )
 
     snapshot = await _select_snapshot(
         db,
@@ -173,27 +230,47 @@ async def get_player_metrics(
     if not snapshot:
         return PlayerMetricsResult(metrics=[], snapshot_id=None, population_size=None)
 
-    stmt = (
-        select(
-            MetricDefinition.metric_key,
-            MetricDefinition.display_name,
-            MetricDefinition.unit,
-            PlayerMetricValue.raw_value,
-            PlayerMetricValue.percentile,
-            PlayerMetricValue.rank,
-        )  # type: ignore[call-overload]
-        .join(
-            MetricDefinition,
-            MetricDefinition.id == PlayerMetricValue.metric_definition_id,
+    def _rows_stmt(snapshot_id: int):
+        return (
+            select(
+                MetricDefinition.metric_key,
+                MetricDefinition.display_name,
+                MetricDefinition.unit,
+                PlayerMetricValue.raw_value,
+                PlayerMetricValue.percentile,
+                PlayerMetricValue.rank,
+            )  # type: ignore[call-overload]
+            .join(
+                MetricDefinition,
+                MetricDefinition.id == PlayerMetricValue.metric_definition_id,
+            )
+            .where(PlayerMetricValue.snapshot_id == snapshot_id)
+            .where(PlayerMetricValue.player_id == player_id)
+            .where(MetricDefinition.category == category)  # type: ignore[arg-type]
+            .order_by(MetricDefinition.display_name)
         )
-        .where(PlayerMetricValue.snapshot_id == snapshot.id)  # type: ignore[arg-type]
-        .where(PlayerMetricValue.player_id == player_id)
-        .where(MetricDefinition.category == category)  # type: ignore[arg-type]
-        .order_by(MetricDefinition.display_name)
-    )
 
-    result = await db.execute(stmt)
+    if snapshot.id is None:
+        return PlayerMetricsResult(metrics=[], snapshot_id=None, population_size=None)
+
+    result = await db.execute(_rows_stmt(snapshot.id))
     rows = result.all()
+    if not rows and position_adjusted and parent_scope:
+        # If the player is not represented in the scoped snapshot (common when
+        # PlayerStatus position differs from the combine row position), fall back
+        # to baseline for this cohort/source.
+        fallback_snapshot = await _select_snapshot(
+            db,
+            cohort=cohort,
+            source=source,
+            season_id=effective_season_id,
+            parent_scope=None,
+            prefer_parent=False,
+        )
+        if fallback_snapshot and fallback_snapshot.id is not None:
+            snapshot = fallback_snapshot
+            result = await db.execute(_rows_stmt(fallback_snapshot.id))
+            rows = result.all()
 
     metrics: List[dict] = []
     for row in rows:

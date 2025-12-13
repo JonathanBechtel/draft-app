@@ -9,6 +9,7 @@ from app.models.fields import (
     MetricStatistic,
 )
 from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
+from app.schemas.combine_shooting import CombineShooting
 from app.schemas.players_master import PlayerMaster
 from app.schemas.player_status import PlayerStatus
 from app.schemas.positions import Position
@@ -273,6 +274,98 @@ async def test_metrics_handles_all_time_nba_cohort(app_client, db_session):
     assert payload["metrics"][0]["percentile"] == 65
     assert payload["metrics"][0]["rank"] == 30
     assert payload["population_size"] == snapshot.population_size
+
+
+@pytest.mark.asyncio
+async def test_metrics_uses_source_position_for_shooting_position_adjusted(
+    app_client, db_session
+):
+    """Position-adjusted shooting uses the combine table position scope."""
+    wing_position = await _create_position(db_session, code="SF", parents=["wing"])
+    forward_position = await _create_position(
+        db_session, code="PF", parents=["forward"]
+    )
+    player = await _create_player(
+        db_session, slug="shooting-position-mismatch", position=wing_position
+    )
+
+    season = Season(code="2025-26", start_year=2025, end_year=2026)
+    db_session.add(season)
+    await db_session.flush()
+
+    # Combine row says the player is a forward, even if PlayerStatus says wing.
+    db_session.add(
+        CombineShooting(
+            player_id=player.id,
+            season_id=season.id,  # type: ignore[arg-type]
+            position_id=forward_position.id,
+            raw_position="PF",
+            spot_up_fgm=10,
+            spot_up_fga=20,
+        )
+    )
+
+    metric_def = MetricDefinition(
+        metric_key="spot_up_fg_pct",
+        display_name="Spot-Up FG%",
+        short_label="SU",
+        source=MetricSource.combine_shooting,
+        statistic=MetricStatistic.percentile,
+        category=MetricCategory.shooting,
+        unit="percent",
+    )
+    db_session.add(metric_def)
+    await db_session.flush()
+
+    wing_snapshot = MetricSnapshot(
+        run_key="shooting_mismatch|pos=wing",
+        cohort=CohortType.all_time_nba,
+        season_id=None,
+        position_scope_parent="wing",
+        position_scope_fine=None,
+        source=MetricSource.combine_shooting,
+        population_size=10,
+        version=1,
+        is_current=True,
+    )
+    forward_snapshot = MetricSnapshot(
+        run_key="shooting_mismatch|pos=forward",
+        cohort=CohortType.all_time_nba,
+        season_id=None,
+        position_scope_parent="forward",
+        position_scope_fine=None,
+        source=MetricSource.combine_shooting,
+        population_size=10,
+        version=1,
+        is_current=True,
+    )
+    db_session.add_all([wing_snapshot, forward_snapshot])
+    await db_session.flush()
+
+    await _attach_metric_value(
+        db_session,
+        forward_snapshot,
+        metric_def,
+        player.id,
+        raw_value=50.0,
+        percentile=88,
+        rank=2,
+    )
+    await db_session.commit()
+
+    resp = await app_client.get(
+        f"/api/players/{player.slug}/metrics",
+        params={
+            "cohort": CohortType.all_time_nba.value,
+            "category": MetricCategory.shooting.value,
+            "position_adjusted": True,
+        },
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["snapshot_id"] == forward_snapshot.id
+    assert payload["metrics"][0]["percentile"] == 88
 
 
 @pytest.mark.asyncio

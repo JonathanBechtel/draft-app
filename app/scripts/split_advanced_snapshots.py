@@ -183,7 +183,7 @@ async def split_snapshot(
     )
     await session.commit()
     print(
-        f"[done] Snapshot {item.snapshot_id} split into {[getattr(s,'value',s) for s in created.keys()]}"
+        f"[done] Snapshot {item.snapshot_id} split into {[getattr(s, 'value', s) for s in created.keys()]}"
     )
 
 
