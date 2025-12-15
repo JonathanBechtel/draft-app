@@ -11,6 +11,9 @@ class PlayerMetricItem(BaseModel):
     percentile: Optional[int] = Field(default=None)
     unit: str = Field(default="")
     rank: Optional[int] = Field(default=None)
+    population_size: Optional[int] = Field(
+        default=None, description="Population size used for this metric's percentile"
+    )
 
 
 class PlayerMetricsResponse(BaseModel):

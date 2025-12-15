@@ -265,6 +265,7 @@ const PerformanceModule = {
       const value = item.value !== null && item.value !== undefined ? item.value : '—';
       const unit = item.unit || '';
       const rank = item.rank;
+      const itemPopulation = item.population_size ?? populationSize;
 
       return `
         <div class="perf-bar-row">
@@ -276,7 +277,7 @@ const PerformanceModule = {
           </div>
           <div class="perf-values">
             <span class="perf-actual-value">${value}${unit}</span>
-            ${rank && populationSize ? `<span class="perf-rank-value">#${rank} of ${populationSize}</span>` : ''}
+            ${(rank !== null && rank !== undefined && itemPopulation) ? `<span class="perf-rank-value">#${rank} of ${itemPopulation}</span>` : ''}
           </div>
         </div>
       `;

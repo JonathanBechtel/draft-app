@@ -1,6 +1,7 @@
 """Integration tests for player metrics API endpoint."""
 
 import pytest
+from sqlalchemy import select
 
 from app.models.fields import (
     CohortType,
@@ -9,6 +10,7 @@ from app.models.fields import (
     MetricStatistic,
 )
 from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
+from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_shooting import CombineShooting
 from app.schemas.players_master import PlayerMaster
 from app.schemas.player_status import PlayerStatus
@@ -218,6 +220,111 @@ async def test_metrics_falls_back_to_baseline_when_parent_missing(
     assert payload["metrics"][0]["percentile"] == 77
     assert payload["metrics"][0]["rank"] == 12
     assert payload["population_size"] == baseline_snapshot.population_size
+
+
+@pytest.mark.asyncio
+async def test_metrics_returns_metric_population_size_for_nba_cohort(
+    app_client, db_session
+):
+    """Metric rows include the baseline population size for the cohort."""
+    position = await _create_position(db_session, code="G", parents=["guard"])
+    prospect = await _create_player(
+        db_session, slug="population-prospect", position=position
+    )
+    active_a = await _create_player(db_session, slug="active-a", position=position)
+    active_b = await _create_player(db_session, slug="active-b", position=position)
+    inactive = await _create_player(db_session, slug="inactive", position=position)
+
+    season = Season(code="2024-25", start_year=2024, end_year=2025)
+    db_session.add(season)
+    await db_session.flush()
+
+    # Mark active/inactive status for NBA cohorts.
+    result = await db_session.execute(
+        select(PlayerStatus).where(
+            PlayerStatus.player_id.in_(  # type: ignore[arg-type]
+                [active_a.id, active_b.id, inactive.id]
+            )
+        )
+    )
+    statuses = {status.player_id: status for status in result.scalars().all()}
+    statuses[active_a.id].is_active_nba = True
+    statuses[active_b.id].is_active_nba = True
+    statuses[inactive.id].is_active_nba = False
+
+    metric_def = MetricDefinition(
+        metric_key="lane_agility_time_s",
+        display_name="Lane Agility",
+        short_label="Lane",
+        source=MetricSource.combine_agility,
+        statistic=MetricStatistic.percentile,
+        category=MetricCategory.combine_performance,
+        unit="seconds",
+    )
+    db_session.add(metric_def)
+    await db_session.flush()
+
+    snapshot = await _create_snapshot(
+        db_session,
+        cohort=CohortType.current_nba,
+        source=MetricSource.combine_agility,
+        season_id=None,
+        position_scope_parent=None,
+        version=1,
+    )
+    snapshot.population_size = 999
+
+    # Only active players have baseline data in the underlying table.
+    db_session.add_all(
+        [
+            CombineAgility(
+                player_id=active_a.id,
+                season_id=season.id,
+                lane_agility_time_s=11.1,
+            ),
+            CombineAgility(
+                player_id=active_b.id,
+                season_id=season.id,
+                lane_agility_time_s=11.3,
+            ),
+            CombineAgility(
+                player_id=inactive.id,
+                season_id=season.id,
+                lane_agility_time_s=12.0,
+            ),
+            CombineAgility(
+                player_id=prospect.id,
+                season_id=season.id,
+                lane_agility_time_s=11.8,
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    await _attach_metric_value(
+        db_session,
+        snapshot,
+        metric_def,
+        prospect.id,
+        raw_value=11.8,
+        percentile=40,
+        rank=2,
+    )
+    await db_session.commit()
+
+    resp = await app_client.get(
+        f"/api/players/{prospect.slug}/metrics",
+        params={
+            "cohort": CohortType.current_nba.value,
+            "category": MetricCategory.combine_performance.value,
+            "position_adjusted": False,
+        },
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["population_size"] == 999
+    assert payload["metrics"][0]["population_size"] == 2
 
 
 @pytest.mark.asyncio
