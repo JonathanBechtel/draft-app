@@ -43,6 +43,21 @@ Whenever a change could influence monetization, growth, or user retention, refer
 
 ---
 
+# Definition of Done
+
+**No task is complete until all checks pass.** Before considering any implementation finished:
+
+1. **Run `make precommit`** — fix all ruff and formatting errors
+2. **Run `mypy app --ignore-missing-imports`** — fix ALL type errors in the entire `app/` directory
+   - Pre-commit only checks staged files; CI checks everything
+   - Type changes can break files you didn't directly modify
+   - This command must exit cleanly with no errors
+3. **Run relevant tests** — `pytest tests/unit -q` at minimum; `pytest tests/integration -q` if touching DB/routes
+
+Do not ask if the user wants you to run these checks — run them proactively after completing implementation work. If any check fails, fix the issues before reporting that work is done.
+
+---
+
 # Repository Guidelines
 
 ## Project Structure & Module Organization
