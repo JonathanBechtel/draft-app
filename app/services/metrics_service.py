@@ -52,7 +52,7 @@ async def _resolve_parent_scope(db: AsyncSession, player_id: int) -> Optional[st
     result = await db.execute(stmt)
     row = result.mappings().first()
     if not row:
-        return None
+        return await _resolve_parent_scope(db, player_id)
 
     parents: Optional[Sequence[str]] = row.get("parents")
     if parents:
