@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Iterable, List, Optional, Sequence, Tuple, cast
 
 from sqlalchemy import desc, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -278,9 +278,9 @@ async def get_player_metrics(
             fga = getattr(CombineShooting, fga_col, None)
             if fgm is None or fga is None:
                 return None
-            stmt = select(func.count(distinct(CombineShooting.player_id))).select_from(
-                CombineShooting
-            )
+            stmt = select(
+                func.count(distinct(cast(Any, CombineShooting).player_id))
+            ).select_from(CombineShooting)
             stmt = _apply_cohort_scope(stmt, CombineShooting)
             stmt = _apply_position_scope(stmt, CombineShooting)
             stmt = stmt.where(
@@ -292,9 +292,9 @@ async def get_player_metrics(
             column = getattr(CombineAnthro, metric_key, None)
             if column is None:
                 return None
-            stmt = select(func.count(distinct(CombineAnthro.player_id))).select_from(
-                CombineAnthro
-            )
+            stmt = select(
+                func.count(distinct(cast(Any, CombineAnthro).player_id))
+            ).select_from(CombineAnthro)
             stmt = _apply_cohort_scope(stmt, CombineAnthro)
             stmt = _apply_position_scope(stmt, CombineAnthro)
             stmt = stmt.where(column.is_not(None))  # type: ignore[union-attr]
@@ -302,9 +302,9 @@ async def get_player_metrics(
             column = getattr(CombineAgility, metric_key, None)
             if column is None:
                 return None
-            stmt = select(func.count(distinct(CombineAgility.player_id))).select_from(
-                CombineAgility
-            )
+            stmt = select(
+                func.count(distinct(cast(Any, CombineAgility).player_id))
+            ).select_from(CombineAgility)
             stmt = _apply_cohort_scope(stmt, CombineAgility)
             stmt = _apply_position_scope(stmt, CombineAgility)
             stmt = stmt.where(column.is_not(None))  # type: ignore[union-attr]
@@ -319,17 +319,17 @@ async def get_player_metrics(
         return count_int if count_int > 0 else None
 
     def _rows_stmt(snapshot_id: int):
+        stmt: Any = select(
+            MetricDefinition.metric_key,
+            MetricDefinition.display_name,
+            MetricDefinition.unit,
+            PlayerMetricValue.raw_value,
+            PlayerMetricValue.percentile,
+            PlayerMetricValue.rank,
+            PlayerMetricValue.extra_context,
+        )  # type: ignore[call-overload, misc]
         return (
-            select(
-                MetricDefinition.metric_key,
-                MetricDefinition.display_name,
-                MetricDefinition.unit,
-                PlayerMetricValue.raw_value,
-                PlayerMetricValue.percentile,
-                PlayerMetricValue.rank,
-                PlayerMetricValue.extra_context,
-            )  # type: ignore[call-overload]
-            .join(
+            stmt.join(
                 MetricDefinition,
                 MetricDefinition.id == PlayerMetricValue.metric_definition_id,
             )

@@ -718,6 +718,7 @@ const HeadToHeadModule = {
   players: {},
   cache: {},
   searchTimeout: null,
+  imageStyles: ['default', 'vector', 'comic', 'retro'],
 
   /**
    * Initialize the H2H module
@@ -728,6 +729,7 @@ const HeadToHeadModule = {
 
     this.selectedPlayerA = window.PLAYER_DATA.slug;
     this.players[this.selectedPlayerA] = {
+      id: window.PLAYER_DATA.id,
       slug: window.PLAYER_DATA.slug,
       name: window.PLAYER_DATA.name,
       photo: window.PLAYER_DATA.photo_url
@@ -758,6 +760,7 @@ const HeadToHeadModule = {
       players.forEach((p) => {
         if (p.slug === this.selectedPlayerA) return;
         this.players[p.slug] = {
+          id: p.id,
           slug: p.slug,
           name: p.display_name,
           photo: `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(p.display_name)}`
@@ -876,16 +879,61 @@ const HeadToHeadModule = {
     }
   },
 
+  resolveStyle() {
+    const style = window.IMAGE_STYLE || 'default';
+    return this.imageStyles.includes(style) ? style : 'default';
+  },
+
+  resolvePlaceholderUrl(name) {
+    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+  },
+
   resolvePhoto(slug) {
     const player = this.players[slug];
-    if (player && player.photo) return player.photo;
-    const name = player ? player.name : slug;
-    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+    if (!player) return this.resolvePlaceholderUrl(slug);
+    if (!player.id) return this.resolvePlaceholderUrl(player.name || slug);
+    const style = this.resolveStyle();
+    return `/static/img/players/${player.id}_${style}.jpg`;
   },
 
   resolveName(slug) {
     const player = this.players[slug];
     return player ? player.name : slug;
+  },
+
+  setPhotoWithFallback(imgEl, slug) {
+    if (!imgEl) return;
+
+    const player = this.players[slug];
+    const name = player?.name || slug;
+    const playerId = player?.id;
+    const style = this.resolveStyle();
+
+    imgEl.alt = name;
+
+    if (!playerId) {
+      imgEl.onerror = null;
+      imgEl.src = this.resolvePlaceholderUrl(name);
+      return;
+    }
+
+    const placeholder = this.resolvePlaceholderUrl(name);
+    const preferred = `/static/img/players/${playerId}_${style}.jpg`;
+
+    if (style !== 'default') {
+      imgEl.onerror = () => {
+        imgEl.onerror = () => {
+          imgEl.src = placeholder;
+        };
+        imgEl.src = `/static/img/players/${playerId}_default.jpg`;
+      };
+    } else {
+      imgEl.onerror = () => {
+        imgEl.src = placeholder;
+      };
+    }
+
+    imgEl.src = preferred;
   },
 
   /**
@@ -900,8 +948,8 @@ const HeadToHeadModule = {
     if (!data || !comparisonBody || !winnerTarget) return;
 
     // Update photos and names
-    document.getElementById('h2hPhotoA').src = this.resolvePhoto(this.selectedPlayerA);
-    document.getElementById('h2hPhotoB').src = this.resolvePhoto(this.selectedPlayerB);
+    this.setPhotoWithFallback(document.getElementById('h2hPhotoA'), this.selectedPlayerA);
+    this.setPhotoWithFallback(document.getElementById('h2hPhotoB'), this.selectedPlayerB);
     document.getElementById('h2hPhotoNameA').textContent = this.resolveName(this.selectedPlayerA);
     document.getElementById('h2hPhotoNameB').textContent = this.resolveName(this.selectedPlayerB);
     document.getElementById('h2hHeaderA').textContent = this.resolveName(this.selectedPlayerA);

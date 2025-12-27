@@ -407,6 +407,8 @@
   window.PERCENTILE_DATA = {{ percentile_data | tojson | safe }};
   window.COMPARISON_DATA = {{ comparison_data | tojson | safe }};
   window.PLAYER_FEED = {{ player_feed | tojson | safe }};
+  // Image style for dynamic content
+  window.IMAGE_STYLE = {{ image_style | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/player-detail.js') }}"></script>
 {% endblock %}

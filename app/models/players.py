@@ -44,6 +44,9 @@ class PlayerProfileRead(SQLModel):
     # From CombineAnthro (most recent)
     wingspan_in: Optional[float] = None
 
+    # Photo URL (computed at runtime from filesystem, not stored in DB)
+    photo_url: Optional[str] = None
+
     @computed_field  # type: ignore[misc]
     @property
     def age_formatted(self) -> Optional[str]:
