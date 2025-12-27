@@ -142,6 +142,7 @@ async def get_similar_players(
             PlayerSimilarity.similarity_score,
             PlayerSimilarity.rank_within_anchor,
             PlayerSimilarity.shared_position,
+            PlayerMaster.id,
             PlayerMaster.slug,
             PlayerMaster.display_name,
             PlayerMaster.school,
@@ -188,6 +189,7 @@ async def get_similar_players(
     # Format response
     players = [
         {
+            "id": row.id,
             "slug": row.slug,
             "display_name": row.display_name,
             "position": row.position_code,

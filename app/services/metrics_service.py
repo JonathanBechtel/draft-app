@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Iterable, List, Optional, Sequence, Tuple, cast
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType, MetricCategory, MetricSource
 from app.models.position_taxonomy import derive_position_tags
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
-from app.schemas.combine_shooting import CombineShooting
+from app.schemas.combine_shooting import CombineShooting, SHOOTING_DRILL_COLUMNS
 from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
 from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
@@ -52,7 +52,7 @@ async def _resolve_parent_scope(db: AsyncSession, player_id: int) -> Optional[st
     result = await db.execute(stmt)
     row = result.mappings().first()
     if not row:
-        return await _resolve_parent_scope(db, player_id)
+        return None
 
     parents: Optional[Sequence[str]] = row.get("parents")
     if parents:
@@ -64,7 +64,7 @@ async def _resolve_parent_scope(db: AsyncSession, player_id: int) -> Optional[st
         _, derived_parents = derive_position_tags(raw_position)
         if derived_parents:
             return derived_parents[0]
-    return await _resolve_parent_scope(db, player_id)
+    return None
 
 
 async def _resolve_parent_scope_for_source(
@@ -102,7 +102,7 @@ async def _resolve_parent_scope_for_source(
     result = await db.execute(stmt)
     row = result.mappings().first()
     if not row:
-        return None
+        return await _resolve_parent_scope(db, player_id)
 
     parents: Optional[Sequence[str]] = row.get("parents")
     if parents:
@@ -230,17 +230,106 @@ async def get_player_metrics(
     if not snapshot:
         return PlayerMetricsResult(metrics=[], snapshot_id=None, population_size=None)
 
+    async def _metric_population_size(metric_key: str) -> Optional[int]:
+        """Return the baseline population size used for the metric's distribution."""
+
+        if snapshot is None:
+            return None
+
+        source = snapshot.source
+        stmt = None
+
+        def _apply_position_scope(base_stmt, table):
+            if snapshot.position_scope_fine is not None:
+                return base_stmt.join(Position, Position.id == table.position_id).where(
+                    Position.code == snapshot.position_scope_fine
+                )
+            if snapshot.position_scope_parent is not None:
+                return base_stmt.join(Position, Position.id == table.position_id).where(
+                    Position.parents.contains([snapshot.position_scope_parent])
+                )
+            return base_stmt
+
+        def _apply_cohort_scope(base_stmt, table):
+            if snapshot.season_id is not None:
+                base_stmt = base_stmt.where(table.season_id == snapshot.season_id)
+            if snapshot.cohort == CohortType.current_nba:
+                base_stmt = base_stmt.outerjoin(
+                    PlayerStatus, PlayerStatus.player_id == table.player_id
+                ).where(PlayerStatus.is_active_nba.is_(True))
+            elif snapshot.cohort == CohortType.all_time_nba:
+                base_stmt = base_stmt.outerjoin(
+                    PlayerStatus, PlayerStatus.player_id == table.player_id
+                ).where(
+                    or_(
+                        PlayerStatus.is_active_nba.is_(True),
+                        PlayerStatus.nba_last_season.is_not(None),
+                    )
+                )
+            return base_stmt
+
+        if source == MetricSource.combine_shooting and metric_key.endswith("_fg_pct"):
+            drill = metric_key[: -len("_fg_pct")]
+            drill_cols = SHOOTING_DRILL_COLUMNS.get(drill)
+            if drill_cols is None:
+                return None
+            fgm_col, fga_col = drill_cols
+            fgm = getattr(CombineShooting, fgm_col, None)
+            fga = getattr(CombineShooting, fga_col, None)
+            if fgm is None or fga is None:
+                return None
+            stmt = select(
+                func.count(distinct(cast(Any, CombineShooting).player_id))
+            ).select_from(CombineShooting)
+            stmt = _apply_cohort_scope(stmt, CombineShooting)
+            stmt = _apply_position_scope(stmt, CombineShooting)
+            stmt = stmt.where(
+                fgm.is_not(None),  # type: ignore[union-attr]
+                fga.is_not(None),  # type: ignore[union-attr]
+                fga != 0,  # type: ignore[comparison-overlap]
+            )
+        elif source == MetricSource.combine_anthro:
+            column = getattr(CombineAnthro, metric_key, None)
+            if column is None:
+                return None
+            stmt = select(
+                func.count(distinct(cast(Any, CombineAnthro).player_id))
+            ).select_from(CombineAnthro)
+            stmt = _apply_cohort_scope(stmt, CombineAnthro)
+            stmt = _apply_position_scope(stmt, CombineAnthro)
+            stmt = stmt.where(column.is_not(None))  # type: ignore[union-attr]
+        elif source == MetricSource.combine_agility:
+            column = getattr(CombineAgility, metric_key, None)
+            if column is None:
+                return None
+            stmt = select(
+                func.count(distinct(cast(Any, CombineAgility).player_id))
+            ).select_from(CombineAgility)
+            stmt = _apply_cohort_scope(stmt, CombineAgility)
+            stmt = _apply_position_scope(stmt, CombineAgility)
+            stmt = stmt.where(column.is_not(None))  # type: ignore[union-attr]
+        else:
+            return snapshot.population_size
+
+        result = await db.execute(stmt)
+        count = result.scalar()
+        if count is None:
+            return None
+        count_int = int(count)
+        return count_int if count_int > 0 else None
+
     def _rows_stmt(snapshot_id: int):
+        stmt: Any = select(
+            MetricDefinition.metric_key,
+            MetricDefinition.display_name,
+            MetricDefinition.unit,
+            PlayerMetricValue.raw_value,
+            PlayerMetricValue.percentile,
+            PlayerMetricValue.rank,
+            PlayerMetricValue.extra_context,
+        )  # type: ignore[call-overload, misc]
         return (
-            select(
-                MetricDefinition.metric_key,
-                MetricDefinition.display_name,
-                MetricDefinition.unit,
-                PlayerMetricValue.raw_value,
-                PlayerMetricValue.percentile,
-                PlayerMetricValue.rank,
-            )  # type: ignore[call-overload]
-            .join(
+            stmt.join(
                 MetricDefinition,
                 MetricDefinition.id == PlayerMetricValue.metric_definition_id,
             )
@@ -273,6 +362,7 @@ async def get_player_metrics(
             rows = result.all()
 
     metrics: List[dict] = []
+    population_cache: dict[str, Optional[int]] = {}
     for row in rows:
         display_value, display_unit = format_metric_value(
             metric_key=row.metric_key,
@@ -280,6 +370,17 @@ async def get_player_metrics(
             raw_value=row.raw_value,
         )
         percentile_val = row.percentile
+        metric_population: Optional[int] = None
+        if row.extra_context and isinstance(row.extra_context, dict):
+            metric_population = row.extra_context.get("population_size")
+            if metric_population is not None:
+                metric_population = int(metric_population)
+        if metric_population is None:
+            metric_population = population_cache.get(row.metric_key)
+        if metric_population is None and row.metric_key not in population_cache:
+            metric_population = await _metric_population_size(row.metric_key)
+            population_cache[row.metric_key] = metric_population
+
         metrics.append(
             {
                 "metric": row.display_name,
@@ -289,6 +390,7 @@ async def get_player_metrics(
                 if percentile_val is not None
                 else None,
                 "rank": row.rank,
+                "population_size": metric_population,
             }
         )
 

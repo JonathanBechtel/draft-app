@@ -262,3 +262,84 @@ async def test_player_detail_shows_country_when_no_city(app_client, db_session):
     response = await app_client.get("/players/mystery-intl")
     assert response.status_code == 200
     assert "Australia" in response.text
+
+
+@pytest.mark.asyncio
+async def test_player_detail_includes_photo_url(app_client, db_session):
+    """Player detail page includes photo_url in rendered output."""
+    from app.schemas.players_master import PlayerMaster
+
+    player = PlayerMaster(
+        display_name="Photo Test",
+        slug="photo-test",
+        school="Duke",
+    )
+    db_session.add(player)
+    await db_session.commit()
+
+    response = await app_client.get("/players/photo-test")
+
+    assert response.status_code == 200
+    # Photo should be in an img tag with class player-photo
+    assert 'class="player-photo"' in response.text
+    # Since no local image exists, should use placehold.co
+    assert "placehold.co" in response.text
+    # Player name should be in placeholder URL
+    assert "Photo+Test" in response.text
+
+
+@pytest.mark.asyncio
+async def test_player_detail_style_param_changes_photo_url(app_client, db_session):
+    """Style query param changes which image style is used for photo URL."""
+    from app.schemas.players_master import PlayerMaster
+
+    player = PlayerMaster(
+        display_name="Style Test",
+        slug="style-test",
+        school="Kentucky",
+    )
+    db_session.add(player)
+    await db_session.commit()
+
+    # Request with style param
+    response = await app_client.get("/players/style-test?style=vector")
+
+    assert response.status_code == 200
+    # When no image exists, falls back to placeholder regardless of style
+    assert "placehold.co" in response.text
+
+
+@pytest.mark.asyncio
+async def test_player_detail_photo_url_uses_player_id(app_client, db_session):
+    """Photo URL is based on player ID for deterministic script generation."""
+    import os
+    import tempfile
+    from app.schemas.players_master import PlayerMaster
+    from app.utils import images
+
+    player = PlayerMaster(
+        display_name="ID Test Player",
+        slug="id-test-player",
+        school="UNC",
+    )
+    db_session.add(player)
+    await db_session.commit()
+
+    # Create a temporary directory with a test image using the player's ID
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = images.PLAYER_IMAGES_DIR
+        images.PLAYER_IMAGES_DIR = tmpdir
+
+        try:
+            # Create an image file using the player's ID
+            image_path = os.path.join(tmpdir, f"{player.id}_default.jpg")
+            with open(image_path, "w") as f:
+                f.write("fake image data")
+
+            response = await app_client.get("/players/id-test-player")
+
+            assert response.status_code == 200
+            # Should use the local image path with player ID
+            assert f"/static/img/players/{player.id}_default.jpg" in response.text
+        finally:
+            images.PLAYER_IMAGES_DIR = original_dir

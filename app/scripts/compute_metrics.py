@@ -587,7 +587,7 @@ class MetricRunner:
             source: [] for source in self.sources
         }
         diagnostics: List[Dict[str, object]] = []
-        players_by_source: Dict[MetricSource, Set[int]] = {
+        baseline_players_by_source: Dict[MetricSource, Set[int]] = {
             source: set() for source in self.sources
         }
         total_players: Set[int] = set()
@@ -601,7 +601,18 @@ class MetricRunner:
             if metrics_df is None:
                 continue
             player_ids = metrics_df["player_id"].astype(int).tolist()
-            players_by_source[spec.source].update(player_ids)
+            baseline_flag = (
+                spec_frame["baseline_flag"]
+                if "baseline_flag" in spec_frame.columns
+                else pd.Series(False, index=spec_frame.index)
+            )
+            baseline_ids = (
+                spec_frame.loc[baseline_flag.fillna(False).astype(bool), "player_id"]
+                .dropna()
+                .astype(int)
+                .tolist()
+            )
+            baseline_players_by_source[spec.source].update(baseline_ids)
             total_players.update(player_ids)
             results_by_source[spec.source].append((spec, metrics_df))
 
@@ -618,7 +629,7 @@ class MetricRunner:
             return False
 
         populations = {
-            source: len(players_by_source[source])
+            source: len(baseline_players_by_source[source])
             for source in self.sources
             if results_by_source[source]
         }
@@ -868,7 +879,6 @@ class MetricRunner:
 
         value_series = df["value"]
         sorted_baseline = np.sort(baseline_values.to_numpy())
-        ascending_rank = spec.lower_is_better
 
         positions = np.searchsorted(
             sorted_baseline, value_series.to_numpy(), side="right"
@@ -881,17 +891,19 @@ class MetricRunner:
             percentile_vals = rank_pct * 100.0
         percentile_series = pd.Series(percentile_vals, index=df.index)
 
-        if ascending_rank:
-            unique_vals = np.sort(baseline_values.unique())
-            rank_positions = np.searchsorted(
-                unique_vals, value_series.to_numpy(), side="left"
+        if spec.lower_is_better:
+            # Competition rank: 1 + number of baseline values strictly lower.
+            rank_series = pd.Series(
+                np.searchsorted(sorted_baseline, value_series.to_numpy(), side="left")
+                + 1,
+                index=df.index,
             )
         else:
-            unique_vals = np.sort((-baseline_values).unique())
-            rank_positions = np.searchsorted(
-                unique_vals, (-value_series).to_numpy(), side="left"
+            # Competition rank: 1 + number of baseline values strictly higher.
+            pos_right = np.searchsorted(
+                sorted_baseline, value_series.to_numpy(), side="right"
             )
-        rank_series = pd.Series(rank_positions + 1, index=df.index)
+            rank_series = pd.Series((baseline_count - pos_right) + 1, index=df.index)
 
         mean = baseline_values.mean()
         std = baseline_values.std(ddof=0)
@@ -919,6 +931,9 @@ class MetricRunner:
                 "rank": rank_series,
                 "percentile": percentile_series.clip(0, 100),
                 "z_score": z_scores,
+                "population_size": pd.Series(
+                    baseline_count, index=df.index, dtype="int64"
+                ),
             }
         )
         return metrics_df, diagnostics
@@ -980,6 +995,11 @@ class MetricRunner:
                         if pd.notna(row.percentile)
                         else None,
                         z_score=float(row.z_score) if pd.notna(row.z_score) else None,
+                        extra_context={
+                            "population_size": int(row.population_size)
+                            if pd.notna(row.population_size)
+                            else None
+                        },
                     )
                 )
         return payload

@@ -1,14 +1,15 @@
 """UI Routes - Renders Jinja templates for the frontend."""
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.player_service import get_player_profile_by_slug
 from app.utils.db_async import get_session
+from app.utils.images import get_player_photo_url
 
 router = APIRouter()
 
@@ -54,8 +55,17 @@ FOOTER_COLUMNS = [
 
 
 @router.get("/", response_class=HTMLResponse)
-async def home(request: Request):
+async def home(
+    request: Request,
+    style: Optional[str] = Query(
+        None, description="Image style: default, vector, comic, retro"
+    ),
+    db: AsyncSession = Depends(get_session),
+):
     """Render the Homepage with consensus mock draft, prospects, VS arena, and news feed."""
+    from sqlalchemy import select
+
+    from app.schemas.players_master import PlayerMaster
 
     # Hardcoded placeholder data - backend connection added later
     mock_picks: list[dict[str, Any]] = [
@@ -106,22 +116,40 @@ async def home(request: Request):
         },
     ]
 
-    players = [
-        {
-            "name": p["name"],
-            "slug": p["slug"],
-            "position": p["position"],
-            "college": p["college"],
-            "img": f"https://placehold.co/320x420/edf2f7/1f2937?text={str(p['name']).replace(' ', '+')}",
-            "change": p["change"],
-            "measurables": {
-                "ht": 80 + (int(p["pick"]) % 3),
-                "ws": 84 + (int(p["pick"]) % 5),
-                "vert": 34 + (int(p["pick"]) % 7),
-            },
-        }
-        for p in mock_picks
-    ]
+    # Look up player IDs from database for image URL generation
+    slugs = [p["slug"] for p in mock_picks]
+    result = await db.execute(
+        select(PlayerMaster.id, PlayerMaster.slug, PlayerMaster.display_name).where(  # type: ignore[call-overload]
+            PlayerMaster.slug.in_(slugs)  # type: ignore[union-attr]
+        )
+    )
+    player_id_map = {row.slug: (row.id, row.display_name) for row in result}
+
+    players = []
+    for p in mock_picks:
+        player_info = player_id_map.get(p["slug"])
+        if player_info:
+            player_id, display_name = player_info
+            img_url = get_player_photo_url(player_id, display_name, style)
+        else:
+            # Fallback to placeholder if player not in database
+            img_url = f"https://placehold.co/320x420/edf2f7/1f2937?text={str(p['name']).replace(' ', '+')}"
+
+        players.append(
+            {
+                "name": p["name"],
+                "slug": p["slug"],
+                "position": p["position"],
+                "college": p["college"],
+                "img": img_url,
+                "change": p["change"],
+                "measurables": {
+                    "ht": 80 + (int(p["pick"]) % 3),
+                    "ws": 84 + (int(p["pick"]) % 5),
+                    "vert": 34 + (int(p["pick"]) % 7),
+                },
+            }
+        )
 
     feed_items = [
         {
@@ -150,6 +178,9 @@ async def home(request: Request):
         },
     ]
 
+    # Build a slug->id map for JS to use when generating image URLs dynamically
+    slug_to_id = {slug: info[0] for slug, info in player_id_map.items()}
+
     return request.app.state.templates.TemplateResponse(
         "home.html",
         {
@@ -159,6 +190,8 @@ async def home(request: Request):
             "feed_items": feed_items,
             "footer_columns": FOOTER_COLUMNS,
             "current_year": datetime.now().year,
+            "image_style": style,  # Current image style for JS
+            "player_id_map": slug_to_id,  # slug -> player_id for JS image URLs
         },
     )
 
@@ -167,6 +200,9 @@ async def home(request: Request):
 async def player_detail(
     request: Request,
     slug: str,
+    style: Optional[str] = Query(
+        None, description="Image style: default, vector, comic, retro"
+    ),
     db: AsyncSession = Depends(get_session),
 ):
     """Render the Player Detail page with bio, scoreboard, percentiles, comps, and news.
@@ -204,8 +240,12 @@ async def player_detail(
         "age": player_profile.age_formatted,
         "hometown": player_profile.hometown,
         "wingspan": player_profile.wingspan_formatted,
-        # Placeholder photo URL until photo_url field is added
-        "photo_url": f"https://placehold.co/400x533/edf2f7/1f2937?text={player_name.replace(' ', '+')}",
+        # Use style param if provided, otherwise use default from profile
+        "photo_url": (
+            get_player_photo_url(player_profile.id, player_profile.display_name, style)
+            if style
+            else player_profile.photo_url
+        ),
         # Metrics set to None to hide scoreboard (no data sources yet)
         "metrics": {
             "consensusRank": None,
@@ -308,5 +348,6 @@ async def player_detail(
             "player_feed": player_feed,
             "footer_columns": FOOTER_COLUMNS,
             "current_year": datetime.now().year,
+            "image_style": style,  # Current image style for JS
         },
     )

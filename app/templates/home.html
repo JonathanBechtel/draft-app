@@ -220,6 +220,9 @@
   window.MOCK_PICKS = {{ mock_picks | tojson | safe }};
   window.PLAYERS = {{ players | tojson | safe }};
   window.FEED_ITEMS = {{ feed_items | tojson | safe }};
+  // Image style and player ID mapping for dynamic image URL generation
+  window.IMAGE_STYLE = {{ image_style | tojson | safe }};
+  window.PLAYER_ID_MAP = {{ player_id_map | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/home.js') }}"></script>
 {% endblock %}

@@ -265,6 +265,7 @@ const PerformanceModule = {
       const value = item.value !== null && item.value !== undefined ? item.value : '—';
       const unit = item.unit || '';
       const rank = item.rank;
+      const itemPopulation = item.population_size ?? populationSize;
 
       return `
         <div class="perf-bar-row">
@@ -276,7 +277,7 @@ const PerformanceModule = {
           </div>
           <div class="perf-values">
             <span class="perf-actual-value">${value}${unit}</span>
-            ${rank && populationSize ? `<span class="perf-rank-value">#${rank} of ${populationSize}</span>` : ''}
+            ${(rank !== null && rank !== undefined && itemPopulation) ? `<span class="perf-rank-value">#${rank} of ${itemPopulation}</span>` : ''}
           </div>
         </div>
       `;
@@ -299,6 +300,7 @@ const PlayerComparisonsModule = {
   selectedCompPlayer: null,
   cache: {},
   isLoading: false,
+  imageStyles: ['default', 'vector', 'comic', 'retro'],
 
   /**
    * Initialize comparisons module
@@ -483,12 +485,56 @@ const PlayerComparisonsModule = {
     return 'moderate';
   },
 
+  resolveStyle() {
+    const style = window.IMAGE_STYLE || 'default';
+    return this.imageStyles.includes(style) ? style : 'default';
+  },
+
+  resolvePlaceholderUrl(name) {
+    return `https://placehold.co/320x420/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+  },
+
+  hydrateCardPhotos(container) {
+    if (!container) return;
+
+    const style = this.resolveStyle();
+    const images = container.querySelectorAll('img.comp-player-photo');
+    images.forEach((img) => {
+      const playerId = img.dataset.playerId;
+      const name = img.dataset.playerName || 'Player';
+      const placeholder = this.resolvePlaceholderUrl(name);
+
+      if (!playerId) {
+        img.onerror = null;
+        img.src = placeholder;
+        return;
+      }
+
+      const preferred = `/static/img/players/${playerId}_${style}.jpg`;
+
+      if (style !== 'default') {
+        img.onerror = () => {
+          img.onerror = () => {
+            img.src = placeholder;
+          };
+          img.src = `/static/img/players/${playerId}_default.jpg`;
+        };
+      } else {
+        img.onerror = () => {
+          img.src = placeholder;
+        };
+      }
+
+      img.src = preferred;
+    });
+  },
+
   /**
    * Render comparison card for a single player
    */
   renderCompCard(player) {
     const scoreLevel = this.getSimilarityScoreLevel(player.similarity_score);
-    const photoUrl = `https://placehold.co/320x420/edf2f7/1f2937?text=${encodeURIComponent(player.display_name)}`;
+    const photoUrl = this.resolvePlaceholderUrl(player.display_name);
     const position = player.position || 'N/A';
     const school = player.school || 'Unknown';
     const draftYear = player.draft_year;
@@ -501,12 +547,18 @@ const PlayerComparisonsModule = {
           <span class="prospect-card-similarity-score ${scoreLevel}">${Math.round(player.similarity_score)}% Match</span>
         </div>
         <a href="${playerUrl}" class="prospect-image-wrapper prospect-image-link">
-          <img src="${photoUrl}" alt="${player.display_name}" class="prospect-image" />
+          <img
+            src="${photoUrl}"
+            alt="${player.display_name}"
+            class="prospect-image comp-player-photo"
+            data-player-id="${player.id || ''}"
+            data-player-name="${player.display_name}"
+          />
         </a>
         <div class="prospect-info">
           <h4 class="prospect-name">${player.display_name}</h4>
           <p class="prospect-meta">${position} • ${schoolDisplay}</p>
-          <button class="comp-compare-btn" onclick="PlayerComparisonsModule.showComparison('${player.slug}', '${player.display_name.replace(/'/g, "\\'")}')">
+          <button class="comp-compare-btn" onclick="PlayerComparisonsModule.showComparison('${player.slug}', '${player.display_name.replace(/'/g, "\\'")}', ${player.id || 'null'})">
             <svg class="icon" viewBox="0 0 24 24">
               <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
               <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
@@ -534,13 +586,14 @@ const PlayerComparisonsModule = {
 
     const html = players.map((player) => this.renderCompCard(player)).join('');
     grid.innerHTML = html;
+    this.hydrateCardPhotos(grid);
   },
 
   /**
    * Show detailed comparison modal with head-to-head data
    */
-  async showComparison(playerSlug, playerName) {
-    this.selectedCompPlayer = { slug: playerSlug, name: playerName };
+  async showComparison(playerSlug, playerName, playerId) {
+    this.selectedCompPlayer = { slug: playerSlug, name: playerName, id: playerId };
 
     const modal = document.getElementById('compComparisonView');
     const title = document.getElementById('compComparisonTitle');
@@ -578,6 +631,7 @@ const PlayerComparisonsModule = {
       const h2hData = await response.json();
       if (body) {
         body.innerHTML = this.renderComparisonTable(h2hData);
+        this.hydrateComparisonPhotos(body);
       }
     } catch (err) {
       console.error('Failed to load head-to-head data', err);
@@ -608,6 +662,45 @@ const PlayerComparisonsModule = {
     return 'moderate';
   },
 
+  resolveSquarePlaceholderUrl(name) {
+    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+  },
+
+  hydrateComparisonPhotos(container) {
+    if (!container) return;
+
+    const style = this.resolveStyle();
+    const images = container.querySelectorAll('img.comp-comparison-photo');
+    images.forEach((img) => {
+      const playerId = img.dataset.playerId;
+      const name = img.dataset.playerName || 'Player';
+      const placeholder = this.resolveSquarePlaceholderUrl(name);
+
+      if (!playerId) {
+        img.onerror = null;
+        img.src = placeholder;
+        return;
+      }
+
+      const preferred = `/static/img/players/${playerId}_${style}.jpg`;
+
+      if (style !== 'default') {
+        img.onerror = () => {
+          img.onerror = () => {
+            img.src = placeholder;
+          };
+          img.src = `/static/img/players/${playerId}_default.jpg`;
+        };
+      } else {
+        img.onerror = () => {
+          img.src = placeholder;
+        };
+      }
+
+      img.src = preferred;
+    });
+  },
+
   /**
    * Render comparison table for modal using head-to-head API data
    */
@@ -619,6 +712,13 @@ const PlayerComparisonsModule = {
     const playerA = h2hData.player_a;
     const playerB = h2hData.player_b;
     const similarity = h2hData.similarity;
+
+    const anchor = window.PLAYER_DATA || {};
+    const comp = this.selectedCompPlayer || {};
+    const playerAName = anchor.name || playerA.name;
+    const playerBName = comp.name || playerB.name;
+    const playerAId = anchor.id;
+    const playerBId = comp.id;
 
     let winsA = 0;
     let winsB = 0;
@@ -672,10 +772,10 @@ const PlayerComparisonsModule = {
     if (winsA > 0 || winsB > 0) {
       let bannerText, bannerClass;
       if (winsA > winsB) {
-        bannerText = `${playerA.name} leads ${winsA}-${winsB}`;
+        bannerText = `${playerAName} leads ${winsA}-${winsB}`;
         bannerClass = 'comp-winner-banner winner-a';
       } else if (winsB > winsA) {
-        bannerText = `${playerB.name} leads ${winsB}-${winsA}`;
+        bannerText = `${playerBName} leads ${winsB}-${winsA}`;
         bannerClass = 'comp-winner-banner winner-b';
       } else {
         bannerText = `Tied ${winsA}-${winsB}`;
@@ -684,16 +784,43 @@ const PlayerComparisonsModule = {
       winnerBanner = `<div class="${bannerClass}">${bannerText}</div>`;
     }
 
+    const photosRow = `
+      <div class="comp-photos-row">
+        <div class="comp-photo-col">
+          <img
+            class="comp-comparison-photo"
+            src="${this.resolveSquarePlaceholderUrl(playerAName)}"
+            alt="${playerAName}"
+            data-player-id="${playerAId || ''}"
+            data-player-name="${playerAName}"
+          />
+          <div class="comp-photo-name">${playerAName}</div>
+        </div>
+        <div class="comp-photos-spacer">VS</div>
+        <div class="comp-photo-col">
+          <img
+            class="comp-comparison-photo"
+            src="${this.resolveSquarePlaceholderUrl(playerBName)}"
+            alt="${playerBName}"
+            data-player-id="${playerBId || ''}"
+            data-player-name="${playerBName}"
+          />
+          <div class="comp-photo-name">${playerBName}</div>
+        </div>
+      </div>
+    `;
+
     return `
       <div class="scanlines"></div>
       ${winnerBanner}
       ${similarityBadge}
+      ${photosRow}
       <table class="comp-table" style="position: relative;">
         <thead>
           <tr>
-            <th class="text-right">${playerA.name}</th>
+            <th class="text-right">${playerAName}</th>
             <th class="text-center">Metric</th>
-            <th class="text-left">${playerB.name}</th>
+            <th class="text-left">${playerBName}</th>
           </tr>
         </thead>
         <tbody>
@@ -717,6 +844,7 @@ const HeadToHeadModule = {
   players: {},
   cache: {},
   searchTimeout: null,
+  imageStyles: ['default', 'vector', 'comic', 'retro'],
 
   /**
    * Initialize the H2H module
@@ -727,6 +855,7 @@ const HeadToHeadModule = {
 
     this.selectedPlayerA = window.PLAYER_DATA.slug;
     this.players[this.selectedPlayerA] = {
+      id: window.PLAYER_DATA.id,
       slug: window.PLAYER_DATA.slug,
       name: window.PLAYER_DATA.name,
       photo: window.PLAYER_DATA.photo_url
@@ -757,6 +886,7 @@ const HeadToHeadModule = {
       players.forEach((p) => {
         if (p.slug === this.selectedPlayerA) return;
         this.players[p.slug] = {
+          id: p.id,
           slug: p.slug,
           name: p.display_name,
           photo: `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(p.display_name)}`
@@ -875,16 +1005,61 @@ const HeadToHeadModule = {
     }
   },
 
+  resolveStyle() {
+    const style = window.IMAGE_STYLE || 'default';
+    return this.imageStyles.includes(style) ? style : 'default';
+  },
+
+  resolvePlaceholderUrl(name) {
+    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+  },
+
   resolvePhoto(slug) {
     const player = this.players[slug];
-    if (player && player.photo) return player.photo;
-    const name = player ? player.name : slug;
-    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+    if (!player) return this.resolvePlaceholderUrl(slug);
+    if (!player.id) return this.resolvePlaceholderUrl(player.name || slug);
+    const style = this.resolveStyle();
+    return `/static/img/players/${player.id}_${style}.jpg`;
   },
 
   resolveName(slug) {
     const player = this.players[slug];
     return player ? player.name : slug;
+  },
+
+  setPhotoWithFallback(imgEl, slug) {
+    if (!imgEl) return;
+
+    const player = this.players[slug];
+    const name = player?.name || slug;
+    const playerId = player?.id;
+    const style = this.resolveStyle();
+
+    imgEl.alt = name;
+
+    if (!playerId) {
+      imgEl.onerror = null;
+      imgEl.src = this.resolvePlaceholderUrl(name);
+      return;
+    }
+
+    const placeholder = this.resolvePlaceholderUrl(name);
+    const preferred = `/static/img/players/${playerId}_${style}.jpg`;
+
+    if (style !== 'default') {
+      imgEl.onerror = () => {
+        imgEl.onerror = () => {
+          imgEl.src = placeholder;
+        };
+        imgEl.src = `/static/img/players/${playerId}_default.jpg`;
+      };
+    } else {
+      imgEl.onerror = () => {
+        imgEl.src = placeholder;
+      };
+    }
+
+    imgEl.src = preferred;
   },
 
   /**
@@ -899,8 +1074,8 @@ const HeadToHeadModule = {
     if (!data || !comparisonBody || !winnerTarget) return;
 
     // Update photos and names
-    document.getElementById('h2hPhotoA').src = this.resolvePhoto(this.selectedPlayerA);
-    document.getElementById('h2hPhotoB').src = this.resolvePhoto(this.selectedPlayerB);
+    this.setPhotoWithFallback(document.getElementById('h2hPhotoA'), this.selectedPlayerA);
+    this.setPhotoWithFallback(document.getElementById('h2hPhotoB'), this.selectedPlayerB);
     document.getElementById('h2hPhotoNameA').textContent = this.resolveName(this.selectedPlayerA);
     document.getElementById('h2hPhotoNameB').textContent = this.resolveName(this.selectedPlayerB);
     document.getElementById('h2hHeaderA').textContent = this.resolveName(this.selectedPlayerA);

@@ -11,6 +11,7 @@ from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.positions import Position
 from app.schemas.seasons import Season
+from app.utils.images import get_player_photo_url
 
 
 async def get_player_profile_by_slug(
@@ -87,4 +88,5 @@ async def get_player_profile_by_slug(
         raw_position=row["raw_position"],
         position_code=row["position_code"],
         wingspan_in=wingspan_value,
+        photo_url=get_player_photo_url(row["id"], row["display_name"]),
     )

@@ -10,6 +10,7 @@ from app.models.fields import SimilarityDimension
 class SimilarPlayer(BaseModel):
     """A player similar to the anchor player."""
 
+    id: int
     slug: str
     display_name: str
     position: Optional[str] = Field(default=None)

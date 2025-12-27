@@ -7,6 +7,43 @@
 
 /**
  * ============================================================================
+ * IMAGE UTILS
+ * Utility functions for generating player image URLs with style support
+ * ============================================================================
+ */
+const ImageUtils = {
+  /**
+   * Generate player photo URL based on player ID and current style
+   * @param {number} playerId - Player database ID
+   * @param {string} displayName - Player display name (for placeholder)
+   * @returns {string} Image URL
+   */
+  getPhotoUrl(playerId, displayName) {
+    const style = window.IMAGE_STYLE || 'default';
+
+    if (playerId) {
+      // Use the static image path pattern: /static/img/players/{id}_{style}.jpg
+      // The server will return placeholder if file doesn't exist
+      return `/static/img/players/${playerId}_${style}.jpg`;
+    }
+
+    // Fallback to placeholder
+    const name = displayName || 'Player';
+    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+  },
+
+  /**
+   * Get player ID from slug using the server-provided map
+   * @param {string} slug - Player slug
+   * @returns {number|null} Player ID or null if not found
+   */
+  getPlayerIdFromSlug(slug) {
+    return window.PLAYER_ID_MAP ? window.PLAYER_ID_MAP[slug] : null;
+  }
+};
+
+/**
+ * ============================================================================
  * TICKER MODULE
  * Renders and animates the market moves ticker
  * ============================================================================
@@ -241,9 +278,10 @@ const HeadToHeadModule = {
       const players = await resp.json();
       players.forEach((p) => {
         this.players[p.slug] = {
+          id: p.id,
           slug: p.slug,
           name: p.display_name,
-          photo: `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(p.display_name)}`
+          photo: ImageUtils.getPhotoUrl(p.id, p.display_name)
         };
       });
     } catch (err) {
@@ -405,7 +443,15 @@ const HeadToHeadModule = {
    */
   resolvePhoto(slug) {
     const player = this.players[slug];
-    if (player && player.photo) return player.photo;
+    if (player && player.id) {
+      return ImageUtils.getPhotoUrl(player.id, player.name);
+    }
+    // Fallback: try the server-provided player ID map
+    const playerId = ImageUtils.getPlayerIdFromSlug(slug);
+    if (playerId) {
+      return ImageUtils.getPhotoUrl(playerId, slug);
+    }
+    // Final fallback to placeholder
     const name = player ? player.name : slug;
     return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
   },
@@ -430,12 +476,25 @@ const HeadToHeadModule = {
     if (!data || !comparisonBody || !winnerTarget) return;
 
     // Update photos and names
-    document.getElementById('h2hPhotoA').src = this.resolvePhoto(this.selectedPlayerA);
-    document.getElementById('h2hPhotoB').src = this.resolvePhoto(this.selectedPlayerB);
-    document.getElementById('h2hPhotoNameA').textContent = this.resolveName(this.selectedPlayerA);
-    document.getElementById('h2hPhotoNameB').textContent = this.resolveName(this.selectedPlayerB);
-    document.getElementById('h2hHeaderA').textContent = this.resolveName(this.selectedPlayerA);
-    document.getElementById('h2hHeaderB').textContent = this.resolveName(this.selectedPlayerB);
+    const photoA = document.getElementById('h2hPhotoA');
+    const photoB = document.getElementById('h2hPhotoB');
+    const nameA = this.resolveName(this.selectedPlayerA);
+    const nameB = this.resolveName(this.selectedPlayerB);
+
+    // Set photos with onerror fallback to placeholder
+    photoA.src = this.resolvePhoto(this.selectedPlayerA);
+    photoA.onerror = () => {
+      photoA.src = `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(nameA)}`;
+    };
+    photoB.src = this.resolvePhoto(this.selectedPlayerB);
+    photoB.onerror = () => {
+      photoB.src = `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(nameB)}`;
+    };
+
+    document.getElementById('h2hPhotoNameA').textContent = nameA;
+    document.getElementById('h2hPhotoNameB').textContent = nameB;
+    document.getElementById('h2hHeaderA').textContent = nameA;
+    document.getElementById('h2hHeaderB').textContent = nameB;
 
     // Update similarity badge
     const badge = document.getElementById('h2hSimilarityBadge');
