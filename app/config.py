@@ -24,8 +24,6 @@ class Settings(BaseSettings):
     s3_region: str = "us-east-1"
     s3_access_key_id: Optional[str] = None
     s3_secret_access_key: Optional[str] = None
-    s3_endpoint_url: Optional[str] = None  # For S3-compatible (Tigris, R2, MinIO)
-    s3_public_url_base: Optional[str] = None  # CDN or direct S3 URL base
     image_storage_local: bool = False  # True = local filesystem (dev only)
 
     @property

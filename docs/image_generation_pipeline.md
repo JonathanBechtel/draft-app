@@ -52,10 +52,6 @@ S3_BUCKET_NAME=draftguru-images
 S3_REGION=us-east-1
 S3_ACCESS_KEY_ID=your-access-key
 S3_SECRET_ACCESS_KEY=your-secret-key
-S3_PUBLIC_URL_BASE=https://draftguru-images.s3.amazonaws.com
-
-# Optional: S3-compatible services (Tigris, R2, MinIO)
-# S3_ENDPOINT_URL=https://fly.storage.tigris.dev
 
 # Dev mode: use local filesystem
 IMAGE_STORAGE_LOCAL=true

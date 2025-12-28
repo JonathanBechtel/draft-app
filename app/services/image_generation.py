@@ -348,10 +348,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         s3_key = self.get_s3_key(player_id, player.slug or str(player_id), style)
         public_url_for_audit = (
             s3_client.get_public_url(s3_key)
-            if s3_client.use_local
-            or settings.s3_public_url_base
-            or settings.s3_endpoint_url
-            or settings.s3_bucket_name
+            if s3_client.use_local or settings.s3_bucket_name
             else ""
         )
 
