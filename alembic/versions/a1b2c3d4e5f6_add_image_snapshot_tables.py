@@ -7,6 +7,7 @@ Create Date: 2025-12-27
 
 from alembic import op  # type: ignore[attr-defined]
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 import sqlmodel
 
 revision = "a1b2c3d4e5f6"
@@ -16,6 +17,16 @@ depends_on = None
 
 
 def upgrade() -> None:
+    cohort_type_enum = postgresql.ENUM(
+        "current_draft",
+        "all_time_draft",
+        "current_nba",
+        "all_time_nba",
+        "global_scope",
+        name="cohort_type_enum",
+        create_type=False,
+    )
+
     # Create player_image_snapshots table
     op.create_table(
         "player_image_snapshots",
@@ -24,18 +35,9 @@ def upgrade() -> None:
         sa.Column("version", sa.Integer(), nullable=False),
         sa.Column("is_current", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column("style", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        # Reuse existing cohort_type_enum
         sa.Column(
             "cohort",
-            sa.Enum(
-                "current_draft",
-                "all_time_draft",
-                "current_nba",
-                "all_time_nba",
-                "global_scope",
-                name="cohort_type_enum",
-                create_type=False,
-            ),
+            cohort_type_enum,
             nullable=False,
         ),
         sa.Column("draft_year", sa.Integer(), nullable=True),
