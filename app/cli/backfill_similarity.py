@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.models.fields import CohortType, MetricSource
 from app.schemas.metrics import MetricSnapshot
-from app.scripts.compute_similarity import (
+from app.cli.compute_similarity import (
     SimilarityConfig,
     compute_for_snapshot,
 )

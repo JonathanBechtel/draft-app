@@ -11,7 +11,7 @@ How to generate global (all-seasons) snapshots
 ----------------------------------------------
 1) Run metrics with global scope (all seasons):
    ```
-   python -m app.scripts.compute_metrics --cohort global_scope --season all --sources combine_anthro combine_agility combine_shooting
+   python -m app.cli.compute_metrics --cohort global_scope --season all --sources combine_anthro combine_agility combine_shooting
    ```
    - Run keys will look like `metrics_global_all|pos=all|min=3_<source>`.
    - These snapshots are created with `is_current=False` (original behavior retained).
@@ -26,7 +26,7 @@ How to generate global (all-seasons) snapshots
 
 3) Compute similarity against global snapshots:
    ```
-   python -m app.scripts.backfill_similarity --cohort global_scope --execute
+   python -m app.cli.backfill_similarity --cohort global_scope --execute
    ```
    - Use `--max-neighbors 10` to cap stored neighbors per player/dimension.
 

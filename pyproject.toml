@@ -40,5 +40,5 @@ include = ["app*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "app.scripts.compute_metrics"
+module = "app.cli.compute_metrics"
 disable_error_code = "attr-defined,arg-type,call-overload,misc"

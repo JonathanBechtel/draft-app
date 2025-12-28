@@ -93,7 +93,7 @@ This document captures the agreed design for metric snapshots: a human‑readabl
   - Already present for `player_metric_values`: unique `(snapshot_id, metric_definition_id, player_id)`.
 
 ## Script Integration (no code in this doc)
-- File: `app/scripts/compute_metrics.py`
+- File: `app/cli/compute_metrics.py`
 - Replace the timestamped default run key with the canonical format above and always emit `pos=` (use `pos=all` when no scope).
 - Compose a single shared `run_key` across sources; do not suffix the key with the `source` (the snapshot’s `source` column provides that).
 - If performing “replace run,” target exact `(source, run_key)` rather than `LIKE` patterns.

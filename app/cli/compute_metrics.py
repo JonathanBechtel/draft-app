@@ -1,3 +1,5 @@
+"""Compute derived metric snapshots for a player cohort."""
+
 from __future__ import annotations
 
 import argparse

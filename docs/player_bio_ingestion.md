@@ -73,7 +73,7 @@ Use these only when BRef lacks a field:
 
 4. **Upsert into the database**
    - Extend `app/models/players.py` and `app/schemas/players.py` with new nullable columns for the enriched fields. Provide a migration that adds these columns to `players` plus `player_nba_seasons` if we decide to keep season-level detail.
-   - Write an ingestion script under `app/scripts/ingest_player_bios.py` that:
+   - Write an ingestion script under `scripts/ingest_player_bios.py` that:
      1. Loads cached or freshly downloaded BRef data.
      2. Resolves each row to a `PlayerMaster` and `Player` record via external ID or alias.
      3. Updates the denormalized flags and bios on the `players` table.
@@ -87,7 +87,7 @@ Use these only when BRef lacks a field:
 ## Running the One-Time Ingestion
 
 - Activate the project environment (`conda activate draftguru`).
-- Execute the script in dry-run mode to verify parsing (`python -m app.scripts.ingest_player_bios --cache-only --dry-run`).
+- Execute the script in dry-run mode to verify parsing (`python scripts/ingest_player_bios.py --file <path/to/bbio.csv> --cache-dir scraper/cache/players --dry-run`).
 - Inspect the generated cache files and logs; spot-check a few players against BRef manually.
 - Rerun without `--dry-run` to commit updates to the database. Provide command-line options for `--letters a,b,c`, `--player-id 123`, or `--slug lebronj01` so partial reruns are easy.
 - The `bio.ingest` make target automatically points to the newest `bbio_*.csv` in `OUT`; pass `BBIO=...` only when you need to ingest an older export.

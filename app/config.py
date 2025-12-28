@@ -1,5 +1,6 @@
 # app/config.py
-from typing import Literal
+from typing import Literal, Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +13,20 @@ class Settings(BaseSettings):
     access_log: bool = True
     sql_echo: bool = True
     auto_init_db: bool = True
+
+    # Image generation settings
+    gemini_api_key: Optional[str] = None
+    image_gen_size: str = "512"  # Options: "512", "1K", "2K"
+    image_gen_quality: str = "standard"  # Options: "draft", "standard", "high"
+
+    # S3 storage settings
+    s3_bucket_name: Optional[str] = None
+    s3_region: str = "us-east-1"
+    s3_access_key_id: Optional[str] = None
+    s3_secret_access_key: Optional[str] = None
+    s3_endpoint_url: Optional[str] = None  # For S3-compatible (Tigris, R2, MinIO)
+    s3_public_url_base: Optional[str] = None  # CDN or direct S3 URL base
+    image_storage_local: bool = False  # True = local filesystem (dev only)
 
     @property
     def is_dev(self) -> bool:

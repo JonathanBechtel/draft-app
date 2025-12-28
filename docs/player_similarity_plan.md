@@ -36,8 +36,8 @@
 4) For composite, blend per-dimension distances and persist alongside the components.
 
 ## Tooling
-- `python -m app.scripts.compute_similarity --snapshot-id <id> [--min-overlap 0.7 --weights 0.4 0.35 0.25 --max-neighbors N]` computes similarity for a single snapshot (or `--run-key <key> --source <source>` to resolve the latest version).
-- `python -m app.scripts.backfill_similarity [--sources combine_anthro combine_agility combine_shooting] [--min-overlap ...] [--weights ...] [--execute]` runs similarity for all `is_current` snapshots (or explicit `--snapshot-ids`); omit `--execute` for a dry-run preview.
+- `python -m app.cli.compute_similarity --snapshot-id <id> [--min-overlap 0.7 --weights 0.4 0.35 0.25 --max-neighbors N]` computes similarity for a single snapshot (or `--run-key <key> --source <source>` to resolve the latest version).
+- `python -m app.cli.backfill_similarity [--sources combine_anthro combine_agility combine_shooting] [--min-overlap ...] [--weights ...] [--execute]` runs similarity for all `is_current` snapshots (or explicit `--snapshot-ids`); omit `--execute` for a dry-run preview.
 - Both scripts use z-scores from `player_metric_values` and write to `player_similarity`.
 
 ## Open Decisions
