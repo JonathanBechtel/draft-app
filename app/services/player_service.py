@@ -11,7 +11,8 @@ from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.positions import Position
 from app.schemas.seasons import Season
-from app.utils.images import get_player_photo_url
+from app.services.image_assets_service import get_current_image_url_for_player
+from app.utils.images import get_placeholder_url
 
 
 async def get_player_profile_by_slug(
@@ -72,6 +73,14 @@ async def get_player_profile_by_slug(
     wingspan_result = await db.execute(wingspan_stmt)
     wingspan_value = wingspan_result.scalar_one_or_none()
 
+    photo_url = await get_current_image_url_for_player(
+        db,
+        player_id=player_id,
+        style="default",
+    )
+    if photo_url is None:
+        photo_url = get_placeholder_url(row["display_name"], player_id=player_id)
+
     return PlayerProfileRead(
         id=row["id"],
         slug=row["slug"],
@@ -88,5 +97,5 @@ async def get_player_profile_by_slug(
         raw_position=row["raw_position"],
         position_code=row["position_code"],
         wingspan_in=wingspan_value,
-        photo_url=get_player_photo_url(row["id"], row["display_name"]),
+        photo_url=photo_url,
     )

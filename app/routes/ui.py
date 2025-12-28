@@ -7,9 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.image_assets_service import get_current_image_url_for_player
+from app.services.image_assets_service import get_current_image_urls_for_players
 from app.services.player_service import get_player_profile_by_slug
 from app.utils.db_async import get_session
-from app.utils.images import get_player_photo_url
+from app.utils.images import get_placeholder_url
 
 router = APIRouter()
 
@@ -125,15 +127,39 @@ async def home(
     )
     player_id_map = {row.slug: (row.id, row.display_name) for row in result}
 
+    requested_style = style or "default"
+    image_urls_by_id = await get_current_image_urls_for_players(
+        db,
+        player_ids=[player_id for player_id, _ in player_id_map.values()],
+        style=requested_style,
+    )
+    if requested_style != "default":
+        missing_ids = [
+            player_id
+            for player_id, _ in player_id_map.values()
+            if player_id not in image_urls_by_id
+        ]
+        fallback_urls = await get_current_image_urls_for_players(
+            db,
+            player_ids=missing_ids,
+            style="default",
+        )
+        image_urls_by_id.update(fallback_urls)
+
     players = []
     for p in mock_picks:
         player_info = player_id_map.get(p["slug"])
         if player_info:
             player_id, display_name = player_info
-            img_url = get_player_photo_url(player_id, display_name, style)
+            img_url = image_urls_by_id.get(
+                player_id,
+                get_placeholder_url(
+                    display_name, player_id=player_id, width=320, height=420
+                ),
+            )
         else:
             # Fallback to placeholder if player not in database
-            img_url = f"https://placehold.co/320x420/edf2f7/1f2937?text={str(p['name']).replace(' ', '+')}"
+            img_url = get_placeholder_url(str(p["name"]), width=320, height=420)
 
         players.append(
             {
@@ -227,6 +253,25 @@ async def player_detail(
 
     # Build player dict for template
     player_name = player_profile.display_name or "Unknown Player"
+
+    requested_style = style or "default"
+    requested_photo_url = await get_current_image_url_for_player(
+        db,
+        player_id=player_profile.id,
+        style=requested_style,
+    )
+    if requested_photo_url is None and requested_style != "default":
+        requested_photo_url = await get_current_image_url_for_player(
+            db,
+            player_id=player_profile.id,
+            style="default",
+        )
+    if requested_photo_url is None:
+        requested_photo_url = get_placeholder_url(
+            player_profile.display_name,
+            player_id=player_profile.id,
+        )
+
     player = {
         "id": player_profile.id,
         "slug": player_profile.slug,
@@ -241,11 +286,7 @@ async def player_detail(
         "hometown": player_profile.hometown,
         "wingspan": player_profile.wingspan_formatted,
         # Use style param if provided, otherwise use default from profile
-        "photo_url": (
-            get_player_photo_url(player_profile.id, player_profile.display_name, style)
-            if style
-            else player_profile.photo_url
-        ),
+        "photo_url": requested_photo_url if style else player_profile.photo_url,
         # Metrics set to None to hide scoreboard (no data sources yet)
         "metrics": {
             "consensusRank": None,

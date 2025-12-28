@@ -64,6 +64,7 @@ async def async_engine(database_url: str) -> AsyncGenerator[AsyncEngine, None]:
     from app.schemas import player_aliases  # noqa: F401
     from app.schemas import player_bio_snapshots  # noqa: F401
     from app.schemas import player_external_ids  # noqa: F401
+    from app.schemas import image_snapshots  # noqa: F401
     from app.schemas import players_master  # noqa: F401
     from app.schemas import seasons  # noqa: F401
 

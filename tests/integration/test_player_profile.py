@@ -311,11 +311,10 @@ async def test_player_detail_style_param_changes_photo_url(app_client, db_sessio
 
 @pytest.mark.asyncio
 async def test_player_detail_photo_url_uses_player_id(app_client, db_session):
-    """Photo URL is based on player ID for deterministic script generation."""
-    import os
-    import tempfile
+    """Photo URL comes from the current image asset for the player."""
     from app.schemas.players_master import PlayerMaster
-    from app.utils import images
+    from app.models.fields import CohortType
+    from app.schemas.image_snapshots import PlayerImageAsset, PlayerImageSnapshot
 
     player = PlayerMaster(
         display_name="ID Test Player",
@@ -325,21 +324,39 @@ async def test_player_detail_photo_url_uses_player_id(app_client, db_session):
     db_session.add(player)
     await db_session.commit()
 
-    # Create a temporary directory with a test image using the player's ID
-    with tempfile.TemporaryDirectory() as tmpdir:
-        original_dir = images.PLAYER_IMAGES_DIR
-        images.PLAYER_IMAGES_DIR = tmpdir
+    snapshot = PlayerImageSnapshot(
+        run_key="test",
+        version=1,
+        is_current=True,
+        style="default",
+        cohort=CohortType.global_scope,
+        draft_year=None,
+        population_size=1,
+        success_count=1,
+        failure_count=0,
+        image_size="1K",
+        system_prompt="test",
+        system_prompt_version="default",
+    )
+    db_session.add(snapshot)
+    await db_session.commit()
+    await db_session.refresh(snapshot)
 
-        try:
-            # Create an image file using the player's ID
-            image_path = os.path.join(tmpdir, f"{player.id}_default.jpg")
-            with open(image_path, "w") as f:
-                f.write("fake image data")
+    public_url = (
+        f"https://cdn.example.com/players/{player.id}_id-test-player_default.png"
+    )
+    asset = PlayerImageAsset(
+        snapshot_id=snapshot.id,  # type: ignore[arg-type]
+        player_id=player.id,  # type: ignore[arg-type]
+        s3_key=f"players/{player.id}_id-test-player_default.png",
+        s3_bucket="test-bucket",
+        public_url=public_url,
+        user_prompt="test",
+    )
+    db_session.add(asset)
+    await db_session.commit()
 
-            response = await app_client.get("/players/id-test-player")
+    response = await app_client.get("/players/id-test-player")
 
-            assert response.status_code == 200
-            # Should use the local image path with player ID
-            assert f"/static/img/players/{player.id}_default.jpg" in response.text
-        finally:
-            images.PLAYER_IMAGES_DIR = original_dir
+    assert response.status_code == 200
+    assert public_url in response.text

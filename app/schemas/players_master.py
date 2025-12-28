@@ -40,6 +40,12 @@ class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
     nba_debut_date: Optional[date] = Field(default=None)
     nba_debut_season: Optional[str] = Field(default=None, index=True)
 
+    # Image generation
+    reference_image_url: Optional[str] = Field(
+        default=None,
+        description="URL to reference image for AI likeness generation",
+    )
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
