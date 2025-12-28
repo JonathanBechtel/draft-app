@@ -1,3 +1,5 @@
+"""Compute nearest-neighbor similarity for metric snapshots."""
+
 from __future__ import annotations
 
 import argparse

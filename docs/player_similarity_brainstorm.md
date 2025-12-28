@@ -8,7 +8,7 @@
 - Provide tunable weighting for position, era, and scout preferences.
 
 ## Source Data
-- Metric snapshots computed by `app/scripts/compute_metrics.py` (`docs/metrics_pipeline.md`). Each snapshot exposes raw values, z-scores, percentiles, and ranks for every metric in scope.
+- Metric snapshots computed by `app/cli/compute_metrics.py` (`docs/metrics_pipeline.md`). Each snapshot exposes raw values, z-scores, percentiles, and ranks for every metric in scope.
 - Identity scaffolding (`docs/data_model.md`) allows grouping by cohort, season, and position buckets. These factors power cohort-specific scaling and candidate pools.
 - Additional derived features can be layered (e.g., wingspan-to-height ratio) prior to similarity calculations when they improve interpretability.
 
@@ -95,4 +95,3 @@
 - Should composite scores include advanced stats (future data sources) once available, and how will that affect weights?
 - How often should similarity snapshots be recomputed—per metric run, nightly batch, or on demand?
 - What UI/UX cues best communicate when a comp is driven by limited overlap vs comprehensive similarity?
-

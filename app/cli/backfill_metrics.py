@@ -19,7 +19,7 @@ from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.combine_shooting import CombineShooting
 from app.schemas.metrics import MetricSnapshot
 from app.schemas.seasons import Season
-from app.scripts.compute_metrics import main_async as compute_metrics_main
+from app.cli.compute_metrics import main_async as compute_metrics_main
 from app.utils.db_async import SessionLocal, load_schema_modules
 
 
@@ -306,7 +306,7 @@ async def run_backfill(argv: Optional[Sequence[str]] = None) -> None:
                 if args.verbose:
                     print(
                         "Executing:",
-                        "python -m app.scripts.compute_metrics",
+                        "python -m app.cli.compute_metrics",
                         " ".join(argv_inner),
                     )
                 await compute_metrics_main(argv_inner)

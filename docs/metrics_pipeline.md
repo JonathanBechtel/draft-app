@@ -13,7 +13,7 @@ This note covers how to generate the derived metrics that populate
 ## Script Entrypoint
 
 Metrics are calculated with the pandas-based CLI at
-`app/scripts/compute_metrics.py`.  The script:
+`app/cli/compute_metrics.py`.  The script:
 
 - reads combine data into pandas for the requested cohort (current draft,
   all-time draft, etc.),
@@ -34,7 +34,7 @@ Baseline populations are cohort-aware:
 Every player with a measurement still receives outputs; the cohort only changes
 which rows define the percentile/rank/z-score distribution.
 
-The CLI accepts the arguments shown below (`python -m app.scripts.compute_metrics --help`).
+The CLI accepts the arguments shown below (`python -m app.cli.compute_metrics --help`).
 
 ```
 --cohort <cohort>            required, one of current_draft | all_time_draft | current_nba | all_time_nba
@@ -56,7 +56,7 @@ The CLI accepts the arguments shown below (`python -m app.scripts.compute_metric
 Dry-run the 2024–25 draft class metrics for all positions:
 
 ```
-python -m app.scripts.compute_metrics \
+python -m app.cli.compute_metrics \
   --cohort current_draft \
   --season 2024-25 \
   --run-key 2024_pre_draft_v1 \
@@ -67,7 +67,7 @@ Persist the same snapshot (rerunning after inspection) and restrict to
 guards only:
 
 ```
-python -m app.scripts.compute_metrics \
+python -m app.cli.compute_metrics \
   --cohort current_draft \
   --season 2024-25 \
   --position-scope guard \

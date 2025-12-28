@@ -86,7 +86,7 @@ The current schema (`app/schemas/`) lacks support for several key features shown
 
 ### 3.1 Data Ingestion (Placeholders)
 Since real data sources (scrapers) might not be fully ready for *new* features:
-1.  **Seed Scripts:** Create `app/scripts/seed_mock_data.py` to populate `ConsensusMock` and `NewsItem` with plausible fake data for development.
+1.  **Seed Scripts:** Create `app/cli/seed_mock_data.py` to populate `ConsensusMock` and `NewsItem` with plausible fake data for development.
 2.  **Image Placeholders:** Use `https://placehold.co` (as in mockups) until the image pipeline is built.
 3.  **Metric Backfill:** Script to calculate/fake `percentiles` and `similarity_scores` if offline pipeline isn't running yet.
 
@@ -109,7 +109,7 @@ Since real data sources (scrapers) might not be fully ready for *new* features:
 *   Run `alembic revision --autogenerate` and apply.
 
 ### Step 2: Seed Data
-*   Write `app/scripts/seed_roadmap_data.py` to populate these new tables with 10-20 sample records matching the mockup players (Cooper Flagg, Ace Bailey, etc.).
+*   Write `app/cli/seed_roadmap_data.py` to populate these new tables with 10-20 sample records matching the mockup players (Cooper Flagg, Ace Bailey, etc.).
 
 ### Step 3: Backend Services
 *   Implement `ConsensusService.get_current_rankings()`.

@@ -7,13 +7,13 @@
 - Added targeted tooling to make backfills repeatable and less error-prone.
 
 ## Key Scripts & Changes
-- `app/scripts/compute_metrics.py`
+- `app/cli/compute_metrics.py`
   - Added `--sources` to limit computation to specific sources (e.g., `combine_anthro`, `combine_agility`, `combine_shooting`).
   - Fixed early-return bug in snapshot creation flow so snapshots persist when results exist.
-- New: `app/scripts/backfill_metrics.py`
+- New: `app/cli/backfill_metrics.py`
   - Plans and executes missing runs across cohorts/seasons with optional parent/fine sweeps.
   - Uses unique run keys per anchor (season + scope) to avoid collisions during large backfills.
-- New: `app/scripts/split_advanced_snapshots.py`
+- New: `app/cli/split_advanced_snapshots.py`
   - Splits mislabeled snapshots (`source=advanced_stats`) into real per-source snapshots by inspecting `PlayerMetricValue → MetricDefinition.source`.
 
 ## Baseline Definitions (as coded)
@@ -75,9 +75,9 @@ Notes:
 - Limit sources:
   - `METRIC_ARGS="--sources combine_anthro combine_agility"`
 - Backfill planner/executor (all seasons, current_draft, parent+fine, skip baseline):
-  - `python -m app.scripts.backfill_metrics --cohorts current_draft --sources combine_anthro combine_agility --no-baseline --include-fine --execute --verbose`
+  - `python -m app.cli.backfill_metrics --cohorts current_draft --sources combine_anthro combine_agility --no-baseline --include-fine --execute --verbose`
 - Split mislabeled snapshots:
-  - `python -m app.scripts.split_advanced_snapshots --cohorts current_draft --execute`
+  - `python -m app.cli.split_advanced_snapshots --cohorts current_draft --execute`
 
 ## Recommendations & Next Steps
 - Shooting: backfill with a lower `--min-sample` for fine/hybrids if you want broader coverage.
@@ -87,8 +87,7 @@ Notes:
   - Export a CSV summary of current snapshots (cohort, season, scope, source, population) as a quick audit artifact.
 
 ## References
-- Compute: `app/scripts/compute_metrics.py`
-- Backfill: `app/scripts/backfill_metrics.py`
-- Snapshot split: `app/scripts/split_advanced_snapshots.py`
+- Compute: `app/cli/compute_metrics.py`
+- Backfill: `app/cli/backfill_metrics.py`
+- Snapshot split: `app/cli/split_advanced_snapshots.py`
 - Make target: `Makefile` (`metrics`)
-

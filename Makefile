@@ -48,7 +48,7 @@ REPLACE ?=
 METRIC_ARGS ?=
 
 metrics:
-	$(PYTHON) -m app.scripts.compute_metrics --cohort $(COHORT) \
+	$(PYTHON) -m app.cli.compute_metrics --cohort $(COHORT) \
 	$(if $(SEASON), --season $(SEASON),) \
 	$(if $(POSITION), --position-scope $(POSITION),) \
 	$(if $(POSITION_MATRIX), --position-matrix $(POSITION_MATRIX),) \
