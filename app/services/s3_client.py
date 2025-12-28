@@ -65,8 +65,6 @@ class S3Client:
                 Key=key,
                 Body=data,
                 ContentType=content_type,
-                # Make publicly readable
-                ACL="public-read",
             )
             logger.info(f"Uploaded {key} to S3 bucket {self.bucket}")
             return self.get_public_url(key)
