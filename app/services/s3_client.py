@@ -20,7 +20,6 @@ class S3Client:
 
     def __init__(self) -> None:
         self.bucket = settings.s3_bucket_name
-        self.public_url_base = settings.s3_public_url_base
         self.use_local = settings.image_storage_local
         self._client: Optional[boto3.client] = None
 
@@ -34,8 +33,6 @@ class S3Client:
             if settings.s3_access_key_id and settings.s3_secret_access_key:
                 client_kwargs["aws_access_key_id"] = settings.s3_access_key_id
                 client_kwargs["aws_secret_access_key"] = settings.s3_secret_access_key
-            if settings.s3_endpoint_url:
-                client_kwargs["endpoint_url"] = settings.s3_endpoint_url
 
             self._client = boto3.client("s3", **client_kwargs)
         return self._client
@@ -68,8 +65,6 @@ class S3Client:
                 Key=key,
                 Body=data,
                 ContentType=content_type,
-                # Make publicly readable
-                ACL="public-read",
             )
             logger.info(f"Uploaded {key} to S3 bucket {self.bucket}")
             return self.get_public_url(key)
@@ -100,9 +95,6 @@ class S3Client:
     def get_public_url(self, key: str) -> str:
         """Return public URL for a key.
 
-        Uses configured public_url_base (CDN) if available,
-        otherwise constructs direct S3 URL.
-
         Args:
             key: S3 object key
 
@@ -112,14 +104,8 @@ class S3Client:
         if self.use_local:
             return f"/static/img/{key}"
 
-        if self.public_url_base:
-            base = self.public_url_base.rstrip("/")
-            return f"{base}/{key}"
-
-        # Fallback to direct S3 URL
-        if settings.s3_endpoint_url:
-            endpoint = settings.s3_endpoint_url.rstrip("/")
-            return f"{endpoint}/{self.bucket}/{key}"
+        if not self.bucket:
+            raise ValueError("S3_BUCKET_NAME not configured")
 
         return f"https://{self.bucket}.s3.{settings.s3_region}.amazonaws.com/{key}"
 

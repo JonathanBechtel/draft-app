@@ -1,13 +1,19 @@
 # app/config.py
+from pathlib import Path
 from typing import Literal, Optional
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
     database_url: str
     secret_key: str
-    env: Literal["dev", "stage", "prod"]
+    env: Literal["dev", "stage", "prod"] = Field(
+        validation_alias=AliasChoices("ENV", "APP_ENV")
+    )
     debug: bool = False
     log_level: str = "INFO"
     access_log: bool = True
@@ -21,11 +27,18 @@ class Settings(BaseSettings):
 
     # S3 storage settings
     s3_bucket_name: Optional[str] = None
-    s3_region: str = "us-east-1"
-    s3_access_key_id: Optional[str] = None
-    s3_secret_access_key: Optional[str] = None
-    s3_endpoint_url: Optional[str] = None  # For S3-compatible (Tigris, R2, MinIO)
-    s3_public_url_base: Optional[str] = None  # CDN or direct S3 URL base
+    s3_region: str = Field(
+        default="us-east-1",
+        validation_alias=AliasChoices("S3_REGION", "AWS_REGION", "AWS_DEFAULT_REGION"),
+    )
+    s3_access_key_id: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("S3_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID"),
+    )
+    s3_secret_access_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY"),
+    )
     image_storage_local: bool = False  # True = local filesystem (dev only)
 
     @property
@@ -33,7 +46,7 @@ class Settings(BaseSettings):
         return self.env == "dev" or self.debug is True
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(REPO_ROOT / ".env"),
         env_prefix="",
         case_sensitive=False,
         extra="ignore",
