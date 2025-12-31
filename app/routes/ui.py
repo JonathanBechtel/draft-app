@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.image_assets_service import get_current_image_url_for_player
 from app.services.image_assets_service import get_current_image_urls_for_players
+from app.services.news_service import get_news_feed
 from app.services.player_service import get_player_profile_by_slug
 from app.utils.db_async import get_session
 from app.utils.images import get_placeholder_url
@@ -177,31 +178,22 @@ async def home(
             }
         )
 
+    # Fetch news feed from database (falls back to empty if no items yet)
+    news_feed = await get_news_feed(db, limit=10)
     feed_items = [
         {
-            "source": "@DraftExpress",
-            "title": "Ace Bailey wingspan causes chaos at Elite Camp",
-            "time": "3m",
-            "tag": "Riser",
-        },
-        {
-            "source": "No Ceilings",
-            "title": "Dylan Harper rim deterrence study: early returns",
-            "time": "12m",
-            "tag": "Riser",
-        },
-        {
-            "source": "The Ringer",
-            "title": "VJ Edgecombe fit questions with top-5 teams",
-            "time": "27m",
-            "tag": "Faller",
-        },
-        {
-            "source": "BR",
-            "title": "Flagg off-ball value and scheme versatility",
-            "time": "1h",
-            "tag": "Riser",
-        },
+            "id": item.id,
+            "source": item.source_name,
+            "title": item.title,
+            "summary": item.summary,
+            "url": item.url,
+            "image_url": item.image_url,
+            "author": item.author,
+            "time": item.time,
+            "tag": item.tag,
+            "read_more_text": item.read_more_text,
+        }
+        for item in news_feed.items
     ]
 
     # Build a slug->id map for JS to use when generating image URLs dynamically
@@ -358,25 +350,23 @@ async def player_detail(
     # Comparison data is fetched via API (GET /api/players/{slug}/similar)
     comparison_data: list = []
 
+    # Fetch news feed (player-specific filtering would require player_id once implemented)
+    # For now, show general feed on player pages too
+    news_feed = await get_news_feed(db, limit=5)
     player_feed = [
         {
-            "source": "@DraftExpress",
-            "title": "Flagg dominates Duke scrimmage with 28 points",
-            "time": "2h",
-            "tag": "Highlight",
-        },
-        {
-            "source": "The Athletic",
-            "title": "Breaking down Flagg's defensive versatility",
-            "time": "5h",
-            "tag": "Analysis",
-        },
-        {
-            "source": "ESPN",
-            "title": "Why Flagg is the consensus #1 pick",
-            "time": "1d",
-            "tag": "Riser",
-        },
+            "id": item.id,
+            "source": item.source_name,
+            "title": item.title,
+            "summary": item.summary,
+            "url": item.url,
+            "image_url": item.image_url,
+            "author": item.author,
+            "time": item.time,
+            "tag": item.tag,
+            "read_more_text": item.read_more_text,
+        }
+        for item in news_feed.items
     ]
 
     return request.app.state.templates.TemplateResponse(

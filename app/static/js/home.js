@@ -584,7 +584,7 @@ const HeadToHeadModule = {
 /**
  * ============================================================================
  * FEED MODULE
- * Renders the live draft buzz news feed
+ * Renders the live draft buzz news feed with enhanced cards
  * ============================================================================
  */
 const FeedModule = {
@@ -593,31 +593,82 @@ const FeedModule = {
    */
   init() {
     const feedContainer = document.getElementById('feedContainer');
-    if (!feedContainer || !window.FEED_ITEMS) return;
+    if (!feedContainer) return;
+
+    // Handle both old format (FEED_ITEMS) and empty state
+    if (!window.FEED_ITEMS || window.FEED_ITEMS.length === 0) {
+      feedContainer.innerHTML = this.renderEmptyState();
+      return;
+    }
 
     feedContainer.innerHTML = this.renderFeed();
   },
 
   /**
-   * Render all feed items
+   * Render empty state when no news items
+   * @returns {string} HTML string
+   */
+  renderEmptyState() {
+    return `
+      <div class="feed-empty">
+        <p>No news items yet. Check back soon!</p>
+      </div>
+    `;
+  },
+
+  /**
+   * Get tag class based on tag type
+   * @param {string} tag - Tag name
+   * @returns {string} CSS class
+   */
+  getTagClass(tag) {
+    const tagMap = {
+      'Riser': 'riser',
+      'Faller': 'faller',
+      'Analysis': 'analysis',
+      'Highlight': 'highlight'
+    };
+    return tagMap[tag] || 'analysis';
+  },
+
+  /**
+   * Render all feed items with enhanced card layout
    * @returns {string} HTML string
    */
   renderFeed() {
     return window.FEED_ITEMS.map((item) => {
-      const tagClass = item.tag === 'Riser' ? 'riser' : 'faller';
+      const tagClass = this.getTagClass(item.tag);
+      const hasImage = item.image_url && item.image_url.trim() !== '';
+      const imageHtml = hasImage
+        ? `<img src="${item.image_url}" alt="" class="feed-card__image" loading="lazy" />`
+        : `<div class="feed-card__image feed-card__image--placeholder"></div>`;
+
+      // Build author/time meta line
+      const authorPart = item.author ? `${item.author} • ` : '';
+      const summaryHtml = item.summary
+        ? `<p class="feed-card__summary">${item.summary}</p>`
+        : '';
 
       return `
-        <div class="feed-item">
-          <p class="feed-title">${item.title}</p>
-          <div class="feed-meta">
-            ${item.source}
-            <svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
-              <polyline points="9 18 15 12 9 6"></polyline>
-            </svg>
-            ${item.time}
-            <span class="feed-tag ${tagClass}">${item.tag}</span>
+        <article class="feed-card">
+          <div class="feed-card__image-wrapper">
+            ${imageHtml}
           </div>
-        </div>
+          <div class="feed-card__content">
+            <h4 class="feed-card__title">${item.title}</h4>
+            ${summaryHtml}
+            <div class="feed-card__meta">
+              <span class="feed-card__tag ${tagClass}">${item.tag}</span>
+              <span class="feed-card__author-time">${authorPart}${item.time}</span>
+            </div>
+            <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="feed-card__cta">
+              ${item.read_more_text || 'Read More'}
+              <svg class="icon" viewBox="0 0 24 24" style="width: 0.875rem; height: 0.875rem;">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </a>
+          </div>
+        </article>
       `;
     }).join('');
   }
