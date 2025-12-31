@@ -58,9 +58,17 @@ COST_PER_IMAGE_USD = {
 }
 
 
-def generate_run_key(cohort: str, style: str, draft_year: Optional[int] = None) -> str:
+def generate_run_key(
+    cohort: str,
+    style: str,
+    *,
+    draft_year: Optional[int] = None,
+    season: Optional[str] = None,
+) -> str:
     """Generate a unique run key for this batch."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if season:
+        return f"{style}_{cohort}_{season}_{timestamp}"
     if draft_year:
         return f"{style}_{cohort}_{draft_year}_{timestamp}"
     return f"{style}_{cohort}_{timestamp}"
@@ -317,7 +325,10 @@ async def main(args: argparse.Namespace) -> None:
 
     # Generate run key if not provided
     run_key = args.run_key or generate_run_key(
-        cohort.value, args.style, args.draft_year
+        cohort.value,
+        args.style,
+        draft_year=args.draft_year,
+        season=args.season,
     )
     logger.info(f"Run key: {run_key}")
 
