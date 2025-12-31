@@ -280,8 +280,8 @@ async def player_detail(
         "age": player_profile.age_formatted,
         "hometown": player_profile.hometown,
         "wingspan": player_profile.wingspan_formatted,
-        # Use style param if provided, otherwise use default from profile
-        "photo_url": requested_photo_url if style else player_profile.photo_url,
+        # Always use S3 URL (with fallback to placeholder if not found)
+        "photo_url": requested_photo_url,
         # Metrics set to None to hide scoreboard (no data sources yet)
         "metrics": {
             "consensusRank": None,
