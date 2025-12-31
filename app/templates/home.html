@@ -224,6 +224,8 @@
   // Image style and player ID mapping for dynamic image URL generation
   window.IMAGE_STYLE = {{ image_style | tojson | safe }};
   window.PLAYER_ID_MAP = {{ player_id_map | tojson | safe }};
+  window.ID_TO_SLUG_MAP = {{ id_to_slug_map | tojson | safe }};
+  window.S3_IMAGE_BASE_URL = {{ s3_image_base_url | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/home.js') }}"></script>
 {% endblock %}

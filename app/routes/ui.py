@@ -12,7 +12,7 @@ from app.services.image_assets_service import get_current_image_urls_for_players
 from app.services.news_service import get_news_feed
 from app.services.player_service import get_player_profile_by_slug
 from app.utils.db_async import get_session
-from app.utils.images import get_placeholder_url
+from app.utils.images import get_placeholder_url, get_s3_image_base_url
 
 router = APIRouter()
 
@@ -196,8 +196,9 @@ async def home(
         for item in news_feed.items
     ]
 
-    # Build a slug->id map for JS to use when generating image URLs dynamically
+    # Build mappings for JS image URL generation
     slug_to_id = {slug: info[0] for slug, info in player_id_map.items()}
+    id_to_slug = {info[0]: slug for slug, info in player_id_map.items()}
 
     return request.app.state.templates.TemplateResponse(
         "home.html",
@@ -210,6 +211,8 @@ async def home(
             "current_year": datetime.now().year,
             "image_style": style,  # Current image style for JS
             "player_id_map": slug_to_id,  # slug -> player_id for JS image URLs
+            "id_to_slug_map": id_to_slug,  # player_id -> slug for JS image URLs
+            "s3_image_base_url": get_s3_image_base_url(),  # S3 base URL for images
         },
     )
 
@@ -380,5 +383,6 @@ async def player_detail(
             "footer_columns": FOOTER_COLUMNS,
             "current_year": datetime.now().year,
             "image_style": style,  # Current image style for JS
+            "s3_image_base_url": get_s3_image_base_url(),  # S3 base URL for images
         },
     )

@@ -7,6 +7,48 @@
 
 /**
  * ============================================================================
+ * IMAGE UTILS
+ * Utility functions for generating player image URLs with style support
+ * Uses S3 URLs with format: {base}/players/{id}_{slug}_{style}.png
+ * ============================================================================
+ */
+const ImageUtils = {
+  /**
+   * Generate player photo URL based on player ID, slug, and current style.
+   * Uses S3 URLs when S3_IMAGE_BASE_URL is configured.
+   * @param {number} playerId - Player database ID
+   * @param {string} displayName - Player display name (for placeholder)
+   * @param {string} [slug] - Player URL slug
+   * @returns {string} Image URL
+   */
+  getPhotoUrl(playerId, displayName, slug) {
+    const style = window.IMAGE_STYLE || 'default';
+    const s3Base = window.S3_IMAGE_BASE_URL;
+
+    if (playerId && slug && s3Base) {
+      // Use S3 URL format: {base}/players/{id}_{slug}_{style}.png
+      return `${s3Base}/players/${playerId}_${slug}_${style}.png`;
+    }
+
+    // Fallback to placeholder if S3 not configured or missing data
+    const name = displayName || 'Player';
+    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+  },
+
+  /**
+   * Get placeholder URL for a player
+   * @param {string} name - Player name for placeholder text
+   * @param {number} [width=200] - Width in pixels
+   * @param {number} [height=200] - Height in pixels
+   * @returns {string} Placeholder URL
+   */
+  getPlaceholderUrl(name, width = 200, height = 200) {
+    return `https://placehold.co/${width}x${height}/edf2f7/1f2937?text=${encodeURIComponent(name || 'Player')}`;
+  }
+};
+
+/**
+ * ============================================================================
  * SCOREBOARD MODULE
  * Populates the sports scoreboard metrics from player data
  * ============================================================================
@@ -497,35 +539,53 @@ const PlayerComparisonsModule = {
   hydrateCardPhotos(container) {
     if (!container) return;
 
+    const s3Base = window.S3_IMAGE_BASE_URL;
     const style = this.resolveStyle();
     const images = container.querySelectorAll('img.comp-player-photo');
     images.forEach((img) => {
       const playerId = img.dataset.playerId;
+      const playerSlug = img.dataset.playerSlug;
       const name = img.dataset.playerName || 'Player';
       const placeholder = this.resolvePlaceholderUrl(name);
 
-      if (!playerId) {
+      if (!playerId || !playerSlug) {
         img.onerror = null;
         img.src = placeholder;
         return;
       }
 
-      const preferred = `/static/img/players/${playerId}_${style}.jpg`;
-
-      if (style !== 'default') {
+      if (s3Base) {
+        // Use S3 URL format: {base}/players/{id}_{slug}_{style}.png
+        const s3Url = `${s3Base}/players/${playerId}_${playerSlug}_${style}.png`;
         img.onerror = () => {
+          // Fallback to default style on S3
+          if (style !== 'default') {
+            img.onerror = () => {
+              img.src = placeholder;
+            };
+            img.src = `${s3Base}/players/${playerId}_${playerSlug}_default.png`;
+          } else {
+            img.src = placeholder;
+          }
+        };
+        img.src = s3Url;
+      } else {
+        // Fallback to local static path
+        const preferred = `/static/img/players/${playerId}_${style}.jpg`;
+        if (style !== 'default') {
+          img.onerror = () => {
+            img.onerror = () => {
+              img.src = placeholder;
+            };
+            img.src = `/static/img/players/${playerId}_default.jpg`;
+          };
+        } else {
           img.onerror = () => {
             img.src = placeholder;
           };
-          img.src = `/static/img/players/${playerId}_default.jpg`;
-        };
-      } else {
-        img.onerror = () => {
-          img.src = placeholder;
-        };
+        }
+        img.src = preferred;
       }
-
-      img.src = preferred;
     });
   },
 
@@ -552,6 +612,7 @@ const PlayerComparisonsModule = {
             alt="${player.display_name}"
             class="prospect-image comp-player-photo"
             data-player-id="${player.id || ''}"
+            data-player-slug="${player.slug || ''}"
             data-player-name="${player.display_name}"
           />
         </a>
@@ -669,35 +730,53 @@ const PlayerComparisonsModule = {
   hydrateComparisonPhotos(container) {
     if (!container) return;
 
+    const s3Base = window.S3_IMAGE_BASE_URL;
     const style = this.resolveStyle();
     const images = container.querySelectorAll('img.comp-comparison-photo');
     images.forEach((img) => {
       const playerId = img.dataset.playerId;
+      const playerSlug = img.dataset.playerSlug;
       const name = img.dataset.playerName || 'Player';
       const placeholder = this.resolveSquarePlaceholderUrl(name);
 
-      if (!playerId) {
+      if (!playerId || !playerSlug) {
         img.onerror = null;
         img.src = placeholder;
         return;
       }
 
-      const preferred = `/static/img/players/${playerId}_${style}.jpg`;
-
-      if (style !== 'default') {
+      if (s3Base) {
+        // Use S3 URL format: {base}/players/{id}_{slug}_{style}.png
+        const s3Url = `${s3Base}/players/${playerId}_${playerSlug}_${style}.png`;
         img.onerror = () => {
+          // Fallback to default style on S3
+          if (style !== 'default') {
+            img.onerror = () => {
+              img.src = placeholder;
+            };
+            img.src = `${s3Base}/players/${playerId}_${playerSlug}_default.png`;
+          } else {
+            img.src = placeholder;
+          }
+        };
+        img.src = s3Url;
+      } else {
+        // Fallback to local static path
+        const preferred = `/static/img/players/${playerId}_${style}.jpg`;
+        if (style !== 'default') {
+          img.onerror = () => {
+            img.onerror = () => {
+              img.src = placeholder;
+            };
+            img.src = `/static/img/players/${playerId}_default.jpg`;
+          };
+        } else {
           img.onerror = () => {
             img.src = placeholder;
           };
-          img.src = `/static/img/players/${playerId}_default.jpg`;
-        };
-      } else {
-        img.onerror = () => {
-          img.src = placeholder;
-        };
+        }
+        img.src = preferred;
       }
-
-      img.src = preferred;
     });
   },
 
@@ -719,6 +798,8 @@ const PlayerComparisonsModule = {
     const playerBName = comp.name || playerB.name;
     const playerAId = anchor.id;
     const playerBId = comp.id;
+    const playerASlug = anchor.slug || '';
+    const playerBSlug = comp.slug || '';
 
     let winsA = 0;
     let winsB = 0;
@@ -792,6 +873,7 @@ const PlayerComparisonsModule = {
             src="${this.resolveSquarePlaceholderUrl(playerAName)}"
             alt="${playerAName}"
             data-player-id="${playerAId || ''}"
+            data-player-slug="${playerASlug}"
             data-player-name="${playerAName}"
           />
           <div class="comp-photo-name">${playerAName}</div>
@@ -803,6 +885,7 @@ const PlayerComparisonsModule = {
             src="${this.resolveSquarePlaceholderUrl(playerBName)}"
             alt="${playerBName}"
             data-player-id="${playerBId || ''}"
+            data-player-slug="${playerBSlug}"
             data-player-name="${playerBName}"
           />
           <div class="comp-photo-name">${playerBName}</div>
@@ -889,7 +972,7 @@ const HeadToHeadModule = {
           id: p.id,
           slug: p.slug,
           name: p.display_name,
-          photo: `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(p.display_name)}`
+          photo: ImageUtils.getPhotoUrl(p.id, p.display_name, p.slug)
         };
       });
     } catch (err) {
@@ -1017,9 +1100,8 @@ const HeadToHeadModule = {
   resolvePhoto(slug) {
     const player = this.players[slug];
     if (!player) return this.resolvePlaceholderUrl(slug);
-    if (!player.id) return this.resolvePlaceholderUrl(player.name || slug);
-    const style = this.resolveStyle();
-    return `/static/img/players/${player.id}_${style}.jpg`;
+    if (!player.id || !player.slug) return this.resolvePlaceholderUrl(player.name || slug);
+    return ImageUtils.getPhotoUrl(player.id, player.name, player.slug);
   },
 
   resolveName(slug) {
@@ -1030,36 +1112,55 @@ const HeadToHeadModule = {
   setPhotoWithFallback(imgEl, slug) {
     if (!imgEl) return;
 
+    const s3Base = window.S3_IMAGE_BASE_URL;
     const player = this.players[slug];
     const name = player?.name || slug;
     const playerId = player?.id;
+    const playerSlug = player?.slug;
     const style = this.resolveStyle();
 
     imgEl.alt = name;
 
-    if (!playerId) {
+    if (!playerId || !playerSlug) {
       imgEl.onerror = null;
       imgEl.src = this.resolvePlaceholderUrl(name);
       return;
     }
 
     const placeholder = this.resolvePlaceholderUrl(name);
-    const preferred = `/static/img/players/${playerId}_${style}.jpg`;
 
-    if (style !== 'default') {
+    if (s3Base) {
+      // Use S3 URL format: {base}/players/{id}_{slug}_{style}.png
+      const s3Url = `${s3Base}/players/${playerId}_${playerSlug}_${style}.png`;
       imgEl.onerror = () => {
+        // Fallback to default style on S3
+        if (style !== 'default') {
+          imgEl.onerror = () => {
+            imgEl.src = placeholder;
+          };
+          imgEl.src = `${s3Base}/players/${playerId}_${playerSlug}_default.png`;
+        } else {
+          imgEl.src = placeholder;
+        }
+      };
+      imgEl.src = s3Url;
+    } else {
+      // Fallback to local static path
+      const preferred = `/static/img/players/${playerId}_${style}.jpg`;
+      if (style !== 'default') {
+        imgEl.onerror = () => {
+          imgEl.onerror = () => {
+            imgEl.src = placeholder;
+          };
+          imgEl.src = `/static/img/players/${playerId}_default.jpg`;
+        };
+      } else {
         imgEl.onerror = () => {
           imgEl.src = placeholder;
         };
-        imgEl.src = `/static/img/players/${playerId}_default.jpg`;
-      };
-    } else {
-      imgEl.onerror = () => {
-        imgEl.src = placeholder;
-      };
+      }
+      imgEl.src = preferred;
     }
-
-    imgEl.src = preferred;
   },
 
   /**

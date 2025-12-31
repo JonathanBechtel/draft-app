@@ -9,21 +9,32 @@
  * ============================================================================
  * IMAGE UTILS
  * Utility functions for generating player image URLs with style support
+ * Uses S3 URLs with format: {base}/players/{id}_{slug}_{style}.png
  * ============================================================================
  */
 const ImageUtils = {
   /**
-   * Generate player photo URL based on player ID and current style
+   * Generate player photo URL based on player ID, slug, and current style.
+   * Uses S3 URLs when S3_IMAGE_BASE_URL is configured.
    * @param {number} playerId - Player database ID
    * @param {string} displayName - Player display name (for placeholder)
+   * @param {string} [slug] - Player URL slug (optional, will lookup from ID_TO_SLUG_MAP)
    * @returns {string} Image URL
    */
-  getPhotoUrl(playerId, displayName) {
+  getPhotoUrl(playerId, displayName, slug) {
     const style = window.IMAGE_STYLE || 'default';
+    const s3Base = window.S3_IMAGE_BASE_URL;
 
     if (playerId) {
-      // Use the static image path pattern: /static/img/players/{id}_{style}.jpg
-      // The server will return placeholder if file doesn't exist
+      // Resolve slug from map if not provided
+      const playerSlug = slug || (window.ID_TO_SLUG_MAP ? window.ID_TO_SLUG_MAP[playerId] : null);
+
+      if (s3Base && playerSlug) {
+        // Use S3 URL format: {base}/players/{id}_{slug}_{style}.png
+        return `${s3Base}/players/${playerId}_${playerSlug}_${style}.png`;
+      }
+
+      // Fallback to local static path if S3 not configured or slug not available
       return `/static/img/players/${playerId}_${style}.jpg`;
     }
 
@@ -39,6 +50,15 @@ const ImageUtils = {
    */
   getPlayerIdFromSlug(slug) {
     return window.PLAYER_ID_MAP ? window.PLAYER_ID_MAP[slug] : null;
+  },
+
+  /**
+   * Get player slug from ID using the server-provided map
+   * @param {number} playerId - Player database ID
+   * @returns {string|null} Player slug or null if not found
+   */
+  getSlugFromPlayerId(playerId) {
+    return window.ID_TO_SLUG_MAP ? window.ID_TO_SLUG_MAP[playerId] : null;
   }
 };
 
@@ -281,7 +301,7 @@ const HeadToHeadModule = {
           id: p.id,
           slug: p.slug,
           name: p.display_name,
-          photo: ImageUtils.getPhotoUrl(p.id, p.display_name)
+          photo: ImageUtils.getPhotoUrl(p.id, p.display_name, p.slug)
         };
       });
     } catch (err) {
@@ -444,12 +464,12 @@ const HeadToHeadModule = {
   resolvePhoto(slug) {
     const player = this.players[slug];
     if (player && player.id) {
-      return ImageUtils.getPhotoUrl(player.id, player.name);
+      return ImageUtils.getPhotoUrl(player.id, player.name, slug);
     }
     // Fallback: try the server-provided player ID map
     const playerId = ImageUtils.getPlayerIdFromSlug(slug);
     if (playerId) {
-      return ImageUtils.getPhotoUrl(playerId, slug);
+      return ImageUtils.getPhotoUrl(playerId, slug, slug);
     }
     // Final fallback to placeholder
     const name = player ? player.name : slug;
