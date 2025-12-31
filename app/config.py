@@ -39,6 +39,21 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("S3_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY"),
     )
+    s3_public_url_base: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("S3_PUBLIC_URL_BASE", "CDN_PUBLIC_URL_BASE"),
+        description="Optional base URL (CDN) for serving S3 objects.",
+    )
+    s3_upload_acl: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "S3_UPLOAD_ACL",
+        ),
+        description=(
+            "Optional S3 ACL to apply on upload (e.g., 'public-read'). "
+            "If unset, objects rely on bucket policy/permissions for readability."
+        ),
+    )
     image_storage_local: bool = False  # True = local filesystem (dev only)
 
     @property
