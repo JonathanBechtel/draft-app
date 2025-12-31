@@ -9,11 +9,15 @@ This script adds the initial RSS sources if they don't already exist.
 
 import asyncio
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 
 from dotenv import load_dotenv
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 load_dotenv()
 
@@ -72,7 +76,7 @@ async def seed_sources() -> None:
                 skipped += 1
                 continue
 
-            # Create new source
+            # Create new source (use naive UTC datetimes to match schema)
             source = NewsSource(
                 name=source_data["name"],
                 display_name=source_data["display_name"],
@@ -80,8 +84,8 @@ async def seed_sources() -> None:
                 feed_url=source_data["feed_url"],
                 fetch_interval_minutes=source_data["fetch_interval_minutes"],
                 is_active=True,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
             )
             session.add(source)
             print(f"  ADD: {source_data['name']}")
