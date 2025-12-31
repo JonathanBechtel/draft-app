@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.routes import players, ui
+from app.routes import news, players, ui
 from app.utils.db_async import (
     init_db,
     dispose_engine,
@@ -63,6 +63,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Mini Draft Guru", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.state.templates = Jinja2Templates(directory="app/templates")
+app.include_router(news.router)
 app.include_router(players.router)
 app.include_router(ui.router)
 
