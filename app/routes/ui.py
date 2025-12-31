@@ -261,11 +261,21 @@ async def player_detail(
             player_id=player_profile.id,
             style="default",
         )
+    # If database doesn't have a record, construct S3 URL directly as fallback
     if requested_photo_url is None:
-        requested_photo_url = get_placeholder_url(
-            player_profile.display_name,
-            player_id=player_profile.id,
-        )
+        s3_base = get_s3_image_base_url()
+        if s3_base and player_profile.slug:
+            # Construct S3 URL: {base}/players/{id}_{slug}_{style}.png
+            requested_photo_url = (
+                f"{s3_base}/players/{player_profile.id}_{player_profile.slug}_"
+                f"{requested_style}.png"
+            )
+        else:
+            # Final fallback to placeholder
+            requested_photo_url = get_placeholder_url(
+                player_profile.display_name,
+                player_id=player_profile.id,
+            )
 
     player = {
         "id": player_profile.id,
