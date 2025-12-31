@@ -60,12 +60,16 @@ class S3Client:
             raise ValueError("S3_BUCKET_NAME not configured")
 
         try:
-            self.client.put_object(
-                Bucket=self.bucket,
-                Key=key,
-                Body=data,
-                ContentType=content_type,
-            )
+            put_kwargs: dict[str, object] = {
+                "Bucket": self.bucket,
+                "Key": key,
+                "Body": data,
+                "ContentType": content_type,
+            }
+            if settings.s3_upload_acl:
+                put_kwargs["ACL"] = settings.s3_upload_acl
+
+            self.client.put_object(**put_kwargs)
             logger.info(f"Uploaded {key} to S3 bucket {self.bucket}")
             return self.get_public_url(key)
         except ClientError as e:
@@ -93,19 +97,24 @@ class S3Client:
             raise
 
     def get_public_url(self, key: str) -> str:
-        """Return public URL for a key.
+        """Return a URL for serving an object.
 
         Args:
             key: S3 object key
 
         Returns:
-            Full public URL to access the object
+            Full URL to access the object (requires either a public-read bucket policy
+            or an uploaded object ACL such as 'public-read').
         """
         if self.use_local:
             return f"/static/img/{key}"
 
         if not self.bucket:
             raise ValueError("S3_BUCKET_NAME not configured")
+
+        if settings.s3_public_url_base:
+            base = settings.s3_public_url_base.rstrip("/")
+            return f"{base}/{key}"
 
         return f"https://{self.bucket}.s3.{settings.s3_region}.amazonaws.com/{key}"
 

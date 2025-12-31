@@ -74,6 +74,15 @@ pytest
 - DB: Async SQLAlchemy + SQLModel; write operations are wrapped in `async with db.begin():` for atomic commits/rollbacks.
 - Schemas: Separate create/read models to avoid overposting and to keep response shapes stable.
 
+## S3 Images
+
+Generated player images are stored in S3 (or local filesystem in dev when `IMAGE_STORAGE_LOCAL=true`).
+
+- Serving URLs: `S3_PUBLIC_URL_BASE` can point at a CDN (preferred). If unset, URLs use the standard S3 HTTPS format.
+- Public access: if your bucket is private by default, the plain HTTPS URL will 403 unless you either:
+  - configure a bucket policy that allows `s3:GetObject` for the uploaded keys/prefixes, or
+  - set `S3_UPLOAD_ACL=public-read` (only works if ACLs are enabled for the bucket/object ownership settings).
+
 ## Scraper
 
 This repo includes a CLI scraper for NBA Draft Combine data (shooting, anthro, agility). See docs/scraper.md for installation, usage, and troubleshooting.
