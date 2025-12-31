@@ -67,6 +67,8 @@ async def async_engine(database_url: str) -> AsyncGenerator[AsyncEngine, None]:
     from app.schemas import image_snapshots  # noqa: F401
     from app.schemas import players_master  # noqa: F401
     from app.schemas import seasons  # noqa: F401
+    from app.schemas import news_sources  # noqa: F401
+    from app.schemas import news_items  # noqa: F401
 
     engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
     async with engine.begin() as conn:
