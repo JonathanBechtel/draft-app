@@ -6,10 +6,13 @@ from contextlib import asynccontextmanager
 import os
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.exc import DBAPIError
 
-from app.routes import players, ui
+from app.routes import news, players, ui
 from app.utils.db_async import (
     init_db,
     dispose_engine,
@@ -63,8 +66,32 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Mini Draft Guru", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.state.templates = Jinja2Templates(directory="app/templates")
+app.include_router(news.router)
 app.include_router(players.router)
 app.include_router(ui.router)
+
+
+@app.exception_handler(DBAPIError)
+async def handle_dbapi_errors(request, exc: DBAPIError):  # type: ignore[no-untyped-def]
+    message = str(exc)
+    cache_error_markers = (
+        "cache lookup failed for type",
+        "InvalidCachedStatementError",
+        "cached statement plan is invalid",
+    )
+    if any(marker in message for marker in cache_error_markers):
+        # Self-heal after schema changes (e.g., enum migrations) by forcing new
+        # connections on the next request.
+        await dispose_engine()
+        if request.method in {"GET", "HEAD"}:
+            return RedirectResponse(url=str(request.url), status_code=307)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Database schema changed; connection caches were reset. Retry the request."
+            },
+        )
+    raise exc
 
 
 @app.get("/health")

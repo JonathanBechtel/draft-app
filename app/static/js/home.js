@@ -9,21 +9,32 @@
  * ============================================================================
  * IMAGE UTILS
  * Utility functions for generating player image URLs with style support
+ * Uses S3 URLs with format: {base}/players/{id}_{slug}_{style}.png
  * ============================================================================
  */
 const ImageUtils = {
   /**
-   * Generate player photo URL based on player ID and current style
+   * Generate player photo URL based on player ID, slug, and current style.
+   * Uses S3 URLs when S3_IMAGE_BASE_URL is configured.
    * @param {number} playerId - Player database ID
    * @param {string} displayName - Player display name (for placeholder)
+   * @param {string} [slug] - Player URL slug (optional, will lookup from ID_TO_SLUG_MAP)
    * @returns {string} Image URL
    */
-  getPhotoUrl(playerId, displayName) {
+  getPhotoUrl(playerId, displayName, slug) {
     const style = window.IMAGE_STYLE || 'default';
+    const s3Base = window.S3_IMAGE_BASE_URL;
 
     if (playerId) {
-      // Use the static image path pattern: /static/img/players/{id}_{style}.jpg
-      // The server will return placeholder if file doesn't exist
+      // Resolve slug from map if not provided
+      const playerSlug = slug || (window.ID_TO_SLUG_MAP ? window.ID_TO_SLUG_MAP[playerId] : null);
+
+      if (s3Base && playerSlug) {
+        // Use S3 URL format: {base}/players/{id}_{slug}_{style}.png
+        return `${s3Base}/players/${playerId}_${playerSlug}_${style}.png`;
+      }
+
+      // Fallback to local static path if S3 not configured or slug not available
       return `/static/img/players/${playerId}_${style}.jpg`;
     }
 
@@ -39,6 +50,15 @@ const ImageUtils = {
    */
   getPlayerIdFromSlug(slug) {
     return window.PLAYER_ID_MAP ? window.PLAYER_ID_MAP[slug] : null;
+  },
+
+  /**
+   * Get player slug from ID using the server-provided map
+   * @param {number} playerId - Player database ID
+   * @returns {string|null} Player slug or null if not found
+   */
+  getSlugFromPlayerId(playerId) {
+    return window.ID_TO_SLUG_MAP ? window.ID_TO_SLUG_MAP[playerId] : null;
   }
 };
 
@@ -281,7 +301,7 @@ const HeadToHeadModule = {
           id: p.id,
           slug: p.slug,
           name: p.display_name,
-          photo: ImageUtils.getPhotoUrl(p.id, p.display_name)
+          photo: ImageUtils.getPhotoUrl(p.id, p.display_name, p.slug)
         };
       });
     } catch (err) {
@@ -444,12 +464,12 @@ const HeadToHeadModule = {
   resolvePhoto(slug) {
     const player = this.players[slug];
     if (player && player.id) {
-      return ImageUtils.getPhotoUrl(player.id, player.name);
+      return ImageUtils.getPhotoUrl(player.id, player.name, slug);
     }
     // Fallback: try the server-provided player ID map
     const playerId = ImageUtils.getPlayerIdFromSlug(slug);
     if (playerId) {
-      return ImageUtils.getPhotoUrl(playerId, slug);
+      return ImageUtils.getPhotoUrl(playerId, slug, slug);
     }
     // Final fallback to placeholder
     const name = player ? player.name : slug;
@@ -584,7 +604,7 @@ const HeadToHeadModule = {
 /**
  * ============================================================================
  * FEED MODULE
- * Renders the live draft buzz news feed
+ * Renders the live draft buzz news feed with enhanced cards
  * ============================================================================
  */
 const FeedModule = {
@@ -593,31 +613,88 @@ const FeedModule = {
    */
   init() {
     const feedContainer = document.getElementById('feedContainer');
-    if (!feedContainer || !window.FEED_ITEMS) return;
+    if (!feedContainer) return;
+
+    // Handle both old format (FEED_ITEMS) and empty state
+    if (!window.FEED_ITEMS || window.FEED_ITEMS.length === 0) {
+      feedContainer.innerHTML = this.renderEmptyState();
+      return;
+    }
 
     feedContainer.innerHTML = this.renderFeed();
   },
 
   /**
-   * Render all feed items
+   * Render empty state when no news items
+   * @returns {string} HTML string
+   */
+  renderEmptyState() {
+    return `
+      <div class="feed-empty">
+        <p>No news items yet. Check back soon!</p>
+      </div>
+    `;
+  },
+
+  /**
+   * Get tag class based on tag type
+   * @param {string} tag - Tag name
+   * @returns {string} CSS class
+   */
+  getTagClass(tag) {
+    const tagMap = {
+      'Scouting Report': 'scouting-report',
+      'Big Board': 'big-board',
+      'Mock Draft': 'mock-draft',
+      'Tier Update': 'tier-update',
+      'Game Recap': 'game-recap',
+      'Film Study': 'film-study',
+      'Skill Theme': 'skill-theme',
+      'Team Fit': 'team-fit',
+      'Draft Intel': 'draft-intel',
+      'Statistical Analysis': 'stats-analysis'
+    };
+    return tagMap[tag] || 'scouting-report';
+  },
+
+  /**
+   * Render all feed items with enhanced card layout
    * @returns {string} HTML string
    */
   renderFeed() {
     return window.FEED_ITEMS.map((item) => {
-      const tagClass = item.tag === 'Riser' ? 'riser' : 'faller';
+      const tagClass = this.getTagClass(item.tag);
+      const hasImage = item.image_url && item.image_url.trim() !== '';
+      const imageHtml = hasImage
+        ? `<img src="${item.image_url}" alt="" class="feed-card__image" loading="lazy" />`
+        : `<div class="feed-card__image feed-card__image--placeholder"></div>`;
+
+      // Build author/time meta line
+      const authorPart = item.author ? `${item.author} • ` : '';
+      const summaryHtml = item.summary
+        ? `<p class="feed-card__summary">${item.summary}</p>`
+        : '';
 
       return `
-        <div class="feed-item">
-          <p class="feed-title">${item.title}</p>
-          <div class="feed-meta">
-            ${item.source}
-            <svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
-              <polyline points="9 18 15 12 9 6"></polyline>
-            </svg>
-            ${item.time}
-            <span class="feed-tag ${tagClass}">${item.tag}</span>
+        <article class="feed-card">
+          <div class="feed-card__image-wrapper">
+            ${imageHtml}
           </div>
-        </div>
+          <div class="feed-card__content">
+            <h4 class="feed-card__title">${item.title}</h4>
+            ${summaryHtml}
+            <div class="feed-card__meta">
+              <span class="feed-card__tag ${tagClass}">${item.tag}</span>
+              <span class="feed-card__author-time">${authorPart}${item.time}</span>
+            </div>
+            <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="feed-card__cta">
+              ${item.read_more_text || 'Read More'}
+              <svg class="icon" viewBox="0 0 24 24" style="width: 0.875rem; height: 0.875rem;">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </a>
+          </div>
+        </article>
       `;
     }).join('');
   }

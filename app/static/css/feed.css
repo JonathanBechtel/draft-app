@@ -1,0 +1,262 @@
+/**
+ * ============================================================================
+ * FEED.CSS - News Feed Card Styles
+ * Styles for the enhanced news feed cards with images, summaries, and CTAs
+ * ============================================================================
+ */
+
+/* Feed Container */
+.feed-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Empty State */
+.feed-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--color-slate-500);
+  font-style: italic;
+}
+
+/* Feed Card */
+.feed-card {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background: white;
+  border: 1px solid var(--color-slate-200);
+  border-radius: 0.5rem;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.feed-card:hover {
+  border-color: var(--color-slate-300);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Image Wrapper */
+.feed-card__image-wrapper {
+  flex-shrink: 0;
+  width: 120px;
+  height: 80px;
+}
+
+.feed-card__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0.25rem;
+}
+
+/* Placeholder for articles without images */
+.feed-card__image--placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--color-slate-100) 0%, var(--color-slate-200) 100%);
+  border-radius: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.feed-card__image--placeholder::after {
+  content: "DG";
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  color: var(--color-slate-400);
+  letter-spacing: 0.1em;
+}
+
+/* Content Area */
+.feed-card__content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* Allow text truncation */
+}
+
+/* Title */
+.feed-card__title {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-slate-900);
+  margin: 0 0 0.25rem 0;
+  line-height: 1.3;
+}
+
+/* AI Summary */
+.feed-card__summary {
+  font-size: 0.875rem;
+  color: var(--color-slate-600);
+  margin: 0 0 0.5rem 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Meta Row (tag, author, time) */
+.feed-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--color-slate-500);
+  margin-bottom: 0.5rem;
+}
+
+.feed-card__author-time {
+  white-space: nowrap;
+}
+
+/* Tag Badge */
+.feed-card__tag {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.feed-card__tag.scouting-report {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: var(--color-accent-indigo);
+}
+
+.feed-card__tag.big-board {
+  background-color: rgba(139, 92, 246, 0.1);
+  color: #8b5cf6;
+}
+
+.feed-card__tag.mock-draft {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.feed-card__tag.tier-update {
+  background-color: rgba(6, 182, 212, 0.1);
+  color: var(--color-accent-cyan);
+}
+
+.feed-card__tag.game-recap {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--color-accent-emerald);
+}
+
+.feed-card__tag.film-study {
+  background-color: rgba(100, 116, 139, 0.1);
+  color: #64748b;
+}
+
+.feed-card__tag.skill-theme {
+  background-color: rgba(245, 158, 11, 0.1);
+  color: var(--color-accent-amber);
+}
+
+.feed-card__tag.team-fit {
+  background-color: rgba(20, 184, 166, 0.1);
+  color: #14b8a6;
+}
+
+.feed-card__tag.draft-intel {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.feed-card__tag.stats-analysis {
+  background-color: rgba(71, 85, 105, 0.1);
+  color: #475569;
+}
+
+/* CTA Button */
+.feed-card__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-primary);
+  text-decoration: none;
+  margin-top: auto;
+  transition: color 0.2s ease;
+}
+
+.feed-card__cta:hover {
+  color: var(--color-primary-dark, #3d6a9e);
+  text-decoration: underline;
+}
+
+.feed-card__cta .icon {
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+/* Responsive: Stack on mobile */
+@media (max-width: 480px) {
+  .feed-card {
+    flex-direction: column;
+  }
+
+  .feed-card__image-wrapper {
+    width: 100%;
+    height: 160px;
+  }
+}
+
+/* Legacy feed-item styles (for backwards compatibility during transition) */
+.feed-item {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-slate-200);
+}
+
+.feed-item:last-child {
+  border-bottom: none;
+}
+
+.feed-title {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-slate-900);
+  margin: 0 0 0.25rem 0;
+}
+
+.feed-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-slate-500);
+}
+
+.feed-meta .icon {
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+.feed-tag {
+  margin-left: auto;
+  padding: 0.125rem 0.375rem;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.feed-tag.riser {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--color-accent-emerald);
+}
+
+.feed-tag.faller {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}

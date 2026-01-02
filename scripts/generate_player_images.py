@@ -8,6 +8,9 @@ Usage:
     # Generate for 2025 draft class
     python scripts/generate_player_images.py --draft-year 2025 --run-key "draft_2025_v1"
 
+    # Generate for 2025 draft class via season (more semantic)
+    python scripts/generate_player_images.py --season 2024-25 --run-key "draft_2025_v1"
+
     # Generate for current NBA players, missing images only
     python scripts/generate_player_images.py --cohort current_nba --missing-only
 
@@ -35,7 +38,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.fields import CohortType
 from app.schemas.image_snapshots import PlayerImageAsset, PlayerImageSnapshot
+from app.schemas.metrics import MetricSnapshot, PlayerMetricValue
 from app.schemas.players_master import PlayerMaster
+from app.schemas.seasons import Season
 from app.services.image_generation import image_generation_service
 from app.utils.db_async import SessionLocal
 
@@ -53,12 +58,105 @@ COST_PER_IMAGE_USD = {
 }
 
 
-def generate_run_key(cohort: str, style: str, draft_year: Optional[int] = None) -> str:
+def generate_run_key(
+    cohort: str,
+    style: str,
+    *,
+    draft_year: Optional[int] = None,
+    season: Optional[str] = None,
+) -> str:
     """Generate a unique run key for this batch."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if season:
+        return f"{style}_{cohort}_{season}_{timestamp}"
     if draft_year:
         return f"{style}_{cohort}_{draft_year}_{timestamp}"
     return f"{style}_{cohort}_{timestamp}"
+
+
+async def resolve_season(db: AsyncSession, code: str) -> Season:
+    """Resolve a season by code (e.g., '2024-25')."""
+    season = (
+        await db.execute(select(Season).where(Season.code == code))
+    ).scalar_one_or_none()
+    if season is None:
+        raise ValueError(f"Season {code!r} not found in seasons table")
+    if season.id is None:
+        raise ValueError(f"Season {code!r} is missing a persisted id")
+    return season
+
+
+async def get_players_for_season(
+    db: AsyncSession,
+    *,
+    season_code: str,
+    limit: Optional[int] = None,
+) -> list[PlayerMaster]:
+    """Fetch players included in current_draft metric snapshots for a season.
+
+    This aligns image generation with the population used by metrics snapshots,
+    rather than relying on `players_master.draft_year` tagging.
+    """
+    season = await resolve_season(db, season_code)
+    season_id = season.id
+    if season_id is None:
+        raise ValueError("season.id is required")
+
+    preferred_snapshots_stmt = (
+        select(MetricSnapshot.id)
+        .where(
+            MetricSnapshot.cohort == CohortType.current_draft,  # type: ignore[arg-type]
+            MetricSnapshot.season_id == season_id,
+            MetricSnapshot.is_current.is_(True),  # type: ignore[attr-defined]
+            MetricSnapshot.position_scope_parent.is_(None),  # type: ignore[union-attr]
+            MetricSnapshot.position_scope_fine.is_(None),  # type: ignore[union-attr]
+        )
+        .order_by(desc(MetricSnapshot.calculated_at))  # type: ignore[arg-type]
+    )
+    preferred_snapshot_ids = (
+        (
+            await db.execute(preferred_snapshots_stmt)  # type: ignore[arg-type]
+        )
+        .scalars()
+        .all()
+    )
+
+    snapshot_ids = list(preferred_snapshot_ids)
+    if not snapshot_ids:
+        fallback_stmt = (
+            select(MetricSnapshot.id)
+            .where(
+                MetricSnapshot.cohort == CohortType.current_draft,  # type: ignore[arg-type]
+                MetricSnapshot.season_id == season_id,
+                MetricSnapshot.is_current.is_(True),  # type: ignore[attr-defined]
+            )
+            .order_by(desc(MetricSnapshot.calculated_at))  # type: ignore[arg-type]
+        )
+        snapshot_ids = list(
+            (await db.execute(fallback_stmt)).scalars().all()  # type: ignore[arg-type]
+        )
+
+    if not snapshot_ids:
+        return []
+
+    player_ids_subq = (
+        select(PlayerMetricValue.player_id)
+        .where(PlayerMetricValue.snapshot_id.in_(snapshot_ids))  # type: ignore[attr-defined]
+        .distinct()
+        .subquery()
+    )
+
+    stmt = (
+        select(PlayerMaster)
+        .where(PlayerMaster.id.in_(select(player_ids_subq.c.player_id)))  # type: ignore[union-attr]
+        .order_by(PlayerMaster.display_name)
+    )
+
+    if limit:
+        stmt = stmt.limit(limit)
+
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 async def get_players(
@@ -67,6 +165,7 @@ async def get_players(
     player_slug: Optional[str] = None,
     cohort: Optional[CohortType] = None,
     draft_year: Optional[int] = None,
+    season: Optional[str] = None,
     limit: Optional[int] = None,
 ) -> list[PlayerMaster]:
     """Fetch players based on filters.
@@ -77,11 +176,15 @@ async def get_players(
         player_slug: Specific player slug
         cohort: Filter by cohort type
         draft_year: Filter by draft year
+        season: Filter by season code (uses current_draft metric snapshots)
         limit: Maximum number of players
 
     Returns:
         List of PlayerMaster records
     """
+    if season:
+        return await get_players_for_season(db, season_code=season, limit=limit)
+
     stmt = select(PlayerMaster).order_by(PlayerMaster.display_name)
 
     if player_id:
@@ -197,32 +300,52 @@ async def main(args: argparse.Namespace) -> None:
 
     # Validate args
     if not any(
-        [args.player_id, args.player_slug, args.cohort, args.draft_year, args.all]
+        [
+            args.player_id,
+            args.player_slug,
+            args.cohort,
+            args.draft_year,
+            args.season,
+            args.all,
+        ]
     ):
         logger.error(
-            "Must specify --player-id, --player-slug, --cohort, --draft-year, or --all"
+            "Must specify --player-id, --player-slug, --cohort, --draft-year, --season, or --all"
         )
+        sys.exit(1)
+
+    if args.season and args.draft_year:
+        logger.error("Use only one of --season or --draft-year")
         sys.exit(1)
 
     # Determine cohort
     cohort = CohortType(args.cohort) if args.cohort else CohortType.global_scope
-    if args.draft_year:
+    if args.draft_year or args.season:
         cohort = CohortType.current_draft
 
     # Generate run key if not provided
     run_key = args.run_key or generate_run_key(
-        cohort.value, args.style, args.draft_year
+        cohort.value,
+        args.style,
+        draft_year=args.draft_year,
+        season=args.season,
     )
     logger.info(f"Run key: {run_key}")
 
     async with SessionLocal() as db:
+        draft_year: Optional[int] = args.draft_year
+        if args.season and draft_year is None:
+            season = await resolve_season(db, args.season)
+            draft_year = season.end_year
+
         # Fetch players
         players = await get_players(
             db,
             player_id=args.player_id,
             player_slug=args.player_slug,
             cohort=cohort if not args.draft_year else None,
-            draft_year=args.draft_year,
+            draft_year=draft_year,
+            season=args.season,
             limit=args.limit,
         )
 
@@ -271,7 +394,7 @@ async def main(args: argparse.Namespace) -> None:
             is_current=False,  # Will set to True after completion
             style=args.style,
             cohort=cohort,
-            draft_year=args.draft_year,
+            draft_year=draft_year,
             population_size=len(players),
             image_size=args.size,
             system_prompt=system_prompt,
@@ -375,6 +498,11 @@ def parse_args() -> argparse.Namespace:
         "--draft-year",
         type=int,
         help="Filter by draft year (e.g., 2025)",
+    )
+    selection.add_argument(
+        "--season",
+        type=str,
+        help="Filter by season code (e.g., 2024-25) using current_draft metric snapshots",
     )
     selection.add_argument(
         "--all",

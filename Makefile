@@ -2,6 +2,7 @@ HOST ?= 0.0.0.0
 PORT ?= 8000
 
 .PHONY: dev run mig.revision mig.up mig.down mig.history mig.current scrape ingest metrics bio.scrape bio.ingest
+.PHONY: news-seed
 
 # Start FastAPI with auto-reload (development)
 dev:
@@ -32,6 +33,10 @@ scrape:
 #   make ingest SOURCE=anthro    # only one source
 ingest:
 	$(PYTHON) scripts/ingest_combine.py --out-dir $(OUT) $(if $(YEAR),--season $(YEAR),) --source $(SOURCE)
+
+# Seed curated RSS news sources into the database
+news-seed:
+	$(PYTHON) scripts/seed_news_sources.py
 
 # Derived metrics computation
 COHORT ?= current_draft

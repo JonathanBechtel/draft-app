@@ -219,7 +219,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
 
         try:
             response = self.client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-3-flash-preview",
                 contents=[
                     types.Content(
                         role="user",

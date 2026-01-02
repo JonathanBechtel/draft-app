@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import secrets
 from typing import AsyncGenerator
 
 import pytest
@@ -9,7 +10,8 @@ import pytest_asyncio
 
 from httpx import AsyncClient, ASGITransport
 from pydantic import ValidationError
-from sqlalchemy import event
+from sqlalchemy import event, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -25,6 +27,7 @@ load_dotenv()
 def _load_database_url() -> str:
     """Resolve the database URL for tests, enforcing an explicit opt-in."""
     test_db_url = os.getenv("TEST_DATABASE_URL")
+    app_db_url = os.getenv("DATABASE_URL")
     pytest_allow_db = int(os.getenv("PYTEST_ALLOW_DB", "0"))
     if not test_db_url:
         pytest.skip("No TEST_DATABASE_URL or DATABASE_URL is configured for tests.")
@@ -33,6 +36,36 @@ def _load_database_url() -> str:
             "Running integration tests requires setting PYTEST_ALLOW_DB=1 to"
             " confirm the configured database is safe to mutate."
         )
+
+    # Extra guardrail: prevent accidentally running integration tests against the
+    # same DB as the app (even though we isolate via schema).
+    if (
+        app_db_url
+        and int(os.getenv("PYTEST_ALLOW_TEST_DB_EQUALS_DATABASE_URL", "0")) != 1
+    ):
+        try:
+            test_url = make_url(test_db_url)
+            app_url = make_url(app_db_url)
+            if (
+                test_url.drivername,
+                test_url.host,
+                test_url.port,
+                test_url.database,
+            ) == (
+                app_url.drivername,
+                app_url.host,
+                app_url.port,
+                app_url.database,
+            ):
+                pytest.skip(
+                    "Refusing to run integration tests against DATABASE_URL; set a"
+                    " separate TEST_DATABASE_URL (or override with"
+                    " PYTEST_ALLOW_TEST_DB_EQUALS_DATABASE_URL=1)."
+                )
+        except Exception:
+            # If URL parsing fails, fall back to requiring explicit TEST_DATABASE_URL.
+            pass
+
     # mypy: test_db_url is str after the guard above
     return test_db_url  # type: ignore[return-value]
 
@@ -51,8 +84,26 @@ def database_url() -> str:
     return _load_database_url()
 
 
+@pytest.fixture(scope="session")
+def test_schema(database_url: str) -> str:
+    """Return a unique schema name to isolate integration tests within a database."""
+    try:
+        url = make_url(database_url)
+        host = url.host or "local"
+        dbname = url.database or "db"
+        prefix = f"pytest_{host}_{dbname}"
+    except Exception:
+        prefix = "pytest"
+    safe_prefix = "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in prefix)[
+        :40
+    ]
+    return f"{safe_prefix}_{secrets.token_hex(8)}"
+
+
 @pytest_asyncio.fixture(scope="session")
-async def async_engine(database_url: str) -> AsyncGenerator[AsyncEngine, None]:
+async def async_engine(
+    database_url: str, test_schema: str
+) -> AsyncGenerator[AsyncEngine, None]:
     """Yield an async engine bound to the integration-test database."""
     # Ensure SQLModel metadata is populated before creating tables.
     from app.schemas import positions  # noqa: F401
@@ -67,25 +118,31 @@ async def async_engine(database_url: str) -> AsyncGenerator[AsyncEngine, None]:
     from app.schemas import image_snapshots  # noqa: F401
     from app.schemas import players_master  # noqa: F401
     from app.schemas import seasons  # noqa: F401
+    from app.schemas import news_sources  # noqa: F401
+    from app.schemas import news_items  # noqa: F401
 
     engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
     async with engine.begin() as conn:
-        await conn.run_sync(SQLModel.metadata.drop_all)
+        await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{test_schema}"'))
+        await conn.execute(text(f'SET search_path TO "{test_schema}"'))
         await conn.run_sync(SQLModel.metadata.create_all)
     try:
         yield engine
     finally:
         async with engine.begin() as conn:
-            await conn.run_sync(SQLModel.metadata.drop_all)
+            await conn.execute(text(f'DROP SCHEMA IF EXISTS "{test_schema}" CASCADE'))
         await engine.dispose()
 
 
 @pytest_asyncio.fixture()
-async def db_session(async_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:
+async def db_session(
+    async_engine: AsyncEngine, test_schema: str
+) -> AsyncGenerator[AsyncSession, None]:
     """Provide a clean transactional session for each test without per-test DDL."""
     async with async_engine.connect() as connection:
         # Wrap each test in a transaction; roll back afterwards to keep a pristine schema.
         trans = await connection.begin()
+        await connection.execute(text(f'SET LOCAL search_path TO "{test_schema}"'))
         session_factory = async_sessionmaker(
             bind=connection, expire_on_commit=False, class_=AsyncSession
         )

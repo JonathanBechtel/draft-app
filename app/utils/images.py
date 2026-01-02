@@ -3,12 +3,35 @@
 import os
 from typing import Optional
 
+from app.config import settings
+
 # Available image styles (order = priority for fallback)
 IMAGE_STYLES = ["default", "vector", "comic", "retro"]
 DEFAULT_STYLE = "default"
 
 # Base directory for player images (relative to project root)
 PLAYER_IMAGES_DIR = "app/static/img/players"
+
+
+def get_s3_image_base_url() -> str:
+    """Return the base URL for S3-hosted player images.
+
+    Used by frontend JS to construct image URLs dynamically.
+    Format: {base}/players/{id}_{slug}_{style}.png
+
+    Returns:
+        The S3/CDN base URL for player images, or empty string if not configured.
+    """
+    if settings.s3_public_url_base:
+        return settings.s3_public_url_base.rstrip("/")
+
+    if settings.s3_bucket_name:
+        return (
+            f"https://{settings.s3_bucket_name}.s3.{settings.s3_region}.amazonaws.com"
+        )
+
+    # Fallback to local (for dev mode)
+    return ""
 
 
 def get_player_photo_url(
