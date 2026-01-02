@@ -687,9 +687,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-height: 520px;
-  overflow-y: auto;
-  padding-right: 0.25rem;
 }
 
 .feed-item {

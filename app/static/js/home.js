@@ -604,10 +604,14 @@ const HeadToHeadModule = {
 /**
  * ============================================================================
  * FEED MODULE
- * Renders the live draft buzz news feed with enhanced cards
+ * Renders the live draft buzz news feed with enhanced cards and pagination
  * ============================================================================
  */
 const FeedModule = {
+  itemsPerPage: 10,
+  currentPage: 1,
+  totalPages: 1,
+
   /**
    * Initialize the feed
    */
@@ -621,7 +625,137 @@ const FeedModule = {
       return;
     }
 
-    feedContainer.innerHTML = this.renderFeed();
+    this.totalPages = Math.ceil(window.FEED_ITEMS.length / this.itemsPerPage);
+    this.render();
+  },
+
+  /**
+   * Render feed with pagination
+   */
+  render() {
+    const feedContainer = document.getElementById('feedContainer');
+    if (!feedContainer) return;
+
+    const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+    const endIndex = startIndex + this.itemsPerPage;
+    const pageItems = window.FEED_ITEMS.slice(startIndex, endIndex);
+
+    let html = this.renderFeedItems(pageItems);
+
+    // Add pagination if more than one page
+    if (this.totalPages > 1) {
+      html += this.renderPagination();
+    }
+
+    feedContainer.innerHTML = html;
+
+    // Attach event listeners to pagination pills
+    this.attachPaginationListeners();
+  },
+
+  /**
+   * Attach click listeners to pagination buttons
+   */
+  attachPaginationListeners() {
+    const pills = document.querySelectorAll('.feed-pagination__pill');
+    pills.forEach((pill) => {
+      pill.addEventListener('click', (e) => {
+        const page = parseInt(e.target.dataset.page, 10);
+        if (!isNaN(page) && page !== this.currentPage) {
+          this.goToPage(page);
+        }
+      });
+    });
+
+    const prevBtn = document.querySelector('.feed-pagination__arrow--prev');
+    const nextBtn = document.querySelector('.feed-pagination__arrow--next');
+
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => this.goToPage(this.currentPage - 1));
+    }
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => this.goToPage(this.currentPage + 1));
+    }
+  },
+
+  /**
+   * Navigate to a specific page
+   */
+  goToPage(page) {
+    if (page < 1 || page > this.totalPages) return;
+    this.currentPage = page;
+    this.render();
+
+    // Scroll to feed section
+    const feedContainer = document.getElementById('feedContainer');
+    if (feedContainer) {
+      feedContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  },
+
+  /**
+   * Render pagination pills
+   */
+  renderPagination() {
+    const pills = [];
+    const maxVisiblePills = 5;
+
+    // Calculate range of page pills to show
+    let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePills / 2));
+    let endPage = Math.min(this.totalPages, startPage + maxVisiblePills - 1);
+
+    // Adjust start if we're near the end
+    if (endPage - startPage + 1 < maxVisiblePills) {
+      startPage = Math.max(1, endPage - maxVisiblePills + 1);
+    }
+
+    // Previous arrow
+    const prevDisabled = this.currentPage === 1 ? 'disabled' : '';
+    pills.push(`
+      <button class="feed-pagination__arrow feed-pagination__arrow--prev" ${prevDisabled} aria-label="Previous page">
+        <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+    `);
+
+    // First page + ellipsis if needed
+    if (startPage > 1) {
+      pills.push(`<button class="feed-pagination__pill" data-page="1">1</button>`);
+      if (startPage > 2) {
+        pills.push(`<span class="feed-pagination__ellipsis">…</span>`);
+      }
+    }
+
+    // Page pills
+    for (let i = startPage; i <= endPage; i++) {
+      const activeClass = i === this.currentPage ? 'active' : '';
+      pills.push(`<button class="feed-pagination__pill ${activeClass}" data-page="${i}">${i}</button>`);
+    }
+
+    // Last page + ellipsis if needed
+    if (endPage < this.totalPages) {
+      if (endPage < this.totalPages - 1) {
+        pills.push(`<span class="feed-pagination__ellipsis">…</span>`);
+      }
+      pills.push(`<button class="feed-pagination__pill" data-page="${this.totalPages}">${this.totalPages}</button>`);
+    }
+
+    // Next arrow
+    const nextDisabled = this.currentPage === this.totalPages ? 'disabled' : '';
+    pills.push(`
+      <button class="feed-pagination__arrow feed-pagination__arrow--next" ${nextDisabled} aria-label="Next page">
+        <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+    `);
+
+    return `
+      <nav class="feed-pagination" aria-label="News feed pagination">
+        ${pills.join('')}
+      </nav>
+    `;
   },
 
   /**
@@ -658,11 +792,12 @@ const FeedModule = {
   },
 
   /**
-   * Render all feed items with enhanced card layout
+   * Render feed items (subset for current page)
+   * @param {Array} items - Feed items to render
    * @returns {string} HTML string
    */
-  renderFeed() {
-    return window.FEED_ITEMS.map((item) => {
+  renderFeedItems(items) {
+    return items.map((item) => {
       const tagClass = this.getTagClass(item.tag);
       const hasImage = item.image_url && item.image_url.trim() !== '';
       const imageHtml = hasImage
