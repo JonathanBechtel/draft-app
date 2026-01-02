@@ -68,3 +68,15 @@ jobs:
             --config fly.prod.toml \
             --remote-only \
             --app draft-app-prod
+
+      - name: Update cron machine (if exists)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          CRON_MACHINE_ID=$(flyctl machine list --app draft-app-prod --json | jq -r '.[] | select(.name == "news-ingestion-cron") | .id')
+          if [ -n "$CRON_MACHINE_ID" ]; then
+            echo "Updating cron machine: $CRON_MACHINE_ID"
+            flyctl machine update "$CRON_MACHINE_ID" --app draft-app-prod --yes
+          else
+            echo "No cron machine found (run initial setup to create one)"
+          fi

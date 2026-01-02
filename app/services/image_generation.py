@@ -2,19 +2,28 @@
 
 Handles player portrait generation with S3 storage and database auditing.
 Designed for reuse from both CLI scripts and future admin UI.
+
+Supports both synchronous (real-time) and batch (async, 50% cheaper) modes.
 """
 
+import base64
+import json
 import logging
 import time
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from google import genai
 from google.genai import types
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.schemas.image_snapshots import PlayerImageAsset, PlayerImageSnapshot
+from app.schemas.image_snapshots import (
+    BatchJobState,
+    ImageBatchJob,
+    PlayerImageAsset,
+    PlayerImageSnapshot,
+)
 from app.schemas.players_master import PlayerMaster
 from app.services.s3_client import s3_client
 
@@ -400,6 +409,363 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 f"Generated image for {player.display_name}: "
                 f"{len(image_data or b'')} bytes in {asset.generation_time_sec:.1f}s"
             )
+
+        return asset
+
+    # -------------------------------------------------------------------------
+    # Batch Processing Methods (50% cost reduction, async processing)
+    # -------------------------------------------------------------------------
+
+    def build_batch_request(
+        self,
+        player: PlayerMaster,
+        system_prompt: str,
+        image_size: str = "1K",
+        likeness_description: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Build a single batch request for a player.
+
+        Args:
+            player: Player to generate image for
+            system_prompt: System instructions for style
+            image_size: Size setting ("512", "1K", "2K")
+            likeness_description: Optional likeness description
+
+        Returns:
+            Dict formatted for Gemini batch API
+        """
+        user_prompt = self.build_player_prompt(player, likeness_description)
+
+        return {
+            "key": f"player_{player.id}",
+            "request": {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": user_prompt}],
+                    }
+                ],
+                "generationConfig": {
+                    "responseModalities": ["IMAGE", "TEXT"],
+                    "imageConfig": {"imageSize": image_size},
+                },
+                "systemInstruction": {
+                    "parts": [{"text": system_prompt}],
+                },
+            },
+        }
+
+    def build_batch_requests_jsonl(
+        self,
+        players: list[PlayerMaster],
+        system_prompt: str,
+        image_size: str = "1K",
+        likeness_descriptions: Optional[dict[int, str]] = None,
+    ) -> str:
+        """Build JSONL content for batch submission.
+
+        Args:
+            players: List of players to generate images for
+            system_prompt: System instructions for style
+            image_size: Size setting
+            likeness_descriptions: Optional dict mapping player_id to description
+
+        Returns:
+            JSONL string with one request per line
+        """
+        likeness_map = likeness_descriptions or {}
+        lines = []
+
+        for player in players:
+            player_id = player.id
+            if player_id is None:
+                continue
+
+            likeness = likeness_map.get(player_id)
+            request = self.build_batch_request(
+                player=player,
+                system_prompt=system_prompt,
+                image_size=image_size,
+                likeness_description=likeness,
+            )
+            lines.append(json.dumps(request))
+
+        return "\n".join(lines)
+
+    async def submit_batch_job(
+        self,
+        db: AsyncSession,
+        players: list[PlayerMaster],
+        snapshot: PlayerImageSnapshot,
+        style: str = "default",
+        image_size: str = "1K",
+        fetch_likeness: bool = False,
+        likeness_descriptions: Optional[dict[int, str]] = None,
+    ) -> ImageBatchJob:
+        """Submit a batch job to Gemini API.
+
+        Args:
+            db: Database session
+            players: List of players to generate images for
+            snapshot: Parent snapshot record
+            style: Image style
+            image_size: Size setting
+            fetch_likeness: Whether likeness was used
+            likeness_descriptions: Optional dict mapping player_id to description
+
+        Returns:
+            Created ImageBatchJob record
+        """
+        logger.info(f"Submitting batch job for {len(players)} players")
+
+        # Build inline requests (for batches under 20MB, inline is simpler)
+        inline_requests: list[dict[str, Any]] = []
+        player_ids: list[int] = []
+
+        for player in players:
+            player_id = player.id
+            if player_id is None:
+                continue
+
+            likeness = (likeness_descriptions or {}).get(player_id)
+            request = self.build_batch_request(
+                player=player,
+                system_prompt=snapshot.system_prompt,
+                image_size=image_size,
+                likeness_description=likeness,
+            )
+            inline_requests.append(request)
+            player_ids.append(player_id)
+
+        # Submit to Gemini batch API
+        # Using gemini-2.5-flash-image for batch (batch API doesn't support preview models)
+        batch_job = self.client.batches.create(
+            model="models/gemini-2.5-flash-image",
+            src=inline_requests,  # type: ignore[arg-type]
+            config=types.CreateBatchJobConfig(
+                display_name=f"draftguru_{snapshot.run_key}_{snapshot.id}",
+            ),
+        )
+
+        logger.info(f"Created Gemini batch job: {batch_job.name}")
+
+        # Create tracking record
+        snapshot_id = snapshot.id
+        if snapshot_id is None:
+            raise ValueError("snapshot.id is required")
+
+        job_record = ImageBatchJob(
+            gemini_job_name=batch_job.name,
+            state=BatchJobState.pending,
+            snapshot_id=snapshot_id,
+            player_ids_json=json.dumps(player_ids),
+            style=style,
+            image_size=image_size,
+            fetch_likeness=fetch_likeness,
+            total_requests=len(player_ids),
+        )
+        db.add(job_record)
+        await db.commit()
+        await db.refresh(job_record)
+
+        logger.info(f"Created batch job record: id={job_record.id}")
+        return job_record
+
+    def get_batch_job_status(self, gemini_job_name: str) -> BatchJobState:
+        """Check the current status of a batch job.
+
+        Args:
+            gemini_job_name: Gemini batch job name (e.g., 'batches/abc123')
+
+        Returns:
+            Current BatchJobState
+        """
+        job = self.client.batches.get(name=gemini_job_name)
+        state_str = str(job.state)
+
+        # Map Gemini state to our enum
+        state_map = {
+            "JOB_STATE_PENDING": BatchJobState.pending,
+            "JOB_STATE_RUNNING": BatchJobState.running,
+            "JOB_STATE_SUCCEEDED": BatchJobState.succeeded,
+            "JOB_STATE_FAILED": BatchJobState.failed,
+            "JOB_STATE_CANCELLED": BatchJobState.cancelled,
+            "JOB_STATE_EXPIRED": BatchJobState.expired,
+            "JobState.JOB_STATE_PENDING": BatchJobState.pending,
+            "JobState.JOB_STATE_RUNNING": BatchJobState.running,
+            "JobState.JOB_STATE_SUCCEEDED": BatchJobState.succeeded,
+            "JobState.JOB_STATE_FAILED": BatchJobState.failed,
+            "JobState.JOB_STATE_CANCELLED": BatchJobState.cancelled,
+            "JobState.JOB_STATE_EXPIRED": BatchJobState.expired,
+        }
+
+        return state_map.get(state_str, BatchJobState.pending)
+
+    async def retrieve_batch_results(
+        self,
+        db: AsyncSession,
+        job_record: ImageBatchJob,
+        players_by_id: dict[int, PlayerMaster],
+        snapshot: PlayerImageSnapshot,
+    ) -> tuple[int, int]:
+        """Retrieve and process batch job results.
+
+        Downloads images, uploads to S3, and creates PlayerImageAsset records.
+
+        Args:
+            db: Database session
+            job_record: ImageBatchJob tracking record
+            players_by_id: Dict mapping player_id to PlayerMaster
+            snapshot: Parent snapshot record
+
+        Returns:
+            Tuple of (success_count, failure_count)
+        """
+        logger.info(f"Retrieving results for batch job: {job_record.gemini_job_name}")
+
+        # Get the batch job from Gemini
+        batch_job = self.client.batches.get(name=job_record.gemini_job_name)
+
+        # Check state
+        state = self.get_batch_job_status(job_record.gemini_job_name)
+        if state not in (BatchJobState.succeeded, BatchJobState.failed):
+            raise RuntimeError(f"Batch job not complete. Current state: {state.value}")
+
+        success_count = 0
+        failure_count = 0
+
+        # Process inline responses
+        # Note: batch_job.response is typed dynamically in google-genai SDK
+        if batch_job.response and batch_job.response.inline_responses:  # type: ignore[attr-defined]
+            for response in batch_job.response.inline_responses:  # type: ignore[attr-defined]
+                # Extract player_id from key (format: "player_123")
+                key = response.key or ""
+                if not key.startswith("player_"):
+                    continue
+
+                try:
+                    player_id = int(key.split("_")[1])
+                except (ValueError, IndexError):
+                    logger.warning(f"Invalid response key: {key}")
+                    failure_count += 1
+                    continue
+
+                player = players_by_id.get(player_id)
+                if not player:
+                    logger.warning(f"Player not found for id: {player_id}")
+                    failure_count += 1
+                    continue
+
+                # Process the response
+                asset = await self._process_batch_response(
+                    db=db,
+                    response=response,
+                    player=player,
+                    snapshot=snapshot,
+                    style=job_record.style,
+                )
+
+                if asset.error_message:
+                    failure_count += 1
+                else:
+                    success_count += 1
+
+        # Update job record
+        job_record.state = state
+        job_record.completed_at = datetime.utcnow()
+        job_record.success_count = success_count
+        job_record.failure_count = failure_count
+
+        await db.commit()
+
+        logger.info(
+            f"Batch job complete: {success_count} succeeded, {failure_count} failed"
+        )
+        return success_count, failure_count
+
+    async def _process_batch_response(
+        self,
+        db: AsyncSession,
+        response: Any,
+        player: PlayerMaster,
+        snapshot: PlayerImageSnapshot,
+        style: str,
+    ) -> PlayerImageAsset:
+        """Process a single batch response and create asset record.
+
+        Args:
+            db: Database session
+            response: Gemini batch response item
+            player: Player record
+            snapshot: Parent snapshot
+            style: Image style
+
+        Returns:
+            Created PlayerImageAsset record
+        """
+        start_time = time.time()
+        player_id = player.id
+        snapshot_id = snapshot.id
+
+        if player_id is None or snapshot_id is None:
+            raise ValueError("player.id and snapshot.id are required")
+
+        s3_key = self.get_s3_key(player_id, player.slug or str(player_id), style)
+        public_url = ""
+        image_data: bytes | None = None
+        error_message: str | None = None
+        user_prompt = ""
+
+        try:
+            # Extract image data from response
+            if response.response and response.response.candidates:
+                candidate = response.response.candidates[0]
+                if candidate.content and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        if hasattr(part, "inline_data") and part.inline_data:
+                            # Image data is base64 encoded in batch responses
+                            if isinstance(part.inline_data.data, bytes):
+                                image_data = part.inline_data.data
+                            elif isinstance(part.inline_data.data, str):
+                                image_data = base64.b64decode(part.inline_data.data)
+                            break
+
+            if image_data is None:
+                error_message = "No image data in response"
+            else:
+                # Upload to S3
+                public_url = s3_client.upload(
+                    s3_key,
+                    image_data,
+                    content_type="image/png",
+                )
+                logger.info(
+                    f"Uploaded image for {player.display_name}: {len(image_data)} bytes"
+                )
+
+        except Exception as exc:
+            error_message = str(exc)
+            logger.error(
+                f"Failed to process batch response for {player.display_name}: {exc}"
+            )
+
+        # Create asset record
+        asset = PlayerImageAsset(
+            snapshot_id=snapshot_id,
+            player_id=player_id,
+            s3_key=s3_key,
+            s3_bucket=settings.s3_bucket_name,
+            public_url=public_url,
+            file_size_bytes=len(image_data) if image_data else None,
+            user_prompt=user_prompt,  # Not stored in batch response
+            likeness_description=None,
+            used_likeness_ref=False,
+            reference_image_url=None,
+            error_message=error_message,
+            generated_at=datetime.utcnow(),
+            generation_time_sec=time.time() - start_time,
+        )
+        db.add(asset)
 
         return asset
 
