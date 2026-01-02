@@ -260,3 +260,112 @@
   background-color: rgba(239, 68, 68, 0.1);
   color: #ef4444;
 }
+
+/* ============================================================================
+   PAGINATION STYLES
+   Pills and navigation for paginated feed
+   ============================================================================ */
+
+.feed-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding: 1rem 0;
+}
+
+.feed-pagination__pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-slate-200);
+  border-radius: 9999px;
+  background: white;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-slate-600);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.feed-pagination__pill:hover:not(.active):not(:disabled) {
+  border-color: var(--color-slate-300);
+  background: var(--color-slate-50);
+  color: var(--color-slate-900);
+}
+
+.feed-pagination__pill.active {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: white;
+}
+
+.feed-pagination__pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.feed-pagination__arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--color-slate-200);
+  border-radius: 9999px;
+  background: white;
+  color: var(--color-slate-500);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.feed-pagination__arrow:hover:not(:disabled) {
+  border-color: var(--color-slate-300);
+  background: var(--color-slate-50);
+  color: var(--color-slate-900);
+}
+
+.feed-pagination__arrow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.feed-pagination__arrow .icon {
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+.feed-pagination__ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-slate-400);
+}
+
+/* Responsive: Tighter spacing on mobile */
+@media (max-width: 480px) {
+  .feed-pagination {
+    gap: 0.25rem;
+  }
+
+  .feed-pagination__pill {
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .feed-pagination__arrow {
+    width: 2rem;
+    height: 2rem;
+  }
+}

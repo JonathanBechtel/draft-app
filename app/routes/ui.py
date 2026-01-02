@@ -179,7 +179,8 @@ async def home(
         )
 
     # Fetch news feed from database (falls back to empty if no items yet)
-    news_feed = await get_news_feed(db, limit=10)
+    # Fetch more items to enable pagination (10 per page)
+    news_feed = await get_news_feed(db, limit=100)
     feed_items = [
         {
             "id": item.id,
@@ -354,7 +355,8 @@ async def player_detail(
 
     # Fetch news feed (player-specific filtering would require player_id once implemented)
     # For now, show general feed on player pages too
-    news_feed = await get_news_feed(db, limit=5)
+    # Fetch more items to enable pagination (10 per page)
+    news_feed = await get_news_feed(db, limit=100)
     player_feed = [
         {
             "id": item.id,
