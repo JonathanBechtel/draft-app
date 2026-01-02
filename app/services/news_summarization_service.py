@@ -111,7 +111,7 @@ class NewsSummarizationService:
         logger.debug(f"Analyzing article: {title[:50]}...")
 
         try:
-            response = self.client.models.generate_content(
+            response = await self.client.aio.models.generate_content(
                 model="gemini-3-flash-preview",
                 contents=[
                     types.Content(

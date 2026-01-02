@@ -6,13 +6,16 @@ Currently supports RSS feeds with architecture for future expansion.
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import Optional
 
 import feedparser
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.news import IngestionResult
@@ -27,6 +30,25 @@ logger = logging.getLogger(__name__)
 _RSS_USER_AGENT = "DraftGuru/1.0 (+https://draftguru)"
 _RSS_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)
 
+_TRANSIENT_DB_ERROR_MARKERS = (
+    "cache lookup failed for type",
+    "InvalidCachedStatementError",
+    "cached statement plan is invalid",
+    "ConnectionDoesNotExistError",
+    "connection was closed",
+    "closed in the middle of operation",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class NewsSourceSnapshot:
+    """Minimal source data needed to ingest a feed without ORM lazy loads."""
+
+    id: int
+    name: str
+    feed_type: FeedType
+    feed_url: str
+
 
 async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
     """Process all active sources based on their feed type.
@@ -40,7 +62,26 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
     Returns:
         IngestionResult with counts and any errors
     """
-    sources = await get_active_sources(db)
+    active_sources = await get_active_sources(db)
+    source_snapshots: list[NewsSourceSnapshot] = []
+    for active_source in active_sources:
+        if active_source.id is None:
+            logger.warning(f"Skipping source without ID: {active_source.name}")
+            continue
+        source_snapshots.append(
+            NewsSourceSnapshot(
+                id=active_source.id,
+                name=active_source.name,
+                feed_type=active_source.feed_type,
+                feed_url=active_source.feed_url,
+            )
+        )
+
+    # End the implicit transaction opened by the SELECT so we never hold a DB
+    # connection open while doing network/AI work.
+    await db.commit()
+
+    sources: list[NewsSourceSnapshot] = source_snapshots
     logger.info(f"Starting ingestion cycle: {len(sources)} active source(s)")
 
     total_added = 0
@@ -48,7 +89,6 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
     errors: list[str] = []
 
     for source in sources:
-        source_name = source.name
         try:
             if source.feed_type == FeedType.RSS:
                 added, skipped = await ingest_rss_source(db, source)
@@ -57,12 +97,11 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
             # Future: elif source.feed_type == FeedType.API: ...
             else:
                 logger.warning(
-                    f"Unknown feed type for source {source_name}: {source.feed_type}"
+                    f"Unknown feed type for source {source.name}: {source.feed_type}"
                 )
                 errors.append(f"Unknown feed type: {source.feed_type}")
         except Exception as e:
-            await db.rollback()
-            error_msg = f"Failed to ingest {source_name}: {str(e)}"
+            error_msg = f"Failed to ingest {source.name}: {str(e)}"
             logger.error(error_msg)
             errors.append(error_msg)
 
@@ -81,7 +120,7 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
 
 async def ingest_rss_source(
     db: AsyncSession,
-    source: NewsSource,
+    source: NewsSourceSnapshot,
 ) -> tuple[int, int]:
     """Fetch and process an RSS feed source.
 
@@ -103,25 +142,8 @@ async def ingest_rss_source(
     items_added = 0
     items_skipped = 0
 
-    source_id = source.id
-    if source_id is None:
-        raise ValueError("Source ID is required")
-
-    # First pass: check which entries already exist (before adding anything)
-    existing_ids: set[str] = set()
-    for entry in entries:
-        external_id = entry.get("guid", entry.get("link", ""))
-        if external_id:
-            existing = await db.execute(
-                select(NewsItem.id).where(  # type: ignore[call-overload]
-                    NewsItem.source_id == source_id,
-                    NewsItem.external_id == external_id,
-                )
-            )
-            if existing.scalar_one_or_none() is not None:
-                existing_ids.add(external_id)
-
-    # Second pass: process and add new entries
+    seen_ids: set[str] = set()
+    candidates: list[dict] = []
     for entry in entries:
         external_id = entry.get("guid", entry.get("link", ""))
         if not external_id:
@@ -130,9 +152,32 @@ async def ingest_rss_source(
             )
             items_skipped += 1
             continue
+        if external_id in seen_ids:
+            items_skipped += 1
+            continue
+        seen_ids.add(external_id)
+        candidates.append(entry)
 
-        # Skip if already exists
-        if external_id in existing_ids:
+    existing_ids = await _fetch_existing_external_ids(
+        db,
+        source_id=source.id,
+        external_ids=[entry.get("guid", "") for entry in candidates],
+    )
+    await db.commit()
+
+    new_entries = [
+        entry for entry in candidates if entry.get("guid", "") not in existing_ids
+    ]
+    items_skipped += len(candidates) - len(new_entries)
+
+    # Phase 1: network/AI work (no DB connections/transactions held).
+    fetched_at = datetime.utcnow()
+    rows: list[dict] = []
+    for entry in new_entries:
+        external_id = entry.get("guid", entry.get("link", ""))
+        if not external_id:
+            # Should be impossible due to the candidate filtering above, but keep this
+            # defensive in case the feed mapping changes.
             items_skipped += 1
             continue
 
@@ -159,31 +204,110 @@ async def ingest_rss_source(
 
             tag = NewsItemTag.SCOUTING_REPORT
 
-        # Create news item
-        news_item = NewsItem(
-            source_id=source_id,
-            external_id=external_id,
-            title=title,
-            description=description,
-            url=url,
-            image_url=image_url,
-            author=author,
-            summary=summary,
-            tag=tag,
-            published_at=published_at,
+        rows.append(
+            {
+                "source_id": source.id,
+                "external_id": external_id,
+                "title": title,
+                "description": description or None,
+                "url": url,
+                "image_url": image_url,
+                "author": author,
+                "summary": summary or None,
+                "tag": tag,
+                "published_at": published_at,
+                "created_at": fetched_at,
+                "player_id": None,
+            }
         )
-        db.add(news_item)
-        items_added += 1
         logger.info(f"  + [{tag.value}] {title[:60]}{'...' if len(title) > 60 else ''}")
 
-    # Update source's last_fetched_at
-    source.last_fetched_at = datetime.utcnow()
-    source.updated_at = datetime.utcnow()
+    # Phase 2: short DB transaction to insert + update timestamps.
+    inserted, conflict_skipped = await _persist_news_items(
+        db,
+        source_id=source.id,
+        rows=rows,
+        fetched_at=fetched_at,
+    )
+    items_added += inserted
+    items_skipped += conflict_skipped
 
-    await db.commit()
     logger.info(f"  ✓ {source.name}: {items_added} added, {items_skipped} skipped")
-
     return items_added, items_skipped
+
+
+async def _fetch_existing_external_ids(
+    db: AsyncSession,
+    *,
+    source_id: int,
+    external_ids: list[str],
+) -> set[str]:
+    """Fetch IDs that already exist for a source."""
+
+    if not external_ids:
+        return set()
+
+    stmt = select(NewsItem.external_id).where(  # type: ignore[call-overload]
+        NewsItem.source_id == source_id,  # type: ignore[arg-type]
+        NewsItem.external_id.in_(external_ids),  # type: ignore[attr-defined,arg-type]
+    )
+    result = await db.execute(stmt)
+    return set(result.scalars().all())
+
+
+def _is_transient_db_error(exc: BaseException) -> bool:
+    """Return True when the DB exception is likely fixed by retrying once."""
+
+    if isinstance(exc, DBAPIError) and exc.connection_invalidated:
+        return True
+    text = str(exc)
+    return any(marker in text for marker in _TRANSIENT_DB_ERROR_MARKERS)
+
+
+async def _persist_news_items(
+    db: AsyncSession,
+    *,
+    source_id: int,
+    rows: list[dict],
+    fetched_at: datetime,
+) -> tuple[int, int]:
+    """Insert new items idempotently and touch source timestamps.
+
+    Uses ON CONFLICT DO NOTHING so the unique constraint is the source of truth.
+    """
+
+    async def _attempt() -> tuple[int, int]:
+        inserted_count = 0
+        conflict_skipped = 0
+        if rows:
+            stmt = (
+                insert(NewsItem)
+                .values(rows)
+                .on_conflict_do_nothing(index_elements=["source_id", "external_id"])
+                .returning(NewsItem.__table__.c.id)  # type: ignore[attr-defined]
+            )
+            result = await db.execute(stmt)
+            inserted_ids = list(result.scalars().all())
+            inserted_count = len(inserted_ids)
+            conflict_skipped = len(rows) - inserted_count
+
+        await db.execute(
+            update(NewsSource)
+            .where(NewsSource.id == source_id)  # type: ignore[arg-type]
+            .values(last_fetched_at=fetched_at, updated_at=fetched_at)
+        )
+        await db.commit()
+
+        return inserted_count, conflict_skipped
+
+    try:
+        return await _attempt()
+    except Exception as exc:
+        await db.rollback()
+        if _is_transient_db_error(exc):
+            logger.warning("Transient DB error during news ingest; retrying once")
+            return await _attempt()
+        raise
 
 
 async def fetch_rss_feed(url: str) -> list[dict]:
