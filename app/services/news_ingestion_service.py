@@ -4,22 +4,28 @@ Handles fetching, parsing, and storing news from various feed types.
 Currently supports RSS feeds with architecture for future expansion.
 """
 
+import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from email.utils import parsedate_to_datetime
 from typing import Optional
 
 import feedparser
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.news import IngestionResult
 from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import FeedType, NewsSource
+from app.schemas.players_master import PlayerMaster  # noqa: F401 - needed for FK resolution
 from app.services.news_service import get_active_sources
 from app.services.news_summarization_service import news_summarization_service
 
 logger = logging.getLogger(__name__)
+
+_RSS_USER_AGENT = "DraftGuru/1.0 (+https://draftguru)"
+_RSS_TIMEOUT = httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)
 
 
 async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
@@ -35,12 +41,14 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
         IngestionResult with counts and any errors
     """
     sources = await get_active_sources(db)
+    logger.info(f"Starting ingestion cycle: {len(sources)} active source(s)")
 
     total_added = 0
     total_skipped = 0
     errors: list[str] = []
 
     for source in sources:
+        source_name = source.name
         try:
             if source.feed_type == FeedType.RSS:
                 added, skipped = await ingest_rss_source(db, source)
@@ -49,13 +57,19 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
             # Future: elif source.feed_type == FeedType.API: ...
             else:
                 logger.warning(
-                    f"Unknown feed type for source {source.name}: {source.feed_type}"
+                    f"Unknown feed type for source {source_name}: {source.feed_type}"
                 )
                 errors.append(f"Unknown feed type: {source.feed_type}")
         except Exception as e:
-            error_msg = f"Failed to ingest {source.name}: {str(e)}"
+            await db.rollback()
+            error_msg = f"Failed to ingest {source_name}: {str(e)}"
             logger.error(error_msg)
             errors.append(error_msg)
+
+    logger.info(
+        f"Ingestion complete: {total_added} added, {total_skipped} skipped, "
+        f"{len(errors)} error(s)"
+    )
 
     return IngestionResult(
         sources_processed=len(sources),
@@ -81,10 +95,10 @@ async def ingest_rss_source(
     Returns:
         Tuple of (items_added, items_skipped)
     """
-    logger.info(f"Ingesting RSS feed: {source.name} ({source.feed_url})")
+    logger.info(f"→ {source.name}")
 
     entries = await fetch_rss_feed(source.feed_url)
-    logger.info(f"Fetched {len(entries)} entries from {source.name}")
+    logger.info(f"  Fetched {len(entries)} entries")
 
     items_added = 0
     items_skipped = 0
@@ -93,6 +107,21 @@ async def ingest_rss_source(
     if source_id is None:
         raise ValueError("Source ID is required")
 
+    # First pass: check which entries already exist (before adding anything)
+    existing_ids: set[str] = set()
+    for entry in entries:
+        external_id = entry.get("guid", entry.get("link", ""))
+        if external_id:
+            existing = await db.execute(
+                select(NewsItem.id).where(  # type: ignore[call-overload]
+                    NewsItem.source_id == source_id,
+                    NewsItem.external_id == external_id,
+                )
+            )
+            if existing.scalar_one_or_none() is not None:
+                existing_ids.add(external_id)
+
+    # Second pass: process and add new entries
     for entry in entries:
         external_id = entry.get("guid", entry.get("link", ""))
         if not external_id:
@@ -102,15 +131,8 @@ async def ingest_rss_source(
             items_skipped += 1
             continue
 
-        # Check for existing item (deduplication)
-        existing = await db.execute(
-            select(NewsItem.id).where(  # type: ignore[call-overload]
-                NewsItem.source_id == source_id,
-                NewsItem.external_id == external_id,
-            )
-        )
-        if existing.scalar_one_or_none() is not None:
-            logger.debug(f"Skipping duplicate: {external_id}")
+        # Skip if already exists
+        if external_id in existing_ids:
             items_skipped += 1
             continue
 
@@ -120,7 +142,7 @@ async def ingest_rss_source(
         url = entry.get("link", "")
         image_url = entry.get("image_url")
         author = entry.get("author")
-        published_at = entry.get("published_at", datetime.now(timezone.utc))
+        published_at = entry.get("published_at", datetime.utcnow())
 
         # Generate AI summary and tag
         try:
@@ -135,7 +157,7 @@ async def ingest_rss_source(
             summary = description[:200] if description else ""
             from app.schemas.news_items import NewsItemTag
 
-            tag = NewsItemTag.ANALYSIS
+            tag = NewsItemTag.SCOUTING_REPORT
 
         # Create news item
         news_item = NewsItem(
@@ -152,14 +174,14 @@ async def ingest_rss_source(
         )
         db.add(news_item)
         items_added += 1
-        logger.debug(f"Added: {title[:50]}")
+        logger.info(f"  + [{tag.value}] {title[:60]}{'...' if len(title) > 60 else ''}")
 
     # Update source's last_fetched_at
-    source.last_fetched_at = datetime.now(timezone.utc)
-    source.updated_at = datetime.now(timezone.utc)
+    source.last_fetched_at = datetime.utcnow()
+    source.updated_at = datetime.utcnow()
 
     await db.commit()
-    logger.info(f"Ingested {source.name}: {items_added} added, {items_skipped} skipped")
+    logger.info(f"  ✓ {source.name}: {items_added} added, {items_skipped} skipped")
 
     return items_added, items_skipped
 
@@ -183,8 +205,25 @@ async def fetch_rss_feed(url: str) -> list[dict]:
     Returns:
         List of normalized entry dictionaries
     """
-    # feedparser is synchronous, but fast enough for our needs
-    feed = feedparser.parse(url)
+    if not url.startswith(("http://", "https://")):
+        logger.warning(f"Skipping non-http(s) feed URL: {url}")
+        return []
+
+    try:
+        async with httpx.AsyncClient(
+            headers={"User-Agent": _RSS_USER_AGENT},
+            timeout=_RSS_TIMEOUT,
+            follow_redirects=True,
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            content = response.content
+    except httpx.HTTPError as exc:
+        logger.warning(f"Failed to fetch feed {url}: {exc}")
+        return []
+
+    # feedparser is synchronous; run it off the event loop to avoid blocking.
+    feed = await asyncio.to_thread(feedparser.parse, content)
 
     if feed.bozo:
         logger.warning(f"Feed parse warning for {url}: {feed.bozo_exception}")
@@ -249,20 +288,19 @@ def _extract_image_url(entry: feedparser.FeedParserDict) -> Optional[str]:
 def _parse_published_date(entry: feedparser.FeedParserDict) -> datetime:
     """Parse published date from RSS entry.
 
-    Tries multiple date fields and formats.
+    Tries multiple date fields and formats. Returns naive UTC datetime.
 
     Args:
         entry: feedparser entry dict
 
     Returns:
-        Parsed datetime (UTC) or current time if parsing fails
+        Parsed datetime (naive UTC) or current time if parsing fails
     """
     # feedparser usually provides parsed time tuple
     if hasattr(entry, "published_parsed") and entry.published_parsed:
         try:
-            # Create datetime from time tuple and add timezone
-            dt = datetime(*entry.published_parsed[:6])
-            return dt.replace(tzinfo=timezone.utc)
+            # Create naive datetime from time tuple
+            return datetime(*entry.published_parsed[:6])
         except Exception:
             pass
 
@@ -270,12 +308,14 @@ def _parse_published_date(entry: feedparser.FeedParserDict) -> datetime:
     published = entry.get("published", entry.get("pubDate", ""))
     if published:
         try:
-            return parsedate_to_datetime(published)
+            dt = parsedate_to_datetime(published)
+            # Convert to naive UTC
+            return dt.replace(tzinfo=None)
         except Exception:
             pass
 
-    # Fallback to current time
-    return datetime.now(timezone.utc)
+    # Fallback to current time (naive UTC)
+    return datetime.utcnow()
 
 
 def _clean_description(description: str) -> str:

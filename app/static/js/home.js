@@ -643,12 +643,18 @@ const FeedModule = {
    */
   getTagClass(tag) {
     const tagMap = {
-      'Riser': 'riser',
-      'Faller': 'faller',
-      'Analysis': 'analysis',
-      'Highlight': 'highlight'
+      'Scouting Report': 'scouting-report',
+      'Big Board': 'big-board',
+      'Mock Draft': 'mock-draft',
+      'Tier Update': 'tier-update',
+      'Game Recap': 'game-recap',
+      'Film Study': 'film-study',
+      'Skill Theme': 'skill-theme',
+      'Team Fit': 'team-fit',
+      'Draft Intel': 'draft-intel',
+      'Statistical Analysis': 'stats-analysis'
     };
-    return tagMap[tag] || 'analysis';
+    return tagMap[tag] || 'scouting-report';
   },
 
   /**

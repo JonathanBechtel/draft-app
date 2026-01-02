@@ -125,24 +125,54 @@
   letter-spacing: 0.05em;
 }
 
-.feed-card__tag.riser {
-  background-color: rgba(16, 185, 129, 0.1);
-  color: var(--color-accent-emerald);
-}
-
-.feed-card__tag.faller {
-  background-color: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-}
-
-.feed-card__tag.analysis {
+.feed-card__tag.scouting-report {
   background-color: rgba(99, 102, 241, 0.1);
   color: var(--color-accent-indigo);
 }
 
-.feed-card__tag.highlight {
+.feed-card__tag.big-board {
+  background-color: rgba(139, 92, 246, 0.1);
+  color: #8b5cf6;
+}
+
+.feed-card__tag.mock-draft {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.feed-card__tag.tier-update {
+  background-color: rgba(6, 182, 212, 0.1);
+  color: var(--color-accent-cyan);
+}
+
+.feed-card__tag.game-recap {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: var(--color-accent-emerald);
+}
+
+.feed-card__tag.film-study {
+  background-color: rgba(100, 116, 139, 0.1);
+  color: #64748b;
+}
+
+.feed-card__tag.skill-theme {
   background-color: rgba(245, 158, 11, 0.1);
   color: var(--color-accent-amber);
+}
+
+.feed-card__tag.team-fit {
+  background-color: rgba(20, 184, 166, 0.1);
+  color: #14b8a6;
+}
+
+.feed-card__tag.draft-intel {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.feed-card__tag.stats-analysis {
+  background-color: rgba(71, 85, 105, 0.1);
+  color: #475569;
 }
 
 /* CTA Button */

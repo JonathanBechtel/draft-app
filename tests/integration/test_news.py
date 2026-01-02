@@ -1,16 +1,19 @@
 """Integration tests for the news feed API endpoints."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import FeedType, NewsSource
+from app.services.news_summarization_service import ArticleAnalysis
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def sample_news_source(db_session: AsyncSession) -> NewsSource:
     """Create a sample news source for testing."""
     source = NewsSource(
@@ -20,8 +23,8 @@ async def sample_news_source(db_session: AsyncSession) -> NewsSource:
         feed_url="https://example.com/feed",
         is_active=True,
         fetch_interval_minutes=30,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
     )
     db_session.add(source)
     await db_session.commit()
@@ -29,12 +32,12 @@ async def sample_news_source(db_session: AsyncSession) -> NewsSource:
     return source
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def sample_news_items(
     db_session: AsyncSession, sample_news_source: NewsSource
 ) -> list[NewsItem]:
     """Create sample news items for testing."""
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     items = [
         NewsItem(
             source_id=sample_news_source.id,  # type: ignore[arg-type]
@@ -45,7 +48,7 @@ async def sample_news_items(
             image_url="https://example.com/img1.jpg",
             author="John Doe",
             summary="AI summary for article 1",
-            tag=NewsItemTag.RISER,
+            tag=NewsItemTag.SCOUTING_REPORT,
             published_at=now - timedelta(hours=1),
             created_at=now,
         ),
@@ -58,7 +61,7 @@ async def sample_news_items(
             image_url=None,  # Test article without image
             author=None,
             summary="AI summary for article 2",
-            tag=NewsItemTag.ANALYSIS,
+            tag=NewsItemTag.BIG_BOARD,
             published_at=now - timedelta(hours=2),
             created_at=now,
         ),
@@ -71,7 +74,7 @@ async def sample_news_items(
             image_url="https://example.com/img3.jpg",
             author="Jane Smith",
             summary="AI summary for article 3",
-            tag=NewsItemTag.FALLER,
+            tag=NewsItemTag.MOCK_DRAFT,
             published_at=now - timedelta(days=1),
             created_at=now,
         ),
@@ -114,7 +117,7 @@ class TestGetNewsFeed:
         assert first_item["title"] == "Test Article 1"
         assert first_item["source_name"] == "Test Source"
         assert first_item["summary"] == "AI summary for article 1"
-        assert first_item["tag"] == "Riser"
+        assert first_item["tag"] == "Scouting Report"
         assert first_item["read_more_text"] == "Read at Test Source"
         assert first_item["image_url"] == "https://example.com/img1.jpg"
         assert first_item["author"] == "John Doe"
@@ -275,15 +278,125 @@ class TestTriggerIngestion:
         self,
         app_client: AsyncClient,
         sample_news_source: NewsSource,
+        monkeypatch: pytest.MonkeyPatch,
     ):
         """POST /api/news/ingest processes active sources.
 
-        Note: This test verifies the endpoint runs without error.
-        Actual RSS parsing would require mocking feedparser.
+        Mocks the RSS fetch to keep tests deterministic and offline.
         """
+        from app.services import news_ingestion_service
+
+        async def _fake_fetch_rss_feed(url: str) -> list[dict]:
+            assert url == sample_news_source.feed_url
+            return [
+                {
+                    "title": "Mock entry",
+                    "description": "Mock description",
+                    "link": "https://example.com/article-1",
+                    "guid": "mock-1",
+                    "author": "Mock Author",
+                    "image_url": None,
+                    "published_at": datetime.utcnow(),
+                }
+            ]
+
+        async def _fake_analyze_article(
+            *, title: str, description: str
+        ) -> ArticleAnalysis:
+            return ArticleAnalysis(summary="Mock summary", tag=NewsItemTag.BIG_BOARD)
+
+        monkeypatch.setattr(
+            news_ingestion_service, "fetch_rss_feed", _fake_fetch_rss_feed
+        )
+        monkeypatch.setattr(
+            news_ingestion_service.news_summarization_service,
+            "analyze_article",
+            _fake_analyze_article,
+        )
+
         response = await app_client.post("/api/news/ingest")
         assert response.status_code == 200
         data = response.json()
 
-        # Source should be counted even if feed fetch fails
-        assert data["sources_processed"] >= 0
+        assert data["sources_processed"] == 1
+        assert data["items_added"] == 1
+        assert data["items_skipped"] == 0
+
+    async def test_ingestion_adds_and_skips_duplicates(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        sample_news_source: NewsSource,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """POST /api/news/ingest adds new items and skips known external_ids."""
+        from app.services import news_ingestion_service
+
+        existing_item = NewsItem(
+            source_id=sample_news_source.id,  # type: ignore[arg-type]
+            external_id="dup-1",
+            title="Existing",
+            description=None,
+            url="https://example.com/existing",
+            image_url=None,
+            author=None,
+            summary="Existing summary",
+            tag=NewsItemTag.SCOUTING_REPORT,
+            published_at=datetime.utcnow(),
+            created_at=datetime.utcnow(),
+        )
+        db_session.add(existing_item)
+        await db_session.commit()
+
+        async def _fake_fetch_rss_feed(url: str) -> list[dict]:
+            assert url == sample_news_source.feed_url
+            now = datetime.utcnow()
+            return [
+                {
+                    "title": "Duplicate entry",
+                    "description": "Dup description",
+                    "link": "https://example.com/duplicate",
+                    "guid": "dup-1",
+                    "author": None,
+                    "image_url": None,
+                    "published_at": now,
+                },
+                {
+                    "title": "New entry",
+                    "description": "New description",
+                    "link": "https://example.com/new",
+                    "guid": "new-1",
+                    "author": None,
+                    "image_url": None,
+                    "published_at": now,
+                },
+            ]
+
+        async def _fake_analyze_article(
+            *, title: str, description: str
+        ) -> ArticleAnalysis:
+            return ArticleAnalysis(summary="Mock summary", tag=NewsItemTag.MOCK_DRAFT)
+
+        monkeypatch.setattr(
+            news_ingestion_service, "fetch_rss_feed", _fake_fetch_rss_feed
+        )
+        monkeypatch.setattr(
+            news_ingestion_service.news_summarization_service,
+            "analyze_article",
+            _fake_analyze_article,
+        )
+
+        response = await app_client.post("/api/news/ingest")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["sources_processed"] == 1
+        assert data["items_added"] == 1
+        assert data["items_skipped"] == 1
+
+        result = await db_session.execute(
+            select(NewsItem).where(  # type: ignore[call-overload]
+                NewsItem.source_id == sample_news_source.id  # type: ignore[arg-type]
+            )
+        )
+        items = list(result.scalars().all())
+        assert len(items) == 2

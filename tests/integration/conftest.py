@@ -10,6 +10,7 @@ import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 from pydantic import ValidationError
 from sqlalchemy import event
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -21,11 +22,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+_LOCAL_TEST_DB_HOSTS = {None, "localhost", "127.0.0.1", "::1"}
+
 
 def _load_database_url() -> str:
     """Resolve the database URL for tests, enforcing an explicit opt-in."""
     test_db_url = os.getenv("TEST_DATABASE_URL")
     pytest_allow_db = int(os.getenv("PYTEST_ALLOW_DB", "0"))
+    pytest_allow_remote_db = int(os.getenv("PYTEST_ALLOW_REMOTE_DB", "0"))
     if not test_db_url:
         pytest.skip("No TEST_DATABASE_URL or DATABASE_URL is configured for tests.")
     if pytest_allow_db != 1:
@@ -33,6 +37,19 @@ def _load_database_url() -> str:
             "Running integration tests requires setting PYTEST_ALLOW_DB=1 to"
             " confirm the configured database is safe to mutate."
         )
+
+    # Guardrail: these tests drop/create all tables and must never target a remote DB
+    # unless explicitly allowed.
+    try:
+        host = make_url(test_db_url).host
+    except Exception:
+        host = None
+    if host not in _LOCAL_TEST_DB_HOSTS and pytest_allow_remote_db != 1:
+        pytest.skip(
+            "Integration tests require a local disposable database (set"
+            " PYTEST_ALLOW_REMOTE_DB=1 to override)."
+        )
+
     # mypy: test_db_url is str after the guard above
     return test_db_url  # type: ignore[return-value]
 

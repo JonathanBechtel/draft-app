@@ -22,7 +22,7 @@ class ArticleAnalysis(BaseModel):
     """Structured output from AI article analysis."""
 
     summary: str  # 1-2 sentence compelling byline
-    tag: NewsItemTag  # Riser, Faller, Analysis, or Highlight
+    tag: NewsItemTag  # Classification tag for the article type
 
 
 # System prompt for article analysis
@@ -33,10 +33,16 @@ Your task is to analyze NBA draft-related articles and provide:
 2. A classification tag for the article
 
 Tag definitions:
-- "Riser": Article about a player's draft stock rising, breakout performance, or improved perception
-- "Faller": Article about a player's draft stock falling, poor performance, or concerns
-- "Highlight": Article featuring standout games, impressive stats, or notable achievements
-- "Analysis": General scouting reports, player evaluations, or draft analysis (default if unclear)
+- "Scouting Report": Deep dive on a single prospect (strengths, weaknesses, role projection, film notes)
+- "Big Board": Rankings or tiers of prospects (Top 60/100, positional boards, tier lists)
+- "Mock Draft": Pick-by-pick projections, lottery mocks, team outcome simulations
+- "Tier Update": Movement between tiers, re-grouping of prospects, stock context without single-game focus
+- "Game Recap": Prospect performance tied to a specific game, slate, or tournament
+- "Film Study": Play-type or tape-driven breakdowns (possessions, schemes, tendencies)
+- "Skill Theme": Cross-prospect analysis centered on a trait, archetype, or skill
+- "Team Fit": Prospect-to-NBA-team fit, roster context, needs-based analysis
+- "Draft Intel": Rumors, workouts, measurements, agent/team chatter, behind-the-scenes info
+- "Statistical Analysis": Statistical models, data-driven analysis, comps, methodology
 
 Guidelines for summaries:
 - Keep it punchy and engaging (1-2 sentences max)
@@ -45,7 +51,7 @@ Guidelines for summaries:
 - Write in an active, compelling voice
 
 Respond with valid JSON only: {"summary": "...", "tag": "..."}
-The tag must be exactly one of: "Riser", "Faller", "Analysis", "Highlight"
+The tag must be exactly one of: "Scouting Report", "Big Board", "Mock Draft", "Tier Update", "Game Recap", "Film Study", "Skill Theme", "Team Fit", "Draft Intel", "Statistical Analysis"
 """
 
 
@@ -57,11 +63,18 @@ class NewsSummarizationService:
 
     @property
     def client(self) -> genai.Client:
-        """Lazily initialize the Gemini client."""
+        """Lazily initialize the Gemini client.
+
+        Uses GEMINI_SUMMARIZATION_API_KEY if set, otherwise falls back to
+        GEMINI_API_KEY. This allows separate cost tracking for summarization.
+        """
         if self._client is None:
-            if not settings.gemini_api_key:
-                raise ValueError("GEMINI_API_KEY not configured")
-            self._client = genai.Client(api_key=settings.gemini_api_key)
+            api_key = settings.gemini_summarization_api_key or settings.gemini_api_key
+            if not api_key:
+                raise ValueError(
+                    "GEMINI_SUMMARIZATION_API_KEY or GEMINI_API_KEY must be configured"
+                )
+            self._client = genai.Client(api_key=api_key)
         return self._client
 
     async def analyze_article(
@@ -99,7 +112,7 @@ class NewsSummarizationService:
 
         try:
             response = self.client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-3-flash-preview",
                 contents=[
                     types.Content(
                         role="user",
@@ -127,7 +140,7 @@ class NewsSummarizationService:
             # Return default analysis on failure
             return ArticleAnalysis(
                 summary=description[:200] if description else title,
-                tag=NewsItemTag.ANALYSIS,
+                tag=NewsItemTag.SCOUTING_REPORT,
             )
 
     def _parse_response(self, response_text: str) -> ArticleAnalysis:
@@ -163,12 +176,18 @@ class NewsSummarizationService:
 
         # Map tag string to enum
         tag_map = {
-            "Riser": NewsItemTag.RISER,
-            "Faller": NewsItemTag.FALLER,
-            "Analysis": NewsItemTag.ANALYSIS,
-            "Highlight": NewsItemTag.HIGHLIGHT,
+            "Scouting Report": NewsItemTag.SCOUTING_REPORT,
+            "Big Board": NewsItemTag.BIG_BOARD,
+            "Mock Draft": NewsItemTag.MOCK_DRAFT,
+            "Tier Update": NewsItemTag.TIER_UPDATE,
+            "Game Recap": NewsItemTag.GAME_RECAP,
+            "Film Study": NewsItemTag.FILM_STUDY,
+            "Skill Theme": NewsItemTag.SKILL_THEME,
+            "Team Fit": NewsItemTag.TEAM_FIT,
+            "Draft Intel": NewsItemTag.DRAFT_INTEL,
+            "Statistical Analysis": NewsItemTag.STATS_ANALYSIS,
         }
-        tag = tag_map.get(tag_str, NewsItemTag.ANALYSIS)
+        tag = tag_map.get(tag_str, NewsItemTag.SCOUTING_REPORT)
 
         return ArticleAnalysis(summary=summary, tag=tag)
 

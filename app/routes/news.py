@@ -22,7 +22,7 @@ from app.models.news import (
 from app.schemas.news_sources import FeedType, NewsSource
 from app.services.news_ingestion_service import run_ingestion_cycle
 from app.services.news_service import get_news_feed
-from app.utils.db_async import get_session
+from app.utils.db_async import SessionLocal, dispose_engine, get_session
 
 router = APIRouter(prefix="/api/news", tags=["news"])
 
@@ -141,4 +141,22 @@ async def trigger_ingestion(
     testing or by an external cron job in production.
     """
     result = await run_ingestion_cycle(db)
+
+    # If the database schema changed (common in dev when running Alembic while the
+    # app is live), asyncpg can error with stale type/statement caches (notably for
+    # enum migrations). In that case, dispose the engine and retry once with a fresh
+    # connection so a single manual POST succeeds.
+    cache_error_markers = (
+        "cache lookup failed for type",
+        "InvalidCachedStatementError",
+        "cached statement plan is invalid",
+    )
+    if any(
+        any(marker in err for marker in cache_error_markers) for err in result.errors
+    ):
+        await db.rollback()
+        await dispose_engine()
+        async with SessionLocal() as retry_db:
+            return await run_ingestion_cycle(retry_db)
+
     return result

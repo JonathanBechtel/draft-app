@@ -66,6 +66,13 @@ def _prepare_asyncpg_connection(url: str) -> Tuple[str, Dict[str, Any]]:
     cleaned_url = urlunsplit(split._replace(query=cleaned_query)).rstrip("?")
 
     connect_args: Dict[str, Any] = {}
+    # Prevent prepared-statement caching issues after DDL changes (notably enum type
+    # migrations), which can surface as: "cache lookup failed for type <oid>".
+    #
+    # Note: SQLAlchemy's asyncpg dialect maintains its own prepared statement cache;
+    # disable both that cache and asyncpg's native one.
+    connect_args["prepared_statement_cache_size"] = 0
+    connect_args["statement_cache_size"] = 0
     if sslmode:
         mode = sslmode.lower()
         if mode == "disable":

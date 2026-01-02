@@ -728,16 +728,64 @@ body {
   font-size: 0.6875rem;
 }
 
-.feed-tag.riser {
+.feed-tag.scouting-report {
+  color: #4338ca;
+  border-color: #c7d2fe;
+  background: #e0e7ff;
+}
+
+.feed-tag.big-board {
+  color: #7c3aed;
+  border-color: #ddd6fe;
+  background: #ede9fe;
+}
+
+.feed-tag.mock-draft {
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+  background: #dbeafe;
+}
+
+.feed-tag.tier-update {
+  color: #0891b2;
+  border-color: #a5f3fc;
+  background: #cffafe;
+}
+
+.feed-tag.game-recap {
   color: #15803d;
   border-color: #a7f3d0;
   background: #d1fae5;
 }
 
-.feed-tag.faller {
+.feed-tag.film-study {
+  color: #475569;
+  border-color: #cbd5e1;
+  background: #f1f5f9;
+}
+
+.feed-tag.skill-theme {
+  color: #92400e;
+  border-color: #fde68a;
+  background: #fef3c7;
+}
+
+.feed-tag.team-fit {
+  color: #0f766e;
+  border-color: #99f6e4;
+  background: #ccfbf1;
+}
+
+.feed-tag.draft-intel {
   color: #be123c;
   border-color: #fecdd3;
   background: #ffe4e6;
+}
+
+.feed-tag.stats-analysis {
+  color: #334155;
+  border-color: #e2e8f0;
+  background: #f8fafc;
 }
 
 /* ============================================================================

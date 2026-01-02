@@ -20,8 +20,13 @@ class Settings(BaseSettings):
     sql_echo: bool = True
     auto_init_db: bool = True
 
+    # Gemini API settings
+    gemini_api_key: Optional[str] = None  # General/image generation key
+    gemini_summarization_api_key: Optional[str] = (
+        None  # Separate key for RSS summarization
+    )
+
     # Image generation settings
-    gemini_api_key: Optional[str] = None
     image_gen_size: str = "512"  # Options: "512", "1K", "2K"
     image_gen_quality: str = "standard"  # Options: "draft", "standard", "high"
 

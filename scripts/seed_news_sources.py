@@ -31,14 +31,48 @@ INITIAL_SOURCES = [
         "feed_url": "https://floorandceiling.substack.com/feed",
         "fetch_interval_minutes": 30,
     },
-    # Add more Substack feeds as identified:
-    # {
-    #     "name": "Another Draft Substack",
-    #     "display_name": "Another Draft Substack",
-    #     "feed_type": "rss",
-    #     "feed_url": "https://anotherdraft.substack.com/feed",
-    #     "fetch_interval_minutes": 30,
-    # },
+    {
+        "name": "No Ceilings",
+        "display_name": "No Ceilings",
+        "feed_type": "rss",
+        "feed_url": "https://www.noceilingsnba.com/feed",
+        "fetch_interval_minutes": 30,
+    },
+    {
+        "name": "NBA Big Board",
+        "display_name": "NBA Big Board",
+        "feed_type": "rss",
+        "feed_url": "https://www.nbabigboard.com/feed",
+        "fetch_interval_minutes": 30,
+    },
+    {
+        "name": "The Box And One",
+        "display_name": "The Box And One",
+        "feed_type": "rss",
+        "feed_url": "https://theboxandone.substack.com/feed",
+        "fetch_interval_minutes": 30,
+    },
+    {
+        "name": "Draft Stack",
+        "display_name": "Draft Stack",
+        "feed_type": "rss",
+        "feed_url": "https://draftstack.substack.com/feed",
+        "fetch_interval_minutes": 30,
+    },
+    {
+        "name": "Ersin Demir",
+        "display_name": "Ersin Demir",
+        "feed_type": "rss",
+        "feed_url": "https://edemirnba.substack.com/feed",
+        "fetch_interval_minutes": 30,
+    },
+    {
+        "name": "Assisted Development",
+        "display_name": "Assisted Development",
+        "feed_type": "rss",
+        "feed_url": "https://assisteddevelopment.substack.com/feed",
+        "fetch_interval_minutes": 30,
+    },
 ]
 
 
