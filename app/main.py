@@ -11,6 +11,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import DBAPIError
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.routes import news, players, ui
 from app.utils.db_async import (
@@ -64,6 +65,7 @@ async def lifespan(app: FastAPI):
 
 # load in app details
 app = FastAPI(title="Mini Draft Guru", lifespan=lifespan)
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])  # type: ignore[arg-type]
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.state.templates = Jinja2Templates(directory="app/templates")
 app.include_router(news.router)

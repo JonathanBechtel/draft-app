@@ -2,9 +2,9 @@
 """Generate player portrait images using Google Gemini API.
 
 This script generates AI portraits for NBA draft prospects and stores them in S3.
-Supports batch generation by cohort, draft year, or individual players.
+Supports both synchronous (real-time) and batch (async, 50% cheaper) generation.
 
-Usage:
+Synchronous Usage:
     # Generate for 2025 draft class
     python scripts/generate_player_images.py --draft-year 2025 --run-key "draft_2025_v1"
 
@@ -19,10 +19,27 @@ Usage:
 
     # Dry run to preview and estimate costs
     python scripts/generate_player_images.py --all --dry-run
+
+Batch Usage (50% cost reduction, async processing within 24 hours):
+    # Submit batch job for 2025 draft class
+    python scripts/generate_player_images.py --season 2024-25 --batch submit
+
+    # Submit batch for players missing images only
+    python scripts/generate_player_images.py --season 2024-25 --missing-only --batch submit
+
+    # Check batch job status
+    python scripts/generate_player_images.py --batch status --job-id batches/abc123
+
+    # Retrieve results when job completes
+    python scripts/generate_player_images.py --batch retrieve --job-id batches/abc123
+
+    # List pending batch jobs
+    python scripts/generate_player_images.py --batch list
 """
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -37,7 +54,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.fields import CohortType
-from app.schemas.image_snapshots import PlayerImageAsset, PlayerImageSnapshot
+from app.schemas.image_snapshots import (
+    BatchJobState,
+    ImageBatchJob,
+    PlayerImageAsset,
+    PlayerImageSnapshot,
+)
 from app.schemas.metrics import MetricSnapshot, PlayerMetricValue
 from app.schemas.players_master import PlayerMaster
 from app.schemas.seasons import Season
@@ -51,10 +73,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Estimated cost per image (for dry run estimates)
+# Standard (synchronous) pricing
 COST_PER_IMAGE_USD = {
     "512": 0.02,
     "1K": 0.04,
     "2K": 0.08,
+}
+
+# Batch pricing (50% discount)
+BATCH_COST_PER_IMAGE_USD = {
+    "512": 0.01,
+    "1K": 0.02,
+    "2K": 0.04,
 }
 
 
@@ -293,8 +323,343 @@ async def get_next_version(
     return (current_max or 0) + 1
 
 
+# -----------------------------------------------------------------------------
+# Batch Processing Functions
+# -----------------------------------------------------------------------------
+
+
+async def batch_submit(args: argparse.Namespace) -> None:
+    """Submit a batch job for image generation."""
+    logger.info("=== BATCH SUBMIT ===")
+
+    # Validate args - need player selection for submit
+    if not any(
+        [
+            args.player_id,
+            args.player_slug,
+            args.cohort,
+            args.draft_year,
+            args.season,
+            args.all,
+        ]
+    ):
+        logger.error(
+            "Must specify player selection: --player-id, --player-slug, "
+            "--cohort, --draft-year, --season, or --all"
+        )
+        sys.exit(1)
+
+    if args.season and args.draft_year:
+        logger.error("Use only one of --season or --draft-year")
+        sys.exit(1)
+
+    # Determine cohort
+    cohort = CohortType(args.cohort) if args.cohort else CohortType.global_scope
+    if args.draft_year or args.season:
+        cohort = CohortType.current_draft
+
+    # Generate run key if not provided
+    run_key = args.run_key or generate_run_key(
+        cohort.value,
+        args.style,
+        draft_year=args.draft_year,
+        season=args.season,
+    )
+    logger.info(f"Run key: {run_key}")
+
+    async with SessionLocal() as db:
+        draft_year: Optional[int] = args.draft_year
+        if args.season and draft_year is None:
+            season = await resolve_season(db, args.season)
+            draft_year = season.end_year
+
+        # Fetch players
+        players = await get_players(
+            db,
+            player_id=args.player_id,
+            player_slug=args.player_slug,
+            cohort=cohort if not args.draft_year else None,
+            draft_year=draft_year,
+            season=args.season,
+            limit=args.limit,
+        )
+
+        if not players:
+            logger.warning("No players found matching criteria")
+            return
+
+        logger.info(f"Found {len(players)} players")
+
+        # Filter out players with existing images if --missing-only
+        if args.missing_only:
+            filtered = []
+            for player in players:
+                has_image = await check_existing_image(
+                    db,
+                    player.id,  # type: ignore[arg-type]
+                    args.style,
+                )
+                if not has_image:
+                    filtered.append(player)
+            logger.info(f"After --missing-only filter: {len(filtered)} players")
+            players = filtered
+
+        if not players:
+            logger.info("No players need image generation")
+            return
+
+        # Dry run: show what would be submitted
+        if args.dry_run:
+            cost_estimate = len(players) * BATCH_COST_PER_IMAGE_USD.get(args.size, 0.02)
+            sync_cost = len(players) * COST_PER_IMAGE_USD.get(args.size, 0.04)
+            logger.info("=== DRY RUN (BATCH) ===")
+            logger.info(f"Would submit batch job for {len(players)} images")
+            logger.info(f"Style: {args.style}, Size: {args.size}")
+            logger.info(f"Estimated cost (batch pricing): ${cost_estimate:.2f}")
+            logger.info(f"Savings vs sync: ${sync_cost - cost_estimate:.2f}")
+            logger.info("Players:")
+            for p in players[:10]:
+                logger.info(f"  - {p.display_name} (id={p.id}, slug={p.slug})")
+            if len(players) > 10:
+                logger.info(f"  ... and {len(players) - 10} more")
+            return
+
+        # Get system prompt
+        system_prompt = image_generation_service.get_system_prompt(args.prompt_version)
+        version = await get_next_version(db, args.style, cohort, run_key)
+
+        # Create snapshot record
+        snapshot = PlayerImageSnapshot(
+            run_key=run_key,
+            version=version,
+            is_current=False,  # Will set to True after batch completes
+            style=args.style,
+            cohort=cohort,
+            draft_year=draft_year,
+            population_size=len(players),
+            image_size=args.size,
+            system_prompt=system_prompt,
+            system_prompt_version=args.prompt_version,
+            notes=f"[BATCH] {args.notes}" if args.notes else "[BATCH]",
+            generated_at=datetime.utcnow(),
+        )
+        db.add(snapshot)
+        await db.commit()
+        await db.refresh(snapshot)
+        logger.info(f"Created snapshot: id={snapshot.id}, version={version}")
+
+        # Submit batch job
+        try:
+            job_record = await image_generation_service.submit_batch_job(
+                db=db,
+                players=players,
+                snapshot=snapshot,
+                style=args.style,
+                image_size=args.size,
+                fetch_likeness=args.fetch_likeness,
+            )
+
+            cost = len(players) * BATCH_COST_PER_IMAGE_USD.get(args.size, 0.02)
+            logger.info("=== BATCH SUBMITTED ===")
+            logger.info(f"Gemini Job ID: {job_record.gemini_job_name}")
+            logger.info(f"Snapshot ID: {snapshot.id}")
+            logger.info(f"Players: {len(players)}")
+            logger.info(f"Estimated cost: ${cost:.2f}")
+            logger.info("")
+            logger.info("To check status:")
+            logger.info(
+                f"  python scripts/generate_player_images.py "
+                f"--batch status --job-id {job_record.gemini_job_name}"
+            )
+            logger.info("")
+            logger.info("To retrieve results when complete:")
+            logger.info(
+                f"  python scripts/generate_player_images.py "
+                f"--batch retrieve --job-id {job_record.gemini_job_name}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to submit batch job: {e}")
+            await db.rollback()
+            sys.exit(1)
+
+
+async def batch_status(args: argparse.Namespace) -> None:
+    """Check the status of a batch job."""
+    if not args.job_id:
+        logger.error("--job-id is required for status check")
+        sys.exit(1)
+
+    logger.info(f"Checking status for: {args.job_id}")
+
+    try:
+        state = image_generation_service.get_batch_job_status(args.job_id)
+        logger.info(f"Status: {state.value}")
+
+        if state == BatchJobState.succeeded:
+            logger.info("Job complete! Run with --batch retrieve to process results.")
+        elif state == BatchJobState.failed:
+            logger.warning("Job failed. Check Gemini console for details.")
+        elif state in (BatchJobState.pending, BatchJobState.running):
+            logger.info("Job still processing. Check again later.")
+        else:
+            logger.info(f"Terminal state: {state.value}")
+
+    except Exception as e:
+        logger.error(f"Failed to check status: {e}")
+        sys.exit(1)
+
+
+async def batch_retrieve(args: argparse.Namespace) -> None:
+    """Retrieve and process batch job results."""
+    if not args.job_id:
+        logger.error("--job-id is required for retrieve")
+        sys.exit(1)
+
+    logger.info(f"Retrieving results for: {args.job_id}")
+
+    async with SessionLocal() as db:
+        # Find the job record
+        stmt = select(ImageBatchJob).where(ImageBatchJob.gemini_job_name == args.job_id)
+        result = await db.execute(stmt)
+        job_record = result.scalar_one_or_none()
+
+        if not job_record:
+            logger.error(f"No batch job found with ID: {args.job_id}")
+            sys.exit(1)
+
+        # Check if already processed
+        if job_record.success_count is not None:
+            logger.warning("This batch job has already been processed.")
+            logger.info(f"Success: {job_record.success_count}")
+            logger.info(f"Failed: {job_record.failure_count}")
+            return
+
+        # Get the snapshot
+        stmt = select(PlayerImageSnapshot).where(
+            PlayerImageSnapshot.id == job_record.snapshot_id
+        )
+        result = await db.execute(stmt)
+        snapshot = result.scalar_one_or_none()
+
+        if not snapshot:
+            logger.error("Snapshot not found for batch job")
+            sys.exit(1)
+
+        # Get players
+        player_ids = json.loads(job_record.player_ids_json)
+        stmt = select(PlayerMaster).where(
+            PlayerMaster.id.in_(player_ids)  # type: ignore[union-attr]
+        )
+        result = await db.execute(stmt)
+        players = list(result.scalars().all())
+        players_by_id = {p.id: p for p in players if p.id is not None}
+
+        logger.info(f"Found {len(players)} players for processing")
+
+        # Retrieve and process results
+        try:
+            (
+                success_count,
+                failure_count,
+            ) = await image_generation_service.retrieve_batch_results(
+                db=db,
+                job_record=job_record,
+                players_by_id=players_by_id,
+                snapshot=snapshot,
+            )
+
+            # Update snapshot
+            snapshot.success_count = success_count
+            snapshot.failure_count = failure_count
+            snapshot.estimated_cost_usd = success_count * BATCH_COST_PER_IMAGE_USD.get(
+                job_record.image_size, 0.02
+            )
+
+            # Mark as current if all succeeded
+            if failure_count == 0 and success_count > 0:
+                await demote_current_snapshots(
+                    db,
+                    style=snapshot.style,
+                    cohort=snapshot.cohort,
+                    draft_year=snapshot.draft_year,
+                )
+                snapshot.is_current = True
+
+            await db.commit()
+
+            logger.info("=== BATCH RETRIEVE COMPLETE ===")
+            logger.info(f"Success: {success_count}")
+            logger.info(f"Failed: {failure_count}")
+            logger.info(f"Estimated cost: ${snapshot.estimated_cost_usd:.2f}")
+            logger.info(f"Snapshot ID: {snapshot.id}")
+            logger.info(f"Is current: {snapshot.is_current}")
+
+        except RuntimeError as e:
+            logger.error(str(e))
+            sys.exit(1)
+        except Exception as e:
+            logger.error(f"Failed to retrieve results: {e}")
+            await db.rollback()
+            sys.exit(1)
+
+
+async def batch_list(args: argparse.Namespace) -> None:
+    """List pending/recent batch jobs."""
+    logger.info("=== BATCH JOBS ===")
+
+    async with SessionLocal() as db:
+        stmt = (
+            select(ImageBatchJob)
+            .order_by(desc(ImageBatchJob.submitted_at))  # type: ignore[arg-type]
+            .limit(args.limit or 20)
+        )
+        result = await db.execute(stmt)
+        jobs = list(result.scalars().all())
+
+        if not jobs:
+            logger.info("No batch jobs found")
+            return
+
+        for job in jobs:
+            status_icon = {
+                BatchJobState.pending: "[PENDING]",
+                BatchJobState.running: "[RUNNING]",
+                BatchJobState.succeeded: "[SUCCESS]",
+                BatchJobState.failed: "[FAILED]",
+                BatchJobState.cancelled: "[CANCELLED]",
+                BatchJobState.expired: "[EXPIRED]",
+            }.get(job.state, "[?]")
+
+            logger.info(
+                f"{status_icon} {job.gemini_job_name} | "
+                f"Players: {job.total_requests} | "
+                f"Submitted: {job.submitted_at.strftime('%Y-%m-%d %H:%M')}"
+            )
+            if job.success_count is not None:
+                logger.info(
+                    f"   Success: {job.success_count}, Failed: {job.failure_count}"
+                )
+
+
 async def main(args: argparse.Namespace) -> None:
     """Main entry point for image generation."""
+    # Handle batch modes
+    if args.batch:
+        if args.batch == "submit":
+            await batch_submit(args)
+        elif args.batch == "status":
+            await batch_status(args)
+        elif args.batch == "retrieve":
+            await batch_retrieve(args)
+        elif args.batch == "list":
+            await batch_list(args)
+        else:
+            logger.error(f"Unknown batch command: {args.batch}")
+            sys.exit(1)
+        return
+
+    # Original synchronous flow
     logger.info("Starting player image generation")
     logger.info(f"Args: {args}")
 
@@ -571,6 +936,20 @@ def parse_args() -> argparse.Namespace:
         "--notes",
         type=str,
         help="Notes for this run (stored in snapshot)",
+    )
+
+    # Batch mode (50% cost reduction, async processing)
+    batch_opts = parser.add_argument_group("Batch Mode (50% cheaper, async)")
+    batch_opts.add_argument(
+        "--batch",
+        type=str,
+        choices=["submit", "status", "retrieve", "list"],
+        help="Batch operation: submit, status, retrieve, or list",
+    )
+    batch_opts.add_argument(
+        "--job-id",
+        type=str,
+        help="Gemini batch job ID (for status/retrieve)",
     )
 
     return parser.parse_args()

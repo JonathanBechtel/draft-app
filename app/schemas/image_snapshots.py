@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 from datetime import datetime
 from typing import Optional
 
@@ -10,6 +11,17 @@ from sqlalchemy import Enum as SAEnum
 from sqlmodel import Field, SQLModel
 
 from app.models.fields import CohortType
+
+
+class BatchJobState(str, enum.Enum):
+    """Gemini batch job states."""
+
+    pending = "JOB_STATE_PENDING"
+    running = "JOB_STATE_RUNNING"
+    succeeded = "JOB_STATE_SUCCEEDED"
+    failed = "JOB_STATE_FAILED"
+    cancelled = "JOB_STATE_CANCELLED"
+    expired = "JOB_STATE_EXPIRED"
 
 
 class PlayerImageSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
@@ -185,4 +197,78 @@ class PlayerImageAsset(SQLModel, table=True):  # type: ignore[call-arg]
         default=None,
         sa_column=Column(Text, nullable=True),
         description="Error message if generation failed",
+    )
+
+
+class ImageBatchJob(SQLModel, table=True):  # type: ignore[call-arg]
+    """Tracks Gemini batch jobs for async image generation.
+
+    Stores the batch job ID and metadata needed to retrieve results
+    and create PlayerImageAsset records when the job completes.
+    """
+
+    __tablename__ = "image_batch_jobs"
+    __table_args__ = (
+        Index("ix_batch_jobs_state", "state"),
+        Index("ix_batch_jobs_snapshot", "snapshot_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # Gemini batch job reference
+    gemini_job_name: str = Field(
+        unique=True,
+        index=True,
+        description="Gemini batch job name, e.g., 'batches/abc123'",
+    )
+    state: BatchJobState = Field(
+        sa_column=Column(
+            SAEnum(BatchJobState, name="batch_job_state_enum", create_type=False),
+            nullable=False,
+        ),
+        description="Current state of the batch job",
+    )
+
+    # Link to snapshot (created at submit time)
+    snapshot_id: int = Field(
+        sa_column=Column(ForeignKey("player_image_snapshots.id", ondelete="CASCADE"))
+    )
+
+    # Player IDs included in this batch (JSON array stored as text)
+    player_ids_json: str = Field(
+        sa_column=Column(Text, nullable=False),
+        description="JSON array of player IDs in submission order",
+    )
+
+    # Generation settings (needed to rebuild S3 keys on retrieve)
+    style: str = Field(description="Image style used for this batch")
+    image_size: str = Field(description="Image size setting: '512', '1K', '2K'")
+    fetch_likeness: bool = Field(
+        default=False,
+        description="Whether likeness references were used",
+    )
+
+    # Timestamps
+    submitted_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = Field(
+        default=None,
+        description="When the batch job finished (success or failure)",
+    )
+
+    # Results summary (populated on retrieve)
+    total_requests: int = Field(description="Number of image requests in batch")
+    success_count: Optional[int] = Field(
+        default=None,
+        description="Number of successful generations",
+    )
+    failure_count: Optional[int] = Field(
+        default=None,
+        description="Number of failed generations",
+    )
+
+    # Error tracking
+    error_message: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="Error message if batch job failed",
     )
