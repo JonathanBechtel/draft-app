@@ -17,7 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create the batch_job_state_enum type
+    # Create the batch_job_state_enum type explicitly with checkfirst
     batch_job_state_enum = postgresql.ENUM(
         "JOB_STATE_PENDING",
         "JOB_STATE_RUNNING",
@@ -26,7 +26,7 @@ def upgrade() -> None:
         "JOB_STATE_CANCELLED",
         "JOB_STATE_EXPIRED",
         name="batch_job_state_enum",
-        create_type=True,
+        create_type=False,  # Don't auto-create in op.create_table; we create explicitly below
     )
     batch_job_state_enum.create(op.get_bind(), checkfirst=True)
 
