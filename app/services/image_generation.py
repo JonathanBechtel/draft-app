@@ -11,7 +11,7 @@ import json
 import logging
 import time
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from google import genai
 from google.genai import types
@@ -422,8 +422,8 @@ Be specific and objective. This will help an AI illustrator capture their likene
         system_prompt: str,
         image_size: str = "1K",
         likeness_description: Optional[str] = None,
-    ) -> dict[str, Any]:
-        """Build a single batch request for a player.
+    ) -> types.InlinedRequest:
+        """Build a single Gemini batch request for a player.
 
         Args:
             player: Player to generate image for
@@ -432,28 +432,26 @@ Be specific and objective. This will help an AI illustrator capture their likene
             likeness_description: Optional likeness description
 
         Returns:
-            Dict formatted for Gemini batch API
+            InlinedRequest formatted for Gemini batch API
         """
         user_prompt = self.build_player_prompt(player, likeness_description)
 
-        return {
-            "key": f"player_{player.id}",
-            "request": {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [{"text": user_prompt}],
-                    }
-                ],
-                "generationConfig": {
-                    "responseModalities": ["IMAGE", "TEXT"],
-                    "imageConfig": {"imageSize": image_size},
-                },
-                "systemInstruction": {
-                    "parts": [{"text": system_prompt}],
-                },
+        return types.InlinedRequest(
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=user_prompt)],
+                )
+            ],
+            metadata={
+                "player_id": str(player.id) if player.id is not None else "",
             },
-        }
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"],
+                image_config=types.ImageConfig(image_size=image_size),
+                system_instruction=system_prompt,
+            ),
+        )
 
     def build_batch_requests_jsonl(
         self,
@@ -471,7 +469,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
             likeness_descriptions: Optional dict mapping player_id to description
 
         Returns:
-            JSONL string with one request per line
+            JSONL string with one request per line (InlinedRequest JSON)
         """
         likeness_map = likeness_descriptions or {}
         lines = []
@@ -488,7 +486,9 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 image_size=image_size,
                 likeness_description=likeness,
             )
-            lines.append(json.dumps(request))
+            lines.append(
+                json.dumps(request.model_dump(by_alias=True, exclude_none=True))
+            )
 
         return "\n".join(lines)
 
@@ -519,7 +519,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         logger.info(f"Submitting batch job for {len(players)} players")
 
         # Build inline requests (for batches under 20MB, inline is simpler)
-        inline_requests: list[dict[str, Any]] = []
+        inline_requests: list[types.InlinedRequest] = []
         player_ids: list[int] = []
 
         for player in players:
@@ -541,7 +541,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         # Using gemini-2.5-flash-image for batch (batch API doesn't support preview models)
         batch_job = self.client.batches.create(
             model="models/gemini-2.5-flash-image",
-            src=inline_requests,  # type: ignore[arg-type]
+            src=inline_requests,
             config=types.CreateBatchJobConfig(
                 display_name=f"draftguru_{snapshot.run_key}_{snapshot.id}",
             ),
@@ -634,29 +634,72 @@ Be specific and objective. This will help an AI illustrator capture their likene
         success_count = 0
         failure_count = 0
 
-        # Process inline responses
-        # Note: batch_job.response is typed dynamically in google-genai SDK
-        if batch_job.response and batch_job.response.inline_responses:  # type: ignore[attr-defined]
-            for response in batch_job.response.inline_responses:  # type: ignore[attr-defined]
-                # Extract player_id from key (format: "player_123")
-                key = response.key or ""
-                if not key.startswith("player_"):
-                    continue
+        # Process inlined responses (returned in the same order as input requests)
+        player_ids: list[int] = json.loads(job_record.player_ids_json)
+        inlined_responses = (
+            batch_job.dest.inlined_responses if batch_job.dest is not None else None
+        )
 
-                try:
-                    player_id = int(key.split("_")[1])
-                except (ValueError, IndexError):
-                    logger.warning(f"Invalid response key: {key}")
-                    failure_count += 1
-                    continue
+        if not inlined_responses:
+            job_record.state = state
+            job_record.completed_at = datetime.utcnow()
+            job_record.success_count = 0
+            job_record.failure_count = job_record.total_requests
+            job_record.error_message = (
+                batch_job.error.message if batch_job.error is not None else None
+            )
+            await db.commit()
+            raise RuntimeError(
+                "Batch job did not return inlined responses; "
+                "configure a destination file and implement file-based retrieval."
+            )
 
-                player = players_by_id.get(player_id)
-                if not player:
-                    logger.warning(f"Player not found for id: {player_id}")
-                    failure_count += 1
-                    continue
+        if len(inlined_responses) != len(player_ids):
+            logger.warning(
+                "Batch response count mismatch: %s responses for %s requests",
+                len(inlined_responses),
+                len(player_ids),
+            )
 
-                # Process the response
+        if len(inlined_responses) > len(player_ids):
+            logger.warning(
+                "Batch returned %s extra responses; ignoring extras",
+                len(inlined_responses) - len(player_ids),
+            )
+
+        for idx, player_id in enumerate(player_ids):
+            response = inlined_responses[idx] if idx < len(inlined_responses) else None
+            player = players_by_id.get(player_id)
+            if not player:
+                logger.warning(f"Player not found for id: {player_id}")
+                failure_count += 1
+                continue
+
+            if response is None:
+                snapshot_id = snapshot.id
+                if snapshot_id is None:
+                    raise ValueError("snapshot.id is required")
+
+                s3_key = self.get_s3_key(
+                    player_id, player.slug or str(player_id), job_record.style
+                )
+                asset = PlayerImageAsset(
+                    snapshot_id=snapshot_id,
+                    player_id=player_id,
+                    s3_key=s3_key,
+                    s3_bucket=settings.s3_bucket_name,
+                    public_url="",
+                    file_size_bytes=None,
+                    user_prompt=self.build_player_prompt(player),
+                    likeness_description=None,
+                    used_likeness_ref=False,
+                    reference_image_url=None,
+                    error_message="No batch response returned for request",
+                    generated_at=datetime.utcnow(),
+                    generation_time_sec=None,
+                )
+                db.add(asset)
+            else:
                 asset = await self._process_batch_response(
                     db=db,
                     response=response,
@@ -665,10 +708,10 @@ Be specific and objective. This will help an AI illustrator capture their likene
                     style=job_record.style,
                 )
 
-                if asset.error_message:
-                    failure_count += 1
-                else:
-                    success_count += 1
+            if asset.error_message:
+                failure_count += 1
+            else:
+                success_count += 1
 
         # Update job record
         job_record.state = state
@@ -686,7 +729,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
     async def _process_batch_response(
         self,
         db: AsyncSession,
-        response: Any,
+        response: types.InlinedResponse,
         player: PlayerMaster,
         snapshot: PlayerImageSnapshot,
         style: str,
@@ -714,11 +757,18 @@ Be specific and objective. This will help an AI illustrator capture their likene
         public_url = ""
         image_data: bytes | None = None
         error_message: str | None = None
-        user_prompt = ""
+        user_prompt = self.build_player_prompt(player)
 
         try:
+            if response.error is not None and response.error.message:
+                error_message = response.error.message
+
             # Extract image data from response
-            if response.response and response.response.candidates:
+            if (
+                error_message is None
+                and response.response
+                and response.response.candidates
+            ):
                 candidate = response.response.candidates[0]
                 if candidate.content and candidate.content.parts:
                     for part in candidate.content.parts:
@@ -730,9 +780,10 @@ Be specific and objective. This will help an AI illustrator capture their likene
                                 image_data = base64.b64decode(part.inline_data.data)
                             break
 
-            if image_data is None:
+            if error_message is None and image_data is None:
                 error_message = "No image data in response"
-            else:
+
+            if image_data is not None and error_message is None:
                 # Upload to S3
                 public_url = s3_client.upload(
                     s3_key,
@@ -744,7 +795,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 )
 
         except Exception as exc:
-            error_message = str(exc)
+            error_message = error_message or str(exc)
             logger.error(
                 f"Failed to process batch response for {player.display_name}: {exc}"
             )
