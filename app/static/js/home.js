@@ -34,7 +34,12 @@ const ImageUtils = {
         return `${s3Base}/players/${playerId}_${playerSlug}_${style}.png`;
       }
 
-      // Fallback to local static path if S3 not configured or slug not available
+      // Fallback to local static path - use consistent format with slug when available
+      if (playerSlug) {
+        return `/static/img/players/${playerId}_${playerSlug}_${style}.png`;
+      }
+
+      // Legacy fallback only when slug is unavailable
       return `/static/img/players/${playerId}_${style}.jpg`;
     }
 

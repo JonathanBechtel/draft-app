@@ -570,14 +570,14 @@ const PlayerComparisonsModule = {
         };
         img.src = s3Url;
       } else {
-        // Fallback to local static path
-        const preferred = `/static/img/players/${playerId}_${style}.jpg`;
+        // Fallback to local static path - use consistent format with slug
+        const preferred = `/static/img/players/${playerId}_${playerSlug}_${style}.png`;
         if (style !== 'default') {
           img.onerror = () => {
             img.onerror = () => {
               img.src = placeholder;
             };
-            img.src = `/static/img/players/${playerId}_default.jpg`;
+            img.src = `/static/img/players/${playerId}_${playerSlug}_default.png`;
           };
         } else {
           img.onerror = () => {
@@ -761,14 +761,14 @@ const PlayerComparisonsModule = {
         };
         img.src = s3Url;
       } else {
-        // Fallback to local static path
-        const preferred = `/static/img/players/${playerId}_${style}.jpg`;
+        // Fallback to local static path - use consistent format with slug
+        const preferred = `/static/img/players/${playerId}_${playerSlug}_${style}.png`;
         if (style !== 'default') {
           img.onerror = () => {
             img.onerror = () => {
               img.src = placeholder;
             };
-            img.src = `/static/img/players/${playerId}_default.jpg`;
+            img.src = `/static/img/players/${playerId}_${playerSlug}_default.png`;
           };
         } else {
           img.onerror = () => {
@@ -1145,14 +1145,14 @@ const HeadToHeadModule = {
       };
       imgEl.src = s3Url;
     } else {
-      // Fallback to local static path
-      const preferred = `/static/img/players/${playerId}_${style}.jpg`;
+      // Fallback to local static path - use consistent format with slug
+      const preferred = `/static/img/players/${playerId}_${playerSlug}_${style}.png`;
       if (style !== 'default') {
         imgEl.onerror = () => {
           imgEl.onerror = () => {
             imgEl.src = placeholder;
           };
-          imgEl.src = `/static/img/players/${playerId}_default.jpg`;
+          imgEl.src = `/static/img/players/${playerId}_${playerSlug}_default.png`;
         };
       } else {
         imgEl.onerror = () => {
