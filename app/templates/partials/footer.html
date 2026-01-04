@@ -1,23 +1,17 @@
-{# Site Footer with link columns and copyright #}
+{# Site Footer with legal links and copyright #}
 <footer class="footer">
   <div class="footer-content">
-    <!-- Footer navigation grid -->
-    <div class="footer-grid">
-      {% for column in footer_columns %}
-      <div class="footer-column">
-        <h4>{{ column.title }}</h4>
-        <ul>
-          {% for link in column.links %}
-          <li><a href="{{ link.url }}">{{ link.text }}</a></li>
-          {% endfor %}
-        </ul>
-      </div>
+    <!-- Legal links -->
+    <div class="footer-links">
+      {% for link in footer_links %}
+      <a href="{{ link.url }}">{{ link.text }}</a>
+      {% if not loop.last %}<span class="footer-divider">|</span>{% endif %}
       {% endfor %}
     </div>
 
     <!-- Copyright -->
     <div class="footer-copyright">
-      <p>&copy; {{ current_year }} DraftGuru. All rights reserved. Stay informed, draft smarter.</p>
+      <p>&copy; {{ current_year }} DraftGuru. All rights reserved.</p>
     </div>
   </div>
 </footer>

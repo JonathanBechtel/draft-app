@@ -69,113 +69,6 @@ const ImageUtils = {
 
 /**
  * ============================================================================
- * TICKER MODULE
- * Renders and animates the market moves ticker
- * ============================================================================
- */
-const TickerModule = {
-  /**
-   * Initialize the ticker with player change data
-   */
-  init() {
-    const tickerElement = document.getElementById('ticker');
-    if (!tickerElement || !window.MOCK_PICKS) return;
-
-    const tickerData = this.prepareTickerData();
-    tickerElement.innerHTML = this.renderTicker(tickerData);
-  },
-
-  /**
-   * Prepare ticker data by sorting players by change magnitude
-   * @returns {Array} Sorted ticker items
-   */
-  prepareTickerData() {
-    return [...window.MOCK_PICKS]
-      .map((player) => ({ name: player.name, change: player.change }))
-      .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
-  },
-
-  /**
-   * Render ticker HTML (duplicated for seamless infinite scroll)
-   * @param {Array} data - Ticker items
-   * @returns {string} HTML string
-   */
-  renderTicker(data) {
-    const chunk = data.map((item) => {
-      const changeClass = item.change > 0 ? 'positive' : 'negative';
-      const changeSymbol = item.change > 0 ? '▲' : '▼';
-
-      return `
-        <span class="ticker-item">
-          <strong>${item.name}</strong>
-          <span class="ticker-change ${changeClass}">
-            ${changeSymbol} ${Math.abs(item.change)}
-          </span>
-        </span>
-      `;
-    }).join('');
-
-    // Duplicate content for seamless loop
-    return chunk + chunk;
-  }
-};
-
-/**
- * ============================================================================
- * MOCK DRAFT TABLE MODULE
- * Renders the consensus mock draft table
- * ============================================================================
- */
-const MockTableModule = {
-  /**
-   * Initialize the mock draft table
-   */
-  init() {
-    const tbody = document.getElementById('mockTableBody');
-    if (!tbody || !window.MOCK_PICKS) return;
-
-    tbody.innerHTML = this.renderTableRows();
-  },
-
-  /**
-   * Render table rows for each mock pick
-   * @returns {string} HTML string
-   */
-  renderTableRows() {
-    return window.MOCK_PICKS.map((pick) => {
-      const changeClass = pick.change > 0
-        ? 'change-positive'
-        : pick.change < 0
-        ? 'change-negative'
-        : 'change-neutral';
-
-      const changeSymbol = pick.change > 0
-        ? '▲'
-        : pick.change < 0
-        ? '▼'
-        : '=';
-
-      return `
-        <tr>
-          <td class="tabular-nums mono-font" style="font-weight: 500;">${pick.pick}</td>
-          <td><a href="/players/${pick.slug}" class="table-link">${pick.name}</a></td>
-          <td>${pick.position}</td>
-          <td>${pick.college}</td>
-          <td class="tabular-nums mono-font">${pick.avgRank.toFixed(1)}</td>
-          <td class="tabular-nums mono-font ${changeClass}">
-            ${changeSymbol} ${Math.abs(pick.change)}
-          </td>
-          <td>
-            <a href="#" class="table-link">Bet −110</a>
-          </td>
-        </tr>
-      `;
-    }).join('');
-  }
-};
-
-/**
- * ============================================================================
  * PROSPECTS GRID MODULE
  * Renders the grid of top prospect cards
  * ============================================================================
@@ -842,49 +735,12 @@ const FeedModule = {
 
 /**
  * ============================================================================
- * SPECIALS MODULE
- * Renders draft position betting specials
- * ============================================================================
- */
-const SpecialsModule = {
-  /**
-   * Initialize the specials section
-   */
-  init() {
-    const specialsList = document.getElementById('specialsList');
-    if (!specialsList || !window.MOCK_PICKS) return;
-
-    specialsList.innerHTML = this.renderSpecials();
-  },
-
-  /**
-   * Render special betting items
-   * @returns {string} HTML string
-   */
-  renderSpecials() {
-    return window.MOCK_PICKS.slice(0, 4).map((pick) => {
-      const odds = (pick.pick + 50) * 10;
-      return `
-        <div class="special-item">
-          <span>${pick.name} Top ${pick.pick}</span>
-          <span class="special-odds">+${odds}</span>
-        </div>
-      `;
-    }).join('');
-  }
-};
-
-/**
- * ============================================================================
  * APPLICATION INITIALIZATION
  * Initialize all modules when DOM is ready
  * ============================================================================
  */
 document.addEventListener('DOMContentLoaded', () => {
-  TickerModule.init();
-  MockTableModule.init();
   ProspectsModule.init();
   HeadToHeadModule.init();
   FeedModule.init();
-  SpecialsModule.init();
 });

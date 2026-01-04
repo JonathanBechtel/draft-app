@@ -12,66 +12,6 @@
 <main class="container mt-28">
 
   <!-- ==========================================================================
-       MARKET MOVES TICKER
-       Scrolling ticker showing player stock changes (risers/fallers)
-       ========================================================================== -->
-  <section class="section">
-    <div class="ticker-container">
-      <!-- Ticker header with icon and label -->
-      <div class="ticker-header">
-        <!-- Activity icon -->
-        <svg class="icon" style="color: var(--color-accent-emerald);" viewBox="0 0 24 24">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-        </svg>
-        <span>Market Moves</span>
-        <span>(Risers &amp; Fallers)</span>
-      </div>
-
-      <!-- Ticker content - populated by JavaScript -->
-      <div class="ticker-wrapper">
-        <div id="ticker" class="ticker-content"></div>
-      </div>
-    </div>
-  </section>
-
-  <div class="section-divider"></div>
-
-  <!-- ==========================================================================
-       CONSENSUS MOCK DRAFT
-       Aggregated mock draft picks from multiple expert sources
-       ========================================================================== -->
-  <section class="section">
-    <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
-      Consensus Mock Draft
-    </h2>
-    <p class="section-subtitle">Averaged from 15 expert boards • updated hourly</p>
-
-    <div class="card card-ring card-ring-emerald">
-      <div class="card-content">
-        <!-- Mock draft table - populated by JavaScript -->
-        <div style="overflow-x: auto;">
-          <table id="mockTable">
-            <thead>
-              <tr>
-                <th>Pick</th>
-                <th>Player</th>
-                <th>Pos</th>
-                <th>Team</th>
-                <th>Avg</th>
-                <th>Δ</th>
-                <th>Odds</th>
-              </tr>
-            </thead>
-            <tbody id="mockTableBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <div class="section-divider"></div>
-
-  <!-- ==========================================================================
        TOP PROSPECTS
        Grid of top prospect player cards with stats
        ========================================================================== -->
@@ -191,34 +131,12 @@
     <div id="feedContainer" class="feed-container"></div>
   </section>
 
-  <div class="section-divider"></div>
-
-  <!-- ==========================================================================
-       DRAFT POSITION SPECIALS
-       Betting odds and promotional content (for entertainment purposes)
-       ========================================================================== -->
-  <section class="section">
-    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-amber);">
-      Draft Position Specials
-    </h3>
-    <p class="section-subtitle">Powered by FanDuel • 21+</p>
-
-    <div class="specials-container">
-      <!-- Specials list - populated by JavaScript -->
-      <div id="specialsList" class="specials-list"></div>
-
-      <button class="specials-cta">Claim Bonus</button>
-      <p class="specials-disclaimer">Gambling Problem? Call 1-800-GAMBLER</p>
-    </div>
-  </section>
-
 </main>
 {% endblock %}
 
 {% block extra_js %}
 <script>
   // Server-side data injection
-  window.MOCK_PICKS = {{ mock_picks | tojson | safe }};
   window.PLAYERS = {{ players | tojson | safe }};
   window.FEED_ITEMS = {{ feed_items | tojson | safe }};
   // Image style and player ID mapping for dynamic image URL generation
