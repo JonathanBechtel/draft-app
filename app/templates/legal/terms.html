@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Terms of Service — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='legal.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="legal-page">
+  <div class="legal-container">
+    <h1>Terms of Service</h1>
+    <p class="legal-updated">Last updated: {{ current_date }}</p>
+
+    <section>
+      <h2>1. Acceptance of Terms</h2>
+      <p>By accessing and using DraftGuru ("the Service"), you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use the Service.</p>
+    </section>
+
+    <section>
+      <h2>2. Description of Service</h2>
+      <p>DraftGuru provides NBA Draft analytics, player statistics, mock draft aggregations, and related content for informational and entertainment purposes. The Service is intended for fans, fantasy sports players, and those interested in NBA Draft analysis.</p>
+    </section>
+
+    <section>
+      <h2>3. Use of the Service</h2>
+      <p>You agree to use the Service only for lawful purposes and in accordance with these Terms. You agree not to:</p>
+      <ul>
+        <li>Use the Service in any way that violates applicable laws or regulations</li>
+        <li>Attempt to gain unauthorized access to any part of the Service</li>
+        <li>Use automated systems or software to extract data from the Service without permission</li>
+        <li>Interfere with or disrupt the Service or servers connected to the Service</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>4. Intellectual Property</h2>
+      <p>All content on DraftGuru, including text, graphics, logos, and software, is the property of DraftGuru or its content suppliers and is protected by intellectual property laws. Player statistics and certain data may be sourced from third parties and are used in accordance with applicable licenses.</p>
+    </section>
+
+    <section>
+      <h2>5. Disclaimer of Warranties</h2>
+      <p>The Service is provided "as is" and "as available" without warranties of any kind, either express or implied. DraftGuru does not warrant that the Service will be uninterrupted, error-free, or free of viruses or other harmful components.</p>
+      <p>Statistical data, rankings, and analytics are provided for informational purposes only and should not be relied upon as the sole basis for any decision, including fantasy sports or betting decisions.</p>
+    </section>
+
+    <section>
+      <h2>6. Limitation of Liability</h2>
+      <p>To the fullest extent permitted by law, DraftGuru shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or relating to your use of the Service.</p>
+    </section>
+
+    <section>
+      <h2>7. Third-Party Links</h2>
+      <p>The Service may contain links to third-party websites or services. DraftGuru is not responsible for the content, privacy policies, or practices of any third-party sites.</p>
+    </section>
+
+    <section>
+      <h2>8. Changes to Terms</h2>
+      <p>DraftGuru reserves the right to modify these Terms at any time. We will notify users of significant changes by posting a notice on the Service. Your continued use of the Service after changes are posted constitutes acceptance of the modified Terms.</p>
+    </section>
+
+    <section>
+      <h2>9. Governing Law</h2>
+      <p>These Terms shall be governed by and construed in accordance with the laws of the United States, without regard to conflict of law principles.</p>
+    </section>
+
+    <section>
+      <h2>10. Contact</h2>
+      <p>For questions about these Terms of Service, please contact us at <a href="mailto:legal@draftguru.com">legal@draftguru.com</a>.</p>
+    </section>
+  </div>
+</main>
+{% endblock %}

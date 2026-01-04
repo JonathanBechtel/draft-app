@@ -1,7 +1,7 @@
 """UI Routes - Renders Jinja templates for the frontend."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -16,44 +16,21 @@ from app.utils.images import get_placeholder_url, get_s3_image_base_url
 
 router = APIRouter()
 
-# Footer columns - shared across all pages
-FOOTER_COLUMNS = [
-    {
-        "title": "About",
-        "links": [
-            {"text": "Our Story", "url": "#"},
-            {"text": "Team", "url": "#"},
-            {"text": "Careers", "url": "#"},
-            {"text": "Press", "url": "#"},
-        ],
-    },
-    {
-        "title": "Resources",
-        "links": [
-            {"text": "Draft Guide", "url": "#"},
-            {"text": "Mock Drafts", "url": "#"},
-            {"text": "Player Rankings", "url": "#"},
-            {"text": "Analytics", "url": "#"},
-        ],
-    },
-    {
-        "title": "Community",
-        "links": [
-            {"text": "Forums", "url": "#"},
-            {"text": "Discord", "url": "#"},
-            {"text": "Twitter", "url": "#"},
-            {"text": "Newsletter", "url": "#"},
-        ],
-    },
-    {
-        "title": "Legal",
-        "links": [
-            {"text": "Terms of Service", "url": "#"},
-            {"text": "Privacy Policy", "url": "#"},
-            {"text": "Cookie Policy", "url": "#"},
-            {"text": "Disclaimer", "url": "#"},
-        ],
-    },
+# Footer links - shared across all pages
+FOOTER_LINKS = [
+    {"text": "Terms of Service", "url": "/terms"},
+    {"text": "Privacy Policy", "url": "/privacy"},
+    {"text": "Cookie Policy", "url": "/cookies"},
+]
+
+
+# Curated list of top prospects to feature on homepage
+TOP_PROSPECT_SLUGS = [
+    "cooper-flagg",
+    "ace-bailey",
+    "dylan-harper",
+    "vj-edgecombe",
+    "kon-knueppel",
 ]
 
 
@@ -65,81 +42,37 @@ async def home(
     ),
     db: AsyncSession = Depends(get_session),
 ):
-    """Render the Homepage with consensus mock draft, prospects, VS arena, and news feed."""
+    """Render the Homepage with prospects, VS arena, and news feed."""
     from sqlalchemy import select
 
     from app.schemas.players_master import PlayerMaster
 
-    # Hardcoded placeholder data - backend connection added later
-    mock_picks: list[dict[str, Any]] = [
-        {
-            "pick": 1,
-            "name": "Cooper Flagg",
-            "slug": "cooper-flagg",
-            "position": "F",
-            "college": "Duke",
-            "avgRank": 1.2,
-            "change": 1,
-        },
-        {
-            "pick": 2,
-            "name": "Ace Bailey",
-            "slug": "ace-bailey",
-            "position": "G/F",
-            "college": "Rutgers",
-            "avgRank": 2.8,
-            "change": -1,
-        },
-        {
-            "pick": 3,
-            "name": "Dylan Harper",
-            "slug": "dylan-harper",
-            "position": "G",
-            "college": "Rutgers",
-            "avgRank": 3.4,
-            "change": 2,
-        },
-        {
-            "pick": 4,
-            "name": "VJ Edgecombe",
-            "slug": "vj-edgecombe",
-            "position": "G",
-            "college": "Baylor",
-            "avgRank": 4.1,
-            "change": 0,
-        },
-        {
-            "pick": 5,
-            "name": "Kon Knueppel",
-            "slug": "kon-knueppel",
-            "position": "G/F",
-            "college": "Duke",
-            "avgRank": 5.7,
-            "change": -2,
-        },
-    ]
-
-    # Look up player IDs from database for image URL generation
-    slugs = [p["slug"] for p in mock_picks]
+    # Fetch curated top prospects from database by slug
     result = await db.execute(
-        select(PlayerMaster.id, PlayerMaster.slug, PlayerMaster.display_name).where(  # type: ignore[call-overload]
-            PlayerMaster.slug.in_(slugs)  # type: ignore[union-attr]
+        select(PlayerMaster).where(
+            PlayerMaster.slug.in_(TOP_PROSPECT_SLUGS)  # type: ignore[union-attr]
         )
     )
-    player_id_map = {row.slug: (row.id, row.display_name) for row in result}
+    db_players_unordered = {p.slug: p for p in result.scalars().all()}
+    # Preserve the curated order
+    db_players = [
+        db_players_unordered[slug]
+        for slug in TOP_PROSPECT_SLUGS
+        if slug in db_players_unordered
+    ]
+
+    # Build player ID map for image URL generation and JS
+    player_id_map = {p.slug: (p.id, p.display_name) for p in db_players}
 
     requested_style = style or "default"
+    player_ids = [p.id for p in db_players if p.id is not None]
     image_urls_by_id = await get_current_image_urls_for_players(
         db,
-        player_ids=[player_id for player_id, _ in player_id_map.values()],
+        player_ids=player_ids,
         style=requested_style,
     )
     if requested_style != "default":
-        missing_ids = [
-            player_id
-            for player_id, _ in player_id_map.values()
-            if player_id not in image_urls_by_id
-        ]
+        missing_ids = [pid for pid in player_ids if pid not in image_urls_by_id]
         fallback_urls = await get_current_image_urls_for_players(
             db,
             player_ids=missing_ids,
@@ -148,32 +81,28 @@ async def home(
         image_urls_by_id.update(fallback_urls)
 
     players = []
-    for p in mock_picks:
-        player_info = player_id_map.get(p["slug"])
-        if player_info:
-            player_id, display_name = player_info
-            img_url = image_urls_by_id.get(
-                player_id,
-                get_placeholder_url(
-                    display_name, player_id=player_id, width=320, height=420
-                ),
-            )
-        else:
-            # Fallback to placeholder if player not in database
-            img_url = get_placeholder_url(str(p["name"]), width=320, height=420)
+    for p in db_players:
+        if p.id is None:
+            continue
+        img_url = image_urls_by_id.get(
+            p.id,
+            get_placeholder_url(
+                p.display_name or "Player", player_id=p.id, width=320, height=420
+            ),
+        )
 
         players.append(
             {
-                "name": p["name"],
-                "slug": p["slug"],
-                "position": p["position"],
-                "college": p["college"],
+                "name": p.display_name or "",
+                "slug": p.slug or "",
+                "position": "",  # Position data requires PlayerStatus join - to be added
+                "college": p.school or "",
                 "img": img_url,
-                "change": p["change"],
+                "change": 0,  # No change data without consensus rankings
                 "measurables": {
-                    "ht": 80 + (int(p["pick"]) % 3),
-                    "ws": 84 + (int(p["pick"]) % 5),
-                    "vert": 34 + (int(p["pick"]) % 7),
+                    "ht": 80,  # Placeholder - will be populated from real data later
+                    "ws": 84,
+                    "vert": 36,
                 },
             }
         )
@@ -205,10 +134,9 @@ async def home(
         "home.html",
         {
             "request": request,
-            "mock_picks": mock_picks,
             "players": players,
             "feed_items": feed_items,
-            "footer_columns": FOOTER_COLUMNS,
+            "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "image_style": style,  # Current image style for JS
             "player_id_map": slug_to_id,  # slug -> player_id for JS image URLs
@@ -381,9 +309,52 @@ async def player_detail(
             "percentile_data": percentile_data,
             "comparison_data": comparison_data,
             "player_feed": player_feed,
-            "footer_columns": FOOTER_COLUMNS,
+            "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "image_style": style,  # Current image style for JS
             "s3_image_base_url": get_s3_image_base_url(),  # S3 base URL for images
+        },
+    )
+
+
+# Legal pages
+@router.get("/terms", response_class=HTMLResponse)
+async def terms_of_service(request: Request):
+    """Render the Terms of Service page."""
+    return request.app.state.templates.TemplateResponse(
+        "legal/terms.html",
+        {
+            "request": request,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+            "current_date": datetime.now().strftime("%B %d, %Y"),
+        },
+    )
+
+
+@router.get("/privacy", response_class=HTMLResponse)
+async def privacy_policy(request: Request):
+    """Render the Privacy Policy page."""
+    return request.app.state.templates.TemplateResponse(
+        "legal/privacy.html",
+        {
+            "request": request,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+            "current_date": datetime.now().strftime("%B %d, %Y"),
+        },
+    )
+
+
+@router.get("/cookies", response_class=HTMLResponse)
+async def cookie_policy(request: Request):
+    """Render the Cookie Policy page."""
+    return request.app.state.templates.TemplateResponse(
+        "legal/cookies.html",
+        {
+            "request": request,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+            "current_date": datetime.now().strftime("%B %d, %Y"),
         },
     )
