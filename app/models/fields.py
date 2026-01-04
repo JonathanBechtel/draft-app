@@ -1,6 +1,4 @@
-"""
-Contains PyDantic fields to be used in various models.
-"""
+"""Contains Pydantic fields to be used in various models."""
 
 from enum import Enum
 from datetime import date

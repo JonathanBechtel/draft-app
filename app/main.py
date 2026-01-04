@@ -1,6 +1,4 @@
-"""
-Main entry point for FastAPI application.
-"""
+"""Main entry point for FastAPI application."""
 
 from contextlib import asynccontextmanager
 import os
@@ -98,7 +96,7 @@ async def handle_dbapi_errors(request, exc: DBAPIError):  # type: ignore[no-unty
 
 @app.get("/health")
 async def health_check():
-    """Health Check Endpoint"""
+    """Health check endpoint."""
     return {"status": "ok"}
 
 

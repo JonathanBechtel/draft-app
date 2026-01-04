@@ -45,3 +45,14 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "app.cli.compute_metrics"
 disable_error_code = "attr-defined,arg-type,call-overload,misc"
+
+[tool.ruff]
+exclude = ["alembic", "tests"]
+
+[tool.ruff.lint]
+extend-select = ["D"]
+# Ignore missing docstring rules - only enforce formatting on existing docstrings
+ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

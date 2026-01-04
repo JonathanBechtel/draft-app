@@ -76,7 +76,7 @@ class PlayerProfileRead(SQLModel):
     @computed_field  # type: ignore[misc]
     @property
     def height_formatted(self) -> Optional[str]:
-        """Format height as feet'inches\" (e.g., 6'9\")."""
+        r"""Format height as feet'inches" (e.g., 6'9")."""
         if not self.height_in:
             return None
         feet = self.height_in // 12
@@ -94,7 +94,7 @@ class PlayerProfileRead(SQLModel):
     @computed_field  # type: ignore[misc]
     @property
     def wingspan_formatted(self) -> Optional[str]:
-        """Format wingspan as feet'inches\" with half-inch precision."""
+        r"""Format wingspan as feet'inches" with half-inch precision."""
         if not self.wingspan_in:
             return None
         # Round to nearest half inch for display

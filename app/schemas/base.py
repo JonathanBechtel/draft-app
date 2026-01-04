@@ -1,4 +1,4 @@
-"""Base Classes to Use as MixIns Elsewhere in App"""
+"""Base classes to use as mixins elsewhere in app."""
 
 from sqlmodel import SQLModel, Field
 from typing import Optional
