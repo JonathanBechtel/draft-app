@@ -1,20 +1,20 @@
-# fly.cron.toml - Configuration for the production news ingestion cron machine
+# fly.cron.stage.toml - Configuration for the staging news ingestion cron machine
 #
-# This defines a scheduled machine that runs the news ingestion hourly.
+# This defines a scheduled machine that runs the news ingestion daily.
 # It shares the same Docker image as the main app but runs a different command.
 #
 # NOTE: Fly.io scheduled machines only support: hourly, daily, weekly, monthly
-#       (not custom cron expressions like "*/30 * * * *")
+#       (not custom cron expressions like "0 0 * * *")
 #
 # Deployment:
 #   1. First, deploy the main app to build the image:
-#      flyctl deploy --config fly.prod.toml --app draft-app-prod
+#      flyctl deploy --config fly.toml --app draft-app
 #
 #   2. Create the scheduled machine (one-time setup):
-#      IMAGE=$(flyctl machine list --app draft-app-prod --json | grep '"image":' | head -1 | sed 's/.*"image": "\([^"]*\)".*/\1/')
+#      IMAGE=$(flyctl machine list --app draft-app --json | grep '"image":' | head -1 | sed 's/.*"image": "\([^"]*\)".*/\1/')
 #      flyctl machine run $IMAGE \
-#        --app draft-app-prod \
-#        --schedule hourly \
+#        --app draft-app \
+#        --schedule daily \
 #        --name news-ingestion-cron \
 #        --region ewr \
 #        --memory 512 \
@@ -23,14 +23,14 @@
 #        -- -m app.cli.cron_runner
 #
 #   3. To update the machine after code changes (handled by GitHub Actions):
-#      flyctl machine update <machine-id> --app draft-app-prod --yes
+#      flyctl machine update <machine-id> --app draft-app --yes
 #
 # Monitoring:
-#   - View logs: flyctl logs --app draft-app-prod --instance <machine-id>
-#   - List machines: flyctl machine list --app draft-app-prod
-#   - Check status: flyctl machine status <machine-id> --app draft-app-prod
+#   - View logs: flyctl logs --app draft-app --instance <machine-id>
+#   - List machines: flyctl machine list --app draft-app
+#   - Check status: flyctl machine status <machine-id> --app draft-app
 
-app = 'draft-app-prod'
+app = 'draft-app'
 primary_region = 'ewr'
 
 [build]
