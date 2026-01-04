@@ -1,0 +1,38 @@
+# fly.cron.stage.toml - Configuration for the staging news ingestion cron machine
+#
+# This defines a scheduled machine that runs the news ingestion daily at midnight UTC.
+# It shares the same Docker image as the main app but runs a different command.
+#
+# Deployment:
+#   1. First, deploy the main app to build the image:
+#      flyctl deploy --config fly.toml --app draft-app
+#
+#   2. Create the scheduled machine (one-time setup):
+#      flyctl machine run . \
+#        --config fly.cron.stage.toml \
+#        --app draft-app \
+#        --schedule "0 0 * * *" \
+#        --name news-ingestion-cron \
+#        --region ewr
+#
+#   3. To update the machine after code changes:
+#      flyctl machine update <machine-id> --image <new-image>
+#
+# Monitoring:
+#   - View logs: flyctl logs --app draft-app | grep cron_runner
+#   - List machines: flyctl machine list --app draft-app
+#   - Check status: flyctl machine status <machine-id> --app draft-app
+
+app = 'draft-app'
+primary_region = 'ewr'
+
+[build]
+
+# Override the default command to run the cron script
+[processes]
+  cron = "/app/.venv/bin/python -m app.cli.cron_runner"
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

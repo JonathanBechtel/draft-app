@@ -47,3 +47,27 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           flyctl deploy --remote-only
+
+      - name: Ensure stage secrets exist
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl secrets set \
+            DATABASE_URL='${{ secrets.DATABASE_URL }}' \
+            SECRET_KEY='${{ secrets.SECRET_KEY }}' \
+            ENV=stage \
+            LOG_LEVEL=INFO \
+            ACCESS_LOG=false \
+            --app draft-app
+
+      - name: Update cron machine (if exists)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          CRON_MACHINE_ID=$(flyctl machine list --app draft-app --json | jq -r '.[] | select(.name == "news-ingestion-cron") | .id')
+          if [ -n "$CRON_MACHINE_ID" ]; then
+            echo "Updating cron machine: $CRON_MACHINE_ID"
+            flyctl machine update "$CRON_MACHINE_ID" --app draft-app --yes
+          else
+            echo "No cron machine found (run initial setup to create one)"
+          fi
