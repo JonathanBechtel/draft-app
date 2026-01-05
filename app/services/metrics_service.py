@@ -232,7 +232,6 @@ async def get_player_metrics(
 
     async def _metric_population_size(metric_key: str) -> Optional[int]:
         """Return the baseline population size used for the metric's distribution."""
-
         if snapshot is None:
             return None
 
@@ -448,7 +447,7 @@ def _format_number(value: float, decimals: int = 2) -> str:
 
 
 def _format_inches_to_feet(raw_inches: float) -> str:
-    """Convert inches to feet'inches\" with half-inch precision."""
+    r"""Convert inches to feet'inches" with half-inch precision."""
     rounded = round(raw_inches * 2) / 2
     feet = int(rounded) // 12
     inches = rounded % 12

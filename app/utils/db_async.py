@@ -16,7 +16,6 @@ from app import schemas as schemas_pkg
 
 def load_schema_modules() -> None:
     """Ensure every app.schemas module is imported so metadata is current."""
-
     package_path = getattr(schemas_pkg, "__path__", [])
     package_prefix = schemas_pkg.__name__ + "."
     for _, module_name, _ in pkgutil.walk_packages(package_path, package_prefix):
@@ -45,7 +44,6 @@ def _normalize_db_url(url: str) -> URL:
 
 def _prepare_asyncpg_connection(url: str) -> Tuple[str, Dict[str, Any]]:
     """Strip unsupported query args and derive asyncpg connect kwargs."""
-
     normalized_url = _normalize_db_url(url)
     rendered_url = normalized_url.render_as_string(hide_password=False)
     split = urlsplit(rendered_url)

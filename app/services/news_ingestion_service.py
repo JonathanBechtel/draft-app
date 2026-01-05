@@ -243,7 +243,6 @@ async def _fetch_existing_external_ids(
     external_ids: list[str],
 ) -> set[str]:
     """Fetch IDs that already exist for a source."""
-
     if not external_ids:
         return set()
 
@@ -257,7 +256,6 @@ async def _fetch_existing_external_ids(
 
 def _is_transient_db_error(exc: BaseException) -> bool:
     """Return True when the DB exception is likely fixed by retrying once."""
-
     if isinstance(exc, DBAPIError) and exc.connection_invalidated:
         return True
     text = str(exc)

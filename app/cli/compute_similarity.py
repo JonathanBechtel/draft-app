@@ -173,9 +173,10 @@ def compute_dimension_similarity(
     Dict[Tuple[int, int], float],
     Dict[Tuple[int, int], float],
 ]:
-    """
-    Returns distance_map, similarity_map, overlap_map keyed by (anchor, neighbor).
-    Anthro/Combine: standardized Euclidean (variance-weighted). Shooting: keep the same distance logic for now.
+    """Return distance_map, similarity_map, overlap_map keyed by (anchor, neighbor).
+
+    Anthro/Combine: standardized Euclidean (variance-weighted).
+    Shooting: keep the same distance logic for now.
     Pairs below overlap threshold are skipped.
     """
     distance_map: Dict[Tuple[int, int], float] = {}
