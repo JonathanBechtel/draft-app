@@ -73,10 +73,15 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
+          # Get the image from the just-deployed app machine
+          APP_IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
           CRON_MACHINE_ID=$(flyctl machine list --app draft-app-prod --json | jq -r '.[] | select(.name == "news-ingestion-cron") | .id')
-          if [ -n "$CRON_MACHINE_ID" ]; then
-            echo "Updating cron machine: $CRON_MACHINE_ID"
-            flyctl machine update "$CRON_MACHINE_ID" --app draft-app-prod --yes
+          if [ -n "$CRON_MACHINE_ID" ] && [ -n "$APP_IMAGE" ] && [ "$APP_IMAGE" != "null" ]; then
+            echo "Updating cron machine $CRON_MACHINE_ID with image: $APP_IMAGE"
+            flyctl machine update "$CRON_MACHINE_ID" \
+              --app draft-app-prod \
+              --image "$APP_IMAGE" \
+              --yes
           else
-            echo "No cron machine found (run initial setup to create one)"
+            echo "No cron machine found or could not determine app image"
           fi
