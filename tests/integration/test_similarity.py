@@ -79,6 +79,15 @@ async def test_similar_players_returns_expected_structure(app_client, db_session
     comp1 = await _create_player(db_session, "comp-one", "Comp One")
     comp2 = await _create_player(db_session, "comp-two", "Comp Two")
 
+    pos_guard = await _create_position(db_session, "pg", "Point Guard")
+    pos_guard.parents = ["guard"]
+    pos_wing = await _create_position(db_session, "sf", "Small Forward")
+    pos_wing.parents = ["wing"]
+
+    await _create_player_status(db_session, anchor.id, position_id=pos_guard.id)
+    await _create_player_status(db_session, comp1.id, position_id=pos_guard.id)
+    await _create_player_status(db_session, comp2.id, position_id=pos_wing.id)
+
     snapshot = await _create_snapshot(
         db_session, MetricSource.combine_anthro, version=1
     )
@@ -92,7 +101,6 @@ async def test_similar_players_returns_expected_structure(app_client, db_session
                 comparison_player_id=comp1.id,
                 similarity_score=92.5,
                 rank_within_anchor=1,
-                shared_position=True,
             ),
             PlayerSimilarity(
                 snapshot_id=snapshot.id,
@@ -101,7 +109,6 @@ async def test_similar_players_returns_expected_structure(app_client, db_session
                 comparison_player_id=comp2.id,
                 similarity_score=85.0,
                 rank_within_anchor=2,
-                shared_position=False,
             ),
         ]
     )
@@ -137,10 +144,19 @@ async def test_similar_players_returns_expected_structure(app_client, db_session
 
 @pytest.mark.asyncio
 async def test_similar_players_same_position_filter(app_client, db_session):
-    """Filter by same_position returns only players with shared_position=True."""
+    """Filter by same_position returns only players with overlapping parent groups."""
     anchor = await _create_player(db_session, "anchor-pos", "Anchor Pos")
     same_pos = await _create_player(db_session, "same-pos", "Same Pos")
     diff_pos = await _create_player(db_session, "diff-pos", "Diff Pos")
+
+    pos_guard = await _create_position(db_session, "pg", "Point Guard")
+    pos_guard.parents = ["guard"]
+    pos_wing = await _create_position(db_session, "sf", "Small Forward")
+    pos_wing.parents = ["wing"]
+
+    await _create_player_status(db_session, anchor.id, position_id=pos_guard.id)
+    await _create_player_status(db_session, same_pos.id, position_id=pos_guard.id)
+    await _create_player_status(db_session, diff_pos.id, position_id=pos_wing.id)
 
     snapshot = await _create_snapshot(
         db_session, MetricSource.combine_anthro, version=1
@@ -155,7 +171,6 @@ async def test_similar_players_same_position_filter(app_client, db_session):
                 comparison_player_id=same_pos.id,
                 similarity_score=90.0,
                 rank_within_anchor=1,
-                shared_position=True,
             ),
             PlayerSimilarity(
                 snapshot_id=snapshot.id,
@@ -164,7 +179,6 @@ async def test_similar_players_same_position_filter(app_client, db_session):
                 comparison_player_id=diff_pos.id,
                 similarity_score=88.0,
                 rank_within_anchor=2,
-                shared_position=False,
             ),
         ]
     )

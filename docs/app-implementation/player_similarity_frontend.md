@@ -32,7 +32,7 @@ Returns similar players for a given player and similarity dimension.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `dimension` | enum | Yes | - | `anthro`, `combine`, `shooting`, or `composite` |
-| `same_position` | bool | No | `false` | Filter to players with matching position |
+| `same_position` | bool | No | `false` | Filter to players sharing a position parent group (guard/wing/forward/big) |
 | `same_draft_year` | bool | No | `false` | Filter to players with same draft year as anchor |
 | `nba_only` | bool | No | `false` | Filter to active NBA players only |
 | `limit` | int | No | `10` | Max results (1-20) |
