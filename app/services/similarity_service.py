@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType, MetricSource, SimilarityDimension
@@ -88,6 +88,29 @@ async def _select_similarity_snapshot(
     return result.scalar_one_or_none()
 
 
+async def _resolve_position_parents(db: AsyncSession, player_id: int) -> set[str]:
+    """Return position parent-group tokens for the player's current position.
+
+    Uses `positions.parents` (JSONB array), e.g. ["guard"], ["wing"], ["big"].
+    Missing position assignments return an empty set.
+    """
+    stmt = (
+        select(Position.__table__.c.parents)  # type: ignore[attr-defined]
+        .select_from(PlayerStatus)
+        .join(Position, Position.id == PlayerStatus.position_id)  # type: ignore[arg-type]
+        .where(PlayerStatus.player_id == player_id)  # type: ignore[arg-type]
+        .where(PlayerStatus.position_id.is_not(None))  # type: ignore[union-attr]
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    row = result.one_or_none()
+    if not row:
+        return set()
+
+    parents = row[0] or []
+    return {p for p in parents if isinstance(p, str)}
+
+
 async def get_similar_players(
     db: AsyncSession,
     slug: str,
@@ -103,7 +126,7 @@ async def get_similar_players(
         db: Database session
         slug: Player slug (e.g., "cooper-flagg")
         dimension: Similarity dimension (anthro, combine, shooting, composite)
-        same_position: Filter to players with shared_position=True
+        same_position: Filter to players sharing a position parent group (e.g., guard/wing/big)
         same_draft_year: Filter to players with same draft_year as anchor
         nba_only: Filter to players with is_active_nba=True
         limit: Maximum number of results
@@ -116,6 +139,7 @@ async def get_similar_players(
     """
     # Resolve anchor player
     anchor_id, _anchor_name, anchor_draft_year = await _resolve_player(db, slug)
+    anchor_position_parents = await _resolve_position_parents(db, anchor_id)
 
     # Select snapshot
     source = DIMENSION_TO_SOURCE.get(dimension)
@@ -148,6 +172,7 @@ async def get_similar_players(
             PlayerMaster.school,
             PlayerMaster.draft_year,
             Position.code.label("position_code"),  # type: ignore[attr-defined]
+            Position.__table__.c.parents.label("position_parents"),  # type: ignore[attr-defined]
         )
         .select_from(PlayerSimilarity)
         .join(
@@ -169,7 +194,19 @@ async def get_similar_players(
 
     # Apply filters
     if same_position:
-        stmt = stmt.where(PlayerSimilarity.shared_position.is_(True))  # type: ignore[union-attr]
+        if not anchor_position_parents:
+            return {
+                "anchor_slug": slug,
+                "dimension": dimension,
+                "snapshot_id": snapshot.id,
+                "players": [],
+            }
+
+        overlap_clauses = [
+            Position.parents.contains([parent])  # type: ignore[union-attr]
+            for parent in sorted(anchor_position_parents)
+        ]
+        stmt = stmt.where(or_(*overlap_clauses))
 
     if same_draft_year and anchor_draft_year is not None:
         stmt = stmt.where(PlayerMaster.draft_year == anchor_draft_year)  # type: ignore[arg-type]
@@ -197,7 +234,9 @@ async def get_similar_players(
             "draft_year": row.draft_year,
             "similarity_score": row.similarity_score,
             "rank": row.rank_within_anchor,
-            "shared_position": row.shared_position or False,
+            "shared_position": bool(
+                anchor_position_parents.intersection(set(row.position_parents or []))
+            ),
         }
         for row in rows
     ]
