@@ -3,33 +3,6 @@
    ========================================================================= */
 
 /* ============================================================================
-   SECTION HEADER ROW
-   Header with title and action buttons on the same line
-   ========================================================================= */
-.section-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.section-header-row .section-header {
-  margin-bottom: 0;
-}
-
-/* Export button disabled state */
-.export-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.export-btn:disabled:hover {
-  background: transparent;
-  border-color: #e2e8f0;
-  color: #64748b;
-}
-
-/* ============================================================================
    TABLES
    Data tables for comparisons
    ========================================================================= */

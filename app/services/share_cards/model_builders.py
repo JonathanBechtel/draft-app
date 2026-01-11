@@ -35,6 +35,29 @@ from app.services.share_cards.render_models import (
 )
 from app.services.similarity_service import get_similar_players
 
+
+def _build_win_summary(rows: list[VSRow], name_a: str, name_b: str) -> str:
+    """Build win summary text from rows.
+
+    Args:
+        rows: List of VSRow with winner data
+        name_a: First name of player A
+        name_b: First name of player B
+
+    Returns:
+        Summary like "Kobe wins 4-2" or "Tie 3-3"
+    """
+    wins_a = sum(1 for r in rows if r.winner == WinnerSide.a)
+    wins_b = sum(1 for r in rows if r.winner == WinnerSide.b)
+
+    if wins_a > wins_b:
+        return f"{name_a} wins {wins_a}-{wins_b}"
+    elif wins_b > wins_a:
+        return f"{name_b} wins {wins_b}-{wins_a}"
+    else:
+        return f"Tie {wins_a}-{wins_b}"
+
+
 # Label mappings for export cards (shorten long labels to fit)
 EXPORT_LABEL_MAP = {
     # Anthropometrics
@@ -417,7 +440,7 @@ async def build_h2h_model(
     similarity = h2h_data.get("similarity")
     if similarity and similarity.get("score") is not None:
         score = int(similarity["score"])
-        similarity_badge = f"{score}% Match"
+        similarity_badge = f"{score}% Similar"
 
     # Build rows (limited to LIST_LENGTHS["h2h"])
     max_rows = LIST_LENGTHS["h2h"]
@@ -453,12 +476,22 @@ async def build_h2h_model(
     while len(rows) < max_rows:
         rows.append(VSRow(label="", a_value="—", b_value="—"))
 
+    # Build heading from metric group
+    metric_group_label = METRIC_GROUP_LABELS.get(metric_group, "")
+    heading = f"Draft Combine Results — {metric_group_label}"
+
+    # Calculate win summary using first names
+    first_name_a = name_a.split()[0]
+    first_name_b = name_b.split()[0]
+    win_summary = _build_win_summary(rows, first_name_a, first_name_b)
+
     return H2HRenderModel(
         title=f"{name_a} vs {name_b}",
-        context_line=_build_context_line(context, position_parents, draft_year),
+        heading=heading,
         player_a=player_a,
         player_b=player_b,
         similarity_badge=similarity_badge,
+        win_summary=win_summary,
         rows=rows,
         accent_color=COMPONENT_ACCENTS["h2h"],
     )
@@ -485,7 +518,7 @@ async def build_comps_model(
     player_id = player_ids[0]
 
     # Resolve player info
-    name, slug, _, _, position_parents, draft_year = await _resolve_player_info(
+    name, slug, _, _, position_parents, anchor_draft_year = await _resolve_player_info(
         db, player_id
     )
     player = await _build_player_badge(db, player_id)
@@ -501,12 +534,17 @@ async def build_comps_model(
 
     same_position = context.get("same_position", False)
 
+    comparison_group = context.get("comparison_group", "current_draft")
+    same_draft_year, nba_only = _filters_for_comparison_group(comparison_group)
+
     # Fetch similar players
     similar_result = await get_similar_players(
         db,
         slug,
         dimension,
         same_position=same_position,
+        same_draft_year=same_draft_year,
+        nba_only=nba_only,
         limit=LIST_LENGTHS["comps"],
     )
 
@@ -532,15 +570,15 @@ async def build_comps_model(
         # Build subtitle
         position = comp.get("position", "")
         school = comp.get("school", "")
-        draft_year = comp.get("draft_year")
+        comp_draft_year = comp.get("draft_year")
 
         subtitle_parts = []
         if position:
             subtitle_parts.append(position.upper())
         if school:
             subtitle_parts.append(school)
-        if draft_year:
-            subtitle_parts.append(str(draft_year))
+        if comp_draft_year:
+            subtitle_parts.append(str(comp_draft_year))
 
         subtitle = " | ".join(subtitle_parts[:2])
 
@@ -585,8 +623,17 @@ async def build_comps_model(
 
     return CompsRenderModel(
         title=f"{name} — Comparisons",
-        context_line=_build_context_line(context, position_parents, draft_year),
+        context_line=_build_context_line(context, position_parents, anchor_draft_year),
         player=player,
         tiles=tiles,
         accent_color=COMPONENT_ACCENTS["comps"],
     )
+
+
+def _filters_for_comparison_group(comparison_group: str) -> tuple[bool, bool]:
+    """Return (same_draft_year, nba_only) flags for similarity pool."""
+    if comparison_group == "current_draft":
+        return True, False
+    if comparison_group == "current_nba":
+        return False, True
+    return False, False

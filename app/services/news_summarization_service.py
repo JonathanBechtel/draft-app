@@ -113,12 +113,10 @@ class NewsSummarizationService:
         try:
             response = await self.client.aio.models.generate_content(
                 model="gemini-3-flash-preview",
-                contents=[
-                    types.Content(
-                        role="user",
-                        parts=[types.Part.from_text(text=user_prompt)],
-                    ),
-                ],
+                contents=types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=user_prompt)],
+                ),
                 config=types.GenerateContentConfig(
                     system_instruction=[
                         types.Part.from_text(text=ARTICLE_ANALYSIS_PROMPT)

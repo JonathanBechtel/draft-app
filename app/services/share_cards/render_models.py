@@ -120,10 +120,11 @@ class H2HRenderModel:
     """Head-to-head comparison (8 rows max)."""
 
     title: str
-    context_line: ContextLine
+    heading: str  # e.g., "Draft Combine Results — Anthropometrics"
     player_a: PlayerBadge
     player_b: PlayerBadge
-    similarity_badge: Optional[str] = None  # e.g., "92% Match"
+    similarity_badge: Optional[str] = None  # e.g., "92% Similar"
+    win_summary: str = ""  # e.g., "Kobe wins 4-2" or "Tie 3-3"
     rows: list[VSRow] = field(default_factory=list)
     accent_color: str = "#d946ef"  # fuchsia
     template_version: str = TEMPLATE_VERSION

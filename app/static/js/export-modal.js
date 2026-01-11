@@ -98,6 +98,13 @@ const ExportModal = {
   },
 
   /**
+   * Check if we're on a mobile device (< 640px)
+   */
+  isMobile() {
+    return window.innerWidth < 640;
+  },
+
+  /**
    * Export an image for a component
    * @param {string} component - Component type (vs_arena, performance, h2h, comps)
    * @param {number[]} playerIds - Array of player IDs
@@ -105,8 +112,14 @@ const ExportModal = {
    */
   async export(component, playerIds, context = {}) {
     this.lastRequest = { component, playerIds, context };
-    this.show();
-    this.showLoading();
+
+    // On mobile, skip the modal and download directly
+    const isMobile = this.isMobile();
+
+    if (!isMobile) {
+      this.show();
+      this.showLoading();
+    }
 
     try {
       const response = await fetch('/api/export/image', {
@@ -129,11 +142,37 @@ const ExportModal = {
       }
 
       const data = await response.json();
-      this.showPreview(data.url, data.filename, data.title);
+
+      if (isMobile) {
+        // On mobile, trigger direct download
+        this.triggerDownload(data.url, data.filename);
+      } else {
+        // On desktop, show the modal preview
+        this.showPreview(data.url, data.filename, data.title);
+      }
     } catch (err) {
       console.error('Export failed:', err);
-      this.showError(err.message || 'Failed to generate image');
+      if (isMobile) {
+        // On mobile, show a simple alert for errors
+        alert('Failed to generate image: ' + (err.message || 'Unknown error'));
+      } else {
+        this.showError(err.message || 'Failed to generate image');
+      }
     }
+  },
+
+  /**
+   * Trigger a direct download without showing the modal
+   * @param {string} url - Image URL
+   * @param {string} filename - Download filename
+   */
+  triggerDownload(url, filename) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   },
 
   /**

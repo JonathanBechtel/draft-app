@@ -2,8 +2,8 @@
 
 from typing import Tuple
 
-# Template version - bump when templates change to invalidate cache
-TEMPLATE_VERSION = "1"
+# Template version - bump when export output changes to invalidate cache
+TEMPLATE_VERSION = "3"
 
 # Output dimensions
 RENDER_WIDTH = 2400  # 2x for crisp text
@@ -123,7 +123,7 @@ COMPARISON_GROUP_LABELS = {
 # Metric group labels for context line
 METRIC_GROUP_LABELS = {
     "anthropometrics": "Anthropometrics",
-    "combine": "Athletic Testing",
+    "combine": "Athletic Performance",
     "shooting": "Shooting",
     "advanced": "Advanced Stats",
 }

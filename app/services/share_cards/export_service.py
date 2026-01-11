@@ -177,7 +177,8 @@ class ImageExportService:
         context = asdict(model)
 
         # asdict() doesn't include @property methods, so add rendered context line
-        if "context_line" in context:
+        # Note: H2HRenderModel no longer has context_line
+        if "context_line" in context and hasattr(model, "context_line"):
             context["context_line"]["rendered"] = model.context_line.rendered
 
         return self.renderer.render(template_name, context)
