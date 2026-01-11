@@ -16,7 +16,6 @@ from app.services.share_cards.model_builders import (
     build_comps_model,
     build_h2h_model,
     build_performance_model,
-    build_vs_arena_model,
 )
 from app.services.share_cards.rasterizer import get_rasterizer
 from app.services.share_cards.render_models import RenderModel
@@ -28,8 +27,9 @@ logger = logging.getLogger(__name__)
 ComponentType = Literal["vs_arena", "performance", "h2h", "comps"]
 
 # Map component types to template files
+# Note: vs_arena and h2h both use h2h.svg template (they are functionally identical)
 COMPONENT_TEMPLATES = {
-    "vs_arena": "vs_arena.svg",
+    "vs_arena": "h2h.svg",
     "performance": "performance.svg",
     "h2h": "h2h.svg",
     "comps": "comps.svg",
@@ -149,7 +149,8 @@ class ImageExportService:
             ValueError: If unknown component or invalid player_ids
         """
         if component == "vs_arena":
-            return await build_vs_arena_model(self.db, player_ids, context)
+            # VS Arena uses the same model as H2H (they are functionally identical)
+            return await build_h2h_model(self.db, player_ids, context)
         elif component == "performance":
             return await build_performance_model(self.db, player_ids, context)
         elif component == "h2h":
@@ -189,10 +190,9 @@ class ImageExportService:
             CompsRenderModel,
             H2HRenderModel,
             PerformanceRenderModel,
-            VSArenaRenderModel,
         )
 
-        if isinstance(model, (VSArenaRenderModel, H2HRenderModel)):
+        if isinstance(model, H2HRenderModel):
             return [model.player_a.name, model.player_b.name]
         elif isinstance(model, (PerformanceRenderModel, CompsRenderModel)):
             return [model.player.name]
