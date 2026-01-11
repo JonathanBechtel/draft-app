@@ -19,7 +19,8 @@ def generate_cache_key(
 
     Hash inputs:
     - template_version (bumped when templates change)
-    - sorted player_ids (for symmetry in vs/h2h)
+    - ordered player_ids for vs/h2h (A/B layout matters)
+    - sorted player_ids for other components (determinism)
     - normalized context (sorted keys)
 
     Args:
@@ -30,14 +31,18 @@ def generate_cache_key(
     Returns:
         S3 key path for the export image
     """
-    # Sort player IDs for symmetric comparisons (A vs B == B vs A)
-    sorted_ids = sorted(player_ids)
+    if component in {"vs_arena", "h2h"}:
+        # Preserve A/B ordering since the rendered layout is directional.
+        ids_for_key = player_ids
+    else:
+        # Deterministic for any unordered/single-player components.
+        ids_for_key = sorted(player_ids)
 
     # Normalize context to JSON with sorted keys
     normalized_context = json.dumps(context, sort_keys=True)
 
     # Build hash input
-    hash_input = f"{TEMPLATE_VERSION}|{sorted_ids}|{normalized_context}"
+    hash_input = f"{TEMPLATE_VERSION}|{ids_for_key}|{normalized_context}"
 
     # Generate SHA256 hash, take first 16 chars
     hash_digest = hashlib.sha256(hash_input.encode()).hexdigest()[:16]

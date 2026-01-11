@@ -75,9 +75,22 @@ class ImageExportService:
         cache_key = generate_cache_key(component, player_ids, context)
 
         # Check cache first
-        cached_url = self.storage.check_cache(cache_key)
-        if cached_url:
-            # Still need player names for response
+        cached = self.storage.check_cache(cache_key)
+        if cached:
+            if cached.title and cached.filename:
+                logger.info(
+                    f"Export cache hit: component={component}, key={cache_key}, "
+                    f"duration={time.perf_counter() - start_time:.3f}s"
+                )
+
+                return {
+                    "url": cached.url,
+                    "title": cached.title,
+                    "filename": cached.filename,
+                    "cached": True,
+                }
+
+            # Back-compat: older cached exports may not have stored metadata.
             model = await self._build_model(component, player_ids, context)
             player_names = self._extract_player_names(model)
 
@@ -87,7 +100,7 @@ class ImageExportService:
             )
 
             return {
-                "url": cached_url,
+                "url": cached.url,
                 "title": generate_title(component, player_names),
                 "filename": generate_filename(component, player_names),
                 "cached": True,
@@ -107,12 +120,13 @@ class ImageExportService:
         raster_duration = time.perf_counter() - raster_start
 
         upload_start = time.perf_counter()
-        url = self.storage.upload(cache_key, png_bytes)
+        player_names = self._extract_player_names(model)
+        title = generate_title(component, player_names)
+        filename = generate_filename(component, player_names)
+        url = self.storage.upload(cache_key, png_bytes, title=title, filename=filename)
         upload_duration = time.perf_counter() - upload_start
 
         total_duration = time.perf_counter() - start_time
-
-        player_names = self._extract_player_names(model)
 
         logger.info(
             f"Export generated: component={component}, key={cache_key}, "
@@ -124,8 +138,8 @@ class ImageExportService:
 
         return {
             "url": url,
-            "title": generate_title(component, player_names),
-            "filename": generate_filename(component, player_names),
+            "title": title,
+            "filename": filename,
             "cached": False,
         }
 
