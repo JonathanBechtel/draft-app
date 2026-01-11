@@ -94,6 +94,18 @@ body {
   margin-bottom: 4rem;
 }
 
+/* Header row with title and action buttons on the same line */
+.section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.section-header-row .section-header {
+  margin-bottom: 0;
+}
+
 .section-header {
   font-size: 1.5rem;
   font-weight: 600;

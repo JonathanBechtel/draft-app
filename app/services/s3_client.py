@@ -22,6 +22,7 @@ class S3Client:
         self.bucket = settings.s3_bucket_name
         self.use_local = settings.image_storage_local
         self._client: Optional[boto3.client] = None
+        self.local_root = "app/static/img"
 
     @property
     def client(self) -> boto3.client:
@@ -42,6 +43,7 @@ class S3Client:
         key: str,
         data: bytes,
         content_type: str = "image/png",
+        metadata: Optional[dict[str, str]] = None,
     ) -> str:
         """Upload file to S3, return public URL.
 
@@ -49,12 +51,13 @@ class S3Client:
             key: S3 object key (e.g., 'players/123_cooper-flagg_default.png')
             data: File content as bytes
             content_type: MIME type of the file
+            metadata: Optional small string metadata (S3 headers) for later retrieval
 
         Returns:
             Public URL for the uploaded file
         """
         if self.use_local:
-            return self._upload_local(key, data)
+            return self._upload_local(key, data, metadata=metadata)
 
         if not self.bucket:
             raise ValueError("S3_BUCKET_NAME not configured")
@@ -66,6 +69,8 @@ class S3Client:
                 "Body": data,
                 "ContentType": content_type,
             }
+            if metadata:
+                put_kwargs["Metadata"] = metadata
             if settings.s3_upload_acl:
                 put_kwargs["ACL"] = settings.s3_upload_acl
 
@@ -118,23 +123,33 @@ class S3Client:
 
         return f"https://{self.bucket}.s3.{settings.s3_region}.amazonaws.com/{key}"
 
-    def _upload_local(self, key: str, data: bytes) -> str:
+    def _upload_local(
+        self, key: str, data: bytes, *, metadata: Optional[dict[str, str]] = None
+    ) -> str:
         """Upload to local filesystem (dev mode).
 
         Args:
             key: Relative path within static/img/
             data: File content as bytes
+            metadata: Optional metadata to persist alongside the file
 
         Returns:
             Local static URL path
         """
         import os
+        from pathlib import Path
+        import json
 
-        local_path = f"app/static/img/{key}"
+        local_path = str(Path(self.local_root) / key)
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
 
         with open(local_path, "wb") as f:
             f.write(data)
+
+        if metadata:
+            meta_path = f"{local_path}.json"
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, ensure_ascii=False)
 
         logger.info(f"Saved {key} to local filesystem")
         return f"/static/img/{key}"
@@ -147,10 +162,13 @@ class S3Client:
         """
         import os
 
-        local_path = f"app/static/img/{key}"
+        local_path = f"{self.local_root}/{key}"
         if os.path.exists(local_path):
             os.remove(local_path)
             logger.info(f"Deleted {key} from local filesystem")
+        meta_path = f"{local_path}.json"
+        if os.path.exists(meta_path):
+            os.remove(meta_path)
 
 
 # Singleton instance for convenience

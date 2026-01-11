@@ -31,15 +31,24 @@
        Interactive head-to-head player comparison tool
        ========================================================================== -->
   <section class="section">
-    <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
-      <!-- Swords icon -->
-      <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
-        <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
-        <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
-        <path d="M3 6l7 7"></path>
-      </svg>
-      VS Arena
-    </h2>
+    <div class="section-header-row">
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+        <!-- Swords icon -->
+        <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+          <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+          <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+          <path d="M3 6l7 7"></path>
+        </svg>
+        VS Arena
+      </h2>
+      <button class="export-btn" title="Save as Image" onclick="exportVSArena()" id="vsArenaExportBtn" disabled>
+        <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </button>
+    </div>
     <p class="section-subtitle">Compare top draft prospects head-to-head across key metrics</p>
 
     <!-- Player Selectors Row -->

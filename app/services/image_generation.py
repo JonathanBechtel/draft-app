@@ -229,17 +229,13 @@ Be specific and objective. This will help an AI illustrator capture their likene
         try:
             response = self.client.models.generate_content(
                 model="gemini-3-flash-preview",
-                contents=[
-                    types.Content(
-                        role="user",
-                        parts=[
-                            types.Part.from_uri(
-                                file_uri=image_url, mime_type="image/jpeg"
-                            ),
-                            types.Part.from_text(text=description_prompt),
-                        ],
-                    ),
-                ],
+                contents=types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_uri(file_uri=image_url, mime_type="image/jpeg"),
+                        types.Part.from_text(text=description_prompt),
+                    ],
+                ),
             )
             description = response.text if response.text else ""
             logger.info(f"Generated likeness description: {len(description)} chars")
@@ -272,12 +268,10 @@ Be specific and objective. This will help an AI illustrator capture their likene
             system_instruction=[types.Part.from_text(text=system_prompt)],
         )
 
-        contents = [
-            types.Content(
-                role="user",
-                parts=[types.Part.from_text(text=user_prompt)],
-            ),
-        ]
+        contents = types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=user_prompt)],
+        )
 
         # Use streaming to handle large image responses
         image_data: Optional[bytes] = None
@@ -437,12 +431,10 @@ Be specific and objective. This will help an AI illustrator capture their likene
         user_prompt = self.build_player_prompt(player, likeness_description)
 
         return types.InlinedRequest(
-            contents=[
-                types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=user_prompt)],
-                )
-            ],
+            contents=types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=user_prompt)],
+            ),
             metadata={
                 "player_id": str(player.id) if player.id is not None else "",
             },

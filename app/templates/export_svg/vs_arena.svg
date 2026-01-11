@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 1260" width="2400" height="1260">
+  <defs>
+    <style type="text/css">
+      .title { font-family: 'Russo One', sans-serif; font-size: 72px; fill: #0f172a; text-transform: uppercase; }
+      .context { font-family: 'Azeret Mono', monospace; font-size: 32px; fill: #64748b; }
+      .label { font-family: 'Azeret Mono', monospace; font-size: 34px; fill: #334155; }
+      .value { font-family: 'Azeret Mono', monospace; font-size: 40px; fill: #0f172a; font-weight: 600; }
+      .value-winner { font-family: 'Azeret Mono', monospace; font-size: 40px; font-weight: 700; }
+      .watermark { font-family: 'Azeret Mono', monospace; font-size: 32px; fill: #ffffff; }
+      .player-name { font-family: 'Russo One', sans-serif; font-size: 36px; fill: #0f172a; }
+      .player-subtitle { font-family: 'Azeret Mono', monospace; font-size: 24px; fill: #64748b; }
+      .vs-text { font-family: 'Russo One', sans-serif; font-size: 48px; fill: #d946ef; }
+    </style>
+    <!-- Scanlines pattern -->
+    <pattern id="scanlines" patternUnits="userSpaceOnUse" width="4" height="4">
+      <line x1="0" y1="0" x2="4" y2="0" stroke="#0f172a" stroke-width="1" opacity="0.03"/>
+    </pattern>
+    <!-- Dot matrix pattern -->
+    <pattern id="dotmatrix" patternUnits="userSpaceOnUse" width="24" height="24">
+      <circle cx="12" cy="12" r="1" fill="#64748b" opacity="0.1"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="2400" height="1260" fill="#f8fafc"/>
+  <rect width="2400" height="1260" fill="url(#dotmatrix)"/>
+  <rect width="2400" height="1260" fill="url(#scanlines)"/>
+
+  <!-- Accent bar at top -->
+  <rect x="0" y="0" width="2400" height="12" fill="{{ accent_color }}"/>
+
+  <!-- Header section with two players -->
+  <g transform="translate(96, 60)">
+    <!-- Player A (left) -->
+    {% if player_a.has_photo and player_a.photo_data_uri %}
+    <clipPath id="photo-clip-a">
+      <rect x="0" y="0" width="180" height="180" rx="12"/>
+    </clipPath>
+    <image href="{{ player_a.photo_data_uri }}" x="0" y="0" width="180" height="180" clip-path="url(#photo-clip-a)" preserveAspectRatio="xMidYMid slice"/>
+    <rect x="0" y="0" width="180" height="180" rx="12" fill="none" stroke="{{ accent_color }}" stroke-width="4"/>
+    {% else %}
+    <rect x="0" y="0" width="180" height="180" rx="12" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
+    <text x="90" y="80" text-anchor="middle" class="label" fill="#475569">{{ player_a.name.split()[0] }}</text>
+    {% if player_a.name.split() | length > 1 %}
+    <text x="90" y="115" text-anchor="middle" class="label" fill="#475569">{{ player_a.name.split()[1:] | join(' ') }}</text>
+    {% endif %}
+    {% endif %}
+    <text x="200" y="60" class="player-name">{{ player_a.name }}</text>
+    <text x="200" y="95" class="player-subtitle">{{ player_a.subtitle }}</text>
+
+    <!-- VS in center -->
+    <text x="1104" y="110" text-anchor="middle" class="vs-text">VS</text>
+
+    <!-- Player B (right) -->
+    {% if player_b.has_photo and player_b.photo_data_uri %}
+    <clipPath id="photo-clip-b">
+      <rect x="2028" y="0" width="180" height="180" rx="12"/>
+    </clipPath>
+    <image href="{{ player_b.photo_data_uri }}" x="2028" y="0" width="180" height="180" clip-path="url(#photo-clip-b)" preserveAspectRatio="xMidYMid slice"/>
+    <rect x="2028" y="0" width="180" height="180" rx="12" fill="none" stroke="#06b6d4" stroke-width="4"/>
+    {% else %}
+    <rect x="2028" y="0" width="180" height="180" rx="12" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
+    <text x="2118" y="80" text-anchor="middle" class="label" fill="#475569">{{ player_b.name.split()[0] }}</text>
+    {% if player_b.name.split() | length > 1 %}
+    <text x="2118" y="115" text-anchor="middle" class="label" fill="#475569">{{ player_b.name.split()[1:] | join(' ') }}</text>
+    {% endif %}
+    {% endif %}
+    <text x="2008" y="60" text-anchor="end" class="player-name">{{ player_b.name }}</text>
+    <text x="2008" y="95" text-anchor="end" class="player-subtitle">{{ player_b.subtitle }}</text>
+
+    <!-- Context line below -->
+    <text x="1104" y="170" text-anchor="middle" class="context">{{ context_line.rendered }}</text>
+  </g>
+
+  <!-- Divider line -->
+  <line x1="96" y1="270" x2="2304" y2="270" stroke="#e2e8f0" stroke-width="2"/>
+
+  <!-- Comparison rows -->
+  <g transform="translate(96, 300)">
+    <!-- Column headers -->
+    <text x="200" y="40" text-anchor="end" class="label" fill="#64748b">{{ player_a.name.split()[0] }}</text>
+    <text x="1104" y="40" text-anchor="middle" class="label" fill="#64748b">METRIC</text>
+    <text x="2008" y="40" text-anchor="start" class="label" fill="#64748b">{{ player_b.name.split()[0] }}</text>
+
+    <line x1="0" y1="60" x2="2208" y2="60" stroke="#e2e8f0" stroke-width="1"/>
+
+    {% for row in rows %}
+    {% set y_offset = 80 + loop.index0 * 110 %}
+    {% if row.label %}
+    <g transform="translate(0, {{ y_offset }})">
+      <!-- Player A value -->
+      {% if row.winner.value == 'a' %}
+      <rect x="0" y="-10" width="400" height="70" rx="8" fill="#fae8ff" opacity="0.6"/>
+      <text x="200" y="40" text-anchor="end" class="value-winner" fill="#d946ef">{{ row.a_value }}</text>
+      {% else %}
+      <text x="200" y="40" text-anchor="end" class="value">{{ row.a_value }}</text>
+      {% endif %}
+
+      <!-- Metric label (center) -->
+      <text x="1104" y="40" text-anchor="middle" class="label">{{ row.label }}</text>
+
+      <!-- Player B value -->
+      {% if row.winner.value == 'b' %}
+      <rect x="1808" y="-10" width="400" height="70" rx="8" fill="#cffafe" opacity="0.6"/>
+      <text x="2008" y="40" text-anchor="start" class="value-winner" fill="#06b6d4">{{ row.b_value }}</text>
+      {% else %}
+      <text x="2008" y="40" text-anchor="start" class="value">{{ row.b_value }}</text>
+      {% endif %}
+
+      <!-- Row separator -->
+      {% if not loop.last %}
+      <line x1="0" y1="70" x2="2208" y2="70" stroke="#f1f5f9" stroke-width="1"/>
+      {% endif %}
+    </g>
+    {% endif %}
+    {% endfor %}
+  </g>
+
+  <!-- Footer watermark bar -->
+  <rect x="0" y="1148" width="2400" height="112" fill="#1e293b"/>
+  <text x="2304" y="1216" text-anchor="end" class="watermark">nbadraft.app</text>
+
+  <!-- Scanlines overlay on footer -->
+  <rect x="0" y="1148" width="2400" height="112" fill="url(#scanlines)" opacity="0.5"/>
+</svg>

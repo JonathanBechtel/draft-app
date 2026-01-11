@@ -145,359 +145,6 @@ const ProspectsModule = {
   }
 };
 
-/**
- * ============================================================================
- * HEAD-TO-HEAD COMPARISON MODULE (VS ARENA)
- * Handles player comparison functionality with live API data
- * ============================================================================
- */
-const HeadToHeadModule = {
-  currentCategory: 'anthropometrics',
-  selectedPlayerA: null,
-  selectedPlayerB: null,
-  players: {},
-  cache: {},
-  searchTimeoutA: null,
-  searchTimeoutB: null,
-
-  /**
-   * Initialize Head-to-Head module
-   */
-  async init() {
-    const playerAInput = document.getElementById('h2hPlayerA');
-    if (!playerAInput) return;
-
-    try {
-      await this.loadPlayers();
-      this.setupEventListeners();
-
-      // Pre-select default players for initial display
-      const defaultA = 'cooper-flagg';
-      const defaultB = 'ace-bailey';
-      if (this.players[defaultA] && this.players[defaultB]) {
-        this.selectedPlayerA = defaultA;
-        this.selectedPlayerB = defaultB;
-        document.getElementById('h2hPlayerA').value = this.players[defaultA].name;
-        document.getElementById('h2hPlayerB').value = this.players[defaultB].name;
-        await this.renderComparison();
-      }
-    } catch (err) {
-      console.error('Failed to initialize head-to-head module', err);
-    }
-  },
-
-  /**
-   * Fetch available players for selection
-   */
-  async loadPlayers() {
-    try {
-      const resp = await fetch('/players');
-      if (!resp.ok) return;
-      const players = await resp.json();
-      players.forEach((p) => {
-        this.players[p.slug] = {
-          id: p.id,
-          slug: p.slug,
-          name: p.display_name,
-          photo: ImageUtils.getPhotoUrl(p.id, p.display_name, p.slug)
-        };
-      });
-    } catch (err) {
-      console.error('Failed to load players list', err);
-    }
-  },
-
-  /**
-   * Setup event listeners for search inputs and tabs
-   */
-  setupEventListeners() {
-    const inputA = document.getElementById('h2hPlayerA');
-    const inputB = document.getElementById('h2hPlayerB');
-    const resultsA = document.getElementById('h2hPlayerAResults');
-    const resultsB = document.getElementById('h2hPlayerBResults');
-
-    // Player A search input
-    if (inputA && resultsA) {
-      inputA.addEventListener('input', (e) => {
-        const term = e.target.value.trim();
-        if (this.searchTimeoutA) clearTimeout(this.searchTimeoutA);
-        this.searchTimeoutA = setTimeout(() => this.searchPlayers(term, 'A'), 150);
-      });
-
-      resultsA.addEventListener('click', (e) => {
-        const option = e.target.closest('[data-slug]');
-        if (!option) return;
-        const slug = option.getAttribute('data-slug');
-        const name = option.getAttribute('data-name');
-        this.selectedPlayerA = slug;
-        inputA.value = name;
-        resultsA.innerHTML = '';
-        resultsA.classList.remove('active');
-        this.renderComparison();
-      });
-    }
-
-    // Player B search input
-    if (inputB && resultsB) {
-      inputB.addEventListener('input', (e) => {
-        const term = e.target.value.trim();
-        if (this.searchTimeoutB) clearTimeout(this.searchTimeoutB);
-        this.searchTimeoutB = setTimeout(() => this.searchPlayers(term, 'B'), 150);
-      });
-
-      resultsB.addEventListener('click', (e) => {
-        const option = e.target.closest('[data-slug]');
-        if (!option) return;
-        const slug = option.getAttribute('data-slug');
-        const name = option.getAttribute('data-name');
-        this.selectedPlayerB = slug;
-        inputB.value = name;
-        resultsB.innerHTML = '';
-        resultsB.classList.remove('active');
-        this.renderComparison();
-      });
-    }
-
-    // Category tabs
-    const tabs = document.querySelectorAll('.h2h-tab');
-    tabs.forEach((tab) => {
-      tab.addEventListener('click', () => {
-        tabs.forEach((t) => t.classList.remove('active'));
-        tab.classList.add('active');
-        this.currentCategory = tab.dataset.category;
-        this.renderComparison();
-      });
-    });
-  },
-
-  /**
-   * Search players via API and render dropdown
-   * @param {string} term - Search term
-   * @param {string} target - 'A' or 'B' indicating which player input
-   */
-  async searchPlayers(term, target) {
-    const results = document.getElementById(`h2hPlayer${target}Results`);
-    if (!results) return;
-
-    if (term.length < 2) {
-      results.innerHTML = '';
-      results.classList.remove('active');
-      return;
-    }
-
-    try {
-      const resp = await fetch(`/players/search?q=${encodeURIComponent(term)}`);
-      if (!resp.ok) return;
-      const matches = await resp.json();
-
-      if (!matches.length) {
-        results.innerHTML = '<div class="search-results-empty">No matches</div>';
-        results.classList.add('active');
-        return;
-      }
-
-      results.innerHTML = matches
-        .map(
-          (p) => `
-          <div class="search-result-item" data-slug="${p.slug}" data-name="${p.display_name}">
-            <div class="search-result-name">${p.display_name}</div>
-            <div class="search-result-school">${p.school || ''}</div>
-          </div>`
-        )
-        .join('');
-      results.classList.add('active');
-    } catch (err) {
-      console.error('Player search failed', err);
-    }
-  },
-
-  /**
-   * Map UI category to API category format
-   */
-  mapCategoryToApi() {
-    const map = {
-      anthropometrics: 'anthropometrics',
-      combinePerformance: 'combine_performance',
-      shooting: 'shooting'
-    };
-    return map[this.currentCategory] || 'anthropometrics';
-  },
-
-  /**
-   * Generate cache key for current comparison
-   */
-  cacheKey() {
-    return `${this.selectedPlayerA}|${this.selectedPlayerB}|${this.currentCategory}`;
-  },
-
-  /**
-   * Fetch comparison data from API with caching
-   */
-  async fetchComparison() {
-    if (!this.selectedPlayerA || !this.selectedPlayerB) return null;
-    const key = this.cacheKey();
-    if (this.cache[key]) return this.cache[key];
-
-    const params = new URLSearchParams({
-      player_a: this.selectedPlayerA,
-      player_b: this.selectedPlayerB,
-      category: this.mapCategoryToApi()
-    });
-
-    try {
-      const resp = await fetch(`/api/players/head-to-head?${params.toString()}`);
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      this.cache[key] = data;
-      return data;
-    } catch (err) {
-      console.error('Failed to fetch head-to-head data', err);
-      return null;
-    }
-  },
-
-  /**
-   * Resolve player photo URL from slug
-   */
-  resolvePhoto(slug) {
-    const player = this.players[slug];
-    if (player && player.id) {
-      return ImageUtils.getPhotoUrl(player.id, player.name, slug);
-    }
-    // Fallback: try the server-provided player ID map
-    const playerId = ImageUtils.getPlayerIdFromSlug(slug);
-    if (playerId) {
-      return ImageUtils.getPhotoUrl(playerId, slug, slug);
-    }
-    // Final fallback to placeholder
-    const name = player ? player.name : slug;
-    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
-  },
-
-  /**
-   * Resolve player name from slug
-   */
-  resolveName(slug) {
-    const player = this.players[slug];
-    return player ? player.name : slug;
-  },
-
-  /**
-   * Render the complete comparison from API data
-   */
-  async renderComparison() {
-    if (!this.selectedPlayerA || !this.selectedPlayerB) return;
-
-    const data = await this.fetchComparison();
-    const comparisonBody = document.getElementById('h2hComparisonBody');
-    const winnerTarget = document.getElementById('h2hWinnerDeclaration');
-    if (!data || !comparisonBody || !winnerTarget) return;
-
-    // Update photos and names
-    const photoA = document.getElementById('h2hPhotoA');
-    const photoB = document.getElementById('h2hPhotoB');
-    const nameA = this.resolveName(this.selectedPlayerA);
-    const nameB = this.resolveName(this.selectedPlayerB);
-
-    // Set photos with onerror fallback to placeholder
-    photoA.src = this.resolvePhoto(this.selectedPlayerA);
-    photoA.onerror = () => {
-      photoA.src = `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(nameA)}`;
-    };
-    photoB.src = this.resolvePhoto(this.selectedPlayerB);
-    photoB.onerror = () => {
-      photoB.src = `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(nameB)}`;
-    };
-
-    document.getElementById('h2hPhotoNameA').textContent = nameA;
-    document.getElementById('h2hPhotoNameB').textContent = nameB;
-    document.getElementById('h2hHeaderA').textContent = nameA;
-    document.getElementById('h2hHeaderB').textContent = nameB;
-
-    // Update similarity badge
-    const badge = document.getElementById('h2hSimilarityBadge');
-    if (badge) {
-      if (data.similarity && data.similarity.score !== undefined && data.similarity.score !== null) {
-        badge.textContent = `${Math.round(data.similarity.score)}% Similar`;
-      } else {
-        badge.textContent = 'No similarity available';
-      }
-    }
-
-    const metrics = (data.metrics || []).filter(
-      (m) =>
-        m.raw_value_a !== null &&
-        m.raw_value_a !== undefined &&
-        m.raw_value_b !== null &&
-        m.raw_value_b !== undefined
-    );
-
-    if (!metrics.length) {
-      comparisonBody.innerHTML =
-        '<tr><td colspan="3" class="text-center empty-state">No shared metrics available.</td></tr>';
-      winnerTarget.innerHTML = '';
-      return;
-    }
-
-    let rowsHTML = '';
-    let winsA = 0;
-    let winsB = 0;
-
-    metrics.forEach((metric) => {
-      const valueA = metric.raw_value_a;
-      const valueB = metric.raw_value_b;
-      const lowerIsBetter = metric.lower_is_better;
-
-      let isWinnerA = false;
-      let isWinnerB = false;
-      if (valueA !== null && valueB !== null) {
-        if (lowerIsBetter) {
-          isWinnerA = valueA < valueB;
-          isWinnerB = valueB < valueA;
-        } else {
-          isWinnerA = valueA > valueB;
-          isWinnerB = valueB > valueA;
-        }
-      }
-
-      if (isWinnerA) winsA++;
-      if (isWinnerB) winsB++;
-
-      const classA = isWinnerA ? 'h2h-value winner' : 'h2h-value loser';
-      const classB = isWinnerB ? 'h2h-value winner' : 'h2h-value loser';
-      const displayA = metric.display_value_a ?? '—';
-      const displayB = metric.display_value_b ?? '—';
-      const unit = metric.unit || '';
-
-      rowsHTML += `
-        <tr>
-          <td class="text-right ${classA}">${displayA}${unit}</td>
-          <td class="text-center">${metric.metric}</td>
-          <td class="text-left ${classB}">${displayB}${unit}</td>
-        </tr>
-      `;
-    });
-
-    comparisonBody.innerHTML = rowsHTML;
-
-    const totalMetrics = metrics.length;
-    let bannerText = '';
-    let bannerClass = '';
-
-    if (winsA > winsB) {
-      bannerText = `🏆 ${this.resolveName(this.selectedPlayerA)} wins — ${winsA}/${totalMetrics} categories`;
-      bannerClass = 'h2h-winner-banner winner-a';
-    } else if (winsB > winsA) {
-      bannerText = `🏆 ${this.resolveName(this.selectedPlayerB)} wins — ${winsB}/${totalMetrics} categories`;
-      bannerClass = 'h2h-winner-banner winner-b';
-    } else {
-      bannerText = `⚔️ Tie — ${winsA}/${totalMetrics} categories each`;
-      bannerClass = 'h2h-winner-banner tie';
-    }
-
-    winnerTarget.innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
-  }
-};
 
 /**
  * ============================================================================
@@ -735,12 +382,35 @@ const FeedModule = {
 
 /**
  * ============================================================================
+ * EXPORT FUNCTIONS
+ * Handle exporting share card images for VS Arena
+ * ============================================================================
+ */
+
+/**
+ * Export VS Arena comparison share card
+ */
+function exportVSArena() {
+  H2HComparison.export();
+}
+
+/**
+ * ============================================================================
  * APPLICATION INITIALIZATION
  * Initialize all modules when DOM is ready
  * ============================================================================
  */
 document.addEventListener('DOMContentLoaded', () => {
   ProspectsModule.init();
-  HeadToHeadModule.init();
+
+  // Initialize shared H2H module for VS Arena
+  H2HComparison.init({
+    playerAFixed: false,
+    defaultPlayerA: 'cooper-flagg',
+    defaultPlayerB: 'ace-bailey',
+    exportComponent: 'vs_arena',
+    exportBtnId: 'vsArenaExportBtn'
+  });
+
   FeedModule.init();
 });

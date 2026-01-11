@@ -22,6 +22,9 @@ dependencies = [
     "pandas==2.2.3",
     "scipy==1.14.1",
     "feedparser>=6.0.0",
+    "resvg-py>=0.2.0",
+    "Pillow>=10.0.0",
+    "httpx>=0.28.0",
 ]
 
 [project.optional-dependencies]
