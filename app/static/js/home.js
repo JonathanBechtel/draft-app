@@ -180,6 +180,7 @@ const HeadToHeadModule = {
         document.getElementById('h2hPlayerA').value = this.players[defaultA].name;
         document.getElementById('h2hPlayerB').value = this.players[defaultB].name;
         await this.renderComparison();
+        this.updateExportButtonState();
       }
     } catch (err) {
       console.error('Failed to initialize head-to-head module', err);
@@ -234,6 +235,7 @@ const HeadToHeadModule = {
         resultsA.innerHTML = '';
         resultsA.classList.remove('active');
         this.renderComparison();
+        this.updateExportButtonState();
       });
     }
 
@@ -255,6 +257,7 @@ const HeadToHeadModule = {
         resultsB.innerHTML = '';
         resultsB.classList.remove('active');
         this.renderComparison();
+        this.updateExportButtonState();
       });
     }
 
@@ -380,6 +383,23 @@ const HeadToHeadModule = {
   resolveName(slug) {
     const player = this.players[slug];
     return player ? player.name : slug;
+  },
+
+  /**
+   * Update export button state based on player selection
+   */
+  updateExportButtonState() {
+    const exportBtn = document.getElementById('vsArenaExportBtn');
+    if (!exportBtn) return;
+
+    const playerA = this.players?.[this.selectedPlayerA];
+    const playerB = this.players?.[this.selectedPlayerB];
+
+    if (playerA?.id && playerB?.id) {
+      exportBtn.disabled = false;
+    } else {
+      exportBtn.disabled = true;
+    }
   },
 
   /**
@@ -732,6 +752,50 @@ const FeedModule = {
     }).join('');
   }
 };
+
+/**
+ * ============================================================================
+ * EXPORT FUNCTIONS
+ * Handle exporting share card images for VS Arena
+ * ============================================================================
+ */
+
+/**
+ * Get current VS Arena context
+ */
+function getVSArenaContext() {
+  const activeTab = document.querySelector('.h2h-tab.active');
+
+  const categoryMap = {
+    'anthropometrics': 'anthropometrics',
+    'combinePerformance': 'combine',
+    'shooting': 'shooting'
+  };
+
+  return {
+    comparisonGroup: 'current_draft',
+    samePosition: false,
+    metricGroup: categoryMap[activeTab?.dataset?.category] || 'anthropometrics'
+  };
+}
+
+/**
+ * Export VS Arena comparison share card
+ */
+function exportVSArena() {
+  const playerASlug = HeadToHeadModule.selectedPlayerA;
+  const playerBSlug = HeadToHeadModule.selectedPlayerB;
+  const playerA = HeadToHeadModule.players?.[playerASlug];
+  const playerB = HeadToHeadModule.players?.[playerBSlug];
+
+  if (!playerA?.id || !playerB?.id) {
+    console.warn('VS Arena export requires both players selected');
+    return;
+  }
+
+  const context = getVSArenaContext();
+  ExportModal.export('vs_arena', [playerA.id, playerB.id], context);
+}
 
 /**
  * ============================================================================

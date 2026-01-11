@@ -952,6 +952,9 @@ const HeadToHeadModule = {
         if (first) {
           this.selectedPlayerB = first;
           document.getElementById('h2hPlayerB').value = this.players[first].name;
+          // Enable export button
+          const exportBtn = document.getElementById('h2hExportBtn');
+          if (exportBtn) exportBtn.disabled = false;
         }
         return this.renderComparison();
       })
@@ -1002,6 +1005,9 @@ const HeadToHeadModule = {
         input.value = name;
         results.innerHTML = '';
         results.classList.remove('active');
+        // Enable export button
+        const exportBtn = document.getElementById('h2hExportBtn');
+        if (exportBtn) exportBtn.disabled = false;
         this.renderComparison();
       });
     }
@@ -1493,6 +1499,126 @@ const PlayerFeedModule = {
     }).join('');
   }
 };
+
+/**
+ * ============================================================================
+ * EXPORT FUNCTIONS
+ * Handle exporting share card images for different components
+ * ============================================================================
+ */
+
+/**
+ * Get current performance section context
+ */
+function getPerformanceContext() {
+  const cohortSelect = document.getElementById('perfCohort');
+  const positionAdjusted = document.getElementById('perfPositionAdjusted');
+  const activeTab = document.querySelector('.perf-tab.active');
+
+  const cohortMap = {
+    'currentDraft': 'current_draft',
+    'historical': 'all_time_draft',
+    'nbaPlayers': 'current_nba',
+    'allTimeNba': 'all_time_nba'
+  };
+
+  const categoryMap = {
+    'anthropometrics': 'anthropometrics',
+    'combinePerformance': 'combine',
+    'shooting': 'shooting'
+  };
+
+  return {
+    comparisonGroup: cohortMap[cohortSelect?.value] || 'current_draft',
+    samePosition: positionAdjusted?.checked || false,
+    metricGroup: categoryMap[activeTab?.dataset?.category] || 'anthropometrics'
+  };
+}
+
+/**
+ * Export performance metrics share card
+ */
+function exportPerformance() {
+  const player = window.PLAYER_DATA;
+  if (!player?.id) return;
+
+  const context = getPerformanceContext();
+  ExportModal.export('performance', [player.id], context);
+}
+
+/**
+ * Get current H2H section context
+ */
+function getH2HContext() {
+  const activeTab = document.querySelector('.h2h-tab.active');
+
+  const categoryMap = {
+    'anthropometrics': 'anthropometrics',
+    'combinePerformance': 'combine',
+    'shooting': 'shooting'
+  };
+
+  return {
+    comparisonGroup: 'current_draft',
+    samePosition: false,
+    metricGroup: categoryMap[activeTab?.dataset?.category] || 'anthropometrics'
+  };
+}
+
+/**
+ * Export head-to-head comparison share card
+ */
+function exportH2H() {
+  const playerA = window.PLAYER_DATA;
+  const playerBSlug = HeadToHeadModule.selectedPlayerB;
+  const playerB = HeadToHeadModule.players?.[playerBSlug];
+
+  if (!playerA?.id || !playerB?.id) {
+    console.warn('H2H export requires both players selected');
+    return;
+  }
+
+  const context = getH2HContext();
+  ExportModal.export('h2h', [playerA.id, playerB.id], context);
+}
+
+/**
+ * Get current comps section context
+ */
+function getCompsContext() {
+  const poolSelect = document.getElementById('compPool');
+  const positionFilter = document.getElementById('compPositionFilter');
+  const activeTab = document.querySelector('.comp-tab.active');
+
+  const cohortMap = {
+    'currentDraft': 'current_draft',
+    'historical': 'all_time_draft',
+    'nbaPlayers': 'current_nba'
+  };
+
+  const categoryMap = {
+    'anthropometrics': 'anthropometrics',
+    'combinePerformance': 'combine',
+    'shooting': 'shooting'
+  };
+
+  return {
+    comparisonGroup: cohortMap[poolSelect?.value] || 'current_draft',
+    samePosition: positionFilter?.checked || false,
+    metricGroup: categoryMap[activeTab?.dataset?.category] || 'anthropometrics'
+  };
+}
+
+/**
+ * Export player comparisons share card
+ */
+function exportComps() {
+  const player = window.PLAYER_DATA;
+  if (!player?.id) return;
+
+  const context = getCompsContext();
+  ExportModal.export('comps', [player.id], context);
+}
 
 /**
  * ============================================================================

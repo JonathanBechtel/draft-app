@@ -1,0 +1,276 @@
+/**
+ * Export Modal Styles
+ * Follows the DraftGuru retro analytics aesthetic
+ */
+
+/* Modal backdrop and container */
+.export-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.export-modal.active {
+  display: flex;
+}
+
+.export-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+/* Modal content box */
+.export-modal__content {
+  position: relative;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  max-width: 680px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.export-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.export-modal__title {
+  font-family: 'Russo One', sans-serif;
+  font-size: 1.25rem;
+  color: #0f172a;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.export-modal__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.export-modal__close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Body */
+.export-modal__body {
+  padding: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Loading state */
+.export-modal__loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: 200px;
+}
+
+.export-modal__loading p {
+  font-family: 'Azeret Mono', monospace;
+  font-size: 0.875rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.export-modal__spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #10b981;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Preview */
+.export-modal__preview {
+  display: flex;
+  justify-content: center;
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 1rem;
+  /* Scanlines overlay */
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(15, 23, 42, 0.02) 3px,
+    rgba(15, 23, 42, 0.02) 4px
+  );
+}
+
+.export-modal__image {
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Error state */
+.export-modal__error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: 200px;
+  text-align: center;
+}
+
+.export-modal__error-text {
+  font-family: 'Azeret Mono', monospace;
+  font-size: 0.875rem;
+  color: #f43f5e;
+  margin: 0;
+}
+
+/* Footer */
+.export-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.export-modal__download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #10b981;
+  color: white;
+  font-family: 'Azeret Mono', monospace;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.export-modal__download:hover {
+  background: #059669;
+  transform: translateY(-1px);
+}
+
+.export-modal__download:active {
+  transform: translateY(0);
+}
+
+/* Button styles */
+.export-modal .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  font-family: 'Azeret Mono', monospace;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.export-modal .btn--primary {
+  background: #10b981;
+  color: white;
+}
+
+.export-modal .btn--primary:hover {
+  background: #059669;
+}
+
+.export-modal .btn--secondary {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.export-modal .btn--secondary:hover {
+  background: #cbd5e1;
+}
+
+/* Export button (to be added to components) */
+.export-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.export-btn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.export-btn:active {
+  background: #f1f5f9;
+}
+
+.export-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Tooltip for export button */
+.export-btn[title] {
+  position: relative;
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+  .export-modal__content {
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .export-modal__body {
+    padding: 1rem;
+  }
+
+  .export-modal__preview {
+    padding: 0.5rem;
+  }
+}
