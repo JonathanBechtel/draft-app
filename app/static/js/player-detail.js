@@ -1178,6 +1178,33 @@ function getPerformanceContext() {
 }
 
 /**
+ * Build a share text summary for performance metrics
+ */
+function buildPerformanceShareText() {
+  const player = window.PLAYER_DATA;
+  if (!player?.name) return null;
+
+  const context = getPerformanceContext();
+  const cohortLabels = {
+    current_draft: 'Current Draft Class',
+    all_time_draft: 'Historical Prospects',
+    current_nba: 'Active NBA Players',
+    all_time_nba: 'All-Time NBA'
+  };
+  const metricLabels = {
+    anthropometrics: 'Anthropometrics',
+    combine: 'Combine Performance',
+    shooting: 'Shooting'
+  };
+
+  const cohortLabel = cohortLabels[context.comparisonGroup] || 'Current Draft Class';
+  const metricLabel = metricLabels[context.metricGroup] || 'Anthropometrics';
+  const positionLabel = context.samePosition ? ' (position adjusted)' : '';
+
+  return `DraftGuru: ${player.name} performance — ${metricLabel}, ${cohortLabel}${positionLabel}`;
+}
+
+/**
  * Export performance metrics share card
  */
 function exportPerformance() {
@@ -1189,10 +1216,29 @@ function exportPerformance() {
 }
 
 /**
+ * Share performance metrics via X/Twitter
+ */
+function sharePerformance() {
+  if (typeof TweetShare === 'undefined') return;
+
+  const text = buildPerformanceShareText();
+  if (!text) return;
+
+  TweetShare.open({ text, url: window.location.href });
+}
+
+/**
  * Export head-to-head comparison share card
  */
 function exportH2H() {
   H2HComparison.export();
+}
+
+/**
+ * Share head-to-head comparison via X/Twitter
+ */
+function shareH2H() {
+  H2HComparison.share();
 }
 
 /**
@@ -1223,6 +1269,32 @@ function getCompsContext() {
 }
 
 /**
+ * Build a share text summary for comps
+ */
+function buildCompsShareText() {
+  const player = window.PLAYER_DATA;
+  if (!player?.name) return null;
+
+  const context = getCompsContext();
+  const cohortLabels = {
+    current_draft: 'Current Draft Class',
+    all_time_draft: 'Historical Prospects',
+    current_nba: 'Active NBA Players'
+  };
+  const metricLabels = {
+    anthropometrics: 'Anthropometrics',
+    combine: 'Combine Performance',
+    shooting: 'Shooting'
+  };
+
+  const cohortLabel = cohortLabels[context.comparisonGroup] || 'Current Draft Class';
+  const metricLabel = metricLabels[context.metricGroup] || 'Anthropometrics';
+  const positionLabel = context.samePosition ? ' (same position only)' : '';
+
+  return `DraftGuru: ${player.name} comps — ${metricLabel}, ${cohortLabel}${positionLabel}`;
+}
+
+/**
  * Export player comparisons share card
  */
 function exportComps() {
@@ -1231,6 +1303,18 @@ function exportComps() {
 
   const context = getCompsContext();
   ExportModal.export('comps', [player.id], context);
+}
+
+/**
+ * Share player comparisons via X/Twitter
+ */
+function shareComps() {
+  if (typeof TweetShare === 'undefined') return;
+
+  const text = buildCompsShareText();
+  if (!text) return;
+
+  TweetShare.open({ text, url: window.location.href });
 }
 
 /**
@@ -1253,7 +1337,8 @@ document.addEventListener('DOMContentLoaded', () => {
       playerAId: window.PLAYER_DATA.id,
       playerAPhoto: window.PLAYER_DATA.photo_url,
       exportComponent: 'h2h',
-      exportBtnId: 'h2hExportBtn'
+      exportBtnId: 'h2hExportBtn',
+      shareBtnId: 'h2hShareBtn'
     });
   }
 

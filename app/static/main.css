@@ -106,6 +106,12 @@ body {
   margin-bottom: 0;
 }
 
+.section-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .section-header {
   font-size: 1.5rem;
   font-weight: 600;

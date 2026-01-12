@@ -15,7 +15,8 @@ const H2HComparison = {
     defaultPlayerA: null,       // Default slug when not fixed (vs-arena mode)
     defaultPlayerB: null,       // Default Player B slug
     exportComponent: 'h2h',     // 'vs_arena' or 'h2h'
-    exportBtnId: 'h2hExportBtn' // Export button element ID
+    exportBtnId: 'h2hExportBtn', // Export button element ID
+    shareBtnId: 'h2hShareBtn'    // Share button element ID
   },
 
   // State
@@ -364,16 +365,15 @@ const H2HComparison = {
    */
   updateExportButtonState() {
     const exportBtn = document.getElementById(this.config.exportBtnId);
-    if (!exportBtn) return;
+    const shareBtn = document.getElementById(this.config.shareBtnId);
 
     const playerA = this.players?.[this.selectedPlayerA];
     const playerB = this.players?.[this.selectedPlayerB];
 
-    if (playerA?.id && playerB?.id) {
-      exportBtn.disabled = false;
-    } else {
-      exportBtn.disabled = true;
-    }
+    const enabled = Boolean(playerA?.id && playerB?.id);
+
+    if (exportBtn) exportBtn.disabled = !enabled;
+    if (shareBtn) shareBtn.disabled = !enabled;
   },
 
   /**
@@ -513,6 +513,37 @@ const H2HComparison = {
     if (typeof ExportModal !== 'undefined') {
       ExportModal.export(this.config.exportComponent, [playerA.id, playerB.id], context);
     }
+  },
+
+  /**
+   * Build share text for the current comparison
+   * @returns {string|null} Share text
+   */
+  buildShareText() {
+    const playerA = this.players[this.selectedPlayerA];
+    const playerB = this.players[this.selectedPlayerB];
+    if (!playerA?.name || !playerB?.name) return null;
+
+    const categoryLabels = {
+      anthropometrics: 'Anthropometrics',
+      combinePerformance: 'Combine Performance',
+      shooting: 'Shooting'
+    };
+
+    const categoryLabel = categoryLabels[this.currentCategory] || 'Anthropometrics';
+    return `DraftGuru: ${playerA.name} vs ${playerB.name} — ${categoryLabel} matchup`;
+  },
+
+  /**
+   * Share the current comparison via X/Twitter
+   */
+  share() {
+    if (typeof TweetShare === 'undefined') return;
+
+    const text = this.buildShareText();
+    if (!text) return;
+
+    TweetShare.open({ text, url: window.location.href });
   }
 };
 

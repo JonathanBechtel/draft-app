@@ -395,6 +395,13 @@ function exportVSArena() {
 }
 
 /**
+ * Share VS Arena comparison via X/Twitter
+ */
+function shareVSArena() {
+  H2HComparison.share();
+}
+
+/**
  * ============================================================================
  * APPLICATION INITIALIZATION
  * Initialize all modules when DOM is ready
@@ -409,7 +416,8 @@ document.addEventListener('DOMContentLoaded', () => {
     defaultPlayerA: 'cooper-flagg',
     defaultPlayerB: 'ace-bailey',
     exportComponent: 'vs_arena',
-    exportBtnId: 'vsArenaExportBtn'
+    exportBtnId: 'vsArenaExportBtn',
+    shareBtnId: 'vsArenaShareBtn'
   });
 
   FeedModule.init();

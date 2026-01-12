@@ -265,6 +265,14 @@
   height: 18px;
 }
 
+.share-btn {
+  color: #0f172a;
+}
+
+.share-btn:hover {
+  color: #0b1120;
+}
+
 /* Tooltip for export button */
 .export-btn[title] {
   position: relative;
