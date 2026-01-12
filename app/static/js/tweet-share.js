@@ -1,60 +1,79 @@
 /**
- * Tweet Share - Generates a share card and opens a tweet intent
+ * Tweet Share - Generates a share card and opens an X/Twitter intent
  */
 const TweetShare = {
   /**
-   * Generate a tweet for a component
-   * @param {string} component - Component type (vs_arena, performance, h2h, comps)
-   * @param {number[]} playerIds - Array of player IDs
-   * @param {Object} context - Export context options
+   * Format comparison group for display.
+   * @param {string} group
+   * @returns {string}
    */
-  async share(component, playerIds, context = {}) {
-    try {
-      const response = await fetch('/api/export/image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          component,
-          player_ids: playerIds,
-          context: {
-            comparison_group: context.comparisonGroup || 'current_draft',
-            same_position: context.samePosition || false,
-            metric_group: context.metricGroup || 'anthropometrics',
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      const text = this.buildTweetText(data.title);
-      const url = data.url;
-      this.openTweetIntent(text, url);
-    } catch (err) {
-      console.error('Tweet share failed:', err);
-      alert('Failed to generate tweet: ' + (err.message || 'Unknown error'));
-    }
+  formatComparisonGroup(group) {
+    const map = {
+      current_draft: 'Current Draft Class',
+      all_time_draft: 'Historical Prospects',
+      current_nba: 'Active NBA Players',
+      all_time_nba: 'All-Time NBA'
+    };
+    return map[group] || 'Draft Prospects';
   },
 
   /**
-   * Build tweet text from export title
-   * @param {string} title - Share card title
+   * Format metric group for display.
+   * @param {string} metric
+   * @returns {string}
    */
-  buildTweetText(title) {
-    const pageUrl = window.location.href;
-    if (title) {
-      return `${title} — DraftGuru\n${pageUrl}`;
-    }
-    return `DraftGuru\n${pageUrl}`;
+  formatMetricGroup(metric) {
+    const map = {
+      anthropometrics: 'Anthropometrics',
+      combine: 'Combine Performance',
+      shooting: 'Shooting',
+      advanced: 'Advanced'
+    };
+    return map[metric] || 'Metrics';
   },
 
   /**
-   * Open the Twitter intent window
-   * @param {string} text - Tweet text
-   * @param {string} url - URL to include in the tweet
+   * Format position filter for display.
+   * @param {boolean} samePosition
+   * @returns {string}
+   */
+  formatPositionScope(samePosition) {
+    return samePosition ? 'Same Position' : 'All Positions';
+  },
+
+  /**
+   * Build context summary for tweet text.
+   * @param {Object} context
+   * @returns {string}
+   */
+  formatContextSummary(context) {
+    if (!context) return '';
+    const group = this.formatComparisonGroup(context.comparisonGroup);
+    const metric = this.formatMetricGroup(context.metricGroup);
+    const position = this.formatPositionScope(context.samePosition);
+    return `${group} • ${metric} • ${position}`;
+  },
+
+  /**
+   * Build tweet text from a headline and optional page URL.
+   * @param {Object} options
+   * @param {string} [options.text]
+   * @param {string} [options.pageUrl]
+   * @param {boolean} [options.includePageUrlInText]
+   * @returns {string}
+   */
+  buildTweetText({ text, pageUrl, includePageUrlInText }) {
+    const headline = (text || 'DraftGuru').trim();
+    if (includePageUrlInText && pageUrl) {
+      return `${headline}\n${pageUrl}`;
+    }
+    return headline;
+  },
+
+  /**
+   * Open the X/Twitter intent window.
+   * @param {string} text - Tweet text.
+   * @param {string} url - URL to include in the tweet.
    */
   openTweetIntent(text, url) {
     const intentUrl = new URL('https://twitter.com/intent/tweet');
@@ -65,7 +84,57 @@ const TweetShare = {
     if (!opened) {
       window.location.href = intentUrl.toString();
     }
-  }
+  },
+
+  /**
+   * Generate an export image and open a tweet intent with it.
+   * Falls back to sharing the page URL if export fails.
+   * @param {Object} options
+   * @param {string} options.component
+   * @param {number[]} options.playerIds
+   * @param {Object} [options.context]
+   * @param {string} [options.text]
+   * @param {string} [options.pageUrl]
+   */
+  async share({ component, playerIds, context, text, pageUrl }) {
+    const pageLink = pageUrl || window.location.href;
+    try {
+      const response = await fetch('/api/export/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          component,
+          player_ids: playerIds,
+          context: {
+            comparison_group: context?.comparisonGroup || 'current_draft',
+            same_position: context?.samePosition || false,
+            metric_group: context?.metricGroup || 'anthropometrics'
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const tweetText = this.buildTweetText({
+        text,
+        pageUrl: pageLink,
+        includePageUrlInText: true
+      });
+      this.openTweetIntent(tweetText, data.url);
+    } catch (err) {
+      console.error('Tweet share failed:', err);
+      const tweetText = this.buildTweetText({
+        text,
+        pageUrl: pageLink,
+        includePageUrlInText: false
+      });
+      this.openTweetIntent(tweetText, pageLink);
+    }
+  },
 };
 
 // Export for global access

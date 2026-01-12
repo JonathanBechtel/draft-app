@@ -526,6 +526,7 @@ const H2HComparison = {
     const playerA = this.players[this.selectedPlayerA];
     const playerB = this.players[this.selectedPlayerB];
     if (!playerA?.id || !playerB?.id) return;
+    if (typeof TweetShare === 'undefined') return;
 
     const categoryMap = {
       anthropometrics: 'anthropometrics',
@@ -539,9 +540,19 @@ const H2HComparison = {
       metricGroup: categoryMap[this.currentCategory] || 'anthropometrics'
     };
 
-    if (typeof TweetShare !== 'undefined') {
-      TweetShare.share(this.config.exportComponent, [playerA.id, playerB.id], context);
-    }
+    const nameA = playerA.name || this.resolveName(this.selectedPlayerA);
+    const nameB = playerB.name || this.resolveName(this.selectedPlayerB);
+    const headline = `DraftGuru: ${nameA} vs ${nameB}`;
+    const summary = TweetShare.formatContextSummary(context);
+    const text = summary ? `${headline} • ${summary}` : headline;
+
+    TweetShare.share({
+      component: this.config.exportComponent,
+      playerIds: [playerA.id, playerB.id],
+      context,
+      text,
+      pageUrl: window.location.href
+    });
   }
 };
 

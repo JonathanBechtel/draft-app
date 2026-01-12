@@ -1196,7 +1196,17 @@ function sharePerformanceTweet() {
   if (!player?.id || typeof TweetShare === 'undefined') return;
 
   const context = getPerformanceContext();
-  TweetShare.share('performance', [player.id], context);
+  const summary = TweetShare.formatContextSummary(context);
+  const headline = `DraftGuru: ${player.name} — Performance`;
+  const text = summary ? `${headline} • ${summary}` : headline;
+
+  TweetShare.share({
+    component: 'performance',
+    playerIds: [player.id],
+    context,
+    text,
+    pageUrl: window.location.href
+  });
 }
 
 /**
@@ -1259,7 +1269,17 @@ function shareCompsTweet() {
   if (!player?.id || typeof TweetShare === 'undefined') return;
 
   const context = getCompsContext();
-  TweetShare.share('comps', [player.id], context);
+  const summary = TweetShare.formatContextSummary(context);
+  const headline = `DraftGuru: ${player.name} — Comparisons`;
+  const text = summary ? `${headline} • ${summary}` : headline;
+
+  TweetShare.share({
+    component: 'comps',
+    playerIds: [player.id],
+    context,
+    text,
+    pageUrl: window.location.href
+  });
 }
 
 /**
