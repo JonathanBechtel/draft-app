@@ -15,7 +15,8 @@ const H2HComparison = {
     defaultPlayerA: null,       // Default slug when not fixed (vs-arena mode)
     defaultPlayerB: null,       // Default Player B slug
     exportComponent: 'h2h',     // 'vs_arena' or 'h2h'
-    exportBtnId: 'h2hExportBtn' // Export button element ID
+    exportBtnId: 'h2hExportBtn', // Export button element ID
+    tweetBtnId: null // Tweet button element ID
   },
 
   // State
@@ -364,15 +365,20 @@ const H2HComparison = {
    */
   updateExportButtonState() {
     const exportBtn = document.getElementById(this.config.exportBtnId);
-    if (!exportBtn) return;
+    const tweetBtn = this.config.tweetBtnId
+      ? document.getElementById(this.config.tweetBtnId)
+      : null;
+    if (!exportBtn && !tweetBtn) return;
 
     const playerA = this.players?.[this.selectedPlayerA];
     const playerB = this.players?.[this.selectedPlayerB];
 
-    if (playerA?.id && playerB?.id) {
-      exportBtn.disabled = false;
-    } else {
-      exportBtn.disabled = true;
+    const enabled = Boolean(playerA?.id && playerB?.id);
+    if (exportBtn) {
+      exportBtn.disabled = !enabled;
+    }
+    if (tweetBtn) {
+      tweetBtn.disabled = !enabled;
     }
   },
 
@@ -490,29 +496,61 @@ const H2HComparison = {
     winnerTarget.innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
   },
 
-  /**
-   * Export the current comparison as an image
-   */
-  export() {
-    const playerA = this.players[this.selectedPlayerA];
-    const playerB = this.players[this.selectedPlayerB];
-    if (!playerA?.id || !playerB?.id) return;
-
+  buildContext() {
     const categoryMap = {
       anthropometrics: 'anthropometrics',
       combinePerformance: 'combine',
       shooting: 'shooting'
     };
 
-    const context = {
+    return {
       comparisonGroup: 'current_draft',
       samePosition: false,
       metricGroup: categoryMap[this.currentCategory] || 'anthropometrics'
     };
+  },
+
+  getSelectedPlayers() {
+    return {
+      playerA: this.players[this.selectedPlayerA],
+      playerB: this.players[this.selectedPlayerB]
+    };
+  },
+
+  /**
+   * Export the current comparison as an image
+   */
+  export() {
+    const { playerA, playerB } = this.getSelectedPlayers();
+    if (!playerA?.id || !playerB?.id) return;
+
+    const context = this.buildContext();
 
     if (typeof ExportModal !== 'undefined') {
       ExportModal.export(this.config.exportComponent, [playerA.id, playerB.id], context);
     }
+  },
+
+  /**
+   * Share the current comparison as a tweet
+   */
+  shareTweet() {
+    const { playerA, playerB } = this.getSelectedPlayers();
+    if (!playerA?.id || !playerB?.id) return;
+    if (typeof TweetShare === 'undefined') return;
+
+    const context = this.buildContext();
+    const summary = TweetShare.formatContextSummary(context);
+    const headline = `${playerA.name} vs ${playerB.name}`;
+    const text = summary ? `${headline} • ${summary}` : headline;
+
+    TweetShare.share({
+      component: this.config.exportComponent,
+      playerIds: [playerA.id, playerB.id],
+      context,
+      text,
+      pageUrl: window.location.href
+    });
   }
 };
 

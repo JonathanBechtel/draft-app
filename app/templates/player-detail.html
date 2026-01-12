@@ -187,13 +187,21 @@
         </svg>
         Performance Metrics
       </h2>
-      <button class="export-btn" title="Save as Image" onclick="exportPerformance()">
-        <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-      </button>
+      <div class="section-actions">
+        <button class="export-btn" title="Save as Image" onclick="exportPerformance()">
+          <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+        <button class="tweet-btn" title="Share on X" onclick="tweetPerformance()">
+          <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+            <line x1="5" y1="5" x2="19" y2="19"></line>
+            <line x1="19" y1="5" x2="5" y2="19"></line>
+          </svg>
+        </button>
+      </div>
     </div>
     <p class="section-subtitle">Percentile rankings vs current draft class</p>
 
@@ -249,13 +257,21 @@
         </svg>
         Head-to-Head Comparison
       </h2>
-      <button class="export-btn" title="Save as Image" onclick="exportH2H()" id="h2hExportBtn" disabled>
-        <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-      </button>
+      <div class="section-actions">
+        <button class="export-btn" title="Save as Image" onclick="exportH2H()" id="h2hExportBtn" disabled>
+          <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+        <button class="tweet-btn" title="Share on X" onclick="tweetH2H()" id="h2hTweetBtn" disabled>
+          <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+            <line x1="5" y1="5" x2="19" y2="19"></line>
+            <line x1="19" y1="5" x2="5" y2="19"></line>
+          </svg>
+        </button>
+      </div>
     </div>
     <p class="section-subtitle">Compare {{ player.name }} against other prospects</p>
 
@@ -351,13 +367,21 @@
       <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
         Player Comparisons
       </h2>
-      <button class="export-btn" title="Save as Image" onclick="exportComps()">
-        <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-      </button>
+      <div class="section-actions">
+        <button class="export-btn" title="Save as Image" onclick="exportComps()">
+          <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+        <button class="tweet-btn" title="Share on X" onclick="tweetComps()">
+          <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+            <line x1="5" y1="5" x2="19" y2="19"></line>
+            <line x1="19" y1="5" x2="5" y2="19"></line>
+          </svg>
+        </button>
+      </div>
     </div>
     <p class="section-subtitle">Similar players based on physical and statistical profiles</p>
 

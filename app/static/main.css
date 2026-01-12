@@ -102,6 +102,12 @@ body {
   gap: 1rem;
 }
 
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .section-header-row .section-header {
   margin-bottom: 0;
 }
