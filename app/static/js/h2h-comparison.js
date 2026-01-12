@@ -15,7 +15,8 @@ const H2HComparison = {
     defaultPlayerA: null,       // Default slug when not fixed (vs-arena mode)
     defaultPlayerB: null,       // Default Player B slug
     exportComponent: 'h2h',     // 'vs_arena' or 'h2h'
-    exportBtnId: 'h2hExportBtn' // Export button element ID
+    exportBtnId: 'h2hExportBtn', // Export button element ID
+    tweetBtnId: null            // Tweet button element ID
   },
 
   // State
@@ -364,15 +365,19 @@ const H2HComparison = {
    */
   updateExportButtonState() {
     const exportBtn = document.getElementById(this.config.exportBtnId);
-    if (!exportBtn) return;
+    const tweetBtn = this.config.tweetBtnId
+      ? document.getElementById(this.config.tweetBtnId)
+      : null;
 
     const playerA = this.players?.[this.selectedPlayerA];
     const playerB = this.players?.[this.selectedPlayerB];
 
     if (playerA?.id && playerB?.id) {
-      exportBtn.disabled = false;
+      if (exportBtn) exportBtn.disabled = false;
+      if (tweetBtn) tweetBtn.disabled = false;
     } else {
-      exportBtn.disabled = true;
+      if (exportBtn) exportBtn.disabled = true;
+      if (tweetBtn) tweetBtn.disabled = true;
     }
   },
 
@@ -512,6 +517,30 @@ const H2HComparison = {
 
     if (typeof ExportModal !== 'undefined') {
       ExportModal.export(this.config.exportComponent, [playerA.id, playerB.id], context);
+    }
+  },
+  /**
+   * Share the current comparison to X
+   */
+  shareTweet() {
+    const playerA = this.players[this.selectedPlayerA];
+    const playerB = this.players[this.selectedPlayerB];
+    if (!playerA?.id || !playerB?.id) return;
+
+    const categoryMap = {
+      anthropometrics: 'anthropometrics',
+      combinePerformance: 'combine',
+      shooting: 'shooting'
+    };
+
+    const context = {
+      comparisonGroup: 'current_draft',
+      samePosition: false,
+      metricGroup: categoryMap[this.currentCategory] || 'anthropometrics'
+    };
+
+    if (typeof TweetShare !== 'undefined') {
+      TweetShare.share(this.config.exportComponent, [playerA.id, playerB.id], context);
     }
   }
 };

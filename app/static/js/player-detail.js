@@ -1189,10 +1189,28 @@ function exportPerformance() {
 }
 
 /**
+ * Share performance metrics to X
+ */
+function sharePerformanceTweet() {
+  const player = window.PLAYER_DATA;
+  if (!player?.id || typeof TweetShare === 'undefined') return;
+
+  const context = getPerformanceContext();
+  TweetShare.share('performance', [player.id], context);
+}
+
+/**
  * Export head-to-head comparison share card
  */
 function exportH2H() {
   H2HComparison.export();
+}
+
+/**
+ * Share head-to-head comparison to X
+ */
+function shareH2HTweet() {
+  H2HComparison.shareTweet();
 }
 
 /**
@@ -1234,6 +1252,17 @@ function exportComps() {
 }
 
 /**
+ * Share player comparisons to X
+ */
+function shareCompsTweet() {
+  const player = window.PLAYER_DATA;
+  if (!player?.id || typeof TweetShare === 'undefined') return;
+
+  const context = getCompsContext();
+  TweetShare.share('comps', [player.id], context);
+}
+
+/**
  * ============================================================================
  * APPLICATION INITIALIZATION
  * Initialize all modules when DOM is ready
@@ -1253,7 +1282,8 @@ document.addEventListener('DOMContentLoaded', () => {
       playerAId: window.PLAYER_DATA.id,
       playerAPhoto: window.PLAYER_DATA.photo_url,
       exportComponent: 'h2h',
-      exportBtnId: 'h2hExportBtn'
+      exportBtnId: 'h2hExportBtn',
+      tweetBtnId: 'h2hTweetBtn'
     });
   }
 
