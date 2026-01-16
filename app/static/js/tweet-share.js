@@ -77,7 +77,14 @@ const TweetShare = {
   buildShareUrl({ shareUrl, title, pageUrl }) {
     if (!shareUrl) return pageUrl;
 
-    return new URL(shareUrl, window.location.origin).toString();
+    const url = new URL(shareUrl, window.location.origin);
+    // Add original page path as fallback redirect (in case S3 metadata is missing)
+    const page = new URL(pageUrl, window.location.origin);
+    const nextPath = page.pathname + page.search;
+    if (nextPath && nextPath !== '/') {
+      url.searchParams.set('next', nextPath);
+    }
+    return url.toString();
   },
 
   /**
