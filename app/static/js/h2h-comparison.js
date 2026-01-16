@@ -15,7 +15,8 @@ const H2HComparison = {
     defaultPlayerA: null,       // Default slug when not fixed (vs-arena mode)
     defaultPlayerB: null,       // Default Player B slug
     exportComponent: 'h2h',     // 'vs_arena' or 'h2h'
-    exportBtnId: 'h2hExportBtn' // Export button element ID
+    exportBtnId: 'h2hExportBtn', // Export button element ID
+    tweetBtnId: null            // Tweet button element ID
   },
 
   // State
@@ -364,15 +365,19 @@ const H2HComparison = {
    */
   updateExportButtonState() {
     const exportBtn = document.getElementById(this.config.exportBtnId);
-    if (!exportBtn) return;
+    const tweetBtn = this.config.tweetBtnId
+      ? document.getElementById(this.config.tweetBtnId)
+      : null;
 
     const playerA = this.players?.[this.selectedPlayerA];
     const playerB = this.players?.[this.selectedPlayerB];
 
     if (playerA?.id && playerB?.id) {
-      exportBtn.disabled = false;
+      if (exportBtn) exportBtn.disabled = false;
+      if (tweetBtn) tweetBtn.disabled = false;
     } else {
-      exportBtn.disabled = true;
+      if (exportBtn) exportBtn.disabled = true;
+      if (tweetBtn) tweetBtn.disabled = true;
     }
   },
 
@@ -513,6 +518,41 @@ const H2HComparison = {
     if (typeof ExportModal !== 'undefined') {
       ExportModal.export(this.config.exportComponent, [playerA.id, playerB.id], context);
     }
+  },
+  /**
+   * Share the current comparison to X
+   */
+  shareTweet() {
+    const playerA = this.players[this.selectedPlayerA];
+    const playerB = this.players[this.selectedPlayerB];
+    if (!playerA?.id || !playerB?.id) return;
+    if (typeof TweetShare === 'undefined') return;
+
+    const categoryMap = {
+      anthropometrics: 'anthropometrics',
+      combinePerformance: 'combine',
+      shooting: 'shooting'
+    };
+
+    const context = {
+      comparisonGroup: 'current_draft',
+      samePosition: false,
+      metricGroup: categoryMap[this.currentCategory] || 'anthropometrics'
+    };
+
+    const nameA = playerA.name || this.resolveName(this.selectedPlayerA);
+    const nameB = playerB.name || this.resolveName(this.selectedPlayerB);
+    const headline = `DraftGuru: ${nameA} vs ${nameB}`;
+    const summary = TweetShare.formatContextSummary(context);
+    const text = summary ? `${headline} • ${summary}` : headline;
+
+    TweetShare.share({
+      component: this.config.exportComponent,
+      playerIds: [playerA.id, playerB.id],
+      context,
+      text,
+      pageUrl: window.location.href
+    });
   }
 };
 

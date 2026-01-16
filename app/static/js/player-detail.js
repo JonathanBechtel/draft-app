@@ -1189,10 +1189,38 @@ function exportPerformance() {
 }
 
 /**
+ * Share performance metrics to X
+ */
+function sharePerformanceTweet() {
+  const player = window.PLAYER_DATA;
+  if (!player?.id || typeof TweetShare === 'undefined') return;
+
+  const context = getPerformanceContext();
+  const summary = TweetShare.formatContextSummary(context);
+  const headline = `DraftGuru: ${player.name} — Performance`;
+  const text = summary ? `${headline} • ${summary}` : headline;
+
+  TweetShare.share({
+    component: 'performance',
+    playerIds: [player.id],
+    context,
+    text,
+    pageUrl: window.location.href
+  });
+}
+
+/**
  * Export head-to-head comparison share card
  */
 function exportH2H() {
   H2HComparison.export();
+}
+
+/**
+ * Share head-to-head comparison to X
+ */
+function shareH2HTweet() {
+  H2HComparison.shareTweet();
 }
 
 /**
@@ -1234,6 +1262,27 @@ function exportComps() {
 }
 
 /**
+ * Share player comparisons to X
+ */
+function shareCompsTweet() {
+  const player = window.PLAYER_DATA;
+  if (!player?.id || typeof TweetShare === 'undefined') return;
+
+  const context = getCompsContext();
+  const summary = TweetShare.formatContextSummary(context);
+  const headline = `DraftGuru: ${player.name} — Comparisons`;
+  const text = summary ? `${headline} • ${summary}` : headline;
+
+  TweetShare.share({
+    component: 'comps',
+    playerIds: [player.id],
+    context,
+    text,
+    pageUrl: window.location.href
+  });
+}
+
+/**
  * ============================================================================
  * APPLICATION INITIALIZATION
  * Initialize all modules when DOM is ready
@@ -1253,7 +1302,8 @@ document.addEventListener('DOMContentLoaded', () => {
       playerAId: window.PLAYER_DATA.id,
       playerAPhoto: window.PLAYER_DATA.photo_url,
       exportComponent: 'h2h',
-      exportBtnId: 'h2hExportBtn'
+      exportBtnId: 'h2hExportBtn',
+      tweetBtnId: 'h2hTweetBtn'
     });
   }
 

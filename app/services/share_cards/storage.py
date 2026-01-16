@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 _META_TITLE_KEY = "dg_title_b64"
 _META_FILENAME_KEY = "dg_filename_b64"
+_META_REDIRECT_PATH_KEY = "dg_redirect_path_b64"
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,7 @@ class CachedExport:
     url: str
     title: str | None = None
     filename: str | None = None
+    redirect_path: str | None = None
 
 
 def _encode_metadata_value(value: str) -> str:
@@ -68,8 +70,16 @@ class ExportStorage:
             metadata = result.get("Metadata", {}) if isinstance(result, dict) else {}
             title = _decode_metadata_value(metadata.get(_META_TITLE_KEY, ""))
             filename = _decode_metadata_value(metadata.get(_META_FILENAME_KEY, ""))
+            redirect_path = _decode_metadata_value(
+                metadata.get(_META_REDIRECT_PATH_KEY, "")
+            )
             logger.debug(f"Cache hit for {cache_key}")
-            return CachedExport(url=url, title=title, filename=filename)
+            return CachedExport(
+                url=url,
+                title=title,
+                filename=filename,
+                redirect_path=redirect_path,
+            )
         except ClientError as e:
             if e.response["Error"]["Code"] == "404":
                 logger.debug(f"Cache miss for {cache_key}")
@@ -78,7 +88,13 @@ class ExportStorage:
             return None
 
     def upload(
-        self, cache_key: str, png_bytes: bytes, *, title: str, filename: str
+        self,
+        cache_key: str,
+        png_bytes: bytes,
+        *,
+        title: str,
+        filename: str,
+        redirect_path: str | None = None,
     ) -> str:
         """Upload PNG to storage.
 
@@ -87,18 +103,23 @@ class ExportStorage:
             png_bytes: PNG image bytes
             title: Human-readable display title for the export
             filename: Download filename for the export
+            redirect_path: Optional same-origin path for share-link redirects
 
         Returns:
             Public URL for the uploaded image
         """
+        metadata: dict[str, str] = {
+            _META_TITLE_KEY: _encode_metadata_value(title),
+            _META_FILENAME_KEY: _encode_metadata_value(filename),
+        }
+        if redirect_path:
+            metadata[_META_REDIRECT_PATH_KEY] = _encode_metadata_value(redirect_path)
+
         return self._s3.upload(
             key=cache_key,
             data=png_bytes,
             content_type="image/png",
-            metadata={
-                _META_TITLE_KEY: _encode_metadata_value(title),
-                _META_FILENAME_KEY: _encode_metadata_value(filename),
-            },
+            metadata=metadata,
         )
 
     def _check_local_cache(self, cache_key: str) -> CachedExport | None:
@@ -114,6 +135,7 @@ class ExportStorage:
         if local_path.exists():
             title: str | None = None
             filename: str | None = None
+            redirect_path: str | None = None
             meta_path = Path(f"{local_path}.json")
             if meta_path.exists():
                 try:
@@ -122,11 +144,17 @@ class ExportStorage:
                     if isinstance(meta, dict):
                         raw_title = meta.get(_META_TITLE_KEY)
                         raw_filename = meta.get(_META_FILENAME_KEY)
+                        raw_redirect_path = meta.get(_META_REDIRECT_PATH_KEY)
                         if isinstance(raw_title, str):
                             title = _decode_metadata_value(raw_title) or raw_title
                         if isinstance(raw_filename, str):
                             filename = (
                                 _decode_metadata_value(raw_filename) or raw_filename
+                            )
+                        if isinstance(raw_redirect_path, str):
+                            redirect_path = (
+                                _decode_metadata_value(raw_redirect_path)
+                                or raw_redirect_path
                             )
                 except Exception as e:  # noqa: BLE001
                     logger.warning(
@@ -138,6 +166,7 @@ class ExportStorage:
                 url=f"/static/img/{cache_key}",
                 title=title,
                 filename=filename,
+                redirect_path=redirect_path,
             )
         logger.debug(f"Local cache miss for {cache_key}")
         return None

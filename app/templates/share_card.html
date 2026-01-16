@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }} · DraftGuru</title>
+
+  <meta name="robots" content="noindex,nofollow">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="DraftGuru">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:url" content="{{ request.url }}">
+  {% if image_url %}
+  <meta property="og:image" content="{{ image_url }}">
+  {% endif %}
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title }}">
+  {% if image_url %}
+  <meta name="twitter:image" content="{{ image_url }}">
+  <meta name="twitter:image:alt" content="{{ title }}">
+  {% endif %}
+
+  <link rel="canonical" href="{{ next_url }}">
+
+  <script>
+    // Let social crawlers read meta tags, then bounce humans to the real page.
+    (function () {
+      function sanitizeNext(nextPath) {
+        if (!nextPath) return null;
+        if (nextPath.length > 2048) return null;
+        if (!nextPath.startsWith('/')) return null;
+        if (nextPath.startsWith('//')) return null;
+        if (nextPath.includes('://')) return null;
+        if (nextPath.includes('\n') || nextPath.includes('\r') || nextPath.includes('\t')) return null;
+        return nextPath;
+      }
+
+      const fallback = {{ next_url|tojson }};
+      const hash = window.location.hash.replace(/^#/, '');
+      const hashParams = new URLSearchParams(hash);
+      const hashNext = sanitizeNext(hashParams.get('next'));
+      const destination = hashNext ? (window.location.origin + hashNext) : fallback;
+
+      window.setTimeout(function () {
+        window.location.replace(destination);
+      }, 250);
+    })();
+  </script>
+
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <p>Redirecting…</p>
+  <p><a href="{{ next_url }}">Open on DraftGuru</a></p>
+</body>
+</html>

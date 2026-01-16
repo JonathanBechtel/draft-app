@@ -265,6 +265,32 @@
   height: 18px;
 }
 
+.export-btn--tweet {
+  border-color: rgba(29, 155, 240, 0.25);
+  color: #1d9bf0;
+}
+
+.export-btn--tweet:hover {
+  background: rgba(29, 155, 240, 0.08);
+  border-color: rgba(29, 155, 240, 0.4);
+  color: #0f172a;
+}
+
+.export-btn--tweet:active {
+  background: rgba(29, 155, 240, 0.15);
+}
+
+.export-btn--tweet:disabled {
+  color: #64748b;
+  border-color: #e2e8f0;
+}
+
+.export-btn--tweet:disabled:hover {
+  background: transparent;
+  color: #64748b;
+  border-color: #e2e8f0;
+}
+
 /* Tooltip for export button */
 .export-btn[title] {
   position: relative;
