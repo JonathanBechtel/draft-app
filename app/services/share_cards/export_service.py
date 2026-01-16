@@ -3,6 +3,7 @@
 import logging
 import time
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +56,8 @@ class ImageExportService:
         component: ComponentType,
         player_ids: list[int],
         context: dict[str, Any],
+        *,
+        redirect_path: str | None = None,
     ) -> dict[str, Any]:
         """Generate a shareable PNG image for the specified component.
 
@@ -62,6 +65,7 @@ class ImageExportService:
             component: Component type (vs_arena, performance, h2h, comps)
             player_ids: List of player IDs involved
             context: Export context (comparison_group, same_position, metric_group)
+            redirect_path: Optional same-origin path used for share-link redirects
 
         Returns:
             Dict with url, title, filename, cached fields
@@ -77,6 +81,7 @@ class ImageExportService:
         # Check cache first
         cached = self.storage.check_cache(cache_key)
         if cached:
+            export_id = Path(cache_key).stem
             if cached.title and cached.filename:
                 logger.info(
                     f"Export cache hit: component={component}, key={cache_key}, "
@@ -84,6 +89,7 @@ class ImageExportService:
                 )
 
                 return {
+                    "export_id": export_id,
                     "url": cached.url,
                     "title": cached.title,
                     "filename": cached.filename,
@@ -100,6 +106,7 @@ class ImageExportService:
             )
 
             return {
+                "export_id": export_id,
                 "url": cached.url,
                 "title": generate_title(component, player_names),
                 "filename": generate_filename(component, player_names),
@@ -107,6 +114,7 @@ class ImageExportService:
             }
 
         # Cache miss - generate image
+        export_id = Path(cache_key).stem
         model_start = time.perf_counter()
         model = await self._build_model(component, player_ids, context)
         model_duration = time.perf_counter() - model_start
@@ -123,7 +131,13 @@ class ImageExportService:
         player_names = self._extract_player_names(model)
         title = generate_title(component, player_names)
         filename = generate_filename(component, player_names)
-        url = self.storage.upload(cache_key, png_bytes, title=title, filename=filename)
+        url = self.storage.upload(
+            cache_key,
+            png_bytes,
+            title=title,
+            filename=filename,
+            redirect_path=redirect_path,
+        )
         upload_duration = time.perf_counter() - upload_start
 
         total_duration = time.perf_counter() - start_time
@@ -137,6 +151,7 @@ class ImageExportService:
         )
 
         return {
+            "export_id": export_id,
             "url": url,
             "title": title,
             "filename": filename,

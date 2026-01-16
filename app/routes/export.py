@@ -1,8 +1,9 @@
 """Image export API endpoints for share card generation."""
 
 from typing import Literal, Optional
+from urllib.parse import urljoin
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,27 +31,36 @@ class ExportRequest(BaseModel):
     component: Literal["vs_arena", "performance", "h2h", "comps"]
     player_ids: list[int] = Field(..., min_length=1, max_length=2)
     context: ExportContext = Field(default_factory=ExportContext)
+    redirect_path: Optional[str] = Field(
+        default=None,
+        max_length=2048,
+        description="Optional same-origin path to redirect share links back to (e.g., /players/cooper-flagg).",
+    )
 
 
 class ExportResponse(BaseModel):
     """Response body for image export."""
 
+    export_id: str
     url: str
     title: str
     filename: str
     cached: bool
+    share_url: str
     debug_svg_url: Optional[str] = None  # Dev only
 
 
 @router.post("/image", response_model=ExportResponse, status_code=200)
 async def export_image(
     request: ExportRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_session),
 ) -> ExportResponse:
     """Generate a shareable PNG image for the specified component.
 
     Args:
         request: Export request with component, player_ids, and context
+        http_request: Incoming HTTP request (used to construct absolute share URLs)
         db: Database session
 
     Returns:
@@ -75,12 +85,36 @@ async def export_image(
 
     service = ImageExportService(db)
     try:
+        redirect_path: Optional[str] = None
+        if request.redirect_path:
+            candidate = request.redirect_path.strip()
+            if (
+                candidate.startswith("/")
+                and not candidate.startswith("//")
+                and "://" not in candidate
+                and "\n" not in candidate
+                and "\r" not in candidate
+                and "\t" not in candidate
+            ):
+                redirect_path = candidate
+
         result = await service.export(
             component=request.component,
             player_ids=request.player_ids,
             context=request.context.model_dump(),
+            redirect_path=redirect_path,
         )
-        return ExportResponse(**result)
+        export_id = result.get("export_id")
+        if not isinstance(export_id, str) or not export_id:
+            raise HTTPException(status_code=500, detail="Export missing export_id")
+
+        share_path = f"/share/{request.component}/{export_id}"
+        share_url = urljoin(str(http_request.base_url), share_path.lstrip("/"))
+
+        return ExportResponse(
+            **result,
+            share_url=share_url,
+        )
     except ValueError as e:
         error_msg = str(e)
         if "player_not_found" in error_msg:

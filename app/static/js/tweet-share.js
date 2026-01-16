@@ -55,19 +55,29 @@ const TweetShare = {
   },
 
   /**
-   * Build tweet text from a headline and optional page URL.
+   * Build tweet text from a headline.
    * @param {Object} options
    * @param {string} [options.text]
-   * @param {string} [options.pageUrl]
-   * @param {boolean} [options.includePageUrlInText]
    * @returns {string}
    */
-  buildTweetText({ text, pageUrl, includePageUrlInText }) {
+  buildTweetText({ text }) {
     const headline = (text || 'DraftGuru').trim();
-    if (includePageUrlInText && pageUrl) {
-      return `${headline}\n${pageUrl}`;
-    }
     return headline;
+  },
+
+  /**
+   * Build a share URL that renders a Twitter card image, and redirects humans back
+   * to the original page.
+   * @param {Object} options
+   * @param {string} [options.shareUrl]
+   * @param {string} [options.title]
+   * @param {string} options.pageUrl
+   * @returns {string}
+   */
+  buildShareUrl({ shareUrl, title, pageUrl }) {
+    if (!shareUrl) return pageUrl;
+
+    return new URL(shareUrl, window.location.origin).toString();
   },
 
   /**
@@ -99,6 +109,9 @@ const TweetShare = {
   async share({ component, playerIds, context, text, pageUrl }) {
     const pageLink = pageUrl || window.location.href;
     try {
+      const page = new URL(pageLink, window.location.origin);
+      const redirectPath = `${page.pathname}${page.search}`;
+
       const response = await fetch('/api/export/image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -110,6 +123,7 @@ const TweetShare = {
             same_position: context?.samePosition || false,
             metric_group: context?.metricGroup || 'anthropometrics'
           },
+          redirect_path: redirectPath
         }),
       });
 
@@ -119,19 +133,16 @@ const TweetShare = {
       }
 
       const data = await response.json();
-      const tweetText = this.buildTweetText({
-        text,
-        pageUrl: pageLink,
-        includePageUrlInText: true
+      const tweetText = this.buildTweetText({ text });
+      const shareUrl = this.buildShareUrl({
+        shareUrl: data.share_url,
+        title: data.title,
+        pageUrl: pageLink
       });
-      this.openTweetIntent(tweetText, data.url);
+      this.openTweetIntent(tweetText, shareUrl);
     } catch (err) {
       console.error('Tweet share failed:', err);
-      const tweetText = this.buildTweetText({
-        text,
-        pageUrl: pageLink,
-        includePageUrlInText: false
-      });
+      const tweetText = this.buildTweetText({ text });
       this.openTweetIntent(tweetText, pageLink);
     }
   },
