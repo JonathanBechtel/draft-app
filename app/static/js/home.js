@@ -331,6 +331,7 @@ const HeroModule = {
 const SidebarModule = {
   currentSourceFilter: null,
   currentAuthorFilter: null,
+  currentTagFilter: null,
 
   /**
    * Initialize the sidebar
@@ -339,6 +340,7 @@ const SidebarModule = {
     this.renderSources();
     this.renderAuthors();
     this.setupClearButtons();
+    this.setupTagFilters();
   },
 
   /**
@@ -348,7 +350,7 @@ const SidebarModule = {
     const container = document.getElementById('sourcesList');
     if (!container) return;
 
-    const sources = window.SOURCE_COUNTS || [];
+    const sources = (window.SOURCE_COUNTS || []).slice(0, 8);
 
     if (sources.length === 0) {
       container.innerHTML = '<div class="sources-list--empty">No sources available</div>';
@@ -378,7 +380,7 @@ const SidebarModule = {
     const container = document.getElementById('authorsList');
     if (!container) return;
 
-    const authors = window.AUTHOR_COUNTS || [];
+    const authors = (window.AUTHOR_COUNTS || []).slice(0, 8);
 
     if (authors.length === 0) {
       container.innerHTML = '<div class="sources-list--empty">No authors available</div>';
@@ -421,12 +423,14 @@ const SidebarModule = {
    * @param {string} source - Source name to filter by
    */
   filterBySource(source) {
-    // Clear author filter
+    // Clear author and tag filters
     this.currentAuthorFilter = null;
+    this.currentTagFilter = null;
     this.currentSourceFilter = source;
 
     // Update UI
     this.updateFilterUI('source', source);
+    this.updateTagFilterUI(null);
 
     // Apply filter to grid
     NewsGridModule.applyFilter('source', source);
@@ -437,12 +441,14 @@ const SidebarModule = {
    * @param {string} author - Author name to filter by
    */
   filterByAuthor(author) {
-    // Clear source filter
+    // Clear source and tag filters
     this.currentSourceFilter = null;
+    this.currentTagFilter = null;
     this.currentAuthorFilter = author;
 
     // Update UI
     this.updateFilterUI('author', author);
+    this.updateTagFilterUI(null);
 
     // Apply filter to grid
     NewsGridModule.applyFilter('author', author);
@@ -534,6 +540,62 @@ const SidebarModule = {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  },
+
+  /**
+   * Filter by tag (story type)
+   * @param {string} tag - Tag name to filter by
+   */
+  filterByTag(tag) {
+    // Clear other filters
+    this.currentSourceFilter = null;
+    this.currentAuthorFilter = null;
+    this.currentTagFilter = tag;
+
+    // Update UI
+    this.updateTagFilterUI(tag);
+    this.clearFilterUI(); // Clear sidebar highlights
+
+    // Apply filter
+    NewsGridModule.applyFilter('tag', tag);
+  },
+
+  /**
+   * Clear tag filter
+   */
+  clearTagFilter() {
+    this.currentTagFilter = null;
+    this.updateTagFilterUI(null);
+    NewsGridModule.clearFilter();
+  },
+
+  /**
+   * Update tag filter button UI
+   * @param {string|null} activeTag - Currently active tag or null
+   */
+  updateTagFilterUI(activeTag) {
+    document.querySelectorAll('.story-filter').forEach(btn => {
+      const isActive = (activeTag === null || activeTag === '')
+        ? btn.dataset.tag === ''
+        : btn.dataset.tag === activeTag;
+      btn.classList.toggle('active', isActive);
+    });
+  },
+
+  /**
+   * Setup tag filter button click handlers
+   */
+  setupTagFilters() {
+    document.querySelectorAll('.story-filter').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tag = btn.dataset.tag;
+        if (tag === '') {
+          this.clearTagFilter();
+        } else {
+          this.filterByTag(tag);
+        }
+      });
+    });
   }
 };
 
@@ -572,7 +634,7 @@ const NewsGridModule = {
 
   /**
    * Apply filter to articles
-   * @param {string} type - 'source' or 'author'
+   * @param {string} type - 'source', 'author', or 'tag'
    * @param {string} value - Value to filter by
    */
   applyFilter(type, value) {
@@ -582,6 +644,7 @@ const NewsGridModule = {
     this.filteredItems = this.allItems.filter(item => {
       if (type === 'author') return item.author === value;
       if (type === 'source') return item.source === value;
+      if (type === 'tag') return item.tag === value;
       return true;
     });
 
