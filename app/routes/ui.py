@@ -9,7 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.image_assets_service import get_current_image_url_for_player
 from app.services.image_assets_service import get_current_image_urls_for_players
-from app.services.news_service import get_news_feed
+from app.services.news_service import (
+    get_author_counts,
+    get_hero_article,
+    get_news_feed,
+    get_source_counts,
+)
 from app.services.player_service import get_player_profile_by_slug
 from app.utils.db_async import get_session
 from app.utils.images import get_placeholder_url, get_s3_image_base_url
@@ -108,7 +113,7 @@ async def home(
         )
 
     # Fetch news feed from database (falls back to empty if no items yet)
-    # Fetch more items to enable pagination (10 per page)
+    # Fetch more items to enable pagination (6 per page in new grid layout)
     news_feed = await get_news_feed(db, limit=100)
     feed_items = [
         {
@@ -126,6 +131,26 @@ async def home(
         for item in news_feed.items
     ]
 
+    # Fetch hero article (most recent article with image)
+    hero_article = await get_hero_article(db)
+    hero_article_dict = None
+    if hero_article:
+        hero_article_dict = {
+            "id": hero_article.id,
+            "source": hero_article.source_name,
+            "title": hero_article.title,
+            "summary": hero_article.summary,
+            "url": hero_article.url,
+            "image_url": hero_article.image_url,
+            "author": hero_article.author,
+            "time": hero_article.time,
+            "tag": hero_article.tag,
+        }
+
+    # Fetch source and author counts for sidebar
+    source_counts = await get_source_counts(db, limit=10)
+    author_counts = await get_author_counts(db, limit=10)
+
     # Build mappings for JS image URL generation
     slug_to_id = {slug: info[0] for slug, info in player_id_map.items()}
     id_to_slug = {info[0]: slug for slug, info in player_id_map.items()}
@@ -136,6 +161,9 @@ async def home(
             "request": request,
             "players": players,
             "feed_items": feed_items,
+            "hero_article": hero_article_dict,
+            "source_counts": source_counts,
+            "author_counts": author_counts,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "image_style": style,  # Current image style for JS

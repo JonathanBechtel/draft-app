@@ -145,240 +145,672 @@ const ProspectsModule = {
   }
 };
 
-
 /**
  * ============================================================================
- * FEED MODULE
- * Renders the live draft buzz news feed with enhanced cards and pagination
+ * HERO MODULE
+ * Handles hero article display with image-based mode detection
  * ============================================================================
  */
-const FeedModule = {
-  itemsPerPage: 10,
-  currentPage: 1,
-  totalPages: 1,
+const HeroModule = {
+  article: null,
+  currentMode: 'gradient',
+
+  // Category icons (SVG paths) for gradient fallback
+  categoryIcons: {
+    'Scouting Report': '<path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>',
+    'Big Board': '<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>',
+    'Mock Draft': '<path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>',
+    'Tier Update': '<path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>',
+    'Game Recap': '<path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+    'Film Study': '<path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/>',
+    'Skill Theme': '<path d="M13 10V3L4 14h7v7l9-11h-7z"/>',
+    'Team Fit': '<path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>',
+    'Draft Intel': '<path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>',
+    'Statistical Analysis': '<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>'
+  },
 
   /**
-   * Initialize the feed
+   * Initialize the hero module
    */
   init() {
-    const feedContainer = document.getElementById('feedContainer');
-    if (!feedContainer) return;
+    this.article = window.HERO_ARTICLE;
 
-    // Handle both old format (FEED_ITEMS) and empty state
-    if (!window.FEED_ITEMS || window.FEED_ITEMS.length === 0) {
-      feedContainer.innerHTML = this.renderEmptyState();
+    // If no hero article, hide the section
+    if (!this.article) {
+      const section = document.getElementById('newsHeroSection');
+      if (section) section.style.display = 'none';
       return;
     }
 
-    this.totalPages = Math.ceil(window.FEED_ITEMS.length / this.itemsPerPage);
+    this.detectAndRender();
+  },
+
+  /**
+   * Detect image size and render appropriate mode
+   */
+  async detectAndRender() {
+    const mode = await this.detectDisplayMode();
+    this.currentMode = mode;
+    this.render(mode);
+  },
+
+  /**
+   * Detect display mode based on image dimensions
+   * @returns {Promise<string>} Display mode: 'full', 'split', 'blurred', or 'gradient'
+   */
+  detectDisplayMode() {
+    return new Promise((resolve) => {
+      if (!this.article?.image_url) {
+        resolve('gradient');
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        // 800px+ wide = full hero
+        if (img.naturalWidth >= 800) {
+          resolve('full');
+        }
+        // 400-799px = split layout
+        else if (img.naturalWidth >= 400) {
+          resolve('split');
+        }
+        // <400px = blurred background
+        else {
+          resolve('blurred');
+        }
+      };
+      img.onerror = () => resolve('gradient');
+      img.src = this.article.image_url;
+    });
+  },
+
+  /**
+   * Convert tag name to CSS class
+   * @param {string} tag - Tag name like "Scouting Report"
+   * @returns {string} CSS class like "scouting-report"
+   */
+  getTagClass(tag) {
+    if (!tag) return 'scouting-report';
+    return tag.toLowerCase().replace(/\s+/g, '-');
+  },
+
+  /**
+   * Render the hero section based on mode
+   * @param {string} mode - Display mode
+   */
+  render(mode) {
+    const hero = document.getElementById('heroArticle');
+    const article = this.article;
+    const imageUrl = article.image_url;
+    const tagClass = this.getTagClass(article.tag);
+
+    // Reset classes
+    hero.className = 'news-hero';
+
+    // Add click handler to open article
+    hero.onclick = () => window.open(article.url, '_blank');
+
+    if (mode === 'full' && imageUrl) {
+      // Full wide image - best case
+      hero.innerHTML = `
+        <img class="news-hero__image" src="${imageUrl}" alt="${article.title}" />
+        ${this.renderOverlay(article, tagClass)}
+      `;
+    } else if (mode === 'split' && imageUrl) {
+      // Split layout - text dominant with side image
+      hero.classList.add('news-hero--split');
+      hero.innerHTML = `
+        <div class="news-hero__text-area">
+          <span class="news-hero__tag tag--${tagClass}">${article.tag}</span>
+          <h2 class="news-hero__title">${article.title}</h2>
+          <p class="news-hero__summary">${article.summary || ''}</p>
+          <div class="news-hero__meta">
+            <span class="news-hero__source">${article.source}</span>
+            ${article.author ? `<span class="news-hero__author">by ${article.author}</span>` : ''}
+            <span class="news-hero__time">${article.time}</span>
+          </div>
+        </div>
+        <div class="news-hero__image-area">
+          <img class="news-hero__image" src="${imageUrl}" alt="${article.title}" />
+        </div>
+      `;
+    } else if (mode === 'blurred' && imageUrl) {
+      // Blurred background with contained image
+      hero.classList.add('news-hero--blurred');
+      hero.innerHTML = `
+        <div class="news-hero__background" style="background-image: url('${imageUrl}');"></div>
+        <div class="news-hero__image-container">
+          <img class="news-hero__image" src="${imageUrl}" alt="${article.title}" />
+        </div>
+        ${this.renderOverlay(article, tagClass)}
+      `;
+    } else {
+      // Gradient fallback - no suitable image
+      hero.classList.add('news-hero--gradient', `news-hero--${tagClass}`);
+      const iconPath = this.categoryIcons[article.tag] || this.categoryIcons['Scouting Report'];
+      hero.innerHTML = `
+        <div class="news-hero__pattern"></div>
+        <svg class="news-hero__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          ${iconPath}
+        </svg>
+        <div class="news-hero__spacer"></div>
+        ${this.renderOverlay(article, tagClass)}
+      `;
+    }
+  },
+
+  /**
+   * Render the overlay content (tag, title, summary, meta)
+   * @param {Object} article - Article data
+   * @param {string} tagClass - CSS class for tag
+   * @returns {string} HTML string
+   */
+  renderOverlay(article, tagClass) {
+    return `
+      <div class="news-hero__overlay">
+        <span class="news-hero__tag tag--${tagClass}">${article.tag}</span>
+        <h2 class="news-hero__title">${article.title}</h2>
+        <p class="news-hero__summary">${article.summary || ''}</p>
+        <div class="news-hero__meta">
+          <span class="news-hero__source">${article.source}</span>
+          ${article.author ? `<span class="news-hero__author">by ${article.author}</span>` : ''}
+          <span class="news-hero__time">${article.time}</span>
+        </div>
+      </div>
+    `;
+  }
+};
+
+/**
+ * ============================================================================
+ * SIDEBAR MODULE
+ * Handles sources and authors filtering sidebar
+ * ============================================================================
+ */
+const SidebarModule = {
+  currentSourceFilter: null,
+  currentAuthorFilter: null,
+
+  /**
+   * Initialize the sidebar
+   */
+  init() {
+    this.renderSources();
+    this.renderAuthors();
+    this.setupClearButtons();
+  },
+
+  /**
+   * Render sources list
+   */
+  renderSources() {
+    const container = document.getElementById('sourcesList');
+    if (!container) return;
+
+    const sources = window.SOURCE_COUNTS || [];
+
+    if (sources.length === 0) {
+      container.innerHTML = '<div class="sources-list--empty">No sources available</div>';
+      return;
+    }
+
+    container.innerHTML = sources.map(s => `
+      <div class="source-item" data-source="${this.escapeHtml(s.source_name)}">
+        <span class="source-item__name">${this.escapeHtml(s.source_name)}</span>
+        <span class="source-item__count">${s.count}</span>
+      </div>
+    `).join('');
+
+    // Attach click listeners
+    container.querySelectorAll('.source-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const source = item.dataset.source;
+        this.filterBySource(source);
+      });
+    });
+  },
+
+  /**
+   * Render authors list
+   */
+  renderAuthors() {
+    const container = document.getElementById('authorsList');
+    if (!container) return;
+
+    const authors = window.AUTHOR_COUNTS || [];
+
+    if (authors.length === 0) {
+      container.innerHTML = '<div class="sources-list--empty">No authors available</div>';
+      return;
+    }
+
+    container.innerHTML = authors.map(a => `
+      <div class="source-item" data-author="${this.escapeHtml(a.author)}">
+        <span class="source-item__name">${this.escapeHtml(a.author)}</span>
+        <span class="source-item__count">${a.count}</span>
+      </div>
+    `).join('');
+
+    // Attach click listeners
+    container.querySelectorAll('.source-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const author = item.dataset.author;
+        this.filterByAuthor(author);
+      });
+    });
+  },
+
+  /**
+   * Setup clear filter buttons
+   */
+  setupClearButtons() {
+    const clearSourceBtn = document.getElementById('clearSourceFilter');
+    const clearAuthorBtn = document.getElementById('clearAuthorFilter');
+
+    if (clearSourceBtn) {
+      clearSourceBtn.addEventListener('click', () => this.clearSourceFilter());
+    }
+    if (clearAuthorBtn) {
+      clearAuthorBtn.addEventListener('click', () => this.clearAuthorFilter());
+    }
+  },
+
+  /**
+   * Filter by source
+   * @param {string} source - Source name to filter by
+   */
+  filterBySource(source) {
+    // Clear author filter
+    this.currentAuthorFilter = null;
+    this.currentSourceFilter = source;
+
+    // Update UI
+    this.updateFilterUI('source', source);
+
+    // Apply filter to grid
+    NewsGridModule.applyFilter('source', source);
+  },
+
+  /**
+   * Filter by author
+   * @param {string} author - Author name to filter by
+   */
+  filterByAuthor(author) {
+    // Clear source filter
+    this.currentSourceFilter = null;
+    this.currentAuthorFilter = author;
+
+    // Update UI
+    this.updateFilterUI('author', author);
+
+    // Apply filter to grid
+    NewsGridModule.applyFilter('author', author);
+  },
+
+  /**
+   * Update sidebar UI to reflect current filter
+   * @param {string} type - 'source' or 'author'
+   * @param {string} value - Filter value
+   */
+  updateFilterUI(type, value) {
+    // Clear all active states
+    document.querySelectorAll('.source-item').forEach(item => {
+      item.classList.remove('active');
+    });
+
+    // Set active state on selected item
+    const selector = type === 'source' ? `[data-source="${value}"]` : `[data-author="${value}"]`;
+    const activeItem = document.querySelector(selector);
+    if (activeItem) {
+      activeItem.classList.add('active');
+    }
+
+    // Show/hide clear buttons
+    const clearSourceBtn = document.getElementById('clearSourceFilter');
+    const clearAuthorBtn = document.getElementById('clearAuthorFilter');
+
+    if (clearSourceBtn) {
+      clearSourceBtn.classList.toggle('visible', type === 'source');
+    }
+    if (clearAuthorBtn) {
+      clearAuthorBtn.classList.toggle('visible', type === 'author');
+    }
+
+    // Add filtered class to section
+    const sourcesSection = document.getElementById('sourcesSection');
+    const authorsSection = document.getElementById('authorsSection');
+
+    if (sourcesSection) {
+      sourcesSection.classList.toggle('sidebar-section--filtered', type === 'source');
+    }
+    if (authorsSection) {
+      authorsSection.classList.toggle('sidebar-section--filtered', type === 'author');
+    }
+  },
+
+  /**
+   * Clear source filter
+   */
+  clearSourceFilter() {
+    this.currentSourceFilter = null;
+    this.clearFilterUI();
+    NewsGridModule.clearFilter();
+  },
+
+  /**
+   * Clear author filter
+   */
+  clearAuthorFilter() {
+    this.currentAuthorFilter = null;
+    this.clearFilterUI();
+    NewsGridModule.clearFilter();
+  },
+
+  /**
+   * Clear all filter UI states
+   */
+  clearFilterUI() {
+    document.querySelectorAll('.source-item').forEach(item => {
+      item.classList.remove('active');
+    });
+
+    document.querySelectorAll('.sidebar-section__clear').forEach(btn => {
+      btn.classList.remove('visible');
+    });
+
+    document.querySelectorAll('.sidebar-section').forEach(section => {
+      section.classList.remove('sidebar-section--filtered');
+    });
+  },
+
+  /**
+   * Escape HTML to prevent XSS
+   * @param {string} str - String to escape
+   * @returns {string} Escaped string
+   */
+  escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+};
+
+/**
+ * ============================================================================
+ * NEWS GRID MODULE
+ * Renders the articles grid with pagination and filtering
+ * ============================================================================
+ */
+const NewsGridModule = {
+  itemsPerPage: 6,
+  currentPage: 1,
+  totalPages: 1,
+  allItems: [],
+  filteredItems: [],
+  filterType: null,
+  filterValue: null,
+
+  /**
+   * Initialize the news grid
+   */
+  init() {
+    this.allItems = window.FEED_ITEMS || [];
+    this.filteredItems = [...this.allItems];
+    this.totalPages = Math.ceil(this.filteredItems.length / this.itemsPerPage);
+
+    if (this.allItems.length === 0) {
+      this.renderEmptyState();
+      this.hidePagination();
+      return;
+    }
+
+    this.render();
+    this.setupPaginationEvents();
+  },
+
+  /**
+   * Apply filter to articles
+   * @param {string} type - 'source' or 'author'
+   * @param {string} value - Value to filter by
+   */
+  applyFilter(type, value) {
+    this.filterType = type;
+    this.filterValue = value;
+
+    this.filteredItems = this.allItems.filter(item => {
+      if (type === 'author') return item.author === value;
+      if (type === 'source') return item.source === value;
+      return true;
+    });
+
+    this.currentPage = 1;
+    this.totalPages = Math.ceil(this.filteredItems.length / this.itemsPerPage);
     this.render();
   },
 
   /**
-   * Render feed with pagination
+   * Clear filter
    */
-  render() {
-    const feedContainer = document.getElementById('feedContainer');
-    if (!feedContainer) return;
-
-    const startIndex = (this.currentPage - 1) * this.itemsPerPage;
-    const endIndex = startIndex + this.itemsPerPage;
-    const pageItems = window.FEED_ITEMS.slice(startIndex, endIndex);
-
-    let html = this.renderFeedItems(pageItems);
-
-    // Add pagination if more than one page
-    if (this.totalPages > 1) {
-      html += this.renderPagination();
-    }
-
-    feedContainer.innerHTML = html;
-
-    // Attach event listeners to pagination pills
-    this.attachPaginationListeners();
+  clearFilter() {
+    this.filterType = null;
+    this.filterValue = null;
+    this.filteredItems = [...this.allItems];
+    this.currentPage = 1;
+    this.totalPages = Math.ceil(this.filteredItems.length / this.itemsPerPage);
+    this.render();
   },
 
   /**
-   * Attach click listeners to pagination buttons
+   * Render the current page of articles
    */
-  attachPaginationListeners() {
-    const pills = document.querySelectorAll('.feed-pagination__pill');
-    pills.forEach((pill) => {
-      pill.addEventListener('click', (e) => {
-        const page = parseInt(e.target.dataset.page, 10);
-        if (!isNaN(page) && page !== this.currentPage) {
-          this.goToPage(page);
-        }
+  render() {
+    const grid = document.getElementById('articlesGrid');
+    if (!grid) return;
+
+    if (this.filteredItems.length === 0) {
+      grid.innerHTML = '<div class="articles-grid--empty">No articles match your filter</div>';
+      this.hidePagination();
+      return;
+    }
+
+    const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+    const endIndex = startIndex + this.itemsPerPage;
+    const pageItems = this.filteredItems.slice(startIndex, endIndex);
+
+    grid.innerHTML = pageItems.map(item => this.renderArticleCard(item)).join('');
+    this.renderPagination();
+  },
+
+  /**
+   * Render a single article card
+   * @param {Object} item - Article data
+   * @returns {string} HTML string
+   */
+  renderArticleCard(item) {
+    const tagClass = this.getTagClass(item.tag);
+    const hasImage = item.image_url && item.image_url.trim() !== '';
+
+    return `
+      <article class="article-card" onclick="window.open('${this.escapeHtml(item.url)}', '_blank')">
+        <div class="article-card__image-wrapper">
+          ${hasImage
+            ? `<img src="${this.escapeHtml(item.image_url)}" class="article-card__image" alt="" loading="lazy" />`
+            : `<div class="article-card__image-placeholder">DG</div>`
+          }
+          <span class="article-card__tag tag--${tagClass}">${this.escapeHtml(item.tag)}</span>
+        </div>
+        <div class="article-card__content">
+          <h3 class="article-card__title">${this.escapeHtml(item.title)}</h3>
+          ${item.summary ? `<p class="article-card__summary">${this.escapeHtml(item.summary)}</p>` : ''}
+          <div class="article-card__meta">
+            <span class="article-card__source">${this.escapeHtml(item.source)}</span>
+            <span class="article-card__time">${this.escapeHtml(item.time)}</span>
+          </div>
+        </div>
+      </article>
+    `;
+  },
+
+  /**
+   * Get tag class from tag name
+   * @param {string} tag - Tag name
+   * @returns {string} CSS class
+   */
+  getTagClass(tag) {
+    if (!tag) return 'scouting-report';
+    return tag.toLowerCase().replace(/\s+/g, '-');
+  },
+
+  /**
+   * Render pagination controls
+   */
+  renderPagination() {
+    const paginationNumbers = document.getElementById('paginationNumbers');
+    const prevBtn = document.getElementById('prevPage');
+    const nextBtn = document.getElementById('nextPage');
+    const paginationInfo = document.getElementById('paginationInfo');
+    const pagination = document.getElementById('pagination');
+
+    if (!paginationNumbers || !prevBtn || !nextBtn) return;
+
+    // Show pagination
+    if (pagination) pagination.style.display = '';
+
+    // Update prev/next button states
+    prevBtn.disabled = this.currentPage === 1;
+    nextBtn.disabled = this.currentPage === this.totalPages;
+
+    // Generate page number buttons
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(this.totalPages, startPage + maxVisiblePages - 1);
+
+    // Adjust start if we're near the end
+    if (endPage - startPage < maxVisiblePages - 1) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    let numbersHTML = '';
+
+    // First page + ellipsis
+    if (startPage > 1) {
+      numbersHTML += `<button class="pagination__button" data-page="1">1</button>`;
+      if (startPage > 2) {
+        numbersHTML += `<span class="pagination__ellipsis">...</span>`;
+      }
+    }
+
+    // Page numbers
+    for (let i = startPage; i <= endPage; i++) {
+      const activeClass = i === this.currentPage ? 'active' : '';
+      numbersHTML += `<button class="pagination__button ${activeClass}" data-page="${i}">${i}</button>`;
+    }
+
+    // Last page + ellipsis
+    if (endPage < this.totalPages) {
+      if (endPage < this.totalPages - 1) {
+        numbersHTML += `<span class="pagination__ellipsis">...</span>`;
+      }
+      numbersHTML += `<button class="pagination__button" data-page="${this.totalPages}">${this.totalPages}</button>`;
+    }
+
+    paginationNumbers.innerHTML = numbersHTML;
+
+    // Update info text
+    if (paginationInfo) {
+      const startItem = (this.currentPage - 1) * this.itemsPerPage + 1;
+      const endItem = Math.min(this.currentPage * this.itemsPerPage, this.filteredItems.length);
+      paginationInfo.textContent = `${startItem}-${endItem} of ${this.filteredItems.length}`;
+    }
+
+    // Attach click events to page number buttons
+    paginationNumbers.querySelectorAll('.pagination__button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.goToPage(parseInt(btn.dataset.page, 10));
       });
     });
+  },
 
-    const prevBtn = document.querySelector('.feed-pagination__arrow--prev');
-    const nextBtn = document.querySelector('.feed-pagination__arrow--next');
+  /**
+   * Setup pagination button events
+   */
+  setupPaginationEvents() {
+    const prevBtn = document.getElementById('prevPage');
+    const nextBtn = document.getElementById('nextPage');
 
     if (prevBtn) {
-      prevBtn.addEventListener('click', () => this.goToPage(this.currentPage - 1));
+      prevBtn.addEventListener('click', () => {
+        if (this.currentPage > 1) {
+          this.goToPage(this.currentPage - 1);
+        }
+      });
     }
+
     if (nextBtn) {
-      nextBtn.addEventListener('click', () => this.goToPage(this.currentPage + 1));
+      nextBtn.addEventListener('click', () => {
+        if (this.currentPage < this.totalPages) {
+          this.goToPage(this.currentPage + 1);
+        }
+      });
     }
   },
 
   /**
    * Navigate to a specific page
+   * @param {number} page - Page number
    */
   goToPage(page) {
     if (page < 1 || page > this.totalPages) return;
     this.currentPage = page;
     this.render();
 
-    // Scroll to feed section
-    const feedContainer = document.getElementById('feedContainer');
-    if (feedContainer) {
-      feedContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Scroll to top of articles grid
+    const grid = document.getElementById('articlesGrid');
+    if (grid) {
+      grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   },
 
   /**
-   * Render pagination pills
+   * Hide pagination when no items
    */
-  renderPagination() {
-    const pills = [];
-    const maxVisiblePills = 5;
-
-    // Calculate range of page pills to show
-    let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePills / 2));
-    let endPage = Math.min(this.totalPages, startPage + maxVisiblePills - 1);
-
-    // Adjust start if we're near the end
-    if (endPage - startPage + 1 < maxVisiblePills) {
-      startPage = Math.max(1, endPage - maxVisiblePills + 1);
-    }
-
-    // Previous arrow
-    const prevDisabled = this.currentPage === 1 ? 'disabled' : '';
-    pills.push(`
-      <button class="feed-pagination__arrow feed-pagination__arrow--prev" ${prevDisabled} aria-label="Previous page">
-        <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
-          <polyline points="15 18 9 12 15 6"></polyline>
-        </svg>
-      </button>
-    `);
-
-    // First page + ellipsis if needed
-    if (startPage > 1) {
-      pills.push(`<button class="feed-pagination__pill" data-page="1">1</button>`);
-      if (startPage > 2) {
-        pills.push(`<span class="feed-pagination__ellipsis">…</span>`);
-      }
-    }
-
-    // Page pills
-    for (let i = startPage; i <= endPage; i++) {
-      const activeClass = i === this.currentPage ? 'active' : '';
-      pills.push(`<button class="feed-pagination__pill ${activeClass}" data-page="${i}">${i}</button>`);
-    }
-
-    // Last page + ellipsis if needed
-    if (endPage < this.totalPages) {
-      if (endPage < this.totalPages - 1) {
-        pills.push(`<span class="feed-pagination__ellipsis">…</span>`);
-      }
-      pills.push(`<button class="feed-pagination__pill" data-page="${this.totalPages}">${this.totalPages}</button>`);
-    }
-
-    // Next arrow
-    const nextDisabled = this.currentPage === this.totalPages ? 'disabled' : '';
-    pills.push(`
-      <button class="feed-pagination__arrow feed-pagination__arrow--next" ${nextDisabled} aria-label="Next page">
-        <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
-          <polyline points="9 18 15 12 9 6"></polyline>
-        </svg>
-      </button>
-    `);
-
-    return `
-      <nav class="feed-pagination" aria-label="News feed pagination">
-        ${pills.join('')}
-      </nav>
-    `;
+  hidePagination() {
+    const pagination = document.getElementById('pagination');
+    if (pagination) pagination.style.display = 'none';
   },
 
   /**
-   * Render empty state when no news items
-   * @returns {string} HTML string
+   * Render empty state
    */
   renderEmptyState() {
-    return `
-      <div class="feed-empty">
-        <p>No news items yet. Check back soon!</p>
-      </div>
-    `;
+    const grid = document.getElementById('articlesGrid');
+    if (grid) {
+      grid.innerHTML = '<div class="articles-grid--empty">No news items yet. Check back soon!</div>';
+    }
   },
 
   /**
-   * Get tag class based on tag type
-   * @param {string} tag - Tag name
-   * @returns {string} CSS class
+   * Escape HTML to prevent XSS
+   * @param {string} str - String to escape
+   * @returns {string} Escaped string
    */
-  getTagClass(tag) {
-    const tagMap = {
-      'Scouting Report': 'scouting-report',
-      'Big Board': 'big-board',
-      'Mock Draft': 'mock-draft',
-      'Tier Update': 'tier-update',
-      'Game Recap': 'game-recap',
-      'Film Study': 'film-study',
-      'Skill Theme': 'skill-theme',
-      'Team Fit': 'team-fit',
-      'Draft Intel': 'draft-intel',
-      'Statistical Analysis': 'stats-analysis'
-    };
-    return tagMap[tag] || 'scouting-report';
-  },
-
-  /**
-   * Render feed items (subset for current page)
-   * @param {Array} items - Feed items to render
-   * @returns {string} HTML string
-   */
-  renderFeedItems(items) {
-    return items.map((item) => {
-      const tagClass = this.getTagClass(item.tag);
-      const hasImage = item.image_url && item.image_url.trim() !== '';
-      const imageHtml = hasImage
-        ? `<img src="${item.image_url}" alt="" class="feed-card__image" loading="lazy" />`
-        : `<div class="feed-card__image feed-card__image--placeholder"></div>`;
-
-      // Build author/time meta line
-      const authorPart = item.author ? `${item.author} • ` : '';
-      const summaryHtml = item.summary
-        ? `<p class="feed-card__summary">${item.summary}</p>`
-        : '';
-
-      return `
-        <article class="feed-card">
-          <div class="feed-card__image-wrapper">
-            ${imageHtml}
-          </div>
-          <div class="feed-card__content">
-            <h4 class="feed-card__title">${item.title}</h4>
-            ${summaryHtml}
-            <div class="feed-card__meta">
-              <span class="feed-card__tag ${tagClass}">${item.tag}</span>
-              <span class="feed-card__author-time">${authorPart}${item.time}</span>
-            </div>
-            <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="feed-card__cta">
-              ${item.read_more_text || 'Read More'}
-              <svg class="icon" viewBox="0 0 24 24" style="width: 0.875rem; height: 0.875rem;">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
-            </a>
-          </div>
-        </article>
-      `;
-    }).join('');
+  escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
   }
 };
+
+/**
+ * ============================================================================
+ * LEGACY FEED MODULE (kept for backwards compatibility)
+ * Deprecated: Use NewsGridModule instead
+ * ============================================================================
+ */
+const FeedModule = NewsGridModule;
 
 /**
  * ============================================================================
@@ -420,5 +852,8 @@ document.addEventListener('DOMContentLoaded', () => {
     tweetBtnId: 'vsArenaTweetBtn'
   });
 
-  FeedModule.init();
+  // Initialize news section modules
+  HeroModule.init();
+  SidebarModule.init();
+  NewsGridModule.init();
 });

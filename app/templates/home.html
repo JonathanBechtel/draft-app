@@ -5,6 +5,9 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/home.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/feed.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/news-hero.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/news-grid.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/news-sidebar.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -135,17 +138,65 @@
   <div class="section-divider"></div>
 
   <!-- ==========================================================================
-       LIVE DRAFT BUZZ
-       Real-time news feed with draft-related articles and updates
+       NEWS HERO
+       Featured article with image-based display mode
        ========================================================================== -->
-  <section class="section">
-    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
-      Live Draft Buzz
-    </h3>
-
-    <!-- Feed container - populated by JavaScript -->
-    <div id="feedContainer" class="feed-container"></div>
+  <section class="section" id="newsHeroSection">
+    <div id="heroArticle" class="news-hero">
+      <!-- Rendered by HeroModule -->
+    </div>
   </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       MAIN LAYOUT: Articles Grid + Sidebar
+       ========================================================================== -->
+  <div class="main-layout">
+    <!-- Primary Content: Latest Stories Grid -->
+    <div class="primary-content">
+      <section class="section">
+        <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+          Latest Stories
+        </h3>
+
+        <!-- Articles grid - populated by JavaScript -->
+        <div id="articlesGrid" class="articles-grid"></div>
+
+        <!-- Pagination controls -->
+        <nav class="pagination" id="pagination" aria-label="News articles pagination">
+          <button class="pagination__button pagination__button--nav" id="prevPage" disabled aria-label="Previous page">
+            <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+              <polyline points="15 18 9 12 15 6" stroke="currentColor" stroke-width="2" fill="none"></polyline>
+            </svg>
+            Prev
+          </button>
+          <div class="pagination__numbers" id="paginationNumbers"></div>
+          <button class="pagination__button pagination__button--nav" id="nextPage" aria-label="Next page">
+            Next
+            <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+              <polyline points="9 18 15 12 9 6" stroke="currentColor" stroke-width="2" fill="none"></polyline>
+            </svg>
+          </button>
+          <span class="pagination__info" id="paginationInfo"></span>
+        </nav>
+      </section>
+    </div>
+
+    <!-- Sidebar: Sources and Authors -->
+    <aside class="sidebar">
+      <div class="sidebar-section" id="sourcesSection">
+        <h4 class="sidebar-section__title">Sources</h4>
+        <div id="sourcesList" class="sources-list"></div>
+        <button class="sidebar-section__clear" id="clearSourceFilter">Clear Filter</button>
+      </div>
+      <div class="sidebar-section" id="authorsSection">
+        <h4 class="sidebar-section__title">Authors</h4>
+        <div id="authorsList" class="sources-list"></div>
+        <button class="sidebar-section__clear" id="clearAuthorFilter">Clear Filter</button>
+      </div>
+    </aside>
+  </div>
 
 </main>
 {% endblock %}
@@ -155,6 +206,10 @@
   // Server-side data injection
   window.PLAYERS = {{ players | tojson | safe }};
   window.FEED_ITEMS = {{ feed_items | tojson | safe }};
+  // Hero article and sidebar data for news section
+  window.HERO_ARTICLE = {{ hero_article | tojson | safe }};
+  window.SOURCE_COUNTS = {{ source_counts | tojson | safe }};
+  window.AUTHOR_COUNTS = {{ author_counts | tojson | safe }};
   // Image style and player ID mapping for dynamic image URL generation
   window.IMAGE_STYLE = {{ image_style | tojson | safe }};
   window.PLAYER_ID_MAP = {{ player_id_map | tojson | safe }};

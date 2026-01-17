@@ -35,7 +35,9 @@ dev = [
     "ruff==0.13.0",
     "mypy==1.18.1",
     "pre-commit==3.8.0",
-    "pandas-stubs"
+    "pandas-stubs",
+    "playwright>=1.47.0",
+    "pytest-playwright>=0.5.0",
 ]
 
 [tool.setuptools.packages.find]

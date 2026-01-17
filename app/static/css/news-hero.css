@@ -1,0 +1,373 @@
+/**
+ * ============================================================================
+ * NEWS-HERO.CSS - Hero Section Styles for News Articles
+ * Magazine-style featured article with image-based display modes
+ * ============================================================================
+ */
+
+/* ============================================================================
+   HERO SECTION BASE
+   ============================================================================ */
+.news-hero {
+  position: relative;
+  border-radius: var(--border-radius, 0.75rem);
+  overflow: hidden;
+  background: var(--color-slate-900);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  outline: 3px solid rgba(6, 182, 212, 0.6);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.news-hero:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+}
+
+.news-hero__image {
+  width: 100%;
+  height: 400px;
+  object-fit: cover;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.news-hero:hover .news-hero__image {
+  opacity: 0.8;
+}
+
+.news-hero__overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 2rem;
+  background: linear-gradient(to top, rgba(15, 23, 42, 0.95) 0%, rgba(15, 23, 42, 0.7) 60%, transparent 100%);
+}
+
+.news-hero__tag {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.75rem;
+}
+
+.news-hero__title {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  color: var(--color-white);
+  line-height: 1.2;
+  margin-bottom: 0.75rem;
+}
+
+.news-hero__summary {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.5;
+  margin-bottom: 1rem;
+  max-width: 700px;
+}
+
+.news-hero__meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.news-hero__source {
+  font-family: var(--font-mono);
+  color: var(--color-accent-cyan);
+  font-weight: 600;
+}
+
+.news-hero__author {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.news-hero__time {
+  font-family: var(--font-mono);
+}
+
+/* ============================================================================
+   BLURRED BACKGROUND VARIANT
+   For small/narrow images - shows image centered with blurred background
+   ============================================================================ */
+.news-hero--blurred .news-hero__background {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(20px) saturate(1.2);
+  transform: scale(1.1);
+  opacity: 0.7;
+}
+
+.news-hero--blurred .news-hero__image {
+  position: relative;
+  width: auto;
+  max-width: 100%;
+  height: 400px;
+  margin: 0 auto;
+  display: block;
+  object-fit: contain;
+  opacity: 1;
+}
+
+.news-hero--blurred .news-hero__image-container {
+  position: relative;
+  height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* ============================================================================
+   GRADIENT FALLBACK VARIANT
+   For articles without suitable images
+   ============================================================================ */
+.news-hero--gradient {
+  background: linear-gradient(135deg, var(--hero-gradient-start, #4f46e5) 0%, var(--hero-gradient-end, #7c3aed) 100%);
+}
+
+.news-hero--gradient .news-hero__pattern {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(255,255,255,0.08) 0%, transparent 40%),
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 10px,
+      rgba(255,255,255,0.02) 10px,
+      rgba(255,255,255,0.02) 20px
+    );
+}
+
+.news-hero--gradient .news-hero__icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -60%);
+  width: 120px;
+  height: 120px;
+  opacity: 0.15;
+  color: white;
+}
+
+.news-hero--gradient .news-hero__overlay {
+  background: linear-gradient(to top, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.4) 50%, transparent 100%);
+}
+
+.news-hero--gradient .news-hero__spacer {
+  height: 400px;
+}
+
+/* ============================================================================
+   CATEGORY-SPECIFIC GRADIENT COLORS
+   ============================================================================ */
+.news-hero--scouting-report {
+  --hero-gradient-start: #4f46e5;
+  --hero-gradient-end: #7c3aed;
+}
+
+.news-hero--big-board {
+  --hero-gradient-start: #7c3aed;
+  --hero-gradient-end: #c026d3;
+}
+
+.news-hero--mock-draft {
+  --hero-gradient-start: #2563eb;
+  --hero-gradient-end: #0891b2;
+}
+
+.news-hero--tier-update {
+  --hero-gradient-start: #0891b2;
+  --hero-gradient-end: #06b6d4;
+}
+
+.news-hero--game-recap {
+  --hero-gradient-start: #059669;
+  --hero-gradient-end: #10b981;
+}
+
+.news-hero--film-study {
+  --hero-gradient-start: #475569;
+  --hero-gradient-end: #64748b;
+}
+
+.news-hero--skill-theme {
+  --hero-gradient-start: #d97706;
+  --hero-gradient-end: #f59e0b;
+}
+
+.news-hero--team-fit {
+  --hero-gradient-start: #0d9488;
+  --hero-gradient-end: #14b8a6;
+}
+
+.news-hero--draft-intel {
+  --hero-gradient-start: #dc2626;
+  --hero-gradient-end: #f43f5e;
+}
+
+.news-hero--stats-analysis {
+  --hero-gradient-start: #334155;
+  --hero-gradient-end: #475569;
+}
+
+/* ============================================================================
+   SPLIT LAYOUT VARIANT
+   Text dominant with side image for medium-width images
+   ============================================================================ */
+.news-hero--split {
+  display: grid;
+  grid-template-columns: 1fr 350px;
+  min-height: 320px;
+  background: linear-gradient(135deg, var(--color-slate-900) 0%, var(--color-slate-800) 100%);
+}
+
+.news-hero--split .news-hero__text-area {
+  padding: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.news-hero--split .news-hero__tag {
+  display: inline-block;
+  width: fit-content;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 1rem;
+}
+
+.news-hero--split .news-hero__title {
+  font-family: var(--font-heading);
+  font-size: 2.25rem;
+  color: var(--color-white);
+  line-height: 1.15;
+  margin-bottom: 1rem;
+}
+
+.news-hero--split .news-hero__summary {
+  font-size: 1.0625rem;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+  max-width: 540px;
+}
+
+.news-hero--split .news-hero__meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.news-hero--split .news-hero__source {
+  font-family: var(--font-mono);
+  color: var(--color-accent-cyan);
+  font-weight: 600;
+}
+
+.news-hero--split .news-hero__image-area {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-slate-800);
+}
+
+.news-hero--split .news-hero__image-area::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 60px;
+  background: linear-gradient(to right, var(--color-slate-900), transparent);
+  z-index: 1;
+}
+
+.news-hero--split .news-hero__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.9;
+}
+
+/* ============================================================================
+   RESPONSIVE: Split layout on smaller screens
+   ============================================================================ */
+@media (max-width: 900px) {
+  .news-hero--split {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 250px;
+  }
+
+  .news-hero--split .news-hero__text-area {
+    padding: 2rem;
+    order: 1;
+  }
+
+  .news-hero--split .news-hero__image-area {
+    order: 2;
+  }
+
+  .news-hero--split .news-hero__image-area::before {
+    display: none;
+  }
+
+  .news-hero--split .news-hero__title {
+    font-size: 1.75rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .news-hero__image {
+    height: 280px;
+  }
+
+  .news-hero--blurred .news-hero__image,
+  .news-hero--blurred .news-hero__image-container {
+    height: 280px;
+  }
+
+  .news-hero--gradient .news-hero__spacer {
+    height: 280px;
+  }
+
+  .news-hero__overlay {
+    padding: 1.5rem;
+  }
+
+  .news-hero__title {
+    font-size: 1.5rem;
+  }
+
+  .news-hero__summary {
+    font-size: 0.875rem;
+    -webkit-line-clamp: 2;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .news-hero__meta {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+}
