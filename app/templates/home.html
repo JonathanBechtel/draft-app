@@ -15,6 +15,82 @@
 <main class="container mt-28">
 
   <!-- ==========================================================================
+       NEWS HERO
+       Featured article with image-based display mode
+       ========================================================================== -->
+  <section class="section" id="newsHeroSection">
+    <div id="heroArticle" class="news-hero">
+      <!-- Rendered by HeroModule -->
+    </div>
+  </section>
+
+  <!-- Story Type Filters -->
+  <div class="story-filters">
+    <button class="story-filter active" data-tag="">All Stories</button>
+    <button class="story-filter" data-tag="Scouting Report">Scouting Report</button>
+    <button class="story-filter" data-tag="Big Board">Big Board</button>
+    <button class="story-filter" data-tag="Mock Draft">Mock Draft</button>
+    <button class="story-filter" data-tag="Draft Intel">Draft Intel</button>
+    <button class="story-filter" data-tag="Tier Update">Tier Update</button>
+    <button class="story-filter" data-tag="Game Recap">Game Recap</button>
+    <button class="story-filter" data-tag="Film Study">Film Study</button>
+    <button class="story-filter" data-tag="Team Fit">Team Fit</button>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       MAIN LAYOUT: Articles Grid + Sidebar
+       ========================================================================== -->
+  <div class="main-layout">
+    <!-- Primary Content: Latest Stories Grid -->
+    <div class="primary-content">
+      <section class="section">
+        <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+          Latest Stories
+        </h3>
+
+        <!-- Articles grid - populated by JavaScript -->
+        <div id="articlesGrid" class="articles-grid"></div>
+
+        <!-- Pagination controls -->
+        <nav class="pagination" id="pagination" aria-label="News articles pagination">
+          <button class="pagination__button pagination__button--nav" id="prevPage" disabled aria-label="Previous page">
+            <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+              <polyline points="15 18 9 12 15 6" stroke="currentColor" stroke-width="2" fill="none"></polyline>
+            </svg>
+            Prev
+          </button>
+          <div class="pagination__numbers" id="paginationNumbers"></div>
+          <button class="pagination__button pagination__button--nav" id="nextPage" aria-label="Next page">
+            Next
+            <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+              <polyline points="9 18 15 12 9 6" stroke="currentColor" stroke-width="2" fill="none"></polyline>
+            </svg>
+          </button>
+          <span class="pagination__info" id="paginationInfo"></span>
+        </nav>
+      </section>
+    </div>
+
+    <!-- Sidebar: Sources and Authors -->
+    <aside class="sidebar">
+      <div class="sidebar-section" id="sourcesSection">
+        <h4 class="sidebar-section__title">Sources</h4>
+        <div id="sourcesList" class="sources-list"></div>
+        <button class="sidebar-section__clear" id="clearSourceFilter">Clear Filter</button>
+      </div>
+      <div class="sidebar-section" id="authorsSection">
+        <h4 class="sidebar-section__title">Authors</h4>
+        <div id="authorsList" class="sources-list"></div>
+        <button class="sidebar-section__clear" id="clearAuthorFilter">Clear Filter</button>
+      </div>
+    </aside>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
        TOP PROSPECTS
        Grid of top prospect player cards with stats
        ========================================================================== -->
@@ -134,69 +210,6 @@
       </div>
     </div>
   </section>
-
-  <div class="section-divider"></div>
-
-  <!-- ==========================================================================
-       NEWS HERO
-       Featured article with image-based display mode
-       ========================================================================== -->
-  <section class="section" id="newsHeroSection">
-    <div id="heroArticle" class="news-hero">
-      <!-- Rendered by HeroModule -->
-    </div>
-  </section>
-
-  <div class="section-divider"></div>
-
-  <!-- ==========================================================================
-       MAIN LAYOUT: Articles Grid + Sidebar
-       ========================================================================== -->
-  <div class="main-layout">
-    <!-- Primary Content: Latest Stories Grid -->
-    <div class="primary-content">
-      <section class="section">
-        <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
-          Latest Stories
-        </h3>
-
-        <!-- Articles grid - populated by JavaScript -->
-        <div id="articlesGrid" class="articles-grid"></div>
-
-        <!-- Pagination controls -->
-        <nav class="pagination" id="pagination" aria-label="News articles pagination">
-          <button class="pagination__button pagination__button--nav" id="prevPage" disabled aria-label="Previous page">
-            <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
-              <polyline points="15 18 9 12 15 6" stroke="currentColor" stroke-width="2" fill="none"></polyline>
-            </svg>
-            Prev
-          </button>
-          <div class="pagination__numbers" id="paginationNumbers"></div>
-          <button class="pagination__button pagination__button--nav" id="nextPage" aria-label="Next page">
-            Next
-            <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
-              <polyline points="9 18 15 12 9 6" stroke="currentColor" stroke-width="2" fill="none"></polyline>
-            </svg>
-          </button>
-          <span class="pagination__info" id="paginationInfo"></span>
-        </nav>
-      </section>
-    </div>
-
-    <!-- Sidebar: Sources and Authors -->
-    <aside class="sidebar">
-      <div class="sidebar-section" id="sourcesSection">
-        <h4 class="sidebar-section__title">Sources</h4>
-        <div id="sourcesList" class="sources-list"></div>
-        <button class="sidebar-section__clear" id="clearSourceFilter">Clear Filter</button>
-      </div>
-      <div class="sidebar-section" id="authorsSection">
-        <h4 class="sidebar-section__title">Authors</h4>
-        <div id="authorsList" class="sources-list"></div>
-        <button class="sidebar-section__clear" id="clearAuthorFilter">Clear Filter</button>
-      </div>
-    </aside>
-  </div>
 
 </main>
 {% endblock %}
