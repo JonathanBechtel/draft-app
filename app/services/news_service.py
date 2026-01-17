@@ -163,3 +163,111 @@ async def get_active_sources(db: AsyncSession) -> list[NewsSource]:
     )
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+async def get_hero_article(db: AsyncSession) -> Optional[NewsItemRead]:
+    """Get the most recent article with an image for hero display.
+
+    Args:
+        db: Async database session
+
+    Returns:
+        Most recent NewsItemRead with image_url, or None if no articles have images
+    """
+    stmt = (
+        select(
+            NewsItem.id,
+            NewsItem.title,
+            NewsItem.summary,
+            NewsItem.url,
+            NewsItem.image_url,
+            NewsItem.author,
+            NewsItem.tag,
+            NewsItem.published_at,
+            NewsSource.display_name.label("source_name"),  # type: ignore[attr-defined]
+        )  # type: ignore[call-overload]
+        .select_from(NewsItem)
+        .join(NewsSource, NewsSource.id == NewsItem.source_id)
+        .where(NewsItem.image_url.isnot(None))  # type: ignore[union-attr]
+        .where(NewsItem.image_url != "")  # type: ignore[arg-type]
+        .order_by(NewsItem.published_at.desc())  # type: ignore[attr-defined]
+        .limit(1)
+    )
+
+    result = await db.execute(stmt)
+    row = result.mappings().first()
+
+    if not row:
+        return None
+
+    source_name = row["source_name"]
+    summary = row["summary"] or ""
+
+    return NewsItemRead(
+        id=row["id"],
+        source_name=source_name,
+        title=row["title"],
+        summary=summary,
+        url=row["url"],
+        image_url=row["image_url"],
+        author=row["author"],
+        time=format_relative_time(row["published_at"]),
+        tag=row["tag"].value,
+        read_more_text=build_read_more_text(source_name),
+    )
+
+
+async def get_author_counts(db: AsyncSession, limit: int = 10) -> list[dict]:
+    """Get distinct authors with article counts.
+
+    Args:
+        db: Async database session
+        limit: Maximum number of authors to return
+
+    Returns:
+        List of dicts with 'author' and 'count' keys, sorted by count desc
+    """
+    stmt = (
+        select(
+            NewsItem.author,
+            func.count().label("count"),  # type: ignore[call-overload]
+        )
+        .where(NewsItem.author.isnot(None))  # type: ignore[union-attr]
+        .where(NewsItem.author != "")  # type: ignore[arg-type]
+        .group_by(NewsItem.author)
+        .order_by(func.count().desc())  # type: ignore[call-overload]
+        .limit(limit)
+    )
+
+    result = await db.execute(stmt)
+    rows = result.mappings().all()
+
+    return [{"author": row["author"], "count": row["count"]} for row in rows]
+
+
+async def get_source_counts(db: AsyncSession, limit: int = 10) -> list[dict]:
+    """Get sources with article counts for sidebar.
+
+    Args:
+        db: Async database session
+        limit: Maximum number of sources to return
+
+    Returns:
+        List of dicts with 'source_name' and 'count' keys, sorted by count desc
+    """
+    stmt = (
+        select(
+            NewsSource.display_name.label("source_name"),  # type: ignore[attr-defined]
+            func.count().label("count"),  # type: ignore[call-overload]
+        )
+        .select_from(NewsItem)
+        .join(NewsSource, NewsSource.id == NewsItem.source_id)  # type: ignore[arg-type]
+        .group_by(NewsSource.display_name)
+        .order_by(func.count().desc())  # type: ignore[call-overload]
+        .limit(limit)
+    )
+
+    result = await db.execute(stmt)
+    rows = result.mappings().all()
+
+    return [{"source_name": row["source_name"], "count": row["count"]} for row in rows]

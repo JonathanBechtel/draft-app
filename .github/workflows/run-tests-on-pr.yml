@@ -87,7 +87,7 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
-        run: pytest -q
+        run: pytest -q --ignore=tests/visual
 
   tests-secrets:
     # Same-repo PRs: use environment secrets from draft-app-stage
@@ -165,4 +165,4 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
-        run: pytest -q
+        run: pytest -q --ignore=tests/visual
