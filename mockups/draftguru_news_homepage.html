@@ -1,0 +1,3013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DraftGuru — Draft News & Analytics</title>
+
+  <!-- Google Fonts: Russo One (headings) and Azeret Mono (monospace) -->
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       CSS CUSTOM PROPERTIES
+       ========================================================================= */
+    :root {
+      /* Typography */
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      /* Primary Colors */
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      /* Neutral Colors */
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      /* Category Tag Colors */
+      --tag-scouting-report: #6366f1;
+      --tag-big-board: #a855f7;
+      --tag-mock-draft: #3b82f6;
+      --tag-tier-update: #06b6d4;
+      --tag-game-recap: #10b981;
+      --tag-film-study: #64748b;
+      --tag-skill-theme: #f59e0b;
+      --tag-team-fit: #14b8a6;
+      --tag-draft-intel: #ef4444;
+      --tag-stats-analysis: #475569;
+
+      /* Layout */
+      --max-width: 1280px;
+      --content-width: 90%;
+      --spacing-unit: 1rem;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    /* ============================================================================
+       RESET & BASE STYLES
+       ========================================================================= */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    a {
+      text-decoration: none;
+      color: inherit;
+    }
+
+    /* ============================================================================
+       TYPOGRAPHY
+       ========================================================================= */
+    .heading-font {
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .mono-font {
+      font-family: var(--font-mono);
+    }
+
+    .uppercase {
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       LAYOUT UTILITIES
+       ========================================================================= */
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section {
+      margin-bottom: 3rem;
+    }
+
+    .section-header {
+      font-size: 1.5rem;
+      font-weight: 600;
+      padding-left: 0.5rem;
+      border-left: 4px solid;
+      margin-bottom: 1rem;
+    }
+
+    .section-subtitle {
+      font-size: 0.875rem;
+      color: var(--color-slate-500);
+      margin-bottom: 1rem;
+      padding-left: 0.5rem;
+    }
+
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(
+        to right,
+        transparent,
+        rgba(148, 163, 184, 0.3) 20%,
+        rgba(148, 163, 184, 0.3) 80%,
+        transparent
+      );
+      margin: 2.5rem 0;
+    }
+
+    /* ============================================================================
+       NAVIGATION BAR
+       ========================================================================= */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: var(--color-primary);
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .navbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .navbar-brand h1 {
+      font-size: 1.875rem;
+      color: var(--color-white);
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .navbar-nav {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .navbar-nav a {
+      color: rgba(255, 255, 255, 0.85);
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      transition: color var(--transition-speed);
+    }
+
+    .navbar-nav a:hover,
+    .navbar-nav a.active {
+      color: var(--color-white);
+    }
+
+    .navbar-nav a.active {
+      border-bottom: 2px solid var(--color-accent-cyan);
+      padding-bottom: 2px;
+    }
+
+    .navbar-search {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .search-input {
+      width: 240px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid #93c5fd;
+      color: var(--color-slate-900);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      outline: none;
+      transition: all var(--transition-speed);
+    }
+
+    .search-input:focus {
+      border-color: var(--color-white);
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+    }
+
+    .search-button {
+      width: 2.5rem;
+      height: 2.5rem;
+      background: #fbbf24;
+      color: #1e3a8a;
+      border: none;
+      border-radius: 0.375rem;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: background var(--transition-speed);
+    }
+
+    .search-button:hover {
+      background: #fcd34d;
+    }
+
+    /* ============================================================================
+       HERO SECTION - Featured Article
+       ========================================================================= */
+    .news-hero {
+      position: relative;
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      background: var(--color-slate-900);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+      outline: 3px solid rgba(6, 182, 212, 0.6);
+      cursor: pointer;
+      transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+    }
+
+    .news-hero:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .news-hero__image {
+      width: 100%;
+      height: 400px;
+      object-fit: cover;
+      opacity: 0.7;
+      transition: opacity var(--transition-speed);
+    }
+
+    .news-hero:hover .news-hero__image {
+      opacity: 0.8;
+    }
+
+    .news-hero__overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 2rem;
+      background: linear-gradient(to top, rgba(15, 23, 42, 0.95) 0%, rgba(15, 23, 42, 0.7) 60%, transparent 100%);
+    }
+
+    .news-hero__tag {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.75rem;
+    }
+
+    .news-hero__title {
+      font-family: var(--font-heading);
+      font-size: 2rem;
+      color: var(--color-white);
+      line-height: 1.2;
+      margin-bottom: 0.75rem;
+    }
+
+    .news-hero__summary {
+      font-size: 1rem;
+      color: rgba(255, 255, 255, 0.8);
+      line-height: 1.5;
+      margin-bottom: 1rem;
+      max-width: 700px;
+    }
+
+    .news-hero__meta {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.8125rem;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .news-hero__source {
+      font-family: var(--font-mono);
+      color: var(--color-accent-cyan);
+      font-weight: 600;
+    }
+
+    .news-hero__author {
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .news-hero__time {
+      font-family: var(--font-mono);
+    }
+
+    /* Hero Image Fallback Variants */
+
+    /* Blurred background technique for small/narrow images */
+    .news-hero--blurred .news-hero__background {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      filter: blur(20px) saturate(1.2);
+      transform: scale(1.1);
+      opacity: 0.7;
+    }
+
+    .news-hero--blurred .news-hero__image {
+      position: relative;
+      width: auto;
+      max-width: 100%;
+      height: 400px;
+      margin: 0 auto;
+      display: block;
+      object-fit: contain;
+      opacity: 1;
+    }
+
+    .news-hero--blurred .news-hero__image-container {
+      position: relative;
+      height: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    /* Category gradient fallback for no-image articles */
+    .news-hero--gradient {
+      background: linear-gradient(135deg, var(--hero-gradient-start) 0%, var(--hero-gradient-end) 100%);
+    }
+
+    .news-hero--gradient .news-hero__pattern {
+      position: absolute;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(255,255,255,0.08) 0%, transparent 40%),
+        repeating-linear-gradient(
+          45deg,
+          transparent,
+          transparent 10px,
+          rgba(255,255,255,0.02) 10px,
+          rgba(255,255,255,0.02) 20px
+        );
+    }
+
+    .news-hero--gradient .news-hero__icon {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -60%);
+      width: 120px;
+      height: 120px;
+      opacity: 0.15;
+      color: white;
+    }
+
+    .news-hero--gradient .news-hero__overlay {
+      background: linear-gradient(to top, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.4) 50%, transparent 100%);
+    }
+
+    /* Category-specific gradient colors */
+    .news-hero--scouting-report {
+      --hero-gradient-start: #4f46e5;
+      --hero-gradient-end: #7c3aed;
+    }
+    .news-hero--big-board {
+      --hero-gradient-start: #7c3aed;
+      --hero-gradient-end: #c026d3;
+    }
+    .news-hero--mock-draft {
+      --hero-gradient-start: #2563eb;
+      --hero-gradient-end: #0891b2;
+    }
+    .news-hero--tier-update {
+      --hero-gradient-start: #0891b2;
+      --hero-gradient-end: #06b6d4;
+    }
+    .news-hero--game-recap {
+      --hero-gradient-start: #059669;
+      --hero-gradient-end: #10b981;
+    }
+    .news-hero--film-study {
+      --hero-gradient-start: #475569;
+      --hero-gradient-end: #64748b;
+    }
+    .news-hero--skill-theme {
+      --hero-gradient-start: #d97706;
+      --hero-gradient-end: #f59e0b;
+    }
+    .news-hero--team-fit {
+      --hero-gradient-start: #0d9488;
+      --hero-gradient-end: #14b8a6;
+    }
+    .news-hero--draft-intel {
+      --hero-gradient-start: #dc2626;
+      --hero-gradient-end: #f43f5e;
+    }
+    .news-hero--stats-analysis {
+      --hero-gradient-start: #334155;
+      --hero-gradient-end: #475569;
+    }
+
+    /* Split layout - text dominant with side image */
+    .news-hero--split {
+      display: grid;
+      grid-template-columns: 1fr 350px;
+      min-height: 320px;
+      background: linear-gradient(135deg, var(--color-slate-900) 0%, var(--color-slate-800) 100%);
+    }
+
+    .news-hero--split .news-hero__text-area {
+      padding: 2.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .news-hero--split .news-hero__tag {
+      display: inline-block;
+      width: fit-content;
+      padding: 0.25rem 0.75rem;
+      border-radius: 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1rem;
+    }
+
+    .news-hero--split .news-hero__title {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      color: var(--color-white);
+      line-height: 1.15;
+      margin-bottom: 1rem;
+    }
+
+    .news-hero--split .news-hero__summary {
+      font-size: 1.0625rem;
+      color: rgba(255, 255, 255, 0.75);
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+      max-width: 540px;
+    }
+
+    .news-hero--split .news-hero__meta {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.8125rem;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .news-hero--split .news-hero__source {
+      font-family: var(--font-mono);
+      color: var(--color-accent-cyan);
+      font-weight: 600;
+    }
+
+    .news-hero--split .news-hero__image-area {
+      position: relative;
+      overflow: hidden;
+      background: var(--color-slate-800);
+    }
+
+    .news-hero--split .news-hero__image-area::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 60px;
+      background: linear-gradient(to right, var(--color-slate-900), transparent);
+      z-index: 1;
+    }
+
+    .news-hero--split .news-hero__image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.9;
+    }
+
+    /* Responsive split layout */
+    @media (max-width: 900px) {
+      .news-hero--split {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 250px;
+      }
+
+      .news-hero--split .news-hero__text-area {
+        padding: 2rem;
+        order: 1;
+      }
+
+      .news-hero--split .news-hero__image-area {
+        order: 2;
+      }
+
+      .news-hero--split .news-hero__image-area::before {
+        display: none;
+      }
+
+      .news-hero--split .news-hero__title {
+        font-size: 1.75rem;
+      }
+    }
+
+    /* ============================================================================
+       CATEGORY FILTER TABS
+       ========================================================================= */
+    .category-filters {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .category-filters__label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-slate-500);
+      margin-right: 0.5rem;
+    }
+
+    .category-tab {
+      padding: 0.375rem 0.75rem;
+      border-radius: 9999px;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      border: 1px solid var(--color-slate-300);
+      background: var(--color-white);
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .category-tab:hover {
+      background: var(--color-slate-50);
+      border-color: var(--color-slate-400);
+    }
+
+    .category-tab.active {
+      background: var(--color-accent-cyan);
+      border-color: var(--color-accent-cyan);
+      color: var(--color-white);
+    }
+
+    /* ============================================================================
+       SECONDARY ARTICLES GRID
+       ========================================================================= */
+    .articles-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+
+    .article-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      outline: 2px solid rgba(6, 182, 212, 0.4);
+      cursor: pointer;
+      transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+    }
+
+    .article-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    }
+
+    .article-card__image-wrapper {
+      position: relative;
+      height: 160px;
+      overflow: hidden;
+      background: var(--color-slate-100);
+    }
+
+    .article-card__image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform var(--transition-speed);
+    }
+
+    .article-card:hover .article-card__image {
+      transform: scale(1.03);
+    }
+
+    .article-card__image-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--color-slate-100) 0%, var(--color-slate-200) 100%);
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      color: var(--color-slate-400);
+    }
+
+    .article-card__tag {
+      position: absolute;
+      top: 0.75rem;
+      left: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .article-card__content {
+      padding: 1rem;
+    }
+
+    .article-card__title {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      line-height: 1.35;
+      margin-bottom: 0.5rem;
+      color: var(--color-slate-900);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .article-card__summary {
+      font-size: 0.8125rem;
+      color: var(--color-slate-600);
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 0.75rem;
+    }
+
+    .article-card__meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    .article-card__source {
+      font-family: var(--font-mono);
+      color: var(--color-accent-cyan);
+      font-weight: 600;
+    }
+
+    .article-card__time {
+      font-family: var(--font-mono);
+    }
+
+    /* ============================================================================
+       ARTICLE LIST (Compact View)
+       ========================================================================= */
+    .articles-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .article-list-item {
+      display: flex;
+      gap: 1rem;
+      background: var(--color-white);
+      padding: 1rem;
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+      outline: 1px solid rgba(6, 182, 212, 0.3);
+      cursor: pointer;
+      transition: background var(--transition-speed), transform var(--transition-speed);
+    }
+
+    .article-list-item:hover {
+      background: var(--color-slate-50);
+      transform: translateX(4px);
+    }
+
+    .article-list-item__image-wrapper {
+      flex-shrink: 0;
+      width: 100px;
+      height: 70px;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      background: var(--color-slate-100);
+    }
+
+    .article-list-item__image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .article-list-item__image-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, var(--color-slate-100) 0%, var(--color-slate-200) 100%);
+      font-family: var(--font-heading);
+      font-size: 0.875rem;
+      color: var(--color-slate-400);
+    }
+
+    .article-list-item__content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .article-list-item__header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.375rem;
+    }
+
+    .article-list-item__tag {
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .article-list-item__source {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-accent-cyan);
+      font-weight: 600;
+    }
+
+    .article-list-item__title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.3;
+      color: var(--color-slate-900);
+      margin-bottom: 0.25rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .article-list-item__meta {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    .article-list-item__author {
+      color: var(--color-slate-600);
+    }
+
+    .article-list-item__time {
+      font-family: var(--font-mono);
+    }
+
+    /* ============================================================================
+       TAG COLOR CLASSES
+       ========================================================================= */
+    .tag--scouting-report {
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--tag-scouting-report);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+    .tag--big-board {
+      background: rgba(168, 85, 247, 0.15);
+      color: var(--tag-big-board);
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+    .tag--mock-draft {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--tag-mock-draft);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    .tag--tier-update {
+      background: rgba(6, 182, 212, 0.15);
+      color: var(--tag-tier-update);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+    }
+    .tag--game-recap {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--tag-game-recap);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .tag--film-study {
+      background: rgba(100, 116, 139, 0.15);
+      color: var(--tag-film-study);
+      border: 1px solid rgba(100, 116, 139, 0.3);
+    }
+    .tag--skill-theme {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--tag-skill-theme);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .tag--team-fit {
+      background: rgba(20, 184, 166, 0.15);
+      color: var(--tag-team-fit);
+      border: 1px solid rgba(20, 184, 166, 0.3);
+    }
+    .tag--draft-intel {
+      background: rgba(239, 68, 68, 0.15);
+      color: var(--tag-draft-intel);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .tag--stats-analysis {
+      background: rgba(71, 85, 105, 0.15);
+      color: var(--tag-stats-analysis);
+      border: 1px solid rgba(71, 85, 105, 0.3);
+    }
+
+    /* ============================================================================
+       SIDEBAR
+       ========================================================================= */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 2rem;
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .sidebar-section {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      padding: 1.25rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      outline: 1px solid var(--color-slate-200);
+    }
+
+    .sidebar-section__title {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-slate-500);
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    /* Sources List */
+    .sources-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .source-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px dotted var(--color-slate-200);
+      cursor: pointer;
+      transition: color var(--transition-speed);
+    }
+
+    .source-item:last-child {
+      border-bottom: none;
+    }
+
+    .source-item:hover {
+      color: var(--color-accent-cyan);
+    }
+
+    .source-item__name {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .source-item__count {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+      background: var(--color-slate-100);
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+    }
+
+    /* Trending Tags */
+    .trending-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .trending-tag {
+      padding: 0.375rem 0.625rem;
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform var(--transition-speed);
+    }
+
+    .trending-tag:hover {
+      transform: scale(1.05);
+    }
+
+    /* ============================================================================
+       LOAD MORE BUTTON
+       ========================================================================= */
+    .load-more {
+      display: flex;
+      justify-content: center;
+      margin-top: 2rem;
+    }
+
+    .load-more__button {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 2rem;
+      background: var(--color-white);
+      border: 2px solid var(--color-accent-cyan);
+      border-radius: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-accent-cyan);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .load-more__button:hover {
+      background: var(--color-accent-cyan);
+      color: var(--color-white);
+    }
+
+    /* ============================================================================
+       PAGINATION
+       ========================================================================= */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--color-slate-200);
+    }
+
+    .pagination__button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.5rem;
+      height: 2.5rem;
+      padding: 0 0.75rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .pagination__button:hover:not(:disabled) {
+      background: var(--color-slate-50);
+      border-color: var(--color-accent-cyan);
+      color: var(--color-accent-cyan);
+    }
+
+    .pagination__button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .pagination__button.active {
+      background: var(--color-accent-cyan);
+      border-color: var(--color-accent-cyan);
+      color: var(--color-white);
+    }
+
+    .pagination__button--nav {
+      gap: 0.25rem;
+    }
+
+    .pagination__ellipsis {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--color-slate-400);
+      padding: 0 0.25rem;
+    }
+
+    .pagination__info {
+      margin-left: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+    }
+
+    #paginationNumbers {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    /* ============================================================================
+       TICKER / MARKET MOVES
+       ========================================================================= */
+    .ticker-container {
+      border-radius: var(--border-radius);
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-white);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.06) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+      outline: 2px solid rgba(99, 102, 241, 0.6);
+    }
+
+    .ticker-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+    }
+
+    .ticker-header span:first-of-type {
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .ticker-header span:last-of-type {
+      color: var(--color-slate-500);
+      font-family: var(--font-mono);
+    }
+
+    .ticker-wrapper {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ticker-content {
+      display: flex;
+      gap: 2rem;
+      white-space: nowrap;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      animation: tickerScroll 35s linear infinite;
+    }
+
+    @keyframes tickerScroll {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    .ticker-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-right: 2rem;
+      border-right: 1px dotted rgba(203, 213, 225, 0.8);
+    }
+
+    .ticker-item strong {
+      font-family: var(--font-mono);
+      color: var(--color-slate-900);
+    }
+
+    .ticker-change {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ticker-change.positive { color: var(--color-accent-emerald); }
+    .ticker-change.negative { color: var(--color-accent-rose); }
+
+    /* ============================================================================
+       CARDS
+       ========================================================================= */
+    .card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    .card-content {
+      padding: 1rem;
+    }
+
+    .card-ring {
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 2px solid;
+      outline-offset: -2px;
+    }
+
+    .card-ring-emerald { outline-color: rgba(16, 185, 129, 0.6); }
+    .card-ring-indigo { outline-color: rgba(99, 102, 241, 0.6); }
+    .card-ring-fuchsia { outline-color: rgba(217, 70, 239, 0.6); }
+    .card-ring-cyan { outline-color: rgba(6, 182, 212, 0.5); }
+    .card-ring-amber { outline-color: rgba(245, 158, 11, 0.6); }
+
+    /* ============================================================================
+       TABLES
+       ========================================================================= */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    thead th {
+      padding: 0.5rem;
+      text-align: left;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.75rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--color-slate-200);
+      transition: background var(--transition-speed);
+    }
+
+    tbody tr:hover {
+      background: rgba(248, 250, 252, 0.7);
+    }
+
+    tbody td {
+      padding: 0.5rem;
+    }
+
+    .table-link {
+      color: var(--color-accent-indigo);
+      text-decoration: none;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .table-link:hover {
+      text-decoration: underline;
+    }
+
+    .change-positive { color: #15803d; }
+    .change-negative { color: #be123c; }
+    .change-neutral { color: var(--color-slate-500); }
+
+    /* ============================================================================
+       PROSPECT CARDS
+       ========================================================================= */
+    .prospects-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .prospect-card {
+      position: relative;
+      border-radius: 1rem;
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 2px solid rgba(99, 102, 241, 0.6);
+      transition: transform var(--transition-speed);
+    }
+
+    .prospect-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .prospect-image-wrapper {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .prospect-image {
+      width: 100%;
+      height: 192px;
+      object-fit: cover;
+      transition: filter var(--transition-speed);
+    }
+
+    .prospect-card:hover .prospect-image {
+      filter: brightness(1.05);
+    }
+
+    .prospect-badge {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      font-size: 0.625rem;
+      font-weight: 600;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+    }
+
+    .prospect-badge.riser {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .prospect-badge.faller {
+      background: #ffe4e6;
+      color: #9f1239;
+    }
+
+    .prospect-card::before,
+    .prospect-card::after {
+      content: "";
+      position: absolute;
+      width: 1rem;
+      height: 1rem;
+      opacity: 0;
+      transition: opacity var(--transition-speed);
+      z-index: 10;
+    }
+
+    .prospect-card::before {
+      top: -0.25rem;
+      left: -0.25rem;
+      background: linear-gradient(45deg, transparent 50%, var(--color-accent-indigo) 50%);
+    }
+
+    .prospect-card::after {
+      bottom: -0.25rem;
+      right: -0.25rem;
+      background: linear-gradient(225deg, transparent 50%, var(--color-accent-emerald) 50%);
+    }
+
+    .prospect-card:hover::before,
+    .prospect-card:hover::after {
+      opacity: 1;
+    }
+
+    .prospect-info {
+      padding: 0.75rem;
+    }
+
+    .prospect-name {
+      font-weight: 600;
+      line-height: 1.25;
+      margin-bottom: 0.25rem;
+    }
+
+    .prospect-meta {
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+
+    .prospect-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      font-size: 0.6875rem;
+    }
+
+    .stat-pill {
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+      color: var(--color-slate-700);
+      text-align: center;
+    }
+
+    .stat-pill .label {
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-right: 0.25rem;
+    }
+
+    .stat-pill .value {
+      font-weight: 500;
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       VS ARENA / HEAD-TO-HEAD
+       ========================================================================= */
+    .h2h-controls-row {
+      display: flex;
+      align-items: end;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .h2h-control {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      flex: 1;
+      min-width: 250px;
+    }
+
+    .h2h-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-600);
+      font-weight: 600;
+    }
+
+    .h2h-select {
+      width: 100%;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .h2h-select:focus {
+      outline: none;
+      border-color: var(--color-accent-fuchsia);
+      box-shadow: 0 0 0 2px rgba(217, 70, 239, 0.2);
+    }
+
+    .h2h-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .h2h-tab {
+      padding: 0.5rem 1rem;
+      background: var(--color-white);
+      border: 2px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-700);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      font-weight: 600;
+    }
+
+    .h2h-tab:hover {
+      background: var(--color-slate-50);
+      border-color: var(--color-slate-400);
+    }
+
+    .h2h-tab.active {
+      background: #fae8ff;
+      border-color: var(--color-accent-fuchsia);
+      color: #86198f;
+    }
+
+    .h2h-card {
+      position: relative;
+      overflow: hidden;
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(217, 70, 239, 0.08) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 1) 0,
+        rgba(0, 0, 0, 1) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      opacity: 0.05;
+      pointer-events: none;
+    }
+
+    .h2h-content {
+      position: relative;
+      padding: 1.5rem;
+    }
+
+    .h2h-similarity-badge {
+      position: absolute;
+      top: 1.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      background: #fae8ff;
+      color: #86198f;
+      border: 2px solid var(--color-accent-fuchsia);
+      z-index: 10;
+      box-shadow: 0 2px 4px rgba(217, 70, 239, 0.2);
+    }
+
+    .h2h-comparison-container {
+      display: flex;
+      flex-direction: column;
+      margin-top: 3.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .h2h-photos-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
+
+    .h2h-player-photo {
+      flex-shrink: 0;
+      text-align: center;
+    }
+
+    .h2h-player-photo img {
+      width: 150px;
+      height: 150px;
+      border-radius: 0.75rem;
+      object-fit: cover;
+      border: 3px solid var(--color-accent-fuchsia);
+      box-shadow: 0 4px 8px rgba(217, 70, 239, 0.2);
+      transition: transform var(--transition-speed);
+    }
+
+    .h2h-player-photo img:hover {
+      transform: scale(1.05);
+    }
+
+    .h2h-photo-name {
+      margin-top: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-slate-700);
+    }
+
+    .h2h-comparison-table {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    .h2h-comparison-table table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    .h2h-comparison-table thead th {
+      padding: 0.75rem;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+      border-bottom: 2px solid var(--color-slate-200);
+      font-weight: 600;
+    }
+
+    .h2h-comparison-table tbody td {
+      padding: 0.875rem 0.75rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .h2h-comparison-table tbody tr:hover {
+      background: var(--color-slate-50);
+    }
+
+    .h2h-value {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .h2h-value.winner {
+      color: var(--color-accent-fuchsia);
+      font-weight: 800;
+      background: #fae8ff;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+    }
+
+    .h2h-value.loser {
+      color: var(--color-slate-500);
+    }
+
+    .h2h-winner-banner {
+      margin-top: 1rem;
+      padding: 0.75rem;
+      border-radius: 0.375rem;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.875rem;
+    }
+
+    .h2h-winner-banner.winner-a {
+      background: #fae8ff;
+      color: #86198f;
+      border: 2px solid var(--color-accent-fuchsia);
+    }
+
+    .h2h-winner-banner.winner-b {
+      background: #cffafe;
+      color: #155e75;
+      border: 2px solid var(--color-accent-cyan);
+    }
+
+    .h2h-winner-banner.tie {
+      background: var(--color-slate-100);
+      color: var(--color-slate-800);
+      border: 2px solid var(--color-slate-300);
+    }
+
+    /* ============================================================================
+       SPECIALS
+       ========================================================================= */
+    .specials-container {
+      background: var(--color-white);
+      padding: 1rem;
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 1px solid rgba(245, 158, 11, 0.6);
+    }
+
+    .specials-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .special-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .special-odds {
+      color: var(--color-accent-indigo);
+      font-weight: 600;
+    }
+
+    .specials-cta {
+      width: 100%;
+      background: var(--color-accent-emerald);
+      color: var(--color-white);
+      padding: 0.5rem 1rem;
+      border-radius: 0.375rem;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--transition-speed);
+      margin-bottom: 0.5rem;
+    }
+
+    .specials-cta:hover {
+      background: #059669;
+    }
+
+    .specials-disclaimer {
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      text-align: center;
+    }
+
+    /* ============================================================================
+       FOOTER
+       ========================================================================= */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+      margin-top: 4rem;
+    }
+
+    .footer-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+
+    .footer-column ul {
+      list-style: none;
+    }
+
+    .footer-column ul li {
+      margin-bottom: 0.5rem;
+    }
+
+    .footer-column a {
+      color: var(--color-slate-700);
+      font-size: 0.875rem;
+      transition: color var(--transition-speed);
+    }
+
+    .footer-column a:hover {
+      color: var(--color-slate-900);
+    }
+
+    .footer-copyright {
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       ICONS
+       ========================================================================= */
+    .icon {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      stroke: currentColor;
+      stroke-width: 2;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .icon-lg {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+
+    .icon-xl {
+      width: 1.5rem;
+      height: 1.5rem;
+    }
+
+    /* ============================================================================
+       UTILITIES
+       ========================================================================= */
+    .mt-28 {
+      margin-top: 7rem;
+    }
+
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .text-left { text-align: left; }
+
+    /* ============================================================================
+       RESPONSIVE DESIGN
+       ========================================================================= */
+    @media (max-width: 1024px) {
+      .main-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        display: none;
+      }
+
+      .articles-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .navbar-nav {
+        display: none;
+      }
+
+      .navbar-brand h1 {
+        font-size: 1.5rem;
+      }
+
+      .search-input {
+        width: 180px;
+      }
+
+      .news-hero__title {
+        font-size: 1.5rem;
+      }
+
+      .news-hero__summary {
+        font-size: 0.875rem;
+      }
+
+      .news-hero__image {
+        height: 300px;
+      }
+
+      .articles-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .category-filters {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 1rem;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .category-tab {
+        white-space: nowrap;
+      }
+
+      .section-header {
+        font-size: 1.25rem;
+      }
+
+      .prospects-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      }
+
+      .h2h-controls-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .h2h-control {
+        min-width: 100%;
+      }
+
+      .h2h-tabs {
+        gap: 0.375rem;
+      }
+
+      .h2h-tab {
+        font-size: 0.6875rem;
+        padding: 0.375rem 0.75rem;
+      }
+
+      .h2h-similarity-badge {
+        font-size: 0.75rem;
+        padding: 0.375rem 0.75rem;
+      }
+
+      .h2h-comparison-container {
+        margin-top: 3rem;
+      }
+
+      .h2h-photos-row {
+        grid-template-columns: 1fr auto 1fr;
+        margin-bottom: 1rem;
+      }
+
+      .h2h-player-photo img {
+        width: 120px;
+        height: 120px;
+      }
+
+      .h2h-photo-name {
+        font-size: 0.75rem;
+      }
+
+      .footer-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================================
+       NAVIGATION BAR
+       ========================================================================= -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand">
+        <svg class="icon icon-xl" style="color: #fbbf24;" viewBox="0 0 24 24" stroke-width="2.5">
+          <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z"/>
+          <path d="M5 16l.7 1.6L7.3 18l-1.6.7L5 20l-.7-1.3L3 18l1.3-.4L5 16zM19 16l.7 1.6L21.3 18l-1.6.7L19 20l-.7-1.3L17 18l1.3-.4L19 16z"/>
+        </svg>
+        <h1>DraftGuru</h1>
+      </div>
+
+      <div class="navbar-nav">
+        <a href="#" class="active">News</a>
+        <a href="#">Prospects</a>
+        <a href="#">Mock Draft</a>
+        <a href="#">Compare</a>
+      </div>
+
+      <div class="navbar-search">
+        <input type="text" class="search-input" placeholder="Search news..." aria-label="Search news" />
+        <button class="search-button" aria-label="Search">
+          <svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============================================================================
+       MAIN CONTENT
+       ========================================================================= -->
+  <main class="container mt-28">
+
+    <!-- ==========================================================================
+         NEWS SECTION - MAGAZINE LAYOUT (Original)
+         Hero + Category Filters + Grid + List + Sidebar
+         ========================================================================== -->
+
+    <!-- Hero Featured Article -->
+    <section class="section">
+      <!-- Demo Controls (remove in production) -->
+      <div style="margin-bottom: 1rem; padding: 0.75rem; background: var(--color-slate-100); border-radius: 0.5rem; font-size: 0.75rem;">
+        <span class="mono-font uppercase" style="color: var(--color-slate-500); margin-right: 0.75rem;">Hero Preview:</span>
+        <button onclick="HeroModule.setMode('full')" class="category-tab active" id="heroModeFullBtn">Full Image</button>
+        <button onclick="HeroModule.setMode('split')" class="category-tab" id="heroModeSplitBtn">Split Layout</button>
+        <button onclick="HeroModule.setMode('blurred')" class="category-tab" id="heroModeBlurredBtn">Blurred BG</button>
+        <button onclick="HeroModule.setMode('gradient')" class="category-tab" id="heroModeGradientBtn">No Image</button>
+      </div>
+
+      <div class="news-hero" id="heroArticle">
+        <!-- Content rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- Category Filters -->
+    <div class="category-filters" id="categoryFilters">
+      <span class="category-filters__label">Filter:</span>
+      <button class="category-tab active" data-category="all">All</button>
+      <button class="category-tab" data-category="scouting-report">Scouting Report</button>
+      <button class="category-tab" data-category="big-board">Big Board</button>
+      <button class="category-tab" data-category="mock-draft">Mock Draft</button>
+      <button class="category-tab" data-category="film-study">Film Study</button>
+      <button class="category-tab" data-category="draft-intel">Draft Intel</button>
+      <button class="category-tab" data-category="team-fit">Team Fit</button>
+    </div>
+
+    <!-- Main Content + Sidebar Layout -->
+    <div class="main-layout">
+
+      <!-- Primary Content Area -->
+      <div class="primary-content">
+
+        <!-- Secondary Articles Grid -->
+        <section class="section">
+          <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+            Latest Stories
+          </h2>
+
+          <div class="articles-grid" id="articlesGrid">
+            <!-- Articles populated by JavaScript -->
+          </div>
+
+          <!-- Pagination -->
+          <nav class="pagination" id="pagination" aria-label="Articles pagination">
+            <button class="pagination__button pagination__button--nav" id="prevPage" aria-label="Previous page">
+              <svg class="icon" viewBox="0 0 24 24">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              Prev
+            </button>
+            <div id="paginationNumbers">
+              <!-- Page numbers populated by JavaScript -->
+            </div>
+            <button class="pagination__button pagination__button--nav" id="nextPage" aria-label="Next page">
+              Next
+              <svg class="icon" viewBox="0 0 24 24">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+            <span class="pagination__info" id="paginationInfo"></span>
+          </nav>
+        </section>
+
+      </div>
+
+      <!-- Sidebar -->
+      <aside class="sidebar">
+
+        <!-- Sources -->
+        <div class="sidebar-section">
+          <h4 class="sidebar-section__title">Sources</h4>
+          <div class="sources-list" id="sourcesList">
+            <!-- Populated by JavaScript -->
+          </div>
+        </div>
+
+        <!-- Trending Tags -->
+        <div class="sidebar-section">
+          <h4 class="sidebar-section__title">Trending Topics</h4>
+          <div class="trending-tags" id="trendingTags">
+            <!-- Populated by JavaScript -->
+          </div>
+        </div>
+
+      </aside>
+
+    </div>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         MARKET MOVES TICKER
+         ========================================================================== -->
+    <section class="section">
+      <div class="ticker-container">
+        <div class="ticker-header">
+          <svg class="icon" style="color: var(--color-accent-emerald);" viewBox="0 0 24 24">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          <span>Market Moves</span>
+          <span>(Risers &amp; Fallers)</span>
+        </div>
+        <div class="ticker-wrapper">
+          <div id="ticker" class="ticker-content"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         CONSENSUS MOCK DRAFT
+         ========================================================================== -->
+    <section class="section">
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
+        Consensus Mock Draft
+      </h2>
+      <p class="section-subtitle">Averaged from 15 expert boards &bull; updated hourly</p>
+
+      <div class="card card-ring card-ring-emerald">
+        <div class="card-content">
+          <div style="overflow-x: auto;">
+            <table id="mockTable">
+              <thead>
+                <tr>
+                  <th>Pick</th>
+                  <th>Player</th>
+                  <th>Pos</th>
+                  <th>Team</th>
+                  <th>Avg</th>
+                  <th>&Delta;</th>
+                  <th>Odds</th>
+                </tr>
+              </thead>
+              <tbody id="mockTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         TOP PROSPECTS
+         ========================================================================== -->
+    <section class="section">
+      <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-indigo);">
+        Top Prospects
+      </h3>
+
+      <div id="prospectsGrid" class="prospects-grid"></div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         VS ARENA (PLAYER COMPARISON)
+         ========================================================================== -->
+    <section class="section">
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+        <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+          <path d="M14.5 17.5L3 6l3-3 11.5 11.5"></path>
+          <path d="M13 19l2 2 6-6-2-2-6 6z"></path>
+          <path d="M3 6l7 7"></path>
+        </svg>
+        VS Arena
+      </h2>
+      <p class="section-subtitle">Compare top draft prospects head-to-head across key metrics</p>
+
+      <div class="h2h-controls-row">
+        <div class="h2h-control">
+          <label class="h2h-label" for="playerA">Player A</label>
+          <select id="playerA" class="h2h-select"></select>
+        </div>
+        <div class="h2h-control">
+          <label class="h2h-label" for="playerB">Player B</label>
+          <select id="playerB" class="h2h-select"></select>
+        </div>
+      </div>
+
+      <div class="h2h-tabs">
+        <button class="h2h-tab active" data-category="anthropometrics">Anthropometrics</button>
+        <button class="h2h-tab" data-category="combinePerformance">Combine Performance</button>
+        <button class="h2h-tab" data-category="advancedStats">Advanced Stats</button>
+      </div>
+
+      <div class="card card-ring card-ring-fuchsia h2h-card">
+        <div class="scanlines"></div>
+        <div class="h2h-content">
+          <div id="h2hSimilarityBadge" class="h2h-similarity-badge">Select Players</div>
+          <div class="h2h-comparison-container">
+            <div class="h2h-photos-row">
+              <div class="h2h-player-photo">
+                <img id="h2hPhotoA" src="https://placehold.co/200x200/edf2f7/1f2937?text=Player+A" alt="Player A" />
+                <div class="h2h-photo-name" id="h2hPhotoNameA">Player A</div>
+              </div>
+              <div class="h2h-photos-spacer"></div>
+              <div class="h2h-player-photo">
+                <img id="h2hPhotoB" src="https://placehold.co/200x200/edf2f7/1f2937?text=Player+B" alt="Player B" />
+                <div class="h2h-photo-name" id="h2hPhotoNameB">Player B</div>
+              </div>
+            </div>
+            <div class="h2h-comparison-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th id="headerA" class="text-right"></th>
+                    <th class="text-center">Metric</th>
+                    <th id="headerB" class="text-left"></th>
+                  </tr>
+                </thead>
+                <tbody id="comparisonBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div id="winnerDeclaration" class="h2h-winner-banner"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ==========================================================================
+         DRAFT POSITION SPECIALS
+         ========================================================================== -->
+    <section class="section">
+      <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-amber);">
+        Draft Position Specials
+      </h3>
+      <p class="section-subtitle">Powered by FanDuel &bull; 21+</p>
+
+      <div class="specials-container">
+        <div id="specialsList" class="specials-list"></div>
+        <button class="specials-cta">Claim Bonus</button>
+        <p class="specials-disclaimer">Gambling Problem? Call 1-800-GAMBLER</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================================================================
+       FOOTER
+       ========================================================================= -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Our Story</a></li>
+            <li><a href="#">Team</a></li>
+            <li><a href="#">Careers</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="#">Draft Guide</a></li>
+            <li><a href="#">Mock Drafts</a></li>
+            <li><a href="#">Player Rankings</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Community</h4>
+          <ul>
+            <li><a href="#">Twitter</a></li>
+            <li><a href="#">Newsletter</a></li>
+            <li><a href="#">Discord</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Legal</h4>
+          <ul>
+            <li><a href="#">Terms</a></li>
+            <li><a href="#">Privacy</a></li>
+            <li><a href="#">Disclaimer</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        <p>&copy; 2025 DraftGuru. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ============================================================================
+       JAVASCRIPT
+       ========================================================================= -->
+  <script>
+    /**
+     * ============================================================================
+     * DATA LAYER
+     * ============================================================================
+     */
+
+    // All News Articles (combined for pagination)
+    const ALL_ARTICLES = [
+      {
+        id: 1,
+        title: "Ace Bailey's Wingspan Measurements Cause Stir at Combine",
+        summary: "The Rutgers wing measured in with an exceptional 7'2\" wingspan, exceeding projections and boosting his stock among lottery teams.",
+        source: "No Ceilings",
+        author: "Sam Vecenie",
+        time: "3h ago",
+        tag: "draft-intel",
+        tagLabel: "Draft Intel",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Ace+Bailey"
+      },
+      {
+        id: 2,
+        title: "Updated Big Board: Post-Combine Rankings Shakeup",
+        summary: "Several prospects rose and fell after impressive (and concerning) combine performances. Here's our updated top 30.",
+        source: "Floor and Ceiling",
+        author: "Jonathan Givony",
+        time: "5h ago",
+        tag: "big-board",
+        tagLabel: "Big Board",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Big+Board"
+      },
+      {
+        id: 3,
+        title: "Film Study: Zachary Rioux's Rim Protection Translates",
+        summary: "Breaking down why the Kentucky big man's shot-blocking translates better than most college rim protectors.",
+        source: "The Ringer",
+        author: "Kevin O'Connor",
+        time: "8h ago",
+        tag: "film-study",
+        tagLabel: "Film Study",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Film+Study"
+      },
+      {
+        id: 4,
+        title: "Mock Draft 3.0: Hawks Trade Up for Guard",
+        summary: "Our latest mock sees Atlanta making a bold move to land their point guard of the future.",
+        source: "Bleacher Report",
+        author: "Jonathan Wasserman",
+        time: "12h ago",
+        tag: "mock-draft",
+        tagLabel: "Mock Draft",
+        imageUrl: null
+      },
+      {
+        id: 5,
+        title: "Buzelis Fit Analysis: Which Teams Make Sense?",
+        summary: "Examining the best landing spots for the versatile G-League forward based on playing style and roster needs.",
+        source: "No Ceilings",
+        author: "Sam Vecenie",
+        time: "1d ago",
+        tag: "team-fit",
+        tagLabel: "Team Fit",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Team+Fit"
+      },
+      {
+        id: 6,
+        title: "Scouting Report: KJ Evans Jr.'s Two-Way Upside",
+        summary: "The Oregon forward has the tools to be an elite defender while showing flashes of offensive polish.",
+        source: "Floor and Ceiling",
+        author: "Mike Schmitz",
+        time: "1d ago",
+        tag: "scouting-report",
+        tagLabel: "Scouting Report",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=KJ+Evans"
+      },
+      {
+        id: 7,
+        title: "Combine Standouts: Five Risers to Watch",
+        summary: "After an eventful combine week, these five prospects significantly improved their draft stock with standout performances.",
+        source: "ESPN",
+        author: "Jeremy Woo",
+        time: "1d ago",
+        tag: "draft-intel",
+        tagLabel: "Draft Intel",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Risers"
+      },
+      {
+        id: 8,
+        title: "Breaking Down the International Prospects",
+        summary: "A comprehensive look at the top overseas talent eligible for this year's draft and what makes them intriguing.",
+        source: "The Athletic",
+        author: "John Hollinger",
+        time: "2d ago",
+        tag: "scouting-report",
+        tagLabel: "Scouting Report",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=International"
+      },
+      {
+        id: 9,
+        title: "Trade Value Chart: Who's Worth Moving Up For?",
+        summary: "Analyzing the cost-benefit of trading up in this draft class and which prospects justify a premium price.",
+        source: "No Ceilings",
+        author: "Sam Vecenie",
+        time: "2d ago",
+        tag: "big-board",
+        tagLabel: "Big Board",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Trade+Value"
+      },
+      {
+        id: 10,
+        title: "Defensive Metrics That Matter for NBA Translation",
+        summary: "Which college defensive stats actually predict NBA success? We break down the numbers that matter most.",
+        source: "Floor and Ceiling",
+        author: "Mike Schmitz",
+        time: "3d ago",
+        tag: "stats-analysis",
+        tagLabel: "Stats Analysis",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Defense+Stats"
+      },
+      {
+        id: 11,
+        title: "Second Round Sleepers: Value Picks to Watch",
+        summary: "These under-the-radar prospects could provide excellent value in the second round of the draft.",
+        source: "Bleacher Report",
+        author: "Jonathan Wasserman",
+        time: "3d ago",
+        tag: "big-board",
+        tagLabel: "Big Board",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Sleepers"
+      },
+      {
+        id: 12,
+        title: "Point Guard Prospects: Playmaking Breakdown",
+        summary: "Evaluating the passing vision, decision-making, and court awareness of this year's top point guard prospects.",
+        source: "The Ringer",
+        author: "Kevin O'Connor",
+        time: "4d ago",
+        tag: "film-study",
+        tagLabel: "Film Study",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Point+Guards"
+      },
+      {
+        id: 13,
+        title: "Team Needs Index: What Every Lottery Team Wants",
+        summary: "Breaking down each lottery team's roster holes and which prospects best address their needs.",
+        source: "ESPN",
+        author: "Jonathan Givony",
+        time: "4d ago",
+        tag: "team-fit",
+        tagLabel: "Team Fit",
+        imageUrl: null
+      },
+      {
+        id: 14,
+        title: "Shooting Stroke Analysis: Whose Jumper Translates?",
+        summary: "A deep dive into shooting mechanics and which prospects have NBA-ready jumpers versus those needing work.",
+        source: "Floor and Ceiling",
+        author: "Mike Schmitz",
+        time: "5d ago",
+        tag: "film-study",
+        tagLabel: "Film Study",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Shooting"
+      },
+      {
+        id: 15,
+        title: "Medical Flags and Injury History Review",
+        summary: "A look at prospects with injury concerns and how medical evaluations could impact their draft stock.",
+        source: "The Athletic",
+        author: "Sam Vecenie",
+        time: "5d ago",
+        tag: "draft-intel",
+        tagLabel: "Draft Intel",
+        imageUrl: "https://placehold.co/400x300/1e293b/64748b?text=Medical"
+      }
+    ];
+
+    // Sidebar Data
+    const SOURCES = [
+      { name: "Floor and Ceiling", count: 24 },
+      { name: "No Ceilings", count: 18 },
+      { name: "The Ringer", count: 12 },
+      { name: "Bleacher Report", count: 9 },
+      { name: "ESPN", count: 7 },
+      { name: "The Athletic", count: 5 }
+    ];
+
+    const TRENDING_TAGS = [
+      { label: "Cooper Flagg", tag: "scouting-report" },
+      { label: "Combine Results", tag: "draft-intel" },
+      { label: "Trade Rumors", tag: "draft-intel" },
+      { label: "Ace Bailey", tag: "scouting-report" },
+      { label: "Mock Draft", tag: "mock-draft" }
+    ];
+
+    // Mock draft picks data
+    const MOCK_PICKS = [
+      { pick: 1, name: "Cooper Flagg", position: "F", college: "Duke", avgRank: 1.2, change: +1 },
+      { pick: 2, name: "Ace Bailey", position: "G/F", college: "Rutgers", avgRank: 2.8, change: -1 },
+      { pick: 3, name: "Zachary Rioux", position: "C", college: "Kentucky", avgRank: 3.4, change: +2 },
+      { pick: 4, name: "Matas Buzelis", position: "F", college: "G League", avgRank: 4.1, change: 0 },
+      { pick: 5, name: "KJ Evans Jr.", position: "F", college: "Oregon", avgRank: 5.7, change: -2 },
+    ];
+
+    const PLAYERS = MOCK_PICKS.map((player) => ({
+      ...player,
+      img: `https://placehold.co/320x420/edf2f7/1f2937?text=${encodeURIComponent(player.name)}`,
+      measurables: {
+        ht: 80 + (player.pick % 3),
+        ws: 84 + (player.pick % 5),
+        vert: 34 + (player.pick % 7)
+      }
+    }));
+
+    /**
+     * ============================================================================
+     * HERO MODULE - Handles hero image fallback system
+     * ============================================================================
+     */
+    const HeroModule = {
+      currentMode: 'full',
+
+      // Featured article data
+      article: {
+        title: "Cooper Flagg's Elite Camp Performance Cements #1 Status",
+        summary: "Breaking down Flagg's dominant showing at the Nike Skills Academy, including his improved three-point shooting and defensive versatility that has scouts buzzing.",
+        source: "Floor and Ceiling",
+        author: "Jonathan Givony",
+        time: "2h ago",
+        tag: "scouting-report",
+        tagLabel: "Scouting Report",
+        // Different image scenarios for demo
+        images: {
+          full: "https://placehold.co/1200x500/1e293b/64748b?text=Wide+Hero+Image+(1200x500)",
+          split: "https://placehold.co/400x500/1e293b/64748b?text=Square+Image+(400x500)",
+          blurred: "https://placehold.co/400x400/1e293b/64748b?text=Square+Image+(400x400)",
+          gradient: null
+        }
+      },
+
+      // Category icons (SVG paths)
+      categoryIcons: {
+        'scouting-report': '<path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>',
+        'big-board': '<path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>',
+        'mock-draft': '<path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>',
+        'tier-update': '<path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>',
+        'game-recap': '<path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
+        'film-study': '<path d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/>',
+        'skill-theme': '<path d="M13 10V3L4 14h7v7l9-11h-7z"/>',
+        'team-fit': '<path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>',
+        'draft-intel': '<path d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>',
+        'stats-analysis': '<path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>'
+      },
+
+      init() {
+        this.render();
+      },
+
+      setMode(mode) {
+        this.currentMode = mode;
+
+        // Update demo button states
+        document.querySelectorAll('[id^="heroMode"]').forEach(btn => btn.classList.remove('active'));
+        document.getElementById(`heroMode${mode.charAt(0).toUpperCase() + mode.slice(1)}Btn`).classList.add('active');
+
+        this.render();
+      },
+
+      render() {
+        const hero = document.getElementById('heroArticle');
+        const article = this.article;
+        const imageUrl = article.images[this.currentMode];
+
+        // Reset classes
+        hero.className = 'news-hero';
+
+        if (this.currentMode === 'full' && imageUrl) {
+          // Full wide image - best case
+          hero.innerHTML = `
+            <img class="news-hero__image" src="${imageUrl}" alt="${article.title}" />
+            ${this.renderOverlay(article)}
+          `;
+        } else if (this.currentMode === 'split' && imageUrl) {
+          // Split layout - text dominant with side image
+          hero.classList.add('news-hero--split');
+          hero.innerHTML = `
+            <div class="news-hero__text-area">
+              <span class="news-hero__tag tag--${article.tag}">${article.tagLabel}</span>
+              <h2 class="news-hero__title">${article.title}</h2>
+              <p class="news-hero__summary">${article.summary}</p>
+              <div class="news-hero__meta">
+                <span class="news-hero__source">${article.source}</span>
+                <span class="news-hero__author">by ${article.author}</span>
+                <span class="news-hero__time">${article.time}</span>
+              </div>
+            </div>
+            <div class="news-hero__image-area">
+              <img class="news-hero__image" src="${imageUrl}" alt="${article.title}" />
+            </div>
+          `;
+        } else if (this.currentMode === 'blurred' && imageUrl) {
+          // Blurred background with contained image
+          hero.classList.add('news-hero--blurred');
+          hero.innerHTML = `
+            <div class="news-hero__background" style="background-image: url('${imageUrl}');"></div>
+            <div class="news-hero__image-container">
+              <img class="news-hero__image" src="${imageUrl}" alt="${article.title}" />
+            </div>
+            ${this.renderOverlay(article)}
+          `;
+        } else {
+          // Gradient fallback - no suitable image
+          hero.classList.add('news-hero--gradient', `news-hero--${article.tag}`);
+          const iconPath = this.categoryIcons[article.tag] || this.categoryIcons['scouting-report'];
+          hero.innerHTML = `
+            <div class="news-hero__pattern"></div>
+            <svg class="news-hero__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              ${iconPath}
+            </svg>
+            <div style="height: 400px;"></div>
+            ${this.renderOverlay(article)}
+          `;
+        }
+      },
+
+      renderOverlay(article) {
+        return `
+          <div class="news-hero__overlay">
+            <span class="news-hero__tag tag--${article.tag}">${article.tagLabel}</span>
+            <h2 class="news-hero__title">${article.title}</h2>
+            <p class="news-hero__summary">${article.summary}</p>
+            <div class="news-hero__meta">
+              <span class="news-hero__source">${article.source}</span>
+              <span class="news-hero__author">by ${article.author}</span>
+              <span class="news-hero__time">${article.time}</span>
+            </div>
+          </div>
+        `;
+      }
+    };
+
+    /**
+     * ============================================================================
+     * NEWS MODULE
+     * ============================================================================
+     */
+    const NewsModule = {
+      currentPage: 1,
+      articlesPerPage: 6,
+      filteredArticles: ALL_ARTICLES,
+      currentFilter: 'all',
+
+      init() {
+        this.renderArticlesGrid();
+        this.renderPagination();
+        this.renderSources();
+        this.renderTrendingTags();
+        this.setupCategoryFilters();
+        this.setupPaginationEvents();
+      },
+
+      getPagedArticles() {
+        const startIndex = (this.currentPage - 1) * this.articlesPerPage;
+        const endIndex = startIndex + this.articlesPerPage;
+        return this.filteredArticles.slice(startIndex, endIndex);
+      },
+
+      getTotalPages() {
+        return Math.ceil(this.filteredArticles.length / this.articlesPerPage);
+      },
+
+      renderArticlesGrid() {
+        const grid = document.getElementById('articlesGrid');
+        const articles = this.getPagedArticles();
+
+        grid.innerHTML = articles.map(article => `
+          <article class="article-card">
+            <div class="article-card__image-wrapper">
+              ${article.imageUrl
+                ? `<img class="article-card__image" src="${article.imageUrl}" alt="${article.title}" loading="lazy" />`
+                : `<div class="article-card__image-placeholder">DG</div>`
+              }
+              <span class="article-card__tag tag--${article.tag}">${article.tagLabel}</span>
+            </div>
+            <div class="article-card__content">
+              <h3 class="article-card__title">${article.title}</h3>
+              <p class="article-card__summary">${article.summary}</p>
+              <div class="article-card__meta">
+                <span class="article-card__source">${article.source}</span>
+                <span class="article-card__time">${article.time}</span>
+              </div>
+            </div>
+          </article>
+        `).join('');
+      },
+
+      renderPagination() {
+        const totalPages = this.getTotalPages();
+        const paginationNumbers = document.getElementById('paginationNumbers');
+        const prevBtn = document.getElementById('prevPage');
+        const nextBtn = document.getElementById('nextPage');
+        const paginationInfo = document.getElementById('paginationInfo');
+
+        // Update prev/next button states
+        prevBtn.disabled = this.currentPage === 1;
+        nextBtn.disabled = this.currentPage === totalPages;
+
+        // Generate page number buttons
+        let numbersHTML = '';
+        const maxVisiblePages = 5;
+        let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePages / 2));
+        let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+        // Adjust start if we're near the end
+        if (endPage - startPage < maxVisiblePages - 1) {
+          startPage = Math.max(1, endPage - maxVisiblePages + 1);
+        }
+
+        // First page + ellipsis
+        if (startPage > 1) {
+          numbersHTML += `<button class="pagination__button" data-page="1">1</button>`;
+          if (startPage > 2) {
+            numbersHTML += `<span class="pagination__ellipsis">...</span>`;
+          }
+        }
+
+        // Page numbers
+        for (let i = startPage; i <= endPage; i++) {
+          const activeClass = i === this.currentPage ? 'active' : '';
+          numbersHTML += `<button class="pagination__button ${activeClass}" data-page="${i}">${i}</button>`;
+        }
+
+        // Last page + ellipsis
+        if (endPage < totalPages) {
+          if (endPage < totalPages - 1) {
+            numbersHTML += `<span class="pagination__ellipsis">...</span>`;
+          }
+          numbersHTML += `<button class="pagination__button" data-page="${totalPages}">${totalPages}</button>`;
+        }
+
+        paginationNumbers.innerHTML = numbersHTML;
+
+        // Update info text
+        const startItem = (this.currentPage - 1) * this.articlesPerPage + 1;
+        const endItem = Math.min(this.currentPage * this.articlesPerPage, this.filteredArticles.length);
+        paginationInfo.textContent = `${startItem}-${endItem} of ${this.filteredArticles.length}`;
+
+        // Attach click events to page number buttons
+        paginationNumbers.querySelectorAll('.pagination__button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            this.goToPage(parseInt(btn.dataset.page));
+          });
+        });
+      },
+
+      setupPaginationEvents() {
+        document.getElementById('prevPage').addEventListener('click', () => {
+          if (this.currentPage > 1) {
+            this.goToPage(this.currentPage - 1);
+          }
+        });
+
+        document.getElementById('nextPage').addEventListener('click', () => {
+          if (this.currentPage < this.getTotalPages()) {
+            this.goToPage(this.currentPage + 1);
+          }
+        });
+      },
+
+      goToPage(page) {
+        this.currentPage = page;
+        this.renderArticlesGrid();
+        this.renderPagination();
+
+        // Scroll to top of articles grid
+        document.getElementById('articlesGrid').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      },
+
+      renderSources() {
+        const sourcesList = document.getElementById('sourcesList');
+        sourcesList.innerHTML = SOURCES.map(source => `
+          <div class="source-item">
+            <span class="source-item__name">${source.name}</span>
+            <span class="source-item__count">${source.count}</span>
+          </div>
+        `).join('');
+      },
+
+      renderTrendingTags() {
+        const tagsContainer = document.getElementById('trendingTags');
+        tagsContainer.innerHTML = TRENDING_TAGS.map(item => `
+          <span class="trending-tag tag--${item.tag}">${item.label}</span>
+        `).join('');
+      },
+
+      setupCategoryFilters() {
+        const tabs = document.querySelectorAll('.category-tab');
+        tabs.forEach(tab => {
+          tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+
+            const category = tab.dataset.category;
+            this.currentFilter = category;
+
+            // Filter articles
+            if (category === 'all') {
+              this.filteredArticles = ALL_ARTICLES;
+            } else {
+              this.filteredArticles = ALL_ARTICLES.filter(article => article.tag === category);
+            }
+
+            // Reset to page 1 when filtering
+            this.currentPage = 1;
+            this.renderArticlesGrid();
+            this.renderPagination();
+          });
+        });
+      }
+    };
+
+    /**
+     * ============================================================================
+     * TICKER MODULE
+     * ============================================================================
+     */
+    const TickerModule = {
+      init() {
+        const tickerElement = document.getElementById('ticker');
+        const tickerData = [...MOCK_PICKS]
+          .map((player) => ({ name: player.name, change: player.change }))
+          .sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+
+        const chunk = tickerData.map((item) => {
+          const changeClass = item.change > 0 ? 'positive' : 'negative';
+          const changeSymbol = item.change > 0 ? '▲' : '▼';
+          return `
+            <span class="ticker-item">
+              <strong>${item.name}</strong>
+              <span class="ticker-change ${changeClass}">
+                ${changeSymbol} ${Math.abs(item.change)}
+              </span>
+            </span>
+          `;
+        }).join('');
+
+        tickerElement.innerHTML = chunk + chunk;
+      }
+    };
+
+    /**
+     * ============================================================================
+     * MOCK TABLE MODULE
+     * ============================================================================
+     */
+    const MockTableModule = {
+      init() {
+        const tbody = document.getElementById('mockTableBody');
+        tbody.innerHTML = MOCK_PICKS.map((pick) => {
+          const changeClass = pick.change > 0 ? 'change-positive' : pick.change < 0 ? 'change-negative' : 'change-neutral';
+          const changeSymbol = pick.change > 0 ? '▲' : pick.change < 0 ? '▼' : '=';
+
+          return `
+            <tr>
+              <td class="tabular-nums mono-font" style="font-weight: 500;">${pick.pick}</td>
+              <td>${pick.name}</td>
+              <td>${pick.position}</td>
+              <td>${pick.college}</td>
+              <td class="tabular-nums mono-font">${pick.avgRank.toFixed(1)}</td>
+              <td class="tabular-nums mono-font ${changeClass}">${changeSymbol} ${Math.abs(pick.change)}</td>
+              <td><a href="#" class="table-link">Bet −110</a></td>
+            </tr>
+          `;
+        }).join('');
+      }
+    };
+
+    /**
+     * ============================================================================
+     * PROSPECTS MODULE
+     * ============================================================================
+     */
+    const ProspectsModule = {
+      init() {
+        const grid = document.getElementById('prospectsGrid');
+        grid.innerHTML = PLAYERS.map((player) => {
+          const badge = player.change !== 0
+            ? `<span class="prospect-badge ${player.change > 0 ? 'riser' : 'faller'}">${player.change > 0 ? 'Riser' : 'Faller'}</span>`
+            : '';
+
+          return `
+            <div class="prospect-card">
+              <div class="prospect-image-wrapper">
+                <img src="${player.img}" alt="${player.name}" class="prospect-image" />
+                ${badge}
+              </div>
+              <div class="prospect-info">
+                <h4 class="prospect-name">${player.name}</h4>
+                <p class="prospect-meta">${player.position} • ${player.college}</p>
+                <div class="prospect-stats">
+                  <div class="stat-pill"><span class="label">HT</span><span class="value">${player.measurables.ht}"</span></div>
+                  <div class="stat-pill"><span class="label">WS</span><span class="value">${player.measurables.ws}"</span></div>
+                  <div class="stat-pill"><span class="label">VRT</span><span class="value">${player.measurables.vert}"</span></div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    };
+
+    /**
+     * ============================================================================
+     * HEAD-TO-HEAD MODULE
+     * ============================================================================
+     */
+    const HeadToHeadModule = {
+      selectedPlayerA: null,
+      selectedPlayerB: null,
+      currentCategory: 'anthropometrics',
+
+      playerData: {
+        'Cooper Flagg': {
+          img: 'https://placehold.co/200x200/d946ef/ffffff?text=Cooper+Flagg',
+          anthropometrics: { height: 81, weight: 205, wingspan: 86, standingReach: 108 },
+          combinePerformance: { verticalLeap: 38.5, lane: 10.8, shuttle: 2.9, bench: 12 },
+          advancedStats: { per: 28.4, ts: 61.2, orb: 12.8, drb: 18.5, ast: 23.1, stl: 3.2, blk: 5.8, tov: 12.4 }
+        },
+        'Ace Bailey': {
+          img: 'https://placehold.co/200x200/d946ef/ffffff?text=Ace+Bailey',
+          anthropometrics: { height: 79, weight: 196, wingspan: 83, standingReach: 104 },
+          combinePerformance: { verticalLeap: 41.0, lane: 10.5, shuttle: 2.8, bench: 10 },
+          advancedStats: { per: 26.8, ts: 58.7, orb: 8.4, drb: 15.2, ast: 18.6, stl: 2.8, blk: 3.1, tov: 14.2 }
+        },
+        'Zachary Rioux': {
+          img: 'https://placehold.co/200x200/d946ef/ffffff?text=Zachary+Rioux',
+          anthropometrics: { height: 84, weight: 245, wingspan: 89, standingReach: 112 },
+          combinePerformance: { verticalLeap: 32.5, lane: 11.8, shuttle: 3.2, bench: 15 },
+          advancedStats: { per: 24.2, ts: 64.5, orb: 18.2, drb: 22.4, ast: 8.5, stl: 1.4, blk: 8.9, tov: 9.8 }
+        },
+        'Matas Buzelis': {
+          img: 'https://placehold.co/200x200/d946ef/ffffff?text=Matas+Buzelis',
+          anthropometrics: { height: 82, weight: 210, wingspan: 87, standingReach: 109 },
+          combinePerformance: { verticalLeap: 36.0, lane: 11.0, shuttle: 3.0, bench: 11 },
+          advancedStats: { per: 25.6, ts: 59.8, orb: 10.2, drb: 16.8, ast: 20.4, stl: 2.5, blk: 4.2, tov: 11.6 }
+        },
+        'KJ Evans Jr.': {
+          img: 'https://placehold.co/200x200/d946ef/ffffff?text=KJ+Evans+Jr',
+          anthropometrics: { height: 80, weight: 215, wingspan: 84, standingReach: 106 },
+          combinePerformance: { verticalLeap: 35.0, lane: 11.2, shuttle: 3.1, bench: 13 },
+          advancedStats: { per: 23.8, ts: 56.4, orb: 14.6, drb: 19.2, ast: 14.8, stl: 2.1, blk: 3.8, tov: 10.2 }
+        }
+      },
+
+      categoryMetrics: {
+        anthropometrics: [
+          { key: 'height', label: 'Height', unit: '"', higherIsBetter: true },
+          { key: 'weight', label: 'Weight', unit: ' lbs', higherIsBetter: true },
+          { key: 'wingspan', label: 'Wingspan', unit: '"', higherIsBetter: true },
+          { key: 'standingReach', label: 'Standing Reach', unit: '"', higherIsBetter: true }
+        ],
+        combinePerformance: [
+          { key: 'verticalLeap', label: 'Vertical Leap', unit: '"', higherIsBetter: true },
+          { key: 'lane', label: 'Lane Agility', unit: 's', higherIsBetter: false },
+          { key: 'shuttle', label: '3/4 Shuttle', unit: 's', higherIsBetter: false },
+          { key: 'bench', label: 'Bench Press', unit: ' reps', higherIsBetter: true }
+        ],
+        advancedStats: [
+          { key: 'per', label: 'PER', unit: '', higherIsBetter: true },
+          { key: 'ts', label: 'TS%', unit: '%', higherIsBetter: true },
+          { key: 'orb', label: 'ORB%', unit: '%', higherIsBetter: true },
+          { key: 'drb', label: 'DRB%', unit: '%', higherIsBetter: true },
+          { key: 'ast', label: 'AST%', unit: '%', higherIsBetter: true },
+          { key: 'stl', label: 'STL%', unit: '%', higherIsBetter: true },
+          { key: 'blk', label: 'BLK%', unit: '%', higherIsBetter: true },
+          { key: 'tov', label: 'TOV%', unit: '%', higherIsBetter: false }
+        ]
+      },
+
+      init() {
+        this.populateSelectors();
+        this.setupEventListeners();
+        this.renderComparison();
+      },
+
+      populateSelectors() {
+        const playerASelect = document.getElementById('playerA');
+        const playerBSelect = document.getElementById('playerB');
+
+        Object.keys(this.playerData).forEach((playerName) => {
+          playerASelect.add(new Option(playerName, playerName));
+          playerBSelect.add(new Option(playerName, playerName));
+        });
+
+        const playerNames = Object.keys(this.playerData);
+        playerASelect.value = playerNames[0];
+        playerBSelect.value = playerNames[1];
+        this.selectedPlayerA = playerNames[0];
+        this.selectedPlayerB = playerNames[1];
+      },
+
+      setupEventListeners() {
+        document.getElementById('playerA').addEventListener('change', (e) => {
+          this.selectedPlayerA = e.target.value;
+          this.renderComparison();
+        });
+
+        document.getElementById('playerB').addEventListener('change', (e) => {
+          this.selectedPlayerB = e.target.value;
+          this.renderComparison();
+        });
+
+        document.querySelectorAll('.h2h-tab').forEach((tab) => {
+          tab.addEventListener('click', () => {
+            document.querySelectorAll('.h2h-tab').forEach((t) => t.classList.remove('active'));
+            tab.classList.add('active');
+            this.currentCategory = tab.dataset.category;
+            this.renderComparison();
+          });
+        });
+      },
+
+      renderComparison() {
+        if (!this.selectedPlayerA || !this.selectedPlayerB) return;
+
+        const playerAData = this.playerData[this.selectedPlayerA][this.currentCategory];
+        const playerBData = this.playerData[this.selectedPlayerB][this.currentCategory];
+
+        document.getElementById('h2hPhotoA').src = this.playerData[this.selectedPlayerA].img;
+        document.getElementById('h2hPhotoB').src = this.playerData[this.selectedPlayerB].img;
+        document.getElementById('h2hPhotoNameA').textContent = this.selectedPlayerA;
+        document.getElementById('h2hPhotoNameB').textContent = this.selectedPlayerB;
+
+        // Calculate similarity
+        const metrics = this.categoryMetrics[this.currentCategory];
+        let totalDiff = 0, count = 0;
+        metrics.forEach((metric) => {
+          const valA = playerAData[metric.key], valB = playerBData[metric.key];
+          if (valA !== undefined && valB !== undefined) {
+            const diff = Math.abs(valA - valB);
+            const avg = (valA + valB) / 2;
+            totalDiff += avg !== 0 ? (diff / avg) * 100 : 0;
+            count++;
+          }
+        });
+        const similarity = Math.round(Math.max(0, 100 - (count > 0 ? totalDiff / count : 0)));
+        document.getElementById('h2hSimilarityBadge').textContent = `${similarity}% Similar`;
+
+        document.getElementById('headerA').textContent = this.selectedPlayerA;
+        document.getElementById('headerB').textContent = this.selectedPlayerB;
+
+        let rowsHTML = '', winsA = 0, winsB = 0;
+        metrics.forEach((metric) => {
+          const valueA = playerAData[metric.key], valueB = playerBData[metric.key];
+          const isWinnerA = metric.higherIsBetter ? valueA > valueB : valueA < valueB;
+          const isWinnerB = metric.higherIsBetter ? valueB > valueA : valueB < valueA;
+          if (isWinnerA) winsA++;
+          if (isWinnerB) winsB++;
+
+          rowsHTML += `
+            <tr>
+              <td class="text-right ${isWinnerA ? 'h2h-value winner' : 'h2h-value loser'}">${valueA}${metric.unit}</td>
+              <td class="text-center">${metric.label}</td>
+              <td class="text-left ${isWinnerB ? 'h2h-value winner' : 'h2h-value loser'}">${valueB}${metric.unit}</td>
+            </tr>
+          `;
+        });
+
+        document.getElementById('comparisonBody').innerHTML = rowsHTML;
+
+        const totalMetrics = metrics.length;
+        let bannerText, bannerClass;
+        if (winsA > winsB) {
+          bannerText = `🏆 ${this.selectedPlayerA} wins — ${winsA}/${totalMetrics} categories`;
+          bannerClass = 'h2h-winner-banner winner-a';
+        } else if (winsB > winsA) {
+          bannerText = `🏆 ${this.selectedPlayerB} wins — ${winsB}/${totalMetrics} categories`;
+          bannerClass = 'h2h-winner-banner winner-b';
+        } else {
+          bannerText = `⚔️ Tie — ${winsA}/${totalMetrics} categories each`;
+          bannerClass = 'h2h-winner-banner tie';
+        }
+        document.getElementById('winnerDeclaration').innerHTML = `<div class="${bannerClass}">${bannerText}</div>`;
+      }
+    };
+
+    /**
+     * ============================================================================
+     * SPECIALS MODULE
+     * ============================================================================
+     */
+    const SpecialsModule = {
+      init() {
+        document.getElementById('specialsList').innerHTML = MOCK_PICKS.slice(0, 4).map((pick) => {
+          const odds = (pick.pick + 50) * 10;
+          return `<div class="special-item"><span>${pick.name} Top ${pick.pick}</span><span class="special-odds">+${odds}</span></div>`;
+        }).join('');
+      }
+    };
+
+    /**
+     * ============================================================================
+     * INITIALIZE
+     * ============================================================================
+     */
+    document.addEventListener('DOMContentLoaded', () => {
+      HeroModule.init();
+      NewsModule.init();
+      TickerModule.init();
+      MockTableModule.init();
+      ProspectsModule.init();
+      HeadToHeadModule.init();
+      SpecialsModule.init();
+    });
+  </script>
+
+</body>
+</html>
