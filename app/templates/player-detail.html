@@ -321,12 +321,16 @@
           <!-- Player Photos Row -->
           <div class="h2h-photos-row">
             <div class="h2h-player-photo">
-              <img id="h2hPhotoA" src="{{ player.photo_url }}" alt="{{ player.name }}" />
+              <a id="h2hPhotoLinkA" class="h2h-photo-link" href="/players/{{ player.slug }}" aria-label="View {{ player.name }} details">
+                <img id="h2hPhotoA" src="{{ player.photo_url }}" alt="{{ player.name }}" />
+              </a>
               <div class="h2h-photo-name" id="h2hPhotoNameA">{{ player.name }}</div>
             </div>
             <div class="h2h-photos-spacer"></div>
             <div class="h2h-player-photo">
-              <img id="h2hPhotoB" src="https://placehold.co/200x200/edf2f7/1f2937?text=Player+B" alt="Player B" />
+              <a id="h2hPhotoLinkB" class="h2h-photo-link" href="#" aria-label="View Player B details">
+                <img id="h2hPhotoB" src="https://placehold.co/200x200/edf2f7/1f2937?text=Player+B" alt="Player B" />
+              </a>
               <div class="h2h-photo-name" id="h2hPhotoNameB">Player B</div>
             </div>
           </div>
