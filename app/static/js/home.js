@@ -350,7 +350,8 @@ const SidebarModule = {
     const container = document.getElementById('sourcesList');
     if (!container) return;
 
-    const sources = (window.SOURCE_COUNTS || []).slice(0, 8);
+    const limit = Number(window.SIDEBAR_LIMIT) || 8;
+    const sources = (window.SOURCE_COUNTS || []).slice(0, limit);
 
     if (sources.length === 0) {
       container.innerHTML = '<div class="sources-list--empty">No sources available</div>';
@@ -380,7 +381,8 @@ const SidebarModule = {
     const container = document.getElementById('authorsList');
     if (!container) return;
 
-    const authors = (window.AUTHOR_COUNTS || []).slice(0, 8);
+    const limit = Number(window.SIDEBAR_LIMIT) || 8;
+    const authors = (window.AUTHOR_COUNTS || []).slice(0, limit);
 
     if (authors.length === 0) {
       container.innerHTML = '<div class="sources-list--empty">No authors available</div>';

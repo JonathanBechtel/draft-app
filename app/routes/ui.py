@@ -1,5 +1,6 @@
 """UI Routes - Renders Jinja templates for the frontend."""
 
+from collections import Counter
 from datetime import datetime
 from typing import Optional
 
@@ -10,10 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.image_assets_service import get_current_image_url_for_player
 from app.services.image_assets_service import get_current_image_urls_for_players
 from app.services.news_service import (
-    get_author_counts,
     get_hero_article,
     get_news_feed,
-    get_source_counts,
 )
 from app.services.player_service import get_player_profile_by_slug
 from app.utils.db_async import get_session
@@ -37,6 +36,10 @@ TOP_PROSPECT_SLUGS = [
     "vj-edgecombe",
     "kon-knueppel",
 ]
+
+# Homepage news/feed constants
+HOME_NEWS_FEED_LIMIT = 100
+HOME_NEWS_SIDEBAR_LIMIT = 8
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -114,42 +117,65 @@ async def home(
 
     # Fetch news feed from database (falls back to empty if no items yet)
     # Fetch more items to enable pagination (6 per page in new grid layout)
-    news_feed = await get_news_feed(db, limit=100)
-    feed_items = [
-        {
-            "id": item.id,
-            "source": item.source_name,
-            "title": item.title,
-            "summary": item.summary,
-            "url": item.url,
-            "image_url": item.image_url,
-            "author": item.author,
-            "time": item.time,
-            "tag": item.tag,
-            "read_more_text": item.read_more_text,
-        }
-        for item in news_feed.items
-    ]
+    news_feed = await get_news_feed(db, limit=HOME_NEWS_FEED_LIMIT)
+    source_counter: Counter[str] = Counter()
+    author_counter: Counter[str] = Counter()
+    feed_items: list[dict] = []
+    for item in news_feed.items:
+        source = item.source_name.strip()
+        author = (item.author or "").strip() or None
+
+        source_counter[source] += 1
+        if author:
+            author_counter[author] += 1
+
+        feed_items.append(
+            {
+                "id": item.id,
+                "source": source,
+                "title": item.title,
+                "summary": item.summary,
+                "url": item.url,
+                "image_url": item.image_url,
+                "author": author,
+                "time": item.time,
+                "tag": item.tag,
+                "read_more_text": item.read_more_text,
+            }
+        )
 
     # Fetch hero article (most recent article with image)
     hero_article = await get_hero_article(db)
     hero_article_dict = None
     if hero_article:
+        hero_author = (hero_article.author or "").strip() or None
         hero_article_dict = {
             "id": hero_article.id,
-            "source": hero_article.source_name,
+            "source": hero_article.source_name.strip(),
             "title": hero_article.title,
             "summary": hero_article.summary,
             "url": hero_article.url,
             "image_url": hero_article.image_url,
-            "author": hero_article.author,
+            "author": hero_author,
             "time": hero_article.time,
             "tag": hero_article.tag,
         }
 
-    # Fetch source and author counts for sidebar
-    source_counts = await get_source_counts(db, limit=10)
-    author_counts = await get_author_counts(db, limit=10)
+    # Source/author counts should align with the latest-feed window rendered on the page.
+    source_counts = [
+        {"source_name": source_name, "count": count}
+        for source_name, count in sorted(
+            source_counter.items(),
+            key=lambda item: (-item[1], item[0].casefold()),
+        )
+    ]
+    author_counts = [
+        {"author": author, "count": count}
+        for author, count in sorted(
+            author_counter.items(),
+            key=lambda item: (-item[1], item[0].casefold()),
+        )
+    ]
 
     # Build mappings for JS image URL generation
     slug_to_id = {slug: info[0] for slug, info in player_id_map.items()}
@@ -164,6 +190,7 @@ async def home(
             "hero_article": hero_article_dict,
             "source_counts": source_counts,
             "author_counts": author_counts,
+            "sidebar_limit": HOME_NEWS_SIDEBAR_LIMIT,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "image_style": style,  # Current image style for JS
