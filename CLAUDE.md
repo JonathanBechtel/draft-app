@@ -123,30 +123,7 @@ Do not ask if the user wants you to run these checks — run them proactively af
 
 ## Visual Testing
 
-Visual tests use Playwright to capture screenshots for AI-driven verification of UI changes. This is not pixel-diff automation—the AI reads screenshots and visually evaluates correctness.
-
-**When to run visual tests:**
-- After modifying templates, CSS, or JS
-- When implementing UI from mockups
-- To verify layout doesn't break on responsive viewports
-
-**Quick workflow:**
-```bash
-make dev              # Start server (in separate terminal)
-make visual           # Capture screenshots to tests/visual/screenshots/
-# Then read tests/visual/screenshots/*.png to visually verify
-```
-
-**Key commands:**
-| Command | Purpose |
-|---------|---------|
-| `make visual` | Capture all screenshots |
-| `make visual TEST=homepage` | Capture specific test |
-| `make visual.headed` | Watch browser (debugging) |
-
-**Design references:** Mockups in `mockups/` serve as visual targets when implementing new UI.
-
-See **[docs/visual_testing.md](docs/visual_testing.md)** for full documentation.
+For UI changes, use Playwright to capture screenshots for visual verification. Run `make dev` first, then `make visual` to save screenshots to `tests/visual/screenshots/`. Read the PNGs to verify correctness. Use `make visual.headed` to watch the browser for debugging. See **[docs/visual_testing.md](docs/visual_testing.md)** for details.
 
 ## Commit & Pull Request Guidelines
 - Follow the prevailing Conventional Commits style (`feat:`, `fix:`, `chore:`) observed in git history; keep subject lines under 72 characters.
