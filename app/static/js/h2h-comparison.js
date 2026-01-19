@@ -403,11 +403,21 @@ const H2HComparison = {
     const photoNameB = document.getElementById('h2hPhotoNameB');
     const headerA = document.getElementById('h2hHeaderA');
     const headerB = document.getElementById('h2hHeaderB');
+    const photoLinkA = document.getElementById('h2hPhotoLinkA');
+    const photoLinkB = document.getElementById('h2hPhotoLinkB');
 
     if (photoNameA) photoNameA.textContent = nameA;
     if (photoNameB) photoNameB.textContent = nameB;
     if (headerA) headerA.textContent = nameA;
     if (headerB) headerB.textContent = nameB;
+    if (photoLinkA) {
+      photoLinkA.href = `/players/${this.selectedPlayerA}`;
+      photoLinkA.setAttribute('aria-label', `View ${nameA} details`);
+    }
+    if (photoLinkB) {
+      photoLinkB.href = `/players/${this.selectedPlayerB}`;
+      photoLinkB.setAttribute('aria-label', `View ${nameB} details`);
+    }
 
     // Update similarity badge
     const badge = document.getElementById('h2hSimilarityBadge');
