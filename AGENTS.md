@@ -53,6 +53,7 @@ Whenever a change could influence monetization, growth, or user retention, refer
    - Type changes can break files you didn't directly modify
    - This command must exit cleanly with no errors
 3. **Run relevant tests** — `pytest tests/unit -q` at minimum; `pytest tests/integration -q` if touching DB/routes
+4. **For UI changes** — run `make visual` and visually verify screenshots (see [Visual Testing](#visual-testing))
 
 Do not ask if the user wants you to run these checks — run them proactively after completing implementation work. If any check fails, fix the issues before reporting that work is done.
 
@@ -119,6 +120,33 @@ Do not ask if the user wants you to run these checks — run them proactively af
 - Aim for meaningful coverage on routers, services, and validators; document complex fixtures inline.
 - Philosophy: favor integration-style checks that hit FastAPI via HTTPX and assert both HTTP responses and database state; avoid mocking the database unless a unit test truly needs isolation. Keep fixtures small and deterministic, use factory helpers instead of large seed dumps, and prefer testing behavior over implementation details (e.g., status codes, payload shapes, rows created). For pure utilities, write fast unit tests; for anything touching persistence or app wiring, use the provided async fixtures.
 - Practice TDD with integration tests as the primary signal: write or update an integration test that captures the desired behavior before implementing a feature, then add unit tests for pure logic or edge cases as needed. Run the relevant integration subset early and often while iterating.
+
+## Visual Testing
+
+Visual tests use Playwright to capture screenshots for AI-driven verification of UI changes. This is not pixel-diff automation—the AI reads screenshots and visually evaluates correctness.
+
+**When to run visual tests:**
+- After modifying templates, CSS, or JS
+- When implementing UI from mockups
+- To verify layout doesn't break on responsive viewports
+
+**Quick workflow:**
+```bash
+make dev              # Start server (in separate terminal)
+make visual           # Capture screenshots to tests/visual/screenshots/
+# Then read tests/visual/screenshots/*.png to visually verify
+```
+
+**Key commands:**
+| Command | Purpose |
+|---------|---------|
+| `make visual` | Capture all screenshots |
+| `make visual TEST=homepage` | Capture specific test |
+| `make visual.headed` | Watch browser (debugging) |
+
+**Design references:** Mockups in `mockups/` serve as visual targets when implementing new UI.
+
+See **[docs/visual_testing.md](docs/visual_testing.md)** for full documentation.
 
 ## Commit & Pull Request Guidelines
 - Follow the prevailing Conventional Commits style (`feat:`, `fix:`, `chore:`) observed in git history; keep subject lines under 72 characters.

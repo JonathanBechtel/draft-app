@@ -162,8 +162,7 @@ async def login_staff(
 
 def extract_reset_token(email_body: str) -> str:
     """Extract the password reset token from an outbox email body."""
-    match = re.search(r"[?&]token=([^&\\s]+)", email_body)
+    match = re.search(r"[?&]token=([^&\s]+)", email_body)
     if match is None:
         raise AssertionError("No token=... found in outbox email body")
     return match.group(1)
-

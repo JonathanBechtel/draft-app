@@ -22,6 +22,7 @@ from app.models.news import (
 from app.schemas.news_sources import FeedType, NewsSource
 from app.services.news_ingestion_service import run_ingestion_cycle
 from app.services.news_service import get_news_feed
+from app.services.staff_authz import require_dataset_permission
 from app.utils.db_async import SessionLocal, dispose_engine, get_session
 
 router = APIRouter(prefix="/api/news", tags=["news"])
@@ -47,7 +48,11 @@ async def list_news(
     )
 
 
-@router.get("/sources", response_model=list[NewsSourceRead])
+@router.get(
+    "/sources",
+    response_model=list[NewsSourceRead],
+    dependencies=[Depends(require_dataset_permission("news_sources", "view"))],
+)
 async def list_sources(
     db: AsyncSession = Depends(get_session),
 ) -> list[NewsSourceRead]:
@@ -76,7 +81,12 @@ async def list_sources(
     ]
 
 
-@router.post("/sources", response_model=NewsSourceRead, status_code=201)
+@router.post(
+    "/sources",
+    response_model=NewsSourceRead,
+    status_code=201,
+    dependencies=[Depends(require_dataset_permission("news_sources", "edit"))],
+)
 async def create_source(
     source_data: NewsSourceCreate,
     db: AsyncSession = Depends(get_session),
@@ -130,7 +140,11 @@ async def create_source(
     )
 
 
-@router.post("/ingest", response_model=IngestionResult)
+@router.post(
+    "/ingest",
+    response_model=IngestionResult,
+    dependencies=[Depends(require_dataset_permission("news_ingestion", "edit"))],
+)
 async def trigger_ingestion(
     db: AsyncSession = Depends(get_session),
 ) -> IngestionResult:

@@ -147,6 +147,14 @@ Tests (run after Phase 1 to confirm the harness no longer errors on missing tabl
 - `tests/integration/test_admin_password_reset.py` (same)
 - `tests/integration/test_admin_permissions_news.py` (same)
 
+Implementation notes (completed):
+
+- Added `app/schemas/auth.py` with SQLModel tables: `auth_users`, `auth_sessions`, `auth_dataset_permissions` (composite PK on `user_id` + `dataset` to satisfy `ON CONFLICT (user_id, dataset)`), `auth_email_outbox`, and `auth_password_reset_tokens`.
+- Updated `tests/integration/conftest.py` to import `app.schemas.auth` so `SQLModel.metadata.create_all` creates the new tables for the integration test schema.
+- Dev/test environment surprise: the base conda env’s stdlib `readline` import was segfaulting; running checks inside the `draftguru` conda env avoided the crash.
+- Dev/test environment surprise: `feedparser` wasn’t installed, causing `app/main.py` import errors via `news_ingestion_service`; changed `app/services/news_ingestion_service.py` to lazy-import `feedparser` inside `fetch_rss_feed` (tests monkeypatch that function anyway).
+- Running integration tests in this sandbox requires an externally started local Postgres and running `pytest` with escalated permissions (sandbox blocks localhost socket connects).
+
 ### Phase 2 — Staff sessions + admin login/logout + `/admin` protection
 
 Deliverables:
@@ -154,7 +162,7 @@ Deliverables:
 - Auth service primitives:
   - PBKDF2-SHA256 verify compatible with `tests/integration/auth_helpers.py`
   - Session issuance + server-side storage (`auth_sessions`)
-  - Cookie `dg_admin_session` (HttpOnly, Secure, SameSite=Lax, Path=/admin)
+  - Cookie `dg_admin_session` (HttpOnly, Secure, SameSite=Lax, Path=/)
   - Open redirect guard for `next=`
   - Logout revokes sessions + clears cookie
 - Minimal admin router mounted in `app/main.py`:
@@ -170,6 +178,16 @@ Tests expected to pass at end of Phase 2:
 - `tests/integration/test_admin_auth.py`
   - `TestAdminAuthUI::*`
 
+Implementation notes (completed):
+
+- Added `app/services/admin_auth_service.py` with PBKDF2-SHA256 verification compatible with `tests/integration/auth_helpers.py` and basic session issuance/revocation stored in `auth_sessions` (only a token hash is persisted).
+- Added `app/routes/admin.py` and mounted it in `app/main.py` to serve `/admin`, `/admin/login`, and `/admin/logout`.
+- Added minimal templates `app/templates/admin/login.html` and `app/templates/admin/index.html`; invalid login renders a generic “invalid” message and sets no cookies.
+- Redirect safety: `next=` is sanitized to local paths only; external URLs fall back to `/admin`.
+- Cookie behavior: `dg_admin_session` is set `HttpOnly` and `SameSite=Lax`; cookie `Path` is `/` (not `/admin`) so the same staff session can be reused for staff-only `/api/*` endpoints in later phases; `Secure` is disabled in dev/test via `settings.is_dev`.
+- Surprise: the integration test DB fixture already runs inside a transaction/savepoint, so using `async with db.begin()` inside auth helpers raised `InvalidRequestError`; switched to `db.add(...)` + `await db.commit()` for session writes.
+- Test fix (blocking): `tests/integration/test_admin_auth.py` had an unhashable set literal (`{["/admin"], ...}`) that raised `TypeError` once redirects started working; corrected it to a tuple membership check.
+
 ### Phase 3 — Session policy (idle timeout + remember-me)
 
 Deliverables:
@@ -184,6 +202,12 @@ Tests expected to pass at end of Phase 3:
 
 - `tests/integration/test_admin_auth.py`
   - `TestSessionPolicy::*`
+
+Implementation notes (completed):
+
+- Implemented idle-timeout enforcement in `app/services/admin_auth_service.py` by invalidating sessions when `last_seen_at` is older than `IDLE_TIMEOUT` (currently `1 day`); this makes the test’s `now - 2 days` update reliably force re-login.
+- Added `last_seen_at` refresh on authenticated requests with a small throttle (`LAST_SEEN_UPDATE_THROTTLE = 5 minutes`) to avoid a write on every page hit.
+- Implemented remember-me policy end-to-end: `remember=1` issues a longer-lived `expires_at` (`30 days`) and sets a persistent cookie (`Max-Age=...`); non-remember issues a session cookie (no `Max-Age=`) with a short expiry (`1 day`).
 
 ### Phase 4 — Password reset (outbox-backed, one-time tokens)
 
@@ -201,6 +225,14 @@ Deliverables:
 Tests expected to pass at end of Phase 4:
 
 - `tests/integration/test_admin_password_reset.py`
+
+Implementation notes (completed):
+
+- Added `/admin/password-reset` and `/admin/password-reset/confirm` POST routes in `app/routes/admin.py` with the test-required generic response (“if an account exists”) and redirect-on-success confirm behavior.
+- Implemented outbox + token persistence in `app/services/admin_auth_service.py`:
+  - `enqueue_password_reset()` inserts `auth_password_reset_tokens` (hashed token, expiry, unused) and an `auth_email_outbox` row containing a link with `token=...`.
+  - `confirm_password_reset()` validates unused/unexpired tokens, updates `auth_users.password_hash` (PBKDF2-SHA256 string), sets `password_changed_at`, revokes all existing `auth_sessions` for the user, and marks the token as used (one-time).
+- Surprise (test bug): `extract_reset_token()` in `tests/integration/auth_helpers.py` used `\\s` inside a character class, which excluded the letter `s` and truncated tokens nondeterministically; fixed to `\s` so reset tokens can be reliably extracted and confirmed.
 
 ### Phase 5 — Dataset permissions + protect existing news admin endpoints
 
@@ -221,6 +253,17 @@ Tests expected to pass at end of Phase 5:
 
 - `tests/integration/test_admin_permissions_news.py`
 - `tests/integration/test_news.py` (the auth-gating additions plus existing source/ingest tests)
+
+Implementation notes (completed):
+
+- Added `app/services/staff_authz.py` with FastAPI dependencies:
+  - `get_current_staff_user()` resolves the current user from `dg_admin_session` and raises `401` when missing/invalid.
+  - `require_dataset_permission(dataset, action)` enforces `403` for insufficient permissions; `admin` bypasses all checks; `worker` requires a matching `auth_dataset_permissions` row with `can_view`/`can_edit`.
+- Gated existing endpoints in `app/routes/news.py` without changing URLs:
+  - `GET /api/news/sources` → `news_sources:view`
+  - `POST /api/news/sources` → `news_sources:edit`
+  - `POST /api/news/ingest` → `news_ingestion:edit`
+- API behavior now matches tests: logged out → `401`, logged in but unauthorized → `403`.
 
 ### Phase 6 (optional) — Admin provisioning of worker permissions
 

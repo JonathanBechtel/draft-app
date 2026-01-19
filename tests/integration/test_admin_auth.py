@@ -44,7 +44,7 @@ class TestAdminAuthUI:
         assert split.path == "/admin/login"
 
         params = parse_qs(split.query)
-        assert params.get("next") in {["/admin"], ["/admin/"]}
+        assert params.get("next") in (["/admin"], ["/admin/"])
 
     async def test_login_page_renders(self, app_client: AsyncClient):
         """GET /admin/login renders the login form."""
@@ -241,4 +241,3 @@ class TestSessionPolicy:
         )
         long_created_at, long_expires_at = long_row.one()
         assert (long_expires_at - long_created_at) > timedelta(days=20)
-

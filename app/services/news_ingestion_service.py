@@ -4,14 +4,15 @@ Handles fetching, parsing, and storing news from various feed types.
 Currently supports RSS feeds with architecture for future expansion.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from typing import Optional
+from typing import Any, Optional
 
-import feedparser
 import httpx
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -344,6 +345,12 @@ async def fetch_rss_feed(url: str) -> list[dict]:
         logger.warning(f"Failed to fetch feed {url}: {exc}")
         return []
 
+    try:
+        import feedparser  # type: ignore[import-not-found]
+    except ModuleNotFoundError:
+        logger.warning("feedparser is not installed; skipping RSS parsing")
+        return []
+
     # feedparser is synchronous; run it off the event loop to avoid blocking.
     feed = await asyncio.to_thread(feedparser.parse, content)
 
@@ -373,7 +380,7 @@ async def fetch_rss_feed(url: str) -> list[dict]:
     return entries
 
 
-def _extract_image_url(entry: feedparser.FeedParserDict) -> Optional[str]:
+def _extract_image_url(entry: dict[str, Any]) -> Optional[str]:
     """Extract image URL from RSS entry.
 
     Checks enclosures and media content for image URLs.
@@ -407,7 +414,7 @@ def _extract_image_url(entry: feedparser.FeedParserDict) -> Optional[str]:
     return None
 
 
-def _parse_published_date(entry: feedparser.FeedParserDict) -> datetime:
+def _parse_published_date(entry: dict[str, Any]) -> datetime:
     """Parse published date from RSS entry.
 
     Tries multiple date fields and formats. Returns naive UTC datetime.
