@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +24,13 @@ from app.services.admin_auth_service import (
 from app.utils.db_async import get_session
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+# Footer links - shared across all pages
+FOOTER_LINKS = [
+    {"text": "Terms of Service", "url": "/terms"},
+    {"text": "Privacy Policy", "url": "/privacy"},
+    {"text": "Cookie Policy", "url": "/cookies"},
+]
 
 
 @router.get("", response_class=HTMLResponse)
@@ -46,7 +55,12 @@ async def admin_home(
 
     return request.app.state.templates.TemplateResponse(
         "admin/index.html",
-        {"request": request, "user": user},
+        {
+            "request": request,
+            "user": user,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
     )
 
 
@@ -62,6 +76,8 @@ async def admin_login_page(
             "request": request,
             "next": sanitize_next_path(next),
             "error": None,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
         },
     )
 
@@ -84,6 +100,8 @@ async def admin_login(
                 "request": request,
                 "next": sanitize_next_path(next),
                 "error": "Invalid email or password.",
+                "footer_links": FOOTER_LINKS,
+                "current_year": datetime.now().year,
             },
             status_code=200,
         )
@@ -96,6 +114,8 @@ async def admin_login(
                 "request": request,
                 "next": sanitize_next_path(next),
                 "error": "Invalid email or password.",
+                "footer_links": FOOTER_LINKS,
+                "current_year": datetime.now().year,
             },
             status_code=200,
         )
