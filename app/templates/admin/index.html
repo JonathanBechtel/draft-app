@@ -1,17 +1,84 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>DraftGuru Admin</title>
-  </head>
-  <body>
-    <main>
-      <h1>Admin</h1>
-      <p>Signed in as {{ user.email }}</p>
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<style>
+  .admin-dashboard {
+    padding: 2rem 1rem;
+  }
+
+  .admin-dashboard__header {
+    max-width: 800px;
+    margin: 0 auto 2rem;
+  }
+
+  .admin-dashboard__title {
+    font-family: var(--font-heading);
+    font-size: 2rem;
+    color: var(--color-slate-900);
+    margin: 0 0 0.5rem;
+  }
+
+  .admin-dashboard__user {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--color-slate-600);
+  }
+
+  .admin-dashboard__content {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .admin-dashboard__card {
+    background: var(--color-white);
+    border: 2px solid var(--color-slate-200);
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  }
+
+  .admin-dashboard__card-title {
+    font-family: var(--font-heading);
+    font-size: 1.125rem;
+    color: var(--color-slate-800);
+    margin: 0 0 1rem;
+  }
+
+  .admin-dashboard__logout-btn {
+    padding: 0.625rem 1.25rem;
+    background: var(--color-slate-100);
+    color: var(--color-slate-700);
+    border: 2px solid var(--color-slate-300);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .admin-dashboard__logout-btn:hover {
+    background: var(--color-slate-200);
+    border-color: var(--color-slate-400);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="admin-dashboard">
+  <header class="admin-dashboard__header">
+    <h1 class="admin-dashboard__title">Admin Dashboard</h1>
+    <p class="admin-dashboard__user">Signed in as {{ user.email }}</p>
+  </header>
+
+  <div class="admin-dashboard__content">
+    <div class="admin-dashboard__card">
+      <h2 class="admin-dashboard__card-title">Account</h2>
       <form method="post" action="/admin/logout">
-        <button type="submit">Log out</button>
+        <button class="admin-dashboard__logout-btn" type="submit">Log out</button>
       </form>
-    </main>
-  </body>
-</html>
+    </div>
+  </div>
+</main>
+{% endblock %}
