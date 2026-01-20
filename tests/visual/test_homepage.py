@@ -1,126 +1,129 @@
-"""Visual regression tests for homepage news section redesign."""
+"""Visual regression tests for homepage.
 
-import os
+These tests capture screenshots of the homepage at various viewport sizes
+and verify key sections are visible. Screenshots are saved to the
+`screenshots/` directory for manual review.
 
-import pytest
+Usage:
+    # Run all visual tests
+    make visual
+
+    # Run with headed browser to watch
+    PLAYWRIGHT_HEADLESS=0 make visual
+
+    # Run specific test
+    pytest tests/visual/test_homepage.py::test_homepage_full_screenshot -v
+"""
+
+from pathlib import Path
+
 from playwright.sync_api import Page, expect
 
-# Get base URL from environment or default to 8080
-BASE_URL = os.environ.get("TEST_BASE_URL", "http://localhost:8080")
+from tests.visual.conftest import VIEWPORT_MOBILE, VIEWPORT_TABLET
 
 
-@pytest.fixture(scope="session")
-def browser_context_args():
-    """Configure browser viewport for consistent screenshots."""
-    return {"viewport": {"width": 1280, "height": 800}}
+class TestHomepageStructure:
+    """Tests verifying homepage structure and key sections."""
+
+    def test_homepage_loads(self, page: Page, goto) -> None:
+        """Verify homepage loads and key sections are visible."""
+        goto("/")
+
+        # Verify Top Prospects section exists
+        expect(page.locator("#prospectsGrid")).to_be_visible()
+
+        # Verify VS Arena section exists
+        expect(page.locator(".h2h-card")).to_be_visible()
+
+        # Verify news grid section exists
+        expect(page.locator("#articlesGrid")).to_be_visible()
+
+    def test_sidebar_visible_on_desktop(
+        self, desktop_page: Page, goto, screenshot
+    ) -> None:
+        """Verify sidebar is visible on desktop viewport."""
+        goto("/")
+
+        sidebar = desktop_page.locator(".sidebar")
+        expect(sidebar).to_be_visible()
+
+        screenshot.capture_element(".sidebar", "sidebar_desktop")
+
+    def test_sidebar_hidden_on_tablet(self, page: Page, goto, screenshot) -> None:
+        """Verify sidebar is hidden on tablet viewport."""
+        page.set_viewport_size(VIEWPORT_TABLET)
+        goto("/")
+
+        sidebar = page.locator(".sidebar")
+        expect(sidebar).not_to_be_visible()
+
+        screenshot.capture_element(".main-layout", "grid_tablet")
+
+    def test_pagination_visible(self, page: Page, goto, screenshot) -> None:
+        """Verify pagination controls are present when enough articles exist."""
+        goto("/")
+
+        pagination = page.locator("#pagination")
+
+        # Pagination may be hidden if fewer than 6 articles
+        if pagination.is_visible():
+            screenshot.capture_element("#pagination", "pagination")
 
 
-def test_homepage_loads(page: Page):
-    """Verify homepage loads and key sections are visible."""
-    page.goto(BASE_URL)
-    page.wait_for_load_state("networkidle")
+class TestHomepageScreenshots:
+    """Tests capturing full page screenshots for visual review."""
 
-    # Verify Top Prospects section exists
-    expect(page.locator("#prospectsGrid")).to_be_visible()
+    def test_homepage_full_screenshot(self, page: Page, goto, screenshot) -> None:
+        """Capture full homepage screenshot for visual review."""
+        goto("/")
+        screenshot.capture_full_page("homepage_full")
 
-    # Verify VS Arena section exists
-    expect(page.locator(".h2h-card")).to_be_visible()
+    def test_news_hero_section(
+        self, page: Page, goto, screenshot, screenshots_dir: Path
+    ) -> None:
+        """Capture news hero section screenshot."""
+        goto("/")
+        page.wait_for_timeout(500)
 
-    # Verify news grid section exists
-    expect(page.locator("#articlesGrid")).to_be_visible()
+        hero = page.locator("#newsHeroSection")
 
+        if hero.is_visible():
+            screenshot.capture_element("#newsHeroSection", "news_hero")
+        else:
+            # Take screenshot showing hero is hidden
+            screenshot.capture_viewport("news_hero_hidden")
 
-def test_homepage_full_screenshot(page: Page):
-    """Capture full homepage screenshot for visual review."""
-    page.goto(BASE_URL)
-    page.wait_for_load_state("networkidle")
+    def test_news_grid_section(self, page: Page, goto, screenshot) -> None:
+        """Capture news grid and sidebar section screenshot."""
+        goto("/")
+        page.wait_for_timeout(500)
 
-    # Wait a bit for any async JS rendering
-    page.wait_for_timeout(500)
+        # Scroll to news grid section
+        page.locator("#articlesGrid").scroll_into_view_if_needed()
+        page.wait_for_timeout(200)
 
-    page.screenshot(path="screenshots/homepage_full.png", full_page=True)
-
-
-def test_news_hero_section(page: Page):
-    """Capture news hero section screenshot."""
-    page.goto(BASE_URL)
-    page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(500)
-
-    hero = page.locator("#newsHeroSection")
-
-    # Hero may be hidden if no articles with images exist
-    if hero.is_visible():
-        hero.screenshot(path="screenshots/news_hero.png")
-    else:
-        # Take screenshot of where hero would be
-        page.screenshot(path="screenshots/news_hero_hidden.png", full_page=False)
+        # Capture the main layout (grid + sidebar)
+        main_layout = page.locator(".main-layout")
+        if main_layout.is_visible():
+            screenshot.capture_element(".main-layout", "news_grid_sidebar")
+        else:
+            screenshot.capture_element("#articlesGrid", "news_grid")
 
 
-def test_news_grid_section(page: Page):
-    """Capture news grid and sidebar section screenshot."""
-    page.goto(BASE_URL)
-    page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(500)
+class TestHomepageResponsive:
+    """Tests for responsive layout at different viewport sizes."""
 
-    # Scroll to news grid section
-    page.locator("#articlesGrid").scroll_into_view_if_needed()
-    page.wait_for_timeout(200)
+    def test_responsive_mobile(self, mobile_page: Page, goto, screenshot) -> None:
+        """Capture mobile view screenshot."""
+        goto("/")
+        screenshot.capture_full_page("homepage_mobile")
 
-    # Capture the main layout (grid + sidebar)
-    main_layout = page.locator(".main-layout")
-    if main_layout.is_visible():
-        main_layout.screenshot(path="screenshots/news_grid_sidebar.png")
-    else:
-        # Fallback to just the grid
-        page.locator("#articlesGrid").screenshot(path="screenshots/news_grid.png")
+    def test_responsive_tablet(self, tablet_page: Page, goto, screenshot) -> None:
+        """Capture tablet view screenshot."""
+        goto("/")
+        screenshot.capture_full_page("homepage_tablet")
 
-
-def test_sidebar_visible_on_desktop(page: Page):
-    """Verify sidebar is visible on desktop viewport."""
-    page.goto(BASE_URL)
-    page.wait_for_load_state("networkidle")
-
-    sidebar = page.locator(".sidebar")
-    expect(sidebar).to_be_visible()
-
-    # Take screenshot of sidebar
-    sidebar.screenshot(path="screenshots/sidebar_desktop.png")
-
-
-def test_sidebar_hidden_on_tablet(page: Page):
-    """Verify sidebar is hidden on tablet viewport."""
-    # Set tablet viewport
-    page.set_viewport_size({"width": 900, "height": 800})
-
-    page.goto(BASE_URL)
-    page.wait_for_load_state("networkidle")
-
-    sidebar = page.locator(".sidebar")
-    expect(sidebar).not_to_be_visible()
-
-    # Take screenshot of grid without sidebar
-    page.locator(".main-layout").screenshot(path="screenshots/grid_tablet.png")
-
-
-def test_responsive_mobile(page: Page):
-    """Capture mobile view screenshot."""
-    page.set_viewport_size({"width": 375, "height": 667})
-
-    page.goto(BASE_URL)
-    page.wait_for_load_state("networkidle")
-    page.wait_for_timeout(500)
-
-    page.screenshot(path="screenshots/homepage_mobile.png", full_page=True)
-
-
-def test_pagination_visible(page: Page):
-    """Verify pagination controls are present."""
-    page.goto(BASE_URL)
-    page.wait_for_load_state("networkidle")
-
-    pagination = page.locator("#pagination")
-
-    # Pagination may be hidden if fewer than 6 articles
-    if pagination.is_visible():
-        pagination.screenshot(path="screenshots/pagination.png")
+    def test_responsive_desktop(self, desktop_page: Page, goto, screenshot) -> None:
+        """Capture desktop view screenshot."""
+        goto("/")
+        screenshot.capture_full_page("homepage_desktop")

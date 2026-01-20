@@ -53,6 +53,7 @@ Whenever a change could influence monetization, growth, or user retention, refer
    - Type changes can break files you didn't directly modify
    - This command must exit cleanly with no errors
 3. **Run relevant tests** — `pytest tests/unit -q` at minimum; `pytest tests/integration -q` if touching DB/routes
+4. **For UI changes** — run `make visual` and visually verify screenshots (see [Visual Testing](#visual-testing))
 
 Do not ask if the user wants you to run these checks — run them proactively after completing implementation work. If any check fails, fix the issues before reporting that work is done.
 
@@ -119,6 +120,10 @@ Do not ask if the user wants you to run these checks — run them proactively af
 - Aim for meaningful coverage on routers, services, and validators; document complex fixtures inline.
 - Philosophy: favor integration-style checks that hit FastAPI via HTTPX and assert both HTTP responses and database state; avoid mocking the database unless a unit test truly needs isolation. Keep fixtures small and deterministic, use factory helpers instead of large seed dumps, and prefer testing behavior over implementation details (e.g., status codes, payload shapes, rows created). For pure utilities, write fast unit tests; for anything touching persistence or app wiring, use the provided async fixtures.
 - Practice TDD with integration tests as the primary signal: write or update an integration test that captures the desired behavior before implementing a feature, then add unit tests for pure logic or edge cases as needed. Run the relevant integration subset early and often while iterating.
+
+## Visual Testing
+
+For UI changes, use Playwright to capture screenshots for visual verification. Run `make dev` first, then `make visual` to save screenshots to `tests/visual/screenshots/`. Read the PNGs to verify correctness. Use `make visual.headed` to watch the browser for debugging. See **[docs/visual_testing.md](docs/visual_testing.md)** for details.
 
 ## Commit & Pull Request Guidelines
 - Follow the prevailing Conventional Commits style (`feat:`, `fix:`, `chore:`) observed in git history; keep subject lines under 72 characters.

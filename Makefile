@@ -89,7 +89,7 @@ bio.ingest:
 	$(PYTHON) scripts/ingest_player_bios.py --file $(BBIO) --cache-dir $(CACHE) $(if $(DRY),--dry-run,) $(if $(VERBOSE),--verbose,) $(if $(OVERWRITE_MASTER),--overwrite-master,) $(if $(CREATE_MISSING),--create-missing,) $(if $(FIX),--fix-ambiguities $(FIX),)
 
 # Lint & format
-.PHONY: fmt lint fix precommit
+.PHONY: fmt lint fix precommit test visual visual.headed
 fmt:
 	ruff format .
 
@@ -101,6 +101,27 @@ fix:
 
 precommit:
 	pre-commit run -a
+
+# Run unit tests
+test:
+	pytest tests/unit -q
+
+# Run visual tests (requires server running on TEST_BASE_URL or localhost:8000)
+# Usage:
+#   make visual                          # run all visual tests
+#   make visual TEST=test_homepage_full  # run specific test (partial match)
+#   TEST_BASE_URL=https://... make visual # test against remote server
+TEST ?=
+visual:
+	pytest tests/visual -v $(if $(TEST),-k $(TEST),)
+
+# Run visual tests with visible browser (for debugging)
+visual.headed:
+	PLAYWRIGHT_HEADLESS=0 pytest tests/visual -v --headed $(if $(TEST),-k $(TEST),)
+
+# Install Playwright browsers (required once after installing playwright)
+playwright.install:
+	python -m playwright install chromium
 
 mig.revision:
 	alembic revision --autogenerate -m "$(m)"

@@ -11,6 +11,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import FeedType, NewsSource
 from app.services.news_summarization_service import ArticleAnalysis
+from tests.integration.auth_helpers import create_auth_user, login_staff
+
+ADMIN_EMAIL = "admin@example.com"
+ADMIN_PASSWORD = "correct horse battery staple"
+
+
+@pytest_asyncio.fixture
+async def admin_client(app_client: AsyncClient, db_session: AsyncSession) -> AsyncClient:
+    """Return an authenticated admin client for staff-only news endpoints."""
+    await create_auth_user(
+        db_session,
+        email=ADMIN_EMAIL,
+        role="admin",
+        password=ADMIN_PASSWORD,
+    )
+    response = await login_staff(
+        app_client,
+        email=ADMIN_EMAIL,
+        password=ADMIN_PASSWORD,
+    )
+    assert response.status_code in {302, 303}
+    return app_client
 
 
 @pytest_asyncio.fixture
@@ -172,19 +194,24 @@ class TestGetNewsFeed:
 class TestListSources:
     """Tests for GET /api/news/sources endpoint."""
 
-    async def test_returns_empty_list_when_no_sources(self, app_client: AsyncClient):
-        """GET /api/news/sources returns empty array when no sources exist."""
+    async def test_requires_auth(self, app_client: AsyncClient):
+        """GET /api/news/sources requires staff authentication."""
         response = await app_client.get("/api/news/sources")
+        assert response.status_code == 401
+
+    async def test_returns_empty_list_when_no_sources(self, admin_client: AsyncClient):
+        """GET /api/news/sources returns empty array when no sources exist."""
+        response = await admin_client.get("/api/news/sources")
         assert response.status_code == 200
         assert response.json() == []
 
     async def test_returns_sources(
         self,
-        app_client: AsyncClient,
+        admin_client: AsyncClient,
         sample_news_source: NewsSource,
     ):
         """GET /api/news/sources returns configured sources."""
-        response = await app_client.get("/api/news/sources")
+        response = await admin_client.get("/api/news/sources")
         assert response.status_code == 200
         data = response.json()
 
@@ -202,9 +229,23 @@ class TestListSources:
 class TestCreateSource:
     """Tests for POST /api/news/sources endpoint."""
 
-    async def test_creates_new_source(self, app_client: AsyncClient):
-        """POST /api/news/sources creates a new RSS source."""
+    async def test_requires_auth(self, app_client: AsyncClient):
+        """POST /api/news/sources requires staff authentication."""
         response = await app_client.post(
+            "/api/news/sources",
+            json={
+                "name": "New Source",
+                "display_name": "New Source Display",
+                "feed_url": "https://newsource.com/feed",
+                "feed_type": "rss",
+                "fetch_interval_minutes": 60,
+            },
+        )
+        assert response.status_code == 401
+
+    async def test_creates_new_source(self, admin_client: AsyncClient):
+        """POST /api/news/sources creates a new RSS source."""
+        response = await admin_client.post(
             "/api/news/sources",
             json={
                 "name": "New Source",
@@ -227,11 +268,11 @@ class TestCreateSource:
 
     async def test_rejects_duplicate_feed_url(
         self,
-        app_client: AsyncClient,
+        admin_client: AsyncClient,
         sample_news_source: NewsSource,
     ):
         """POST /api/news/sources rejects duplicate feed URLs."""
-        response = await app_client.post(
+        response = await admin_client.post(
             "/api/news/sources",
             json={
                 "name": "Duplicate",
@@ -243,9 +284,9 @@ class TestCreateSource:
         assert response.status_code == 409
         assert "already exists" in response.json()["detail"]
 
-    async def test_rejects_invalid_feed_type(self, app_client: AsyncClient):
+    async def test_rejects_invalid_feed_type(self, admin_client: AsyncClient):
         """POST /api/news/sources rejects invalid feed types."""
-        response = await app_client.post(
+        response = await admin_client.post(
             "/api/news/sources",
             json={
                 "name": "Invalid",
@@ -262,9 +303,14 @@ class TestCreateSource:
 class TestTriggerIngestion:
     """Tests for POST /api/news/ingest endpoint."""
 
-    async def test_ingestion_returns_result(self, app_client: AsyncClient):
-        """POST /api/news/ingest returns an ingestion result."""
+    async def test_requires_auth(self, app_client: AsyncClient):
+        """POST /api/news/ingest requires staff authentication."""
         response = await app_client.post("/api/news/ingest")
+        assert response.status_code == 401
+
+    async def test_ingestion_returns_result(self, admin_client: AsyncClient):
+        """POST /api/news/ingest returns an ingestion result."""
+        response = await admin_client.post("/api/news/ingest")
         assert response.status_code == 200
         data = response.json()
 
@@ -276,7 +322,7 @@ class TestTriggerIngestion:
 
     async def test_ingestion_processes_active_sources(
         self,
-        app_client: AsyncClient,
+        admin_client: AsyncClient,
         sample_news_source: NewsSource,
         monkeypatch: pytest.MonkeyPatch,
     ):
@@ -314,7 +360,7 @@ class TestTriggerIngestion:
             _fake_analyze_article,
         )
 
-        response = await app_client.post("/api/news/ingest")
+        response = await admin_client.post("/api/news/ingest")
         assert response.status_code == 200
         data = response.json()
 
@@ -324,7 +370,7 @@ class TestTriggerIngestion:
 
     async def test_ingestion_adds_and_skips_duplicates(
         self,
-        app_client: AsyncClient,
+        admin_client: AsyncClient,
         db_session: AsyncSession,
         sample_news_source: NewsSource,
         monkeypatch: pytest.MonkeyPatch,
@@ -386,7 +432,7 @@ class TestTriggerIngestion:
             _fake_analyze_article,
         )
 
-        response = await app_client.post("/api/news/ingest")
+        response = await admin_client.post("/api/news/ingest")
         assert response.status_code == 200
         data = response.json()
         assert data["sources_processed"] == 1

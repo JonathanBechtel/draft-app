@@ -51,6 +51,9 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Visual test screenshots (captured locally, not tracked)
+tests/visual/screenshots/
+
 # Translations
 *.mo
 *.pot
