@@ -1,7 +1,7 @@
 HOST ?= 0.0.0.0
 PORT ?= 8000
 
-.PHONY: dev run mig.revision mig.up mig.down mig.history mig.current scrape ingest metrics bio.scrape bio.ingest
+.PHONY: dev run mig.revision mig.up mig.down mig.history mig.current scrape ingest metrics metrics.recompute bio.scrape bio.ingest
 .PHONY: news-seed
 
 # Start FastAPI with auto-reload (development)
@@ -65,6 +65,17 @@ metrics:
 	$(if $(DRY), --dry-run,) \
 	$(if $(REPLACE), --replace-run,) \
 	$(METRIC_ARGS)
+
+# Recompute the metric snapshot matrix already present in the DB.
+# Default prints commands; set EXEC=1 to run them. Add DRY=1 to append --dry-run.
+# Pass through extra args with RECOMPUTE_ARGS (e.g., RECOMPUTE_ARGS="--season-codes 2025-26").
+EXEC ?=
+RECOMPUTE_ARGS ?=
+metrics.recompute:
+	$(PYTHON) -m app.cli.recompute_metric_snapshots \
+	$(if $(EXEC), --execute,) \
+	$(if $(DRY), --dry-run,) \
+	$(RECOMPUTE_ARGS)
 
 # Basketball-Reference player bios: scrape and ingest
 LETTERS ?=
