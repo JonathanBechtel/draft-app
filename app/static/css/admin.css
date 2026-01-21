@@ -432,6 +432,96 @@
   margin: 0 0 1.5rem;
 }
 
+/* === Button Modifiers === */
+.admin-btn--block {
+  width: 100%;
+}
+
+/* === Form Modifiers === */
+.admin-form--inline {
+  display: inline;
+  margin: 0;
+}
+
+.admin-form__actions--stacked {
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* === Card Modifiers === */
+.admin-card--narrow {
+  max-width: 480px;
+}
+
+.admin-card--medium {
+  max-width: 600px;
+}
+
+/* === Text Utilities === */
+.admin-text--muted {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-slate-600);
+  margin: 0;
+}
+
+.admin-text--small {
+  font-size: 0.75rem;
+  color: var(--color-slate-500);
+}
+
+.admin-text--placeholder {
+  color: var(--color-slate-400);
+}
+
+.admin-text--center {
+  text-align: center;
+}
+
+.admin-text--mb {
+  margin-bottom: 1rem;
+}
+
+/* === Link Utilities === */
+.admin-link {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-accent-fuchsia);
+  text-decoration: none;
+}
+
+.admin-link:hover {
+  text-decoration: underline;
+}
+
+.admin-link--center {
+  display: block;
+  text-align: center;
+  margin-top: 1rem;
+}
+
+/* === Sidebar Button (for logout form) === */
+.admin-sidebar__nav-btn {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-slate-600);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.admin-sidebar__nav-btn:hover {
+  background: var(--color-slate-100);
+  color: var(--color-slate-800);
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
   .admin-layout {

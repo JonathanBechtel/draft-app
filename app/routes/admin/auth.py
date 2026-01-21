@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
 from app.config import settings
-from app.routes.admin.helpers import base_context, get_current_user
+from app.routes.admin.helpers import base_context
 from app.services.admin_auth_service import (
     ADMIN_SESSION_COOKIE_NAME,
     REMEMBER_ME_TTL,
@@ -22,22 +22,6 @@ from app.services.admin_auth_service import (
 from app.utils.db_async import get_session
 
 router = APIRouter(tags=["admin-auth"])
-
-
-@router.get("", response_class=HTMLResponse)
-async def admin_home(
-    request: Request,
-    db: AsyncSession = Depends(get_session),
-) -> Response:
-    """Admin dashboard landing page (protected)."""
-    user = await get_current_user(request, db)
-    if user is None:
-        return RedirectResponse(url="/admin/login?next=/admin", status_code=303)
-
-    return request.app.state.templates.TemplateResponse(
-        "admin/index.html",
-        base_context(request, user=user),
-    )
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -86,18 +70,15 @@ async def admin_login(
     redirect_target = sanitize_next_path(next)
     response = RedirectResponse(url=redirect_target, status_code=303)
 
-    cookie_kwargs = {
-        "key": ADMIN_SESSION_COOKIE_NAME,
-        "value": raw_token,
-        "httponly": True,
-        "samesite": "lax",
-        "secure": not settings.is_dev,
-        "path": "/",
-    }
-    if remember_me:
-        cookie_kwargs["max_age"] = int(REMEMBER_ME_TTL.total_seconds())
-
-    response.set_cookie(**cookie_kwargs)
+    response.set_cookie(
+        key=ADMIN_SESSION_COOKIE_NAME,
+        value=raw_token,
+        httponly=True,
+        samesite="lax",
+        secure=not settings.is_dev,
+        path="/",
+        max_age=int(REMEMBER_ME_TTL.total_seconds()) if remember_me else None,
+    )
     return response
 
 

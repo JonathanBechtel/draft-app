@@ -235,7 +235,6 @@ async def update_news_source(
     }
     source.fetch_interval_minutes = fetch_interval_minutes
     source.updated_at = datetime.utcnow()
-
     await db.commit()
 
     return RedirectResponse(url="/admin/news-sources?success=updated", status_code=303)
