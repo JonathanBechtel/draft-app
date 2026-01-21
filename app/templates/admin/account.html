@@ -1,0 +1,68 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "My Account" %}
+{% set active_nav = "account" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">My Account</h1>
+  <p class="admin-main__subtitle">View and manage your account settings</p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Account Details</h2>
+  </div>
+
+  <ul class="admin-data-list">
+    <li class="admin-data-list__item">
+      <span class="admin-data-list__label">Email</span>
+      <span class="admin-data-list__value">{{ user.email }}</span>
+    </li>
+    <li class="admin-data-list__item">
+      <span class="admin-data-list__label">Role</span>
+      <span class="admin-data-list__value">
+        <span class="admin-badge admin-badge--{{ user.role }}">{{ user.role | title }}</span>
+      </span>
+    </li>
+    <li class="admin-data-list__item">
+      <span class="admin-data-list__label">Account Created</span>
+      <span class="admin-data-list__value">{{ user.created_at.strftime('%B %d, %Y') }}</span>
+    </li>
+    <li class="admin-data-list__item">
+      <span class="admin-data-list__label">Last Login</span>
+      <span class="admin-data-list__value">
+        {% if user.last_login_at %}
+          {{ user.last_login_at.strftime('%B %d, %Y at %I:%M %p') }}
+        {% else %}
+          Never
+        {% endif %}
+      </span>
+    </li>
+    <li class="admin-data-list__item">
+      <span class="admin-data-list__label">Password Last Changed</span>
+      <span class="admin-data-list__value">
+        {% if user.password_changed_at %}
+          {{ user.password_changed_at.strftime('%B %d, %Y at %I:%M %p') }}
+        {% else %}
+          Never changed
+        {% endif %}
+      </span>
+    </li>
+  </ul>
+</div>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Security</h2>
+  </div>
+
+  <p style="font-family: var(--font-mono); font-size: 0.875rem; color: var(--color-slate-600); margin: 0 0 1rem;">
+    Keep your account secure by using a strong, unique password.
+  </p>
+
+  <a href="/admin/account/change-password" class="admin-btn admin-btn--secondary">
+    Change Password
+  </a>
+</div>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title | default('Admin') }} — DraftGuru Admin{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/admin.css') }}">
+{% block admin_css %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<div class="admin-layout">
+  <aside class="admin-sidebar">
+    <div class="admin-sidebar__header">
+      <h2 class="admin-sidebar__title">Admin Panel</h2>
+    </div>
+    <nav>
+      <ul class="admin-sidebar__nav">
+        <li class="admin-sidebar__nav-item">
+          <a href="/admin" class="admin-sidebar__nav-link{% if active_nav == 'dashboard' %} admin-sidebar__nav-link--active{% endif %}">
+            Dashboard
+          </a>
+        </li>
+        <li class="admin-sidebar__nav-item">
+          <a href="/admin/account" class="admin-sidebar__nav-link{% if active_nav == 'account' %} admin-sidebar__nav-link--active{% endif %}">
+            My Account
+          </a>
+        </li>
+
+        {% if user.role == 'admin' %}
+        <li class="admin-sidebar__nav-divider"></li>
+        <li class="admin-sidebar__nav-section">Data Management</li>
+        <li class="admin-sidebar__nav-item">
+          <a href="/admin/news-sources" class="admin-sidebar__nav-link{% if active_nav == 'news-sources' %} admin-sidebar__nav-link--active{% endif %}">
+            News Sources
+          </a>
+        </li>
+        {% endif %}
+
+        <li class="admin-sidebar__nav-divider"></li>
+        <li class="admin-sidebar__nav-item">
+          <form method="post" action="/admin/logout" style="margin: 0;">
+            <button type="submit" class="admin-sidebar__nav-link" style="width: 100%; text-align: left; background: none; border: none; cursor: pointer;">
+              Log out
+            </button>
+          </form>
+        </li>
+      </ul>
+    </nav>
+  </aside>
+
+  <main class="admin-main">
+    {% if error %}
+    <div class="admin-alert admin-alert--error" role="alert">{{ error }}</div>
+    {% endif %}
+
+    {% if success %}
+    <div class="admin-alert admin-alert--success" role="status">{{ success }}</div>
+    {% endif %}
+
+    {% block admin_content %}{% endblock %}
+  </main>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% block admin_js %}{% endblock %}
+{% endblock %}
