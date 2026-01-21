@@ -441,7 +441,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],
                 image_config=types.ImageConfig(image_size=image_size),
-                system_instruction=system_prompt,
+                system_instruction=[types.Part.from_text(text=system_prompt)],
             ),
         )
 
