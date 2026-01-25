@@ -19,9 +19,34 @@ Today, many explicit commits exist primarily because the **integration test fixt
 
 ---
 
+## Status (2026-01-25)
+
+Completed:
+
+- Integration test harness updated to be production-like:
+  - Isolation via `TRUNCATE ... RESTART IDENTITY CASCADE` per test
+  - Fresh DB session per request in `app_client`
+  - Schema isolation via a per-session test schema + schema-only `search_path`
+- Request-bounded application code refactored to `async with db.begin(): ...`:
+  - Routes: `app/routes/news.py`, `app/routes/admin/news_sources.py`
+  - Services: `app/services/admin_auth_service.py`, `app/services/news_ingestion_service.py`, `app/services/image_generation.py`
+  - AuthZ: `app/services/staff_authz.py` (reads wrapped to avoid “autobegin then db.begin()”)
+- Regression tests added:
+  - Policy guard for request-bounded `.commit()` / `.rollback()` calls
+  - Image generation failure durability test (persist failure metadata then raise)
+- Documentation follow-ups completed:
+  - `docs/admin_panel.md`
+  - `docs/admin_auth_system_plan.md`
+
+Remaining:
+
+- Non-request code (`app/cli/**`, `scripts/**`) still contains explicit commits/rollbacks and is deferred to the last phase.
+
+---
+
 ## Current Situation (Root Cause)
 
-`tests/integration/conftest.py` currently starts a transaction and a nested savepoint per test. This enables tests to call `commit()` without losing rollback-based isolation at test end.
+Historically, `tests/integration/conftest.py` started a transaction and a nested savepoint per test. This enabled tests to call `commit()` without losing rollback-based isolation at test end.
 
 However, that conflicts with “app code starts its own transaction with `async with db.begin()`” because the session is already inside a transaction/savepoint.
 
@@ -29,6 +54,8 @@ This is explicitly documented as technical debt in:
 
 - `docs/admin_panel.md` (Database Transaction Pattern)
 - `docs/admin_auth_system_plan.md` (InvalidRequestError when using `db.begin()` under the test fixture)
+
+This has now been addressed by switching the integration harness to prod-like isolation (TRUNCATE + fresh sessions per request) so request-bounded app code can use `db.begin()` normally.
 
 ---
 
@@ -38,29 +65,7 @@ Note: line numbers below were captured during planning and may drift as files ch
 
 ### Request-bounded app code (must refactor)
 
-**Routes**
-
-- `app/routes/news.py:128` — `create_source` commits + refreshes
-- `app/routes/news.py:171` — `trigger_ingestion` rollbacks before retry
-- `app/routes/admin/news_sources.py:133` — create commits
-- `app/routes/admin/news_sources.py:238` — update commits
-- `app/routes/admin/news_sources.py:287` — delete commits
-
-**Services**
-
-- `app/services/admin_auth_service.py:167` — `issue_session` commits
-- `app/services/admin_auth_service.py:184` — `revoke_session` commits
-- `app/services/admin_auth_service.py:219` — throttled `last_seen_at` update commits
-- `app/services/admin_auth_service.py:267` — password reset enqueue commits
-- `app/services/admin_auth_service.py:330` — password reset confirm commits
-- `app/services/admin_auth_service.py:411` — change password commits
-- `app/services/news_ingestion_service.py:83` — commits after SELECT to end implicit txn before network/AI
-- `app/services/news_ingestion_service.py:167` — same “end txn before AI” pattern
-- `app/services/news_ingestion_service.py:298` — commit after insert/update
-- `app/services/news_ingestion_service.py:305` — rollback for retry path
-- `app/services/image_generation.py:560` — commit + refresh for job creation
-- `app/services/image_generation.py:643` — commits failure metadata then raises (semantic to preserve)
-- `app/services/image_generation.py:714` — commits final job update
+This inventory is now “clean” for request-bounded code (`app/routes/**`, `app/services/**`) and enforced via a unit policy test.
 
 ### Integration tests (expected to change to match prod)
 
@@ -140,6 +145,14 @@ Implementation detail: gather table names dynamically (e.g., `pg_tables`/`inform
   - the test engine/connection defaults, or
   - each new session/connection (session-level `SET search_path TO ...`).
 
+Implementation notes (completed):
+
+- Do not rely on driver/engine-level `server_settings`/`connect_args` for `search_path` (it was ignored in this environment).
+- Instead, set `search_path` via SQL:
+  - During schema/table creation (`engine.begin()` + `SET search_path TO "<schema>"`).
+  - At the start of every session (`SET search_path TO "<schema>"`), then `commit()` to end the implicit transaction so app code can open `db.begin()` scopes.
+- Use a schema-only search path (no `public` fallback) to prevent accidental reads/writes against `public` if it already contains tables/rows from previous runs.
+
 ### 3) Make requests use fresh DB sessions (prod-like)
 
 Update the `app_client` fixture override of `get_session` so that it yields a **new session per request**, rather than yielding the shared `db_session`.
@@ -173,6 +186,10 @@ Order is chosen to minimize risk and keep changes reviewable.
 - `app/routes/news.py` (create source; ingestion retry path)
 - `app/routes/admin/news_sources.py` (create/update/delete)
 
+Implementation notes (completed):
+
+- `app/services/staff_authz.py` was also updated to wrap reads in `db.begin()` to avoid “autobegin then db.begin()” conflicts in dependency execution.
+
 ---
 
 ## Regression Guards / Tests to Add
@@ -182,6 +199,11 @@ Order is chosen to minimize risk and keep changes reviewable.
   - exclude `app/cli/**` and `scripts/**` for now (last priority)
 - Add/adjust an integration test covering `image_generation` failure durability (tied to `app/services/image_generation.py:643`).
 
+Implementation notes (completed):
+
+- Unit policy test: `tests/unit/test_transaction_policy.py`
+- Integration durability test: `tests/integration/test_image_generation_transactions.py`
+
 ---
 
 ## Documentation Follow-ups
@@ -190,6 +212,8 @@ After the prod-like test fixture is in place and request code is refactored, upd
 
 - `docs/admin_panel.md` (Database Transaction Pattern section)
 - `docs/admin_auth_system_plan.md` (note about `db.begin()` failure under tests)
+
+Status: completed.
 
 ---
 
@@ -201,4 +225,3 @@ After the prod-like test fixture is in place and request code is refactored, upd
 - Request-bounded app code only:
   - `rg -n "\\.commit\\(" app/routes app/services -g"*.py"`
   - `rg -n "\\.rollback\\(" app/routes app/services -g"*.py"`
-

@@ -95,38 +95,39 @@ async def create_source(
 
     Creates a new RSS source that will be ingested on the next cycle.
     """
-    # Check for duplicate feed URL
-    existing_stmt = select(NewsSource).where(
-        NewsSource.feed_url == source_data.feed_url  # type: ignore[arg-type]
-    )
-    existing = await db.execute(existing_stmt)
-    if existing.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=409, detail="Source with this feed URL already exists"
+    async with db.begin():
+        # Check for duplicate feed URL
+        existing_stmt = select(NewsSource).where(
+            NewsSource.feed_url == source_data.feed_url  # type: ignore[arg-type]
         )
+        existing = await db.execute(existing_stmt)
+        if existing.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=409, detail="Source with this feed URL already exists"
+            )
 
-    # Validate feed type
-    try:
-        feed_type = FeedType(source_data.feed_type)
-    except ValueError:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid feed type: {source_data.feed_type}"
+        # Validate feed type
+        try:
+            feed_type = FeedType(source_data.feed_type)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid feed type: {source_data.feed_type}",
+            )
+
+        # Create new source
+        source = NewsSource(
+            name=source_data.name,
+            display_name=source_data.display_name,
+            feed_type=feed_type,
+            feed_url=source_data.feed_url,
+            fetch_interval_minutes=source_data.fetch_interval_minutes,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
         )
-
-    # Create new source
-    source = NewsSource(
-        name=source_data.name,
-        display_name=source_data.display_name,
-        feed_type=feed_type,
-        feed_url=source_data.feed_url,
-        fetch_interval_minutes=source_data.fetch_interval_minutes,
-        is_active=True,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
-    )
-    db.add(source)
-    await db.commit()
-    await db.refresh(source)
+        db.add(source)
+        await db.flush()
 
     return NewsSourceRead(
         id=source.id or 0,
@@ -168,7 +169,6 @@ async def trigger_ingestion(
     if any(
         any(marker in err for marker in cache_error_markers) for err in result.errors
     ):
-        await db.rollback()
         await dispose_engine()
         async with SessionLocal() as retry_db:
             return await run_ingestion_cycle(retry_db)

@@ -10,3 +10,10 @@ repos:
     hooks:
       - id: mypy
         args: ["--ignore-missing-imports", "--python-version=3.12"]
+  - repo: local
+    hooks:
+      - id: request-transaction-policy
+        name: Disallow commit/rollback in request code
+        entry: python scripts/check_request_transaction_policy.py
+        language: system
+        files: ^app/(routes|services)/.*\.py$

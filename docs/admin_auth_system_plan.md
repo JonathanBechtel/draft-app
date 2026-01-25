@@ -185,7 +185,7 @@ Implementation notes (completed):
 - Added minimal templates `app/templates/admin/login.html` and `app/templates/admin/index.html`; invalid login renders a generic “invalid” message and sets no cookies.
 - Redirect safety: `next=` is sanitized to local paths only; external URLs fall back to `/admin`.
 - Cookie behavior: `dg_admin_session` is set `HttpOnly` and `SameSite=Lax`; cookie `Path` is `/` (not `/admin`) so the same staff session can be reused for staff-only `/api/*` endpoints in later phases; `Secure` is disabled in dev/test via `settings.is_dev`.
-- Surprise: the integration test DB fixture already runs inside a transaction/savepoint, so using `async with db.begin()` inside auth helpers raised `InvalidRequestError`; switched to `db.add(...)` + `await db.commit()` for session writes.
+- Note: the integration test harness previously used transaction/savepoint rollback isolation, which made nested `async with db.begin()` calls raise `InvalidRequestError`. The harness is now production-like (TRUNCATE isolation + fresh sessions per request), so request-bounded auth code can use `db.begin()` normally.
 - Test fix (blocking): `tests/integration/test_admin_auth.py` had an unhashable set literal (`{["/admin"], ...}`) that raised `TypeError` once redirects started working; corrected it to a tuple membership check.
 
 ### Phase 3 — Session policy (idle timeout + remember-me)

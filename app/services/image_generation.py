@@ -556,9 +556,9 @@ Be specific and objective. This will help an AI illustrator capture their likene
             fetch_likeness=fetch_likeness,
             total_requests=len(player_ids),
         )
-        db.add(job_record)
-        await db.commit()
-        await db.refresh(job_record)
+        async with db.begin():
+            db.add(job_record)
+            await db.flush()
 
         logger.info(f"Created batch job record: id={job_record.id}")
         return job_record
@@ -633,14 +633,14 @@ Be specific and objective. This will help an AI illustrator capture their likene
         )
 
         if not inlined_responses:
-            job_record.state = state
-            job_record.completed_at = datetime.utcnow()
-            job_record.success_count = 0
-            job_record.failure_count = job_record.total_requests
-            job_record.error_message = (
-                batch_job.error.message if batch_job.error is not None else None
-            )
-            await db.commit()
+            async with db.begin():
+                job_record.state = state
+                job_record.completed_at = datetime.utcnow()
+                job_record.success_count = 0
+                job_record.failure_count = job_record.total_requests
+                job_record.error_message = (
+                    batch_job.error.message if batch_job.error is not None else None
+                )
             raise RuntimeError(
                 "Batch job did not return inlined responses; "
                 "configure a destination file and implement file-based retrieval."
@@ -705,13 +705,11 @@ Be specific and objective. This will help an AI illustrator capture their likene
             else:
                 success_count += 1
 
-        # Update job record
-        job_record.state = state
-        job_record.completed_at = datetime.utcnow()
-        job_record.success_count = success_count
-        job_record.failure_count = failure_count
-
-        await db.commit()
+        async with db.begin():
+            job_record.state = state
+            job_record.completed_at = datetime.utcnow()
+            job_record.success_count = success_count
+            job_record.failure_count = failure_count
 
         logger.info(
             f"Batch job complete: {success_count} succeeded, {failure_count} failed"

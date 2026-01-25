@@ -123,13 +123,14 @@ async def authenticate_staff_user(
 ) -> AuthUser | None:
     """Return an active AuthUser if credentials are valid."""
     normalized_email = normalize_email(email)
-    result = await db.execute(
-        select(AuthUser).where(
-            AuthUser.email == normalized_email,  # type: ignore[arg-type]
-            AuthUser.is_active.is_(True),  # type: ignore[attr-defined]
+    async with db.begin():
+        result = await db.execute(
+            select(AuthUser).where(
+                AuthUser.email == normalized_email,  # type: ignore[arg-type]
+                AuthUser.is_active.is_(True),  # type: ignore[attr-defined]
+            )
         )
-    )
-    user = result.scalar_one_or_none()
+        user = result.scalar_one_or_none()
     if user is None:
         return None
     if not verify_pbkdf2_sha256(password, user.password_hash):
@@ -163,8 +164,8 @@ async def issue_session(
         remember_me=remember_me,
     )
 
-    db.add(session)
-    await db.commit()
+    async with db.begin():
+        db.add(session)
 
     return raw_token, session
 
@@ -173,15 +174,15 @@ async def revoke_session(db: AsyncSession, *, raw_token: str) -> None:
     """Revoke a session token (idempotent)."""
     now = datetime.utcnow()
     token_hash = _hash_token(raw_token)
-    await db.execute(
-        update(AuthSession)
-        .where(
-            AuthSession.token_hash == token_hash,  # type: ignore[arg-type]
-            AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
+    async with db.begin():
+        await db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.token_hash == token_hash,  # type: ignore[arg-type]
+                AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
+            )
+            .values(revoked_at=now)
         )
-        .values(revoked_at=now)
-    )
-    await db.commit()
 
 
 async def get_user_for_session_token(
@@ -192,33 +193,33 @@ async def get_user_for_session_token(
     """Return the active user for a valid session token."""
     now = datetime.utcnow()
     token_hash = _hash_token(raw_token)
-    result = await db.execute(
-        select(AuthSession, AuthUser)
-        .join(AuthUser, AuthUser.id == AuthSession.user_id)  # type: ignore[arg-type]
-        .where(
-            AuthSession.token_hash == token_hash,  # type: ignore[arg-type]
-            AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
-            AuthSession.expires_at > now,  # type: ignore[operator,arg-type]
-            AuthUser.is_active.is_(True),  # type: ignore[attr-defined]
+    async with db.begin():
+        result = await db.execute(
+            select(AuthSession, AuthUser)
+            .join(AuthUser, AuthUser.id == AuthSession.user_id)  # type: ignore[arg-type]
+            .where(
+                AuthSession.token_hash == token_hash,  # type: ignore[arg-type]
+                AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
+                AuthSession.expires_at > now,  # type: ignore[operator,arg-type]
+                AuthUser.is_active.is_(True),  # type: ignore[attr-defined]
+            )
         )
-    )
-    row = result.one_or_none()
-    if row is None:
-        return None
+        row = result.one_or_none()
+        if row is None:
+            return None
 
-    session, user = row
-    if session.last_seen_at < (now - IDLE_TIMEOUT):
-        return None
+        session, user = row
+        if session.last_seen_at < (now - IDLE_TIMEOUT):
+            return None
 
-    if now - session.last_seen_at > LAST_SEEN_UPDATE_THROTTLE:
-        await db.execute(
-            update(AuthSession)
-            .where(AuthSession.token_hash == token_hash)  # type: ignore[arg-type]
-            .values(last_seen_at=now)
-        )
-        await db.commit()
+        if now - session.last_seen_at > LAST_SEEN_UPDATE_THROTTLE:
+            await db.execute(
+                update(AuthSession)
+                .where(AuthSession.token_hash == token_hash)  # type: ignore[arg-type]
+                .values(last_seen_at=now)
+            )
 
-    return user
+        return user
 
 
 async def enqueue_password_reset(db: AsyncSession, *, email: str) -> None:
@@ -227,44 +228,44 @@ async def enqueue_password_reset(db: AsyncSession, *, email: str) -> None:
     This is intentionally a no-op for unknown emails to avoid user enumeration.
     """
     normalized_email = normalize_email(email)
-    user_result = await db.execute(
-        select(AuthUser).where(
-            AuthUser.email == normalized_email,  # type: ignore[arg-type]
-            AuthUser.is_active.is_(True),  # type: ignore[attr-defined]
+    async with db.begin():
+        user_result = await db.execute(
+            select(AuthUser).where(
+                AuthUser.email == normalized_email,  # type: ignore[arg-type]
+                AuthUser.is_active.is_(True),  # type: ignore[attr-defined]
+            )
         )
-    )
-    user = user_result.scalar_one_or_none()
-    if user is None:
-        return
-    if user.id is None:
-        return
+        user = user_result.scalar_one_or_none()
+        if user is None:
+            return
+        if user.id is None:
+            return
 
-    now = datetime.utcnow()
-    raw_token = generate_password_reset_token()
-    token_hash = _hash_password_reset_token(raw_token)
+        now = datetime.utcnow()
+        raw_token = generate_password_reset_token()
+        token_hash = _hash_password_reset_token(raw_token)
 
-    reset_row = AuthPasswordResetToken(
-        user_id=user.id,
-        token_hash=token_hash,
-        created_at=now,
-        expires_at=now + RESET_TOKEN_TTL,
-        used_at=None,
-    )
-    outbox_row = AuthEmailOutbox(
-        to_email=user.email,
-        subject="Reset your DraftGuru admin password",
-        body=(
-            "If you requested a password reset, use this link:\n\n"
-            f"/admin/password-reset/confirm?token={raw_token}\n"
-        ),
-        created_at=now,
-        sent_at=None,
-        provider=None,
-    )
+        reset_row = AuthPasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            created_at=now,
+            expires_at=now + RESET_TOKEN_TTL,
+            used_at=None,
+        )
+        outbox_row = AuthEmailOutbox(
+            to_email=user.email,
+            subject="Reset your DraftGuru admin password",
+            body=(
+                "If you requested a password reset, use this link:\n\n"
+                f"/admin/password-reset/confirm?token={raw_token}\n"
+            ),
+            created_at=now,
+            sent_at=None,
+            provider=None,
+        )
 
-    db.add(reset_row)
-    db.add(outbox_row)
-    await db.commit()
+        db.add(reset_row)
+        db.add(outbox_row)
 
 
 async def confirm_password_reset(
@@ -279,56 +280,55 @@ async def confirm_password_reset(
     """
     now = datetime.utcnow()
     token_hash = _hash_password_reset_token(raw_token)
-
-    token_result = await db.execute(
-        select(AuthPasswordResetToken).where(
-            AuthPasswordResetToken.token_hash == token_hash,  # type: ignore[arg-type]
-            AuthPasswordResetToken.used_at.is_(None),  # type: ignore[union-attr]
-            AuthPasswordResetToken.expires_at > now,  # type: ignore[operator,arg-type]
-        )
-    )
-    token_row = token_result.scalar_one_or_none()
-    if token_row is None:
-        return False
-
-    user_id = int(token_row.user_id)
-    password_hash = hash_pbkdf2_sha256(new_password)
-
-    await db.execute(
-        update(AuthUser)
-        .where(AuthUser.id == user_id)  # type: ignore[arg-type]
-        .values(
-            password_hash=password_hash,
-            password_changed_at=now,
-            updated_at=now,
-        )
-    )
-    await db.execute(
-        update(AuthSession)
-        .where(
-            AuthSession.user_id == user_id,  # type: ignore[arg-type]
-            AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
-        )
-        .values(revoked_at=now)
-    )
-
-    if token_row.id is not None:
-        await db.execute(
-            update(AuthPasswordResetToken)
-            .where(AuthPasswordResetToken.id == token_row.id)  # type: ignore[arg-type]
-            .values(used_at=now)
-        )
-    else:
-        await db.execute(
-            update(AuthPasswordResetToken)
-            .where(
-                AuthPasswordResetToken.token_hash == token_hash  # type: ignore[arg-type]
+    async with db.begin():
+        token_result = await db.execute(
+            select(AuthPasswordResetToken).where(
+                AuthPasswordResetToken.token_hash == token_hash,  # type: ignore[arg-type]
+                AuthPasswordResetToken.used_at.is_(None),  # type: ignore[union-attr]
+                AuthPasswordResetToken.expires_at > now,  # type: ignore[operator,arg-type]
             )
-            .values(used_at=now)
+        )
+        token_row = token_result.scalar_one_or_none()
+        if token_row is None:
+            return False
+
+        user_id = int(token_row.user_id)
+        password_hash = hash_pbkdf2_sha256(new_password)
+
+        await db.execute(
+            update(AuthUser)
+            .where(AuthUser.id == user_id)  # type: ignore[arg-type]
+            .values(
+                password_hash=password_hash,
+                password_changed_at=now,
+                updated_at=now,
+            )
+        )
+        await db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.user_id == user_id,  # type: ignore[arg-type]
+                AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
+            )
+            .values(revoked_at=now)
         )
 
-    await db.commit()
-    return True
+        if token_row.id is not None:
+            await db.execute(
+                update(AuthPasswordResetToken)
+                .where(AuthPasswordResetToken.id == token_row.id)  # type: ignore[arg-type]
+                .values(used_at=now)
+            )
+        else:
+            await db.execute(
+                update(AuthPasswordResetToken)
+                .where(
+                    AuthPasswordResetToken.token_hash == token_hash  # type: ignore[arg-type]
+                )
+                .values(used_at=now)
+            )
+
+        return True
 
 
 async def change_password(
@@ -351,62 +351,62 @@ async def change_password(
     Returns:
         A tuple of (success, error_message). If success is True, error_message is None.
     """
-    # Fetch the user
-    user_result = await db.execute(
-        select(AuthUser).where(
-            AuthUser.id == user_id,  # type: ignore[arg-type]
-            AuthUser.is_active.is_(True),  # type: ignore[attr-defined]
-        )
-    )
-    user = user_result.scalar_one_or_none()
-    if user is None:
-        return False, "User not found."
-
-    # Verify current password
-    if not verify_pbkdf2_sha256(current_password, user.password_hash):
-        return False, "Current password is incorrect."
-
-    # Validate new password
-    if len(new_password) < 8:
-        return False, "New password must be at least 8 characters."
-
-    if new_password == current_password:
-        return False, "New password must be different from current password."
-
-    now = datetime.utcnow()
-    password_hash = hash_pbkdf2_sha256(new_password)
-
-    # Update password
-    await db.execute(
-        update(AuthUser)
-        .where(AuthUser.id == user_id)  # type: ignore[arg-type]
-        .values(
-            password_hash=password_hash,
-            password_changed_at=now,
-            updated_at=now,
-        )
-    )
-
-    # Revoke all other sessions (keep current one if provided)
-    if current_session_token_hash:
-        await db.execute(
-            update(AuthSession)
-            .where(
-                AuthSession.user_id == user_id,  # type: ignore[arg-type]
-                AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
-                AuthSession.token_hash != current_session_token_hash,  # type: ignore[arg-type]
+    async with db.begin():
+        # Fetch the user
+        user_result = await db.execute(
+            select(AuthUser).where(
+                AuthUser.id == user_id,  # type: ignore[arg-type]
+                AuthUser.is_active.is_(True),  # type: ignore[attr-defined]
             )
-            .values(revoked_at=now)
         )
-    else:
+        user = user_result.scalar_one_or_none()
+        if user is None:
+            return False, "User not found."
+
+        # Verify current password
+        if not verify_pbkdf2_sha256(current_password, user.password_hash):
+            return False, "Current password is incorrect."
+
+        # Validate new password
+        if len(new_password) < 8:
+            return False, "New password must be at least 8 characters."
+
+        if new_password == current_password:
+            return False, "New password must be different from current password."
+
+        now = datetime.utcnow()
+        password_hash = hash_pbkdf2_sha256(new_password)
+
+        # Update password
         await db.execute(
-            update(AuthSession)
-            .where(
-                AuthSession.user_id == user_id,  # type: ignore[arg-type]
-                AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
+            update(AuthUser)
+            .where(AuthUser.id == user_id)  # type: ignore[arg-type]
+            .values(
+                password_hash=password_hash,
+                password_changed_at=now,
+                updated_at=now,
             )
-            .values(revoked_at=now)
         )
 
-    await db.commit()
-    return True, None
+        # Revoke all other sessions (keep current one if provided)
+        if current_session_token_hash:
+            await db.execute(
+                update(AuthSession)
+                .where(
+                    AuthSession.user_id == user_id,  # type: ignore[arg-type]
+                    AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
+                    AuthSession.token_hash != current_session_token_hash,  # type: ignore[arg-type]
+                )
+                .values(revoked_at=now)
+            )
+        else:
+            await db.execute(
+                update(AuthSession)
+                .where(
+                    AuthSession.user_id == user_id,  # type: ignore[arg-type]
+                    AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
+                )
+                .values(revoked_at=now)
+            )
+
+        return True, None

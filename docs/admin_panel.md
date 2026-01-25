@@ -124,9 +124,14 @@ All admin styles use BEM-style naming:
 ## Known Issues & Technical Debt
 
 ### Database Transaction Pattern
-The codebase uses explicit `await db.commit()` instead of the preferred `async with db.begin():` pattern documented in CLAUDE.md. This is tracked in GitHub issue #85.
+Request-bounded application code (FastAPI routes + services) follows the preferred transaction convention:
 
-**Reason**: Test fixtures configure sessions with active transactions for isolation, causing conflicts with nested `db.begin()` calls.
+- Use explicit scopes like `async with db.begin(): ...`
+- Avoid scattered `await db.commit()` / `await db.rollback()` in request paths
+
+This used to be blocked by the integration test harness (it pre-opened transactions/savepoints for rollback isolation), which caused nested `db.begin()` calls to raise `InvalidRequestError`. The test harness has since been updated to be production-like (TRUNCATE isolation + fresh sessions per request), so request code can use `db.begin()` normally.
+
+Note: non-request code (CLI/scripts) may still use explicit commits/rollbacks until it’s refactored.
 
 ---
 

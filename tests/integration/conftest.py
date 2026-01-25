@@ -128,19 +128,17 @@ async def async_engine(
     from app.schemas import auth  # noqa: F401
 
     connect_args = {
-        "server_settings": {"search_path": f'{_quote_ident(test_schema)},public'},
         # Disable prepared statement caching to avoid type OID/cache issues after DDL.
         "prepared_statement_cache_size": 0,
         "statement_cache_size": 0,
     }
-    engine = create_async_engine(
-        database_url,
-        echo=False,
-        pool_pre_ping=True,
-        connect_args=connect_args,
-    )
+    engine = create_async_engine(database_url, echo=False, pool_pre_ping=True, connect_args=connect_args)
     async with engine.begin() as conn:
         await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{test_schema}"'))
+        # Use a schema-only search_path so tests never fall back to `public`.
+        # This prevents accidental cross-test contamination if `public` already
+        # contains tables with the same names (e.g., from previous runs).
+        await conn.execute(text(f'SET search_path TO "{test_schema}"'))
         await conn.run_sync(SQLModel.metadata.create_all)
     try:
         yield engine
@@ -169,7 +167,12 @@ async def truncate_statement(async_engine: AsyncEngine, test_schema: str) -> str
         table_names = [row[0] for row in result.fetchall()]
 
     if not table_names:
-        return ""
+        raise RuntimeError(
+            "No tables were found in the integration-test schema. This likely means"
+            " the test schema was not applied during table creation (or the database"
+            " has conflicting tables in `public` that prevented create_all from"
+            " creating schema-local tables)."
+        )
 
     table_refs = ", ".join(
         f"{_quote_ident(test_schema)}.{_quote_ident(table_name)}"
@@ -190,17 +193,25 @@ async def truncate_tables(async_engine: AsyncEngine, truncate_statement: str) ->
 @pytest_asyncio.fixture()
 async def db_session(
     session_factory: async_sessionmaker[AsyncSession],
+    truncate_tables: None,
+    test_schema: str,
 ) -> AsyncGenerator[AsyncSession, None]:
     """Provide a DB session for test setup/verification."""
+    _ = truncate_tables
     async with session_factory() as session:
+        await session.execute(text(f'SET search_path TO "{test_schema}"'))
+        await session.commit()
         yield session
 
 
 @pytest_asyncio.fixture()
 async def app_client(
     session_factory: async_sessionmaker[AsyncSession],
+    truncate_tables: None,
+    test_schema: str,
 ) -> AsyncGenerator[AsyncClient, None]:
     """Provide an HTTP client with the app wired to fresh per-request sessions."""
+    _ = truncate_tables
     try:
         from app.main import app
     except ValidationError as exc:  # pragma: no cover - guard for misconfigured env
@@ -210,6 +221,8 @@ async def app_client(
 
     async def _get_session_override() -> AsyncGenerator[AsyncSession, None]:
         async with session_factory() as session:
+            await session.execute(text(f'SET search_path TO "{test_schema}"'))
+            await session.commit()
             yield session
 
     app.dependency_overrides[get_session] = _get_session_override

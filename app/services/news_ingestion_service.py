@@ -63,24 +63,21 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
     Returns:
         IngestionResult with counts and any errors
     """
-    active_sources = await get_active_sources(db)
-    source_snapshots: list[NewsSourceSnapshot] = []
-    for active_source in active_sources:
-        if active_source.id is None:
-            logger.warning(f"Skipping source without ID: {active_source.name}")
-            continue
-        source_snapshots.append(
-            NewsSourceSnapshot(
-                id=active_source.id,
-                name=active_source.name,
-                feed_type=active_source.feed_type,
-                feed_url=active_source.feed_url,
+    async with db.begin():
+        active_sources = await get_active_sources(db)
+        source_snapshots: list[NewsSourceSnapshot] = []
+        for active_source in active_sources:
+            if active_source.id is None:
+                logger.warning(f"Skipping source without ID: {active_source.name}")
+                continue
+            source_snapshots.append(
+                NewsSourceSnapshot(
+                    id=active_source.id,
+                    name=active_source.name,
+                    feed_type=active_source.feed_type,
+                    feed_url=active_source.feed_url,
+                )
             )
-        )
-
-    # End the implicit transaction opened by the SELECT so we never hold a DB
-    # connection open while doing network/AI work.
-    await db.commit()
 
     sources: list[NewsSourceSnapshot] = source_snapshots
     logger.info(f"Starting ingestion cycle: {len(sources)} active source(s)")
@@ -159,12 +156,12 @@ async def ingest_rss_source(
         seen_ids.add(external_id)
         candidates.append(entry)
 
-    existing_ids = await _fetch_existing_external_ids(
-        db,
-        source_id=source.id,
-        external_ids=[entry.get("guid", "") for entry in candidates],
-    )
-    await db.commit()
+    async with db.begin():
+        existing_ids = await _fetch_existing_external_ids(
+            db,
+            source_id=source.id,
+            external_ids=[entry.get("guid", "") for entry in candidates],
+        )
 
     new_entries = [
         entry for entry in candidates if entry.get("guid", "") not in existing_ids
@@ -276,33 +273,32 @@ async def _persist_news_items(
     """
 
     async def _attempt() -> tuple[int, int]:
-        inserted_count = 0
-        conflict_skipped = 0
-        if rows:
-            stmt = (
-                insert(NewsItem)
-                .values(rows)
-                .on_conflict_do_nothing(index_elements=["source_id", "external_id"])
-                .returning(NewsItem.__table__.c.id)  # type: ignore[attr-defined]
+        async with db.begin():
+            inserted_count = 0
+            conflict_skipped = 0
+            if rows:
+                stmt = (
+                    insert(NewsItem)
+                    .values(rows)
+                    .on_conflict_do_nothing(index_elements=["source_id", "external_id"])
+                    .returning(NewsItem.__table__.c.id)  # type: ignore[attr-defined]
+                )
+                result = await db.execute(stmt)
+                inserted_ids = list(result.scalars().all())
+                inserted_count = len(inserted_ids)
+                conflict_skipped = len(rows) - inserted_count
+
+            await db.execute(
+                update(NewsSource)
+                .where(NewsSource.id == source_id)  # type: ignore[arg-type]
+                .values(last_fetched_at=fetched_at, updated_at=fetched_at)
             )
-            result = await db.execute(stmt)
-            inserted_ids = list(result.scalars().all())
-            inserted_count = len(inserted_ids)
-            conflict_skipped = len(rows) - inserted_count
 
-        await db.execute(
-            update(NewsSource)
-            .where(NewsSource.id == source_id)  # type: ignore[arg-type]
-            .values(last_fetched_at=fetched_at, updated_at=fetched_at)
-        )
-        await db.commit()
-
-        return inserted_count, conflict_skipped
+            return inserted_count, conflict_skipped
 
     try:
         return await _attempt()
     except Exception as exc:
-        await db.rollback()
         if _is_transient_db_error(exc):
             logger.warning("Transient DB error during news ingest; retrying once")
             return await _attempt()

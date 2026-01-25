@@ -49,13 +49,14 @@ def require_dataset_permission(
         if user.role != "worker":
             raise HTTPException(status_code=403, detail="Forbidden")
 
-        result = await db.execute(
-            select(AuthDatasetPermission).where(
-                AuthDatasetPermission.user_id == user.id,  # type: ignore[arg-type]
-                AuthDatasetPermission.dataset == dataset,  # type: ignore[arg-type]
+        async with db.begin():
+            result = await db.execute(
+                select(AuthDatasetPermission).where(
+                    AuthDatasetPermission.user_id == user.id,  # type: ignore[arg-type]
+                    AuthDatasetPermission.dataset == dataset,  # type: ignore[arg-type]
+                )
             )
-        )
-        permission = result.scalar_one_or_none()
+            permission = result.scalar_one_or_none()
         if permission is None:
             raise HTTPException(status_code=403, detail="Forbidden")
 
