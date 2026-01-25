@@ -1,0 +1,204 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Edit News Item" %}
+{% set active_nav = "news-items" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Edit News Item</h1>
+  <p class="admin-main__subtitle">Modify tag, player association, or summary</p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <!-- Read-only info section -->
+  <div class="admin-form__section">
+    <h3 class="admin-form__section-title">Item Details</h3>
+
+    <div class="admin-form__static-field">
+      <label class="admin-form__label">Title</label>
+      <p class="admin-form__static">{{ item.title }}</p>
+    </div>
+
+    <div class="admin-form__static-field">
+      <label class="admin-form__label">Source</label>
+      <p class="admin-form__static">{{ source.display_name if source else 'Unknown' }}</p>
+    </div>
+
+    <div class="admin-form__static-field">
+      <label class="admin-form__label">URL</label>
+      <p class="admin-form__static">
+        <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" class="admin-link">
+          {{ item.url | truncate(80) }}
+        </a>
+      </p>
+    </div>
+
+    <div class="admin-form__static-field">
+      <label class="admin-form__label">Published</label>
+      <p class="admin-form__static">{{ item.published_at.strftime('%Y-%m-%d %H:%M') }}</p>
+    </div>
+
+    {% if item.author %}
+    <div class="admin-form__static-field">
+      <label class="admin-form__label">Author</label>
+      <p class="admin-form__static">{{ item.author }}</p>
+    </div>
+    {% endif %}
+
+    {% if item.description %}
+    <div class="admin-form__static-field">
+      <label class="admin-form__label">Description</label>
+      <p class="admin-form__static admin-form__static--multiline">{{ item.description }}</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Editable form section -->
+  <form class="admin-form" method="post" action="/admin/news-items/{{ item.id }}">
+    <h3 class="admin-form__section-title">Editable Fields</h3>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="tag">Tag</label>
+      <select class="admin-form__select" id="tag" name="tag" required>
+        {% for t in tags %}
+        <option value="{{ t.value }}" {% if item.tag == t %}selected{% endif %}>
+          {{ t.value }}
+        </option>
+        {% endfor %}
+      </select>
+      <span class="admin-form__help">Classification for this news item</span>
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="player_search">Associated Player</label>
+      <input type="hidden" id="player_id" name="player_id" value="{{ item.player_id or '' }}">
+      <div class="admin-search-box">
+        <input
+          type="text"
+          id="player_search"
+          class="admin-form__input"
+          value="{{ player.display_name if player else '' }}"
+          placeholder="Search for a player..."
+          autocomplete="off"
+        >
+        <div id="player_results" class="admin-search-results"></div>
+      </div>
+      <div class="admin-form__help-row">
+        <span class="admin-form__help">Link this item to a specific prospect</span>
+        <button type="button" class="admin-btn admin-btn--link admin-btn--small" id="clear_player">Clear</button>
+      </div>
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="summary">Summary</label>
+      <textarea
+        class="admin-form__textarea"
+        id="summary"
+        name="summary"
+        rows="3"
+        placeholder="AI-generated or manual summary..."
+      >{{ item.summary or '' }}</textarea>
+      <span class="admin-form__help">A concise summary for display in feeds</span>
+    </div>
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">Save Changes</button>
+      <a href="/admin/news-items" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block admin_js %}
+<script>
+(function() {
+  const playerSearch = document.getElementById('player_search');
+  const playerIdInput = document.getElementById('player_id');
+  const resultsDiv = document.getElementById('player_results');
+  const clearBtn = document.getElementById('clear_player');
+
+  let searchTimeout;
+
+  playerSearch.addEventListener('input', function(e) {
+    clearTimeout(searchTimeout);
+    const query = e.target.value.trim();
+
+    if (query.length < 2) {
+      resultsDiv.classList.remove('active');
+      resultsDiv.innerHTML = '';
+      return;
+    }
+
+    searchTimeout = setTimeout(async function() {
+      try {
+        const resp = await fetch('/players/search?q=' + encodeURIComponent(query));
+        if (!resp.ok) {
+          resultsDiv.classList.remove('active');
+          return;
+        }
+        const results = await resp.json();
+        renderResults(results);
+      } catch (err) {
+        console.error('Player search failed:', err);
+        resultsDiv.classList.remove('active');
+      }
+    }, 150);
+  });
+
+  playerSearch.addEventListener('focus', function() {
+    if (resultsDiv.children.length > 0) {
+      resultsDiv.classList.add('active');
+    }
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!playerSearch.contains(e.target) && !resultsDiv.contains(e.target)) {
+      resultsDiv.classList.remove('active');
+    }
+  });
+
+  clearBtn.addEventListener('click', function() {
+    playerIdInput.value = '';
+    playerSearch.value = '';
+    resultsDiv.classList.remove('active');
+    resultsDiv.innerHTML = '';
+  });
+
+  function renderResults(results) {
+    if (!results || results.length === 0) {
+      resultsDiv.innerHTML = '<div class="admin-search-result admin-search-result--empty">No players found</div>';
+      resultsDiv.classList.add('active');
+      return;
+    }
+
+    resultsDiv.innerHTML = results.map(function(p) {
+      const schoolInfo = p.school ? ' (' + p.school + ')' : '';
+      return '<div class="admin-search-result" data-id="' + p.id + '" data-name="' + escapeHtml(p.display_name) + '">' +
+        escapeHtml(p.display_name) + schoolInfo +
+        '</div>';
+    }).join('');
+
+    resultsDiv.querySelectorAll('.admin-search-result[data-id]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        selectPlayer(el.dataset.id, el.dataset.name);
+      });
+    });
+
+    resultsDiv.classList.add('active');
+  }
+
+  function selectPlayer(id, name) {
+    playerIdInput.value = id;
+    playerSearch.value = name;
+    resultsDiv.classList.remove('active');
+    resultsDiv.innerHTML = '';
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+})();
+</script>
+{% endblock %}

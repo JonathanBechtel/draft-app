@@ -166,6 +166,11 @@ async def issue_session(
 
     async with db.begin():
         db.add(session)
+        await db.execute(
+            update(AuthUser)
+            .where(AuthUser.id == user_id)  # type: ignore[arg-type]
+            .values(last_login_at=now)
+        )
 
     return raw_token, session
 

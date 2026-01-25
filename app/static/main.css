@@ -584,6 +584,14 @@ body {
   text-align: center;
 }
 
+.h2h-photo-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: inherit;
+}
+
 .h2h-player-photo img {
   width: 150px;
   height: 150px;
