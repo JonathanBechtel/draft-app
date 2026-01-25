@@ -231,8 +231,8 @@ async def update_news_item(
             player = None
             if item.player_id:
                 player_result = await db.execute(
-                    select(PlayerMaster).where(  # type: ignore[arg-type]
-                        PlayerMaster.id == item.player_id
+                    select(PlayerMaster).where(
+                        PlayerMaster.id == item.player_id  # type: ignore[arg-type]
                     )
                 )
                 player = player_result.scalar_one_or_none()
