@@ -10,7 +10,7 @@ import pytest_asyncio
 
 from httpx import AsyncClient, ASGITransport
 from pydantic import ValidationError
-from sqlalchemy import event, text
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -22,6 +22,11 @@ from sqlmodel import SQLModel
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _quote_ident(identifier: str) -> str:
+    """Quote a Postgres identifier (schema/table/etc)."""
+    return '"' + identifier.replace('"', '""') + '"'
 
 
 def _load_database_url() -> str:
@@ -122,10 +127,20 @@ async def async_engine(
     from app.schemas import news_items  # noqa: F401
     from app.schemas import auth  # noqa: F401
 
-    engine = create_async_engine(database_url, echo=False, pool_pre_ping=True)
+    connect_args = {
+        "server_settings": {"search_path": f'{_quote_ident(test_schema)},public'},
+        # Disable prepared statement caching to avoid type OID/cache issues after DDL.
+        "prepared_statement_cache_size": 0,
+        "statement_cache_size": 0,
+    }
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        pool_pre_ping=True,
+        connect_args=connect_args,
+    )
     async with engine.begin() as conn:
         await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{test_schema}"'))
-        await conn.execute(text(f'SET search_path TO "{test_schema}"'))
         await conn.run_sync(SQLModel.metadata.create_all)
     try:
         yield engine
@@ -135,40 +150,57 @@ async def async_engine(
         await engine.dispose()
 
 
+@pytest_asyncio.fixture(scope="session")
+def session_factory(async_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """Return a sessionmaker bound to the integration test engine."""
+    return async_sessionmaker(bind=async_engine, expire_on_commit=False, class_=AsyncSession)
+
+
+@pytest_asyncio.fixture(scope="session")
+async def truncate_statement(async_engine: AsyncEngine, test_schema: str) -> str:
+    """Return a TRUNCATE statement that resets all tables in the test schema."""
+    async with async_engine.connect() as conn:
+        result = await conn.execute(
+            text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = :schema ORDER BY tablename"
+            ),
+            {"schema": test_schema},
+        )
+        table_names = [row[0] for row in result.fetchall()]
+
+    if not table_names:
+        return ""
+
+    table_refs = ", ".join(
+        f"{_quote_ident(test_schema)}.{_quote_ident(table_name)}"
+        for table_name in table_names
+    )
+    return f"TRUNCATE TABLE {table_refs} RESTART IDENTITY CASCADE"
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def truncate_tables(async_engine: AsyncEngine, truncate_statement: str) -> None:
+    """Reset all data between integration tests (prod-like isolation)."""
+    if not truncate_statement:
+        return
+    async with async_engine.begin() as conn:
+        await conn.execute(text(truncate_statement))
+
+
 @pytest_asyncio.fixture()
 async def db_session(
-    async_engine: AsyncEngine, test_schema: str
+    session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncGenerator[AsyncSession, None]:
-    """Provide a clean transactional session for each test without per-test DDL."""
-    async with async_engine.connect() as connection:
-        # Wrap each test in a transaction; roll back afterwards to keep a pristine schema.
-        trans = await connection.begin()
-        await connection.execute(text(f'SET LOCAL search_path TO "{test_schema}"'))
-        session_factory = async_sessionmaker(
-            bind=connection, expire_on_commit=False, class_=AsyncSession
-        )
-        session = session_factory()
-        # Start a savepoint so test code can call commit without closing the outer transaction.
-        await session.begin_nested()
-
-        @event.listens_for(session.sync_session, "after_transaction_end")
-        def restart_savepoint(sess, transaction):  # type: ignore[unused-argument]
-            if transaction.nested and not transaction._parent.nested:
-                sess.begin_nested()
-
-        try:
-            yield session
-        finally:
-            await session.close()
-            await trans.rollback()
-            event.remove(
-                session.sync_session, "after_transaction_end", restart_savepoint
-            )
+    """Provide a DB session for test setup/verification."""
+    async with session_factory() as session:
+        yield session
 
 
 @pytest_asyncio.fixture()
-async def app_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
-    """Provide an HTTP client with the application wired to the test session."""
+async def app_client(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncGenerator[AsyncClient, None]:
+    """Provide an HTTP client with the app wired to fresh per-request sessions."""
     try:
         from app.main import app
     except ValidationError as exc:  # pragma: no cover - guard for misconfigured env
@@ -177,7 +209,8 @@ async def app_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, No
     from app.utils.db_async import get_session
 
     async def _get_session_override() -> AsyncGenerator[AsyncSession, None]:
-        yield db_session
+        async with session_factory() as session:
+            yield session
 
     app.dependency_overrides[get_session] = _get_session_override
     transport = ASGITransport(app=app)
