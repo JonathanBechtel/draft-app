@@ -4,6 +4,7 @@ This module provides the admin UI routes organized into sub-routers:
 - auth: Login, logout, password reset (public routes)
 - account: Account view, password change (authenticated routes)
 - news_sources: News source CRUD (admin-only routes)
+- news_items: News item CRUD (admin-only routes)
 """
 
 from fastapi import APIRouter, Depends, Request
@@ -14,6 +15,7 @@ from starlette.responses import Response
 from app.routes.admin.account import router as account_router
 from app.routes.admin.auth import router as auth_router
 from app.routes.admin.helpers import base_context, get_current_user
+from app.routes.admin.news_items import router as news_items_router
 from app.routes.admin.news_sources import router as news_sources_router
 from app.utils.db_async import get_session
 
@@ -40,3 +42,4 @@ async def admin_home(
 router.include_router(auth_router)
 router.include_router(account_router)
 router.include_router(news_sources_router)
+router.include_router(news_items_router)

@@ -522,6 +522,165 @@
   color: var(--color-slate-800);
 }
 
+/* === Filters === */
+.admin-filters {
+  padding: 1rem;
+  background: var(--color-slate-50);
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.admin-filters__row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.admin-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.admin-filters__label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-600);
+  font-weight: 600;
+}
+
+.admin-filters__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+/* === Pagination === */
+.admin-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 0;
+  margin-top: 1rem;
+  border-top: 1px solid var(--color-slate-200);
+}
+
+.admin-pagination__info {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-500);
+}
+
+.admin-pagination__controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.admin-pagination__pages {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-600);
+}
+
+/* === Static Form Fields (read-only) === */
+.admin-form__section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--color-slate-200);
+}
+
+.admin-form__section-title {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  color: var(--color-slate-700);
+  margin: 0 0 1rem;
+}
+
+.admin-form__static-field {
+  margin-bottom: 0.75rem;
+}
+
+.admin-form__static {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-slate-800);
+  margin: 0.25rem 0 0;
+  line-height: 1.5;
+}
+
+.admin-form__static--multiline {
+  background: var(--color-slate-50);
+  padding: 0.75rem;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+.admin-form__help-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+
+/* === Search Box === */
+.admin-search-box {
+  position: relative;
+}
+
+.admin-search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--color-white);
+  border: 2px solid var(--color-slate-300);
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 100;
+  display: none;
+}
+
+.admin-search-results.active {
+  display: block;
+}
+
+.admin-search-result {
+  padding: 0.625rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-slate-700);
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-slate-100);
+}
+
+.admin-search-result:last-child {
+  border-bottom: none;
+}
+
+.admin-search-result:hover {
+  background: var(--color-slate-50);
+}
+
+.admin-search-result--empty {
+  color: var(--color-slate-500);
+  cursor: default;
+}
+
+.admin-search-result--empty:hover {
+  background: none;
+}
+
+/* === Tag Badge === */
+.admin-badge--tag {
+  background: var(--color-slate-100);
+  color: var(--color-slate-700);
+}
+
 /* === Responsive === */
 @media (max-width: 768px) {
   .admin-layout {
