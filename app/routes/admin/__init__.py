@@ -17,6 +17,7 @@ from app.routes.admin.auth import router as auth_router
 from app.routes.admin.helpers import base_context, get_current_user
 from app.routes.admin.news_items import router as news_items_router
 from app.routes.admin.news_sources import router as news_sources_router
+from app.routes.admin.players import router as players_router
 from app.utils.db_async import get_session
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -43,3 +44,4 @@ router.include_router(auth_router)
 router.include_router(account_router)
 router.include_router(news_sources_router)
 router.include_router(news_items_router)
+router.include_router(players_router)
