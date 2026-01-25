@@ -110,7 +110,12 @@ Do not ask if the user wants you to run these checks — run them proactively af
 - Use Pydantic request/response models from `app/models` (e.g., `PlayerCreate`, `PlayerRead`) at the edges and SQLModel tables from `app/schemas` (e.g., `PlayerTable`) for persistence; map between them via `.model_dump()`/constructor and rely on `response_model` to shape outbound payloads.
 - Always set `response_model` and explicit `status_code` (e.g., 201 for creates, 204 for deletes) and raise `HTTPException` for error cases like 404.
 - For list endpoints, apply deterministic ordering and consider pagination/filters as the surface grows.
-- UI routes render templates via `request.app.state.templates.TemplateResponse(...)`; pass `request` in the context to satisfy FastAPI’s templating requirement.
+- UI routes render templates via `request.app.state.templates.TemplateResponse(...)`; pass `request` in the context to satisfy FastAPI's templating requirement.
+
+## Service Layer Patterns
+- Services live in `app/services/` and contain business logic: query building, validation, parsing, and CRUD operations.
+- Service functions are stateless: take `AsyncSession` as first parameter and let routes handle commits.
+- Use dataclasses for internal DTOs (form data, query results); reserve Pydantic models for API request/response boundaries.
 
 ## Testing Guidelines
 - Write pytest cases under `tests/` using filenames like `test_players.py`; group async client checks with `pytest.mark.asyncio`.

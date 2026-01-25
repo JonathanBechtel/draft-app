@@ -124,7 +124,11 @@ class TestPasswordReset:
 
         confirm = await app_client.post(
             "/admin/password-reset/confirm",
-            data={"token": token, "password": NEW_PASSWORD},
+            data={
+                "token": token,
+                "password": NEW_PASSWORD,
+                "confirm_password": NEW_PASSWORD,
+            },
             follow_redirects=False,
         )
         assert confirm.status_code in {302, 303}
@@ -150,7 +154,7 @@ class TestPasswordReset:
 
         reuse = await app_client.post(
             "/admin/password-reset/confirm",
-            data={"token": token, "password": "another"},
+            data={"token": token, "password": "another", "confirm_password": "another"},
         )
-        assert reuse.status_code in {400, 410}
+        assert reuse.status_code == 200  # Returns form with error message
 

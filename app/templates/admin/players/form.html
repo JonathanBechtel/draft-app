@@ -1,0 +1,267 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "New Player" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">New Player</h1>
+  <p class="admin-main__subtitle">Add a new player record</p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <form class="admin-form" method="post" action="/admin/players">
+    <!-- Basic Info Section -->
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">Basic Info</h3>
+
+      <div class="admin-form__field">
+        <label class="admin-form__label" for="display_name">Display Name *</label>
+        <input
+          class="admin-form__input"
+          id="display_name"
+          name="display_name"
+          type="text"
+          required
+        />
+        <span class="admin-form__help">Full display name (e.g., "LeBron James")</span>
+      </div>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="prefix">Prefix</label>
+          <input
+            class="admin-form__input"
+            id="prefix"
+            name="prefix"
+            type="text"
+            placeholder="Jr., Sr., etc."
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="first_name">First Name *</label>
+          <input
+            class="admin-form__input"
+            id="first_name"
+            name="first_name"
+            type="text"
+            required
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="middle_name">Middle Name</label>
+          <input
+            class="admin-form__input"
+            id="middle_name"
+            name="middle_name"
+            type="text"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="last_name">Last Name *</label>
+          <input
+            class="admin-form__input"
+            id="last_name"
+            name="last_name"
+            type="text"
+            required
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="suffix">Suffix</label>
+          <input
+            class="admin-form__input"
+            id="suffix"
+            name="suffix"
+            type="text"
+            placeholder="Jr., III, etc."
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Biographical Section -->
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">Biographical</h3>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="birthdate">Birth Date</label>
+          <input
+            class="admin-form__input"
+            id="birthdate"
+            name="birthdate"
+            type="date"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="shoots">Shoots</label>
+          <select class="admin-form__select" id="shoots" name="shoots">
+            <option value="">—</option>
+            <option value="L">Left</option>
+            <option value="R">Right</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="birth_city">Birth City</label>
+          <input
+            class="admin-form__input"
+            id="birth_city"
+            name="birth_city"
+            type="text"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="birth_state_province">State/Province</label>
+          <input
+            class="admin-form__input"
+            id="birth_state_province"
+            name="birth_state_province"
+            type="text"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="birth_country">Country</label>
+          <input
+            class="admin-form__input"
+            id="birth_country"
+            name="birth_country"
+            type="text"
+          />
+        </div>
+      </div>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="school">College/School</label>
+          <input
+            class="admin-form__input"
+            id="school"
+            name="school"
+            type="text"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="high_school">High School</label>
+          <input
+            class="admin-form__input"
+            id="high_school"
+            name="high_school"
+            type="text"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Draft Info Section -->
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">Draft Info</h3>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="draft_year">Draft Year</label>
+          <input
+            class="admin-form__input"
+            id="draft_year"
+            name="draft_year"
+            type="number"
+            min="1947"
+            max="2030"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="draft_round">Round</label>
+          <input
+            class="admin-form__input"
+            id="draft_round"
+            name="draft_round"
+            type="number"
+            min="1"
+            max="10"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="draft_pick">Pick</label>
+          <input
+            class="admin-form__input"
+            id="draft_pick"
+            name="draft_pick"
+            type="number"
+            min="1"
+            max="60"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="draft_team">Draft Team</label>
+          <input
+            class="admin-form__input"
+            id="draft_team"
+            name="draft_team"
+            type="text"
+            placeholder="Team abbreviation"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- NBA Career Section -->
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">NBA Career</h3>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="nba_debut_date">NBA Debut Date</label>
+          <input
+            class="admin-form__input"
+            id="nba_debut_date"
+            name="nba_debut_date"
+            type="date"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="nba_debut_season">NBA Debut Season</label>
+          <input
+            class="admin-form__input"
+            id="nba_debut_season"
+            name="nba_debut_season"
+            type="text"
+            placeholder="e.g., 2023-24"
+          />
+        </div>
+      </div>
+
+      <div class="admin-form__field">
+        <label class="admin-form__label" for="reference_image_url">Reference Image URL</label>
+        <input
+          class="admin-form__input"
+          id="reference_image_url"
+          name="reference_image_url"
+          type="url"
+          placeholder="https://..."
+        />
+        <span class="admin-form__help">URL to reference image for AI likeness generation</span>
+      </div>
+    </div>
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">Create Player</button>
+      <a href="/admin/players" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

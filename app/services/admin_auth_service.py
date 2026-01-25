@@ -164,6 +164,14 @@ async def issue_session(
     )
 
     db.add(session)
+
+    # Update last_login_at on the user
+    await db.execute(
+        update(AuthUser)
+        .where(AuthUser.id == user_id)  # type: ignore[arg-type]
+        .values(last_login_at=now)
+    )
+
     await db.commit()
 
     return raw_token, session
@@ -329,3 +337,84 @@ async def confirm_password_reset(
 
     await db.commit()
     return True
+
+
+async def change_password(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    current_password: str,
+    new_password: str,
+    current_session_token_hash: str | None = None,
+) -> tuple[bool, str | None]:
+    """Change a user's password after verifying the current password.
+
+    Args:
+        db: Database session.
+        user_id: The ID of the user changing their password.
+        current_password: The user's current password (for verification).
+        new_password: The new password to set.
+        current_session_token_hash: If provided, this session is preserved; others are revoked.
+
+    Returns:
+        A tuple of (success, error_message). If success is True, error_message is None.
+    """
+    # Fetch the user
+    user_result = await db.execute(
+        select(AuthUser).where(
+            AuthUser.id == user_id,  # type: ignore[arg-type]
+            AuthUser.is_active.is_(True),  # type: ignore[attr-defined]
+        )
+    )
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        return False, "User not found."
+
+    # Verify current password
+    if not verify_pbkdf2_sha256(current_password, user.password_hash):
+        return False, "Current password is incorrect."
+
+    # Validate new password
+    if len(new_password) < 8:
+        return False, "New password must be at least 8 characters."
+
+    if new_password == current_password:
+        return False, "New password must be different from current password."
+
+    now = datetime.utcnow()
+    password_hash = hash_pbkdf2_sha256(new_password)
+
+    # Update password
+    await db.execute(
+        update(AuthUser)
+        .where(AuthUser.id == user_id)  # type: ignore[arg-type]
+        .values(
+            password_hash=password_hash,
+            password_changed_at=now,
+            updated_at=now,
+        )
+    )
+
+    # Revoke all other sessions (keep current one if provided)
+    if current_session_token_hash:
+        await db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.user_id == user_id,  # type: ignore[arg-type]
+                AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
+                AuthSession.token_hash != current_session_token_hash,  # type: ignore[arg-type]
+            )
+            .values(revoked_at=now)
+        )
+    else:
+        await db.execute(
+            update(AuthSession)
+            .where(
+                AuthSession.user_id == user_id,  # type: ignore[arg-type]
+                AuthSession.revoked_at.is_(None),  # type: ignore[union-attr]
+            )
+            .values(revoked_at=now)
+        )
+
+    await db.commit()
+    return True, None

@@ -1,0 +1,139 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Players" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Players</h1>
+  <p class="admin-main__subtitle">Manage player records</p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">All Players ({{ total }})</h2>
+    <a href="/admin/players/new" class="admin-btn admin-btn--primary">Add Player</a>
+  </div>
+
+  <!-- Filters -->
+  <form class="admin-filters" method="get" action="/admin/players">
+    <input type="hidden" name="limit" value="{{ limit }}">
+
+    <div class="admin-filters__row">
+      <div class="admin-filters__field admin-filters__field--wide">
+        <label class="admin-filters__label" for="q">Search</label>
+        <input class="admin-form__input" type="text" id="q" name="q"
+               value="{{ q or '' }}" placeholder="Name, school...">
+      </div>
+
+      <div class="admin-filters__field">
+        <label class="admin-filters__label" for="draft_year">Draft Year</label>
+        <select class="admin-form__select" id="draft_year" name="draft_year">
+          <option value="">All Years</option>
+          {% for year in draft_years %}
+          <option value="{{ year }}" {% if draft_year == year %}selected{% endif %}>
+            {{ year }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="admin-filters__actions">
+        <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Filter</button>
+        <a href="/admin/players" class="admin-btn admin-btn--secondary admin-btn--small">Reset</a>
+      </div>
+    </div>
+  </form>
+
+  {% if players %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>School</th>
+        <th>Draft</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for player in players %}
+      <tr>
+        <td>
+          <a href="/admin/players/{{ player.id }}" class="admin-link">
+            {{ player.display_name or '—' }}
+          </a>
+        </td>
+        <td>
+          {% if player.school %}
+          {{ player.school }}
+          {% else %}
+          <span class="admin-text--placeholder">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if player.draft_year %}
+          {{ player.draft_year }}
+          {% if player.draft_round and player.draft_pick %}
+          R{{ player.draft_round }} P{{ player.draft_pick }}
+          {% endif %}
+          {% else %}
+          <span class="admin-text--placeholder">—</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="admin-table__actions">
+            <a href="/admin/players/{{ player.id }}" class="admin-btn admin-btn--secondary admin-btn--small">Edit</a>
+            <form method="post" action="/admin/players/{{ player.id }}/delete" class="admin-form--inline" onsubmit="return confirm('Are you sure you want to delete this player? This will cascade to related records.');">
+              <button type="submit" class="admin-btn admin-btn--danger admin-btn--small">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  {% if pages > 1 %}
+  <nav class="admin-pagination">
+    <div class="admin-pagination__info">
+      Showing {{ offset + 1 }}-{{ [offset + limit, total] | min }} of {{ total }}
+    </div>
+    <div class="admin-pagination__controls">
+      {% if current_page > 1 %}
+      <a href="/admin/players?limit={{ limit }}&offset={{ (current_page - 2) * limit }}{% if q %}&q={{ q }}{% endif %}{% if draft_year %}&draft_year={{ draft_year }}{% endif %}{% if position %}&position={{ position }}{% endif %}"
+         class="admin-btn admin-btn--secondary admin-btn--small">Previous</a>
+      {% endif %}
+
+      <span class="admin-pagination__pages">
+        Page {{ current_page }} of {{ pages }}
+      </span>
+
+      {% if current_page < pages %}
+      <a href="/admin/players?limit={{ limit }}&offset={{ current_page * limit }}{% if q %}&q={{ q }}{% endif %}{% if draft_year %}&draft_year={{ draft_year }}{% endif %}{% if position %}&position={{ position }}{% endif %}"
+         class="admin-btn admin-btn--secondary admin-btn--small">Next</a>
+      {% endif %}
+    </div>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="admin-empty">
+    <div class="admin-empty__icon">&#127936;</div>
+    <h3 class="admin-empty__title">No Players</h3>
+    <p class="admin-empty__text">
+      {% if q or draft_year or position %}
+      No players match your filters. Try adjusting the criteria.
+      {% else %}
+      No player records exist yet. Add a player to get started.
+      {% endif %}
+    </p>
+    {% if q or draft_year or position %}
+    <a href="/admin/players" class="admin-btn admin-btn--secondary">Clear Filters</a>
+    {% else %}
+    <a href="/admin/players/new" class="admin-btn admin-btn--primary">Add Player</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "News Sources" %}
+{% set active_nav = "news-sources" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">News Sources</h1>
+  <p class="admin-main__subtitle">Manage RSS feeds and other news sources</p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">All Sources</h2>
+    <a href="/admin/news-sources/new" class="admin-btn admin-btn--primary admin-btn--small">
+      Add Source
+    </a>
+  </div>
+
+  {% if sources %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Status</th>
+        <th>Interval</th>
+        <th>Last Fetched</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for source in sources %}
+      <tr>
+        <td>
+          <strong>{{ source.name }}</strong>
+          {% if source.name != source.display_name %}
+          <br><span class="admin-text--small">{{ source.display_name }}</span>
+          {% endif %}
+        </td>
+        <td>{{ source.feed_type.value | upper }}</td>
+        <td>
+          {% if source.is_active %}
+          <span class="admin-badge admin-badge--active">Active</span>
+          {% else %}
+          <span class="admin-badge admin-badge--inactive">Inactive</span>
+          {% endif %}
+        </td>
+        <td>{{ source.fetch_interval_minutes }} min</td>
+        <td>
+          {% if source.last_fetched_at %}
+          {{ source.last_fetched_at.strftime('%Y-%m-%d %H:%M') }}
+          {% else %}
+          <span class="admin-text--placeholder">Never</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="admin-table__actions">
+            <a href="/admin/news-sources/{{ source.id }}" class="admin-btn admin-btn--secondary admin-btn--small">Edit</a>
+            <form method="post" action="/admin/news-sources/{{ source.id }}/delete" class="admin-form--inline" onsubmit="return confirm('Are you sure you want to delete this news source?');">
+              <button type="submit" class="admin-btn admin-btn--danger admin-btn--small">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="admin-empty">
+    <div class="admin-empty__icon">&#128240;</div>
+    <h3 class="admin-empty__title">No News Sources</h3>
+    <p class="admin-empty__text">Get started by adding your first news source.</p>
+    <a href="/admin/news-sources/new" class="admin-btn admin-btn--primary">Add Source</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

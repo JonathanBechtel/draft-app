@@ -105,6 +105,43 @@ class TestAdminAuthUI:
         assert location == "/admin"
         assert "evil.example" not in location
 
+    async def test_login_updates_last_login_at(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+    ):
+        """Successful login should update the user's last_login_at timestamp."""
+        user_id = await create_auth_user(
+            db_session,
+            email="login-timestamp@example.com",
+            password="secret123",
+            role="admin",
+        )
+
+        # Verify last_login_at is initially None
+        result = await db_session.execute(
+            text("SELECT last_login_at FROM auth_users WHERE id = :user_id"),
+            {"user_id": user_id},
+        )
+        assert result.scalar_one_or_none() is None
+
+        # Perform login
+        before_login = datetime.utcnow()
+        response = await login_staff(
+            app_client, email="login-timestamp@example.com", password="secret123"
+        )
+        after_login = datetime.utcnow()
+        assert response.status_code in {302, 303}
+
+        # Verify last_login_at was updated
+        result = await db_session.execute(
+            text("SELECT last_login_at FROM auth_users WHERE id = :user_id"),
+            {"user_id": user_id},
+        )
+        last_login_at = result.scalar_one()
+        assert last_login_at is not None
+        assert before_login <= last_login_at <= after_login
+
     async def test_logout_revokes_session_and_clears_cookie(
         self,
         app_client: AsyncClient,
