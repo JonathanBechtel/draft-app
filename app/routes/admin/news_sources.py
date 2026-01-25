@@ -104,33 +104,35 @@ async def create_news_source(
             ),
         )
 
-    # Check for duplicate feed_url
-    existing = await db.execute(
-        select(NewsSource).where(NewsSource.feed_url == feed_url)  # type: ignore[arg-type]
-    )
-    if existing.scalar_one_or_none():
-        return request.app.state.templates.TemplateResponse(
-            "admin/news-sources/form.html",
-            base_context(
-                request,
-                user=user,
-                source=None,
-                feed_types=list(FeedType),
-                error="A news source with this feed URL already exists.",
-            ),
+    async with db.begin():
+        # Check for duplicate feed_url
+        existing = await db.execute(
+            select(NewsSource).where(
+                NewsSource.feed_url == feed_url  # type: ignore[arg-type]
+            )
         )
+        if existing.scalar_one_or_none():
+            return request.app.state.templates.TemplateResponse(
+                "admin/news-sources/form.html",
+                base_context(
+                    request,
+                    user=user,
+                    source=None,
+                    feed_types=list(FeedType),
+                    error="A news source with this feed URL already exists.",
+                ),
+            )
 
-    source = NewsSource(
-        name=name,
-        display_name=display_name,
-        feed_type=feed_type_enum,
-        feed_url=feed_url,
-        is_active=is_active is not None
-        and is_active not in {"0", "", "false", "False"},
-        fetch_interval_minutes=fetch_interval_minutes,
-    )
-    db.add(source)
-    await db.commit()
+        source = NewsSource(
+            name=name,
+            display_name=display_name,
+            feed_type=feed_type_enum,
+            feed_url=feed_url,
+            is_active=is_active is not None
+            and is_active not in {"0", "", "false", "False"},
+            fetch_interval_minutes=fetch_interval_minutes,
+        )
+        db.add(source)
 
     return RedirectResponse(url="/admin/news-sources?success=created", status_code=303)
 
@@ -182,60 +184,62 @@ async def update_news_source(
     if redirect:
         return redirect
 
-    result = await db.execute(
-        select(NewsSource).where(NewsSource.id == source_id)  # type: ignore[arg-type]
-    )
-    source = result.scalar_one_or_none()
-    if source is None:
-        raise HTTPException(status_code=404, detail="News source not found")
-
-    # Validate feed_type
-    try:
-        feed_type_enum = FeedType(feed_type)
-    except ValueError:
-        return request.app.state.templates.TemplateResponse(
-            "admin/news-sources/form.html",
-            base_context(
-                request,
-                user=user,
-                source=source,
-                feed_types=list(FeedType),
-                error=f"Invalid feed type: {feed_type}",
-            ),
+    async with db.begin():
+        result = await db.execute(
+            select(NewsSource).where(
+                NewsSource.id == source_id  # type: ignore[arg-type]
+            )
         )
+        source = result.scalar_one_or_none()
+        if source is None:
+            raise HTTPException(status_code=404, detail="News source not found")
 
-    # Check for duplicate feed_url (exclude current source)
-    existing = await db.execute(
-        select(NewsSource).where(
-            NewsSource.feed_url == feed_url,  # type: ignore[arg-type]
-            NewsSource.id != source_id,  # type: ignore[arg-type]
-        )
-    )
-    if existing.scalar_one_or_none():
-        return request.app.state.templates.TemplateResponse(
-            "admin/news-sources/form.html",
-            base_context(
-                request,
-                user=user,
-                source=source,
-                feed_types=list(FeedType),
-                error="A news source with this feed URL already exists.",
-            ),
-        )
+        # Validate feed_type
+        try:
+            feed_type_enum = FeedType(feed_type)
+        except ValueError:
+            return request.app.state.templates.TemplateResponse(
+                "admin/news-sources/form.html",
+                base_context(
+                    request,
+                    user=user,
+                    source=source,
+                    feed_types=list(FeedType),
+                    error=f"Invalid feed type: {feed_type}",
+                ),
+            )
 
-    source.name = name
-    source.display_name = display_name
-    source.feed_type = feed_type_enum
-    source.feed_url = feed_url
-    source.is_active = is_active is not None and is_active not in {
-        "0",
-        "",
-        "false",
-        "False",
-    }
-    source.fetch_interval_minutes = fetch_interval_minutes
-    source.updated_at = datetime.utcnow()
-    await db.commit()
+        # Check for duplicate feed_url (exclude current source)
+        existing = await db.execute(
+            select(NewsSource).where(
+                NewsSource.feed_url == feed_url,  # type: ignore[arg-type]
+                NewsSource.id != source_id,  # type: ignore[arg-type]
+            )
+        )
+        if existing.scalar_one_or_none():
+            return request.app.state.templates.TemplateResponse(
+                "admin/news-sources/form.html",
+                base_context(
+                    request,
+                    user=user,
+                    source=source,
+                    feed_types=list(FeedType),
+                    error="A news source with this feed URL already exists.",
+                ),
+            )
+
+        source.name = name
+        source.display_name = display_name
+        source.feed_type = feed_type_enum
+        source.feed_url = feed_url
+        source.is_active = is_active is not None and is_active not in {
+            "0",
+            "",
+            "false",
+            "False",
+        }
+        source.fetch_interval_minutes = fetch_interval_minutes
+        source.updated_at = datetime.utcnow()
 
     return RedirectResponse(url="/admin/news-sources?success=updated", status_code=303)
 
@@ -251,39 +255,43 @@ async def delete_news_source(
     if redirect:
         return redirect
 
-    result = await db.execute(
-        select(NewsSource).where(NewsSource.id == source_id)  # type: ignore[arg-type]
-    )
-    source = result.scalar_one_or_none()
-    if source is None:
-        raise HTTPException(status_code=404, detail="News source not found")
-
-    # Check for dependent news items
-    items_count_result = await db.execute(
-        select(func.count()).where(NewsItem.source_id == source_id)  # type: ignore[arg-type]
-    )
-    items_count = items_count_result.scalar_one()
-
-    if items_count > 0:
-        # Re-fetch sources for the list view
-        sources_result = await db.execute(
-            select(NewsSource).order_by(NewsSource.name)  # type: ignore[arg-type]
+    async with db.begin():
+        result = await db.execute(
+            select(NewsSource).where(
+                NewsSource.id == source_id  # type: ignore[arg-type]
+            )
         )
-        sources = sources_result.scalars().all()
+        source = result.scalar_one_or_none()
+        if source is None:
+            raise HTTPException(status_code=404, detail="News source not found")
 
-        return request.app.state.templates.TemplateResponse(
-            "admin/news-sources/index.html",
-            base_context(
-                request,
-                user=user,
-                sources=sources,
-                error=f"Cannot delete '{source.name}': it has {items_count} associated "
-                "news item(s). Deactivate it instead or delete the news items first.",
-                success=None,
-            ),
+        # Check for dependent news items
+        items_count_result = await db.execute(
+            select(func.count()).where(
+                NewsItem.source_id == source_id  # type: ignore[arg-type]
+            )
         )
+        items_count = items_count_result.scalar_one()
 
-    await db.delete(source)
-    await db.commit()
+        if items_count > 0:
+            # Re-fetch sources for the list view
+            sources_result = await db.execute(
+                select(NewsSource).order_by(NewsSource.name)  # type: ignore[arg-type]
+            )
+            sources = sources_result.scalars().all()
+
+            return request.app.state.templates.TemplateResponse(
+                "admin/news-sources/index.html",
+                base_context(
+                    request,
+                    user=user,
+                    sources=sources,
+                    error=f"Cannot delete '{source.name}': it has {items_count} associated "
+                    "news item(s). Deactivate it instead or delete the news items first.",
+                    success=None,
+                ),
+            )
+
+        await db.delete(source)
 
     return RedirectResponse(url="/admin/news-sources?success=deleted", status_code=303)

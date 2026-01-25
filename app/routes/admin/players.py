@@ -270,7 +270,8 @@ async def create_player(
     if isinstance(parsed, str):
         return _render_form_error(request, user, None, parsed)
 
-    await svc_create_player(db, parsed)
+    async with db.begin():
+        await svc_create_player(db, parsed)
     return RedirectResponse(url="/admin/players?success=created", status_code=303)
 
 
@@ -332,43 +333,44 @@ async def update_player(
     if redirect:
         return redirect
 
-    player = await get_player_by_id(db, player_id)
-    if player is None:
-        raise HTTPException(status_code=404, detail="Player not found")
+    async with db.begin():
+        player = await get_player_by_id(db, player_id)
+        if player is None:
+            raise HTTPException(status_code=404, detail="Player not found")
 
-    form_data = _build_form_data(
-        display_name,
-        first_name,
-        last_name,
-        prefix,
-        middle_name,
-        suffix,
-        birthdate,
-        birth_city,
-        birth_state_province,
-        birth_country,
-        school,
-        high_school,
-        shoots,
-        draft_year,
-        draft_round,
-        draft_pick,
-        draft_team,
-        nba_debut_date,
-        nba_debut_season,
-        reference_image_url,
-    )
+        form_data = _build_form_data(
+            display_name,
+            first_name,
+            last_name,
+            prefix,
+            middle_name,
+            suffix,
+            birthdate,
+            birth_city,
+            birth_state_province,
+            birth_country,
+            school,
+            high_school,
+            shoots,
+            draft_year,
+            draft_round,
+            draft_pick,
+            draft_team,
+            nba_debut_date,
+            nba_debut_season,
+            reference_image_url,
+        )
 
-    # Validate required fields
-    if error := validate_player_form(form_data):
-        return _render_form_error(request, user, player, error)
+        # Validate required fields
+        if error := validate_player_form(form_data):
+            return _render_form_error(request, user, player, error)
 
-    # Parse form data to typed values
-    parsed = parse_player_form(form_data)
-    if isinstance(parsed, str):
-        return _render_form_error(request, user, player, parsed)
+        # Parse form data to typed values
+        parsed = parse_player_form(form_data)
+        if isinstance(parsed, str):
+            return _render_form_error(request, user, player, parsed)
 
-    await svc_update_player(db, player, parsed)
+        await svc_update_player(db, player, parsed)
     return RedirectResponse(url="/admin/players?success=updated", status_code=303)
 
 
@@ -383,21 +385,22 @@ async def delete_player(
     if redirect:
         return redirect
 
-    player = await get_player_by_id(db, player_id)
-    if player is None:
-        raise HTTPException(status_code=404, detail="Player not found")
+    async with db.begin():
+        player = await get_player_by_id(db, player_id)
+        if player is None:
+            raise HTTPException(status_code=404, detail="Player not found")
 
-    # Check for dependencies
-    can_delete, error_reason = await can_delete_player(db, player_id)
-    if not can_delete:
-        # Re-fetch list data for rendering
-        list_result = await svc_list_players(db, None, None, None, DEFAULT_LIMIT, 0)
-        return _render_list_error(
-            request,
-            user,
-            list_result,
-            f"Cannot delete '{player.display_name}': {error_reason}",
-        )
+        # Check for dependencies
+        can_delete, error_reason = await can_delete_player(db, player_id)
+        if not can_delete:
+            # Re-fetch list data for rendering
+            list_result = await svc_list_players(db, None, None, None, DEFAULT_LIMIT, 0)
+            return _render_list_error(
+                request,
+                user,
+                list_result,
+                f"Cannot delete '{player.display_name}': {error_reason}",
+            )
 
-    await svc_delete_player(db, player)
+        await svc_delete_player(db, player)
     return RedirectResponse(url="/admin/players?success=deleted", status_code=303)

@@ -210,65 +210,67 @@ async def update_news_item(
     if redirect:
         return redirect
 
-    result = await db.execute(
-        select(NewsItem).where(NewsItem.id == item_id)  # type: ignore[arg-type]
-    )
-    item = result.scalar_one_or_none()
-    if item is None:
-        raise HTTPException(status_code=404, detail="News item not found")
-
-    # Validate tag
-    try:
-        tag_enum = NewsItemTag(tag)
-    except ValueError:
-        # Get source and player for re-rendering form
-        source_result = await db.execute(
-            select(NewsSource).where(NewsSource.id == item.source_id)  # type: ignore[arg-type]
+    async with db.begin():
+        result = await db.execute(
+            select(NewsItem).where(NewsItem.id == item_id)  # type: ignore[arg-type]
         )
-        source = source_result.scalar_one_or_none()
+        item = result.scalar_one_or_none()
+        if item is None:
+            raise HTTPException(status_code=404, detail="News item not found")
 
-        player = None
-        if item.player_id:
-            player_result = await db.execute(
-                select(PlayerMaster).where(PlayerMaster.id == item.player_id)  # type: ignore[arg-type]
-            )
-            player = player_result.scalar_one_or_none()
-
-        return request.app.state.templates.TemplateResponse(
-            "admin/news-items/form.html",
-            base_context(
-                request,
-                user=user,
-                item=item,
-                source=source,
-                player=player,
-                tags=list(NewsItemTag),
-                error=f"Invalid tag: {tag}",
-                active_nav="news-items",
-            ),
-        )
-
-    # Parse player_id (may be empty string or None)
-    parsed_player_id: int | None = None
-    if player_id and player_id.strip():
+        # Validate tag
         try:
-            parsed_player_id = int(player_id.strip())
-            # Validate player exists
-            player_check = await db.execute(
-                select(PlayerMaster.id).where(  # type: ignore[call-overload]
-                    PlayerMaster.id == parsed_player_id  # type: ignore[arg-type]
-                )
-            )
-            if player_check.scalar_one_or_none() is None:
-                parsed_player_id = None  # Invalid player ID, clear it
+            tag_enum = NewsItemTag(tag)
         except ValueError:
-            parsed_player_id = None
+            # Get source and player for re-rendering form
+            source_result = await db.execute(
+                select(NewsSource).where(NewsSource.id == item.source_id)  # type: ignore[arg-type]
+            )
+            source = source_result.scalar_one_or_none()
 
-    # Update fields
-    item.tag = tag_enum
-    item.player_id = parsed_player_id
-    item.summary = summary.strip() if summary and summary.strip() else None
-    await db.commit()
+            player = None
+            if item.player_id:
+                player_result = await db.execute(
+                    select(PlayerMaster).where(
+                        PlayerMaster.id == item.player_id  # type: ignore[arg-type]
+                    )
+                )
+                player = player_result.scalar_one_or_none()
+
+            return request.app.state.templates.TemplateResponse(
+                "admin/news-items/form.html",
+                base_context(
+                    request,
+                    user=user,
+                    item=item,
+                    source=source,
+                    player=player,
+                    tags=list(NewsItemTag),
+                    error=f"Invalid tag: {tag}",
+                    active_nav="news-items",
+                ),
+            )
+
+        # Parse player_id (may be empty string or None)
+        parsed_player_id: int | None = None
+        if player_id and player_id.strip():
+            try:
+                parsed_player_id = int(player_id.strip())
+                # Validate player exists
+                player_check = await db.execute(
+                    select(PlayerMaster.id).where(  # type: ignore[call-overload]
+                        PlayerMaster.id == parsed_player_id  # type: ignore[arg-type]
+                    )
+                )
+                if player_check.scalar_one_or_none() is None:
+                    parsed_player_id = None  # Invalid player ID, clear it
+            except ValueError:
+                parsed_player_id = None
+
+        # Update fields
+        item.tag = tag_enum
+        item.player_id = parsed_player_id
+        item.summary = summary.strip() if summary and summary.strip() else None
 
     return RedirectResponse(url="/admin/news-items?success=updated", status_code=303)
 
@@ -284,14 +286,14 @@ async def delete_news_item(
     if redirect:
         return redirect
 
-    result = await db.execute(
-        select(NewsItem).where(NewsItem.id == item_id)  # type: ignore[arg-type]
-    )
-    item = result.scalar_one_or_none()
-    if item is None:
-        raise HTTPException(status_code=404, detail="News item not found")
+    async with db.begin():
+        result = await db.execute(
+            select(NewsItem).where(NewsItem.id == item_id)  # type: ignore[arg-type]
+        )
+        item = result.scalar_one_or_none()
+        if item is None:
+            raise HTTPException(status_code=404, detail="News item not found")
 
-    await db.delete(item)
-    await db.commit()
+        await db.delete(item)
 
     return RedirectResponse(url="/admin/news-items?success=deleted", status_code=303)

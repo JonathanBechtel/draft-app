@@ -305,7 +305,7 @@ async def create_player(db: AsyncSession, data: ParsedPlayerData) -> PlayerMaste
         reference_image_url=data.reference_image_url,
     )
     db.add(player)
-    await db.commit()
+    await db.flush()
     return player
 
 
@@ -345,7 +345,7 @@ async def update_player(
     player.nba_debut_season = data.nba_debut_season
     player.reference_image_url = data.reference_image_url
     player.updated_at = datetime.utcnow()
-    await db.commit()
+    await db.flush()
     return player
 
 
@@ -383,4 +383,4 @@ async def delete_player(db: AsyncSession, player: PlayerMaster) -> None:
         player: PlayerMaster instance to delete
     """
     await db.delete(player)
-    await db.commit()
+    await db.flush()
