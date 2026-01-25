@@ -530,9 +530,9 @@ Be specific and objective. This will help an AI illustrator capture their likene
             player_ids.append(player_id)
 
         # Submit to Gemini batch API
-        # Using gemini-2.5-flash-image for batch (batch API doesn't support preview models)
+        # Using Nano Banana Pro (gemini-3-pro-image-preview) for batch image generation
         batch_job = self.client.batches.create(
-            model="models/gemini-2.5-flash-image",
+            model="models/gemini-3-pro-image-preview",
             src=inline_requests,
             config=types.CreateBatchJobConfig(
                 display_name=f"draftguru_{snapshot.run_key}_{snapshot.id}",
