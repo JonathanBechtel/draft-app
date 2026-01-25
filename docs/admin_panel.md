@@ -60,6 +60,40 @@ The admin panel provides authenticated staff users with tools to manage the appl
 - Foreign key constraint checking before delete
 - Success/error flash messages
 
+#### 2.2 NewsItem CRUD
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/admin/news-items` | List with filters |
+| GET | `/admin/news-items/{id}` | Edit form |
+| POST | `/admin/news-items/{id}` | Update |
+| POST | `/admin/news-items/{id}/delete` | Delete |
+
+**Features**:
+- Pagination with configurable limit (default 25, max 100)
+- Filters: source, tag, date range
+- Tag and player association editing
+- No create route (items ingested from RSS feeds)
+
+#### 2.3 PlayerMaster CRUD (In Progress)
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/admin/players` | List with filters |
+| GET | `/admin/players/new` | Create form |
+| POST | `/admin/players` | Create |
+| GET | `/admin/players/{id}` | Edit form |
+| POST | `/admin/players/{id}` | Update |
+| POST | `/admin/players/{id}/delete` | Delete |
+
+**Implemented**:
+- Pagination with search and draft year filters
+- Comprehensive player fields: names, biographical info, draft info, NBA career
+- Form validation for required fields and date/number parsing
+- Foreign key constraint checking before delete (blocks if player has linked news items)
+- Service layer pattern for business logic separation
+
+**Remaining**:
+- TBD (feature still in development)
+
 ---
 
 ## Completed Work
@@ -72,6 +106,11 @@ The admin panel provides authenticated staff users with tools to manage the appl
 - `auth.py` - Login, logout, password reset routes
 - `account.py` - Account view, password change routes
 - `news_sources.py` - NewsSource CRUD routes
+- `news_items.py` - NewsItem CRUD routes
+- `players.py` - PlayerMaster CRUD routes
+
+**Services** (`app/services/`):
+- `admin_player_service.py` - Player business logic (queries, validation, parsing, CRUD)
 
 **Templates** (`app/templates/admin/`):
 - `base.html` - Admin layout with sidebar
@@ -84,6 +123,11 @@ The admin panel provides authenticated staff users with tools to manage the appl
 - `password-reset-success.html` - Reset success page
 - `news-sources/index.html` - News sources list
 - `news-sources/form.html` - News source create/edit form
+- `news-items/index.html` - News items list with filters
+- `news-items/form.html` - News item edit form
+- `players/index.html` - Players list with pagination and filters
+- `players/form.html` - Player create form
+- `players/detail.html` - Player edit form
 
 **Styles** (`app/static/css/`):
 - `admin.css` - Comprehensive admin UI styles
@@ -91,7 +135,9 @@ The admin panel provides authenticated staff users with tools to manage the appl
 **Tests** (`tests/integration/`):
 - `test_admin_account.py` - Account management tests
 - `test_admin_password_reset_ui.py` - Password reset flow tests
-- `test_admin_crud_news_sources.py` - CRUD operation tests
+- `test_admin_crud_news_sources.py` - NewsSource CRUD tests
+- `test_admin_news_items.py` - NewsItem CRUD tests
+- `test_admin_players.py` - PlayerMaster CRUD tests (21 tests covering access control, list/create/edit/delete, filters)
 
 ### Architecture Decisions
 
@@ -104,7 +150,9 @@ app/routes/admin/
 ├── helpers.py       # Shared authentication helpers
 ├── auth.py          # Login/logout/password-reset
 ├── account.py       # Account management (prefix="/account")
-└── news_sources.py  # CRUD operations (prefix="/news-sources")
+├── news_sources.py  # CRUD operations (prefix="/news-sources")
+├── news_items.py    # CRUD operations (prefix="/news-items")
+└── players.py       # CRUD operations (prefix="/players")
 ```
 
 #### Authentication Helpers
@@ -135,7 +183,7 @@ The codebase uses explicit `await db.commit()` instead of the preferred `async w
 Potential additions for future phases:
 
 1. **Additional CRUD Tables**
-   - Players management
+   - Players management (enhance current implementation)
    - Draft picks management
    - User/staff management (admin only)
 
