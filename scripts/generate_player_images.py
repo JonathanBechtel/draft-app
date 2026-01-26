@@ -61,6 +61,7 @@ from app.schemas.image_snapshots import (
     PlayerImageSnapshot,
 )
 from app.schemas.metrics import MetricSnapshot, PlayerMetricValue
+from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.seasons import Season
 from app.services.image_generation import image_generation_service
@@ -197,6 +198,7 @@ async def get_players(
     draft_year: Optional[int] = None,
     season: Optional[str] = None,
     limit: Optional[int] = None,
+    is_active: bool = False,
 ) -> list[PlayerMaster]:
     """Fetch players based on filters.
 
@@ -208,6 +210,7 @@ async def get_players(
         draft_year: Filter by draft year
         season: Filter by season code (uses current_draft metric snapshots)
         limit: Maximum number of players
+        is_active: Filter to players with is_active_nba=True
 
     Returns:
         List of PlayerMaster records
@@ -216,6 +219,12 @@ async def get_players(
         return await get_players_for_season(db, season_code=season, limit=limit)
 
     stmt = select(PlayerMaster).order_by(PlayerMaster.display_name)
+
+    # Apply is_active filter (join to player_status)
+    if is_active:
+        stmt = stmt.join(PlayerStatus, PlayerStatus.player_id == PlayerMaster.id).where(
+            PlayerStatus.is_active_nba == True  # noqa: E712
+        )
 
     if player_id:
         stmt = stmt.where(PlayerMaster.id == player_id)
@@ -341,11 +350,12 @@ async def batch_submit(args: argparse.Namespace) -> None:
             args.draft_year,
             args.season,
             args.all,
+            args.is_active,
         ]
     ):
         logger.error(
             "Must specify player selection: --player-id, --player-slug, "
-            "--cohort, --draft-year, --season, or --all"
+            "--cohort, --draft-year, --season, --all, or --is-active"
         )
         sys.exit(1)
 
@@ -382,6 +392,7 @@ async def batch_submit(args: argparse.Namespace) -> None:
             draft_year=draft_year,
             season=args.season,
             limit=args.limit,
+            is_active=args.is_active,
         )
 
         if not players:
@@ -672,10 +683,12 @@ async def main(args: argparse.Namespace) -> None:
             args.draft_year,
             args.season,
             args.all,
+            args.is_active,
         ]
     ):
         logger.error(
-            "Must specify --player-id, --player-slug, --cohort, --draft-year, --season, or --all"
+            "Must specify --player-id, --player-slug, --cohort, --draft-year, "
+            "--season, --all, or --is-active"
         )
         sys.exit(1)
 
@@ -712,6 +725,7 @@ async def main(args: argparse.Namespace) -> None:
             draft_year=draft_year,
             season=args.season,
             limit=args.limit,
+            is_active=args.is_active,
         )
 
         if not players:
@@ -873,6 +887,11 @@ def parse_args() -> argparse.Namespace:
         "--all",
         action="store_true",
         help="Generate for all players",
+    )
+    selection.add_argument(
+        "--is-active",
+        action="store_true",
+        help="Filter to players with is_active_nba=True (current NBA players)",
     )
 
     # Generation options
