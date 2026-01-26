@@ -7,7 +7,7 @@ Routes are thin wrappers; business logic lives in admin_player_service.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
@@ -15,17 +15,25 @@ from app.routes.admin.helpers import base_context, require_admin
 from app.schemas.auth import AuthUser
 from app.schemas.players_master import PlayerMaster
 from app.services.admin_player_service import (
+    ImageValidationResult,
+    PlayerDependencies,
     PlayerFormData,
     PlayerListResult,
     can_delete_player,
+    create_image_snapshot,
     create_player as svc_create_player,
     delete_player as svc_delete_player,
+    get_latest_image_asset,
     get_player_by_id,
+    get_player_dependencies,
     list_players as svc_list_players,
     parse_player_form,
     update_player as svc_update_player,
+    update_snapshot_counts,
+    validate_image_url,
     validate_player_form,
 )
+from app.services.image_generation import image_generation_service
 from app.utils.db_async import get_session
 
 router = APIRouter(prefix="/players", tags=["admin-players"])
@@ -34,11 +42,15 @@ router = APIRouter(prefix="/players", tags=["admin-players"])
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 100
 
+# Image generation styles
+IMAGE_STYLES = ["default", "vector", "comic", "retro"]
+
 # Success messages for flash-style notifications
 SUCCESS_MESSAGES = {
     "created": "Player created successfully.",
     "updated": "Player updated successfully.",
     "deleted": "Player deleted successfully.",
+    "image_generated": "Image generated successfully.",
 }
 
 
@@ -186,6 +198,33 @@ async def list_players(
     )
 
 
+@router.post("/validate-image-url")
+async def validate_image_url_endpoint(
+    request: Request,
+    url: str = Form(...),
+    db: AsyncSession = Depends(get_session),
+) -> JSONResponse:
+    """Validate an image URL (admin only).
+
+    Returns JSON with validation result.
+    """
+    redirect, _ = await require_admin(request, db)
+    if redirect:
+        return JSONResponse(
+            status_code=401,
+            content={"valid": False, "error": "Unauthorized"},
+        )
+
+    result: ImageValidationResult = await validate_image_url(url)
+    return JSONResponse(
+        content={
+            "valid": result.valid,
+            "content_type": result.content_type,
+            "error": result.error,
+        }
+    )
+
+
 @router.get("/new", response_class=HTMLResponse)
 async def new_player(
     request: Request,
@@ -279,6 +318,7 @@ async def create_player(
 async def edit_player(
     request: Request,
     player_id: int,
+    success: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """Display the edit player form (admin only)."""
@@ -290,6 +330,8 @@ async def edit_player(
     if player is None:
         raise HTTPException(status_code=404, detail="Player not found")
 
+    latest_image = await get_latest_image_asset(db, player_id)
+
     return request.app.state.templates.TemplateResponse(
         "admin/players/detail.html",
         base_context(
@@ -297,6 +339,9 @@ async def edit_player(
             user=user,
             player=player,
             error=None,
+            success=SUCCESS_MESSAGES.get(success) if success else None,
+            latest_image=latest_image,
+            image_styles=IMAGE_STYLES,
             active_nav="players",
         ),
     )
@@ -374,6 +419,182 @@ async def update_player(
     return RedirectResponse(url="/admin/players?success=updated", status_code=303)
 
 
+@router.post("/{player_id}/generate-image", response_class=HTMLResponse)
+async def generate_image(
+    request: Request,
+    player_id: int,
+    style: str = Form(default="default"),
+    use_likeness: bool = Form(default=False),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Generate an AI image for a player (admin only).
+
+    Requires GEMINI_API_KEY to be configured.
+    """
+    redirect, user = await require_admin(request, db)
+    if redirect:
+        return redirect
+
+    player = await get_player_by_id(db, player_id)
+    if player is None:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    # Validate style
+    if style not in IMAGE_STYLES:
+        style = "default"
+
+    # Check for reference image if likeness requested
+    if use_likeness and not player.reference_image_url:
+        return request.app.state.templates.TemplateResponse(
+            "admin/players/detail.html",
+            base_context(
+                request,
+                user=user,
+                player=player,
+                error="Cannot use likeness: No reference image URL set.",
+                latest_image=await get_latest_image_asset(db, player_id),
+                image_styles=IMAGE_STYLES,
+                active_nav="players",
+            ),
+        )
+
+    try:
+        # Get system prompt
+        system_prompt = image_generation_service.get_system_prompt("default")
+
+        async with db.begin():
+            # Create snapshot for this generation
+            snapshot = await create_image_snapshot(
+                db=db,
+                player=player,
+                style=style,
+                system_prompt=system_prompt,
+                system_prompt_version="default",
+                image_size="1K",
+            )
+
+            # Generate the image
+            asset = await image_generation_service.generate_for_player(
+                db=db,
+                player=player,
+                snapshot=snapshot,
+                style=style,
+                fetch_likeness=use_likeness,
+            )
+
+            # Update snapshot counts
+            await update_snapshot_counts(
+                db, snapshot, success=asset.error_message is None
+            )
+
+        if asset.error_message:
+            return request.app.state.templates.TemplateResponse(
+                "admin/players/detail.html",
+                base_context(
+                    request,
+                    user=user,
+                    player=player,
+                    error=f"Image generation failed: {asset.error_message}",
+                    latest_image=asset,
+                    image_styles=IMAGE_STYLES,
+                    active_nav="players",
+                ),
+            )
+
+        return RedirectResponse(
+            url=f"/admin/players/{player_id}?success=image_generated",
+            status_code=303,
+        )
+
+    except ValueError as e:
+        # Gemini API key not configured
+        return request.app.state.templates.TemplateResponse(
+            "admin/players/detail.html",
+            base_context(
+                request,
+                user=user,
+                player=player,
+                error=f"Configuration error: {e}",
+                latest_image=await get_latest_image_asset(db, player_id),
+                image_styles=IMAGE_STYLES,
+                active_nav="players",
+            ),
+        )
+    except Exception as e:
+        return request.app.state.templates.TemplateResponse(
+            "admin/players/detail.html",
+            base_context(
+                request,
+                user=user,
+                player=player,
+                error=f"Unexpected error: {e}",
+                latest_image=await get_latest_image_asset(db, player_id),
+                image_styles=IMAGE_STYLES,
+                active_nav="players",
+            ),
+        )
+
+
+def _format_dependencies_error(deps: PlayerDependencies) -> str:
+    """Format a human-readable error message from dependencies."""
+    parts = []
+    if deps.player_status:
+        parts.append(f"{deps.player_status} status record(s)")
+    if deps.player_aliases:
+        parts.append(f"{deps.player_aliases} alias(es)")
+    if deps.player_external_ids:
+        parts.append(f"{deps.player_external_ids} external ID(s)")
+    if deps.player_bio_snapshots:
+        parts.append(f"{deps.player_bio_snapshots} bio snapshot(s)")
+    if deps.combine_agility:
+        parts.append(f"{deps.combine_agility} agility record(s)")
+    if deps.combine_anthro:
+        parts.append(f"{deps.combine_anthro} anthro record(s)")
+    if deps.combine_shooting:
+        parts.append(f"{deps.combine_shooting} shooting record(s)")
+    if deps.player_metric_values:
+        parts.append(f"{deps.player_metric_values} metric value(s)")
+    if deps.player_similarity_anchor + deps.player_similarity_comparison:
+        sim_count = deps.player_similarity_anchor + deps.player_similarity_comparison
+        parts.append(f"{sim_count} similarity record(s)")
+    if deps.news_items:
+        parts.append(f"{deps.news_items} news item(s)")
+    if deps.image_assets:
+        parts.append(f"{deps.image_assets} image asset(s)")
+
+    return "it has " + ", ".join(parts) + "."
+
+
+@router.get("/{player_id}/delete", response_class=HTMLResponse)
+async def confirm_delete_player(
+    request: Request,
+    player_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Display the delete confirmation page (admin only)."""
+    redirect, user = await require_admin(request, db)
+    if redirect:
+        return redirect
+
+    player = await get_player_by_id(db, player_id)
+    if player is None:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    deps = await get_player_dependencies(db, player_id)
+
+    return request.app.state.templates.TemplateResponse(
+        "admin/players/delete.html",
+        base_context(
+            request,
+            user=user,
+            player=player,
+            deps=deps,
+            can_delete=not deps.has_any,
+            active_nav="players",
+        ),
+    )
+
+
 @router.post("/{player_id}/delete", response_class=HTMLResponse)
 async def delete_player(
     request: Request,
@@ -391,7 +612,7 @@ async def delete_player(
             raise HTTPException(status_code=404, detail="Player not found")
 
         # Check for dependencies
-        can_delete, error_reason = await can_delete_player(db, player_id)
+        can_delete, deps = await can_delete_player(db, player_id)
         if not can_delete:
             # Re-fetch list data for rendering
             list_result = await svc_list_players(db, None, None, None, DEFAULT_LIMIT, 0)
@@ -399,7 +620,7 @@ async def delete_player(
                 request,
                 user,
                 list_result,
-                f"Cannot delete '{player.display_name}': {error_reason}",
+                f"Cannot delete '{player.display_name}': {_format_dependencies_error(deps)}",
             )
 
         await svc_delete_player(db, player)

@@ -62,6 +62,66 @@ The admin panel provides authenticated staff users with tools to manage the appl
 
 ---
 
+### Phase 3: Players Management
+
+**Goal**: Full CRUD for PlayerMaster with image management capabilities.
+
+#### 3.1 Players CRUD
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/admin/players` | List with search, filters, pagination |
+| GET | `/admin/players/new` | Create form |
+| POST | `/admin/players` | Create |
+| GET | `/admin/players/{id}` | Edit form with image generation |
+| POST | `/admin/players/{id}` | Update |
+| GET | `/admin/players/{id}/delete` | Delete confirmation page |
+| POST | `/admin/players/{id}/delete` | Delete (blocked if dependencies exist) |
+
+#### 3.2 Enhanced Delete Validation
+Before allowing deletion, the system checks all 11 dependent tables:
+- **Identity**: PlayerStatus, PlayerAlias, PlayerExternalId, PlayerBioSnapshot
+- **Combine Data**: CombineAgility, CombineAnthro, CombineShooting
+- **Analytics**: PlayerMetricValue, PlayerSimilarity (anchor + comparison)
+- **Content**: NewsItem, PlayerImageAsset
+
+The delete confirmation page shows a categorized summary of all dependencies. Deletion is blocked if any dependencies exist.
+
+#### 3.3 Image URL Preview & Validation
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/admin/players/validate-image-url` | Validate image URL accessibility |
+
+**Features**:
+- Live image preview on URL input (debounced)
+- Server-side validation via HEAD request
+- Content-type verification
+- Visual feedback for valid/invalid/loading states
+
+#### 3.4 AI Image Generation
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/admin/players/{id}/generate-image` | Generate player portrait via Gemini API |
+
+**Features**:
+- Style selection (default, vector, comic, retro)
+- Optional likeness reference (requires `reference_image_url` set)
+- Creates audit trail via PlayerImageSnapshot
+- Displays latest generated image on player detail page
+
+#### 3.5 Image Asset Management
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/admin/players/{id}/images` | Grid view of all generated images |
+| GET | `/admin/players/{id}/images/{asset_id}` | Full metadata and prompt details |
+| POST | `/admin/players/{id}/images/{asset_id}/delete` | Delete from DB and S3 |
+
+**Features**:
+- Grid layout with thumbnails
+- Full metadata display (generation time, file size, prompts, S3 info)
+- Warning shown if S3 deletion fails but DB record is removed
+
+---
+
 ## Completed Work
 
 ### Files Created
@@ -72,6 +132,13 @@ The admin panel provides authenticated staff users with tools to manage the appl
 - `auth.py` - Login, logout, password reset routes
 - `account.py` - Account view, password change routes
 - `news_sources.py` - NewsSource CRUD routes
+- `news_items.py` - NewsItem CRUD routes
+- `players.py` - Players CRUD with image generation
+- `player_images.py` - Player image asset management
+
+**Services** (`app/services/`):
+- `admin_player_service.py` - Player CRUD logic, dependency checking, image validation
+- `admin_image_service.py` - Image asset listing and deletion
 
 **Templates** (`app/templates/admin/`):
 - `base.html` - Admin layout with sidebar
@@ -84,14 +151,26 @@ The admin panel provides authenticated staff users with tools to manage the appl
 - `password-reset-success.html` - Reset success page
 - `news-sources/index.html` - News sources list
 - `news-sources/form.html` - News source create/edit form
+- `news-items/index.html` - News items list
+- `news-items/detail.html` - News item edit form
+- `players/index.html` - Players list with filters
+- `players/form.html` - Player create form
+- `players/detail.html` - Player edit form with image generation
+- `players/delete.html` - Delete confirmation with dependency summary
+- `players/images/index.html` - Image asset grid
+- `players/images/detail.html` - Image asset details
+
+**JavaScript** (`app/static/js/`):
+- `admin-players.js` - Image URL preview and validation
 
 **Styles** (`app/static/css/`):
-- `admin.css` - Comprehensive admin UI styles
+- `admin.css` - Comprehensive admin UI styles (includes image preview, grid, detail layouts)
 
 **Tests** (`tests/integration/`):
 - `test_admin_account.py` - Account management tests
 - `test_admin_password_reset_ui.py` - Password reset flow tests
 - `test_admin_crud_news_sources.py` - CRUD operation tests
+- `test_admin_players.py` - Players CRUD tests
 
 ### Architecture Decisions
 
@@ -100,11 +179,14 @@ The admin routes are organized into sub-routers for maintainability:
 
 ```
 app/routes/admin/
-├── __init__.py      # Main router (prefix="/admin")
-├── helpers.py       # Shared authentication helpers
-├── auth.py          # Login/logout/password-reset
-├── account.py       # Account management (prefix="/account")
-└── news_sources.py  # CRUD operations (prefix="/news-sources")
+├── __init__.py        # Main router (prefix="/admin")
+├── helpers.py         # Shared authentication helpers
+├── auth.py            # Login/logout/password-reset
+├── account.py         # Account management (prefix="/account")
+├── news_sources.py    # News source CRUD (prefix="/news-sources")
+├── news_items.py      # News item CRUD (prefix="/news-items")
+├── players.py         # Player CRUD + image generation (prefix="/players")
+└── player_images.py   # Image asset management (prefix="/players")
 ```
 
 #### Authentication Helpers
@@ -140,9 +222,9 @@ Note: non-request code (CLI/scripts) may still use explicit commits/rollbacks un
 Potential additions for future phases:
 
 1. **Additional CRUD Tables**
-   - Players management
    - Draft picks management
    - User/staff management (admin only)
+   - Metric definitions management
 
 2. **Audit Logging**
    - Track who changed what and when
@@ -150,12 +232,19 @@ Potential additions for future phases:
 
 3. **Bulk Operations**
    - Import/export CSV for reference tables
+   - Bulk player image generation
    - Bulk activate/deactivate
 
 4. **Dashboard Widgets**
    - Recent news ingestion stats
    - Active sources count
+   - Image generation stats
    - Error/warning alerts
+
+5. **Image Management Enhancements**
+   - Batch regeneration of failed images
+   - Style comparison view
+   - Prompt iteration testing
 
 ---
 

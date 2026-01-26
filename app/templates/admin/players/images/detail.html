@@ -1,0 +1,162 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Image Details" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Image Details</h1>
+  <p class="admin-main__subtitle">{{ player.display_name }}</p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Generated Image</h2>
+    <a href="/admin/players/{{ player.id }}/images" class="admin-btn admin-btn--secondary admin-btn--small">Back to Images</a>
+  </div>
+
+  <div class="admin-image-detail">
+    <div class="admin-image-detail__preview">
+      {% if image.error_message %}
+      <div class="admin-image-detail__error">
+        <strong>Generation Failed</strong>
+        <p>{{ image.error_message }}</p>
+      </div>
+      {% else %}
+      <a href="{{ image.public_url }}" target="_blank">
+        <img
+          src="{{ image.public_url }}"
+          alt="Generated image"
+          class="admin-image-detail__img"
+        />
+      </a>
+      <p class="admin-text--small admin-text--muted">Click to open full size</p>
+      {% endif %}
+    </div>
+
+    <div class="admin-image-detail__info">
+      <!-- Generation Info -->
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Generation Info</h3>
+        <ul class="admin-data-list">
+          <li class="admin-data-list__item">
+            <span class="admin-data-list__label">Generated At</span>
+            <span class="admin-data-list__value">
+              {{ image.generated_at.strftime('%Y-%m-%d %H:%M:%S') if image.generated_at else '—' }}
+            </span>
+          </li>
+          <li class="admin-data-list__item">
+            <span class="admin-data-list__label">Generation Time</span>
+            <span class="admin-data-list__value">
+              {% if image.generation_time_sec is not none %}
+              {{ '%.1f' | format(image.generation_time_sec) }}s
+              {% else %}
+              —
+              {% endif %}
+            </span>
+          </li>
+          <li class="admin-data-list__item">
+            <span class="admin-data-list__label">File Size</span>
+            <span class="admin-data-list__value">
+              {% if image.file_size_bytes %}
+              {{ (image.file_size_bytes / 1024) | round(1) }} KB
+              {% else %}
+              —
+              {% endif %}
+            </span>
+          </li>
+          <li class="admin-data-list__item">
+            <span class="admin-data-list__label">Used Likeness Reference</span>
+            <span class="admin-data-list__value">
+              {% if image.used_likeness_ref %}
+              <span class="admin-badge admin-badge--active">Yes</span>
+              {% else %}
+              <span class="admin-badge admin-badge--inactive">No</span>
+              {% endif %}
+            </span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Storage Info -->
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Storage</h3>
+        <ul class="admin-data-list">
+          <li class="admin-data-list__item">
+            <span class="admin-data-list__label">S3 Key</span>
+            <span class="admin-data-list__value admin-text--small">{{ image.s3_key }}</span>
+          </li>
+          {% if image.s3_bucket %}
+          <li class="admin-data-list__item">
+            <span class="admin-data-list__label">Bucket</span>
+            <span class="admin-data-list__value">{{ image.s3_bucket }}</span>
+          </li>
+          {% endif %}
+          <li class="admin-data-list__item">
+            <span class="admin-data-list__label">Public URL</span>
+            <span class="admin-data-list__value admin-text--small">
+              <a href="{{ image.public_url }}" target="_blank" class="admin-link">{{ image.public_url | truncate(50) }}</a>
+            </span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Snapshot Info -->
+      {% if snapshot %}
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Snapshot</h3>
+        <ul class="admin-data-list">
+          <li class="admin-data-list__item">
+            <span class="admin-data-list__label">Style</span>
+            <span class="admin-data-list__value">{{ snapshot.style | capitalize }}</span>
+          </li>
+          <li class="admin-data-list__item">
+            <span class="admin-data-list__label">Image Size</span>
+            <span class="admin-data-list__value">{{ snapshot.image_size }}</span>
+          </li>
+          <li class="admin-data-list__item">
+            <span class="admin-data-list__label">Prompt Version</span>
+            <span class="admin-data-list__value">{{ snapshot.system_prompt_version or 'default' }}</span>
+          </li>
+        </ul>
+      </div>
+      {% endif %}
+
+      <!-- Reference Image -->
+      {% if image.reference_image_url %}
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Reference Image</h3>
+        <a href="{{ image.reference_image_url }}" target="_blank" class="admin-link">
+          {{ image.reference_image_url | truncate(60) }}
+        </a>
+      </div>
+      {% endif %}
+
+      <!-- Likeness Description -->
+      {% if image.likeness_description %}
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Likeness Description</h3>
+        <div class="admin-form__static admin-form__static--multiline">{{ image.likeness_description }}</div>
+      </div>
+      {% endif %}
+
+      <!-- User Prompt -->
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">User Prompt</h3>
+        <div class="admin-form__static admin-form__static--multiline">{{ image.user_prompt }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="admin-form__section admin-form__section--danger">
+    <h3 class="admin-form__section-title">Danger Zone</h3>
+    <p class="admin-text--muted admin-text--mb">
+      Delete this image from storage and database.
+    </p>
+    <form method="post" action="/admin/players/{{ player.id }}/images/{{ image.id }}/delete" onsubmit="return confirm('Are you sure you want to delete this image?');">
+      <button type="submit" class="admin-btn admin-btn--danger admin-btn--small">Delete Image</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

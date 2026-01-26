@@ -1,0 +1,84 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Player Images" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Player Images</h1>
+  <p class="admin-main__subtitle">{{ player.display_name }} &mdash; {{ total }} image(s)</p>
+</header>
+
+{% if warning %}
+<div class="admin-alert admin-alert--warning" role="alert">{{ warning }}</div>
+{% endif %}
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Generated Images</h2>
+    <a href="/admin/players/{{ player.id }}" class="admin-btn admin-btn--secondary admin-btn--small">Back to Player</a>
+  </div>
+
+  {% if images %}
+  <div class="admin-image-grid">
+    {% for image in images %}
+    <div class="admin-image-grid__item">
+      {% if image.error_message %}
+      <div class="admin-image-grid__error">
+        <span>Generation failed</span>
+      </div>
+      {% else %}
+      <a href="/admin/players/{{ player.id }}/images/{{ image.id }}">
+        <img
+          src="{{ image.public_url }}"
+          alt="Generated image"
+          class="admin-image-grid__img"
+        />
+      </a>
+      {% endif %}
+      <div class="admin-image-grid__meta">
+        <span class="admin-image-grid__date">
+          {{ image.generated_at.strftime('%Y-%m-%d %H:%M') if image.generated_at else '—' }}
+        </span>
+        {% if image.used_likeness_ref %}
+        <span class="admin-badge admin-badge--active admin-badge--small">Likeness</span>
+        {% endif %}
+      </div>
+      <div class="admin-image-grid__actions">
+        <a href="/admin/players/{{ player.id }}/images/{{ image.id }}" class="admin-btn admin-btn--link admin-btn--small">View</a>
+        <form method="post" action="/admin/players/{{ player.id }}/images/{{ image.id }}/delete" class="admin-form--inline" onsubmit="return confirm('Delete this image?');">
+          <button type="submit" class="admin-btn admin-btn--link admin-btn--small" style="color: var(--color-accent-rose);">Delete</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Pagination -->
+  {% if pages > 1 %}
+  <div class="admin-pagination">
+    <span class="admin-pagination__info">
+      Showing {{ offset + 1 }}–{{ [offset + limit, total] | min }} of {{ total }}
+    </span>
+    <div class="admin-pagination__controls">
+      {% if current_page > 1 %}
+      <a href="/admin/players/{{ player.id }}/images?offset={{ (current_page - 2) * limit }}&limit={{ limit }}" class="admin-btn admin-btn--secondary admin-btn--small">Previous</a>
+      {% endif %}
+      <span class="admin-pagination__pages">Page {{ current_page }} of {{ pages }}</span>
+      {% if current_page < pages %}
+      <a href="/admin/players/{{ player.id }}/images?offset={{ current_page * limit }}&limit={{ limit }}" class="admin-btn admin-btn--secondary admin-btn--small">Next</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="admin-empty">
+    <div class="admin-empty__icon">---</div>
+    <h3 class="admin-empty__title">No images yet</h3>
+    <p class="admin-empty__text">Generate an image from the player detail page.</p>
+    <a href="/admin/players/{{ player.id }}" class="admin-btn admin-btn--primary">Go to Player</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

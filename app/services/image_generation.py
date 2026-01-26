@@ -556,9 +556,8 @@ Be specific and objective. This will help an AI illustrator capture their likene
             fetch_likeness=fetch_likeness,
             total_requests=len(player_ids),
         )
-        async with db.begin():
-            db.add(job_record)
-            await db.flush()
+        db.add(job_record)
+        await db.flush()
 
         logger.info(f"Created batch job record: id={job_record.id}")
         return job_record

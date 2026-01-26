@@ -469,6 +469,7 @@ async def batch_submit(args: argparse.Namespace) -> None:
                 image_size=args.size,
                 fetch_likeness=args.fetch_likeness,
             )
+            await db.commit()
 
             cost = len(players) * BATCH_COST_PER_IMAGE_USD.get(args.size, 0.02)
             logger.info("=== BATCH SUBMITTED ===")

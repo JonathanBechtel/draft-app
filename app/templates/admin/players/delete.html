@@ -1,0 +1,178 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Delete Player" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Delete Player</h1>
+  <p class="admin-main__subtitle">{{ player.display_name }}</p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  {% if can_delete %}
+  <!-- No dependencies, can delete -->
+  <div class="admin-alert admin-alert--warning">
+    <strong>Warning:</strong> This action cannot be undone. Are you sure you want to delete this player?
+  </div>
+
+  <div class="admin-form__section">
+    <h3 class="admin-form__section-title">Player Details</h3>
+    <ul class="admin-data-list">
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Display Name</span>
+        <span class="admin-data-list__value">{{ player.display_name }}</span>
+      </li>
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Draft Year</span>
+        <span class="admin-data-list__value">{{ player.draft_year or '—' }}</span>
+      </li>
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">School</span>
+        <span class="admin-data-list__value">{{ player.school or '—' }}</span>
+      </li>
+    </ul>
+  </div>
+
+  <div class="admin-form__actions">
+    <form method="post" action="/admin/players/{{ player.id }}/delete">
+      <button type="submit" class="admin-btn admin-btn--danger">Delete Player</button>
+    </form>
+    <a href="/admin/players/{{ player.id }}" class="admin-btn admin-btn--secondary">Cancel</a>
+  </div>
+
+  {% else %}
+  <!-- Has dependencies, cannot delete -->
+  <div class="admin-alert admin-alert--error">
+    <strong>Cannot Delete:</strong> This player has linked records that must be removed first.
+  </div>
+
+  <div class="admin-form__section">
+    <h3 class="admin-form__section-title">Player Details</h3>
+    <ul class="admin-data-list">
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Display Name</span>
+        <span class="admin-data-list__value">{{ player.display_name }}</span>
+      </li>
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Total Dependencies</span>
+        <span class="admin-data-list__value">{{ deps.total }} record(s)</span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Status & Identity -->
+  {% if deps.player_status or deps.player_aliases or deps.player_external_ids or deps.player_bio_snapshots %}
+  <div class="admin-form__section">
+    <h3 class="admin-form__section-title">Status & Identity</h3>
+    <ul class="admin-data-list">
+      {% if deps.player_status %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Player Status</span>
+        <span class="admin-data-list__value">{{ deps.player_status }} record(s)</span>
+      </li>
+      {% endif %}
+      {% if deps.player_aliases %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Aliases</span>
+        <span class="admin-data-list__value">{{ deps.player_aliases }} record(s)</span>
+      </li>
+      {% endif %}
+      {% if deps.player_external_ids %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">External IDs</span>
+        <span class="admin-data-list__value">{{ deps.player_external_ids }} record(s)</span>
+      </li>
+      {% endif %}
+      {% if deps.player_bio_snapshots %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Bio Snapshots</span>
+        <span class="admin-data-list__value">{{ deps.player_bio_snapshots }} record(s)</span>
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Combine Data -->
+  {% if deps.combine_agility or deps.combine_anthro or deps.combine_shooting %}
+  <div class="admin-form__section">
+    <h3 class="admin-form__section-title">Combine Data</h3>
+    <ul class="admin-data-list">
+      {% if deps.combine_agility %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Agility Results</span>
+        <span class="admin-data-list__value">{{ deps.combine_agility }} record(s)</span>
+      </li>
+      {% endif %}
+      {% if deps.combine_anthro %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Anthro Measurements</span>
+        <span class="admin-data-list__value">{{ deps.combine_anthro }} record(s)</span>
+      </li>
+      {% endif %}
+      {% if deps.combine_shooting %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Shooting Results</span>
+        <span class="admin-data-list__value">{{ deps.combine_shooting }} record(s)</span>
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Analytics -->
+  {% if deps.player_metric_values or deps.player_similarity_anchor or deps.player_similarity_comparison %}
+  <div class="admin-form__section">
+    <h3 class="admin-form__section-title">Analytics</h3>
+    <ul class="admin-data-list">
+      {% if deps.player_metric_values %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Metric Values</span>
+        <span class="admin-data-list__value">{{ deps.player_metric_values }} record(s)</span>
+      </li>
+      {% endif %}
+      {% if deps.player_similarity_anchor %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Similarity (as anchor)</span>
+        <span class="admin-data-list__value">{{ deps.player_similarity_anchor }} record(s)</span>
+      </li>
+      {% endif %}
+      {% if deps.player_similarity_comparison %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Similarity (as comparison)</span>
+        <span class="admin-data-list__value">{{ deps.player_similarity_comparison }} record(s)</span>
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Content -->
+  {% if deps.news_items or deps.image_assets %}
+  <div class="admin-form__section">
+    <h3 class="admin-form__section-title">Content</h3>
+    <ul class="admin-data-list">
+      {% if deps.news_items %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">News Items</span>
+        <span class="admin-data-list__value">{{ deps.news_items }} record(s)</span>
+      </li>
+      {% endif %}
+      {% if deps.image_assets %}
+      <li class="admin-data-list__item">
+        <span class="admin-data-list__label">Image Assets</span>
+        <span class="admin-data-list__value">{{ deps.image_assets }} record(s)</span>
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="admin-form__actions">
+    <a href="/admin/players/{{ player.id }}" class="admin-btn admin-btn--secondary">Back to Player</a>
+    <a href="/admin/players" class="admin-btn admin-btn--secondary">Back to List</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

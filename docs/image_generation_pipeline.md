@@ -184,18 +184,20 @@ For lesser-known players without strong internet representation:
 
 This avoids copyright issues (no copyrighted image in the generation) while improving likeness.
 
-### Future Admin UI Support
+### Admin UI Support
 
-All prompts are stored in the database:
+All prompts are stored in the database for full auditability:
 - `PlayerImageSnapshot.system_prompt` - The style/format instructions
 - `PlayerImageAsset.user_prompt` - Player-specific generation prompt
 - `PlayerImageAsset.likeness_description` - Reference image analysis
 
-This enables a future admin panel where users can:
-1. View a player's image generation history
-2. See exactly what prompts were used
-3. Tweak prompts and regenerate
-4. A/B test different prompt versions
+The **admin panel** (`/admin/players/{id}`) now provides:
+1. **Image Generation**: Generate images with style selection and optional likeness reference
+2. **Image Gallery**: View all generated images for a player (`/admin/players/{id}/images`)
+3. **Full Metadata**: See prompts, generation time, S3 info, and error messages
+4. **Asset Management**: Delete individual images from storage and database
+
+See [admin_panel.md](./admin_panel.md) for full admin documentation.
 
 ---
 
@@ -337,8 +339,11 @@ Prompt versions can be tracked via `system_prompt_version` field for A/B testing
 
 ## Future Enhancements
 
-1. **Admin UI** - View/regenerate images with prompt tweaking
+1. ~~**Admin UI**~~ - **DONE**: View/regenerate images from `/admin/players/{id}`
 2. **Batch Scheduling** - Cron job for new draft prospects
 3. **Quality Scoring** - Auto-detect failed/low-quality generations
 4. **CDN Integration** - CloudFront for global distribution
 5. **Multiple Poses** - Action shots, jersey variants
+6. **Batch Regeneration** - Bulk regenerate failed images from admin
+7. **Style Comparison** - Side-by-side view of different styles
+8. **Prompt Iteration** - A/B test prompts with version tracking

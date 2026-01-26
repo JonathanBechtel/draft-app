@@ -3,6 +3,10 @@
 {% set page_title = "Edit Player" %}
 {% set active_nav = "players" %}
 
+{% block admin_js %}
+<script src="{{ url_for('static', path='js/admin-players.js') }}"></script>
+{% endblock %}
+
 {% block admin_content %}
 <header class="admin-main__header">
   <h1 class="admin-main__title">Edit Player</h1>
@@ -269,17 +273,30 @@
         </div>
       </div>
 
-      <div class="admin-form__field">
-        <label class="admin-form__label" for="reference_image_url">Reference Image URL</label>
-        <input
-          class="admin-form__input"
-          id="reference_image_url"
-          name="reference_image_url"
-          type="url"
-          placeholder="https://..."
-          value="{{ player.reference_image_url or '' }}"
-        />
-        <span class="admin-form__help">URL to reference image for AI likeness generation</span>
+      <div class="admin-form__field-with-preview">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="reference_image_url">Reference Image URL</label>
+          <input
+            class="admin-form__input"
+            id="reference_image_url"
+            name="reference_image_url"
+            type="url"
+            placeholder="https://..."
+            value="{{ player.reference_image_url or '' }}"
+          />
+          <span class="admin-form__help">URL to reference image for AI likeness generation</span>
+          <div class="admin-image-preview__actions">
+            <button type="button" id="validate-image-btn" class="admin-btn admin-btn--small admin-btn--secondary">
+              Validate
+            </button>
+            <span id="image-validation-status" class="admin-image-preview__status"></span>
+          </div>
+        </div>
+        <div id="image-preview-container" class="admin-image-preview__container">
+          <img class="admin-image-preview__img" style="display: none;" alt="Preview" />
+          <div class="admin-image-preview__placeholder">No image</div>
+          <div class="admin-image-preview__error" style="display: none;"></div>
+        </div>
       </div>
     </div>
 
@@ -305,5 +322,96 @@
       <a href="/admin/players" class="admin-btn admin-btn--secondary">Cancel</a>
     </div>
   </form>
+
+  <!-- Image Generation Section -->
+  <div class="admin-form__section">
+    <h3 class="admin-form__section-title">Image Generation</h3>
+
+    {% if latest_image %}
+    <div class="admin-form__row">
+      <div class="admin-form__static-field">
+        <span class="admin-form__label">Latest Generated Image</span>
+        <div class="admin-generated-image">
+          {% if latest_image.error_message %}
+          <div class="admin-generated-image__error">
+            Generation failed: {{ latest_image.error_message }}
+          </div>
+          {% else %}
+          <a href="{{ latest_image.public_url }}" target="_blank">
+            <img src="{{ latest_image.public_url }}" alt="Generated image" class="admin-generated-image__img" />
+          </a>
+          {% endif %}
+          <div class="admin-generated-image__meta">
+            <span>Generated: {{ latest_image.generated_at.strftime('%Y-%m-%d %H:%M') if latest_image.generated_at else '—' }}</span>
+            {% if latest_image.file_size_bytes %}
+            <span>Size: {{ (latest_image.file_size_bytes / 1024) | round(1) }} KB</span>
+            {% endif %}
+            {% if latest_image.used_likeness_ref %}
+            <span class="admin-badge admin-badge--active">Likeness</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="admin-form__static-field">
+      <span class="admin-form__label">Reference Image Status</span>
+      <span class="admin-form__static-value">
+        {% if player.reference_image_url %}
+        <span class="admin-badge admin-badge--active">Set</span>
+        {% else %}
+        <span class="admin-badge admin-badge--inactive">Not set</span>
+        <span class="admin-text--small admin-text--muted">(required for likeness generation)</span>
+        {% endif %}
+      </span>
+    </div>
+
+    <form method="post" action="/admin/players/{{ player.id }}/generate-image" class="admin-form">
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="style">Style</label>
+          <select class="admin-form__select" id="style" name="style">
+            {% for s in image_styles %}
+            <option value="{{ s }}">{{ s | capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="admin-form__field">
+          <div class="admin-form__checkbox-field">
+            <input
+              class="admin-form__checkbox"
+              type="checkbox"
+              id="use_likeness"
+              name="use_likeness"
+              value="true"
+              {% if not player.reference_image_url %}disabled{% endif %}
+            />
+            <label class="admin-form__checkbox-label" for="use_likeness">
+              Use likeness reference
+              {% if not player.reference_image_url %}(no reference image){% endif %}
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-form__actions">
+        <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Generate Image</button>
+        {% if latest_image %}
+        <a href="/admin/players/{{ player.id }}/images" class="admin-btn admin-btn--secondary admin-btn--small">View All Images</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="admin-form__section admin-form__section--danger">
+    <h3 class="admin-form__section-title">Danger Zone</h3>
+    <p class="admin-text--muted admin-text--mb">
+      Permanently delete this player and all associated data.
+    </p>
+    <a href="/admin/players/{{ player.id }}/delete" class="admin-btn admin-btn--danger admin-btn--small">Delete Player</a>
+  </div>
 </div>
 {% endblock %}

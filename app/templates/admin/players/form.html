@@ -3,6 +3,10 @@
 {% set page_title = "New Player" %}
 {% set active_nav = "players" %}
 
+{% block admin_js %}
+<script src="{{ url_for('static', path='js/admin-players.js') }}"></script>
+{% endblock %}
+
 {% block admin_content %}
 <header class="admin-main__header">
   <h1 class="admin-main__title">New Player</h1>
@@ -245,16 +249,29 @@
         </div>
       </div>
 
-      <div class="admin-form__field">
-        <label class="admin-form__label" for="reference_image_url">Reference Image URL</label>
-        <input
-          class="admin-form__input"
-          id="reference_image_url"
-          name="reference_image_url"
-          type="url"
-          placeholder="https://..."
-        />
-        <span class="admin-form__help">URL to reference image for AI likeness generation</span>
+      <div class="admin-form__field-with-preview">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="reference_image_url">Reference Image URL</label>
+          <input
+            class="admin-form__input"
+            id="reference_image_url"
+            name="reference_image_url"
+            type="url"
+            placeholder="https://..."
+          />
+          <span class="admin-form__help">URL to reference image for AI likeness generation</span>
+          <div class="admin-image-preview__actions">
+            <button type="button" id="validate-image-btn" class="admin-btn admin-btn--small admin-btn--secondary">
+              Validate
+            </button>
+            <span id="image-validation-status" class="admin-image-preview__status"></span>
+          </div>
+        </div>
+        <div id="image-preview-container" class="admin-image-preview__container">
+          <img class="admin-image-preview__img" style="display: none;" alt="Preview" />
+          <div class="admin-image-preview__placeholder">No image</div>
+          <div class="admin-image-preview__error" style="display: none;"></div>
+        </div>
       </div>
     </div>
 

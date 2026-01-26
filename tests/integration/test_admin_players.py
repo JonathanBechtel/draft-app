@@ -487,7 +487,7 @@ class TestPlayersDelete:
         )
         assert response.status_code == 200
         assert "Cannot delete" in response.text
-        assert "1 linked news item" in response.text
+        assert "1 news item(s)" in response.text
 
         # Verify player still exists
         result = await db_session.execute(
