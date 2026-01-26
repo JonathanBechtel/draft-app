@@ -405,6 +405,25 @@
     </form>
   </div>
 
+  <!-- Related Data Section -->
+  <div class="admin-form__section">
+    <h3 class="admin-form__section-title">Related Data</h3>
+    <div class="admin-data-links">
+      <a href="/admin/players/{{ player.id }}/status" class="admin-data-link">
+        <span class="admin-data-link__label">Status</span>
+        <span class="admin-data-link__value">{% if has_status %}Edit{% else %}Add{% endif %}</span>
+      </a>
+      <a href="/admin/players/{{ player.id }}/aliases" class="admin-data-link">
+        <span class="admin-data-link__label">Aliases</span>
+        <span class="admin-data-link__value">{{ alias_count }} record(s)</span>
+      </a>
+      <a href="/admin/players/{{ player.id }}/external-ids" class="admin-data-link">
+        <span class="admin-data-link__label">External IDs</span>
+        <span class="admin-data-link__value">{{ external_id_count }} record(s)</span>
+      </a>
+    </div>
+  </div>
+
   <!-- Danger Zone -->
   <div class="admin-form__section admin-form__section--danger">
     <h3 class="admin-form__section-title">Danger Zone</h3>

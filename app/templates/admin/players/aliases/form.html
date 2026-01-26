@@ -1,0 +1,116 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "New Alias" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">New Alias</h1>
+  <p class="admin-main__subtitle">{{ player_name }}</p>
+</header>
+
+{% if error %}
+<div class="admin-alert admin-alert--danger" role="alert">{{ error }}</div>
+{% endif %}
+
+<div class="admin-card admin-card--medium">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Add Alias</h2>
+    <a href="/admin/players/{{ player_id }}/aliases" class="admin-btn admin-btn--secondary admin-btn--small">Back to Aliases</a>
+  </div>
+
+  <form class="admin-form" method="post" action="/admin/players/{{ player_id }}/aliases">
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">Alias Name</h3>
+
+      <div class="admin-form__field">
+        <label class="admin-form__label" for="full_name">Full Name *</label>
+        <input
+          class="admin-form__input"
+          id="full_name"
+          name="full_name"
+          type="text"
+          required
+          placeholder="e.g., LeBron Raymone James"
+        />
+        <span class="admin-form__help">Complete alias as a single string</span>
+      </div>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="prefix">Prefix</label>
+          <input
+            class="admin-form__input"
+            id="prefix"
+            name="prefix"
+            type="text"
+            placeholder="Jr., Sr."
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="first_name">First Name</label>
+          <input
+            class="admin-form__input"
+            id="first_name"
+            name="first_name"
+            type="text"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="middle_name">Middle Name</label>
+          <input
+            class="admin-form__input"
+            id="middle_name"
+            name="middle_name"
+            type="text"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="last_name">Last Name</label>
+          <input
+            class="admin-form__input"
+            id="last_name"
+            name="last_name"
+            type="text"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="suffix">Suffix</label>
+          <input
+            class="admin-form__input"
+            id="suffix"
+            name="suffix"
+            type="text"
+            placeholder="Jr., III"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">Context</h3>
+
+      <div class="admin-form__field">
+        <label class="admin-form__label" for="context">Context / Source</label>
+        <input
+          class="admin-form__input"
+          id="context"
+          name="context"
+          type="text"
+          placeholder="e.g., bbr, college_stats"
+        />
+        <span class="admin-form__help">Where this alias came from or when it's used</span>
+      </div>
+    </div>
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">Create Alias</button>
+      <a href="/admin/players/{{ player_id }}/aliases" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -293,7 +293,8 @@
   font-size: 0.875rem;
 }
 
-.admin-alert--error {
+.admin-alert--error,
+.admin-alert--danger {
   background: var(--color-accent-rose);
   color: var(--color-white);
 }
@@ -610,7 +611,8 @@
   margin-bottom: 0.75rem;
 }
 
-.admin-form__static {
+.admin-form__static,
+.admin-form__static-value {
   font-family: var(--font-mono);
   font-size: 0.875rem;
   color: var(--color-slate-800);
@@ -921,6 +923,66 @@
 .admin-badge--small {
   font-size: 0.625rem;
   padding: 0.125rem 0.375rem;
+}
+
+/* === Data Links (Related Data Section) === */
+.admin-data-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.admin-data-link {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--color-slate-50);
+  border: 2px solid var(--color-slate-200);
+  border-radius: 4px;
+  text-decoration: none;
+  min-width: 140px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.admin-data-link:hover {
+  border-color: var(--color-accent-fuchsia);
+  background: var(--color-slate-100);
+}
+
+.admin-data-link__label {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.admin-data-link__value {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-accent-fuchsia);
+  font-weight: 600;
+}
+
+/* === Link Modifiers === */
+.admin-link--external::after {
+  content: " \2197";
+}
+
+/* === Button Danger Text === */
+.admin-btn--danger-text {
+  color: var(--color-accent-rose) !important;
+}
+
+.admin-btn--danger-text:hover {
+  color: #e11d48 !important;
+}
+
+/* === Card Actions === */
+.admin-card__actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 @media (max-width: 768px) {

@@ -5,6 +5,10 @@ This module provides the admin UI routes organized into sub-routers:
 - account: Account view, password change (authenticated routes)
 - news_sources: News source CRUD (admin-only routes)
 - news_items: News item CRUD (admin-only routes)
+- players: Player CRUD (admin-only routes)
+- player_status: Player status CRUD (admin-only routes)
+- player_aliases: Player alias CRUD (admin-only routes)
+- player_external_ids: Player external ID CRUD (admin-only routes)
 """
 
 from fastapi import APIRouter, Depends, Request
@@ -17,7 +21,10 @@ from app.routes.admin.auth import router as auth_router
 from app.routes.admin.helpers import base_context, get_current_user
 from app.routes.admin.news_items import router as news_items_router
 from app.routes.admin.news_sources import router as news_sources_router
+from app.routes.admin.player_aliases import router as player_aliases_router
+from app.routes.admin.player_external_ids import router as player_external_ids_router
 from app.routes.admin.player_images import router as player_images_router
+from app.routes.admin.player_status import router as player_status_router
 from app.routes.admin.players import router as players_router
 from app.utils.db_async import get_session
 
@@ -47,3 +54,6 @@ router.include_router(news_sources_router)
 router.include_router(news_items_router)
 router.include_router(players_router)
 router.include_router(player_images_router)
+router.include_router(player_status_router)
+router.include_router(player_aliases_router)
+router.include_router(player_external_ids_router)

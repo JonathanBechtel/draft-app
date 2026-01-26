@@ -1,0 +1,193 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Player Status" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Player Status</h1>
+  <p class="admin-main__subtitle">{{ player_name }}</p>
+</header>
+
+{% if error %}
+<div class="admin-alert admin-alert--danger" role="alert">{{ error }}</div>
+{% endif %}
+
+{% if success %}
+<div class="admin-alert admin-alert--success" role="alert">{{ success }}</div>
+{% endif %}
+
+<div class="admin-card admin-card--medium">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">{% if status %}Edit Status{% else %}Add Status{% endif %}</h2>
+    <a href="/admin/players/{{ player_id }}" class="admin-btn admin-btn--secondary admin-btn--small">Back to Player</a>
+  </div>
+
+  <form class="admin-form" method="post" action="/admin/players/{{ player_id }}/status">
+    <!-- Position Section -->
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">Position</h3>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="position_id">Position</label>
+          <select class="admin-form__select" id="position_id" name="position_id">
+            <option value="">-- Select Position --</option>
+            {% for pos in positions %}
+            <option value="{{ pos.id }}" {% if status and status.position_id == pos.id %}selected{% endif %}>
+              {{ pos.code }}{% if pos.description %} - {{ pos.description }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="raw_position">Raw Position</label>
+          <input
+            class="admin-form__input"
+            id="raw_position"
+            name="raw_position"
+            type="text"
+            value="{{ status.raw_position or '' if status else '' }}"
+            placeholder="Original position string"
+          />
+          <span class="admin-form__help">Source position before normalization</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- NBA Status Section -->
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">NBA Status</h3>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <div class="admin-form__checkbox-field">
+            <!-- Hidden input provides "false" when checkbox unchecked -->
+            <input type="hidden" name="is_active_nba" value="false" />
+            <input
+              class="admin-form__checkbox"
+              type="checkbox"
+              id="is_active_nba"
+              name="is_active_nba"
+              value="true"
+              {% if status and status.is_active_nba %}checked{% endif %}
+            />
+            <label class="admin-form__checkbox-label" for="is_active_nba">
+              Active in NBA
+            </label>
+          </div>
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="current_team">Current Team</label>
+          <input
+            class="admin-form__input"
+            id="current_team"
+            name="current_team"
+            type="text"
+            value="{{ status.current_team or '' if status else '' }}"
+            placeholder="e.g., LAL"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="nba_last_season">Last NBA Season</label>
+          <input
+            class="admin-form__input"
+            id="nba_last_season"
+            name="nba_last_season"
+            type="text"
+            value="{{ status.nba_last_season or '' if status else '' }}"
+            placeholder="e.g., 2024-25"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- Physical Attributes Section -->
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">Physical Attributes</h3>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="height_in">Height (inches)</label>
+          <input
+            class="admin-form__input"
+            id="height_in"
+            name="height_in"
+            type="number"
+            min="60"
+            max="96"
+            value="{{ status.height_in or '' if status else '' }}"
+            placeholder="60-96"
+          />
+          <span class="admin-form__help">Listed height in inches</span>
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="weight_lb">Weight (lbs)</label>
+          <input
+            class="admin-form__input"
+            id="weight_lb"
+            name="weight_lb"
+            type="number"
+            min="100"
+            max="400"
+            value="{{ status.weight_lb or '' if status else '' }}"
+            placeholder="100-400"
+          />
+          <span class="admin-form__help">Listed weight in pounds</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Source Section -->
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">Data Source</h3>
+
+      <div class="admin-form__field">
+        <label class="admin-form__label" for="source">Source</label>
+        <input
+          class="admin-form__input"
+          id="source"
+          name="source"
+          type="text"
+          value="{{ status.source or '' if status else '' }}"
+          placeholder="e.g., bbr, nba_stats"
+        />
+        <span class="admin-form__help">Provenance key for this data</span>
+      </div>
+    </div>
+
+    {% if status %}
+    <!-- Metadata (read-only) -->
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">Metadata</h3>
+      <div class="admin-form__static-field">
+        <span class="admin-form__label">Last Updated</span>
+        <span class="admin-form__static-value">{{ status.updated_at.strftime('%Y-%m-%d %H:%M') if status.updated_at else '---' }}</span>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">Save Status</button>
+      <a href="/admin/players/{{ player_id }}" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+
+  {% if status %}
+  <!-- Delete Section -->
+  <div class="admin-form__section admin-form__section--danger">
+    <h3 class="admin-form__section-title">Delete Status</h3>
+    <p class="admin-text--muted admin-text--mb">
+      Remove this status record from the player.
+    </p>
+    <form method="post" action="/admin/players/{{ player_id }}/status/delete" onsubmit="return confirm('Delete this status record?');">
+      <button type="submit" class="admin-btn admin-btn--danger admin-btn--small">Delete Status</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

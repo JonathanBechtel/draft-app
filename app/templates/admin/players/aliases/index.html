@@ -1,0 +1,72 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Player Aliases" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Player Aliases</h1>
+  <p class="admin-main__subtitle">{{ player_name }} &mdash; {{ total }} alias(es)</p>
+</header>
+
+{% if error %}
+<div class="admin-alert admin-alert--danger" role="alert">{{ error }}</div>
+{% endif %}
+
+{% if success %}
+<div class="admin-alert admin-alert--success" role="alert">{{ success }}</div>
+{% endif %}
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Aliases</h2>
+    <div class="admin-card__actions">
+      <a href="/admin/players/{{ player_id }}" class="admin-btn admin-btn--secondary admin-btn--small">Back to Player</a>
+      <a href="/admin/players/{{ player_id }}/aliases/new" class="admin-btn admin-btn--primary admin-btn--small">Add Alias</a>
+    </div>
+  </div>
+
+  {% if aliases %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Full Name</th>
+        <th>First</th>
+        <th>Last</th>
+        <th>Context</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for alias in aliases %}
+      <tr>
+        <td>
+          <a href="/admin/players/{{ player_id }}/aliases/{{ alias.id }}" class="admin-link">
+            {{ alias.full_name }}
+          </a>
+        </td>
+        <td>{{ alias.first_name or '---' }}</td>
+        <td>{{ alias.last_name or '---' }}</td>
+        <td>{{ alias.context or '---' }}</td>
+        <td>
+          <div class="admin-table__actions">
+            <a href="/admin/players/{{ player_id }}/aliases/{{ alias.id }}" class="admin-btn admin-btn--link admin-btn--small">Edit</a>
+            <form method="post" action="/admin/players/{{ player_id }}/aliases/{{ alias.id }}/delete" class="admin-form--inline" onsubmit="return confirm('Delete this alias?');">
+              <button type="submit" class="admin-btn admin-btn--link admin-btn--small admin-btn--danger-text">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="admin-empty">
+    <div class="admin-empty__icon">---</div>
+    <h3 class="admin-empty__title">No Aliases</h3>
+    <p class="admin-empty__text">Add alternative names for this player.</p>
+    <a href="/admin/players/{{ player_id }}/aliases/new" class="admin-btn admin-btn--primary">Add Alias</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -14,6 +14,11 @@ from starlette.responses import Response
 from app.routes.admin.helpers import base_context, require_admin
 from app.schemas.auth import AuthUser
 from app.schemas.players_master import PlayerMaster
+from app.services.admin_player_related_service import (
+    count_player_aliases,
+    count_player_external_ids,
+    get_player_status,
+)
 from app.services.admin_player_service import (
     ImageValidationResult,
     PlayerDependencies,
@@ -51,6 +56,7 @@ SUCCESS_MESSAGES = {
     "updated": "Player updated successfully.",
     "deleted": "Player deleted successfully.",
     "image_generated": "Image generated successfully.",
+    "status_deleted": "Status deleted successfully.",
 }
 
 
@@ -332,6 +338,11 @@ async def edit_player(
 
     latest_image = await get_latest_image_asset(db, player_id)
 
+    # Get related data counts for the Related Data section
+    status = await get_player_status(db, player_id)
+    alias_count = await count_player_aliases(db, player_id)
+    external_id_count = await count_player_external_ids(db, player_id)
+
     return request.app.state.templates.TemplateResponse(
         "admin/players/detail.html",
         base_context(
@@ -342,6 +353,9 @@ async def edit_player(
             success=SUCCESS_MESSAGES.get(success) if success else None,
             latest_image=latest_image,
             image_styles=IMAGE_STYLES,
+            has_status=status is not None,
+            alias_count=alias_count,
+            external_id_count=external_id_count,
             active_nav="players",
         ),
     )

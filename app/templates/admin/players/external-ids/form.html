@@ -1,0 +1,73 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "New External ID" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">New External ID</h1>
+  <p class="admin-main__subtitle">{{ player_name }}</p>
+</header>
+
+{% if error %}
+<div class="admin-alert admin-alert--danger" role="alert">{{ error }}</div>
+{% endif %}
+
+<div class="admin-card admin-card--medium">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Add External ID</h2>
+    <a href="/admin/players/{{ player_id }}/external-ids" class="admin-btn admin-btn--secondary admin-btn--small">Back to External IDs</a>
+  </div>
+
+  <form class="admin-form" method="post" action="/admin/players/{{ player_id }}/external-ids">
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">External System</h3>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="system">System *</label>
+          <input
+            class="admin-form__input"
+            id="system"
+            name="system"
+            type="text"
+            required
+            placeholder="e.g., nba_stats, bbr, espn"
+          />
+          <span class="admin-form__help">External system identifier</span>
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="external_id">External ID *</label>
+          <input
+            class="admin-form__input"
+            id="external_id"
+            name="external_id"
+            type="text"
+            required
+            placeholder="e.g., 203999"
+          />
+          <span class="admin-form__help">Player's ID in the external system</span>
+        </div>
+      </div>
+
+      <div class="admin-form__field">
+        <label class="admin-form__label" for="source_url">Source URL</label>
+        <input
+          class="admin-form__input"
+          id="source_url"
+          name="source_url"
+          type="url"
+          placeholder="https://..."
+        />
+        <span class="admin-form__help">Link to player's page in the external system</span>
+      </div>
+    </div>
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">Create External ID</button>
+      <a href="/admin/players/{{ player_id }}/external-ids" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

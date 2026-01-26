@@ -1,0 +1,76 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Player External IDs" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">External IDs</h1>
+  <p class="admin-main__subtitle">{{ player_name }} &mdash; {{ total }} ID(s)</p>
+</header>
+
+{% if error %}
+<div class="admin-alert admin-alert--danger" role="alert">{{ error }}</div>
+{% endif %}
+
+{% if success %}
+<div class="admin-alert admin-alert--success" role="alert">{{ success }}</div>
+{% endif %}
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">External IDs</h2>
+    <div class="admin-card__actions">
+      <a href="/admin/players/{{ player_id }}" class="admin-btn admin-btn--secondary admin-btn--small">Back to Player</a>
+      <a href="/admin/players/{{ player_id }}/external-ids/new" class="admin-btn admin-btn--primary admin-btn--small">Add External ID</a>
+    </div>
+  </div>
+
+  {% if external_ids %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>System</th>
+        <th>External ID</th>
+        <th>Source URL</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ext in external_ids %}
+      <tr>
+        <td>
+          <a href="/admin/players/{{ player_id }}/external-ids/{{ ext.id }}" class="admin-link">
+            {{ ext.system }}
+          </a>
+        </td>
+        <td><code>{{ ext.external_id }}</code></td>
+        <td>
+          {% if ext.source_url %}
+          <a href="{{ ext.source_url }}" target="_blank" class="admin-link admin-link--external">View</a>
+          {% else %}
+          ---
+          {% endif %}
+        </td>
+        <td>
+          <div class="admin-table__actions">
+            <a href="/admin/players/{{ player_id }}/external-ids/{{ ext.id }}" class="admin-btn admin-btn--link admin-btn--small">Edit</a>
+            <form method="post" action="/admin/players/{{ player_id }}/external-ids/{{ ext.id }}/delete" class="admin-form--inline" onsubmit="return confirm('Delete this external ID?');">
+              <button type="submit" class="admin-btn admin-btn--link admin-btn--small admin-btn--danger-text">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="admin-empty">
+    <div class="admin-empty__icon">---</div>
+    <h3 class="admin-empty__title">No External IDs</h3>
+    <p class="admin-empty__text">Link this player to external systems.</p>
+    <a href="/admin/players/{{ player_id }}/external-ids/new" class="admin-btn admin-btn--primary">Add External ID</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
