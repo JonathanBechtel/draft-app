@@ -10,6 +10,7 @@ import base64
 import json
 import logging
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
@@ -26,6 +27,31 @@ from app.schemas.image_snapshots import (
 )
 from app.schemas.players_master import PlayerMaster
 from app.services.s3_client import s3_client
+
+
+@dataclass
+class ProcessedBatchItem:
+    """Result of processing a single batch response (Gemini + S3, no DB)."""
+
+    player_id: int
+    s3_key: str
+    public_url: str
+    file_size_bytes: Optional[int]
+    user_prompt: str
+    error_message: Optional[str]
+    generation_time_sec: float
+
+
+@dataclass
+class BatchProcessingResult:
+    """Result of processing all batch responses (Gemini + S3, no DB)."""
+
+    state: BatchJobState
+    items: list[ProcessedBatchItem]
+    success_count: int
+    failure_count: int
+    error_message: Optional[str] = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -591,6 +617,230 @@ Be specific and objective. This will help an AI illustrator capture their likene
         }
 
         return state_map.get(state_str, BatchJobState.pending)
+
+    def fetch_and_upload_batch_results(
+        self,
+        gemini_job_name: str,
+        player_ids: list[int],
+        players_by_id: dict[int, PlayerMaster],
+        style: str,
+    ) -> BatchProcessingResult:
+        """Fetch batch results from Gemini and upload images to S3.
+
+        This method does NOT touch the database. It performs the slow I/O
+        operations (Gemini API calls, S3 uploads) and returns structured
+        results that can be persisted to the database in a separate, short
+        transaction.
+
+        Args:
+            gemini_job_name: Gemini batch job name (e.g., 'batches/abc123')
+            player_ids: List of player IDs in order matching batch requests
+            players_by_id: Dict mapping player_id to PlayerMaster
+            style: Image style for S3 key generation
+
+        Returns:
+            BatchProcessingResult with all processed items
+        """
+        logger.info(f"Fetching batch results from Gemini: {gemini_job_name}")
+
+        # Get the batch job from Gemini
+        batch_job = self.client.batches.get(name=gemini_job_name)
+
+        # Check state
+        state = self.get_batch_job_status(gemini_job_name)
+        if state not in (BatchJobState.succeeded, BatchJobState.failed):
+            raise RuntimeError(f"Batch job not complete. Current state: {state.value}")
+
+        inlined_responses = (
+            batch_job.dest.inlined_responses if batch_job.dest is not None else None
+        )
+
+        if not inlined_responses:
+            error_msg = (
+                batch_job.error.message
+                if batch_job.error is not None
+                else "No inlined responses returned"
+            )
+            return BatchProcessingResult(
+                state=state,
+                items=[],
+                success_count=0,
+                failure_count=len(player_ids),
+                error_message=error_msg,
+            )
+
+        if len(inlined_responses) != len(player_ids):
+            logger.warning(
+                "Batch response count mismatch: %s responses for %s requests",
+                len(inlined_responses),
+                len(player_ids),
+            )
+
+        items: list[ProcessedBatchItem] = []
+        success_count = 0
+        failure_count = 0
+
+        for idx, player_id in enumerate(player_ids):
+            response = inlined_responses[idx] if idx < len(inlined_responses) else None
+            player = players_by_id.get(player_id)
+
+            if not player:
+                logger.warning(f"Player not found for id: {player_id}")
+                failure_count += 1
+                continue
+
+            item = self._process_single_batch_response(
+                response=response,
+                player=player,
+                style=style,
+            )
+            items.append(item)
+
+            if item.error_message:
+                failure_count += 1
+            else:
+                success_count += 1
+
+        logger.info(
+            f"Batch processing complete: {success_count} succeeded, {failure_count} failed"
+        )
+        return BatchProcessingResult(
+            state=state,
+            items=items,
+            success_count=success_count,
+            failure_count=failure_count,
+        )
+
+    def _process_single_batch_response(
+        self,
+        response: Optional[types.InlinedResponse],
+        player: PlayerMaster,
+        style: str,
+    ) -> ProcessedBatchItem:
+        """Process a single batch response and upload to S3 (no DB).
+
+        Args:
+            response: Gemini batch response item (may be None)
+            player: Player record
+            style: Image style
+
+        Returns:
+            ProcessedBatchItem with results
+        """
+        start_time = time.time()
+        player_id = player.id
+        if player_id is None:
+            raise ValueError("player.id is required")
+
+        s3_key = self.get_s3_key(player_id, player.slug or str(player_id), style)
+        public_url = ""
+        image_data: bytes | None = None
+        error_message: str | None = None
+        user_prompt = self.build_player_prompt(player)
+
+        if response is None:
+            error_message = "No batch response returned for request"
+        else:
+            try:
+                if response.error is not None and response.error.message:
+                    error_message = response.error.message
+
+                # Extract image data from response
+                if (
+                    error_message is None
+                    and response.response
+                    and response.response.candidates
+                ):
+                    candidate = response.response.candidates[0]
+                    if candidate.content and candidate.content.parts:
+                        for part in candidate.content.parts:
+                            if hasattr(part, "inline_data") and part.inline_data:
+                                # Image data is base64 encoded in batch responses
+                                if isinstance(part.inline_data.data, bytes):
+                                    image_data = part.inline_data.data
+                                elif isinstance(part.inline_data.data, str):
+                                    image_data = base64.b64decode(part.inline_data.data)
+                                break
+
+                if error_message is None and image_data is None:
+                    error_message = "No image data in response"
+
+                if image_data is not None and error_message is None:
+                    # Upload to S3
+                    public_url = s3_client.upload(
+                        s3_key,
+                        image_data,
+                        content_type="image/png",
+                    )
+                    logger.info(
+                        f"Uploaded image for {player.display_name}: {len(image_data)} bytes"
+                    )
+
+            except Exception as exc:
+                error_message = error_message or str(exc)
+                logger.error(
+                    f"Failed to process batch response for {player.display_name}: {exc}"
+                )
+
+        return ProcessedBatchItem(
+            player_id=player_id,
+            s3_key=s3_key,
+            public_url=public_url,
+            file_size_bytes=len(image_data) if image_data else None,
+            user_prompt=user_prompt,
+            error_message=error_message,
+            generation_time_sec=time.time() - start_time,
+        )
+
+    async def save_batch_results_to_db(
+        self,
+        db: AsyncSession,
+        job_record: ImageBatchJob,
+        snapshot: PlayerImageSnapshot,
+        result: BatchProcessingResult,
+    ) -> None:
+        """Persist batch processing results to the database.
+
+        This method performs only database operations and should complete
+        quickly since all slow I/O (Gemini, S3) has already been done.
+
+        Args:
+            db: Database session
+            job_record: ImageBatchJob tracking record to update
+            snapshot: Parent snapshot record
+            result: BatchProcessingResult from fetch_and_upload_batch_results
+        """
+        snapshot_id = snapshot.id
+        if snapshot_id is None:
+            raise ValueError("snapshot.id is required")
+
+        # Create asset records for all processed items
+        for item in result.items:
+            asset = PlayerImageAsset(
+                snapshot_id=snapshot_id,
+                player_id=item.player_id,
+                s3_key=item.s3_key,
+                s3_bucket=settings.s3_bucket_name,
+                public_url=item.public_url,
+                file_size_bytes=item.file_size_bytes,
+                user_prompt=item.user_prompt,
+                likeness_description=None,
+                used_likeness_ref=False,
+                reference_image_url=None,
+                error_message=item.error_message,
+                generated_at=datetime.utcnow(),
+                generation_time_sec=item.generation_time_sec,
+            )
+            db.add(asset)
+
+        # Update job record
+        job_record.state = result.state
+        job_record.completed_at = datetime.utcnow()
+        job_record.success_count = result.success_count
+        job_record.failure_count = result.failure_count
+        job_record.error_message = result.error_message
+
+        logger.info(f"Saved {len(result.items)} asset records to database")
 
     async def retrieve_batch_results(
         self,

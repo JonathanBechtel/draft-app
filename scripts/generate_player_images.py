@@ -523,13 +523,20 @@ async def batch_status(args: argparse.Namespace) -> None:
 
 
 async def batch_retrieve(args: argparse.Namespace) -> None:
-    """Retrieve and process batch job results."""
+    """Retrieve and process batch job results.
+
+    Uses a two-phase approach to avoid database connection timeouts:
+    1. Brief DB read to fetch job metadata and player info
+    2. Slow Gemini/S3 operations (no DB connection held)
+    3. Brief DB write to persist all results
+    """
     if not args.job_id:
         logger.error("--job-id is required for retrieve")
         sys.exit(1)
 
     logger.info(f"Retrieving results for: {args.job_id}")
 
+    # Phase 1: Quick DB read to get job metadata
     async with SessionLocal() as db:
         # Find the job record
         stmt = select(ImageBatchJob).where(ImageBatchJob.gemini_job_name == args.job_id)
@@ -567,51 +574,89 @@ async def batch_retrieve(args: argparse.Namespace) -> None:
         players = list(result.scalars().all())
         players_by_id = {p.id: p for p in players if p.id is not None}
 
+        # Extract values we need after session closes
+        job_style = job_record.style
+        job_image_size = job_record.image_size
+        snapshot_style = snapshot.style
+        snapshot_cohort = snapshot.cohort
+        snapshot_draft_year = snapshot.draft_year
+
         logger.info(f"Found {len(players)} players for processing")
 
-        # Retrieve and process results
+    # Phase 2: Slow Gemini/S3 operations (no DB connection held)
+    logger.info("Fetching results from Gemini and uploading to S3...")
+    try:
+        batch_result = image_generation_service.fetch_and_upload_batch_results(
+            gemini_job_name=args.job_id,
+            player_ids=player_ids,
+            players_by_id=players_by_id,
+            style=job_style,
+        )
+    except RuntimeError as e:
+        logger.error(str(e))
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Failed to fetch/upload batch results: {e}")
+        sys.exit(1)
+
+    # Phase 3: Quick DB write to persist results
+    logger.info("Saving results to database...")
+    async with SessionLocal() as db:
         try:
-            (
-                success_count,
-                failure_count,
-            ) = await image_generation_service.retrieve_batch_results(
+            # Re-fetch the records for this session
+            stmt = select(ImageBatchJob).where(
+                ImageBatchJob.gemini_job_name == args.job_id
+            )
+            result = await db.execute(stmt)
+            job_record = result.scalar_one_or_none()
+
+            stmt = select(PlayerImageSnapshot).where(
+                PlayerImageSnapshot.id == job_record.snapshot_id  # type: ignore[union-attr]
+            )
+            result = await db.execute(stmt)
+            snapshot = result.scalar_one_or_none()
+
+            if not job_record or not snapshot:
+                logger.error("Failed to re-fetch job/snapshot records")
+                sys.exit(1)
+
+            # Save all results to DB
+            await image_generation_service.save_batch_results_to_db(
                 db=db,
                 job_record=job_record,
-                players_by_id=players_by_id,
                 snapshot=snapshot,
+                result=batch_result,
             )
 
-            # Update snapshot
-            snapshot.success_count = success_count
-            snapshot.failure_count = failure_count
-            snapshot.estimated_cost_usd = success_count * BATCH_COST_PER_IMAGE_USD.get(
-                job_record.image_size, 0.02
+            # Update snapshot counts
+            snapshot.success_count = batch_result.success_count
+            snapshot.failure_count = batch_result.failure_count
+            snapshot.estimated_cost_usd = (
+                batch_result.success_count
+                * BATCH_COST_PER_IMAGE_USD.get(job_image_size, 0.02)
             )
 
             # Mark as current if all succeeded
-            if failure_count == 0 and success_count > 0:
+            if batch_result.failure_count == 0 and batch_result.success_count > 0:
                 await demote_current_snapshots(
                     db,
-                    style=snapshot.style,
-                    cohort=snapshot.cohort,
-                    draft_year=snapshot.draft_year,
+                    style=snapshot_style,
+                    cohort=snapshot_cohort,
+                    draft_year=snapshot_draft_year,
                 )
                 snapshot.is_current = True
 
             await db.commit()
 
             logger.info("=== BATCH RETRIEVE COMPLETE ===")
-            logger.info(f"Success: {success_count}")
-            logger.info(f"Failed: {failure_count}")
+            logger.info(f"Success: {batch_result.success_count}")
+            logger.info(f"Failed: {batch_result.failure_count}")
             logger.info(f"Estimated cost: ${snapshot.estimated_cost_usd:.2f}")
             logger.info(f"Snapshot ID: {snapshot.id}")
             logger.info(f"Is current: {snapshot.is_current}")
 
-        except RuntimeError as e:
-            logger.error(str(e))
-            sys.exit(1)
         except Exception as e:
-            logger.error(f"Failed to retrieve results: {e}")
+            logger.error(f"Failed to save results to database: {e}")
             await db.rollback()
             sys.exit(1)
 
