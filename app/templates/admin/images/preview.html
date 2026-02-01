@@ -1,0 +1,211 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Preview: " ~ preview.player_name ~ " - " ~ preview.style %}
+{% set active_nav = "images" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  {% if preview.source_asset_id %}
+  <a href="/admin/images/{{ preview.source_asset_id }}" class="admin-btn admin-btn--link">&larr; Back to Image Detail</a>
+  {% else %}
+  <a href="/admin/images" class="admin-btn admin-btn--link">&larr; Back to Images</a>
+  {% endif %}
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h1 class="admin-card__title">Preview: {{ preview.player_name }}</h1>
+    <span class="admin-badge admin-badge--style-{{ preview.style }}">{{ preview.style }}</span>
+  </div>
+
+  <div class="admin-preview-comparison">
+    {% if preview.current_image_url %}
+    <div class="admin-preview-comparison__column">
+      <h3 class="admin-preview-comparison__title">Current Image</h3>
+      <div class="admin-preview-comparison__image">
+        <img src="{{ preview.current_image_url }}" alt="Current image for {{ preview.player_name }}"
+             onerror="this.style.opacity='0.3';">
+      </div>
+    </div>
+    <div class="admin-preview-comparison__arrow">&rarr;</div>
+    {% endif %}
+
+    <div class="admin-preview-comparison__column admin-preview-comparison__column--new">
+      <h3 class="admin-preview-comparison__title">Generated Preview</h3>
+      <div class="admin-preview-comparison__image">
+        <img src="data:image/png;base64,{{ preview.image_data_base64 }}"
+             alt="Preview for {{ preview.player_name }}">
+      </div>
+    </div>
+  </div>
+
+  <div class="admin-preview-meta">
+    <h3 class="admin-preview-meta__title">Generation Details</h3>
+    <dl class="admin-meta-list">
+      <dt>Player</dt>
+      <dd><a href="/admin/players/{{ preview.player_id }}" class="admin-link">{{ preview.player_name }}</a></dd>
+
+      <dt>Style</dt>
+      <dd>{{ preview.style }}</dd>
+
+      <dt>Generation Time</dt>
+      <dd>{{ "%.1f"|format(preview.generation_time_sec) }}s</dd>
+
+      <dt>File Size</dt>
+      <dd>{{ (preview.file_size_bytes / 1024)|round|int }} KB</dd>
+
+      <dt>Used Likeness Reference</dt>
+      <dd>{{ "Yes" if preview.used_likeness_ref else "No" }}</dd>
+
+      {% if preview.reference_image_url %}
+      <dt>Reference Image</dt>
+      <dd><a href="{{ preview.reference_image_url }}" target="_blank" rel="noopener noreferrer" class="admin-link">View</a></dd>
+      {% endif %}
+
+      <dt>Created</dt>
+      <dd>{{ preview.created_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+
+      <dt>Expires</dt>
+      <dd>{{ preview.expires_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+    </dl>
+  </div>
+
+  <div class="admin-preview-actions">
+    <form method="post" action="/admin/images/preview/{{ preview.id }}/accept" class="admin-form--inline">
+      <button type="submit" class="admin-btn admin-btn--primary admin-btn--large">
+        Accept &amp; Save
+      </button>
+    </form>
+    <form method="post" action="/admin/images/preview/{{ preview.id }}/retry" class="admin-form--inline" id="retry-form">
+      <button type="submit" class="admin-btn admin-btn--secondary admin-btn--large">
+        Try Again
+      </button>
+    </form>
+    <form method="post" action="/admin/images/preview/{{ preview.id }}/reject" class="admin-form--inline"
+          onsubmit="return confirm('Discard this preview?');">
+      <button type="submit" class="admin-btn admin-btn--danger admin-btn--large">
+        Reject
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="admin-loading-overlay" id="loading-overlay">
+  <div class="admin-loading-spinner"></div>
+  <div class="admin-loading-text">Generating new image...</div>
+  <div class="admin-loading-subtext">This may take 10-20 seconds</div>
+</div>
+{% endblock %}
+
+{% block admin_css %}
+<style>
+.admin-preview-comparison {
+  display: flex;
+  align-items: flex-start;
+  gap: 2rem;
+  margin-bottom: 2rem;
+  justify-content: center;
+}
+
+.admin-preview-comparison__column {
+  flex: 1;
+  max-width: 400px;
+}
+
+.admin-preview-comparison__title {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  color: var(--color-slate-700);
+  margin: 0 0 1rem;
+  text-align: center;
+}
+
+.admin-preview-comparison__image {
+  aspect-ratio: 4/5;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid var(--color-slate-200);
+  background: var(--color-slate-100);
+}
+
+.admin-preview-comparison__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.admin-preview-comparison__column--new .admin-preview-comparison__image {
+  border-color: var(--color-accent-fuchsia);
+  box-shadow: 0 0 0 3px rgba(217, 70, 239, 0.2);
+}
+
+.admin-preview-comparison__arrow {
+  display: flex;
+  align-items: center;
+  font-size: 2rem;
+  color: var(--color-slate-400);
+  padding-top: 120px;
+}
+
+.admin-preview-meta {
+  border-top: 1px solid var(--color-slate-200);
+  padding-top: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.admin-preview-meta__title {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  color: var(--color-slate-700);
+  margin: 0 0 1rem;
+}
+
+.admin-preview-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--color-slate-200);
+}
+
+.admin-btn--large {
+  padding: 0.875rem 1.5rem;
+  font-size: 1rem;
+}
+
+@media (max-width: 768px) {
+  .admin-preview-comparison {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .admin-preview-comparison__arrow {
+    transform: rotate(90deg);
+    padding-top: 0;
+  }
+
+  .admin-preview-actions {
+    flex-direction: column;
+  }
+
+  .admin-preview-actions .admin-btn {
+    width: 100%;
+  }
+}
+</style>
+{% endblock %}
+
+{% block admin_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var form = document.getElementById('retry-form');
+  var overlay = document.getElementById('loading-overlay');
+
+  if (form && overlay) {
+    form.addEventListener('submit', function() {
+      overlay.classList.add('active');
+    });
+  }
+});
+</script>
+{% endblock %}

@@ -154,6 +154,7 @@ class PlayerImageAsset(SQLModel, table=True):  # type: ignore[call-arg]
 
     # S3 storage
     s3_key: str = Field(
+        unique=True,
         description="S3 object key, e.g., 'players/1661_cooper-flagg_default.png'",
     )
     s3_bucket: Optional[str] = Field(
@@ -271,4 +272,62 @@ class ImageBatchJob(SQLModel, table=True):  # type: ignore[call-arg]
         default=None,
         sa_column=Column(Text, nullable=True),
         description="Error message if batch job failed",
+    )
+
+
+class PendingImagePreview(SQLModel, table=True):  # type: ignore[call-arg]
+    """Temporary storage for preview images awaiting admin approval.
+
+    Stores generated image data as base64 until the admin accepts or rejects.
+    Previews have a TTL and can be cleaned up after expiration.
+    """
+
+    __tablename__ = "pending_image_previews"
+    __table_args__ = (
+        Index("ix_pending_previews_player", "player_id"),
+        Index("ix_pending_previews_expires", "expires_at"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    player_id: int = Field(
+        sa_column=Column(ForeignKey("players_master.id", ondelete="CASCADE"))
+    )
+    source_asset_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(ForeignKey("player_image_assets.id", ondelete="SET NULL")),
+        description="Original asset being regenerated (if any)",
+    )
+    style: str = Field(description="Image style: 'default', 'vector', 'comic', 'retro'")
+
+    # Generated image data (base64 encoded PNG)
+    image_data_base64: str = Field(
+        sa_column=Column(Text, nullable=False),
+        description="Base64 encoded PNG image data",
+    )
+    file_size_bytes: int = Field(description="Original image size in bytes")
+
+    # Generation metadata
+    user_prompt: str = Field(
+        sa_column=Column(Text, nullable=False),
+        description="Full player-specific prompt sent to the API",
+    )
+    likeness_description: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="Description generated from reference image (if used)",
+    )
+    used_likeness_ref: bool = Field(
+        default=False,
+        description="Whether a reference image was used for likeness",
+    )
+    reference_image_url: Optional[str] = Field(
+        default=None,
+        description="URL of reference image used (if any)",
+    )
+    generation_time_sec: float = Field(description="Time taken to generate this image")
+
+    # Timestamps
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: datetime = Field(
+        description="When this preview expires and can be cleaned up"
     )

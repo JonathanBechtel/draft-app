@@ -22,15 +22,16 @@
 
     <div class="personal-info-grid">
 
-      <!-- LEFT COLUMN: Photo Only -->
-      <div class="player-photo-wrapper">
-        <img
-          id="playerPhoto"
-          class="player-photo"
-          src="{{ player.photo_url }}"
-          alt="{{ player.name }}"
-        />
-      </div>
+	      <!-- LEFT COLUMN: Photo Only -->
+	      <div class="player-photo-wrapper">
+	        <img
+	          id="playerPhoto"
+	          class="player-photo"
+	          src="{{ player.photo_url }}"
+	          onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='{{ player.photo_url_default|e }}';}else{this.onerror=null;this.src='{{ player.photo_url_placeholder|e }}';}"
+	          alt="{{ player.name }}"
+	        />
+	      </div>
 
       <!-- RIGHT COLUMN: Bio + Scoreboard Stacked -->
       <div class="player-info-stack">
@@ -322,7 +323,7 @@
           <div class="h2h-photos-row">
             <div class="h2h-player-photo">
               <a id="h2hPhotoLinkA" class="h2h-photo-link" href="/players/{{ player.slug }}" aria-label="View {{ player.name }} details">
-                <img id="h2hPhotoA" src="{{ player.photo_url }}" alt="{{ player.name }}" />
+                <img id="h2hPhotoA" src="{{ player.photo_url }}" onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='{{ player.photo_url_default|e }}';}else{this.onerror=null;this.src='{{ player.photo_url_placeholder|e }}';}" alt="{{ player.name }}" />
               </a>
               <div class="h2h-photo-name" id="h2hPhotoNameA">{{ player.name }}</div>
             </div>

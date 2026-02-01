@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.fields import CohortType
 from app.schemas.image_snapshots import BatchJobState, ImageBatchJob, PlayerImageSnapshot
+from app.schemas.players_master import PlayerMaster
 from app.services.image_generation import image_generation_service
 
 
@@ -97,3 +98,70 @@ async def test_retrieve_batch_results_persists_failure_metadata_before_raise(
     assert persisted.success_count == 0
     assert persisted.failure_count == job.total_requests
     assert persisted.error_message == "no inlined responses"
+
+
+class _DummyCreatedBatch:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _DummyBatchesWithCreate(_DummyBatches):
+    def __init__(self, job: _DummyBatchJob, *, created_name: str) -> None:
+        super().__init__(job)
+        self._created = _DummyCreatedBatch(created_name)
+
+    def create(self, *, model: str, src, config):  # noqa: ANN001, ARG002
+        return self._created
+
+
+class _DummyClientWithCreate(_DummyClient):
+    def __init__(self, job: _DummyBatchJob, *, created_name: str) -> None:
+        self.batches = _DummyBatchesWithCreate(job, created_name=created_name)
+
+
+@pytest.mark.asyncio
+async def test_submit_batch_job_does_not_require_clean_transaction(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """submit_batch_job should work even after a prior SELECT began a tx."""
+    player = PlayerMaster(display_name="Test Player")
+    db_session.add(player)
+    await db_session.commit()
+    assert player.id is not None
+
+    snapshot = PlayerImageSnapshot(
+        run_key="test_run",
+        version=1,
+        is_current=False,
+        style="default",
+        cohort=CohortType.current_draft,
+        image_size="1K",
+        system_prompt="test system prompt",
+    )
+    db_session.add(snapshot)
+    await db_session.commit()
+    assert snapshot.id is not None
+
+    # Force an implicit transaction to be active.
+    await db_session.execute(select(1))
+
+    dummy_job = _DummyBatchJob(error_message=None)
+    monkeypatch.setattr(
+        image_generation_service,
+        "_client",
+        _DummyClientWithCreate(dummy_job, created_name="batches/test-created"),
+    )
+
+    job_record = await image_generation_service.submit_batch_job(
+        db=db_session,
+        players=[player],
+        snapshot=snapshot,
+        style="default",
+        image_size="1K",
+        fetch_likeness=False,
+    )
+    await db_session.commit()
+
+    assert job_record.id is not None
+    assert job_record.gemini_job_name == "batches/test-created"

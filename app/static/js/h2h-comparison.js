@@ -283,7 +283,8 @@ const H2HComparison = {
    */
   resolveStyle() {
     const style = window.IMAGE_STYLE || 'default';
-    return this.imageStyles.includes(style) ? style : 'default';
+    const normalized = String(style || '').trim().toLowerCase();
+    return normalized || 'default';
   },
 
   /**

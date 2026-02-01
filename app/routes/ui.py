@@ -8,15 +8,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.image_assets_service import get_current_image_url_for_player
-from app.services.image_assets_service import get_current_image_urls_for_players
 from app.services.news_service import (
     get_hero_article,
     get_news_feed,
 )
+from app.config import settings
 from app.services.player_service import get_player_profile_by_slug
 from app.utils.db_async import get_session
-from app.utils.images import get_placeholder_url, get_s3_image_base_url
+from app.utils.images import (
+    get_placeholder_url,
+    get_player_image_url,
+    get_s3_image_base_url,
+)
 
 router = APIRouter()
 
@@ -46,7 +49,8 @@ HOME_NEWS_SIDEBAR_LIMIT = 8
 async def home(
     request: Request,
     style: Optional[str] = Query(
-        None, description="Image style: default, vector, comic, retro"
+        None,
+        description="Preferred image style (falls back to default, then placeholder)",
     ),
     db: AsyncSession = Depends(get_session),
 ):
@@ -72,40 +76,39 @@ async def home(
     # Build player ID map for image URL generation and JS
     player_id_map = {p.slug: (p.id, p.display_name) for p in db_players}
 
-    requested_style = style or "default"
-    player_ids = [p.id for p in db_players if p.id is not None]
-    image_urls_by_id = await get_current_image_urls_for_players(
-        db,
-        player_ids=player_ids,
-        style=requested_style,
-    )
-    if requested_style != "default":
-        missing_ids = [pid for pid in player_ids if pid not in image_urls_by_id]
-        fallback_urls = await get_current_image_urls_for_players(
-            db,
-            player_ids=missing_ids,
-            style="default",
-        )
-        image_urls_by_id.update(fallback_urls)
+    requested_style = style or settings.default_image_style
 
     players = []
     for p in db_players:
-        if p.id is None:
+        if p.id is None or not p.slug:
             continue
-        img_url = image_urls_by_id.get(
-            p.id,
-            get_placeholder_url(
-                p.display_name or "Player", player_id=p.id, width=320, height=420
-            ),
+        img_url = get_player_image_url(
+            player_id=p.id,
+            slug=p.slug,
+            style=requested_style,
+        )
+        img_default_url = get_player_image_url(
+            player_id=p.id,
+            slug=p.slug,
+            style="default",
+        )
+        img_placeholder_url = get_placeholder_url(
+            p.display_name or "Player",
+            player_id=p.id,
+            width=320,
+            height=420,
         )
 
         players.append(
             {
+                "id": p.id,
                 "name": p.display_name or "",
                 "slug": p.slug or "",
                 "position": "",  # Position data requires PlayerStatus join - to be added
                 "college": p.school or "",
                 "img": img_url,
+                "img_default": img_default_url,
+                "img_placeholder": img_placeholder_url,
                 "change": 0,  # No change data without consensus rankings
                 "measurables": {
                     "ht": 80,  # Placeholder - will be populated from real data later
@@ -178,8 +181,8 @@ async def home(
     ]
 
     # Build mappings for JS image URL generation
-    slug_to_id = {slug: info[0] for slug, info in player_id_map.items()}
-    id_to_slug = {info[0]: slug for slug, info in player_id_map.items()}
+    slug_to_id = {slug: player_id for slug, (player_id, _) in player_id_map.items()}
+    id_to_slug = {player_id: slug for slug, (player_id, _) in player_id_map.items()}
 
     return request.app.state.templates.TemplateResponse(
         "home.html",
@@ -193,7 +196,7 @@ async def home(
             "sidebar_limit": HOME_NEWS_SIDEBAR_LIMIT,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
-            "image_style": style,  # Current image style for JS
+            "image_style": requested_style,  # Current image style for JS
             "player_id_map": slug_to_id,  # slug -> player_id for JS image URLs
             "id_to_slug_map": id_to_slug,  # player_id -> slug for JS image URLs
             "s3_image_base_url": get_s3_image_base_url(),  # S3 base URL for images
@@ -206,7 +209,8 @@ async def player_detail(
     request: Request,
     slug: str,
     style: Optional[str] = Query(
-        None, description="Image style: default, vector, comic, retro"
+        None,
+        description="Preferred image style (falls back to default, then placeholder)",
     ),
     db: AsyncSession = Depends(get_session),
 ):
@@ -233,23 +237,31 @@ async def player_detail(
     # Build player dict for template
     player_name = player_profile.display_name or "Unknown Player"
 
-    requested_style = style or "default"
-    requested_photo_url = await get_current_image_url_for_player(
-        db,
-        player_id=player_profile.id,
-        style=requested_style,
-    )
-    if requested_photo_url is None and requested_style != "default":
-        requested_photo_url = await get_current_image_url_for_player(
-            db,
+    requested_style = style or settings.default_image_style
+    requested_photo_url = (
+        get_player_image_url(
             player_id=player_profile.id,
+            slug=player_profile.slug,
+            style=requested_style,
+        )
+        if player_profile.id is not None and player_profile.slug
+        else ""
+    )
+    fallback_photo_url = (
+        get_player_image_url(
+            player_id=player_profile.id,
+            slug=player_profile.slug,
             style="default",
         )
-    if requested_photo_url is None:
-        requested_photo_url = get_placeholder_url(
-            player_profile.display_name,
-            player_id=player_profile.id,
-        )
+        if player_profile.id is not None and player_profile.slug
+        else ""
+    )
+    placeholder_photo_url = get_placeholder_url(
+        player_name,
+        player_id=player_profile.id,
+        width=400,
+        height=533,
+    )
 
     player = {
         "id": player_profile.id,
@@ -265,6 +277,8 @@ async def player_detail(
         "hometown": player_profile.hometown,
         "wingspan": player_profile.wingspan_formatted,
         "photo_url": requested_photo_url,
+        "photo_url_default": fallback_photo_url,
+        "photo_url_placeholder": placeholder_photo_url,
         # Metrics set to None to hide scoreboard (no data sources yet)
         "metrics": {
             "consensusRank": None,
@@ -366,7 +380,7 @@ async def player_detail(
             "player_feed": player_feed,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
-            "image_style": style,  # Current image style for JS
+            "image_style": requested_style,  # Current image style for JS
             "s3_image_base_url": get_s3_image_base_url(),  # S3 base URL for images
         },
     )

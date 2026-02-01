@@ -1,0 +1,99 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = image.player_name ~ " - " ~ image.style %}
+{% set active_nav = "images" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <a href="/admin/images" class="admin-btn admin-btn--link">&larr; Back to Images</a>
+</header>
+
+<div class="admin-card">
+  <div class="admin-image-detail">
+    <div class="admin-image-detail__preview">
+      {% if image.error_message %}
+      <div class="admin-image-detail__error">
+        <span class="admin-image-detail__error-title">Generation Failed</span>
+        <p class="admin-image-detail__error-msg">{{ image.error_message }}</p>
+      </div>
+      {% else %}
+      <img src="{{ image.display_url }}" alt="{{ image.player_name }}"
+           onerror="this.style.opacity='0.3';">
+      {% endif %}
+    </div>
+
+    <div class="admin-image-detail__meta">
+      <h2 class="admin-image-detail__title">{{ image.player_name }}</h2>
+      <p class="admin-text--muted">{{ image.style }} style</p>
+
+      <dl class="admin-meta-list">
+        <dt>Player</dt>
+        <dd><a href="/admin/players/{{ image.player_id }}" class="admin-link">{{ image.player_name }}</a></dd>
+
+        <dt>Style</dt>
+        <dd><span class="admin-badge admin-badge--style-{{ image.style }}">{{ image.style }}</span></dd>
+
+        <dt>Status</dt>
+        <dd>
+          {% if image.is_current %}
+          <span class="admin-badge admin-badge--active">Current</span>
+          {% else %}
+          <span class="admin-badge admin-badge--inactive">Historical</span>
+          {% endif %}
+        </dd>
+
+        <dt>Generated</dt>
+        <dd>{{ image.generated_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+
+        <dt>Snapshot Version</dt>
+        <dd>v{{ image.snapshot_version }}</dd>
+
+        {% if image.file_size_bytes %}
+        <dt>File Size</dt>
+        <dd>{{ (image.file_size_bytes / 1024)|round|int }} KB</dd>
+        {% endif %}
+
+        <dt>Used Likeness Reference</dt>
+        <dd>{{ "Yes" if image.used_likeness_ref else "No" }}</dd>
+
+        {% if image.reference_image_url %}
+        <dt>Reference Image</dt>
+        <dd><a href="{{ image.reference_image_url }}" target="_blank" rel="noopener noreferrer" class="admin-link">View</a></dd>
+        {% endif %}
+      </dl>
+
+      <div class="admin-image-detail__actions">
+        <form method="post" action="/admin/images/{{ image.id }}/regenerate" class="admin-form--inline" id="regenerate-form">
+          <button type="submit" class="admin-btn admin-btn--primary">Regenerate</button>
+        </form>
+        <form method="post" action="/admin/images/{{ image.id }}/delete"
+              class="admin-form--inline"
+              onsubmit="return confirm('Delete this image permanently?');">
+          <button type="submit" class="admin-btn admin-btn--danger">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="admin-loading-overlay" id="loading-overlay">
+  <div class="admin-loading-spinner"></div>
+  <div class="admin-loading-text">Generating new image...</div>
+  <div class="admin-loading-subtext">This may take 10-20 seconds</div>
+</div>
+{% endblock %}
+
+{% block admin_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var form = document.getElementById('regenerate-form');
+  var overlay = document.getElementById('loading-overlay');
+
+  if (form && overlay) {
+    form.addEventListener('submit', function() {
+      overlay.classList.add('active');
+    });
+  }
+});
+</script>
+{% endblock %}

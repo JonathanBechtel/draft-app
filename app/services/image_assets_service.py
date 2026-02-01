@@ -21,7 +21,13 @@ async def get_current_image_url_for_player(
     player_id: int,
     style: str,
 ) -> str | None:
-    """Return the current image URL for a single player/style, if any."""
+    """Return the latest image URL for a single player/style, if any.
+
+    Note: DraftGuru intentionally maintains a single canonical image per
+    (player, style) by overwriting the same S3 key. Snapshot "current" state is
+    therefore not required to resolve the active image; we simply return the
+    most recently generated successful asset for that player/style.
+    """
     stmt = (
         select(PlayerImageAsset.public_url)  # type: ignore[call-overload]
         .join(
@@ -30,10 +36,10 @@ async def get_current_image_url_for_player(
         .where(
             PlayerImageAsset.player_id == player_id,
             PlayerImageAsset.error_message.is_(None),  # type: ignore[union-attr]
-            PlayerImageSnapshot.is_current == True,  # noqa: E712
             PlayerImageSnapshot.style == style,
         )
         .order_by(
+            desc(PlayerImageAsset.generated_at),  # type: ignore[arg-type]
             desc(PlayerImageSnapshot.generated_at),  # type: ignore[arg-type]
             desc(PlayerImageSnapshot.id),  # type: ignore[arg-type]
         )
@@ -49,7 +55,7 @@ async def get_current_image_urls_for_players(
     player_ids: Iterable[int],
     style: str,
 ) -> dict[int, str]:
-    """Return a mapping of player_id -> current image URL for a style."""
+    """Return a mapping of player_id -> latest image URL for a style."""
     ids = list(player_ids)
     if not ids:
         return {}
@@ -65,12 +71,12 @@ async def get_current_image_urls_for_players(
         .where(
             PlayerImageAsset.player_id.in_(ids),  # type: ignore[attr-defined]
             PlayerImageAsset.error_message.is_(None),  # type: ignore[union-attr]
-            PlayerImageSnapshot.is_current == True,  # noqa: E712
             PlayerImageSnapshot.style == style,
         )
         .distinct(PlayerImageAsset.player_id)
         .order_by(
             PlayerImageAsset.player_id,
+            desc(PlayerImageAsset.generated_at),  # type: ignore[arg-type]
             desc(PlayerImageSnapshot.generated_at),  # type: ignore[arg-type]
             desc(PlayerImageSnapshot.id),  # type: ignore[arg-type]
         )

@@ -94,18 +94,19 @@ const ProspectsModule = {
         ? this.renderBadge(player.change)
         : '';
 
-      return `
-        <a href="/players/${player.slug}" class="prospect-card" style="text-decoration: none; color: inherit;">
-          <div class="prospect-image-wrapper">
-            <img
-              src="${player.img}"
-              alt="${player.name}"
-              class="prospect-image"
-            />
-            ${badge}
-          </div>
-          <div class="prospect-info">
-            <h4 class="prospect-name">${player.name}</h4>
+	      return `
+	        <a href="/players/${player.slug}" class="prospect-card" style="text-decoration: none; color: inherit;">
+	          <div class="prospect-image-wrapper">
+	            <img
+	              src="${player.img}"
+	              alt="${player.name}"
+	              class="prospect-image"
+	              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='${player.img_default}';}else{this.onerror=null;this.src='${player.img_placeholder}';}"
+	            />
+	            ${badge}
+	          </div>
+	          <div class="prospect-info">
+	            <h4 class="prospect-name">${player.name}</h4>
             <p class="prospect-meta">${player.position} • ${player.college}</p>
             <div class="prospect-stats">
               ${this.renderStatPill('HT', `${player.measurables.ht}"`)}

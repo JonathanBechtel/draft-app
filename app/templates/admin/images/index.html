@@ -1,0 +1,126 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Images" %}
+{% set active_nav = "images" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Images</h1>
+  <p class="admin-main__subtitle">Browse and manage generated player images</p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">All Images ({{ total }})</h2>
+  </div>
+
+  <!-- Filters -->
+  <form class="admin-filters" method="get" action="/admin/images">
+    <input type="hidden" name="limit" value="{{ limit }}">
+
+    <div class="admin-filters__row">
+      <div class="admin-filters__field admin-filters__field--wide">
+        <label class="admin-filters__label" for="q">Player</label>
+        <input class="admin-form__input" type="text" id="q" name="q"
+               value="{{ q or '' }}" placeholder="Search by name...">
+      </div>
+
+      <div class="admin-filters__field">
+        <label class="admin-filters__label" for="style">Style</label>
+        <select class="admin-form__select" id="style" name="style">
+          <option value="">All Styles</option>
+          {% for s in styles %}
+          <option value="{{ s }}" {% if style == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="admin-filters__field">
+        <label class="admin-filters__label" for="draft_year">Draft Year</label>
+        <select class="admin-form__select" id="draft_year" name="draft_year">
+          <option value="">All Years</option>
+          {% for y in draft_years %}
+          <option value="{{ y }}" {% if draft_year == y %}selected{% endif %}>{{ y }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="admin-filters__field admin-filters__field--checkbox">
+        <label class="admin-form__checkbox-label">
+          <input type="checkbox" name="include_errors" value="true" {% if include_errors %}checked{% endif %}>
+          Include errors
+        </label>
+      </div>
+
+      <div class="admin-filters__actions">
+        <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Filter</button>
+        <a href="/admin/images" class="admin-btn admin-btn--secondary admin-btn--small">Reset</a>
+      </div>
+    </div>
+  </form>
+
+  <!-- Image Grid -->
+  {% if images %}
+  <div class="admin-image-grid">
+    {% for img in images %}
+    <a href="/admin/images/{{ img.id }}" class="admin-image-card">
+      {% if img.error_message %}
+      <div class="admin-image-card__error">
+        <span class="admin-image-card__error-icon">!</span>
+      </div>
+      {% else %}
+      <img src="{{ img.display_url }}" alt="{{ img.player_name }}" class="admin-image-thumbnail" loading="lazy"
+           onerror="this.style.opacity='0.3'; this.parentElement.classList.add('admin-image-card--missing');">
+      {% endif %}
+      <div class="admin-image-card__overlay">
+        <span class="admin-image-card__name">{{ img.player_name }}</span>
+        <div class="admin-image-card__meta">
+          <span class="admin-badge admin-badge--style-{{ img.style }}">{{ img.style }}</span>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  <!-- Pagination -->
+  {% if pages > 1 %}
+  <nav class="admin-pagination">
+    <div class="admin-pagination__info">
+      Showing {{ offset + 1 }}-{{ [offset + limit, total] | min }} of {{ total }}
+    </div>
+    <div class="admin-pagination__controls">
+      {% if current_page > 1 %}
+      <a href="/admin/images?limit={{ limit }}&offset={{ (current_page - 2) * limit }}{% if q %}&q={{ q }}{% endif %}{% if style %}&style={{ style }}{% endif %}{% if draft_year %}&draft_year={{ draft_year }}{% endif %}{% if player_id %}&player_id={{ player_id }}{% endif %}{% if include_errors %}&include_errors=true{% endif %}"
+         class="admin-btn admin-btn--secondary admin-btn--small">Previous</a>
+      {% endif %}
+
+      <span class="admin-pagination__pages">
+        Page {{ current_page }} of {{ pages }}
+      </span>
+
+      {% if current_page < pages %}
+      <a href="/admin/images?limit={{ limit }}&offset={{ current_page * limit }}{% if q %}&q={{ q }}{% endif %}{% if style %}&style={{ style }}{% endif %}{% if draft_year %}&draft_year={{ draft_year }}{% endif %}{% if player_id %}&player_id={{ player_id }}{% endif %}{% if include_errors %}&include_errors=true{% endif %}"
+         class="admin-btn admin-btn--secondary admin-btn--small">Next</a>
+      {% endif %}
+    </div>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="admin-empty">
+    <div class="admin-empty__icon">&#128247;</div>
+    <h3 class="admin-empty__title">No Images</h3>
+    <p class="admin-empty__text">
+      {% if q or style or draft_year or player_id %}
+      No images match your filters. Try adjusting the criteria.
+      {% else %}
+      No generated images exist yet.
+      {% endif %}
+    </p>
+    {% if q or style or draft_year or player_id %}
+    <a href="/admin/images" class="admin-btn admin-btn--secondary">Clear Filters</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

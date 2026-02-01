@@ -1,2 +1,6 @@
 [features]
 experimental_use_rmcp_client = true
+web_search_request = true
+
+[tools]
+web_search = true

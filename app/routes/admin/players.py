@@ -14,6 +14,11 @@ from starlette.responses import Response
 from app.routes.admin.helpers import base_context, require_admin
 from app.schemas.auth import AuthUser
 from app.schemas.players_master import PlayerMaster
+from app.utils.images import (
+    get_placeholder_url,
+    get_player_image_url,
+    get_s3_image_base_url,
+)
 from app.services.admin_player_service import (
     PlayerFormData,
     PlayerListResult,
@@ -150,7 +155,7 @@ async def list_players(
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
     q: str | None = Query(default=None),
-    draft_year: int | None = Query(default=None),
+    draft_year: str | None = Query(default=None),
     position: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
@@ -159,7 +164,15 @@ async def list_players(
     if redirect:
         return redirect
 
-    result = await svc_list_players(db, q, draft_year, position, limit, offset)
+    # Convert draft_year from string to int (empty string becomes None)
+    draft_year_int: int | None = None
+    if draft_year and draft_year.strip():
+        try:
+            draft_year_int = int(draft_year.strip())
+        except ValueError:
+            draft_year_int = None
+
+    result = await svc_list_players(db, q, draft_year_int, position, limit, offset)
 
     # Calculate pagination info
     pages = (result.total + limit - 1) // limit if result.total > 0 else 1
@@ -177,7 +190,7 @@ async def list_players(
             pages=pages,
             current_page=current_page,
             q=q,
-            draft_year=draft_year,
+            draft_year=draft_year_int,
             position=position,
             draft_years=result.draft_years,
             success=SUCCESS_MESSAGES.get(success) if success else None,
@@ -290,12 +303,27 @@ async def edit_player(
     if player is None:
         raise HTTPException(status_code=404, detail="Player not found")
 
+    # Build S3-first image URL (source of truth for display)
+    expected_image_url = None
+    if player.slug:
+        expected_image_url = get_player_image_url(
+            player_id=player_id,
+            slug=player.slug,
+            style="default",
+            base_url=get_s3_image_base_url(),
+        )
+
+    # Build placeholder URL for onerror fallback
+    placeholder_url = get_placeholder_url(player.display_name, player_id=player_id)
+
     return request.app.state.templates.TemplateResponse(
         "admin/players/detail.html",
         base_context(
             request,
             user=user,
             player=player,
+            expected_image_url=expected_image_url,
+            placeholder_url=placeholder_url,
             error=None,
             active_nav="players",
         ),
