@@ -5,7 +5,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any, List, Optional, Sequence, Set, Tuple, cast
 
-from sqlalchemy import case, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cli.compute_metrics import main_async as compute_metrics_main
@@ -88,6 +88,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=int,
         default=3,
         help="Minimum sample size required to emit a metric (default: 3).",
+    )
+    parser.add_argument(
+        "--replace-run",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "When enabled, delete existing snapshots for the same run_key before inserting. "
+            "Defaults to disabled so you can verify results before deleting old snapshots."
+        ),
     )
     parser.add_argument(
         "--skip-baseline",
@@ -219,21 +228,25 @@ async def _promote_snapshot(
             + f"parent={context.position_scope_parent} -> snapshot_id={target_id}"
         )
 
-    stmt = (
+    # Avoid transient partial-unique-index violations (uq_metric_snapshots_current) by
+    # demoting the existing current snapshot first, then promoting the target.
+    await db.execute(
         update(MetricSnapshot)
         .where(*filters)
-        .values(
-            is_current=case(
-                (cast(Any, MetricSnapshot.id) == int(target_id), True), else_=False
-            )
-        )
+        .where(cast(Any, MetricSnapshot.id) != int(target_id))
+        .values(is_current=False)
     )
-    await db.execute(stmt)
+    await db.execute(
+        update(MetricSnapshot)
+        .where(cast(Any, MetricSnapshot.id) == int(target_id))
+        .values(is_current=True)
+    )
 
 
 async def run_recompute(argv: Optional[Sequence[str]] = None) -> None:
     args = parse_args(argv)
     load_schema_modules()
+    min_sample = max(1, args.min_sample)
 
     selected_sources: List[MetricSource] = [MetricSource(s) for s in args.sources]
     global_cohorts: List[CohortType] = [CohortType(c) for c in args.global_cohorts]
@@ -265,9 +278,10 @@ async def run_recompute(argv: Optional[Sequence[str]] = None) -> None:
                 "--sources",
                 *[s.value for s in selected_sources],
                 "--min-sample",
-                str(args.min_sample),
-                "--replace-run",
+                str(min_sample),
             ]
+            if args.replace_run:
+                argv_inner.append("--replace-run")
             if cohort == CohortType.current_draft:
                 if not season_code:
                     raise ValueError("current_draft requires a season code.")
@@ -294,7 +308,7 @@ async def run_recompute(argv: Optional[Sequence[str]] = None) -> None:
             )
             for parent_scope, scope_run_key in _scope_run_keys(
                 base_run_key=base_run_key,
-                min_sample=args.min_sample,
+                min_sample=min_sample,
                 include_baseline=include_baseline,
             ):
                 for source in selected_sources:

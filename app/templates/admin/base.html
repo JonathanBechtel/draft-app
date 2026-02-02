@@ -26,29 +26,46 @@
           </a>
         </li>
 
-        {% if user.role == 'admin' %}
+        {# Admins see all data management links; workers see only what they have permission for #}
+        {% set is_admin = user and user.role == 'admin' %}
+        {% set can_view_players = is_admin or (permissions and permissions.players.can_view) %}
+        {% set can_view_news_sources = is_admin or (permissions and permissions.news_sources.can_view) %}
+        {% set can_view_news_ingestion = is_admin or (permissions and permissions.news_ingestion.can_view) %}
+        {% set can_view_images = is_admin or (permissions and permissions.images.can_view) %}
+        {% set show_data_section = can_view_players or can_view_news_sources or can_view_news_ingestion or can_view_images %}
+        {% if show_data_section %}
         <li class="admin-sidebar__nav-divider"></li>
         <li class="admin-sidebar__nav-section">Data Management</li>
+        {% if can_view_players %}
         <li class="admin-sidebar__nav-item">
           <a href="/admin/players" class="admin-sidebar__nav-link{% if active_nav == 'players' %} admin-sidebar__nav-link--active{% endif %}">
             Players
           </a>
         </li>
+        {% endif %}
+        {% if can_view_news_sources %}
         <li class="admin-sidebar__nav-item">
           <a href="/admin/news-sources" class="admin-sidebar__nav-link{% if active_nav == 'news-sources' %} admin-sidebar__nav-link--active{% endif %}">
             News Sources
           </a>
         </li>
+        {% endif %}
+        {% if can_view_news_ingestion %}
         <li class="admin-sidebar__nav-item">
           <a href="/admin/news-items" class="admin-sidebar__nav-link{% if active_nav == 'news-items' %} admin-sidebar__nav-link--active{% endif %}">
             News Items
           </a>
         </li>
+        {% endif %}
+        {% if can_view_images %}
         <li class="admin-sidebar__nav-item">
           <a href="/admin/images" class="admin-sidebar__nav-link{% if active_nav == 'images' %} admin-sidebar__nav-link--active{% endif %}">
             Images
           </a>
         </li>
+        {% endif %}
+        {% endif %}
+        {% if is_admin %}
         <li class="admin-sidebar__nav-divider"></li>
         <li class="admin-sidebar__nav-section">Administration</li>
         <li class="admin-sidebar__nav-item">

@@ -10,7 +10,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
-from app.routes.admin.helpers import base_context, require_admin
+from app.routes.admin.helpers import (
+    base_context_with_permissions,
+    require_dataset_access,
+)
 from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import FeedType, NewsSource
 from app.utils.db_async import get_session
@@ -24,10 +27,13 @@ async def list_news_sources(
     success: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """List all news sources (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """List all news sources."""
+    redirect, user = await require_dataset_access(
+        request, db, "news_sources", need_edit=False, next_path="/admin/news-sources"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     result = await db.execute(
         select(NewsSource).order_by(NewsSource.name)  # type: ignore[arg-type]
@@ -42,9 +48,10 @@ async def list_news_sources(
 
     return request.app.state.templates.TemplateResponse(
         "admin/news-sources/index.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             sources=sources,
             success=success_messages.get(success) if success else None,
         ),
@@ -56,16 +63,20 @@ async def new_news_source(
     request: Request,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Display the create news source form (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Display the create news source form."""
+    redirect, user = await require_dataset_access(
+        request, db, "news_sources", need_edit=True, next_path="/admin/news-sources/new"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     return request.app.state.templates.TemplateResponse(
         "admin/news-sources/form.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             source=None,
             feed_types=list(FeedType),
             error=None,
@@ -84,10 +95,13 @@ async def create_news_source(
     fetch_interval_minutes: int = Form(default=30),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Create a new news source (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Create a new news source."""
+    redirect, user = await require_dataset_access(
+        request, db, "news_sources", need_edit=True, next_path="/admin/news-sources"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     # Validate feed_type
     try:
@@ -95,9 +109,10 @@ async def create_news_source(
     except ValueError:
         return request.app.state.templates.TemplateResponse(
             "admin/news-sources/form.html",
-            base_context(
+            await base_context_with_permissions(
                 request,
-                user=user,
+                db,
+                user,
                 source=None,
                 feed_types=list(FeedType),
                 error=f"Invalid feed type: {feed_type}",
@@ -114,9 +129,10 @@ async def create_news_source(
         if existing.scalar_one_or_none():
             return request.app.state.templates.TemplateResponse(
                 "admin/news-sources/form.html",
-                base_context(
+                await base_context_with_permissions(
                     request,
-                    user=user,
+                    db,
+                    user,
                     source=None,
                     feed_types=list(FeedType),
                     error="A news source with this feed URL already exists.",
@@ -143,10 +159,17 @@ async def edit_news_source(
     source_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Display the edit news source form (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Display the edit news source form."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "news_sources",
+        need_edit=False,
+        next_path=f"/admin/news-sources/{source_id}",
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     result = await db.execute(
         select(NewsSource).where(NewsSource.id == source_id)  # type: ignore[arg-type]
@@ -157,9 +180,10 @@ async def edit_news_source(
 
     return request.app.state.templates.TemplateResponse(
         "admin/news-sources/form.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             source=source,
             feed_types=list(FeedType),
             error=None,
@@ -179,10 +203,17 @@ async def update_news_source(
     fetch_interval_minutes: int = Form(default=30),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Update a news source (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Update a news source."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "news_sources",
+        need_edit=True,
+        next_path=f"/admin/news-sources/{source_id}",
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     async with db.begin():
         result = await db.execute(
@@ -200,9 +231,10 @@ async def update_news_source(
         except ValueError:
             return request.app.state.templates.TemplateResponse(
                 "admin/news-sources/form.html",
-                base_context(
+                await base_context_with_permissions(
                     request,
-                    user=user,
+                    db,
+                    user,
                     source=source,
                     feed_types=list(FeedType),
                     error=f"Invalid feed type: {feed_type}",
@@ -219,9 +251,10 @@ async def update_news_source(
         if existing.scalar_one_or_none():
             return request.app.state.templates.TemplateResponse(
                 "admin/news-sources/form.html",
-                base_context(
+                await base_context_with_permissions(
                     request,
-                    user=user,
+                    db,
+                    user,
                     source=source,
                     feed_types=list(FeedType),
                     error="A news source with this feed URL already exists.",
@@ -250,10 +283,17 @@ async def delete_news_source(
     source_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Delete a news source (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Delete a news source."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "news_sources",
+        need_edit=True,
+        next_path=f"/admin/news-sources/{source_id}",
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     async with db.begin():
         result = await db.execute(
@@ -282,9 +322,10 @@ async def delete_news_source(
 
             return request.app.state.templates.TemplateResponse(
                 "admin/news-sources/index.html",
-                base_context(
+                await base_context_with_permissions(
                     request,
-                    user=user,
+                    db,
+                    user,
                     sources=sources,
                     error=f"Cannot delete '{source.name}': it has {items_count} associated "
                     "news item(s). Deactivate it instead or delete the news items first.",

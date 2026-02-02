@@ -14,7 +14,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
-from app.routes.admin.helpers import base_context, require_admin
+from app.routes.admin.helpers import (
+    base_context_with_permissions,
+    require_dataset_access,
+)
 from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
@@ -39,10 +42,13 @@ async def list_news_items(
     date_to: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """List all news items with pagination and filters (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """List all news items with pagination and filters."""
+    redirect, user = await require_dataset_access(
+        request, db, "news_ingestion", need_edit=False, next_path="/admin/news-items"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     # Build base query
     query = select(NewsItem).order_by(NewsItem.published_at.desc())  # type: ignore[attr-defined]
@@ -126,9 +132,10 @@ async def list_news_items(
 
     return request.app.state.templates.TemplateResponse(
         "admin/news-items/index.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             items=items,
             sources_map=sources_map,
             players_map=players_map,
@@ -155,10 +162,17 @@ async def edit_news_item(
     item_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Display the edit news item form (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Display the edit news item form."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "news_ingestion",
+        need_edit=False,
+        next_path=f"/admin/news-items/{item_id}",
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     result = await db.execute(
         select(NewsItem).where(NewsItem.id == item_id)  # type: ignore[arg-type]
@@ -183,9 +197,10 @@ async def edit_news_item(
 
     return request.app.state.templates.TemplateResponse(
         "admin/news-items/form.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             item=item,
             source=source,
             player=player,
@@ -205,10 +220,17 @@ async def update_news_item(
     summary: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Update a news item (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Update a news item."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "news_ingestion",
+        need_edit=True,
+        next_path=f"/admin/news-items/{item_id}",
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     async with db.begin():
         result = await db.execute(
@@ -239,9 +261,10 @@ async def update_news_item(
 
             return request.app.state.templates.TemplateResponse(
                 "admin/news-items/form.html",
-                base_context(
+                await base_context_with_permissions(
                     request,
-                    user=user,
+                    db,
+                    user,
                     item=item,
                     source=source,
                     player=player,
@@ -281,10 +304,17 @@ async def delete_news_item(
     item_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Delete a news item (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Delete a news item."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "news_ingestion",
+        need_edit=True,
+        next_path=f"/admin/news-items/{item_id}",
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     async with db.begin():
         result = await db.execute(

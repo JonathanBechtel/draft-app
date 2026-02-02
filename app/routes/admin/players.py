@@ -11,7 +11,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
-from app.routes.admin.helpers import base_context, require_admin
+from app.routes.admin.helpers import (
+    base_context_with_permissions,
+    require_dataset_access,
+)
 from app.schemas.auth import AuthUser
 from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
@@ -61,9 +64,10 @@ SUCCESS_MESSAGES = {
 }
 
 
-def _render_form_error(
+async def _render_form_error(
     request: Request,
-    user: AuthUser | None,
+    db: AsyncSession,
+    user: AuthUser,
     player: PlayerMaster | None,
     error: str,
     player_status: PlayerStatus | None = None,
@@ -72,9 +76,10 @@ def _render_form_error(
     template = "admin/players/detail.html" if player else "admin/players/form.html"
     return request.app.state.templates.TemplateResponse(
         template,
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             player=player,
             player_status=player_status,
             error=error,
@@ -83,9 +88,10 @@ def _render_form_error(
     )
 
 
-def _render_list_error(
+async def _render_list_error(
     request: Request,
-    user: AuthUser | None,
+    db: AsyncSession,
+    user: AuthUser,
     list_result: PlayerListResult,
     error: str,
 ) -> Response:
@@ -97,9 +103,10 @@ def _render_list_error(
     )
     return request.app.state.templates.TemplateResponse(
         "admin/players/index.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             players=list_result.players,
             total=list_result.total,
             limit=DEFAULT_LIMIT,
@@ -176,10 +183,13 @@ async def list_players(
     nba_status: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """List all players with pagination and filters (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """List all players with pagination and filters."""
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=False, next_path="/admin/players"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     # Convert draft_year from string to int (empty string becomes None)
     draft_year_int: int | None = None
@@ -199,9 +209,10 @@ async def list_players(
 
     return request.app.state.templates.TemplateResponse(
         "admin/players/index.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             players=result.players,
             total=result.total,
             limit=limit,
@@ -224,16 +235,20 @@ async def new_player(
     request: Request,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Display the create player form (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Display the create player form."""
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=True, next_path="/admin/players/new"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     return request.app.state.templates.TemplateResponse(
         "admin/players/form.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             player=None,
             error=None,
             active_nav="players",
@@ -266,10 +281,13 @@ async def create_player(
     reference_image_url: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Create a new player (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Create a new player."""
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=True, next_path="/admin/players"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     form_data = _build_form_data(
         display_name,
@@ -296,12 +314,12 @@ async def create_player(
 
     # Validate required fields
     if error := validate_player_form(form_data):
-        return _render_form_error(request, user, None, error)
+        return await _render_form_error(request, db, user, None, error)
 
     # Parse form data to typed values
     parsed = parse_player_form(form_data)
     if isinstance(parsed, str):
-        return _render_form_error(request, user, None, parsed)
+        return await _render_form_error(request, db, user, None, parsed)
 
     async with db.begin():
         await svc_create_player(db, parsed)
@@ -315,10 +333,13 @@ async def edit_player(
     season_id: int | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Display the edit player form (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Display the edit player form."""
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=False, next_path=f"/admin/players/{player_id}"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     player = await get_player_by_id(db, player_id)
     if player is None:
@@ -345,9 +366,10 @@ async def edit_player(
 
     return request.app.state.templates.TemplateResponse(
         "admin/players/detail.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             player=player,
             player_status=player_status,
             combine_context=combine_context,
@@ -392,10 +414,13 @@ async def update_player(
     weight_lb: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Update a player (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Update a player."""
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=True, next_path=f"/admin/players/{player_id}"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     async with db.begin():
         player = await get_player_by_id(db, player_id)
@@ -430,12 +455,16 @@ async def update_player(
 
         # Validate required fields
         if error := validate_player_form(form_data):
-            return _render_form_error(request, user, player, error, player_status)
+            return await _render_form_error(
+                request, db, user, player, error, player_status
+            )
 
         # Parse form data to typed values
         parsed = parse_player_form(form_data)
         if isinstance(parsed, str):
-            return _render_form_error(request, user, player, parsed, player_status)
+            return await _render_form_error(
+                request, db, user, player, parsed, player_status
+            )
 
         await svc_update_player(db, player, parsed)
 
@@ -458,10 +487,13 @@ async def delete_player(
     player_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Delete a player (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Delete a player."""
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=True, next_path=f"/admin/players/{player_id}"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     async with db.begin():
         player = await get_player_by_id(db, player_id)
@@ -475,8 +507,9 @@ async def delete_player(
             list_result = await svc_list_players(
                 db, None, None, None, None, DEFAULT_LIMIT, 0
             )
-            return _render_list_error(
+            return await _render_list_error(
                 request,
+                db,
                 user,
                 list_result,
                 f"Cannot delete '{player.display_name}': {error_reason}",
@@ -504,10 +537,13 @@ async def update_player_combine_anthro(
     hand_width_in: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Update anthropometrics data for a player (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Update anthropometrics data for a player."""
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=True, next_path=f"/admin/players/{player_id}"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     async with db.begin():
         player = await get_player_by_id(db, player_id)
@@ -551,10 +587,13 @@ async def update_player_combine_agility(
     bench_press_reps: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Update agility data for a player (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Update agility data for a player."""
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=True, next_path=f"/admin/players/{player_id}"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     async with db.begin():
         player = await get_player_by_id(db, player_id)
@@ -603,10 +642,13 @@ async def update_player_combine_shooting(
     free_throw_fga: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Update shooting data for a player (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Update shooting data for a player."""
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=True, next_path=f"/admin/players/{player_id}"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     async with db.begin():
         player = await get_player_by_id(db, player_id)

@@ -19,30 +19,48 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add invited_at column to auth_users
-    op.add_column(
-        "auth_users",
-        sa.Column("invited_at", sa.DateTime(), nullable=True),
-    )
+    conn = op.get_bind()
 
-    # Create auth_invite_tokens table
-    op.create_table(
-        "auth_invite_tokens",
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "user_id",
-            sa.Integer(),
-            sa.ForeignKey("auth_users.id"),
-            nullable=False,
-            index=True,
-        ),
-        sa.Column("token_hash", sa.String(), nullable=False, unique=True, index=True),
-        sa.Column(
-            "created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()
-        ),
-        sa.Column("expires_at", sa.DateTime(), nullable=False),
-        sa.Column("used_at", sa.DateTime(), nullable=True, index=True),
+    # Add invited_at column to auth_users (if not exists)
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'auth_users' AND column_name = 'invited_at'"
+        )
     )
+    if result.fetchone() is None:
+        op.add_column(
+            "auth_users",
+            sa.Column("invited_at", sa.DateTime(), nullable=True),
+        )
+
+    # Create auth_invite_tokens table (if not exists)
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_name = 'auth_invite_tokens'"
+        )
+    )
+    if result.fetchone() is None:
+        op.create_table(
+            "auth_invite_tokens",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column(
+                "user_id",
+                sa.Integer(),
+                sa.ForeignKey("auth_users.id"),
+                nullable=False,
+                index=True,
+            ),
+            sa.Column(
+                "token_hash", sa.String(), nullable=False, unique=True, index=True
+            ),
+            sa.Column(
+                "created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()
+            ),
+            sa.Column("expires_at", sa.DateTime(), nullable=False),
+            sa.Column("used_at", sa.DateTime(), nullable=True, index=True),
+        )
 
 
 def downgrade() -> None:

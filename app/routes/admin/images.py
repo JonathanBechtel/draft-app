@@ -13,7 +13,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
-from app.routes.admin.helpers import base_context, require_admin
+from app.routes.admin.helpers import (
+    base_context_with_permissions,
+    require_dataset_access,
+)
 from app.services.admin_image_service import (
     approve_preview as svc_approve_preview,
     create_preview as svc_create_preview,
@@ -58,10 +61,13 @@ async def list_images(
     offset: int = Query(default=0, ge=0),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """List all images with filters and pagination (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """List all images with filters and pagination."""
+    redirect, user = await require_dataset_access(
+        request, db, "images", need_edit=False, next_path="/admin/images"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     # Convert draft_year from string to int
     draft_year_int: int | None = None
@@ -89,9 +95,10 @@ async def list_images(
 
     return request.app.state.templates.TemplateResponse(
         "admin/images/index.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             images=result.images,
             total=result.total,
             styles=result.styles,
@@ -120,10 +127,13 @@ async def image_detail(
     error: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Display image detail page (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Display image detail page."""
+    redirect, user = await require_dataset_access(
+        request, db, "images", need_edit=False, next_path=f"/admin/images/{asset_id}"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     image = await get_image_by_id(db, asset_id)
     if image is None:
@@ -131,9 +141,10 @@ async def image_detail(
 
     return request.app.state.templates.TemplateResponse(
         "admin/images/detail.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             image=image,
             active_nav="images",
             success=SUCCESS_MESSAGES.get(success) if success else None,
@@ -148,10 +159,13 @@ async def delete_image(
     asset_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Delete an image and redirect back to list (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Delete an image and redirect back to list."""
+    redirect, user = await require_dataset_access(
+        request, db, "images", need_edit=True, next_path=f"/admin/images/{asset_id}"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     async with db.begin():
         deleted = await svc_delete_image(db, asset_id)
@@ -168,13 +182,16 @@ async def regenerate_image(
     asset_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Generate a preview for image regeneration (admin only).
+    """Generate a preview for image regeneration.
 
     Generates a new image and redirects to the preview page for approval.
     """
-    redirect, user = await require_admin(request, db)
+    redirect, user = await require_dataset_access(
+        request, db, "images", need_edit=True, next_path=f"/admin/images/{asset_id}"
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     # Get image and player info in one transaction block
     async with db.begin():
@@ -229,10 +246,17 @@ async def preview_image(
     preview_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Display preview page with accept/reject/retry buttons (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Display preview page with accept/reject/retry buttons."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "images",
+        need_edit=False,
+        next_path=f"/admin/images/preview/{preview_id}",
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     preview = await get_preview_by_id(db, preview_id)
     if preview is None:
@@ -240,9 +264,10 @@ async def preview_image(
 
     return request.app.state.templates.TemplateResponse(
         "admin/images/preview.html",
-        base_context(
+        await base_context_with_permissions(
             request,
-            user=user,
+            db,
+            user,
             preview=preview,
             active_nav="images",
         ),
@@ -255,10 +280,17 @@ async def accept_preview(
     preview_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Accept preview: upload to S3 and create/update asset (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Accept preview: upload to S3 and create/update asset."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "images",
+        need_edit=True,
+        next_path=f"/admin/images/preview/{preview_id}",
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     try:
         async with db.begin():
@@ -292,10 +324,17 @@ async def reject_preview(
     preview_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Reject preview: delete it and redirect back to asset detail (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Reject preview: delete it and redirect back to asset detail."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "images",
+        need_edit=True,
+        next_path=f"/admin/images/preview/{preview_id}",
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     # Get preview to find source_asset_id for redirect, then delete
     async with db.begin():
@@ -325,10 +364,17 @@ async def retry_preview(
     preview_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Retry preview: generate a new one and replace the current (admin only)."""
-    redirect, user = await require_admin(request, db)
+    """Retry preview: generate a new one and replace the current."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "images",
+        need_edit=True,
+        next_path=f"/admin/images/preview/{preview_id}",
+    )
     if redirect:
         return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
     # Get current preview and player info
     async with db.begin():
