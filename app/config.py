@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     )
     image_storage_local: bool = False  # True = local filesystem (dev only)
 
+    # Email settings (for user invitations and password resets)
+    resend_api_key: Optional[str] = None
+    email_from_address: str = "noreply@draftguru.dev"
+    app_base_url: str = "http://localhost:8000"
+
     @property
     def is_dev(self) -> bool:
         return self.env == "dev" or self.debug is True

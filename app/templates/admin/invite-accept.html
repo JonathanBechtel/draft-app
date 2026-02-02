@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Accept Invitation — DraftGuru Admin{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/admin.css') }}">
+<style>
+  .invite-accept {
+    min-height: 60vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+
+  .invite-accept__card {
+    background: var(--color-white);
+    border: 2px solid var(--color-slate-200);
+    border-radius: 8px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  }
+
+  .invite-accept__title {
+    font-family: var(--font-heading);
+    font-size: 1.5rem;
+    color: var(--color-slate-900);
+    margin: 0 0 0.5rem;
+    text-align: center;
+  }
+
+  .invite-accept__email {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--color-slate-600);
+    text-align: center;
+    margin: 0 0 1.5rem;
+  }
+
+  .invite-accept__error {
+    background: var(--color-accent-rose);
+    color: var(--color-white);
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+  }
+
+  .invite-accept__form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .invite-accept__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .invite-accept__label {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--color-slate-700);
+    font-weight: 600;
+  }
+
+  .invite-accept__input {
+    padding: 0.625rem 0.75rem;
+    border: 2px solid var(--color-slate-300);
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    background: var(--color-white);
+    transition: border-color 0.15s ease;
+  }
+
+  .invite-accept__input:focus {
+    outline: none;
+    border-color: var(--color-accent-fuchsia);
+  }
+
+  .invite-accept__help {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--color-slate-500);
+  }
+
+  .invite-accept__submit {
+    margin-top: 0.5rem;
+    padding: 0.75rem 1rem;
+    background: var(--color-accent-fuchsia);
+    color: var(--color-white);
+    border: none;
+    border-radius: 4px;
+    font-family: var(--font-heading);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+  }
+
+  .invite-accept__submit:hover {
+    background: #c026d3;
+  }
+
+  .invite-accept__submit:active {
+    transform: scale(0.98);
+  }
+
+  .invite-accept__invalid {
+    text-align: center;
+  }
+
+  .invite-accept__invalid-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="invite-accept">
+  <div class="invite-accept__card">
+    {% if invited_user %}
+    <h1 class="invite-accept__title">Set Your Password</h1>
+    <p class="invite-accept__email">{{ invited_user.email }}</p>
+
+    {% if error %}
+    <p class="invite-accept__error" role="alert">{{ error }}</p>
+    {% endif %}
+
+    <form class="invite-accept__form" method="post" action="/admin/invite/accept">
+      <input type="hidden" name="token" value="{{ token }}" />
+
+      <div class="invite-accept__field">
+        <label class="invite-accept__label" for="password">Password</label>
+        <input
+          class="invite-accept__input"
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="new-password"
+          required
+          minlength="8"
+        />
+        <span class="invite-accept__help">Must be at least 8 characters</span>
+      </div>
+
+      <div class="invite-accept__field">
+        <label class="invite-accept__label" for="confirm_password">Confirm Password</label>
+        <input
+          class="invite-accept__input"
+          id="confirm_password"
+          name="confirm_password"
+          type="password"
+          autocomplete="new-password"
+          required
+          minlength="8"
+        />
+      </div>
+
+      <button class="invite-accept__submit" type="submit">Activate Account</button>
+    </form>
+    {% else %}
+    <div class="invite-accept__invalid">
+      <div class="invite-accept__invalid-icon">&#9888;</div>
+      <h1 class="invite-accept__title">Invalid Invitation</h1>
+      {% if error %}
+      <p class="invite-accept__error" role="alert">{{ error }}</p>
+      {% endif %}
+      <p>
+        <a href="/admin/login" class="admin-btn admin-btn--primary">Go to Login</a>
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

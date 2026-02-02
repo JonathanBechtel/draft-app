@@ -1,0 +1,91 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Edit User" if edit_user else "Invite User" %}
+{% set active_nav = "users" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">{{ "Edit User" if edit_user else "Invite User" }}</h1>
+  <p class="admin-main__subtitle">
+    {% if edit_user %}
+    Modify settings for {{ edit_user.email }}
+    {% else %}
+    Send an invitation to a new admin panel user
+    {% endif %}
+  </p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <form
+    class="admin-form"
+    method="post"
+    action="{% if edit_user %}/admin/users/{{ edit_user.id }}{% else %}/admin/users{% endif %}"
+  >
+    {% if not edit_user %}
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="email">Email</label>
+      <input
+        class="admin-form__input"
+        id="email"
+        name="email"
+        type="email"
+        required
+      />
+      <span class="admin-form__help">The user will receive an invitation at this email address</span>
+    </div>
+    {% else %}
+    <div class="admin-form__field">
+      <label class="admin-form__label">Email</label>
+      <p class="admin-form__static">{{ edit_user.email }}</p>
+    </div>
+    {% endif %}
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="role">Role</label>
+      <select class="admin-form__select" id="role" name="role" required>
+        {% for r in roles %}
+        <option value="{{ r }}" {% if edit_user and edit_user.role == r %}selected{% endif %}>
+          {{ r | capitalize }}
+        </option>
+        {% endfor %}
+      </select>
+      <span class="admin-form__help">Admin users have full access. Workers have limited permissions.</span>
+    </div>
+
+    {% if edit_user %}
+    <div class="admin-form__checkbox-field">
+      <input
+        class="admin-form__checkbox"
+        id="is_active"
+        name="is_active"
+        type="checkbox"
+        value="1"
+        {% if edit_user.is_active %}checked{% endif %}
+      />
+      <label class="admin-form__checkbox-label" for="is_active">Active</label>
+    </div>
+
+    {% if edit_user.invited_at %}
+    <div class="admin-form__field">
+      <label class="admin-form__label">Invited</label>
+      <p class="admin-form__static">{{ edit_user.invited_at.strftime('%Y-%m-%d %H:%M') }}</p>
+    </div>
+    {% endif %}
+
+    {% if edit_user.last_login_at %}
+    <div class="admin-form__field">
+      <label class="admin-form__label">Last Login</label>
+      <p class="admin-form__static">{{ edit_user.last_login_at.strftime('%Y-%m-%d %H:%M') }}</p>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">
+        {{ "Save Changes" if edit_user else "Send Invitation" }}
+      </button>
+      <a href="/admin/users" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

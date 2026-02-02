@@ -44,7 +44,7 @@ class CombineCategoryData:
 
 @dataclass
 class PlayerCombineContext:
-    """Combine context for a player (anthropometrics only)."""
+    """Combine context for a player."""
 
     available_seasons: list[tuple[int, str]] = field(
         default_factory=list
@@ -52,6 +52,8 @@ class PlayerCombineContext:
     selected_season_id: int | None = None
     selected_season_code: str | None = None
     anthro: CombineCategoryData | None = None
+    agility: CombineCategoryData | None = None
+    shooting: CombineCategoryData | None = None
 
 
 # === Metric Display Configuration ===
@@ -151,6 +153,38 @@ SHOOTING_DRILLS = [
     ("midrange_side", "Midrange Side"),
     ("free_throw", "Free Throw"),
 ]
+
+
+def _format_agility_value(field_name: str, value: float | int | None) -> str | None:
+    """Format an agility value based on field type."""
+    if value is None:
+        return None
+
+    if field_name in ("standing_vertical_in", "max_vertical_in"):
+        # Format verticals as inches with decimal
+        if value == int(value):
+            return f"{int(value)} in"
+        return f"{value:.1f} in"
+    elif field_name == "bench_press_reps":
+        return f"{int(value)} reps"
+    elif field_name in (
+        "lane_agility_time_s",
+        "shuttle_run_s",
+        "three_quarter_sprint_s",
+    ):
+        return f"{value:.2f}s"
+    else:
+        return str(value)
+
+
+def _format_shooting_result(fgm: int | None, fga: int | None) -> str | None:
+    """Format shooting result as 'X/Y (Z%)'."""
+    if fgm is None or fga is None:
+        return None
+    if fga == 0:
+        return f"{fgm}/{fga}"
+    pct = (fgm / fga) * 100
+    return f"{fgm}/{fga} ({pct:.1f}%)"
 
 
 # === Helper Functions ===
@@ -296,8 +330,10 @@ async def get_player_combine_context(
                 context.selected_season_code = code
                 break
 
-    # Fetch anthropometric data
+    # Fetch all combine data
     context.anthro = await _get_anthro_data(db, player_id, season_id)
+    context.agility = await _get_agility_data(db, player_id, season_id)
+    context.shooting = await _get_shooting_data(db, player_id, season_id)
 
     return context
 
@@ -332,6 +368,94 @@ async def _get_anthro_data(
                 display_name=display_name,
                 unit=unit,
                 raw_value=raw_value,
+                formatted_value=formatted_value,
+            )
+        )
+
+    return data
+
+
+async def _get_agility_data(
+    db: AsyncSession,
+    player_id: int,
+    season_id: int,
+) -> CombineCategoryData:
+    """Fetch agility/athletic performance data for a player/season."""
+    result = await db.execute(
+        select(CombineAgility)
+        .where(CombineAgility.player_id == player_id)  # type: ignore[arg-type]
+        .where(CombineAgility.season_id == season_id)  # type: ignore[arg-type]
+    )
+    record = result.scalar_one_or_none()
+
+    data = CombineCategoryData(
+        category="agility",
+        has_raw_data=record is not None,
+        record_id=record.id if record else None,
+    )
+
+    # Build metric rows with formatted values
+    for field_name, display_name, unit in AGILITY_METRICS:
+        raw_value = getattr(record, field_name, None) if record else None
+        formatted_value = _format_agility_value(field_name, raw_value)
+
+        data.metrics.append(
+            CombineMetricRow(
+                metric_key=field_name,
+                display_name=display_name,
+                unit=unit,
+                raw_value=raw_value,
+                formatted_value=formatted_value,
+            )
+        )
+
+    return data
+
+
+@dataclass
+class ShootingDrillRow:
+    """Single shooting drill result."""
+
+    drill_key: str
+    display_name: str
+    fgm: int | None
+    fga: int | None
+    formatted_value: str | None  # e.g., "4/6 (66.7%)"
+
+
+async def _get_shooting_data(
+    db: AsyncSession,
+    player_id: int,
+    season_id: int,
+) -> CombineCategoryData:
+    """Fetch shooting data for a player/season."""
+    result = await db.execute(
+        select(CombineShooting)
+        .where(CombineShooting.player_id == player_id)  # type: ignore[arg-type]
+        .where(CombineShooting.season_id == season_id)  # type: ignore[arg-type]
+    )
+    record = result.scalar_one_or_none()
+
+    data = CombineCategoryData(
+        category="shooting",
+        has_raw_data=record is not None,
+        record_id=record.id if record else None,
+    )
+
+    # Build drill rows - we store these as metrics but with FGM/FGA info
+    for drill_key, display_name in SHOOTING_DRILLS:
+        fgm = getattr(record, f"{drill_key}_fgm", None) if record else None
+        fga = getattr(record, f"{drill_key}_fga", None) if record else None
+        formatted_value = _format_shooting_result(fgm, fga)
+
+        # Store FGM/FGA as raw_value is not ideal, but we need the formatted result
+        # We'll use a special encoding or just store None and rely on formatted_value
+        data.metrics.append(
+            CombineMetricRow(
+                metric_key=drill_key,
+                display_name=display_name,
+                unit=None,
+                raw_value=None,  # Shooting has FGM/FGA pairs, not single values
                 formatted_value=formatted_value,
             )
         )

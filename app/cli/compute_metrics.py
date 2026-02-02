@@ -639,7 +639,11 @@ class MetricRunner:
 
         if not self.dry_run:
             if self.replace_run:
-                await self._delete_existing_run(run_key_base)
+                run_keys_to_delete: List[str] = [
+                    self._run_key_for_source(source, run_key_base)
+                    for source in self.sources
+                ]
+                await self._delete_existing_runs(run_keys_to_delete)
 
             payload_buffer: List[PlayerMetricValue] = []
             for source in self.sources:
@@ -940,10 +944,13 @@ class MetricRunner:
         )
         return metrics_df, diagnostics
 
-    async def _delete_existing_run(self, run_key_base: str) -> None:
+    async def _delete_existing_runs(self, run_keys: Sequence[str]) -> None:
+        run_keys_unique = list(dict.fromkeys(run_keys))
+        if not run_keys_unique:
+            return
         result = await self.session.execute(
             select(MetricSnapshot).where(
-                MetricSnapshot.run_key == run_key_base,
+                MetricSnapshot.run_key.in_(run_keys_unique),
                 MetricSnapshot.cohort == self.cohort,  # type: ignore[arg-type]
             )
         )

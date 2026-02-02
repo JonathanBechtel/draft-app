@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.schemas.auth import (
+    AuthDatasetPermission,
     AuthEmailOutbox,
+    AuthInviteToken,
     AuthPasswordResetToken,
     AuthSession,
     AuthUser,
@@ -27,6 +29,7 @@ REMEMBER_ME_TTL = timedelta(days=30)
 IDLE_TIMEOUT = timedelta(days=1)
 LAST_SEEN_UPDATE_THROTTLE = timedelta(minutes=5)
 RESET_TOKEN_TTL = timedelta(hours=2)
+INVITE_TOKEN_TTL = timedelta(days=7)
 
 
 def normalize_email(email: str) -> str:
@@ -102,6 +105,15 @@ def generate_password_reset_token() -> str:
 
 def _hash_password_reset_token(raw_token: str) -> str:
     return _hash_token(f"reset:{raw_token}")
+
+
+def generate_invite_token() -> str:
+    """Generate a raw one-time invitation token."""
+    return secrets.token_urlsafe(32)
+
+
+def _hash_invite_token(raw_token: str) -> str:
+    return _hash_token(f"invite:{raw_token}")
 
 
 def sanitize_next_path(next_path: str | None) -> str:
@@ -415,3 +427,381 @@ async def change_password(
             )
 
         return True, None
+
+
+# ---------------------------------------------------------------------------
+# User Management
+# ---------------------------------------------------------------------------
+
+
+async def list_users(db: AsyncSession) -> list[AuthUser]:
+    """Return all users ordered by email."""
+    async with db.begin():
+        result = await db.execute(
+            select(AuthUser).order_by(AuthUser.email)  # type: ignore[arg-type]
+        )
+        return list(result.scalars().all())
+
+
+async def get_user_by_id(db: AsyncSession, *, user_id: int) -> AuthUser | None:
+    """Return a single user by ID."""
+    async with db.begin():
+        result = await db.execute(
+            select(AuthUser).where(AuthUser.id == user_id)  # type: ignore[arg-type]
+        )
+        return result.scalar_one_or_none()
+
+
+async def update_user(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    role: str | None = None,
+    is_active: bool | None = None,
+) -> AuthUser | None:
+    """Update user fields (role, is_active).
+
+    Args:
+        db: Database session.
+        user_id: The ID of the user to update.
+        role: New role (admin/worker) if provided.
+        is_active: New active status if provided.
+
+    Returns:
+        The updated user, or None if not found.
+    """
+    async with db.begin():
+        result = await db.execute(
+            select(AuthUser).where(AuthUser.id == user_id)  # type: ignore[arg-type]
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            return None
+
+        now = datetime.utcnow()
+        values: dict[str, str | bool | datetime] = {"updated_at": now}
+        if role is not None:
+            values["role"] = role
+        if is_active is not None:
+            values["is_active"] = is_active
+
+        await db.execute(
+            update(AuthUser)
+            .where(AuthUser.id == user_id)  # type: ignore[arg-type]
+            .values(**values)
+        )
+
+        # Refresh and return updated user
+        result = await db.execute(
+            select(AuthUser).where(AuthUser.id == user_id)  # type: ignore[arg-type]
+        )
+        return result.scalar_one_or_none()
+
+
+async def delete_user(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    current_user_id: int,
+) -> tuple[bool, str | None]:
+    """Delete a user (cannot delete self).
+
+    Args:
+        db: Database session.
+        user_id: The ID of the user to delete.
+        current_user_id: The ID of the current user (for self-deletion prevention).
+
+    Returns:
+        A tuple of (success, error_message).
+    """
+    if user_id == current_user_id:
+        return False, "You cannot delete your own account."
+
+    async with db.begin():
+        result = await db.execute(
+            select(AuthUser).where(AuthUser.id == user_id)  # type: ignore[arg-type]
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            return False, "User not found."
+
+        # Delete related records first
+        from sqlalchemy import delete
+
+        await db.execute(
+            delete(AuthSession).where(
+                AuthSession.user_id == user_id  # type: ignore[arg-type]
+            )
+        )
+        await db.execute(
+            delete(AuthPasswordResetToken).where(
+                AuthPasswordResetToken.user_id == user_id  # type: ignore[arg-type]
+            )
+        )
+        await db.execute(
+            delete(AuthInviteToken).where(
+                AuthInviteToken.user_id == user_id  # type: ignore[arg-type]
+            )
+        )
+        await db.execute(
+            delete(AuthDatasetPermission).where(
+                AuthDatasetPermission.user_id == user_id  # type: ignore[arg-type]
+            )
+        )
+
+        # Delete user
+        await db.execute(
+            delete(AuthUser).where(AuthUser.id == user_id)  # type: ignore[arg-type]
+        )
+
+        return True, None
+
+
+# ---------------------------------------------------------------------------
+# User Invitation
+# ---------------------------------------------------------------------------
+
+
+async def create_invited_user(
+    db: AsyncSession,
+    *,
+    email: str,
+    role: str,
+) -> tuple[AuthUser | None, str | None, str | None]:
+    """Create an inactive user with a pending invitation.
+
+    Args:
+        db: Database session.
+        email: Email address for the new user.
+        role: Role for the new user (admin/worker).
+
+    Returns:
+        A tuple of (user, raw_token, error_message).
+        If error_message is not None, user and raw_token will be None.
+    """
+    normalized_email = normalize_email(email)
+
+    async with db.begin():
+        # Check for existing user
+        existing_result = await db.execute(
+            select(AuthUser).where(
+                AuthUser.email == normalized_email  # type: ignore[arg-type]
+            )
+        )
+        if existing_result.scalar_one_or_none() is not None:
+            return None, None, "A user with this email already exists."
+
+        now = datetime.utcnow()
+
+        # Create user with placeholder password (cannot log in until invitation accepted)
+        user = AuthUser(
+            email=normalized_email,
+            role=role,
+            is_active=False,  # Inactive until invitation is accepted
+            password_hash="!invited",  # Placeholder, will never validate
+            created_at=now,
+            updated_at=now,
+            invited_at=now,
+        )
+        db.add(user)
+        await db.flush()  # Get the user ID
+
+        if user.id is None:
+            return None, None, "Failed to create user."
+
+        # Create invite token
+        raw_token = generate_invite_token()
+        token_hash = _hash_invite_token(raw_token)
+
+        invite_row = AuthInviteToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            created_at=now,
+            expires_at=now + INVITE_TOKEN_TTL,
+            used_at=None,
+        )
+        db.add(invite_row)
+
+        # Queue invitation email
+        outbox_row = AuthEmailOutbox(
+            to_email=user.email,
+            subject="You've been invited to DraftGuru Admin",
+            body=(
+                "You've been invited to join DraftGuru as an admin user.\n\n"
+                "Click the link below to set your password and activate your account:\n\n"
+                f"{settings.app_base_url}/admin/invite/accept?token={raw_token}\n\n"
+                "This link will expire in 7 days."
+            ),
+            created_at=now,
+            sent_at=None,
+            provider=None,
+        )
+        db.add(outbox_row)
+
+        return user, raw_token, None
+
+
+async def resend_invite(
+    db: AsyncSession,
+    *,
+    user_id: int,
+) -> tuple[str | None, str | None]:
+    """Invalidate old invite tokens and create a new one.
+
+    Args:
+        db: Database session.
+        user_id: The ID of the user to resend the invite to.
+
+    Returns:
+        A tuple of (raw_token, error_message).
+    """
+    async with db.begin():
+        result = await db.execute(
+            select(AuthUser).where(AuthUser.id == user_id)  # type: ignore[arg-type]
+        )
+        user = result.scalar_one_or_none()
+        if user is None:
+            return None, "User not found."
+
+        if user.is_active:
+            return None, "User has already accepted their invitation."
+
+        now = datetime.utcnow()
+
+        # Invalidate all existing invite tokens
+        await db.execute(
+            update(AuthInviteToken)
+            .where(
+                AuthInviteToken.user_id == user_id,  # type: ignore[arg-type]
+                AuthInviteToken.used_at.is_(None),  # type: ignore[union-attr]
+            )
+            .values(used_at=now)
+        )
+
+        # Create new invite token
+        raw_token = generate_invite_token()
+        token_hash = _hash_invite_token(raw_token)
+
+        invite_row = AuthInviteToken(
+            user_id=user_id,
+            token_hash=token_hash,
+            created_at=now,
+            expires_at=now + INVITE_TOKEN_TTL,
+            used_at=None,
+        )
+        db.add(invite_row)
+
+        # Update invited_at timestamp
+        await db.execute(
+            update(AuthUser)
+            .where(AuthUser.id == user_id)  # type: ignore[arg-type]
+            .values(invited_at=now, updated_at=now)
+        )
+
+        # Queue new invitation email
+        outbox_row = AuthEmailOutbox(
+            to_email=user.email,
+            subject="Your DraftGuru Admin invitation has been resent",
+            body=(
+                "A new invitation link has been generated for your DraftGuru account.\n\n"
+                "Click the link below to set your password and activate your account:\n\n"
+                f"{settings.app_base_url}/admin/invite/accept?token={raw_token}\n\n"
+                "This link will expire in 7 days."
+            ),
+            created_at=now,
+            sent_at=None,
+            provider=None,
+        )
+        db.add(outbox_row)
+
+        return raw_token, None
+
+
+async def confirm_invitation(
+    db: AsyncSession,
+    *,
+    raw_token: str,
+    password: str,
+) -> tuple[bool, str | None]:
+    """Consume an invitation token and set the user's password.
+
+    Args:
+        db: Database session.
+        raw_token: The raw invitation token from the URL.
+        password: The new password to set.
+
+    Returns:
+        A tuple of (success, error_message).
+    """
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters."
+
+    now = datetime.utcnow()
+    token_hash = _hash_invite_token(raw_token)
+
+    async with db.begin():
+        token_result = await db.execute(
+            select(AuthInviteToken).where(
+                AuthInviteToken.token_hash == token_hash,  # type: ignore[arg-type]
+                AuthInviteToken.used_at.is_(None),  # type: ignore[union-attr]
+                AuthInviteToken.expires_at > now,  # type: ignore[operator,arg-type]
+            )
+        )
+        token_row = token_result.scalar_one_or_none()
+        if token_row is None:
+            return (
+                False,
+                "Invitation link is invalid or expired. Please request a new one.",
+            )
+
+        user_id = int(token_row.user_id)
+        password_hash = hash_pbkdf2_sha256(password)
+
+        # Activate user and set password
+        await db.execute(
+            update(AuthUser)
+            .where(AuthUser.id == user_id)  # type: ignore[arg-type]
+            .values(
+                password_hash=password_hash,
+                password_changed_at=now,
+                is_active=True,
+                updated_at=now,
+            )
+        )
+
+        # Mark token as used
+        await db.execute(
+            update(AuthInviteToken)
+            .where(AuthInviteToken.id == token_row.id)  # type: ignore[arg-type]
+            .values(used_at=now)
+        )
+
+        return True, None
+
+
+async def get_invite_token_user(
+    db: AsyncSession,
+    *,
+    raw_token: str,
+) -> AuthUser | None:
+    """Return the user associated with a valid invite token.
+
+    Used to display the user's email on the invitation acceptance page.
+    """
+    now = datetime.utcnow()
+    token_hash = _hash_invite_token(raw_token)
+
+    async with db.begin():
+        result = await db.execute(
+            select(AuthInviteToken, AuthUser)
+            .join(AuthUser, AuthUser.id == AuthInviteToken.user_id)  # type: ignore[arg-type]
+            .where(
+                AuthInviteToken.token_hash == token_hash,  # type: ignore[arg-type]
+                AuthInviteToken.used_at.is_(None),  # type: ignore[union-attr]
+                AuthInviteToken.expires_at > now,  # type: ignore[operator,arg-type]
+            )
+        )
+        row = result.one_or_none()
+        if row is None:
+            return None
+        return row[1]

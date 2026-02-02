@@ -19,6 +19,7 @@ from app.routes.admin.images import router as images_router
 from app.routes.admin.news_items import router as news_items_router
 from app.routes.admin.news_sources import router as news_sources_router
 from app.routes.admin.players import router as players_router
+from app.routes.admin.users import router as users_router
 from app.utils.db_async import get_session
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -47,3 +48,4 @@ router.include_router(news_sources_router)
 router.include_router(news_items_router)
 router.include_router(players_router)
 router.include_router(images_router)
+router.include_router(users_router)
