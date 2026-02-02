@@ -3,6 +3,37 @@
 {% set page_title = "Edit Player" %}
 {% set active_nav = "players" %}
 
+{% block admin_js %}
+<script>
+function toggleCombineSection(headerEl) {
+  const category = headerEl.parentElement;
+  const content = category.querySelector('.admin-combine-category__content');
+  const toggle = category.querySelector('.admin-combine-category__toggle');
+
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    toggle.innerHTML = '&#9660;';
+  } else {
+    content.style.display = 'none';
+    toggle.innerHTML = '&#9654;';
+  }
+}
+
+function toggleEditMode(categoryKey) {
+  const viewEl = document.getElementById(categoryKey + '-view');
+  const editEl = document.getElementById(categoryKey + '-edit');
+
+  if (editEl.style.display === 'none') {
+    viewEl.style.display = 'none';
+    editEl.style.display = 'block';
+  } else {
+    viewEl.style.display = 'block';
+    editEl.style.display = 'none';
+  }
+}
+</script>
+{% endblock %}
+
 {% block admin_content %}
 <header class="admin-main__header">
   <h1 class="admin-main__title">Edit Player</h1>
@@ -394,6 +425,81 @@
         <a href="/admin/players" class="admin-btn admin-btn--secondary">Cancel</a>
       </div>
     </form>
+
+    <!-- Anthropometrics Section (Most Recent Season) -->
+    {% if combine_context and combine_context.anthro %}
+    <div class="admin-combine-section">
+      <div class="admin-combine-category" data-category="anthro">
+        <div class="admin-combine-category__header" onclick="toggleCombineSection(this)">
+          <span class="admin-combine-category__toggle">{% if combine_context.anthro.has_raw_data %}&#9660;{% else %}&#9654;{% endif %}</span>
+          <h3 class="admin-combine-category__title">Anthropometrics</h3>
+          {% if combine_context.selected_season_code %}
+          <span class="admin-badge admin-badge--tag">{{ combine_context.selected_season_code }}</span>
+          {% endif %}
+          {% if combine_context.anthro.has_raw_data %}
+          <span class="admin-badge admin-badge--active">Data</span>
+          {% else %}
+          <span class="admin-badge admin-badge--inactive">No Data</span>
+          {% endif %}
+          <button type="button" class="admin-btn admin-btn--secondary admin-btn--small admin-combine-category__edit-btn" onclick="event.stopPropagation(); toggleEditMode('anthro')">Edit</button>
+        </div>
+
+        <div class="admin-combine-category__content" {% if not combine_context.anthro.has_raw_data %}style="display: none;"{% endif %}>
+          <!-- View Mode -->
+          <div class="admin-combine-view" id="anthro-view">
+            {% if combine_context.anthro.metrics %}
+            <table class="admin-table admin-combine-table">
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for metric in combine_context.anthro.metrics %}
+                <tr>
+                  <td>{{ metric.display_name }}</td>
+                  <td>{{ metric.formatted_value if metric.formatted_value else '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <p class="admin-text--muted">No anthropometric data available.</p>
+            {% endif %}
+          </div>
+
+          <!-- Edit Mode -->
+          <div class="admin-combine-edit" id="anthro-edit" style="display: none;">
+            <form method="post" action="/admin/players/{{ player.id }}/combine/anthro">
+              <input type="hidden" name="season_code" value="{{ combine_context.selected_season_code }}">
+
+              <div class="admin-form__row">
+                {% for metric in combine_context.anthro.metrics %}
+                <div class="admin-form__field">
+                  <label class="admin-form__label" for="anthro_{{ metric.metric_key }}">{{ metric.display_name }} ({{ metric.unit }})</label>
+                  <input
+                    class="admin-form__input"
+                    id="anthro_{{ metric.metric_key }}"
+                    name="{{ metric.metric_key }}"
+                    type="number"
+                    step="0.01"
+                    value="{{ metric.raw_value if metric.raw_value is not none else '' }}"
+                  />
+                </div>
+                {% endfor %}
+              </div>
+
+              <div class="admin-form__actions" style="margin-top: 1rem;">
+                <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Save</button>
+                <button type="button" class="admin-btn admin-btn--secondary admin-btn--small" onclick="toggleEditMode('anthro')">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
   </div>
 
   <!-- Right Column: Player Image and Status (S3-first) -->

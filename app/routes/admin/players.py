@@ -20,6 +20,16 @@ from app.utils.images import (
     get_player_image_url,
     get_s3_image_base_url,
 )
+from app.services.admin_combine_service import (
+    CombineAgilityFormData,
+    CombineAnthroFormData,
+    CombineShootingFormData,
+    get_or_create_season,
+    get_player_combine_context,
+    update_combine_agility,
+    update_combine_anthro,
+    update_combine_shooting,
+)
 from app.services.admin_player_service import (
     PlayerFormData,
     PlayerListResult,
@@ -302,6 +312,7 @@ async def create_player(
 async def edit_player(
     request: Request,
     player_id: int,
+    season_id: int | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """Display the edit player form (admin only)."""
@@ -315,6 +326,9 @@ async def edit_player(
 
     # Fetch player status data
     player_status = await get_player_status_by_player_id(db, player_id)
+
+    # Fetch combine data context
+    combine_context = await get_player_combine_context(db, player_id, season_id)
 
     # Build S3-first image URL (source of truth for display)
     expected_image_url = None
@@ -336,6 +350,7 @@ async def edit_player(
             user=user,
             player=player,
             player_status=player_status,
+            combine_context=combine_context,
             expected_image_url=expected_image_url,
             placeholder_url=placeholder_url,
             error=None,
@@ -469,3 +484,159 @@ async def delete_player(
 
         await svc_delete_player(db, player)
     return RedirectResponse(url="/admin/players?success=deleted", status_code=303)
+
+
+# === Combine Data Endpoints ===
+
+
+@router.post("/{player_id}/combine/anthro", response_class=HTMLResponse)
+async def update_player_combine_anthro(
+    request: Request,
+    player_id: int,
+    season_code: str = Form(...),
+    wingspan_in: str | None = Form(default=None),
+    standing_reach_in: str | None = Form(default=None),
+    height_w_shoes_in: str | None = Form(default=None),
+    height_wo_shoes_in: str | None = Form(default=None),
+    weight_lb: str | None = Form(default=None),
+    body_fat_pct: str | None = Form(default=None),
+    hand_length_in: str | None = Form(default=None),
+    hand_width_in: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Update anthropometrics data for a player (admin only)."""
+    redirect, user = await require_admin(request, db)
+    if redirect:
+        return redirect
+
+    async with db.begin():
+        player = await get_player_by_id(db, player_id)
+        if player is None:
+            raise HTTPException(status_code=404, detail="Player not found")
+
+        # Get or create season
+        season = await get_or_create_season(db, season_code)
+        assert season.id is not None  # Guaranteed after flush
+
+        form_data = CombineAnthroFormData(
+            wingspan_in=wingspan_in,
+            standing_reach_in=standing_reach_in,
+            height_w_shoes_in=height_w_shoes_in,
+            height_wo_shoes_in=height_wo_shoes_in,
+            weight_lb=weight_lb,
+            body_fat_pct=body_fat_pct,
+            hand_length_in=hand_length_in,
+            hand_width_in=hand_width_in,
+        )
+        await update_combine_anthro(db, player_id, season.id, form_data)
+
+        season_id_for_redirect = season.id
+
+    return RedirectResponse(
+        url=f"/admin/players/{player_id}?season_id={season_id_for_redirect}",
+        status_code=303,
+    )
+
+
+@router.post("/{player_id}/combine/agility", response_class=HTMLResponse)
+async def update_player_combine_agility(
+    request: Request,
+    player_id: int,
+    season_code: str = Form(...),
+    lane_agility_time_s: str | None = Form(default=None),
+    shuttle_run_s: str | None = Form(default=None),
+    three_quarter_sprint_s: str | None = Form(default=None),
+    standing_vertical_in: str | None = Form(default=None),
+    max_vertical_in: str | None = Form(default=None),
+    bench_press_reps: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Update agility data for a player (admin only)."""
+    redirect, user = await require_admin(request, db)
+    if redirect:
+        return redirect
+
+    async with db.begin():
+        player = await get_player_by_id(db, player_id)
+        if player is None:
+            raise HTTPException(status_code=404, detail="Player not found")
+
+        season = await get_or_create_season(db, season_code)
+        assert season.id is not None  # Guaranteed after flush
+
+        form_data = CombineAgilityFormData(
+            lane_agility_time_s=lane_agility_time_s,
+            shuttle_run_s=shuttle_run_s,
+            three_quarter_sprint_s=three_quarter_sprint_s,
+            standing_vertical_in=standing_vertical_in,
+            max_vertical_in=max_vertical_in,
+            bench_press_reps=bench_press_reps,
+        )
+        await update_combine_agility(db, player_id, season.id, form_data)
+
+        season_id_for_redirect = season.id
+
+    return RedirectResponse(
+        url=f"/admin/players/{player_id}?season_id={season_id_for_redirect}",
+        status_code=303,
+    )
+
+
+@router.post("/{player_id}/combine/shooting", response_class=HTMLResponse)
+async def update_player_combine_shooting(
+    request: Request,
+    player_id: int,
+    season_code: str = Form(...),
+    off_dribble_fgm: str | None = Form(default=None),
+    off_dribble_fga: str | None = Form(default=None),
+    spot_up_fgm: str | None = Form(default=None),
+    spot_up_fga: str | None = Form(default=None),
+    three_point_star_fgm: str | None = Form(default=None),
+    three_point_star_fga: str | None = Form(default=None),
+    midrange_star_fgm: str | None = Form(default=None),
+    midrange_star_fga: str | None = Form(default=None),
+    three_point_side_fgm: str | None = Form(default=None),
+    three_point_side_fga: str | None = Form(default=None),
+    midrange_side_fgm: str | None = Form(default=None),
+    midrange_side_fga: str | None = Form(default=None),
+    free_throw_fgm: str | None = Form(default=None),
+    free_throw_fga: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Update shooting data for a player (admin only)."""
+    redirect, user = await require_admin(request, db)
+    if redirect:
+        return redirect
+
+    async with db.begin():
+        player = await get_player_by_id(db, player_id)
+        if player is None:
+            raise HTTPException(status_code=404, detail="Player not found")
+
+        season = await get_or_create_season(db, season_code)
+        assert season.id is not None  # Guaranteed after flush
+
+        form_data = CombineShootingFormData(
+            off_dribble_fgm=off_dribble_fgm,
+            off_dribble_fga=off_dribble_fga,
+            spot_up_fgm=spot_up_fgm,
+            spot_up_fga=spot_up_fga,
+            three_point_star_fgm=three_point_star_fgm,
+            three_point_star_fga=three_point_star_fga,
+            midrange_star_fgm=midrange_star_fgm,
+            midrange_star_fga=midrange_star_fga,
+            three_point_side_fgm=three_point_side_fgm,
+            three_point_side_fga=three_point_side_fga,
+            midrange_side_fgm=midrange_side_fgm,
+            midrange_side_fga=midrange_side_fga,
+            free_throw_fgm=free_throw_fgm,
+            free_throw_fga=free_throw_fga,
+        )
+        await update_combine_shooting(db, player_id, season.id, form_data)
+
+        season_id_for_redirect = season.id
+
+    return RedirectResponse(
+        url=f"/admin/players/{player_id}?season_id={season_id_for_redirect}",
+        status_code=303,
+    )
