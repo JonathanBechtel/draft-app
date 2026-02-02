@@ -578,7 +578,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
             user_prompt = (
                 f"DG_REQUEST_ID: {dg_request_id}\n"
                 f"{user_prompt}\n\n"
-                "Return TEXT as strict JSON exactly matching this schema:\n"
+                "Return TEXT as strict JSON with exactly this shape:\n"
                 '{"dg_request_id": "<the DG_REQUEST_ID value verbatim>"}'
             )
 
@@ -596,12 +596,6 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 image_config=types.ImageConfig(image_size=image_size),
                 system_instruction=[types.Part.from_text(text=system_prompt)],
                 response_mime_type="application/json",
-                response_json_schema={
-                    "type": "object",
-                    "properties": {"dg_request_id": {"type": "string"}},
-                    "required": ["dg_request_id"],
-                    "additionalProperties": False,
-                },
             ),
         )
 
