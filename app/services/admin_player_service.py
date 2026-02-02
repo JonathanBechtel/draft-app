@@ -7,7 +7,7 @@ and database operations. Routes should be thin wrappers around these functions.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -415,7 +415,7 @@ async def update_player(
     player.nba_debut_date = data.nba_debut_date
     player.nba_debut_season = data.nba_debut_season
     player.reference_image_url = data.reference_image_url
-    player.updated_at = datetime.utcnow()
+    player.updated_at = datetime.now(UTC).replace(tzinfo=None)
     await db.flush()
     return player
 
@@ -577,6 +577,6 @@ async def update_player_status(
 
     # Set source to 'manual' for admin edits
     status.source = "manual"
-    status.updated_at = datetime.utcnow()
+    status.updated_at = datetime.now(UTC).replace(tzinfo=None)
     await db.flush()
     return status

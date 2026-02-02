@@ -7,7 +7,7 @@ import hashlib
 import hmac
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -159,7 +159,7 @@ async def issue_session(
     user_agent: str | None,
 ) -> tuple[str, AuthSession]:
     """Create a new session row and return (raw_token, session)."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     ttl = REMEMBER_ME_TTL if remember_me else SESSION_TTL
     raw_token = generate_session_token()
     token_hash = _hash_token(raw_token)
@@ -189,7 +189,7 @@ async def issue_session(
 
 async def revoke_session(db: AsyncSession, *, raw_token: str) -> None:
     """Revoke a session token (idempotent)."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     token_hash = _hash_token(raw_token)
     async with db.begin():
         await db.execute(
@@ -208,7 +208,7 @@ async def get_user_for_session_token(
     raw_token: str,
 ) -> AuthUser | None:
     """Return the active user for a valid session token."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     token_hash = _hash_token(raw_token)
     async with db.begin():
         result = await db.execute(
@@ -258,7 +258,7 @@ async def enqueue_password_reset(db: AsyncSession, *, email: str) -> None:
         if user.id is None:
             return
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         raw_token = generate_password_reset_token()
         token_hash = _hash_password_reset_token(raw_token)
 
@@ -295,7 +295,7 @@ async def confirm_password_reset(
 
     Returns True if the token was valid (unused + unexpired) and is now consumed.
     """
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     token_hash = _hash_password_reset_token(raw_token)
     async with db.begin():
         token_result = await db.execute(
@@ -391,7 +391,7 @@ async def change_password(
         if new_password == current_password:
             return False, "New password must be different from current password."
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         password_hash = hash_pbkdf2_sha256(new_password)
 
         # Update password
@@ -478,7 +478,7 @@ async def update_user(
         if user is None:
             return None
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         values: dict[str, str | bool | datetime] = {"updated_at": now}
         if role is not None:
             values["role"] = role
@@ -591,7 +591,7 @@ async def create_invited_user(
         if existing_result.scalar_one_or_none() is not None:
             return None, None, "A user with this email already exists."
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         # Create user with placeholder password (cannot log in until invitation accepted)
         user = AuthUser(
@@ -666,7 +666,7 @@ async def resend_invite(
         if user.is_active:
             return None, "User has already accepted their invitation."
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
 
         # Invalidate all existing invite tokens
         await db.execute(
@@ -736,7 +736,7 @@ async def confirm_invitation(
     if len(password) < 8:
         return False, "Password must be at least 8 characters."
 
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     token_hash = _hash_invite_token(raw_token)
 
     async with db.begin():
@@ -788,7 +788,7 @@ async def get_invite_token_user(
 
     Used to display the user's email on the invitation acceptance page.
     """
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     token_hash = _hash_invite_token(raw_token)
 
     async with db.begin():

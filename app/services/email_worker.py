@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
 from sqlalchemy import select, update
@@ -82,7 +82,7 @@ async def send_pending_emails(
         Number of emails successfully sent.
     """
     sent_count = 0
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
 
     async with SessionLocal() as db:
         async with db.begin():

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -272,7 +272,7 @@ async def update_news_source(
             "False",
         }
         source.fetch_interval_minutes = fetch_interval_minutes
-        source.updated_at = datetime.utcnow()
+        source.updated_at = datetime.now(UTC).replace(tzinfo=None)
 
     return RedirectResponse(url="/admin/news-sources?success=updated", status_code=303)
 

@@ -6,7 +6,7 @@ Provides endpoints for:
 - Triggering feed ingestion (admin)
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -123,8 +123,8 @@ async def create_source(
             feed_url=source_data.feed_url,
             fetch_interval_minutes=source_data.fetch_interval_minutes,
             is_active=True,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
+            updated_at=datetime.now(UTC).replace(tzinfo=None),
         )
         db.add(source)
         await db.flush()

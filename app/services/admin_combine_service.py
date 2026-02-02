@@ -6,7 +6,7 @@ Provides functions to fetch and update combine data (anthro, agility, shooting).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -553,7 +553,7 @@ async def update_combine_anthro(
     record.body_fat_pct = _parse_float_field(data.body_fat_pct)
     record.hand_length_in = _parse_float_field(data.hand_length_in)
     record.hand_width_in = _parse_float_field(data.hand_width_in)
-    record.ingested_at = datetime.utcnow()
+    record.ingested_at = datetime.now(UTC).replace(tzinfo=None)
 
     await db.flush()
     return record
@@ -593,7 +593,7 @@ async def update_combine_agility(
     record.standing_vertical_in = _parse_float_field(data.standing_vertical_in)
     record.max_vertical_in = _parse_float_field(data.max_vertical_in)
     record.bench_press_reps = _parse_int_field(data.bench_press_reps)
-    record.ingested_at = datetime.utcnow()
+    record.ingested_at = datetime.now(UTC).replace(tzinfo=None)
 
     await db.flush()
     return record
@@ -641,7 +641,7 @@ async def update_combine_shooting(
     record.midrange_side_fga = _parse_int_field(data.midrange_side_fga)
     record.free_throw_fgm = _parse_int_field(data.free_throw_fgm)
     record.free_throw_fga = _parse_int_field(data.free_throw_fga)
-    record.ingested_at = datetime.utcnow()
+    record.ingested_at = datetime.now(UTC).replace(tzinfo=None)
 
     await db.flush()
     return record

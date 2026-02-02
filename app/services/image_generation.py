@@ -12,7 +12,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from google import genai
@@ -464,12 +464,12 @@ Be specific and objective. This will help an AI illustrator capture their likene
                     image_data,
                     content_type="image/png",
                 )
-                cache_bust = int(datetime.utcnow().timestamp())
+                cache_bust = int(datetime.now(UTC).replace(tzinfo=None).timestamp())
                 public_url_for_audit = f"{base_public_url}?v={cache_bust}"
             except Exception as exc:  # noqa: BLE001
                 error_message = str(exc)
 
-        generated_at = datetime.utcnow()
+        generated_at = datetime.now(UTC).replace(tzinfo=None)
         generation_time_sec = time.time() - start_time
 
         if error_message:
@@ -802,7 +802,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         if not inlined_responses:
             async with db.begin():
                 job_record.state = state
-                job_record.completed_at = datetime.utcnow()
+                job_record.completed_at = datetime.now(UTC).replace(tzinfo=None)
                 job_record.success_count = 0
                 job_record.failure_count = job_record.total_requests
                 job_record.error_message = (
@@ -823,7 +823,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         ):
             async with db.begin():
                 job_record.state = state
-                job_record.completed_at = datetime.utcnow()
+                job_record.completed_at = datetime.now(UTC).replace(tzinfo=None)
                 job_record.success_count = 0
                 job_record.failure_count = job_record.total_requests
                 job_record.error_message = (
@@ -845,113 +845,63 @@ Be specific and objective. This will help an AI illustrator capture their likene
         if len(expected_request_ids) != len(request_records):
             async with db.begin():
                 job_record.state = state
-                job_record.completed_at = datetime.utcnow()
+                job_record.completed_at = datetime.now(UTC).replace(tzinfo=None)
                 job_record.success_count = 0
                 job_record.failure_count = job_record.total_requests
                 job_record.error_message = "Batch job correlation IDs are invalid/duplicated; refusing to ingest."
             raise RuntimeError(job_record.error_message)
 
         if len(inlined_responses) != len(request_records):
-            async with db.begin():
-                job_record.state = state
-                job_record.completed_at = datetime.utcnow()
-                job_record.success_count = 0
-                job_record.failure_count = job_record.total_requests
-                job_record.error_message = (
-                    f"Batch response count mismatch: {len(inlined_responses)} responses "
-                    f"for {len(request_records)} requests; refusing to ingest."
-                )
-            raise RuntimeError(job_record.error_message)
+            logger.warning(
+                "Batch response count mismatch: %s responses for %s requests; "
+                "proceeding with best-effort correlation-based ingest.",
+                len(inlined_responses),
+                len(request_records),
+            )
 
+        first_error_message: str | None = None
         if any(resp.error is not None for resp in inlined_responses):
-            async with db.begin():
-                job_record.state = state
-                job_record.completed_at = datetime.utcnow()
-                job_record.success_count = 0
-                job_record.failure_count = job_record.total_requests
-                job_record.error_message = (
-                    "Batch contains per-request errors; refusing to ingest inlined responses "
-                    "safely without request correlation from the API."
-                )
-            raise RuntimeError(job_record.error_message)
+            first_error = next(
+                (resp.error for resp in inlined_responses if resp.error is not None),
+                None,
+            )
+            if first_error is not None:
+                first_error_message = first_error.message
 
         parsed: list[tuple[str, types.InlinedResponse]] = []
         seen_request_ids: set[str] = set()
         for resp in inlined_responses:
+            if resp.error is not None:
+                # We cannot safely assign an errored response to a specific request unless
+                # the API provides correlation metadata; skip and count it as a failure.
+                continue
             if resp.response is None:
-                async with db.begin():
-                    job_record.state = state
-                    job_record.completed_at = datetime.utcnow()
-                    job_record.success_count = 0
-                    job_record.failure_count = job_record.total_requests
-                    job_record.error_message = (
-                        "Batch returned an inlined response with no GenerateContentResponse; "
-                        "refusing to ingest."
-                    )
-                raise RuntimeError(job_record.error_message)
+                continue
 
             text = resp.response.text
             if not text:
-                async with db.begin():
-                    job_record.state = state
-                    job_record.completed_at = datetime.utcnow()
-                    job_record.success_count = 0
-                    job_record.failure_count = job_record.total_requests
-                    job_record.error_message = "Batch returned an image without JSON text correlation; refusing to ingest."
-                raise RuntimeError(job_record.error_message)
+                continue
 
             try:
                 payload = json.loads(text)
             except Exception as exc:  # noqa: BLE001
-                async with db.begin():
-                    job_record.state = state
-                    job_record.completed_at = datetime.utcnow()
-                    job_record.success_count = 0
-                    job_record.failure_count = job_record.total_requests
-                    job_record.error_message = (
-                        f"Failed to parse batch JSON correlation payload: {exc}"
-                    )
-                raise RuntimeError(job_record.error_message) from exc
+                logger.warning(
+                    "Failed to parse batch JSON correlation payload: %s", exc
+                )
+                continue
 
             dg_request_id = payload.get("dg_request_id")
             if (
                 not isinstance(dg_request_id, str)
                 or dg_request_id not in request_id_to_player_id
             ):
-                async with db.begin():
-                    job_record.state = state
-                    job_record.completed_at = datetime.utcnow()
-                    job_record.success_count = 0
-                    job_record.failure_count = job_record.total_requests
-                    job_record.error_message = (
-                        "Batch returned an unknown correlation id; refusing to ingest."
-                    )
-                raise RuntimeError(job_record.error_message)
+                continue
 
             if dg_request_id in seen_request_ids:
-                async with db.begin():
-                    job_record.state = state
-                    job_record.completed_at = datetime.utcnow()
-                    job_record.success_count = 0
-                    job_record.failure_count = job_record.total_requests
-                    job_record.error_message = (
-                        "Batch returned duplicate correlation ids; refusing to ingest."
-                    )
-                raise RuntimeError(job_record.error_message)
+                continue
 
             seen_request_ids.add(dg_request_id)
             parsed.append((dg_request_id, resp))
-
-        if seen_request_ids != expected_request_ids:
-            async with db.begin():
-                job_record.state = state
-                job_record.completed_at = datetime.utcnow()
-                job_record.success_count = 0
-                job_record.failure_count = job_record.total_requests
-                job_record.error_message = (
-                    "Batch correlation id set mismatch; refusing to ingest."
-                )
-            raise RuntimeError(job_record.error_message)
 
         for dg_request_id, resp in parsed:
             player_id = request_id_to_player_id[dg_request_id]
@@ -973,11 +923,28 @@ Be specific and objective. This will help an AI illustrator capture their likene
             else:
                 success_count += 1
 
+        # Best-effort accounting: treat any request without a successfully ingested asset
+        # as failed (includes per-request API errors, parse failures, and missing responses).
+        total_requests = int(job_record.total_requests)
+        failure_count = max(0, total_requests - success_count)
+
         async with db.begin():
             job_record.state = state
-            job_record.completed_at = datetime.utcnow()
+            job_record.completed_at = datetime.now(UTC).replace(tzinfo=None)
             job_record.success_count = success_count
             job_record.failure_count = failure_count
+            if failure_count > 0:
+                suffix = (
+                    f" First error: {first_error_message}"
+                    if first_error_message
+                    else ""
+                )
+                job_record.error_message = (
+                    f"Batch completed with partial failures. "
+                    f"Success={success_count}, Failed={failure_count}." + suffix
+                )
+            else:
+                job_record.error_message = None
 
         logger.info(
             f"Batch job complete: {success_count} succeeded, {failure_count} failed"
@@ -1058,7 +1025,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
                         "dg_request_id": dg_request_id or "",
                     },
                 )
-                cache_bust = int(datetime.utcnow().timestamp())
+                cache_bust = int(datetime.now(UTC).replace(tzinfo=None).timestamp())
                 public_url = f"{base_public_url}?v={cache_bust}"
                 logger.info(
                     f"Uploaded image for {player.display_name}: {len(image_data)} bytes"
@@ -1077,7 +1044,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         )
         existing_asset = existing_asset_result.scalar_one_or_none()
 
-        generated_at = datetime.utcnow()
+        generated_at = datetime.now(UTC).replace(tzinfo=None)
         generation_time_sec = time.time() - start_time
 
         if error_message:

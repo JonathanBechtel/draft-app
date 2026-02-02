@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -418,7 +418,7 @@ async def create_preview(
     logger.info(
         f"create_preview: player_id={player_id}, source_asset_id={source_asset_id}, style={style}"
     )
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     expires_at = now + timedelta(hours=PREVIEW_TTL_HOURS)
 
     preview = PendingImagePreview(
@@ -602,7 +602,7 @@ async def approve_preview(
     )
 
     # Add cache-busting timestamp to force browser/CDN refresh
-    cache_bust = int(datetime.utcnow().timestamp())
+    cache_bust = int(datetime.now(UTC).replace(tzinfo=None).timestamp())
     public_url = f"{base_public_url}?v={cache_bust}"
 
     # Get or create snapshot for this style
@@ -621,7 +621,7 @@ async def approve_preview(
         from app.services.image_generation import image_generation_service
 
         snapshot = PlayerImageSnapshot(
-            run_key=f"admin_regen_{datetime.utcnow().strftime('%Y%m%d')}",
+            run_key=f"admin_regen_{datetime.now(UTC).replace(tzinfo=None).strftime('%Y%m%d')}",
             version=1,
             is_current=True,
             style=preview.style,
@@ -667,7 +667,7 @@ async def approve_preview(
             existing_asset.likeness_description = preview.likeness_description
             existing_asset.used_likeness_ref = preview.used_likeness_ref
             existing_asset.reference_image_url = preview.reference_image_url
-            existing_asset.generated_at = datetime.utcnow()
+            existing_asset.generated_at = datetime.now(UTC).replace(tzinfo=None)
             existing_asset.generation_time_sec = preview.generation_time_sec
             existing_asset.error_message = None
 
@@ -701,7 +701,7 @@ async def approve_preview(
         existing_by_key.likeness_description = preview.likeness_description
         existing_by_key.used_likeness_ref = preview.used_likeness_ref
         existing_by_key.reference_image_url = preview.reference_image_url
-        existing_by_key.generated_at = datetime.utcnow()
+        existing_by_key.generated_at = datetime.now(UTC).replace(tzinfo=None)
         existing_by_key.generation_time_sec = preview.generation_time_sec
         existing_by_key.error_message = None
 
@@ -725,7 +725,7 @@ async def approve_preview(
         likeness_description=preview.likeness_description,
         used_likeness_ref=preview.used_likeness_ref,
         reference_image_url=preview.reference_image_url,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(UTC).replace(tzinfo=None),
         generation_time_sec=preview.generation_time_sec,
     )
     db.add(asset)

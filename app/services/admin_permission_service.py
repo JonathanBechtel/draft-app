@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,7 +82,7 @@ async def set_user_permissions(
         user_id: The ID of the user.
         permissions: List of DatasetPermission to set.
     """
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
 
     async with db.begin():
         # Delete all existing permissions for this user

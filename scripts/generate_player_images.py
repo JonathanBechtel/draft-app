@@ -43,7 +43,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 # Add project root to path for imports
@@ -449,7 +449,7 @@ async def batch_submit(args: argparse.Namespace) -> None:
             system_prompt=system_prompt,
             system_prompt_version=args.prompt_version,
             notes=f"[BATCH] {args.notes}" if args.notes else "[BATCH]",
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(UTC).replace(tzinfo=None),
         )
         db.add(snapshot)
         await db.commit()
@@ -782,7 +782,7 @@ async def main(args: argparse.Namespace) -> None:
             system_prompt=system_prompt,
             system_prompt_version=args.prompt_version,
             notes=args.notes,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(UTC).replace(tzinfo=None),
         )
         db.add(snapshot)
         await db.commit()
