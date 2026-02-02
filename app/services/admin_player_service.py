@@ -12,15 +12,27 @@ from datetime import date, datetime
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.position_taxonomy import derive_position_tags
 from app.schemas.news_items import NewsItem
+from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
+from app.schemas.positions import Position
+
+
+@dataclass
+class PlayerWithStatus:
+    """Player with optional status data for list views."""
+
+    player: PlayerMaster
+    is_active_nba: bool | None = None
+    current_team: str | None = None
 
 
 @dataclass
 class PlayerListResult:
     """Result of a paginated player list query."""
 
-    players: list[PlayerMaster]
+    players: list[PlayerWithStatus]
     total: int
     draft_years: list[int]
 
@@ -89,6 +101,7 @@ async def list_players(
     q: str | None,
     draft_year: int | None,
     position: str | None,
+    nba_status: str | None,
     limit: int,
     offset: int,
 ) -> PlayerListResult:
@@ -99,16 +112,32 @@ async def list_players(
         q: Search query (matches display_name, first_name, last_name, school)
         draft_year: Filter by draft year
         position: Filter by position (stored in shoots field)
+        nba_status: Filter by NBA status ("active", "inactive", "unknown")
         limit: Maximum results to return
         offset: Number of results to skip
 
     Returns:
         PlayerListResult with players, total count, and available draft years
     """
-    query = select(PlayerMaster).order_by(
-        PlayerMaster.display_name  # type: ignore[arg-type]
+    # Select player with status fields via outer join
+    query = (
+        select(  # type: ignore[call-overload]
+            PlayerMaster,
+            PlayerStatus.is_active_nba,
+            PlayerStatus.current_team,
+        )
+        .outerjoin(PlayerStatus, PlayerStatus.player_id == PlayerMaster.id)
+        .order_by(PlayerMaster.display_name)  # type: ignore[arg-type]
     )
-    count_query = select(func.count(PlayerMaster.id))  # type: ignore[arg-type]
+    # Count query also needs the join for status filtering
+    count_query = (
+        select(func.count(PlayerMaster.id))  # type: ignore[arg-type]
+        .select_from(PlayerMaster)
+        .outerjoin(
+            PlayerStatus,
+            PlayerStatus.player_id == PlayerMaster.id,  # type: ignore[arg-type]
+        )
+    )
 
     # Apply search filter
     if q and q.strip():
@@ -140,6 +169,38 @@ async def list_players(
             PlayerMaster.shoots == position  # type: ignore[arg-type]
         )
 
+    # Apply NBA status filter
+    if nba_status and nba_status.strip():
+        status_val = nba_status.strip().lower()
+        if status_val == "active":
+            query = query.where(
+                PlayerStatus.is_active_nba.is_(True)  # type: ignore[union-attr]
+            )
+            count_query = count_query.where(
+                PlayerStatus.is_active_nba.is_(True)  # type: ignore[union-attr]
+            )
+        elif status_val == "inactive":
+            query = query.where(
+                PlayerStatus.is_active_nba.is_(False)  # type: ignore[union-attr]
+            )
+            count_query = count_query.where(
+                PlayerStatus.is_active_nba.is_(False)  # type: ignore[union-attr]
+            )
+        elif status_val == "unknown":
+            # Unknown = no status record OR is_active_nba is NULL
+            query = query.where(
+                or_(
+                    PlayerStatus.id.is_(None),  # type: ignore[union-attr]
+                    PlayerStatus.is_active_nba.is_(None),  # type: ignore[union-attr]
+                )
+            )
+            count_query = count_query.where(
+                or_(
+                    PlayerStatus.id.is_(None),  # type: ignore[union-attr]
+                    PlayerStatus.is_active_nba.is_(None),  # type: ignore[union-attr]
+                )
+            )
+
     # Get total count
     total = await db.scalar(count_query)
     total = total or 0
@@ -148,7 +209,17 @@ async def list_players(
     query = query.limit(limit).offset(offset)
 
     result = await db.execute(query)
-    players = list(result.scalars().all())
+    rows = result.all()
+
+    # Build PlayerWithStatus objects from joined results
+    players = [
+        PlayerWithStatus(
+            player=row[0],
+            is_active_nba=row[1],
+            current_team=row[2],
+        )
+        for row in rows
+    ]
 
     # Get distinct draft years for filter dropdown
     years_result = await db.execute(
@@ -384,3 +455,128 @@ async def delete_player(db: AsyncSession, player: PlayerMaster) -> None:
     """
     await db.delete(player)
     await db.flush()
+
+
+async def get_player_status_by_player_id(
+    db: AsyncSession, player_id: int
+) -> PlayerStatus | None:
+    """Fetch a player's status record by player ID.
+
+    Args:
+        db: Async database session
+        player_id: Player's database ID
+
+    Returns:
+        PlayerStatus if found, None otherwise
+    """
+    result = await db.execute(
+        select(PlayerStatus).where(
+            PlayerStatus.player_id == player_id  # type: ignore[arg-type]
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+@dataclass
+class PlayerStatusFormData:
+    """Raw form data for player status fields."""
+
+    is_active_nba: str | None = None  # "true", "false", "" (unknown)
+    current_team: str | None = None
+    nba_last_season: str | None = None
+    raw_position: str | None = None
+    height_in: str | None = None  # needs int parsing
+    weight_lb: str | None = None  # needs int parsing
+
+
+def _parse_bool_field(val: str | None) -> bool | None:
+    """Parse a boolean form field. Empty or None returns None (unknown)."""
+    if not val or not val.strip():
+        return None
+    lower = val.strip().lower()
+    if lower == "true":
+        return True
+    if lower == "false":
+        return False
+    return None
+
+
+def _parse_int_field(val: str | None) -> int | None:
+    """Parse an integer form field. Empty or None returns None."""
+    if not val or not val.strip():
+        return None
+    try:
+        return int(val.strip())
+    except ValueError:
+        return None
+
+
+async def _resolve_position_id(db: AsyncSession, raw_position: str) -> int | None:
+    """Derive position_id from raw_position string using taxonomy.
+
+    Args:
+        db: Async database session
+        raw_position: Raw position string like "PG", "SF-PF"
+
+    Returns:
+        Position ID if derivable, None otherwise
+    """
+    fine_code, parents = derive_position_tags(raw_position)
+    if not fine_code:
+        return None
+
+    # Look up existing position by code
+    result = await db.execute(
+        select(Position).where(Position.code == fine_code)  # type: ignore[arg-type]
+    )
+    position = result.scalar_one_or_none()
+
+    if position is None:
+        # Create new position record
+        position = Position(code=fine_code, parents=parents)
+        db.add(position)
+        await db.flush()
+
+    return position.id
+
+
+async def update_player_status(
+    db: AsyncSession,
+    player_id: int,
+    data: PlayerStatusFormData,
+) -> PlayerStatus:
+    """Create or update PlayerStatus for a player.
+
+    Args:
+        db: Async database session
+        player_id: Player's database ID
+        data: Form data for status fields
+
+    Returns:
+        The created or updated PlayerStatus instance
+    """
+    # Fetch existing or create new
+    status = await get_player_status_by_player_id(db, player_id)
+    if status is None:
+        status = PlayerStatus(player_id=player_id)
+        db.add(status)
+
+    # Parse and set fields
+    status.is_active_nba = _parse_bool_field(data.is_active_nba)
+    status.current_team = _clean_str(data.current_team)
+    status.nba_last_season = _clean_str(data.nba_last_season)
+    status.raw_position = _clean_str(data.raw_position)
+    status.height_in = _parse_int_field(data.height_in)
+    status.weight_lb = _parse_int_field(data.weight_lb)
+
+    # Auto-derive position_id from raw_position
+    if status.raw_position:
+        status.position_id = await _resolve_position_id(db, status.raw_position)
+    else:
+        status.position_id = None
+
+    # Set source to 'manual' for admin edits
+    status.source = "manual"
+    status.updated_at = datetime.utcnow()
+    await db.flush()
+    return status

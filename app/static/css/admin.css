@@ -397,6 +397,11 @@
   color: var(--color-slate-600);
 }
 
+.admin-badge--unknown {
+  background: var(--color-slate-300);
+  color: var(--color-slate-700);
+}
+
 .admin-badge--admin {
   background: var(--color-accent-fuchsia);
   color: var(--color-white);

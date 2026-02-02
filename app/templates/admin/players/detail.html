@@ -285,6 +285,93 @@
         </div>
       </div>
 
+      <!-- Player Status Section -->
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Player Status</h3>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="is_active_nba">NBA Status</label>
+            <select class="admin-form__select" id="is_active_nba" name="is_active_nba">
+              <option value="" {% if player_status is none or player_status.is_active_nba is none %}selected{% endif %}>Unknown</option>
+              <option value="true" {% if player_status and player_status.is_active_nba is true %}selected{% endif %}>NBA Active</option>
+              <option value="false" {% if player_status and player_status.is_active_nba is false %}selected{% endif %}>Not Active</option>
+            </select>
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="current_team">Current Team</label>
+            <input
+              class="admin-form__input"
+              id="current_team"
+              name="current_team"
+              type="text"
+              value="{{ player_status.current_team or '' if player_status else '' }}"
+              placeholder="e.g., LAL, BOS"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="nba_last_season">Last Season</label>
+            <input
+              class="admin-form__input"
+              id="nba_last_season"
+              name="nba_last_season"
+              type="text"
+              value="{{ player_status.nba_last_season or '' if player_status else '' }}"
+              placeholder="e.g., 2023-24"
+            />
+          </div>
+        </div>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="raw_position">Position</label>
+            <input
+              class="admin-form__input"
+              id="raw_position"
+              name="raw_position"
+              type="text"
+              value="{{ player_status.raw_position or '' if player_status else '' }}"
+              placeholder="e.g., PG, SF-PF"
+            />
+            <span class="admin-form__help">Position code & parents auto-derived from taxonomy</span>
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="height_in">Height (inches)</label>
+            <input
+              class="admin-form__input"
+              id="height_in"
+              name="height_in"
+              type="number"
+              value="{{ player_status.height_in or '' if player_status else '' }}"
+              min="60"
+              max="96"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="weight_lb">Weight (lbs)</label>
+            <input
+              class="admin-form__input"
+              id="weight_lb"
+              name="weight_lb"
+              type="number"
+              value="{{ player_status.weight_lb or '' if player_status else '' }}"
+              min="100"
+              max="400"
+            />
+          </div>
+        </div>
+
+        <!-- Read-only source metadata -->
+        <div class="admin-form__static-field" style="margin-top: 0.5rem;">
+          <span class="admin-form__label">Source</span>
+          <span class="admin-form__static-value">{{ player_status.source or 'manual' if player_status else 'manual' }}</span>
+        </div>
+      </div>
+
       <!-- Metadata (read-only) -->
       <div class="admin-form__section">
         <h3 class="admin-form__section-title">Metadata</h3>
@@ -309,26 +396,28 @@
     </form>
   </div>
 
-  <!-- Right Column: Player Image (S3-first) -->
-  <div class="admin-card admin-player-detail-layout__sidebar">
-    <h3 class="admin-form__section-title">Player Image</h3>
+  <!-- Right Column: Player Image and Status (S3-first) -->
+  <div class="admin-player-detail-layout__sidebar">
+    <div class="admin-card">
+      <h3 class="admin-form__section-title">Player Image</h3>
 
-    {% if expected_image_url %}
-    <div class="admin-image-card">
-      <img src="{{ expected_image_url }}" alt="{{ player.display_name }}" class="admin-image-thumbnail"
-           onerror="this.src='{{ placeholder_url }}';">
-      <div class="admin-image-card__overlay">
-        <div class="admin-image-card__meta">
-          <span class="admin-badge admin-badge--style-default">default</span>
+      {% if expected_image_url %}
+      <div class="admin-image-card">
+        <img src="{{ expected_image_url }}" alt="{{ player.display_name }}" class="admin-image-thumbnail"
+             onerror="this.src='{{ placeholder_url }}';">
+        <div class="admin-image-card__overlay">
+          <div class="admin-image-card__meta">
+            <span class="admin-badge admin-badge--style-default">default</span>
+          </div>
         </div>
       </div>
+      <a href="/admin/images?player_id={{ player.id }}" class="admin-btn admin-btn--secondary admin-btn--small admin-btn--block" style="margin-top: 1rem;">
+        View All Images
+      </a>
+      {% else %}
+      <p class="admin-text--muted">No slug set - cannot construct image URL.</p>
+      {% endif %}
     </div>
-    <a href="/admin/images?player_id={{ player.id }}" class="admin-btn admin-btn--secondary admin-btn--small admin-btn--block" style="margin-top: 1rem;">
-      View All Images
-    </a>
-    {% else %}
-    <p class="admin-text--muted">No slug set - cannot construct image URL.</p>
-    {% endif %}
   </div>
 </div>
 {% endblock %}

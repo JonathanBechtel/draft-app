@@ -13,6 +13,7 @@ from starlette.responses import Response
 
 from app.routes.admin.helpers import base_context, require_admin
 from app.schemas.auth import AuthUser
+from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.utils.images import (
     get_placeholder_url,
@@ -22,13 +23,16 @@ from app.utils.images import (
 from app.services.admin_player_service import (
     PlayerFormData,
     PlayerListResult,
+    PlayerStatusFormData,
     can_delete_player,
     create_player as svc_create_player,
     delete_player as svc_delete_player,
     get_player_by_id,
+    get_player_status_by_player_id,
     list_players as svc_list_players,
     parse_player_form,
     update_player as svc_update_player,
+    update_player_status as svc_update_player_status,
     validate_player_form,
 )
 from app.utils.db_async import get_session
@@ -52,6 +56,7 @@ def _render_form_error(
     user: AuthUser | None,
     player: PlayerMaster | None,
     error: str,
+    player_status: PlayerStatus | None = None,
 ) -> Response:
     """Render create/edit form with an error message."""
     template = "admin/players/detail.html" if player else "admin/players/form.html"
@@ -61,6 +66,7 @@ def _render_form_error(
             request,
             user=user,
             player=player,
+            player_status=player_status,
             error=error,
             active_nav="players",
         ),
@@ -157,6 +163,7 @@ async def list_players(
     q: str | None = Query(default=None),
     draft_year: str | None = Query(default=None),
     position: str | None = Query(default=None),
+    nba_status: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """List all players with pagination and filters (admin only)."""
@@ -172,7 +179,9 @@ async def list_players(
         except ValueError:
             draft_year_int = None
 
-    result = await svc_list_players(db, q, draft_year_int, position, limit, offset)
+    result = await svc_list_players(
+        db, q, draft_year_int, position, nba_status, limit, offset
+    )
 
     # Calculate pagination info
     pages = (result.total + limit - 1) // limit if result.total > 0 else 1
@@ -192,6 +201,7 @@ async def list_players(
             q=q,
             draft_year=draft_year_int,
             position=position,
+            nba_status=nba_status,
             draft_years=result.draft_years,
             success=SUCCESS_MESSAGES.get(success) if success else None,
             active_nav="players",
@@ -303,6 +313,9 @@ async def edit_player(
     if player is None:
         raise HTTPException(status_code=404, detail="Player not found")
 
+    # Fetch player status data
+    player_status = await get_player_status_by_player_id(db, player_id)
+
     # Build S3-first image URL (source of truth for display)
     expected_image_url = None
     if player.slug:
@@ -322,6 +335,7 @@ async def edit_player(
             request,
             user=user,
             player=player,
+            player_status=player_status,
             expected_image_url=expected_image_url,
             placeholder_url=placeholder_url,
             error=None,
@@ -354,6 +368,13 @@ async def update_player(
     nba_debut_date: str | None = Form(default=None),
     nba_debut_season: str | None = Form(default=None),
     reference_image_url: str | None = Form(default=None),
+    # Player status fields
+    is_active_nba: str | None = Form(default=None),
+    current_team: str | None = Form(default=None),
+    nba_last_season: str | None = Form(default=None),
+    raw_position: str | None = Form(default=None),
+    height_in: str | None = Form(default=None),
+    weight_lb: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """Update a player (admin only)."""
@@ -365,6 +386,9 @@ async def update_player(
         player = await get_player_by_id(db, player_id)
         if player is None:
             raise HTTPException(status_code=404, detail="Player not found")
+
+        # Fetch player status for error re-renders
+        player_status = await get_player_status_by_player_id(db, player_id)
 
         form_data = _build_form_data(
             display_name,
@@ -391,14 +415,25 @@ async def update_player(
 
         # Validate required fields
         if error := validate_player_form(form_data):
-            return _render_form_error(request, user, player, error)
+            return _render_form_error(request, user, player, error, player_status)
 
         # Parse form data to typed values
         parsed = parse_player_form(form_data)
         if isinstance(parsed, str):
-            return _render_form_error(request, user, player, parsed)
+            return _render_form_error(request, user, player, parsed, player_status)
 
         await svc_update_player(db, player, parsed)
+
+        # Update player status
+        status_data = PlayerStatusFormData(
+            is_active_nba=is_active_nba,
+            current_team=current_team,
+            nba_last_season=nba_last_season,
+            raw_position=raw_position,
+            height_in=height_in,
+            weight_lb=weight_lb,
+        )
+        await svc_update_player_status(db, player_id, status_data)
     return RedirectResponse(url="/admin/players?success=updated", status_code=303)
 
 
@@ -422,7 +457,9 @@ async def delete_player(
         can_delete, error_reason = await can_delete_player(db, player_id)
         if not can_delete:
             # Re-fetch list data for rendering
-            list_result = await svc_list_players(db, None, None, None, DEFAULT_LIMIT, 0)
+            list_result = await svc_list_players(
+                db, None, None, None, None, DEFAULT_LIMIT, 0
+            )
             return _render_list_error(
                 request,
                 user,
