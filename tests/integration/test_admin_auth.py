@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -126,11 +126,11 @@ class TestAdminAuthUI:
         assert result.scalar_one_or_none() is None
 
         # Perform login
-        before_login = datetime.utcnow()
+        before_login = datetime.now(UTC).replace(tzinfo=None)
         response = await login_staff(
             app_client, email="login-timestamp@example.com", password="secret123"
         )
-        after_login = datetime.utcnow()
+        after_login = datetime.now(UTC).replace(tzinfo=None)
         assert response.status_code in {302, 303}
 
         # Verify last_login_at was updated
@@ -201,7 +201,7 @@ class TestSessionPolicy:
         )
         assert login.status_code in {302, 303}
 
-        stale = datetime.utcnow() - timedelta(days=2)
+        stale = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=2)
         await db_session.execute(
             text(
                 """

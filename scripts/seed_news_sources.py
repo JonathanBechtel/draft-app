@@ -9,7 +9,7 @@ This script adds the initial RSS sources if they don't already exist.
 
 import asyncio
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 from sqlalchemy import select
@@ -118,8 +118,8 @@ async def seed_sources() -> None:
                 feed_url=source_data["feed_url"],
                 fetch_interval_minutes=source_data["fetch_interval_minutes"],
                 is_active=True,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=datetime.now(UTC).replace(tzinfo=None),
+                updated_at=datetime.now(UTC).replace(tzinfo=None),
             )
             session.add(source)
             print(f"  ADD: {source_data['name']}")

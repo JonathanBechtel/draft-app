@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Optional
 
@@ -169,7 +169,7 @@ async def ingest_rss_source(
     items_skipped += len(candidates) - len(new_entries)
 
     # Phase 1: network/AI work (no DB connections/transactions held).
-    fetched_at = datetime.utcnow()
+    fetched_at = datetime.now(UTC).replace(tzinfo=None)
     rows: list[dict] = []
     for entry in new_entries:
         external_id = entry.get("guid", entry.get("link", ""))
@@ -185,7 +185,7 @@ async def ingest_rss_source(
         url = entry.get("link", "")
         image_url = entry.get("image_url")
         author = entry.get("author")
-        published_at = entry.get("published_at", datetime.utcnow())
+        published_at = entry.get("published_at", datetime.now(UTC).replace(tzinfo=None))
 
         # Generate AI summary and tag
         try:
@@ -440,7 +440,7 @@ def _parse_published_date(entry: dict[str, Any]) -> datetime:
             pass
 
     # Fallback to current time (naive UTC)
-    return datetime.utcnow()
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _clean_description(description: str) -> str:

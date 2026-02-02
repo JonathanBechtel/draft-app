@@ -43,7 +43,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 # Add project root to path for imports
@@ -61,6 +61,7 @@ from app.schemas.image_snapshots import (
     PlayerImageSnapshot,
 )
 from app.schemas.metrics import MetricSnapshot, PlayerMetricValue
+from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.seasons import Season
 from app.services.image_generation import image_generation_service
@@ -233,7 +234,14 @@ async def get_players(
                     PlayerMaster.draft_year.in_([current_year, current_year + 1])  # type: ignore[union-attr]
                 )
             elif cohort == CohortType.current_nba:
-                # Players who have debuted
+                # Players currently active in the NBA (ephemeral status table)
+                stmt = (
+                    stmt.join(
+                        PlayerStatus, PlayerStatus.player_id == PlayerMaster.id
+                    ).where(PlayerStatus.is_active_nba.is_(True))  # type: ignore[union-attr]
+                )
+            elif cohort == CohortType.all_time_nba:
+                # Players who have debuted (historical NBA population)
                 stmt = stmt.where(PlayerMaster.nba_debut_date.isnot(None))  # type: ignore[union-attr]
             # Add more cohort filters as needed
 
@@ -257,7 +265,7 @@ async def check_existing_image(
         style: Image style
 
     Returns:
-        True if image exists in current snapshot
+        True if any successful image asset exists for this player/style
     """
     stmt = (
         select(PlayerImageAsset.id)
@@ -267,9 +275,9 @@ async def check_existing_image(
         .where(
             PlayerImageAsset.player_id == player_id,
             PlayerImageSnapshot.style == style,
-            PlayerImageSnapshot.is_current == True,  # noqa: E712
             PlayerImageAsset.error_message.is_(None),  # type: ignore[union-attr]
         )
+        .order_by(desc(PlayerImageSnapshot.generated_at))  # type: ignore[arg-type]
         .limit(1)
     )
     result = await db.execute(stmt)
@@ -441,7 +449,7 @@ async def batch_submit(args: argparse.Namespace) -> None:
             system_prompt=system_prompt,
             system_prompt_version=args.prompt_version,
             notes=f"[BATCH] {args.notes}" if args.notes else "[BATCH]",
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(UTC).replace(tzinfo=None),
         )
         db.add(snapshot)
         await db.commit()
@@ -450,6 +458,11 @@ async def batch_submit(args: argparse.Namespace) -> None:
 
         # Submit batch job
         try:
+            # Ensure the session is not holding an implicit transaction opened by earlier reads.
+            # The image generation service uses `db.begin()` internally for durability, which
+            # will fail if a transaction is already active.
+            await db.commit()
+
             job_record = await image_generation_service.submit_batch_job(
                 db=db,
                 players=players,
@@ -458,6 +471,7 @@ async def batch_submit(args: argparse.Namespace) -> None:
                 image_size=args.size,
                 fetch_likeness=args.fetch_likeness,
             )
+            await db.commit()
 
             cost = len(players) * BATCH_COST_PER_IMAGE_USD.get(args.size, 0.02)
             logger.info("=== BATCH SUBMITTED ===")
@@ -547,7 +561,15 @@ async def batch_retrieve(args: argparse.Namespace) -> None:
             sys.exit(1)
 
         # Get players
-        player_ids = json.loads(job_record.player_ids_json)
+        raw_player_ids = json.loads(job_record.player_ids_json)
+        if (
+            raw_player_ids
+            and isinstance(raw_player_ids, list)
+            and isinstance(raw_player_ids[0], dict)
+        ):
+            player_ids = [item["player_id"] for item in raw_player_ids]
+        else:
+            player_ids = raw_player_ids
         stmt = select(PlayerMaster).where(
             PlayerMaster.id.in_(player_ids)  # type: ignore[union-attr]
         )
@@ -559,6 +581,11 @@ async def batch_retrieve(args: argparse.Namespace) -> None:
 
         # Retrieve and process results
         try:
+            # Ensure the session is not holding an implicit transaction opened by earlier reads.
+            # The image generation service uses `db.begin()` internally for durability, which
+            # will fail if a transaction is already active.
+            await db.commit()
+
             (
                 success_count,
                 failure_count,
@@ -575,16 +602,6 @@ async def batch_retrieve(args: argparse.Namespace) -> None:
             snapshot.estimated_cost_usd = success_count * BATCH_COST_PER_IMAGE_USD.get(
                 job_record.image_size, 0.02
             )
-
-            # Mark as current if all succeeded
-            if failure_count == 0 and success_count > 0:
-                await demote_current_snapshots(
-                    db,
-                    style=snapshot.style,
-                    cohort=snapshot.cohort,
-                    draft_year=snapshot.draft_year,
-                )
-                snapshot.is_current = True
 
             await db.commit()
 
@@ -765,7 +782,7 @@ async def main(args: argparse.Namespace) -> None:
             system_prompt=system_prompt,
             system_prompt_version=args.prompt_version,
             notes=args.notes,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(UTC).replace(tzinfo=None),
         )
         db.add(snapshot)
         await db.commit()
@@ -811,16 +828,6 @@ async def main(args: argparse.Namespace) -> None:
         snapshot.estimated_cost_usd = success_count * COST_PER_IMAGE_USD.get(
             args.size, 0.04
         )
-
-        # Mark as current if all succeeded
-        if failure_count == 0 and success_count > 0:
-            await demote_current_snapshots(
-                db,
-                style=args.style,
-                cohort=cohort,
-                draft_year=args.draft_year,
-            )
-            snapshot.is_current = True
 
         await db.commit()
 

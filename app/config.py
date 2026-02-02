@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # Image generation settings
     image_gen_size: str = "512"  # Options: "512", "1K", "2K"
     image_gen_quality: str = "standard"  # Options: "draft", "standard", "high"
+    default_image_style: str = Field(
+        default="default",
+        validation_alias=AliasChoices("DEFAULT_IMAGE_STYLE", "IMAGE_STYLE_DEFAULT"),
+        description="Global default player image style for UI rendering.",
+    )
 
     # S3 storage settings
     s3_bucket_name: Optional[str] = None
@@ -60,6 +65,11 @@ class Settings(BaseSettings):
         ),
     )
     image_storage_local: bool = False  # True = local filesystem (dev only)
+
+    # Email settings (for user invitations and password resets)
+    resend_api_key: Optional[str] = None
+    email_from_address: str = "noreply@draftguru.dev"
+    app_base_url: str = "http://localhost:8000"
 
     @property
     def is_dev(self) -> bool:

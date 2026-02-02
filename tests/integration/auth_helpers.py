@@ -6,7 +6,7 @@ import base64
 import hashlib
 import os
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 
 from httpx import AsyncClient, Response
 from sqlalchemy import text
@@ -49,7 +49,7 @@ async def create_auth_user(
     is_active: bool = True,
 ) -> int:
     """Insert a user row into auth_users and return its id."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     password_hash = pbkdf2_sha256_hash(password)
     result = await db_session.execute(
         text(
@@ -96,7 +96,7 @@ async def grant_dataset_permission(
     can_edit: bool,
 ) -> None:
     """Grant a dataset permission to a user (upsert)."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     await db_session.execute(
         text(
             """

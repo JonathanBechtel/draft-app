@@ -1,0 +1,85 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Users" %}
+{% set active_nav = "users" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Users</h1>
+  <p class="admin-main__subtitle">Manage admin panel users and invitations</p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">All Users</h2>
+    <a href="/admin/users/new" class="admin-btn admin-btn--primary admin-btn--small">
+      Invite User
+    </a>
+  </div>
+
+  {% if users %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Last Login</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>
+          <strong>{{ u.email }}</strong>
+        </td>
+        <td>{{ u.role | capitalize }}</td>
+        <td>
+          {% if u.is_active %}
+          <span class="admin-badge admin-badge--active">Active</span>
+          {% elif u.invited_at and not u.password_changed_at %}
+          <span class="admin-badge admin-badge--pending">Pending</span>
+          {% else %}
+          <span class="admin-badge admin-badge--inactive">Inactive</span>
+          {% endif %}
+        </td>
+        <td>{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+        <td>
+          {% if u.last_login_at %}
+          {{ u.last_login_at.strftime('%Y-%m-%d %H:%M') }}
+          {% else %}
+          <span class="admin-text--placeholder">Never</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="admin-table__actions">
+            <a href="/admin/users/{{ u.id }}" class="admin-btn admin-btn--secondary admin-btn--small">Edit</a>
+            <a href="/admin/users/{{ u.id }}/permissions" class="admin-btn admin-btn--secondary admin-btn--small">Permissions</a>
+            {% if u.invited_at and not u.is_active %}
+            <form method="post" action="/admin/users/{{ u.id }}/resend-invite" class="admin-form--inline">
+              <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small">Resend</button>
+            </form>
+            {% endif %}
+            {% if u.id != user.id %}
+            <form method="post" action="/admin/users/{{ u.id }}/delete" class="admin-form--inline" onsubmit="return confirm('Are you sure you want to delete this user?');">
+              <button type="submit" class="admin-btn admin-btn--danger admin-btn--small">Delete</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="admin-empty">
+    <div class="admin-empty__icon">&#128100;</div>
+    <h3 class="admin-empty__title">No Users</h3>
+    <p class="admin-empty__text">Get started by inviting your first user.</p>
+    <a href="/admin/users/new" class="admin-btn admin-btn--primary">Invite User</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -336,7 +336,7 @@ class TestNewsSourcesDelete:
         sample_source_id: int,
     ):
         """POST /admin/news-sources/{id}/delete shows error when source has items."""
-        from datetime import datetime
+        from datetime import UTC, datetime
 
         _ = admin_user_id
         await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
@@ -348,7 +348,7 @@ class TestNewsSourcesDelete:
             title="Test Article",
             url="https://example.com/article",
             tag=NewsItemTag.SCOUTING_REPORT,
-            published_at=datetime.utcnow(),
+            published_at=datetime.now(UTC).replace(tzinfo=None),
         )
         db_session.add(news_item)
         await db_session.commit()

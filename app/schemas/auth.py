@@ -27,6 +27,7 @@ class AuthUser(SQLModel, table=True):  # type: ignore[call-arg]
 
     last_login_at: datetime | None = Field(default=None)
     password_changed_at: datetime | None = Field(default=None)
+    invited_at: datetime | None = Field(default=None)
 
 
 class AuthSession(SQLModel, table=True):  # type: ignore[call-arg]
@@ -79,6 +80,19 @@ class AuthPasswordResetToken(SQLModel, table=True):  # type: ignore[call-arg]
     """One-time password reset token (store only a hash)."""
 
     __tablename__ = "auth_password_reset_tokens"
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="auth_users.id", index=True)
+    token_hash: str = Field(unique=True, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: datetime
+    used_at: datetime | None = Field(default=None, index=True)
+
+
+class AuthInviteToken(SQLModel, table=True):  # type: ignore[call-arg]
+    """One-time invitation token for new users (store only a hash)."""
+
+    __tablename__ = "auth_invite_tokens"
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="auth_users.id", index=True)

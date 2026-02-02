@@ -1,0 +1,106 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "User Permissions" %}
+{% set active_nav = "users" %}
+
+{% block admin_css %}
+<style>
+  .permissions-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .permissions-table th,
+  .permissions-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--color-slate-200);
+  }
+
+  .permissions-table th {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-slate-700);
+    background: var(--color-slate-50);
+  }
+
+  .permissions-table td {
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+  }
+
+  .permissions-table__dataset {
+    font-weight: 600;
+    color: var(--color-slate-900);
+  }
+
+  .permissions-table__checkbox {
+    text-align: center;
+  }
+
+  .permissions-table input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+    accent-color: var(--color-accent-fuchsia);
+  }
+</style>
+{% endblock %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Permissions</h1>
+  <p class="admin-main__subtitle">Configure dataset permissions for {{ edit_user.email }}</p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <form
+    class="admin-form"
+    method="post"
+    action="/admin/users/{{ edit_user.id }}/permissions"
+  >
+    <table class="permissions-table">
+      <thead>
+        <tr>
+          <th>Dataset</th>
+          <th class="permissions-table__checkbox">View</th>
+          <th class="permissions-table__checkbox">Edit</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for perm in permissions %}
+        <tr>
+          <td class="permissions-table__dataset">{{ perm.dataset | replace('_', ' ') | title }}</td>
+          <td class="permissions-table__checkbox">
+            <input
+              type="checkbox"
+              name="{{ perm.dataset }}_view"
+              value="1"
+              {% if perm.can_view %}checked{% endif %}
+            />
+          </td>
+          <td class="permissions-table__checkbox">
+            <input
+              type="checkbox"
+              name="{{ perm.dataset }}_edit"
+              value="1"
+              {% if perm.can_edit %}checked{% endif %}
+            />
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="admin-form__help" style="margin-top: 1rem;">
+      <strong>Note:</strong> Admin users have full access to all datasets regardless of these settings.
+      These permissions only affect Worker users.
+    </div>
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">Save Permissions</button>
+      <a href="/admin/users" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

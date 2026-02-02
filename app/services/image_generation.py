@@ -10,11 +10,14 @@ import base64
 import json
 import logging
 import time
-from datetime import datetime
+import uuid
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Optional
 
 from google import genai
 from google.genai import types
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -26,6 +29,19 @@ from app.schemas.image_snapshots import (
 )
 from app.schemas.players_master import PlayerMaster
 from app.services.s3_client import s3_client
+
+
+@dataclass
+class PreviewResult:
+    """Result from generating a preview image (not yet uploaded to S3)."""
+
+    image_data: bytes
+    user_prompt: str
+    likeness_description: str | None
+    used_likeness_ref: bool
+    reference_image_url: str | None
+    generation_time_sec: float
+
 
 logger = logging.getLogger(__name__)
 
@@ -298,6 +314,73 @@ Be specific and objective. This will help an AI illustrator capture their likene
         logger.info(f"Received image: {len(image_data)} bytes")
         return image_data
 
+    async def generate_preview(
+        self,
+        player: PlayerMaster,
+        style: str = "default",
+        fetch_likeness: bool = False,
+        likeness_url: str | None = None,
+        image_size: str | None = None,
+        system_prompt_version: str = "default",
+    ) -> PreviewResult:
+        """Generate a preview image for a player without uploading to S3.
+
+        This is used by the admin UI preview/accept flow. The image is returned
+        as bytes and can be stored temporarily in the database until approved.
+
+        Args:
+            player: Player to generate image for
+            style: Image style
+            fetch_likeness: Whether to fetch and describe a reference image
+            likeness_url: Explicit reference image URL (overrides player.reference_image_url)
+            image_size: Override for image size
+            system_prompt_version: System prompt version to use
+
+        Returns:
+            PreviewResult with image bytes and generation metadata
+        """
+        start_time = time.time()
+        size = image_size or settings.image_gen_size
+        system_prompt = self.get_system_prompt(system_prompt_version)
+
+        # Determine reference URL
+        ref_url = likeness_url or (
+            player.reference_image_url if fetch_likeness else None
+        )
+
+        # Get likeness description if needed
+        likeness_description: str | None = None
+        if ref_url:
+            try:
+                likeness_description = await self.describe_reference_image(ref_url)
+            except Exception as e:
+                logger.warning(f"Failed to get likeness for {player.display_name}: {e}")
+
+        # Build prompt
+        user_prompt = self.build_player_prompt(player, likeness_description)
+
+        # Generate image
+        image_data = await self.generate_image(
+            user_prompt=user_prompt,
+            system_prompt=system_prompt,
+            image_size=size,
+        )
+
+        generation_time = time.time() - start_time
+        logger.info(
+            f"Generated preview for {player.display_name}: "
+            f"{len(image_data)} bytes in {generation_time:.1f}s"
+        )
+
+        return PreviewResult(
+            image_data=image_data,
+            user_prompt=user_prompt,
+            likeness_description=likeness_description,
+            used_likeness_ref=bool(ref_url),
+            reference_image_url=ref_url,
+            generation_time_sec=generation_time,
+        )
+
     async def generate_for_player(
         self,
         db: AsyncSession,
@@ -355,6 +438,13 @@ Be specific and objective. This will help an AI illustrator capture their likene
             else ""
         )
 
+        existing_asset_result = await db.execute(
+            select(PlayerImageAsset).where(
+                PlayerImageAsset.s3_key == s3_key  # type: ignore[arg-type]
+            )
+        )
+        existing_asset = existing_asset_result.scalar_one_or_none()
+
         image_data: bytes | None = None
         error_message: str | None = None
 
@@ -369,30 +459,83 @@ Be specific and objective. This will help an AI illustrator capture their likene
 
         if image_data is not None and error_message is None:
             try:
-                public_url_for_audit = s3_client.upload(
+                base_public_url = s3_client.upload(
                     s3_key,
                     image_data,
                     content_type="image/png",
                 )
+                cache_bust = int(datetime.now(UTC).replace(tzinfo=None).timestamp())
+                public_url_for_audit = f"{base_public_url}?v={cache_bust}"
             except Exception as exc:  # noqa: BLE001
                 error_message = str(exc)
 
-        asset = PlayerImageAsset(
-            snapshot_id=snapshot_id,
-            player_id=player_id,
-            s3_key=s3_key,
-            s3_bucket=settings.s3_bucket_name,
-            public_url=public_url_for_audit,
-            file_size_bytes=len(image_data) if image_data is not None else None,
-            user_prompt=user_prompt,
-            likeness_description=likeness_description,
-            used_likeness_ref=bool(ref_url),
-            reference_image_url=ref_url,
-            error_message=error_message,
-            generated_at=datetime.utcnow(),
-            generation_time_sec=time.time() - start_time,
-        )
-        db.add(asset)
+        generated_at = datetime.now(UTC).replace(tzinfo=None)
+        generation_time_sec = time.time() - start_time
+
+        if error_message:
+            if existing_asset is not None:
+                return PlayerImageAsset(
+                    snapshot_id=snapshot_id,
+                    player_id=player_id,
+                    s3_key=s3_key,
+                    s3_bucket=existing_asset.s3_bucket,
+                    public_url=existing_asset.public_url,
+                    file_size_bytes=existing_asset.file_size_bytes,
+                    user_prompt=user_prompt,
+                    likeness_description=likeness_description,
+                    used_likeness_ref=bool(ref_url),
+                    reference_image_url=ref_url,
+                    error_message=error_message,
+                    generated_at=generated_at,
+                    generation_time_sec=generation_time_sec,
+                )
+
+            asset = PlayerImageAsset(
+                snapshot_id=snapshot_id,
+                player_id=player_id,
+                s3_key=s3_key,
+                s3_bucket=settings.s3_bucket_name,
+                public_url=public_url_for_audit,
+                file_size_bytes=len(image_data) if image_data is not None else None,
+                user_prompt=user_prompt,
+                likeness_description=likeness_description,
+                used_likeness_ref=bool(ref_url),
+                reference_image_url=ref_url,
+                error_message=error_message,
+                generated_at=generated_at,
+                generation_time_sec=generation_time_sec,
+            )
+            db.add(asset)
+        elif existing_asset is not None:
+            existing_asset.snapshot_id = snapshot_id
+            existing_asset.s3_bucket = settings.s3_bucket_name
+            existing_asset.public_url = public_url_for_audit
+            existing_asset.file_size_bytes = len(image_data) if image_data else None
+            existing_asset.user_prompt = user_prompt
+            existing_asset.likeness_description = likeness_description
+            existing_asset.used_likeness_ref = bool(ref_url)
+            existing_asset.reference_image_url = ref_url
+            existing_asset.error_message = None
+            existing_asset.generated_at = generated_at
+            existing_asset.generation_time_sec = generation_time_sec
+            asset = existing_asset
+        else:
+            asset = PlayerImageAsset(
+                snapshot_id=snapshot_id,
+                player_id=player_id,
+                s3_key=s3_key,
+                s3_bucket=settings.s3_bucket_name,
+                public_url=public_url_for_audit,
+                file_size_bytes=len(image_data) if image_data is not None else None,
+                user_prompt=user_prompt,
+                likeness_description=likeness_description,
+                used_likeness_ref=bool(ref_url),
+                reference_image_url=ref_url,
+                error_message=None,
+                generated_at=generated_at,
+                generation_time_sec=generation_time_sec,
+            )
+            db.add(asset)
 
         if error_message:
             logger.error(
@@ -416,6 +559,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         system_prompt: str,
         image_size: str = "1K",
         likeness_description: Optional[str] = None,
+        dg_request_id: Optional[str] = None,
     ) -> types.InlinedRequest:
         """Build a single Gemini batch request for a player.
 
@@ -424,11 +568,19 @@ Be specific and objective. This will help an AI illustrator capture their likene
             system_prompt: System instructions for style
             image_size: Size setting ("512", "1K", "2K")
             likeness_description: Optional likeness description
+            dg_request_id: Per-request correlation id to be echoed in JSON text output
 
         Returns:
             InlinedRequest formatted for Gemini batch API
         """
         user_prompt = self.build_player_prompt(player, likeness_description)
+        if dg_request_id:
+            user_prompt = (
+                f"DG_REQUEST_ID: {dg_request_id}\n"
+                f"{user_prompt}\n\n"
+                "Return TEXT as strict JSON exactly matching this schema:\n"
+                '{"dg_request_id": "<the DG_REQUEST_ID value verbatim>"}'
+            )
 
         return types.InlinedRequest(
             contents=types.Content(
@@ -437,11 +589,19 @@ Be specific and objective. This will help an AI illustrator capture their likene
             ),
             metadata={
                 "player_id": str(player.id) if player.id is not None else "",
+                "dg_request_id": dg_request_id or "",
             },
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],
                 image_config=types.ImageConfig(image_size=image_size),
                 system_instruction=[types.Part.from_text(text=system_prompt)],
+                response_mime_type="application/json",
+                response_json_schema={
+                    "type": "object",
+                    "properties": {"dg_request_id": {"type": "string"}},
+                    "required": ["dg_request_id"],
+                    "additionalProperties": False,
+                },
             ),
         )
 
@@ -512,22 +672,30 @@ Be specific and objective. This will help an AI illustrator capture their likene
 
         # Build inline requests (for batches under 20MB, inline is simpler)
         inline_requests: list[types.InlinedRequest] = []
-        player_ids: list[int] = []
+        request_records: list[dict[str, str | int]] = []
 
         for player in players:
             player_id = player.id
             if player_id is None:
                 continue
 
+            dg_request_id = uuid.uuid4().hex
             likeness = (likeness_descriptions or {}).get(player_id)
             request = self.build_batch_request(
                 player=player,
                 system_prompt=snapshot.system_prompt,
                 image_size=image_size,
                 likeness_description=likeness,
+                dg_request_id=dg_request_id,
             )
             inline_requests.append(request)
-            player_ids.append(player_id)
+            request_records.append(
+                {
+                    "player_id": player_id,
+                    "slug": player.slug or str(player_id),
+                    "dg_request_id": dg_request_id,
+                }
+            )
 
         # Submit to Gemini batch API
         # Using Nano Banana Pro (gemini-3-pro-image-preview) for batch image generation
@@ -550,15 +718,16 @@ Be specific and objective. This will help an AI illustrator capture their likene
             gemini_job_name=batch_job.name,
             state=BatchJobState.pending,
             snapshot_id=snapshot_id,
-            player_ids_json=json.dumps(player_ids),
+            player_ids_json=json.dumps(request_records),
             style=style,
             image_size=image_size,
             fetch_likeness=fetch_likeness,
-            total_requests=len(player_ids),
+            total_requests=len(request_records),
         )
-        async with db.begin():
-            db.add(job_record)
-            await db.flush()
+        # Transaction ownership stays with the caller (scripts/routes).
+        # We flush so the caller can access `job_record.id` immediately.
+        db.add(job_record)
+        await db.flush()
 
         logger.info(f"Created batch job record: id={job_record.id}")
         return job_record
@@ -626,8 +795,6 @@ Be specific and objective. This will help an AI illustrator capture their likene
         success_count = 0
         failure_count = 0
 
-        # Process inlined responses (returned in the same order as input requests)
-        player_ids: list[int] = json.loads(job_record.player_ids_json)
         inlined_responses = (
             batch_job.dest.inlined_responses if batch_job.dest is not None else None
         )
@@ -635,7 +802,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         if not inlined_responses:
             async with db.begin():
                 job_record.state = state
-                job_record.completed_at = datetime.utcnow()
+                job_record.completed_at = datetime.now(UTC).replace(tzinfo=None)
                 job_record.success_count = 0
                 job_record.failure_count = job_record.total_requests
                 job_record.error_message = (
@@ -646,70 +813,138 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 "configure a destination file and implement file-based retrieval."
             )
 
-        if len(inlined_responses) != len(player_ids):
+        # Process inlined responses (treat correlation ids as authoritative; do not rely on order)
+        raw_request_records = json.loads(job_record.player_ids_json)
+        if (
+            not raw_request_records
+            or not isinstance(raw_request_records, list)
+            or not isinstance(raw_request_records[0], dict)
+            or "dg_request_id" not in raw_request_records[0]
+        ):
+            async with db.begin():
+                job_record.state = state
+                job_record.completed_at = datetime.now(UTC).replace(tzinfo=None)
+                job_record.success_count = 0
+                job_record.failure_count = job_record.total_requests
+                job_record.error_message = (
+                    "Batch job was submitted without per-request correlation IDs; "
+                    "refusing to ingest inlined responses safely. Resubmit with updated tooling."
+                )
+            raise RuntimeError(job_record.error_message)
+
+        request_records: list[dict[str, object]] = raw_request_records
+        request_id_to_player_id: dict[str, int] = {}
+        for record in request_records:
+            dg_request_id = record.get("dg_request_id")
+            player_id = record.get("player_id")
+            if not isinstance(dg_request_id, str) or not isinstance(player_id, int):
+                continue
+            request_id_to_player_id[dg_request_id] = player_id
+
+        expected_request_ids = set(request_id_to_player_id.keys())
+        if len(expected_request_ids) != len(request_records):
+            async with db.begin():
+                job_record.state = state
+                job_record.completed_at = datetime.now(UTC).replace(tzinfo=None)
+                job_record.success_count = 0
+                job_record.failure_count = job_record.total_requests
+                job_record.error_message = "Batch job correlation IDs are invalid/duplicated; refusing to ingest."
+            raise RuntimeError(job_record.error_message)
+
+        if len(inlined_responses) != len(request_records):
             logger.warning(
-                "Batch response count mismatch: %s responses for %s requests",
+                "Batch response count mismatch: %s responses for %s requests; "
+                "proceeding with best-effort correlation-based ingest.",
                 len(inlined_responses),
-                len(player_ids),
+                len(request_records),
             )
 
-        if len(inlined_responses) > len(player_ids):
-            logger.warning(
-                "Batch returned %s extra responses; ignoring extras",
-                len(inlined_responses) - len(player_ids),
+        first_error_message: str | None = None
+        if any(resp.error is not None for resp in inlined_responses):
+            first_error = next(
+                (resp.error for resp in inlined_responses if resp.error is not None),
+                None,
             )
+            if first_error is not None:
+                first_error_message = first_error.message
 
-        for idx, player_id in enumerate(player_ids):
-            response = inlined_responses[idx] if idx < len(inlined_responses) else None
-            player = players_by_id.get(player_id)
-            if not player:
-                logger.warning(f"Player not found for id: {player_id}")
-                failure_count += 1
+        parsed: list[tuple[str, types.InlinedResponse]] = []
+        seen_request_ids: set[str] = set()
+        for resp in inlined_responses:
+            if resp.error is not None:
+                # We cannot safely assign an errored response to a specific request unless
+                # the API provides correlation metadata; skip and count it as a failure.
+                continue
+            if resp.response is None:
                 continue
 
-            if response is None:
-                snapshot_id = snapshot.id
-                if snapshot_id is None:
-                    raise ValueError("snapshot.id is required")
+            text = resp.response.text
+            if not text:
+                continue
 
-                s3_key = self.get_s3_key(
-                    player_id, player.slug or str(player_id), job_record.style
+            try:
+                payload = json.loads(text)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Failed to parse batch JSON correlation payload: %s", exc
                 )
-                asset = PlayerImageAsset(
-                    snapshot_id=snapshot_id,
-                    player_id=player_id,
-                    s3_key=s3_key,
-                    s3_bucket=settings.s3_bucket_name,
-                    public_url="",
-                    file_size_bytes=None,
-                    user_prompt=self.build_player_prompt(player),
-                    likeness_description=None,
-                    used_likeness_ref=False,
-                    reference_image_url=None,
-                    error_message="No batch response returned for request",
-                    generated_at=datetime.utcnow(),
-                    generation_time_sec=None,
-                )
-                db.add(asset)
-            else:
-                asset = await self._process_batch_response(
-                    db=db,
-                    response=response,
-                    player=player,
-                    snapshot=snapshot,
-                    style=job_record.style,
-                )
+                continue
+
+            dg_request_id = payload.get("dg_request_id")
+            if (
+                not isinstance(dg_request_id, str)
+                or dg_request_id not in request_id_to_player_id
+            ):
+                continue
+
+            if dg_request_id in seen_request_ids:
+                continue
+
+            seen_request_ids.add(dg_request_id)
+            parsed.append((dg_request_id, resp))
+
+        for dg_request_id, resp in parsed:
+            player_id = request_id_to_player_id[dg_request_id]
+            player = players_by_id.get(player_id)
+            if not player:
+                raise RuntimeError(f"Player not found for id: {player_id}")
+
+            asset = await self._process_batch_response(
+                db=db,
+                response=resp,
+                player=player,
+                snapshot=snapshot,
+                style=job_record.style,
+                dg_request_id=dg_request_id,
+            )
 
             if asset.error_message:
                 failure_count += 1
             else:
                 success_count += 1
 
+        # Best-effort accounting: treat any request without a successfully ingested asset
+        # as failed (includes per-request API errors, parse failures, and missing responses).
+        total_requests = int(job_record.total_requests)
+        failure_count = max(0, total_requests - success_count)
+
         async with db.begin():
             job_record.state = state
-            job_record.completed_at = datetime.utcnow()
+            job_record.completed_at = datetime.now(UTC).replace(tzinfo=None)
             job_record.success_count = success_count
             job_record.failure_count = failure_count
+            if failure_count > 0:
+                suffix = (
+                    f" First error: {first_error_message}"
+                    if first_error_message
+                    else ""
+                )
+                job_record.error_message = (
+                    f"Batch completed with partial failures. "
+                    f"Success={success_count}, Failed={failure_count}." + suffix
+                )
+            else:
+                job_record.error_message = None
 
         logger.info(
             f"Batch job complete: {success_count} succeeded, {failure_count} failed"
@@ -723,6 +958,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         player: PlayerMaster,
         snapshot: PlayerImageSnapshot,
         style: str,
+        dg_request_id: str | None = None,
     ) -> PlayerImageAsset:
         """Process a single batch response and create asset record.
 
@@ -732,6 +968,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
             player: Player record
             snapshot: Parent snapshot
             style: Image style
+            dg_request_id: Correlation id expected to map the response to a request
 
         Returns:
             Created PlayerImageAsset record
@@ -748,6 +985,8 @@ Be specific and objective. This will help an AI illustrator capture their likene
         image_data: bytes | None = None
         error_message: str | None = None
         user_prompt = self.build_player_prompt(player)
+        if dg_request_id:
+            user_prompt = f"DG_REQUEST_ID: {dg_request_id}\n{user_prompt}"
 
         try:
             if response.error is not None and response.error.message:
@@ -775,11 +1014,19 @@ Be specific and objective. This will help an AI illustrator capture their likene
 
             if image_data is not None and error_message is None:
                 # Upload to S3
-                public_url = s3_client.upload(
+                base_public_url = s3_client.upload(
                     s3_key,
                     image_data,
                     content_type="image/png",
+                    metadata={
+                        "player_id": str(player_id),
+                        "player_slug": player.slug or "",
+                        "style": style,
+                        "dg_request_id": dg_request_id or "",
+                    },
                 )
+                cache_bust = int(datetime.now(UTC).replace(tzinfo=None).timestamp())
+                public_url = f"{base_public_url}?v={cache_bust}"
                 logger.info(
                     f"Uploaded image for {player.display_name}: {len(image_data)} bytes"
                 )
@@ -790,23 +1037,80 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 f"Failed to process batch response for {player.display_name}: {exc}"
             )
 
-        # Create asset record
-        asset = PlayerImageAsset(
-            snapshot_id=snapshot_id,
-            player_id=player_id,
-            s3_key=s3_key,
-            s3_bucket=settings.s3_bucket_name,
-            public_url=public_url,
-            file_size_bytes=len(image_data) if image_data else None,
-            user_prompt=user_prompt,  # Not stored in batch response
-            likeness_description=None,
-            used_likeness_ref=False,
-            reference_image_url=None,
-            error_message=error_message,
-            generated_at=datetime.utcnow(),
-            generation_time_sec=time.time() - start_time,
+        existing_asset_result = await db.execute(
+            select(PlayerImageAsset).where(
+                PlayerImageAsset.s3_key == s3_key  # type: ignore[arg-type]
+            )
         )
-        db.add(asset)
+        existing_asset = existing_asset_result.scalar_one_or_none()
+
+        generated_at = datetime.now(UTC).replace(tzinfo=None)
+        generation_time_sec = time.time() - start_time
+
+        if error_message:
+            if existing_asset is not None:
+                return PlayerImageAsset(
+                    snapshot_id=snapshot_id,
+                    player_id=player_id,
+                    s3_key=s3_key,
+                    s3_bucket=existing_asset.s3_bucket,
+                    public_url=existing_asset.public_url,
+                    file_size_bytes=existing_asset.file_size_bytes,
+                    user_prompt=user_prompt,
+                    likeness_description=None,
+                    used_likeness_ref=False,
+                    reference_image_url=None,
+                    error_message=error_message,
+                    generated_at=generated_at,
+                    generation_time_sec=generation_time_sec,
+                )
+
+            asset = PlayerImageAsset(
+                snapshot_id=snapshot_id,
+                player_id=player_id,
+                s3_key=s3_key,
+                s3_bucket=settings.s3_bucket_name,
+                public_url=public_url,
+                file_size_bytes=len(image_data) if image_data else None,
+                user_prompt=user_prompt,  # Not stored in batch response
+                likeness_description=None,
+                used_likeness_ref=False,
+                reference_image_url=None,
+                error_message=error_message,
+                generated_at=generated_at,
+                generation_time_sec=generation_time_sec,
+            )
+            db.add(asset)
+        elif existing_asset is not None:
+            existing_asset.snapshot_id = snapshot_id
+            existing_asset.s3_bucket = settings.s3_bucket_name
+            existing_asset.public_url = public_url
+            existing_asset.file_size_bytes = len(image_data) if image_data else None
+            existing_asset.user_prompt = user_prompt
+            existing_asset.likeness_description = None
+            existing_asset.used_likeness_ref = False
+            existing_asset.reference_image_url = None
+            existing_asset.error_message = None
+            existing_asset.generated_at = generated_at
+            existing_asset.generation_time_sec = generation_time_sec
+            asset = existing_asset
+        else:
+            asset = PlayerImageAsset(
+                snapshot_id=snapshot_id,
+                player_id=player_id,
+                s3_key=s3_key,
+                s3_bucket=settings.s3_bucket_name,
+                public_url=public_url,
+                file_size_bytes=len(image_data) if image_data else None,
+                user_prompt=user_prompt,  # Not stored in batch response
+                likeness_description=None,
+                used_likeness_ref=False,
+                reference_image_url=None,
+                error_message=None,
+                generated_at=generated_at,
+                generation_time_sec=generation_time_sec,
+            )
+            db.add(asset)
 
         return asset
 

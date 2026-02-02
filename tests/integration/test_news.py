@@ -1,6 +1,6 @@
 """Integration tests for the news feed API endpoints."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -45,8 +45,8 @@ async def sample_news_source(db_session: AsyncSession) -> NewsSource:
         feed_url="https://example.com/feed",
         is_active=True,
         fetch_interval_minutes=30,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+        updated_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db_session.add(source)
     await db_session.commit()
@@ -59,7 +59,7 @@ async def sample_news_items(
     db_session: AsyncSession, sample_news_source: NewsSource
 ) -> list[NewsItem]:
     """Create sample news items for testing."""
-    now = datetime.utcnow()
+    now = datetime.now(UTC).replace(tzinfo=None)
     items = [
         NewsItem(
             source_id=sample_news_source.id,  # type: ignore[arg-type]
@@ -342,7 +342,7 @@ class TestTriggerIngestion:
                     "guid": "mock-1",
                     "author": "Mock Author",
                     "image_url": None,
-                    "published_at": datetime.utcnow(),
+                    "published_at": datetime.now(UTC).replace(tzinfo=None),
                 }
             ]
 
@@ -388,15 +388,15 @@ class TestTriggerIngestion:
             author=None,
             summary="Existing summary",
             tag=NewsItemTag.SCOUTING_REPORT,
-            published_at=datetime.utcnow(),
-            created_at=datetime.utcnow(),
+            published_at=datetime.now(UTC).replace(tzinfo=None),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
         )
         db_session.add(existing_item)
         await db_session.commit()
 
         async def _fake_fetch_rss_feed(url: str) -> list[dict]:
             assert url == sample_news_source.feed_url
-            now = datetime.utcnow()
+            now = datetime.now(UTC).replace(tzinfo=None)
             return [
                 {
                     "title": "Duplicate entry",

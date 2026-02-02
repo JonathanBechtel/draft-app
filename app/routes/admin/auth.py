@@ -13,8 +13,10 @@ from app.services.admin_auth_service import (
     ADMIN_SESSION_COOKIE_NAME,
     REMEMBER_ME_TTL,
     authenticate_staff_user,
+    confirm_invitation,
     confirm_password_reset,
     enqueue_password_reset,
+    get_invite_token_user,
     issue_session,
     revoke_session,
     sanitize_next_path,
@@ -184,5 +186,99 @@ async def admin_password_reset_success(request: Request) -> Response:
     """Display the password reset success page."""
     return request.app.state.templates.TemplateResponse(
         "admin/password-reset-success.html",
+        base_context(request),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Invitation Acceptance (unauthenticated)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/invite/accept", response_class=HTMLResponse)
+async def admin_invite_accept_form(
+    request: Request,
+    token: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Display the invitation acceptance form."""
+    if not token:
+        return request.app.state.templates.TemplateResponse(
+            "admin/invite-accept.html",
+            base_context(
+                request,
+                token=None,
+                invited_user=None,
+                error="Invalid invitation link.",
+            ),
+        )
+
+    invited_user = await get_invite_token_user(db, raw_token=token)
+    if invited_user is None:
+        return request.app.state.templates.TemplateResponse(
+            "admin/invite-accept.html",
+            base_context(
+                request,
+                token=token,
+                invited_user=None,
+                error="This invitation link is invalid or has expired. Please contact an admin.",
+            ),
+        )
+
+    return request.app.state.templates.TemplateResponse(
+        "admin/invite-accept.html",
+        base_context(
+            request,
+            token=token,
+            invited_user=invited_user,
+            error=None,
+        ),
+    )
+
+
+@router.post("/invite/accept", response_class=HTMLResponse)
+async def admin_invite_accept(
+    request: Request,
+    token: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Accept an invitation and set password."""
+    # Re-fetch invited user for display on error
+    invited_user = await get_invite_token_user(db, raw_token=token)
+
+    if password != confirm_password:
+        return request.app.state.templates.TemplateResponse(
+            "admin/invite-accept.html",
+            base_context(
+                request,
+                token=token,
+                invited_user=invited_user,
+                error="Passwords do not match.",
+            ),
+        )
+
+    success, error = await confirm_invitation(db, raw_token=token, password=password)
+
+    if not success:
+        return request.app.state.templates.TemplateResponse(
+            "admin/invite-accept.html",
+            base_context(
+                request,
+                token=token,
+                invited_user=invited_user,
+                error=error,
+            ),
+        )
+
+    return RedirectResponse(url="/admin/invite/success", status_code=303)
+
+
+@router.get("/invite/success", response_class=HTMLResponse)
+async def admin_invite_success(request: Request) -> Response:
+    """Display the invitation acceptance success page."""
+    return request.app.state.templates.TemplateResponse(
+        "admin/invite-success.html",
         base_context(request),
     )

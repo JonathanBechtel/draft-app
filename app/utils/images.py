@@ -30,8 +30,32 @@ def get_s3_image_base_url() -> str:
             f"https://{settings.s3_bucket_name}.s3.{settings.s3_region}.amazonaws.com"
         )
 
-    # Fallback to local (for dev mode)
-    return ""
+    # Fallback to local static mount (for dev/local storage mode)
+    return "/static/img"
+
+
+def get_player_image_url(
+    *,
+    player_id: int,
+    slug: str,
+    style: str,
+    base_url: str | None = None,
+) -> str:
+    """Build a canonical player image URL for a given style.
+
+    This is a pure string builder: it does not check whether the object exists.
+
+    Args:
+        player_id: Player database ID
+        slug: Player URL slug
+        style: Image style (default, arcade, anime, etc.)
+        base_url: Optional override (defaults to `get_s3_image_base_url()`)
+
+    Returns:
+        URL like '{base}/players/{id}_{slug}_{style}.png'
+    """
+    base = (base_url or get_s3_image_base_url()).rstrip("/")
+    return f"{base}/players/{player_id}_{slug}_{style}.png"
 
 
 def get_player_photo_url(

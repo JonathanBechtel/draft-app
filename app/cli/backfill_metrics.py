@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, cast
 
 from sqlalchemy import select
@@ -251,7 +251,7 @@ async def run_backfill(argv: Optional[Sequence[str]] = None) -> None:
 
         # Execute plan by grouping per anchor and calling compute_metrics with --sources
         executed = 0
-        ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        ts = datetime.now(UTC).replace(tzinfo=None).strftime("%Y%m%d%H%M%S")
         if not args.plan_only:
             for anchor, missing_sources in plan:
                 argv_inner: List[str] = ["--cohort", anchor.cohort.value]

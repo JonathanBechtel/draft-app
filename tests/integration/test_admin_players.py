@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
@@ -477,7 +477,7 @@ class TestPlayersDelete:
             title="Player News Article",
             url="https://example.com/player-article",
             tag=NewsItemTag.SCOUTING_REPORT,
-            published_at=datetime.utcnow(),
+            published_at=datetime.now(UTC).replace(tzinfo=None),
         )
         db_session.add(news_item)
         await db_session.commit()

@@ -3,307 +3,690 @@
 {% set page_title = "Edit Player" %}
 {% set active_nav = "players" %}
 
+{% block admin_js %}
+<script>
+function toggleCombineSection(headerEl) {
+  const category = headerEl.parentElement;
+  const content = category.querySelector('.admin-combine-category__content');
+  const toggle = category.querySelector('.admin-combine-category__toggle');
+
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    toggle.innerHTML = '&#9660;';
+  } else {
+    content.style.display = 'none';
+    toggle.innerHTML = '&#9654;';
+  }
+}
+
+function toggleEditMode(categoryKey) {
+  const viewEl = document.getElementById(categoryKey + '-view');
+  const editEl = document.getElementById(categoryKey + '-edit');
+
+  if (editEl.style.display === 'none') {
+    viewEl.style.display = 'none';
+    editEl.style.display = 'block';
+  } else {
+    viewEl.style.display = 'block';
+    editEl.style.display = 'none';
+  }
+}
+</script>
+{% endblock %}
+
 {% block admin_content %}
 <header class="admin-main__header">
   <h1 class="admin-main__title">Edit Player</h1>
   <p class="admin-main__subtitle">{{ player.display_name }}</p>
 </header>
 
-<div class="admin-card admin-card--medium">
-  <form class="admin-form" method="post" action="/admin/players/{{ player.id }}">
-    <!-- Basic Info Section -->
-    <div class="admin-form__section">
-      <h3 class="admin-form__section-title">Basic Info</h3>
-
-      <div class="admin-form__field">
-        <label class="admin-form__label" for="display_name">Display Name *</label>
-        <input
-          class="admin-form__input"
-          id="display_name"
-          name="display_name"
-          type="text"
-          value="{{ player.display_name or '' }}"
-          required
-        />
-        <span class="admin-form__help">Full display name (e.g., "LeBron James")</span>
-      </div>
-
-      <div class="admin-form__row">
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="prefix">Prefix</label>
-          <input
-            class="admin-form__input"
-            id="prefix"
-            name="prefix"
-            type="text"
-            value="{{ player.prefix or '' }}"
-            placeholder="Jr., Sr., etc."
-          />
-        </div>
+<div class="admin-player-detail-layout">
+  <!-- Left Column: Form -->
+  <div class="admin-card">
+    <form class="admin-form" method="post" action="/admin/players/{{ player.id }}">
+      <!-- Basic Info Section -->
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Basic Info</h3>
 
         <div class="admin-form__field">
-          <label class="admin-form__label" for="first_name">First Name *</label>
+          <label class="admin-form__label" for="display_name">Display Name *</label>
           <input
             class="admin-form__input"
-            id="first_name"
-            name="first_name"
+            id="display_name"
+            name="display_name"
             type="text"
-            value="{{ player.first_name or '' }}"
+            value="{{ player.display_name or '' }}"
             required
           />
+          <span class="admin-form__help">Full display name (e.g., "LeBron James")</span>
         </div>
 
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="middle_name">Middle Name</label>
-          <input
-            class="admin-form__input"
-            id="middle_name"
-            name="middle_name"
-            type="text"
-            value="{{ player.middle_name or '' }}"
-          />
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="prefix">Prefix</label>
+            <input
+              class="admin-form__input"
+              id="prefix"
+              name="prefix"
+              type="text"
+              value="{{ player.prefix or '' }}"
+              placeholder="Jr., Sr., etc."
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="first_name">First Name *</label>
+            <input
+              class="admin-form__input"
+              id="first_name"
+              name="first_name"
+              type="text"
+              value="{{ player.first_name or '' }}"
+              required
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="middle_name">Middle Name</label>
+            <input
+              class="admin-form__input"
+              id="middle_name"
+              name="middle_name"
+              type="text"
+              value="{{ player.middle_name or '' }}"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="last_name">Last Name *</label>
+            <input
+              class="admin-form__input"
+              id="last_name"
+              name="last_name"
+              type="text"
+              value="{{ player.last_name or '' }}"
+              required
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="suffix">Suffix</label>
+            <input
+              class="admin-form__input"
+              id="suffix"
+              name="suffix"
+              type="text"
+              value="{{ player.suffix or '' }}"
+              placeholder="Jr., III, etc."
+            />
+          </div>
         </div>
 
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="last_name">Last Name *</label>
-          <input
-            class="admin-form__input"
-            id="last_name"
-            name="last_name"
-            type="text"
-            value="{{ player.last_name or '' }}"
-            required
-          />
-        </div>
-
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="suffix">Suffix</label>
-          <input
-            class="admin-form__input"
-            id="suffix"
-            name="suffix"
-            type="text"
-            value="{{ player.suffix or '' }}"
-            placeholder="Jr., III, etc."
-          />
-        </div>
-      </div>
-
-      <!-- Read-only slug display -->
-      <div class="admin-form__static-field">
-        <span class="admin-form__label">Slug</span>
-        <span class="admin-form__static-value">{{ player.slug or '—' }}</span>
-      </div>
-    </div>
-
-    <!-- Biographical Section -->
-    <div class="admin-form__section">
-      <h3 class="admin-form__section-title">Biographical</h3>
-
-      <div class="admin-form__row">
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="birthdate">Birth Date</label>
-          <input
-            class="admin-form__input"
-            id="birthdate"
-            name="birthdate"
-            type="date"
-            value="{{ player.birthdate.isoformat() if player.birthdate else '' }}"
-          />
-        </div>
-
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="shoots">Shoots</label>
-          <select class="admin-form__select" id="shoots" name="shoots">
-            <option value="">—</option>
-            <option value="L" {% if player.shoots == 'L' %}selected{% endif %}>Left</option>
-            <option value="R" {% if player.shoots == 'R' %}selected{% endif %}>Right</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="admin-form__row">
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="birth_city">Birth City</label>
-          <input
-            class="admin-form__input"
-            id="birth_city"
-            name="birth_city"
-            type="text"
-            value="{{ player.birth_city or '' }}"
-          />
-        </div>
-
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="birth_state_province">State/Province</label>
-          <input
-            class="admin-form__input"
-            id="birth_state_province"
-            name="birth_state_province"
-            type="text"
-            value="{{ player.birth_state_province or '' }}"
-          />
-        </div>
-
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="birth_country">Country</label>
-          <input
-            class="admin-form__input"
-            id="birth_country"
-            name="birth_country"
-            type="text"
-            value="{{ player.birth_country or '' }}"
-          />
-        </div>
-      </div>
-
-      <div class="admin-form__row">
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="school">College/School</label>
-          <input
-            class="admin-form__input"
-            id="school"
-            name="school"
-            type="text"
-            value="{{ player.school or '' }}"
-          />
-        </div>
-
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="high_school">High School</label>
-          <input
-            class="admin-form__input"
-            id="high_school"
-            name="high_school"
-            type="text"
-            value="{{ player.high_school or '' }}"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- Draft Info Section -->
-    <div class="admin-form__section">
-      <h3 class="admin-form__section-title">Draft Info</h3>
-
-      <div class="admin-form__row">
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="draft_year">Draft Year</label>
-          <input
-            class="admin-form__input"
-            id="draft_year"
-            name="draft_year"
-            type="number"
-            min="1947"
-            max="2030"
-            value="{{ player.draft_year or '' }}"
-          />
-        </div>
-
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="draft_round">Round</label>
-          <input
-            class="admin-form__input"
-            id="draft_round"
-            name="draft_round"
-            type="number"
-            min="1"
-            max="10"
-            value="{{ player.draft_round or '' }}"
-          />
-        </div>
-
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="draft_pick">Pick</label>
-          <input
-            class="admin-form__input"
-            id="draft_pick"
-            name="draft_pick"
-            type="number"
-            min="1"
-            max="60"
-            value="{{ player.draft_pick or '' }}"
-          />
-        </div>
-
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="draft_team">Draft Team</label>
-          <input
-            class="admin-form__input"
-            id="draft_team"
-            name="draft_team"
-            type="text"
-            placeholder="Team abbreviation"
-            value="{{ player.draft_team or '' }}"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- NBA Career Section -->
-    <div class="admin-form__section">
-      <h3 class="admin-form__section-title">NBA Career</h3>
-
-      <div class="admin-form__row">
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="nba_debut_date">NBA Debut Date</label>
-          <input
-            class="admin-form__input"
-            id="nba_debut_date"
-            name="nba_debut_date"
-            type="date"
-            value="{{ player.nba_debut_date.isoformat() if player.nba_debut_date else '' }}"
-          />
-        </div>
-
-        <div class="admin-form__field">
-          <label class="admin-form__label" for="nba_debut_season">NBA Debut Season</label>
-          <input
-            class="admin-form__input"
-            id="nba_debut_season"
-            name="nba_debut_season"
-            type="text"
-            placeholder="e.g., 2023-24"
-            value="{{ player.nba_debut_season or '' }}"
-          />
-        </div>
-      </div>
-
-      <div class="admin-form__field">
-        <label class="admin-form__label" for="reference_image_url">Reference Image URL</label>
-        <input
-          class="admin-form__input"
-          id="reference_image_url"
-          name="reference_image_url"
-          type="url"
-          placeholder="https://..."
-          value="{{ player.reference_image_url or '' }}"
-        />
-        <span class="admin-form__help">URL to reference image for AI likeness generation</span>
-      </div>
-    </div>
-
-    <!-- Metadata (read-only) -->
-    <div class="admin-form__section">
-      <h3 class="admin-form__section-title">Metadata</h3>
-
-      <div class="admin-form__row">
+        <!-- Read-only slug display -->
         <div class="admin-form__static-field">
-          <span class="admin-form__label">Created</span>
-          <span class="admin-form__static-value">{{ player.created_at.strftime('%Y-%m-%d %H:%M') if player.created_at else '—' }}</span>
+          <span class="admin-form__label">Slug</span>
+          <span class="admin-form__static-value">{{ player.slug or '—' }}</span>
+        </div>
+      </div>
+
+      <!-- Biographical Section -->
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Biographical</h3>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="birthdate">Birth Date</label>
+            <input
+              class="admin-form__input"
+              id="birthdate"
+              name="birthdate"
+              type="date"
+              value="{{ player.birthdate.isoformat() if player.birthdate else '' }}"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="shoots">Shoots</label>
+            <select class="admin-form__select" id="shoots" name="shoots">
+              <option value="">—</option>
+              <option value="L" {% if player.shoots == 'L' %}selected{% endif %}>Left</option>
+              <option value="R" {% if player.shoots == 'R' %}selected{% endif %}>Right</option>
+            </select>
+          </div>
         </div>
 
-        <div class="admin-form__static-field">
-          <span class="admin-form__label">Updated</span>
-          <span class="admin-form__static-value">{{ player.updated_at.strftime('%Y-%m-%d %H:%M') if player.updated_at else '—' }}</span>
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="birth_city">Birth City</label>
+            <input
+              class="admin-form__input"
+              id="birth_city"
+              name="birth_city"
+              type="text"
+              value="{{ player.birth_city or '' }}"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="birth_state_province">State/Province</label>
+            <input
+              class="admin-form__input"
+              id="birth_state_province"
+              name="birth_state_province"
+              type="text"
+              value="{{ player.birth_state_province or '' }}"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="birth_country">Country</label>
+            <input
+              class="admin-form__input"
+              id="birth_country"
+              name="birth_country"
+              type="text"
+              value="{{ player.birth_country or '' }}"
+            />
+          </div>
+        </div>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="school">College/School</label>
+            <input
+              class="admin-form__input"
+              id="school"
+              name="school"
+              type="text"
+              value="{{ player.school or '' }}"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="high_school">High School</label>
+            <input
+              class="admin-form__input"
+              id="high_school"
+              name="high_school"
+              type="text"
+              value="{{ player.high_school or '' }}"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Draft Info Section -->
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Draft Info</h3>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="draft_year">Draft Year</label>
+            <input
+              class="admin-form__input"
+              id="draft_year"
+              name="draft_year"
+              type="number"
+              min="1947"
+              max="2030"
+              value="{{ player.draft_year or '' }}"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="draft_round">Round</label>
+            <input
+              class="admin-form__input"
+              id="draft_round"
+              name="draft_round"
+              type="number"
+              min="1"
+              max="10"
+              value="{{ player.draft_round or '' }}"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="draft_pick">Pick</label>
+            <input
+              class="admin-form__input"
+              id="draft_pick"
+              name="draft_pick"
+              type="number"
+              min="1"
+              max="60"
+              value="{{ player.draft_pick or '' }}"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="draft_team">Draft Team</label>
+            <input
+              class="admin-form__input"
+              id="draft_team"
+              name="draft_team"
+              type="text"
+              placeholder="Team abbreviation"
+              value="{{ player.draft_team or '' }}"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- NBA Career Section -->
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">NBA Career</h3>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="nba_debut_date">NBA Debut Date</label>
+            <input
+              class="admin-form__input"
+              id="nba_debut_date"
+              name="nba_debut_date"
+              type="date"
+              value="{{ player.nba_debut_date.isoformat() if player.nba_debut_date else '' }}"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="nba_debut_season">NBA Debut Season</label>
+            <input
+              class="admin-form__input"
+              id="nba_debut_season"
+              name="nba_debut_season"
+              type="text"
+              placeholder="e.g., 2023-24"
+              value="{{ player.nba_debut_season or '' }}"
+            />
+          </div>
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="reference_image_url">Reference Image URL</label>
+          <input
+            class="admin-form__input"
+            id="reference_image_url"
+            name="reference_image_url"
+            type="url"
+            placeholder="https://..."
+            value="{{ player.reference_image_url or '' }}"
+          />
+          <span class="admin-form__help">URL to reference image for AI likeness generation</span>
+        </div>
+      </div>
+
+      <!-- Player Status Section -->
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Player Status</h3>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="is_active_nba">NBA Status</label>
+            <select class="admin-form__select" id="is_active_nba" name="is_active_nba">
+              <option value="" {% if player_status is none or player_status.is_active_nba is none %}selected{% endif %}>Unknown</option>
+              <option value="true" {% if player_status and player_status.is_active_nba is true %}selected{% endif %}>NBA Active</option>
+              <option value="false" {% if player_status and player_status.is_active_nba is false %}selected{% endif %}>Not Active</option>
+            </select>
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="current_team">Current Team</label>
+            <input
+              class="admin-form__input"
+              id="current_team"
+              name="current_team"
+              type="text"
+              value="{{ player_status.current_team or '' if player_status else '' }}"
+              placeholder="e.g., LAL, BOS"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="nba_last_season">Last Season</label>
+            <input
+              class="admin-form__input"
+              id="nba_last_season"
+              name="nba_last_season"
+              type="text"
+              value="{{ player_status.nba_last_season or '' if player_status else '' }}"
+              placeholder="e.g., 2023-24"
+            />
+          </div>
+        </div>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="raw_position">Position</label>
+            <input
+              class="admin-form__input"
+              id="raw_position"
+              name="raw_position"
+              type="text"
+              value="{{ player_status.raw_position or '' if player_status else '' }}"
+              placeholder="e.g., PG, SF-PF"
+            />
+            <span class="admin-form__help">Position code & parents auto-derived from taxonomy</span>
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="height_in">Height (inches)</label>
+            <input
+              class="admin-form__input"
+              id="height_in"
+              name="height_in"
+              type="number"
+              value="{{ player_status.height_in or '' if player_status else '' }}"
+              min="60"
+              max="96"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="weight_lb">Weight (lbs)</label>
+            <input
+              class="admin-form__input"
+              id="weight_lb"
+              name="weight_lb"
+              type="number"
+              value="{{ player_status.weight_lb or '' if player_status else '' }}"
+              min="100"
+              max="400"
+            />
+          </div>
+        </div>
+
+        <!-- Read-only source metadata -->
+        <div class="admin-form__static-field" style="margin-top: 0.5rem;">
+          <span class="admin-form__label">Source</span>
+          <span class="admin-form__static-value">{{ player_status.source or 'manual' if player_status else 'manual' }}</span>
+        </div>
+      </div>
+
+      <!-- Metadata (read-only) -->
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Metadata</h3>
+
+        <div class="admin-form__row">
+          <div class="admin-form__static-field">
+            <span class="admin-form__label">Created</span>
+            <span class="admin-form__static-value">{{ player.created_at.strftime('%Y-%m-%d %H:%M') if player.created_at else '—' }}</span>
+          </div>
+
+          <div class="admin-form__static-field">
+            <span class="admin-form__label">Updated</span>
+            <span class="admin-form__static-value">{{ player.updated_at.strftime('%Y-%m-%d %H:%M') if player.updated_at else '—' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-form__actions">
+        <button type="submit" class="admin-btn admin-btn--primary">Save Changes</button>
+        <a href="/admin/players" class="admin-btn admin-btn--secondary">Cancel</a>
+      </div>
+    </form>
+
+    <!-- Anthropometrics Section (Most Recent Season) -->
+    {% if combine_context and combine_context.anthro %}
+    <div class="admin-combine-section">
+      <div class="admin-combine-category" data-category="anthro">
+        <div class="admin-combine-category__header" onclick="toggleCombineSection(this)">
+          <span class="admin-combine-category__toggle">{% if combine_context.anthro.has_raw_data %}&#9660;{% else %}&#9654;{% endif %}</span>
+          <h3 class="admin-combine-category__title">Anthropometrics</h3>
+          {% if combine_context.selected_season_code %}
+          <span class="admin-badge admin-badge--tag">{{ combine_context.selected_season_code }}</span>
+          {% endif %}
+          {% if combine_context.anthro.has_raw_data %}
+          <span class="admin-badge admin-badge--active">Data</span>
+          {% else %}
+          <span class="admin-badge admin-badge--inactive">No Data</span>
+          {% endif %}
+          <button type="button" class="admin-btn admin-btn--secondary admin-btn--small admin-combine-category__edit-btn" onclick="event.stopPropagation(); toggleEditMode('anthro')">Edit</button>
+        </div>
+
+        <div class="admin-combine-category__content" {% if not combine_context.anthro.has_raw_data %}style="display: none;"{% endif %}>
+          <!-- View Mode -->
+          <div class="admin-combine-view" id="anthro-view">
+            {% if combine_context.anthro.metrics %}
+            <table class="admin-table admin-combine-table">
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for metric in combine_context.anthro.metrics %}
+                <tr>
+                  <td>{{ metric.display_name }}</td>
+                  <td>{{ metric.formatted_value if metric.formatted_value else '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <p class="admin-text--muted">No anthropometric data available.</p>
+            {% endif %}
+          </div>
+
+          <!-- Edit Mode -->
+          <div class="admin-combine-edit" id="anthro-edit" style="display: none;">
+            <form method="post" action="/admin/players/{{ player.id }}/combine/anthro">
+              <input type="hidden" name="season_code" value="{{ combine_context.selected_season_code }}">
+
+              <div class="admin-form__row">
+                {% for metric in combine_context.anthro.metrics %}
+                <div class="admin-form__field">
+                  <label class="admin-form__label" for="anthro_{{ metric.metric_key }}">{{ metric.display_name }} ({{ metric.unit }})</label>
+                  <input
+                    class="admin-form__input"
+                    id="anthro_{{ metric.metric_key }}"
+                    name="{{ metric.metric_key }}"
+                    type="number"
+                    step="0.01"
+                    value="{{ metric.raw_value if metric.raw_value is not none else '' }}"
+                  />
+                </div>
+                {% endfor %}
+              </div>
+
+              <div class="admin-form__actions" style="margin-top: 1rem;">
+                <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Save</button>
+                <button type="button" class="admin-btn admin-btn--secondary admin-btn--small" onclick="toggleEditMode('anthro')">Cancel</button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>
+    {% endif %}
 
-    <div class="admin-form__actions">
-      <button type="submit" class="admin-btn admin-btn--primary">Save Changes</button>
-      <a href="/admin/players" class="admin-btn admin-btn--secondary">Cancel</a>
+    <!-- Athletic Performance Section -->
+    {% if combine_context and combine_context.agility %}
+    <div class="admin-combine-section">
+      <div class="admin-combine-category" data-category="agility">
+        <div class="admin-combine-category__header" onclick="toggleCombineSection(this)">
+          <span class="admin-combine-category__toggle">{% if combine_context.agility.has_raw_data %}&#9660;{% else %}&#9654;{% endif %}</span>
+          <h3 class="admin-combine-category__title">Athletic Performance</h3>
+          {% if combine_context.selected_season_code %}
+          <span class="admin-badge admin-badge--tag">{{ combine_context.selected_season_code }}</span>
+          {% endif %}
+          {% if combine_context.agility.has_raw_data %}
+          <span class="admin-badge admin-badge--active">Data</span>
+          {% else %}
+          <span class="admin-badge admin-badge--inactive">No Data</span>
+          {% endif %}
+          <button type="button" class="admin-btn admin-btn--secondary admin-btn--small admin-combine-category__edit-btn" onclick="event.stopPropagation(); toggleEditMode('agility')">Edit</button>
+        </div>
+
+        <div class="admin-combine-category__content" {% if not combine_context.agility.has_raw_data %}style="display: none;"{% endif %}>
+          <!-- View Mode -->
+          <div class="admin-combine-view" id="agility-view">
+            {% if combine_context.agility.metrics %}
+            <table class="admin-table admin-combine-table">
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for metric in combine_context.agility.metrics %}
+                <tr>
+                  <td>{{ metric.display_name }}</td>
+                  <td>{{ metric.formatted_value if metric.formatted_value else '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <p class="admin-text--muted">No athletic performance data available.</p>
+            {% endif %}
+          </div>
+
+          <!-- Edit Mode -->
+          <div class="admin-combine-edit" id="agility-edit" style="display: none;">
+            <form method="post" action="/admin/players/{{ player.id }}/combine/agility">
+              <input type="hidden" name="season_code" value="{{ combine_context.selected_season_code }}">
+
+              <div class="admin-form__row">
+                {% for metric in combine_context.agility.metrics %}
+                <div class="admin-form__field">
+                  <label class="admin-form__label" for="agility_{{ metric.metric_key }}">{{ metric.display_name }} ({{ metric.unit }})</label>
+                  <input
+                    class="admin-form__input"
+                    id="agility_{{ metric.metric_key }}"
+                    name="{{ metric.metric_key }}"
+                    type="number"
+                    step="0.01"
+                    value="{{ metric.raw_value if metric.raw_value is not none else '' }}"
+                  />
+                </div>
+                {% endfor %}
+              </div>
+
+              <div class="admin-form__actions" style="margin-top: 1rem;">
+                <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Save</button>
+                <button type="button" class="admin-btn admin-btn--secondary admin-btn--small" onclick="toggleEditMode('agility')">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
-  </form>
+    {% endif %}
+
+    <!-- Shooting Section -->
+    {% if combine_context and combine_context.shooting %}
+    <div class="admin-combine-section">
+      <div class="admin-combine-category" data-category="shooting">
+        <div class="admin-combine-category__header" onclick="toggleCombineSection(this)">
+          <span class="admin-combine-category__toggle">{% if combine_context.shooting.has_raw_data %}&#9660;{% else %}&#9654;{% endif %}</span>
+          <h3 class="admin-combine-category__title">Shooting</h3>
+          {% if combine_context.selected_season_code %}
+          <span class="admin-badge admin-badge--tag">{{ combine_context.selected_season_code }}</span>
+          {% endif %}
+          {% if combine_context.shooting.has_raw_data %}
+          <span class="admin-badge admin-badge--active">Data</span>
+          {% else %}
+          <span class="admin-badge admin-badge--inactive">No Data</span>
+          {% endif %}
+          <button type="button" class="admin-btn admin-btn--secondary admin-btn--small admin-combine-category__edit-btn" onclick="event.stopPropagation(); toggleEditMode('shooting')">Edit</button>
+        </div>
+
+        <div class="admin-combine-category__content" {% if not combine_context.shooting.has_raw_data %}style="display: none;"{% endif %}>
+          <!-- View Mode -->
+          <div class="admin-combine-view" id="shooting-view">
+            {% if combine_context.shooting.metrics %}
+            <table class="admin-table admin-combine-table">
+              <thead>
+                <tr>
+                  <th>Drill</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for metric in combine_context.shooting.metrics %}
+                <tr>
+                  <td>{{ metric.display_name }}</td>
+                  <td>{{ metric.formatted_value if metric.formatted_value else '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <p class="admin-text--muted">No shooting data available.</p>
+            {% endif %}
+          </div>
+
+          <!-- Edit Mode -->
+          <div class="admin-combine-edit" id="shooting-edit" style="display: none;">
+            <form method="post" action="/admin/players/{{ player.id }}/combine/shooting">
+              <input type="hidden" name="season_code" value="{{ combine_context.selected_season_code }}">
+
+              <div class="admin-form__row">
+                {% for metric in combine_context.shooting.metrics %}
+                <div class="admin-form__field">
+                  <label class="admin-form__label">{{ metric.display_name }}</label>
+                  <div style="display: flex; gap: 0.5rem;">
+                    <input
+                      class="admin-form__input"
+                      name="{{ metric.metric_key }}_fgm"
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder="FGM"
+                      style="width: 80px;"
+                    />
+                    <span style="line-height: 2.5;">/</span>
+                    <input
+                      class="admin-form__input"
+                      name="{{ metric.metric_key }}_fga"
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder="FGA"
+                      style="width: 80px;"
+                    />
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+
+              <div class="admin-form__actions" style="margin-top: 1rem;">
+                <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Save</button>
+                <button type="button" class="admin-btn admin-btn--secondary admin-btn--small" onclick="toggleEditMode('shooting')">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Right Column: Player Image and Status (S3-first) -->
+  <div class="admin-player-detail-layout__sidebar">
+    <div class="admin-card">
+      <h3 class="admin-form__section-title">Player Image</h3>
+
+      {% if expected_image_url %}
+      <div class="admin-image-card">
+        <img src="{{ expected_image_url }}" alt="{{ player.display_name }}" class="admin-image-thumbnail"
+             onerror="this.src='{{ placeholder_url }}';">
+        <div class="admin-image-card__overlay">
+          <div class="admin-image-card__meta">
+            <span class="admin-badge admin-badge--style-default">default</span>
+          </div>
+        </div>
+      </div>
+      <a href="/admin/images?player_id={{ player.id }}" class="admin-btn admin-btn--secondary admin-btn--small admin-btn--block" style="margin-top: 1rem;">
+        View All Images
+      </a>
+      {% else %}
+      <p class="admin-text--muted">No slug set - cannot construct image URL.</p>
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}

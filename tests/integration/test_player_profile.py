@@ -282,9 +282,10 @@ async def test_player_detail_includes_photo_url(app_client, db_session):
     assert response.status_code == 200
     # Photo should be in an img tag with class player-photo
     assert 'class="player-photo"' in response.text
-    # Since no local image exists, should use placehold.co
+    # Canonical deterministic URL is used (fallback handled client-side via onerror)
+    assert f"/players/{player.id}_photo-test_default.png" in response.text
+    # Placeholder is present as a fallback
     assert "placehold.co" in response.text
-    # Player name should be in placeholder URL
     assert "Photo+Test" in response.text
 
 
@@ -305,16 +306,15 @@ async def test_player_detail_style_param_changes_photo_url(app_client, db_sessio
     response = await app_client.get("/players/style-test?style=vector")
 
     assert response.status_code == 200
-    # When no image exists, falls back to placeholder regardless of style
+    assert f"/players/{player.id}_style-test_vector.png" in response.text
+    assert f"/players/{player.id}_style-test_default.png" in response.text
     assert "placehold.co" in response.text
 
 
 @pytest.mark.asyncio
 async def test_player_detail_photo_url_uses_player_id(app_client, db_session):
-    """Photo URL comes from the current image asset for the player."""
+    """Photo URL is a deterministic style-first URL for the player."""
     from app.schemas.players_master import PlayerMaster
-    from app.models.fields import CohortType
-    from app.schemas.image_snapshots import PlayerImageAsset, PlayerImageSnapshot
 
     player = PlayerMaster(
         display_name="ID Test Player",
@@ -324,39 +324,7 @@ async def test_player_detail_photo_url_uses_player_id(app_client, db_session):
     db_session.add(player)
     await db_session.commit()
 
-    snapshot = PlayerImageSnapshot(
-        run_key="test",
-        version=1,
-        is_current=True,
-        style="default",
-        cohort=CohortType.global_scope,
-        draft_year=None,
-        population_size=1,
-        success_count=1,
-        failure_count=0,
-        image_size="1K",
-        system_prompt="test",
-        system_prompt_version="default",
-    )
-    db_session.add(snapshot)
-    await db_session.commit()
-    await db_session.refresh(snapshot)
-
-    public_url = (
-        f"https://cdn.example.com/players/{player.id}_id-test-player_default.png"
-    )
-    asset = PlayerImageAsset(
-        snapshot_id=snapshot.id,  # type: ignore[arg-type]
-        player_id=player.id,  # type: ignore[arg-type]
-        s3_key=f"players/{player.id}_id-test-player_default.png",
-        s3_bucket="test-bucket",
-        public_url=public_url,
-        user_prompt="test",
-    )
-    db_session.add(asset)
-    await db_session.commit()
-
     response = await app_client.get("/players/id-test-player")
 
     assert response.status_code == 200
-    assert public_url in response.text
+    assert f"/players/{player.id}_id-test-player_default.png" in response.text
