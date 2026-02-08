@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -10,11 +12,10 @@ from app.models.fields import CohortType
 from app.schemas.image_snapshots import (
     BatchJobState,
     ImageBatchJob,
-    PlayerImageAsset,
     PlayerImageSnapshot,
 )
 from app.schemas.players_master import PlayerMaster
-from app.services.image_generation import image_generation_service
+from app.services.image_generation import BatchUploadResult, image_generation_service
 
 
 class _DummyError:
@@ -261,31 +262,32 @@ async def test_retrieve_batch_results_ingests_successes_when_some_requests_error
         lambda _name: BatchJobState.succeeded,
     )
 
-    async def _fake_process_batch_response(  # type: ignore[override]
+    def _fake_extract_and_upload(  # type: ignore[override]
         *,
-        db: AsyncSession,
         response: object,  # noqa: ARG001
         player: PlayerMaster,
         snapshot: PlayerImageSnapshot,
         style: str,  # noqa: ARG001
         dg_request_id: str | None = None,  # noqa: ARG001
-    ):
+    ) -> BatchUploadResult:
         assert snapshot.id is not None
         assert player.id is not None
-        return PlayerImageAsset(
-            snapshot_id=snapshot.id,
+        return BatchUploadResult(
             player_id=player.id,
+            snapshot_id=snapshot.id,
             s3_key=f"players/{player.id}_{player.slug or player.id}_default.png",
-            s3_bucket="test",
             public_url="https://example.test/image.png",
+            file_size_bytes=1024,
             user_prompt="test",
             error_message=None,
+            generated_at=datetime.now(UTC).replace(tzinfo=None),
+            generation_time_sec=0.1,
         )
 
     monkeypatch.setattr(
         image_generation_service,
-        "_process_batch_response",
-        _fake_process_batch_response,
+        "_extract_and_upload",
+        _fake_extract_and_upload,
     )
 
     success_count, failure_count = await image_generation_service.retrieve_batch_results(
