@@ -122,6 +122,7 @@ async def get_players_for_season(
     *,
     season_code: str,
     limit: Optional[int] = None,
+    offset: Optional[int] = None,
 ) -> list[PlayerMaster]:
     """Fetch players included in current_draft metric snapshots for a season.
 
@@ -180,9 +181,11 @@ async def get_players_for_season(
     stmt = (
         select(PlayerMaster)
         .where(PlayerMaster.id.in_(select(player_ids_subq.c.player_id)))  # type: ignore[union-attr]
-        .order_by(PlayerMaster.display_name)
+        .order_by(PlayerMaster.display_name, PlayerMaster.id)
     )
 
+    if offset:
+        stmt = stmt.offset(offset)
     if limit:
         stmt = stmt.limit(limit)
 
@@ -198,6 +201,7 @@ async def get_players(
     draft_year: Optional[int] = None,
     season: Optional[str] = None,
     limit: Optional[int] = None,
+    offset: Optional[int] = None,
 ) -> list[PlayerMaster]:
     """Fetch players based on filters.
 
@@ -209,14 +213,17 @@ async def get_players(
         draft_year: Filter by draft year
         season: Filter by season code (uses current_draft metric snapshots)
         limit: Maximum number of players
+        offset: Number of players to skip
 
     Returns:
         List of PlayerMaster records
     """
     if season:
-        return await get_players_for_season(db, season_code=season, limit=limit)
+        return await get_players_for_season(
+            db, season_code=season, limit=limit, offset=offset
+        )
 
-    stmt = select(PlayerMaster).order_by(PlayerMaster.display_name)
+    stmt = select(PlayerMaster).order_by(PlayerMaster.display_name, PlayerMaster.id)
 
     if player_id:
         stmt = stmt.where(PlayerMaster.id == player_id)
@@ -245,6 +252,8 @@ async def get_players(
                 stmt = stmt.where(PlayerMaster.nba_debut_date.isnot(None))  # type: ignore[union-attr]
             # Add more cohort filters as needed
 
+    if offset:
+        stmt = stmt.offset(offset)
     if limit:
         stmt = stmt.limit(limit)
 
@@ -390,6 +399,7 @@ async def batch_submit(args: argparse.Namespace) -> None:
             draft_year=draft_year,
             season=args.season,
             limit=args.limit,
+            offset=args.offset,
         )
 
         if not players:
@@ -729,6 +739,7 @@ async def main(args: argparse.Namespace) -> None:
             draft_year=draft_year,
             season=args.season,
             limit=args.limit,
+            offset=args.offset,
         )
 
         if not players:
@@ -938,6 +949,11 @@ def parse_args() -> argparse.Namespace:
         "--limit",
         type=int,
         help="Max players to process (for testing)",
+    )
+    run_opts.add_argument(
+        "--offset",
+        type=int,
+        help="Skip first N players (use with --limit to split batches)",
     )
     run_opts.add_argument(
         "--notes",
