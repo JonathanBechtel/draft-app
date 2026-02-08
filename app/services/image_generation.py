@@ -903,6 +903,12 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 )
                 continue
 
+            # Gemini sometimes wraps the response in an array
+            if isinstance(payload, list):
+                payload = payload[0] if payload else {}
+            if not isinstance(payload, dict):
+                continue
+
             dg_request_id = payload.get("dg_request_id")
             if (
                 not isinstance(dg_request_id, str)
