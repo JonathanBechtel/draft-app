@@ -148,28 +148,5 @@ For UI changes, use Playwright to capture screenshots for visual verification. R
 - For custom types or data backfills, keep the logic alongside the structural operations and tear down enum types by calling the column's `.type.drop` when needed.
 - Test every revision against a disposable database: run `alembic upgrade head`, sanity-check the schema, then `alembic downgrade base` to confirm clean teardowns before sharing the change.
 
-## Fly.io Infrastructure
-DraftGuru runs on Fly.io with separate staging and production apps:
-
-| App | Environment | URL |
-|-----|-------------|-----|
-| `draft-app` | Staging | https://draft-app.fly.dev |
-| `draft-app-prod` | Production | https://draft-app-prod.fly.dev |
-
-Each app has two machine types:
-- **Web machines**: Serve the FastAPI application
-- **Cron machines** (`news-ingestion-cron`): Run scheduled news ingestion (hourly in prod, daily in staging)
-
-**Common commands:**
-```bash
-# View logs (add --app draft-app for staging)
-flyctl logs --app draft-app-prod
-
-# List machines
-flyctl machine list --app draft-app-prod
-
-# Check specific machine status
-flyctl machine status <machine-id> --app draft-app-prod
-```
-
-See `docs/fly_infrastructure.md` for full details on deployment workflows and cron machine management.
+## Infrastructure
+DraftGuru runs on **Fly.io** (staging: `draft-app`, prod: `draft-app-prod`) with **Neon Serverless Postgres** (project: `draftguru`; dev and prod are branches of this project). Use `flyctl` and `neonctl` CLIs for ops. See `docs/fly_infrastructure.md` for details.
