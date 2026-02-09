@@ -145,6 +145,9 @@ async def get_similar_players_handler(
     same_position: bool = Query(False, description="Filter to same position only"),
     same_draft_year: bool = Query(False, description="Filter to same draft year"),
     nba_only: bool = Query(False, description="Filter to active NBA players only"),
+    all_time_nba: bool = Query(
+        False, description="Filter to all NBA players (active + retired)"
+    ),
     limit: int = Query(10, ge=1, le=20, description="Max similar players"),
     db: AsyncSession = Depends(get_session),
 ) -> PlayerSimilarityResponse:
@@ -157,6 +160,7 @@ async def get_similar_players_handler(
             same_position=same_position,
             same_draft_year=same_draft_year,
             nba_only=nba_only,
+            all_time_nba=all_time_nba,
             limit=limit,
         )
     except ValueError as exc:
