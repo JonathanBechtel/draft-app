@@ -587,19 +587,12 @@ Be specific and objective. This will help an AI illustrator capture their likene
             system_prompt: System instructions for style
             image_size: Size setting ("512", "1K", "2K")
             likeness_description: Optional likeness description
-            dg_request_id: Per-request correlation id to be echoed in JSON text output
+            dg_request_id: Per-request correlation id stored in request metadata
 
         Returns:
             InlinedRequest formatted for Gemini batch API
         """
         user_prompt = self.build_player_prompt(player, likeness_description)
-        if dg_request_id:
-            user_prompt = (
-                f"DG_REQUEST_ID: {dg_request_id}\n"
-                f"{user_prompt}\n\n"
-                "Return TEXT as strict JSON with exactly this shape:\n"
-                '{"dg_request_id": "<the DG_REQUEST_ID value verbatim>"}'
-            )
 
         return types.InlinedRequest(
             contents=types.Content(
@@ -614,7 +607,6 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 response_modalities=["IMAGE", "TEXT"],
                 image_config=types.ImageConfig(image_size=image_size),
                 system_instruction=[types.Part.from_text(text=system_prompt)],
-                response_mime_type="application/json",
             ),
         )
 
@@ -826,48 +818,15 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 "configure a destination file and implement file-based retrieval."
             )
 
-        # Process inlined responses (treat correlation ids as authoritative; do not rely on order)
-        raw_request_records = json.loads(job_record.player_ids_json)
-        if (
-            not raw_request_records
-            or not isinstance(raw_request_records, list)
-            or not isinstance(raw_request_records[0], dict)
-            or "dg_request_id" not in raw_request_records[0]
-        ):
-            async with db.begin():
-                job_record.state = state
-                job_record.completed_at = datetime.now(UTC).replace(tzinfo=None)
-                job_record.success_count = 0
-                job_record.failure_count = job_record.total_requests
-                job_record.error_message = (
-                    "Batch job was submitted without per-request correlation IDs; "
-                    "refusing to ingest inlined responses safely. Resubmit with updated tooling."
-                )
-            raise RuntimeError(job_record.error_message)
-
-        request_records: list[dict[str, object]] = raw_request_records
-        request_id_to_player_id: dict[str, int] = {}
-        for record in request_records:
-            dg_request_id = record.get("dg_request_id")
-            player_id = record.get("player_id")
-            if not isinstance(dg_request_id, str) or not isinstance(player_id, int):
-                continue
-            request_id_to_player_id[dg_request_id] = player_id
-
-        expected_request_ids = set(request_id_to_player_id.keys())
-        if len(expected_request_ids) != len(request_records):
-            async with db.begin():
-                job_record.state = state
-                job_record.completed_at = datetime.now(UTC).replace(tzinfo=None)
-                job_record.success_count = 0
-                job_record.failure_count = job_record.total_requests
-                job_record.error_message = "Batch job correlation IDs are invalid/duplicated; refusing to ingest."
-            raise RuntimeError(job_record.error_message)
+        # Build ordered list of request records for positional fallback
+        request_records: list[dict[str, object]] = json.loads(
+            job_record.player_ids_json
+        )
 
         if len(inlined_responses) != len(request_records):
             logger.warning(
                 "Batch response count mismatch: %s responses for %s requests; "
-                "proceeding with best-effort correlation-based ingest.",
+                "will correlate by metadata or position where possible.",
                 len(inlined_responses),
                 len(request_records),
             )
@@ -881,51 +840,57 @@ Be specific and objective. This will help an AI illustrator capture their likene
             if first_error is not None:
                 first_error_message = first_error.message
 
-        parsed: list[tuple[str, types.InlinedResponse]] = []
-        seen_request_ids: set[str] = set()
-        for resp in inlined_responses:
+        # Correlate each response to a player_id via metadata (primary)
+        # or positional index (fallback).
+        correlated: list[tuple[int, types.InlinedResponse]] = []
+        for idx, resp in enumerate(inlined_responses):
             if resp.error is not None:
-                # We cannot safely assign an errored response to a specific request unless
-                # the API provides correlation metadata; skip and count it as a failure.
+                logger.warning("Batch response %d has error: %s", idx, resp.error)
                 continue
             if resp.response is None:
                 continue
 
-            text = resp.response.text
-            if not text:
-                continue
+            # Primary: use echoed metadata from InlinedResponse
+            player_id_val: int | None = None
+            resp_metadata = getattr(resp, "metadata", None)
+            if isinstance(resp_metadata, dict) and resp_metadata.get("player_id"):
+                try:
+                    player_id_val = int(resp_metadata["player_id"])
+                    logger.debug(
+                        "Response %d: correlated via metadata (player_id=%d)",
+                        idx,
+                        player_id_val,
+                    )
+                except (ValueError, TypeError):
+                    pass
 
-            try:
-                payload = json.loads(text)
-            except Exception as exc:  # noqa: BLE001
+            # Fallback: positional index matching
+            if player_id_val is None and idx < len(request_records):
+                rec = request_records[idx]
+                rec_pid = rec.get("player_id")
+                if isinstance(rec_pid, int):
+                    player_id_val = rec_pid
+                elif isinstance(rec_pid, str) and rec_pid.isdigit():
+                    player_id_val = int(rec_pid)
+
+                if player_id_val is not None:
+                    logger.debug(
+                        "Response %d: correlated via positional index (player_id=%d)",
+                        idx,
+                        player_id_val,
+                    )
+
+            if player_id_val is None:
                 logger.warning(
-                    "Failed to parse batch JSON correlation payload: %s", exc
+                    "Response %d: could not correlate to any player; skipping.", idx
                 )
                 continue
 
-            # Gemini sometimes wraps the response in an array
-            if isinstance(payload, list):
-                payload = payload[0] if payload else {}
-            if not isinstance(payload, dict):
-                continue
-
-            dg_request_id = payload.get("dg_request_id")
-            if (
-                not isinstance(dg_request_id, str)
-                or dg_request_id not in request_id_to_player_id
-            ):
-                continue
-
-            if dg_request_id in seen_request_ids:
-                continue
-
-            seen_request_ids.add(dg_request_id)
-            parsed.append((dg_request_id, resp))
+            correlated.append((player_id_val, resp))
 
         # --- Pass 1: extract images & upload to S3 (no DB transaction) -----------
         upload_results: list[BatchUploadResult] = []
-        for dg_request_id, resp in parsed:
-            player_id = request_id_to_player_id[dg_request_id]
+        for player_id, resp in correlated:
             player = players_by_id.get(player_id)
             if not player:
                 raise RuntimeError(f"Player not found for id: {player_id}")
@@ -935,7 +900,6 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 player=player,
                 snapshot=snapshot,
                 style=job_record.style,
-                dg_request_id=dg_request_id,
             )
             upload_results.append(result)
 
@@ -983,7 +947,6 @@ Be specific and objective. This will help an AI illustrator capture their likene
         player: PlayerMaster,
         snapshot: PlayerImageSnapshot,
         style: str,
-        dg_request_id: str | None = None,
     ) -> BatchUploadResult:
         """Extract image data from a batch response and upload to S3.
 
@@ -995,7 +958,6 @@ Be specific and objective. This will help an AI illustrator capture their likene
             player: Player record
             snapshot: Parent snapshot
             style: Image style
-            dg_request_id: Correlation id for the request
 
         Returns:
             BatchUploadResult capturing the outcome for later DB persistence.
@@ -1012,8 +974,6 @@ Be specific and objective. This will help an AI illustrator capture their likene
         image_data: bytes | None = None
         error_message: str | None = None
         user_prompt = self.build_player_prompt(player)
-        if dg_request_id:
-            user_prompt = f"DG_REQUEST_ID: {dg_request_id}\n{user_prompt}"
 
         try:
             if response.error is not None and response.error.message:
@@ -1049,7 +1009,6 @@ Be specific and objective. This will help an AI illustrator capture their likene
                         "player_id": str(player_id),
                         "player_slug": player.slug or "",
                         "style": style,
-                        "dg_request_id": dg_request_id or "",
                     },
                 )
                 cache_bust = int(datetime.now(UTC).replace(tzinfo=None).timestamp())
