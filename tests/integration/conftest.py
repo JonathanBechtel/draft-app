@@ -125,6 +125,7 @@ async def async_engine(
     from app.schemas import seasons  # noqa: F401
     from app.schemas import news_sources  # noqa: F401
     from app.schemas import news_items  # noqa: F401
+    from app.schemas import news_item_player_mentions  # noqa: F401
     from app.schemas import auth  # noqa: F401
 
     connect_args = {
@@ -238,3 +239,72 @@ async def app_client(
 def anyio_backend() -> str:
     """Ensure HTTPX uses asyncio backend during tests."""
     return "asyncio"
+
+
+# ---------------------------------------------------------------------------
+# Shared test factory helpers
+# ---------------------------------------------------------------------------
+from datetime import datetime, timedelta, timezone
+
+from app.schemas.news_items import NewsItem, NewsItemTag
+from app.schemas.news_sources import FeedType, NewsSource
+from app.schemas.players_master import PlayerMaster
+
+
+@pytest_asyncio.fixture()
+async def news_source(db_session: AsyncSession) -> NewsSource:
+    """Create a generic news source for test articles."""
+    source = NewsSource(
+        name="Test Source",
+        display_name="Test Source",
+        feed_type=FeedType.RSS,
+        feed_url="https://example.com/test-feed",
+        is_active=True,
+        fetch_interval_minutes=30,
+        created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    db_session.add(source)
+    await db_session.flush()
+    return source
+
+
+def make_player(
+    first_name: str,
+    last_name: str,
+    school: str | None = None,
+) -> PlayerMaster:
+    """Build an unsaved PlayerMaster instance for testing."""
+    return PlayerMaster(
+        first_name=first_name,
+        last_name=last_name,
+        display_name=f"{first_name} {last_name}",
+        draft_year=2025,
+        is_stub=False,
+        school=school,
+    )
+
+
+def make_article(
+    source_id: int,
+    external_id: str,
+    hours_ago: float = 1,
+    player_id: int | None = None,
+    image_url: str | None = None,
+) -> NewsItem:
+    """Build an unsaved NewsItem instance for testing."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return NewsItem(
+        source_id=source_id,
+        external_id=external_id,
+        title=f"Article {external_id}",
+        description=f"Description for {external_id}",
+        url=f"https://example.com/{external_id}",
+        image_url=image_url,
+        author=None,
+        summary=f"Summary for {external_id}",
+        tag=NewsItemTag.SCOUTING_REPORT,
+        published_at=now - timedelta(hours=hours_ago),
+        created_at=now,
+        player_id=player_id,
+    )

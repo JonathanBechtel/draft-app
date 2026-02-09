@@ -40,6 +40,9 @@ class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
     nba_debut_date: Optional[date] = Field(default=None)
     nba_debut_season: Optional[str] = Field(default=None, index=True)
 
+    # Stub flag: auto-created players with just a name, pending enrichment
+    is_stub: bool = Field(default=False)
+
     # Image generation
     reference_image_url: Optional[str] = Field(
         default=None,

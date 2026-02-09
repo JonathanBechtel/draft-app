@@ -89,25 +89,26 @@ const ProspectsModule = {
    * @returns {string} HTML string
    */
   renderProspects() {
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
     return window.PLAYERS.map((player) => {
       const badge = player.change !== 0
         ? this.renderBadge(player.change)
         : '';
 
 	      return `
-	        <a href="/players/${player.slug}" class="prospect-card" style="text-decoration: none; color: inherit;">
+	        <a href="/players/${esc(player.slug)}" class="prospect-card" style="text-decoration: none; color: inherit;">
 	          <div class="prospect-image-wrapper">
 	            <img
-	              src="${player.img}"
-	              alt="${player.name}"
+	              src="${esc(player.img)}"
+	              alt="${esc(player.name)}"
 	              class="prospect-image"
-	              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='${player.img_default}';}else{this.onerror=null;this.src='${player.img_placeholder}';}"
+	              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='${esc(player.img_default)}';}else{this.onerror=null;this.src='${esc(player.img_placeholder)}';}"
 	            />
 	            ${badge}
 	          </div>
 	          <div class="prospect-info">
-	            <h4 class="prospect-name">${player.name}</h4>
-            <p class="prospect-meta">${player.position} • ${player.college}</p>
+	            <h4 class="prospect-name">${esc(player.name)}</h4>
+            <p class="prospect-meta">${esc(player.position)} • ${esc(player.college)}</p>
             <div class="prospect-stats">
               ${this.renderStatPill('HT', `${player.measurables.ht}"`)}
               ${this.renderStatPill('WS', `${player.measurables.ws}"`)}
@@ -227,16 +228,6 @@ const HeroModule = {
   },
 
   /**
-   * Convert tag name to CSS class
-   * @param {string} tag - Tag name like "Scouting Report"
-   * @returns {string} CSS class like "scouting-report"
-   */
-  getTagClass(tag) {
-    if (!tag) return 'scouting-report';
-    return tag.toLowerCase().replace(/\s+/g, '-');
-  },
-
-  /**
    * Render the hero section based on mode
    * @param {string} mode - Display mode
    */
@@ -244,7 +235,7 @@ const HeroModule = {
     const hero = document.getElementById('heroArticle');
     const article = this.article;
     const imageUrl = article.image_url;
-    const tagClass = this.getTagClass(article.tag);
+    const tagClass = DraftGuru.getTagClass(article.tag);
 
     // Reset classes
     hero.className = 'news-hero';
@@ -252,10 +243,14 @@ const HeroModule = {
     // Add click handler to open article
     hero.onclick = () => window.open(article.url, '_blank');
 
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    const safeImageUrl = esc(imageUrl || '');
+    const safeTitle = esc(article.title);
+
     if (mode === 'full' && imageUrl) {
       // Full wide image - best case
       hero.innerHTML = `
-        <img class="news-hero__image" src="${imageUrl}" alt="${article.title}" />
+        <img class="news-hero__image" src="${safeImageUrl}" alt="${safeTitle}" />
         ${this.renderOverlay(article, tagClass)}
       `;
     } else if (mode === 'split' && imageUrl) {
@@ -263,26 +258,26 @@ const HeroModule = {
       hero.classList.add('news-hero--split');
       hero.innerHTML = `
         <div class="news-hero__text-area">
-          <span class="news-hero__tag tag--${tagClass}">${article.tag}</span>
-          <h2 class="news-hero__title">${article.title}</h2>
-          <p class="news-hero__summary">${article.summary || ''}</p>
+          <span class="news-hero__tag tag--${tagClass}">${esc(article.tag)}</span>
+          <h2 class="news-hero__title">${safeTitle}</h2>
+          <p class="news-hero__summary">${esc(article.summary || '')}</p>
           <div class="news-hero__meta">
-            <span class="news-hero__source">${article.source}</span>
-            ${article.author ? `<span class="news-hero__author">by ${article.author}</span>` : ''}
-            <span class="news-hero__time">${article.time}</span>
+            <span class="news-hero__source">${esc(article.source)}</span>
+            ${article.author ? `<span class="news-hero__author">by ${esc(article.author)}</span>` : ''}
+            <span class="news-hero__time">${esc(article.time)}</span>
           </div>
         </div>
         <div class="news-hero__image-area">
-          <img class="news-hero__image" src="${imageUrl}" alt="${article.title}" />
+          <img class="news-hero__image" src="${safeImageUrl}" alt="${safeTitle}" />
         </div>
       `;
     } else if (mode === 'blurred' && imageUrl) {
       // Blurred background with contained image
       hero.classList.add('news-hero--blurred');
       hero.innerHTML = `
-        <div class="news-hero__background" style="background-image: url('${imageUrl}');"></div>
+        <div class="news-hero__background" style="background-image: url('${safeImageUrl}');"></div>
         <div class="news-hero__image-container">
-          <img class="news-hero__image" src="${imageUrl}" alt="${article.title}" />
+          <img class="news-hero__image" src="${safeImageUrl}" alt="${safeTitle}" />
         </div>
         ${this.renderOverlay(article, tagClass)}
       `;
@@ -308,15 +303,16 @@ const HeroModule = {
    * @returns {string} HTML string
    */
   renderOverlay(article, tagClass) {
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
     return `
       <div class="news-hero__overlay">
-        <span class="news-hero__tag tag--${tagClass}">${article.tag}</span>
-        <h2 class="news-hero__title">${article.title}</h2>
-        <p class="news-hero__summary">${article.summary || ''}</p>
+        <span class="news-hero__tag tag--${tagClass}">${esc(article.tag)}</span>
+        <h2 class="news-hero__title">${esc(article.title)}</h2>
+        <p class="news-hero__summary">${esc(article.summary || '')}</p>
         <div class="news-hero__meta">
-          <span class="news-hero__source">${article.source}</span>
-          ${article.author ? `<span class="news-hero__author">by ${article.author}</span>` : ''}
-          <span class="news-hero__time">${article.time}</span>
+          <span class="news-hero__source">${esc(article.source)}</span>
+          ${article.author ? `<span class="news-hero__author">by ${esc(article.author)}</span>` : ''}
+          <span class="news-hero__time">${esc(article.time)}</span>
         </div>
       </div>
     `;
@@ -360,8 +356,8 @@ const SidebarModule = {
     }
 
     container.innerHTML = sources.map(s => `
-      <div class="source-item" data-source="${this.escapeHtml(s.source_name)}">
-        <span class="source-item__name">${this.escapeHtml(s.source_name)}</span>
+      <div class="source-item" data-source="${DraftGuru.escapeHtml(s.source_name)}">
+        <span class="source-item__name">${DraftGuru.escapeHtml(s.source_name)}</span>
         <span class="source-item__count">${s.count}</span>
       </div>
     `).join('');
@@ -391,8 +387,8 @@ const SidebarModule = {
     }
 
     container.innerHTML = authors.map(a => `
-      <div class="source-item" data-author="${this.escapeHtml(a.author)}">
-        <span class="source-item__name">${this.escapeHtml(a.author)}</span>
+      <div class="source-item" data-author="${DraftGuru.escapeHtml(a.author)}">
+        <span class="source-item__name">${DraftGuru.escapeHtml(a.author)}</span>
         <span class="source-item__count">${a.count}</span>
       </div>
     `).join('');
@@ -531,18 +527,6 @@ const SidebarModule = {
     document.querySelectorAll('.sidebar-section').forEach(section => {
       section.classList.remove('sidebar-section--filtered');
     });
-  },
-
-  /**
-   * Escape HTML to prevent XSS
-   * @param {string} str - String to escape
-   * @returns {string} Escaped string
-   */
-  escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
   },
 
   /**
@@ -695,38 +679,28 @@ const NewsGridModule = {
    * @returns {string} HTML string
    */
   renderArticleCard(item) {
-    const tagClass = this.getTagClass(item.tag);
+    const tagClass = DraftGuru.getTagClass(item.tag);
     const hasImage = item.image_url && item.image_url.trim() !== '';
 
     return `
-      <article class="article-card" onclick="window.open('${this.escapeHtml(item.url)}', '_blank')">
+      <article class="article-card" onclick="window.open('${DraftGuru.escapeHtml(item.url)}', '_blank')">
         <div class="article-card__image-wrapper">
           ${hasImage
-            ? `<img src="${this.escapeHtml(item.image_url)}" class="article-card__image" alt="" loading="lazy" />`
+            ? `<img src="${DraftGuru.escapeHtml(item.image_url)}" class="article-card__image" alt="" loading="lazy" />`
             : `<div class="article-card__image-placeholder">DG</div>`
           }
-          <span class="article-card__tag tag--${tagClass}">${this.escapeHtml(item.tag)}</span>
+          <span class="article-card__tag tag--${tagClass}">${DraftGuru.escapeHtml(item.tag)}</span>
         </div>
         <div class="article-card__content">
-          <h3 class="article-card__title">${this.escapeHtml(item.title)}</h3>
-          ${item.summary ? `<p class="article-card__summary">${this.escapeHtml(item.summary)}</p>` : ''}
+          <h3 class="article-card__title">${DraftGuru.escapeHtml(item.title)}</h3>
+          ${item.summary ? `<p class="article-card__summary">${DraftGuru.escapeHtml(item.summary)}</p>` : ''}
           <div class="article-card__meta">
-            <span class="article-card__source">${this.escapeHtml(item.source)}</span>
-            <span class="article-card__time">${this.escapeHtml(item.time)}</span>
+            <span class="article-card__source">${DraftGuru.escapeHtml(item.source)}</span>
+            <span class="article-card__time">${DraftGuru.escapeHtml(item.time)}</span>
           </div>
         </div>
       </article>
     `;
-  },
-
-  /**
-   * Get tag class from tag name
-   * @param {string} tag - Tag name
-   * @returns {string} CSS class
-   */
-  getTagClass(tag) {
-    if (!tag) return 'scouting-report';
-    return tag.toLowerCase().replace(/\s+/g, '-');
   },
 
   /**
@@ -855,28 +829,116 @@ const NewsGridModule = {
     if (grid) {
       grid.innerHTML = '<div class="articles-grid--empty">No news items yet. Check back soon!</div>';
     }
-  },
-
-  /**
-   * Escape HTML to prevent XSS
-   * @param {string} str - String to escape
-   * @returns {string} Escaped string
-   */
-  escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
   }
 };
 
 /**
  * ============================================================================
- * LEGACY FEED MODULE (kept for backwards compatibility)
- * Deprecated: Use NewsGridModule instead
+ * TRENDING MODULE
+ * Renders the trending players section based on recent mention volume
  * ============================================================================
  */
-const FeedModule = NewsGridModule;
+const TrendingModule = {
+  /**
+   * Initialize the trending players section
+   */
+  init() {
+    const data = window.TRENDING_PLAYERS;
+    if (!data || data.length === 0) return;
+
+    const section = document.getElementById('trendingSection');
+    const divider = document.getElementById('trendingDivider');
+    const grid = document.getElementById('trendingGrid');
+    if (!section || !grid) return;
+
+    section.style.display = '';
+    if (divider) divider.style.display = '';
+
+    grid.innerHTML = data.map(player => this.renderCard(player)).join('');
+  },
+
+  /**
+   * Render a single trending player card
+   * @param {Object} player - Trending player data
+   * @returns {string} HTML string
+   */
+  renderCard(player) {
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    const school = player.school
+      ? `<span class="trending-card__school">${esc(player.school)}</span>`
+      : '';
+    const thumbnail = this.renderThumbnail(player);
+    const sparkline = this.renderSparkline(player.daily_counts || []);
+
+    return `
+      <a href="/players/${esc(player.slug)}" class="trending-card">
+        ${thumbnail}
+        <div class="trending-card__info">
+          <span class="trending-card__name">${esc(player.display_name)}</span>
+          ${school}
+        </div>
+        <div class="trending-card__visual">
+          ${sparkline}
+          <span class="trending-card__count">${player.mention_count}</span>
+        </div>
+      </a>
+    `;
+  },
+
+  /**
+   * Render a small circular player thumbnail
+   * @param {Object} player - Trending player data
+   * @returns {string} HTML string
+   */
+  renderThumbnail(player) {
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    const imgUrl = ImageUtils.getPhotoUrl(player.player_id, player.display_name, player.slug);
+    const initial = (player.display_name || '?').charAt(0).toUpperCase();
+    return `
+      <img
+        src="${esc(imgUrl)}"
+        alt="${esc(player.display_name)}"
+        class="trending-card__thumb"
+        onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('span'),{className:'trending-card__thumb trending-card__thumb--placeholder',textContent:'${initial}'}))"
+      />
+    `;
+  },
+
+  /**
+   * Render an inline SVG sparkline from daily mention counts
+   * @param {number[]} counts - Array of daily counts (oldest-first)
+   * @returns {string} SVG HTML string
+   */
+  renderSparkline(counts) {
+    if (!counts || counts.length === 0) return '';
+
+    const width = 64;
+    const height = 24;
+    const padding = 2;
+    const maxVal = Math.max(...counts, 1);
+    const step = (width - padding * 2) / Math.max(counts.length - 1, 1);
+
+    const points = counts.map((v, i) => {
+      const x = padding + i * step;
+      const y = height - padding - ((v / maxVal) * (height - padding * 2));
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+
+    return `
+      <svg class="trending-card__sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+        <polyline
+          points="${points}"
+          fill="none"
+          stroke="var(--color-accent-emerald, #10b981)"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+    `;
+  },
+
+};
 
 /**
  * ============================================================================
@@ -918,7 +980,8 @@ document.addEventListener('DOMContentLoaded', () => {
     tweetBtnId: 'vsArenaTweetBtn'
   });
 
-  // Initialize news section modules
+  // Initialize trending players and news section modules
+  TrendingModule.init();
   HeroModule.init();
   SidebarModule.init();
   NewsGridModule.init();

@@ -21,7 +21,7 @@ from app.models.news import (
 )
 from app.schemas.news_sources import FeedType, NewsSource
 from app.services.news_ingestion_service import run_ingestion_cycle
-from app.services.news_service import get_news_feed
+from app.services.news_service import get_news_feed, get_player_news_feed
 from app.services.staff_authz import require_dataset_permission
 from app.utils.db_async import SessionLocal, dispose_engine, get_session
 
@@ -38,13 +38,20 @@ async def list_news(
     """Fetch paginated news feed.
 
     Returns news items with AI-generated summaries, sorted by published date.
-    Optionally filter by player ID for player-specific news.
+    When player_id is provided, returns player-specific feed (mentions + direct
+    association) with general feed backfill.
     """
+    if player_id is not None:
+        return await get_player_news_feed(
+            db=db,
+            player_id=player_id,
+            limit=limit,
+            offset=offset,
+        )
     return await get_news_feed(
         db=db,
         limit=limit,
         offset=offset,
-        player_id=player_id,
     )
 
 

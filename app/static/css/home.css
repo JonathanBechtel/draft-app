@@ -173,6 +173,105 @@ tbody td {
 }
 
 /* ============================================================================
+   TRENDING PLAYERS
+   Grid of trending player cards with thumbnails and sparklines
+   ========================================================================= */
+.trending-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.trending-card {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-slate-200);
+  background: var(--color-white);
+  text-decoration: none;
+  color: inherit;
+  transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+}
+
+.trending-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-color: var(--color-accent-emerald);
+}
+
+/* Thumbnail */
+.trending-card__thumb {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: 50% 20%;
+  border: 1px solid var(--color-slate-200);
+  background: var(--color-slate-100);
+}
+
+.trending-card__thumb--placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-slate-500);
+}
+
+.trending-card__info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.trending-card__name {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trending-card__school {
+  font-size: 0.6875rem;
+  color: var(--color-slate-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Visual wrapper: sparkline + count badge */
+.trending-card__visual {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.trending-card__sparkline {
+  width: 64px;
+  height: 24px;
+  display: block;
+}
+
+.trending-card__count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-accent-emerald);
+  background: #d1fae5;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+}
+
+/* ============================================================================
    VS ARENA / PLAYER COMPARISON
    Interactive player comparison section with toggles
    ========================================================================= */
@@ -343,7 +442,17 @@ tbody td {
    RESPONSIVE DESIGN - HOMEPAGE
    Mobile-first breakpoints for homepage components
    ========================================================================= */
+@media (max-width: 1024px) {
+  .trending-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 768px) {
+  .trending-grid {
+    grid-template-columns: 1fr;
+  }
+
   .prospects-grid {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }

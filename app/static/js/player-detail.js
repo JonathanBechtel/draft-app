@@ -938,6 +938,13 @@ const PlayerFeedModule = {
       return;
     }
 
+    // If no articles mention this player, update the heading to generic "Draft News"
+    this.hasPlayerSpecific = window.PLAYER_FEED.some(i => i.is_player_specific);
+    if (!this.hasPlayerSpecific) {
+      const heading = document.getElementById('newsFeedHeading');
+      if (heading) heading.textContent = 'Draft News';
+    }
+
     this.totalPages = Math.ceil(window.PLAYER_FEED.length / this.itemsPerPage);
     this.render();
   },
@@ -1083,29 +1090,33 @@ const PlayerFeedModule = {
   },
 
   /**
-   * Get tag class based on tag type
+   * Get tag class based on tag type (delegates to shared DraftGuru utility)
    */
   getTagClass(tag) {
-    const tagMap = {
-      'Scouting Report': 'scouting-report',
-      'Big Board': 'big-board',
-      'Mock Draft': 'mock-draft',
-      'Tier Update': 'tier-update',
-      'Game Recap': 'game-recap',
-      'Film Study': 'film-study',
-      'Skill Theme': 'skill-theme',
-      'Team Fit': 'team-fit',
-      'Draft Intel': 'draft-intel',
-      'Statistical Analysis': 'stats-analysis'
-    };
-    return tagMap[tag] || 'scouting-report';
+    return DraftGuru.getTagClass(tag);
   },
 
   /**
    * Render feed items (subset for current page)
+   * Inserts a divider between player-specific and backfill articles.
    */
   renderFeedItems(items) {
+    let insertedDivider = false;
     return items.map((item) => {
+      let dividerHtml = '';
+      if (!item.is_player_specific && !insertedDivider) {
+        insertedDivider = true;
+        // Only show divider when there are player-specific articles above;
+        // otherwise the heading already reads "Draft News".
+        if (this.hasPlayerSpecific) {
+          dividerHtml = `
+            <div class="feed-divider">
+              <span class="feed-divider__label">More Draft News</span>
+            </div>
+          `;
+        }
+      }
+
       const tagClass = this.getTagClass(item.tag);
       const hasImage = item.image_url && item.image_url.trim() !== '';
       const imageHtml = hasImage
@@ -1117,8 +1128,17 @@ const PlayerFeedModule = {
         ? `<p class="feed-card__summary">${item.summary}</p>`
         : '';
 
+      const mentionBadge = item.is_player_specific
+        ? '<span class="feed-card__mention-badge">Mentioned</span>'
+        : '';
+
+      const cardClass = item.is_player_specific
+        ? 'feed-card feed-card--player-specific'
+        : 'feed-card';
+
       return `
-        <article class="feed-card">
+        ${dividerHtml}
+        <article class="${cardClass}">
           <div class="feed-card__image-wrapper">
             ${imageHtml}
           </div>
@@ -1127,6 +1147,7 @@ const PlayerFeedModule = {
             ${summaryHtml}
             <div class="feed-card__meta">
               <span class="feed-card__tag ${tagClass}">${item.tag}</span>
+              ${mentionBadge}
               <span class="feed-card__author-time">${authorPart}${item.time}</span>
             </div>
             <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="feed-card__cta">
