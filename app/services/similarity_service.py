@@ -118,6 +118,7 @@ async def get_similar_players(
     same_position: bool = False,
     same_draft_year: bool = False,
     nba_only: bool = False,
+    all_time_nba: bool = False,
     limit: int = 10,
 ) -> dict:
     """Fetch similar players for a given player and dimension.
@@ -129,6 +130,7 @@ async def get_similar_players(
         same_position: Filter to players sharing a position parent group (e.g., guard/wing/big)
         same_draft_year: Filter to players with same draft_year as anchor
         nba_only: Filter to players with is_active_nba=True
+        all_time_nba: Filter to players with any NBA history (active or retired)
         limit: Maximum number of results
 
     Returns:
@@ -213,6 +215,14 @@ async def get_similar_players(
 
     if nba_only:
         stmt = stmt.where(PlayerStatus.is_active_nba.is_(True))  # type: ignore[union-attr]
+
+    if all_time_nba:
+        stmt = stmt.where(
+            or_(
+                PlayerStatus.is_active_nba.is_(True),  # type: ignore[union-attr]
+                PlayerStatus.nba_last_season.is_not(None),  # type: ignore[union-attr]
+            )
+        )
 
     # Order and limit
     stmt = stmt.order_by(

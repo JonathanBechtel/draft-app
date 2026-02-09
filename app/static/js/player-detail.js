@@ -438,12 +438,14 @@ const PlayerComparisonsModule = {
   getPoolFilters() {
     switch (this.currentPool) {
       case 'currentDraft':
-        return { same_draft_year: true, nba_only: false };
+        return { same_draft_year: true, nba_only: false, all_time_nba: false };
       case 'nbaPlayers':
-        return { same_draft_year: false, nba_only: true };
+        return { same_draft_year: false, nba_only: true, all_time_nba: false };
+      case 'allTimeNba':
+        return { same_draft_year: false, nba_only: false, all_time_nba: true };
       case 'historical':
       default:
-        return { same_draft_year: false, nba_only: false };
+        return { same_draft_year: false, nba_only: false, all_time_nba: false };
     }
   },
 
@@ -453,7 +455,7 @@ const PlayerComparisonsModule = {
   cacheKey() {
     const dimension = this.mapCategoryToDimension();
     const poolFilters = this.getPoolFilters();
-    return `${dimension}|${this.positionFilter}|${poolFilters.same_draft_year}|${poolFilters.nba_only}`;
+    return `${dimension}|${this.positionFilter}|${poolFilters.same_draft_year}|${poolFilters.nba_only}|${poolFilters.all_time_nba}`;
   },
 
   /**
@@ -474,6 +476,7 @@ const PlayerComparisonsModule = {
       same_position: this.positionFilter ? 'true' : 'false',
       same_draft_year: poolFilters.same_draft_year ? 'true' : 'false',
       nba_only: poolFilters.nba_only ? 'true' : 'false',
+      all_time_nba: poolFilters.all_time_nba ? 'true' : 'false',
       limit: '10'
     });
 
@@ -1255,7 +1258,8 @@ function getCompsContext() {
   const cohortMap = {
     'currentDraft': 'current_draft',
     'historical': 'all_time_draft',
-    'nbaPlayers': 'current_nba'
+    'nbaPlayers': 'current_nba',
+    'allTimeNba': 'all_time_nba'
   };
 
   const categoryMap = {
