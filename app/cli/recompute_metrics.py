@@ -117,6 +117,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--similarity",
+        action="store_true",
+        help=(
+            "After promotion, recompute player similarity for all promoted snapshots. "
+            "Requires --promote and --execute."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Print each underlying compute_metrics invocation and promotion.",
@@ -182,9 +190,8 @@ def _run_key_for_source(
     return scope_run_key
 
 
-async def _promote_snapshot(
-    db: AsyncSession, context: SnapshotContext, *, run_key: str, verbose: bool
-) -> None:
+def _context_filters(context: SnapshotContext) -> List[Any]:
+    """Build SQLAlchemy filter clauses for a SnapshotContext."""
     filters: List[Any] = [
         cast(Any, MetricSnapshot.cohort) == context.cohort,
         cast(Any, MetricSnapshot.source) == context.source,
@@ -206,6 +213,25 @@ async def _promote_snapshot(
         filters.append(
             cast(Any, MetricSnapshot.position_scope_fine) == context.position_scope_fine
         )
+    return filters
+
+
+async def _find_current_snapshot_id(
+    db: AsyncSession, context: SnapshotContext
+) -> Optional[int]:
+    """Find the id of the is_current snapshot for a given context."""
+    filters = _context_filters(context)
+    filters.append(cast(Any, MetricSnapshot.is_current).is_(True))
+    result = await db.execute(
+        select(MetricSnapshot.id).where(*filters).limit(1)  # type: ignore[call-overload]
+    )
+    return result.scalar_one_or_none()
+
+
+async def _promote_snapshot(
+    db: AsyncSession, context: SnapshotContext, *, run_key: str, verbose: bool
+) -> None:
+    filters = _context_filters(context)
 
     result = await db.execute(
         select(MetricSnapshot.id)  # type: ignore[call-overload]
@@ -349,6 +375,36 @@ async def run_recompute(argv: Optional[Sequence[str]] = None) -> None:
                     db, context, run_key=run_key, verbose=args.verbose
                 )
             await db.commit()
+
+            if args.similarity:
+                from app.cli.compute_similarity import (
+                    SimilarityConfig,
+                    compute_for_snapshot,
+                )
+
+                config = SimilarityConfig()
+                seen_snapshot_ids: Set[int] = set()
+                contexts_for_similarity = {ctx for ctx, _ in promotion_jobs}
+                for context in contexts_for_similarity:
+                    sid = await _find_current_snapshot_id(db, context)
+                    if sid is None:
+                        if args.verbose:
+                            print(
+                                f"[similarity] No current snapshot for "
+                                f"cohort={context.cohort.value} "
+                                f"source={context.source.value}"
+                            )
+                        continue
+                    if sid in seen_snapshot_ids:
+                        continue
+                    seen_snapshot_ids.add(sid)
+                    if args.verbose:
+                        print(
+                            f"[similarity] Computing for snapshot_id={sid} "
+                            f"cohort={context.cohort.value} "
+                            f"source={context.source.value}"
+                        )
+                    await compute_for_snapshot(db, sid, config)
         else:
             await db.rollback()
 

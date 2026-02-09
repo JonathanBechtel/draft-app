@@ -7,11 +7,11 @@ import asyncio
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import delete, select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType, MetricSource, SimilarityDimension
@@ -317,13 +317,7 @@ async def write_similarity(
         )
     )
 
-    payload: List[PlayerSimilarity] = []
-
-    def maybe_limit(items: Iterable[Tuple[int, int]]) -> Iterable[Tuple[int, int]]:
-        if config.max_neighbors is None:
-            return items
-        # Already sorted when we built ranks; rely on ranks for selection
-        return [pair for pair in items if ranks.get(pair, 0) <= config.max_neighbors]
+    payload: List[Dict[str, Any]] = []
 
     # Dimensions
     for dim, sim_map in similarity_by_dim.items():
@@ -337,16 +331,16 @@ async def write_similarity(
             ):
                 continue
             payload.append(
-                PlayerSimilarity(
-                    snapshot_id=snapshot_id,
-                    dimension=dim,
-                    anchor_player_id=anchor,
-                    comparison_player_id=neighbor,
-                    similarity_score=sim,
-                    distance=distance_by_dim.get(dim, {}).get((anchor, neighbor)),
-                    overlap_pct=overlap_by_dim.get(dim, {}).get((anchor, neighbor)),
-                    rank_within_anchor=rank_val,
-                )
+                {
+                    "snapshot_id": snapshot_id,
+                    "dimension": dim,
+                    "anchor_player_id": anchor,
+                    "comparison_player_id": neighbor,
+                    "similarity_score": sim,
+                    "distance": distance_by_dim.get(dim, {}).get((anchor, neighbor)),
+                    "overlap_pct": overlap_by_dim.get(dim, {}).get((anchor, neighbor)),
+                    "rank_within_anchor": rank_val,
+                }
             )
 
     # Composite
@@ -359,34 +353,39 @@ async def write_similarity(
         ):
             continue
         payload.append(
-            PlayerSimilarity(
-                snapshot_id=snapshot_id,
-                dimension=SimilarityDimension.composite,
-                anchor_player_id=anchor,
-                comparison_player_id=neighbor,
-                similarity_score=sim,
-                distance=None,
-                overlap_pct=None,
-                rank_within_anchor=rank_val,
-            )
+            {
+                "snapshot_id": snapshot_id,
+                "dimension": SimilarityDimension.composite,
+                "anchor_player_id": anchor,
+                "comparison_player_id": neighbor,
+                "similarity_score": sim,
+                "distance": None,
+                "overlap_pct": None,
+                "rank_within_anchor": rank_val,
+            }
         )
 
-    session.add_all(payload)
+    # Batch raw inserts to avoid ORM overhead (no RETURNING, no identity map)
+    # and keep each statement small enough to avoid connection timeouts.
+    batch_size = 2000
+    for i in range(0, len(payload), batch_size):
+        await session.execute(insert(PlayerSimilarity), payload[i : i + batch_size])
     await session.commit()
     print(f"[similarity] snapshot={snapshot_id} wrote {len(payload)} rows")
 
 
 async def compute_for_snapshot(
-    session: AsyncSession, snapshot: MetricSnapshot, config: SimilarityConfig
+    session: AsyncSession, snapshot_id: int, config: SimilarityConfig
 ) -> None:
-    if snapshot.id is None:
-        raise ValueError("Snapshot is missing an id; cannot compute similarity.")
-    metric_rows = await fetch_metric_rows(session, snapshot.id)
+    metric_rows = await fetch_metric_rows(session, snapshot_id)
+    # End the read transaction so the connection doesn't sit idle during the
+    # O(n²) distance computation (can take minutes for large cohorts).
+    await session.rollback()
     frames = build_feature_frames(metric_rows)
     if not frames:
-        print(f"No metrics found for snapshot {snapshot.id}; nothing to compute.")
+        print(f"No metrics found for snapshot {snapshot_id}; nothing to compute.")
         return
-    await write_similarity(session, snapshot.id, frames, config)
+    await write_similarity(session, snapshot_id, frames, config)
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -451,7 +450,8 @@ async def main_async(argv: Optional[Sequence[str]] = None) -> None:
         snapshot = await resolve_snapshot(
             session, args.snapshot_id, args.run_key, args.source
         )
-        await compute_for_snapshot(session, snapshot, config)
+        assert snapshot.id is not None
+        await compute_for_snapshot(session, snapshot.id, config)
 
 
 def main() -> None:

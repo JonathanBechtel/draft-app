@@ -111,13 +111,20 @@ async def run(argv: Optional[Sequence[str]] = None) -> None:
             print("No snapshots selected for similarity computation.")
             return
 
-        for snap in target_snapshots:
-            label = f"id={snap.id} run_key={snap.run_key} src={snap.source.value}"
+        # Pre-capture attributes before the loop since commits inside
+        # compute_for_snapshot expire ORM objects in the session.
+        snapshot_info = [
+            (snap.id, f"id={snap.id} run_key={snap.run_key} src={snap.source.value}")
+            for snap in target_snapshots
+        ]
+
+        for snap_id, label in snapshot_info:
             if not args.execute:
                 print(f"[dry-run] Would compute similarity for snapshot {label}")
                 continue
             print(f"[similarity] Computing for snapshot {label}")
-            await compute_for_snapshot(session, snap, config)
+            assert snap_id is not None
+            await compute_for_snapshot(session, snap_id, config)
 
 
 def main() -> None:
