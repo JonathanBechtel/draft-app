@@ -23,6 +23,7 @@ class ArticleAnalysis(BaseModel):
 
     summary: str  # 1-2 sentence compelling byline
     tag: NewsItemTag  # Classification tag for the article type
+    mentioned_players: list[str] = []  # Names of NBA draft prospects mentioned
 
 
 # System prompt for article analysis
@@ -31,6 +32,7 @@ ARTICLE_ANALYSIS_PROMPT = """You are a sports news editor for DraftGuru, an NBA 
 Your task is to analyze NBA draft-related articles and provide:
 1. A compelling 1-2 sentence summary/byline that makes readers want to click
 2. A classification tag for the article
+3. A list of all NBA draft prospects mentioned by name in the article
 
 Tag definitions:
 - "Scouting Report": Deep dive on a single prospect (strengths, weaknesses, role projection, film notes)
@@ -50,7 +52,13 @@ Guidelines for summaries:
 - Avoid generic phrases like "This article discusses..."
 - Write in an active, compelling voice
 
-Respond with valid JSON only: {"summary": "...", "tag": "..."}
+Guidelines for player extraction:
+- Include all NBA draft prospects mentioned by name
+- Use each player's full name as it appears in the article (e.g., "Cooper Flagg", not "Flagg")
+- Only include prospect/college player names, not NBA veterans or coaches
+- Return an empty list if no prospects are mentioned
+
+Respond with valid JSON only: {"summary": "...", "tag": "...", "mentioned_players": ["Name 1", "Name 2"]}
 The tag must be exactly one of: "Scouting Report", "Big Board", "Mock Draft", "Tier Update", "Game Recap", "Film Study", "Skill Theme", "Team Fit", "Draft Intel", "Statistical Analysis"
 """
 
@@ -139,6 +147,7 @@ class NewsSummarizationService:
             return ArticleAnalysis(
                 summary=description[:200] if description else title,
                 tag=NewsItemTag.SCOUTING_REPORT,
+                mentioned_players=[],
             )
 
     def _parse_response(self, response_text: str) -> ArticleAnalysis:
@@ -187,7 +196,17 @@ class NewsSummarizationService:
         }
         tag = tag_map.get(tag_str, NewsItemTag.SCOUTING_REPORT)
 
-        return ArticleAnalysis(summary=summary, tag=tag)
+        # Extract mentioned players (graceful fallback to empty list)
+        raw_players = data.get("mentioned_players", [])
+        mentioned_players: list[str] = []
+        if isinstance(raw_players, list):
+            mentioned_players = [
+                str(p).strip() for p in raw_players if isinstance(p, str) and p.strip()
+            ]
+
+        return ArticleAnalysis(
+            summary=summary, tag=tag, mentioned_players=mentioned_players
+        )
 
 
 # Singleton instance for convenience

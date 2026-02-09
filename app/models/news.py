@@ -21,6 +21,7 @@ class NewsItemRead(SQLModel):
     time: str  # Relative time "2h", "1d"
     tag: str  # "Riser", "Faller", etc.
     read_more_text: str  # "Read at Floor and Ceiling"
+    is_player_specific: bool = False  # True when article mentions this player
 
 
 class NewsFeedResponse(SQLModel):
@@ -61,4 +62,5 @@ class IngestionResult(SQLModel):
     sources_processed: int
     items_added: int
     items_skipped: int
+    mentions_added: int = 0
     errors: list[str]

@@ -247,6 +247,28 @@ const DraftGuru = {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  },
+
+  /**
+   * Convert a tag name to its CSS class suffix.
+   * @param {string} tag - Tag name like "Scouting Report"
+   * @returns {string} CSS class like "scouting-report"
+   */
+  getTagClass(tag) {
+    if (!tag) return 'scouting-report';
+    const tagMap = {
+      'Scouting Report': 'scouting-report',
+      'Big Board': 'big-board',
+      'Mock Draft': 'mock-draft',
+      'Tier Update': 'tier-update',
+      'Game Recap': 'game-recap',
+      'Film Study': 'film-study',
+      'Skill Theme': 'skill-theme',
+      'Team Fit': 'team-fit',
+      'Draft Intel': 'draft-intel',
+      'Statistical Analysis': 'stats-analysis',
+    };
+    return tagMap[tag] || 'scouting-report';
   }
 };
 

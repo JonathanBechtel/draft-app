@@ -35,6 +35,8 @@
     <button class="story-filter" data-tag="Game Recap">Game Recap</button>
     <button class="story-filter" data-tag="Film Study">Film Study</button>
     <button class="story-filter" data-tag="Team Fit">Team Fit</button>
+    <button class="story-filter" data-tag="Skill Theme">Skill Theme</button>
+    <button class="story-filter" data-tag="Statistical Analysis">Stats</button>
   </div>
 
   <div class="section-divider"></div>
@@ -89,6 +91,20 @@
   </div>
 
   <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       TRENDING PLAYERS
+       Players with the most recent article mentions
+       ========================================================================== -->
+  <section class="section" id="trendingSection" style="display: none;">
+    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
+      Trending Players
+    </h3>
+
+    <div id="trendingGrid" class="trending-grid"></div>
+  </section>
+
+  <div class="section-divider" id="trendingDivider" style="display: none;"></div>
 
   <!-- ==========================================================================
        TOP PROSPECTS
@@ -222,6 +238,7 @@
 <script>
   // Server-side data injection
   window.PLAYERS = {{ players | tojson | safe }};
+  window.TRENDING_PLAYERS = {{ trending_players | tojson | safe }};
   window.FEED_ITEMS = {{ feed_items | tojson | safe }};
   // Hero article and sidebar data for news section
   window.HERO_ARTICLE = {{ hero_article | tojson | safe }};

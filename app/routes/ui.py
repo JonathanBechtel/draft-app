@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.news_service import (
     get_hero_article,
     get_news_feed,
+    get_player_news_feed,
+    get_trending_players,
 )
 from app.config import settings
 from app.services.player_service import get_player_profile_by_slug
@@ -118,6 +120,21 @@ async def home(
             }
         )
 
+    # Fetch trending players based on recent mentions
+    trending_raw = await get_trending_players(db, days=7, limit=10)
+    trending_players = [
+        {
+            "player_id": tp.player_id,
+            "display_name": tp.display_name,
+            "slug": tp.slug,
+            "school": tp.school or "",
+            "mention_count": tp.mention_count,
+            "trending_score": tp.trending_score,
+            "daily_counts": tp.daily_counts,
+        }
+        for tp in trending_raw
+    ]
+
     # Fetch news feed from database (falls back to empty if no items yet)
     # Fetch more items to enable pagination (6 per page in new grid layout)
     news_feed = await get_news_feed(db, limit=HOME_NEWS_FEED_LIMIT)
@@ -189,6 +206,7 @@ async def home(
         {
             "request": request,
             "players": players,
+            "trending_players": trending_players,
             "feed_items": feed_items,
             "hero_article": hero_article_dict,
             "source_counts": source_counts,
@@ -350,10 +368,14 @@ async def player_detail(
     # Comparison data is fetched via API (GET /api/players/{slug}/similar)
     comparison_data: list = []
 
-    # Fetch news feed (player-specific filtering would require player_id once implemented)
-    # For now, show general feed on player pages too
-    # Fetch more items to enable pagination (10 per page)
-    news_feed = await get_news_feed(db, limit=100)
+    # Fetch player-specific news feed (mentions + direct player_id association)
+    # Falls back to general feed when insufficient player-specific articles
+    news_feed = await get_player_news_feed(
+        db,
+        player_id=player_profile.id,  # type: ignore[arg-type]
+        limit=100,
+        min_items=10,
+    )
     player_feed = [
         {
             "id": item.id,
@@ -366,6 +388,7 @@ async def player_detail(
             "time": item.time,
             "tag": item.tag,
             "read_more_text": item.read_more_text,
+            "is_player_specific": item.is_player_specific,
         }
         for item in news_feed.items
     ]

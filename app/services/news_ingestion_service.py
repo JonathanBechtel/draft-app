@@ -20,11 +20,13 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.news import IngestionResult
+from app.schemas.news_item_player_mentions import MentionSource, NewsItemPlayerMention
 from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.players_master import PlayerMaster  # noqa: F401 - needed for FK resolution
 from app.services.news_service import get_active_sources
 from app.services.news_summarization_service import news_summarization_service
+from app.services.player_mention_service import resolve_player_names_as_map
 
 logger = logging.getLogger(__name__)
 
@@ -84,14 +86,16 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
 
     total_added = 0
     total_skipped = 0
+    total_mentions = 0
     errors: list[str] = []
 
     for source in sources:
         try:
             if source.feed_type == FeedType.RSS:
-                added, skipped = await ingest_rss_source(db, source)
+                added, skipped, mentions = await ingest_rss_source(db, source)
                 total_added += added
                 total_skipped += skipped
+                total_mentions += mentions
             # Future: elif source.feed_type == FeedType.API: ...
             else:
                 logger.warning(
@@ -105,13 +109,14 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
 
     logger.info(
         f"Ingestion complete: {total_added} added, {total_skipped} skipped, "
-        f"{len(errors)} error(s)"
+        f"{total_mentions} mentions, {len(errors)} error(s)"
     )
 
     return IngestionResult(
         sources_processed=len(sources),
         items_added=total_added,
         items_skipped=total_skipped,
+        mentions_added=total_mentions,
         errors=errors,
     )
 
@@ -119,7 +124,7 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
 async def ingest_rss_source(
     db: AsyncSession,
     source: NewsSourceSnapshot,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Fetch and process an RSS feed source.
 
     Parses the RSS feed, generates AI summaries, and inserts new items
@@ -130,7 +135,7 @@ async def ingest_rss_source(
         source: NewsSource record to ingest
 
     Returns:
-        Tuple of (items_added, items_skipped)
+        Tuple of (items_added, items_skipped, mentions_added)
     """
     logger.info(f"→ {source.name}")
 
@@ -171,6 +176,8 @@ async def ingest_rss_source(
     # Phase 1: network/AI work (no DB connections/transactions held).
     fetched_at = datetime.now(UTC).replace(tzinfo=None)
     rows: list[dict] = []
+    # Map external_id -> list of mentioned player names from AI analysis
+    mention_map: dict[str, list[str]] = {}
     for entry in new_entries:
         external_id = entry.get("guid", entry.get("link", ""))
         if not external_id:
@@ -187,7 +194,8 @@ async def ingest_rss_source(
         author = entry.get("author")
         published_at = entry.get("published_at", datetime.now(UTC).replace(tzinfo=None))
 
-        # Generate AI summary and tag
+        # Generate AI summary, tag, and player mentions
+        mentioned_players: list[str] = []
         try:
             analysis = await news_summarization_service.analyze_article(
                 title=title,
@@ -195,6 +203,7 @@ async def ingest_rss_source(
             )
             summary = analysis.summary
             tag = analysis.tag
+            mentioned_players = analysis.mentioned_players
         except Exception as e:
             logger.warning(f"AI analysis failed for '{title[:30]}': {e}")
             summary = description[:200] if description else ""
@@ -218,6 +227,8 @@ async def ingest_rss_source(
                 "player_id": None,
             }
         )
+        if mentioned_players:
+            mention_map[external_id] = mentioned_players
         logger.info(f"  + [{tag.value}] {title[:60]}{'...' if len(title) > 60 else ''}")
 
     # Phase 2: short DB transaction to insert + update timestamps.
@@ -230,8 +241,109 @@ async def ingest_rss_source(
     items_added += inserted
     items_skipped += conflict_skipped
 
-    logger.info(f"  ✓ {source.name}: {items_added} added, {items_skipped} skipped")
-    return items_added, items_skipped
+    # Phase 3: persist player mentions (best-effort, failures are logged but don't block).
+    mentions_added = 0
+    if mention_map:
+        try:
+            mentions_added = await _persist_player_mentions(
+                db, source_id=source.id, mention_map=mention_map
+            )
+        except Exception as e:
+            logger.warning(f"  ⚠ Player mention persistence failed: {e}")
+
+    logger.info(
+        f"  ✓ {source.name}: {items_added} added, {items_skipped} skipped, "
+        f"{mentions_added} mentions"
+    )
+    return items_added, items_skipped, mentions_added
+
+
+async def _persist_player_mentions(
+    db: AsyncSession,
+    *,
+    source_id: int,
+    mention_map: dict[str, list[str]],
+) -> int:
+    """Resolve AI-detected player names and insert mention rows.
+
+    Looks up just-inserted NewsItem rows by external_id, resolves each
+    article's mentioned player names to player IDs (creating stubs as needed),
+    and bulk-inserts NewsItemPlayerMention rows.
+
+    Uses a single transaction for the read + resolve + write cycle.
+
+    Args:
+        db: Async database session
+        source_id: ID of the news source being ingested
+        mention_map: Map of external_id -> list of player names
+
+    Returns:
+        Number of mention rows actually inserted
+    """
+    if not mention_map:
+        return 0
+
+    total_inserted = 0
+    async with db.begin():
+        # 1. Fetch the NewsItem IDs for the external_ids that have mentions
+        external_ids = list(mention_map.keys())
+        stmt = select(NewsItem.id, NewsItem.external_id).where(  # type: ignore[call-overload]
+            NewsItem.source_id == source_id,  # type: ignore[arg-type]
+            NewsItem.external_id.in_(external_ids),  # type: ignore[attr-defined,arg-type]
+        )
+        result = await db.execute(stmt)
+        ext_to_item_id: dict[str, int] = {
+            row[1]: row[0]
+            for row in result.all()  # type: ignore[misc]
+        }
+
+        # 2. Collect all unique player names and resolve to IDs in one pass.
+        #    The map is keyed by the *input* name (lowered), so alias-matched
+        #    names like "D.J. Harper" correctly map to a player_id even when the
+        #    canonical display_name differs ("Dylan Harper").
+        all_names: list[str] = list(
+            {n for names in mention_map.values() for n in names}
+        )
+        name_to_player_id = await resolve_player_names_as_map(
+            db, all_names, create_stubs=True
+        )
+
+        # 3. Build mention rows
+        mention_rows: list[dict] = []
+        seen: set[tuple[int, int]] = set()
+        for ext_id, player_names in mention_map.items():
+            news_item_id = ext_to_item_id.get(ext_id)
+            if news_item_id is None:
+                continue
+            for pname in player_names:
+                player_id = name_to_player_id.get(pname.strip().lower())
+                if player_id is None:
+                    continue
+                key = (news_item_id, player_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                mention_rows.append(
+                    {
+                        "news_item_id": news_item_id,
+                        "player_id": player_id,
+                        "source": MentionSource.AI,
+                    }
+                )
+
+        # 4. Bulk insert with conflict handling; use returning() for accurate count
+        if mention_rows:
+            stmt_insert = (
+                insert(NewsItemPlayerMention)
+                .values(mention_rows)
+                .on_conflict_do_nothing(constraint="uq_news_item_player_mention")
+                .returning(NewsItemPlayerMention.__table__.c.id)  # type: ignore[attr-defined]
+            )
+            insert_result = await db.execute(stmt_insert)
+            total_inserted = len(list(insert_result.scalars().all()))
+
+    logger.info(f"  Persisted {total_inserted} player mentions")
+    return total_inserted
 
 
 async def _fetch_existing_external_ids(
