@@ -737,19 +737,9 @@ Be specific and objective. This will help an AI illustrator capture their likene
         logger.info(f"Created batch job record: id={job_record.id}")
         return job_record
 
-    def get_batch_job_status(self, gemini_job_name: str) -> BatchJobState:
-        """Check the current status of a batch job.
-
-        Args:
-            gemini_job_name: Gemini batch job name (e.g., 'batches/abc123')
-
-        Returns:
-            Current BatchJobState
-        """
-        job = self.client.batches.get(name=gemini_job_name)
-        state_str = str(job.state)
-
-        # Map Gemini state to our enum
+    @staticmethod
+    def _map_batch_state(state_str: str) -> BatchJobState:
+        """Map a Gemini job state string to our BatchJobState enum."""
         state_map = {
             "JOB_STATE_PENDING": BatchJobState.pending,
             "JOB_STATE_RUNNING": BatchJobState.running,
@@ -764,8 +754,19 @@ Be specific and objective. This will help an AI illustrator capture their likene
             "JobState.JOB_STATE_CANCELLED": BatchJobState.cancelled,
             "JobState.JOB_STATE_EXPIRED": BatchJobState.expired,
         }
-
         return state_map.get(state_str, BatchJobState.pending)
+
+    def get_batch_job_status(self, gemini_job_name: str) -> BatchJobState:
+        """Check the current status of a batch job.
+
+        Args:
+            gemini_job_name: Gemini batch job name (e.g., 'batches/abc123')
+
+        Returns:
+            Current BatchJobState
+        """
+        job = self.client.batches.get(name=gemini_job_name)
+        return self._map_batch_state(str(job.state))
 
     async def retrieve_batch_results(
         self,
@@ -790,16 +791,19 @@ Be specific and objective. This will help an AI illustrator capture their likene
         logger.info(f"Retrieving results for batch job: {job_record.gemini_job_name}")
 
         # Get the batch job from Gemini
+        logger.info("Fetching batch job metadata from Gemini API...")
         batch_job = self.client.batches.get(name=job_record.gemini_job_name)
+        logger.info("Batch job metadata received.")
 
-        # Check state
-        state = self.get_batch_job_status(job_record.gemini_job_name)
+        # Check state from the already-fetched batch_job object
+        state = self._map_batch_state(str(batch_job.state))
         if state not in (BatchJobState.succeeded, BatchJobState.failed):
             raise RuntimeError(f"Batch job not complete. Current state: {state.value}")
 
         success_count = 0
         failure_count = 0
 
+        logger.info("Extracting inlined responses from batch payload...")
         inlined_responses = (
             batch_job.dest.inlined_responses if batch_job.dest is not None else None
         )
@@ -842,6 +846,8 @@ Be specific and objective. This will help an AI illustrator capture their likene
 
         # Correlate each response to a player_id via metadata (primary)
         # or positional index (fallback).
+        total_responses = len(inlined_responses)
+        logger.info("Correlating %d inlined responses to players...", total_responses)
         correlated: list[tuple[int, types.InlinedResponse]] = []
         for idx, resp in enumerate(inlined_responses):
             if resp.error is not None:
@@ -889,8 +895,12 @@ Be specific and objective. This will help an AI illustrator capture their likene
             correlated.append((player_id_val, resp))
 
         # --- Pass 1: extract images & upload to S3 (no DB transaction) -----------
+        total_correlated = len(correlated)
+        logger.info(
+            "Pass 1: extracting & uploading %d images to S3...", total_correlated
+        )
         upload_results: list[BatchUploadResult] = []
-        for player_id, resp in correlated:
+        for i, (player_id, resp) in enumerate(correlated, 1):
             player = players_by_id.get(player_id)
             if not player:
                 raise RuntimeError(f"Player not found for id: {player_id}")
@@ -908,6 +918,15 @@ Be specific and objective. This will help an AI illustrator capture their likene
             else:
                 success_count += 1
 
+            if i % 25 == 0 or i == total_correlated:
+                logger.info(
+                    "  S3 upload progress: %d/%d (success=%d, failed=%d)",
+                    i,
+                    total_correlated,
+                    success_count,
+                    failure_count,
+                )
+
         # Best-effort accounting: treat any request without a successfully
         # ingested asset as failed (includes per-request API errors, parse
         # failures, and missing responses).
@@ -915,6 +934,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         failure_count = max(0, total_requests - success_count)
 
         # --- Pass 2: persist all DB writes in a single fast transaction -------
+        logger.info("Pass 2: persisting %d asset records to DB...", len(upload_results))
         async with db.begin():
             for result in upload_results:
                 await self._persist_batch_asset(db, result)
