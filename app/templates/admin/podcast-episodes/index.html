@@ -1,0 +1,149 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Podcast Episodes" %}
+{% set active_nav = "podcast-episodes" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Podcast Episodes</h1>
+  <p class="admin-main__subtitle">Manage ingested podcast episodes</p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">All Episodes ({{ total }})</h2>
+  </div>
+
+  <!-- Filters -->
+  <form class="admin-filters" method="get" action="/admin/podcast-episodes">
+    <input type="hidden" name="limit" value="{{ limit }}">
+
+    <div class="admin-filters__row">
+      <div class="admin-filters__field">
+        <label class="admin-filters__label" for="show_id">Show</label>
+        <select class="admin-form__select" id="show_id" name="show_id">
+          <option value="">All Shows</option>
+          {% for s in all_shows %}
+          <option value="{{ s.id }}" {% if show_id == s.id %}selected{% endif %}>
+            {{ s.display_name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="admin-filters__field">
+        <label class="admin-filters__label" for="tag">Tag</label>
+        <select class="admin-form__select" id="tag" name="tag">
+          <option value="">All Tags</option>
+          {% for t in tags %}
+          <option value="{{ t.value }}" {% if tag == t.value %}selected{% endif %}>
+            {{ t.value }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="admin-filters__actions">
+        <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Filter</button>
+        <a href="/admin/podcast-episodes" class="admin-btn admin-btn--secondary admin-btn--small">Reset</a>
+      </div>
+    </div>
+  </form>
+
+  {% if episodes %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Show</th>
+        <th>Tag</th>
+        <th>Published</th>
+        <th>Duration</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ep in episodes %}
+      <tr>
+        <td>
+          {% if ep.episode_url %}
+          <a href="{{ ep.episode_url }}" target="_blank" rel="noopener noreferrer" class="admin-link">
+            {{ ep.title | truncate(60) }}
+          </a>
+          {% else %}
+          {{ ep.title | truncate(60) }}
+          {% endif %}
+        </td>
+        <td>
+          {% if shows_map.get(ep.show_id) %}
+          {{ shows_map[ep.show_id].display_name }}
+          {% else %}
+          <span class="admin-text--placeholder">Unknown</span>
+          {% endif %}
+        </td>
+        <td>
+          <span class="admin-badge admin-badge--tag">{{ ep.tag.value }}</span>
+        </td>
+        <td>{{ ep.published_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>
+          {% if ep.duration_seconds %}
+          {{ (ep.duration_seconds // 60) }}m
+          {% else %}
+          <span class="admin-text--placeholder">—</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="admin-table__actions">
+            <a href="/admin/podcast-episodes/{{ ep.id }}" class="admin-btn admin-btn--secondary admin-btn--small">Edit</a>
+            <form method="post" action="/admin/podcast-episodes/{{ ep.id }}/delete" class="admin-form--inline" onsubmit="return confirm('Are you sure you want to delete this podcast episode?');">
+              <button type="submit" class="admin-btn admin-btn--danger admin-btn--small">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  {% if pages > 1 %}
+  <nav class="admin-pagination">
+    <div class="admin-pagination__info">
+      Showing {{ offset + 1 }}-{{ [offset + limit, total] | min }} of {{ total }}
+    </div>
+    <div class="admin-pagination__controls">
+      {% if current_page > 1 %}
+      <a href="/admin/podcast-episodes?limit={{ limit }}&offset={{ (current_page - 2) * limit }}{% if show_id %}&show_id={{ show_id }}{% endif %}{% if tag %}&tag={{ tag }}{% endif %}"
+         class="admin-btn admin-btn--secondary admin-btn--small">Previous</a>
+      {% endif %}
+
+      <span class="admin-pagination__pages">
+        Page {{ current_page }} of {{ pages }}
+      </span>
+
+      {% if current_page < pages %}
+      <a href="/admin/podcast-episodes?limit={{ limit }}&offset={{ current_page * limit }}{% if show_id %}&show_id={{ show_id }}{% endif %}{% if tag %}&tag={{ tag }}{% endif %}"
+         class="admin-btn admin-btn--secondary admin-btn--small">Next</a>
+      {% endif %}
+    </div>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="admin-empty">
+    <div class="admin-empty__icon">&#127911;</div>
+    <h3 class="admin-empty__title">No Podcast Episodes</h3>
+    <p class="admin-empty__text">
+      {% if show_id or tag %}
+      No episodes match your filters. Try adjusting the criteria.
+      {% else %}
+      Podcast episodes will appear here after they are ingested from RSS feeds.
+      {% endif %}
+    </p>
+    {% if show_id or tag %}
+    <a href="/admin/podcast-episodes" class="admin-btn admin-btn--secondary">Clear Filters</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

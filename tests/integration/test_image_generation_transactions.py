@@ -24,8 +24,14 @@ class _DummyError:
 
 
 class _DummyBatchJob:
-    def __init__(self, *, error_message: str | None) -> None:
+    def __init__(
+        self,
+        *,
+        error_message: str | None,
+        state: str = "JOB_STATE_FAILED",
+    ) -> None:
         self.dest = None
+        self.state = state
         self.error = _DummyError(error_message) if error_message is not None else None
 
 
@@ -78,11 +84,6 @@ async def test_retrieve_batch_results_persists_failure_metadata_before_raise(
 
     dummy_job = _DummyBatchJob(error_message="no inlined responses")
     monkeypatch.setattr(image_generation_service, "_client", _DummyClient(dummy_job))
-    monkeypatch.setattr(
-        image_generation_service,
-        "get_batch_job_status",
-        lambda _name: BatchJobState.failed,
-    )
 
     with pytest.raises(RuntimeError, match="did not return inlined responses"):
         await image_generation_service.retrieve_batch_results(
@@ -179,8 +180,14 @@ class _DummyDest:
 
 
 class _DummyBatchJobWithDest:
-    def __init__(self, *, inlined_responses: list[object]) -> None:
+    def __init__(
+        self,
+        *,
+        inlined_responses: list[object],
+        state: str = "JOB_STATE_SUCCEEDED",
+    ) -> None:
         self.dest = _DummyDest(inlined_responses)
+        self.state = state
         self.error = None
 
 
@@ -256,11 +263,6 @@ async def test_retrieve_batch_results_ingests_successes_when_some_requests_error
         ]
     )
     monkeypatch.setattr(image_generation_service, "_client", _DummyClient(dummy_job))
-    monkeypatch.setattr(
-        image_generation_service,
-        "get_batch_job_status",
-        lambda _name: BatchJobState.succeeded,
-    )
 
     def _fake_extract_and_upload(  # type: ignore[override]
         *,

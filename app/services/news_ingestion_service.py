@@ -20,7 +20,11 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.news import IngestionResult
-from app.schemas.news_item_player_mentions import MentionSource, NewsItemPlayerMention
+from app.schemas.player_content_mentions import (
+    ContentType,
+    MentionSource,
+    PlayerContentMention,
+)
 from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.players_master import PlayerMaster  # noqa: F401 - needed for FK resolution
@@ -268,7 +272,7 @@ async def _persist_player_mentions(
 
     Looks up just-inserted NewsItem rows by external_id, resolves each
     article's mentioned player names to player IDs (creating stubs as needed),
-    and bulk-inserts NewsItemPlayerMention rows.
+    and bulk-inserts PlayerContentMention rows.
 
     Uses a single transaction for the read + resolve + write cycle.
 
@@ -285,15 +289,15 @@ async def _persist_player_mentions(
 
     total_inserted = 0
     async with db.begin():
-        # 1. Fetch the NewsItem IDs for the external_ids that have mentions
+        # 1. Fetch the NewsItem IDs + published_at for the external_ids that have mentions
         external_ids = list(mention_map.keys())
-        stmt = select(NewsItem.id, NewsItem.external_id).where(  # type: ignore[call-overload]
+        stmt = select(NewsItem.id, NewsItem.external_id, NewsItem.published_at).where(  # type: ignore[call-overload]
             NewsItem.source_id == source_id,  # type: ignore[arg-type]
             NewsItem.external_id.in_(external_ids),  # type: ignore[attr-defined,arg-type]
         )
         result = await db.execute(stmt)
-        ext_to_item_id: dict[str, int] = {
-            row[1]: row[0]
+        ext_to_item: dict[str, tuple[int, datetime | None]] = {
+            row[1]: (row[0], row[2])
             for row in result.all()  # type: ignore[misc]
         }
 
@@ -312,9 +316,10 @@ async def _persist_player_mentions(
         mention_rows: list[dict] = []
         seen: set[tuple[int, int]] = set()
         for ext_id, player_names in mention_map.items():
-            news_item_id = ext_to_item_id.get(ext_id)
-            if news_item_id is None:
+            item_data = ext_to_item.get(ext_id)
+            if item_data is None:
                 continue
+            news_item_id, published_at = item_data
             for pname in player_names:
                 player_id = name_to_player_id.get(pname.strip().lower())
                 if player_id is None:
@@ -325,8 +330,10 @@ async def _persist_player_mentions(
                 seen.add(key)
                 mention_rows.append(
                     {
-                        "news_item_id": news_item_id,
+                        "content_type": ContentType.NEWS,
+                        "content_id": news_item_id,
                         "player_id": player_id,
+                        "published_at": published_at,
                         "source": MentionSource.AI,
                     }
                 )
@@ -334,10 +341,10 @@ async def _persist_player_mentions(
         # 4. Bulk insert with conflict handling; use returning() for accurate count
         if mention_rows:
             stmt_insert = (
-                insert(NewsItemPlayerMention)
+                insert(PlayerContentMention)
                 .values(mention_rows)
-                .on_conflict_do_nothing(constraint="uq_news_item_player_mention")
-                .returning(NewsItemPlayerMention.__table__.c.id)  # type: ignore[attr-defined]
+                .on_conflict_do_nothing(constraint="uq_content_mention")
+                .returning(PlayerContentMention.__table__.c.id)  # type: ignore[attr-defined]
             )
             insert_result = await db.execute(stmt_insert)
             total_inserted = len(list(insert_result.scalars().all()))

@@ -11,7 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.auth import AuthDatasetPermission
 
 # Known datasets that can have permissions assigned
-KNOWN_DATASETS = ["news_sources", "news_ingestion", "players", "images"]
+KNOWN_DATASETS = [
+    "news_sources",
+    "news_ingestion",
+    "players",
+    "images",
+    "podcasts",
+    "podcast_ingestion",
+]
 
 
 @dataclass

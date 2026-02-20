@@ -32,7 +32,9 @@
         {% set can_view_news_sources = is_admin or (permissions and permissions.news_sources.can_view) %}
         {% set can_view_news_ingestion = is_admin or (permissions and permissions.news_ingestion.can_view) %}
         {% set can_view_images = is_admin or (permissions and permissions.images.can_view) %}
-        {% set show_data_section = can_view_players or can_view_news_sources or can_view_news_ingestion or can_view_images %}
+        {% set can_view_podcasts = is_admin or (permissions and permissions.podcasts.can_view) %}
+        {% set can_view_podcast_ingestion = is_admin or (permissions and permissions.podcast_ingestion.can_view) %}
+        {% set show_data_section = can_view_players or can_view_news_sources or can_view_news_ingestion or can_view_images or can_view_podcasts or can_view_podcast_ingestion %}
         {% if show_data_section %}
         <li class="admin-sidebar__nav-divider"></li>
         <li class="admin-sidebar__nav-section">Data Management</li>
@@ -61,6 +63,20 @@
         <li class="admin-sidebar__nav-item">
           <a href="/admin/images" class="admin-sidebar__nav-link{% if active_nav == 'images' %} admin-sidebar__nav-link--active{% endif %}">
             Images
+          </a>
+        </li>
+        {% endif %}
+        {% if can_view_podcasts %}
+        <li class="admin-sidebar__nav-item">
+          <a href="/admin/podcast-shows" class="admin-sidebar__nav-link{% if active_nav == 'podcast-shows' %} admin-sidebar__nav-link--active{% endif %}">
+            Podcast Shows
+          </a>
+        </li>
+        {% endif %}
+        {% if can_view_podcast_ingestion %}
+        <li class="admin-sidebar__nav-item">
+          <a href="/admin/podcast-episodes" class="admin-sidebar__nav-link{% if active_nav == 'podcast-episodes' %} admin-sidebar__nav-link--active{% endif %}">
+            Podcast Episodes
           </a>
         </li>
         {% endif %}

@@ -11,7 +11,7 @@ from sqlalchemy import Float, cast, func, literal, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.news import NewsFeedResponse, NewsItemRead
-from app.schemas.news_item_player_mentions import NewsItemPlayerMention
+from app.schemas.player_content_mentions import ContentType, PlayerContentMention
 from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
@@ -189,15 +189,14 @@ async def get_trending_players(
     days: int = 7,
     limit: int = 10,
 ) -> list[TrendingPlayer]:
-    """Get players with the most news mentions, ranked by recency-weighted score.
+    """Get players with the most content mentions, ranked by recency-weighted score.
 
     Uses linear decay: a mention from today has weight 1.0, a mention from
     ``days`` ago has weight ~0.0.  The trending score is SUM(weights).
     Raw ``mention_count`` is still returned for badge display.
 
-    Uses ``NewsItem.published_at`` (article publication date) rather than
-    ``NewsItemPlayerMention.created_at`` so back-filled data is bucketed
-    correctly.
+    Aggregates across ALL content types (news + podcasts) using the
+    denormalized ``PlayerContentMention.published_at``.
 
     Args:
         db: Async database session
@@ -210,35 +209,31 @@ async def get_trending_players(
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     cutoff = now - timedelta(days=days)
 
-    # Age in fractional days (using published_at from the article)
+    # Age in fractional days (using denormalized published_at on the mention row)
     age_seconds = func.extract(
         "epoch",
-        literal(now) - NewsItem.published_at,
+        literal(now) - PlayerContentMention.published_at,
     )
     age_days = age_seconds / 86400.0
     weight = func.greatest(1.0 - age_days / days, 0.0)
 
     stmt = (
         select(
-            NewsItemPlayerMention.player_id,
+            PlayerContentMention.player_id,
             PlayerMaster.display_name,
             PlayerMaster.slug,
             PlayerMaster.school,
             func.count().label("mention_count"),  # type: ignore[call-overload]
             cast(func.sum(weight), Float).label("trending_score"),
-            func.max(NewsItem.published_at).label("latest_mention_at"),  # type: ignore[call-overload]
-        )
-        .join(
-            NewsItem,
-            NewsItem.id == NewsItemPlayerMention.news_item_id,  # type: ignore[arg-type]
+            func.max(PlayerContentMention.published_at).label("latest_mention_at"),  # type: ignore[call-overload]
         )
         .join(
             PlayerMaster,
-            PlayerMaster.id == NewsItemPlayerMention.player_id,  # type: ignore[arg-type]
+            PlayerMaster.id == PlayerContentMention.player_id,  # type: ignore[arg-type]
         )
-        .where(NewsItemPlayerMention.created_at >= cutoff)  # type: ignore[arg-type]
+        .where(PlayerContentMention.published_at >= cutoff)  # type: ignore[arg-type,operator]
         .group_by(
-            NewsItemPlayerMention.player_id,
+            PlayerContentMention.player_id,
             PlayerMaster.display_name,
             PlayerMaster.slug,
             PlayerMaster.school,
@@ -281,8 +276,9 @@ async def _get_daily_mention_counts(
 ) -> dict[int, list[int]]:
     """Fetch per-day mention counts for a set of players.
 
-    Buckets by ``date_trunc('day', news_items.published_at)`` and fills
-    zeros for days with no mentions.
+    Buckets by ``date_trunc('day', player_content_mentions.published_at)``
+    and fills zeros for days with no mentions.  Aggregates across all
+    content types.
 
     Args:
         db: Async database session
@@ -295,23 +291,21 @@ async def _get_daily_mention_counts(
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     cutoff = now - timedelta(days=days)
 
-    day_col = func.date_trunc("day", NewsItem.published_at).label("mention_day")
+    day_col = func.date_trunc("day", PlayerContentMention.published_at).label(
+        "mention_day"
+    )
 
     stmt = (
         select(
-            NewsItemPlayerMention.player_id,
+            PlayerContentMention.player_id,
             day_col,
             func.count().label("cnt"),  # type: ignore[call-overload]
         )
-        .join(
-            NewsItem,
-            NewsItem.id == NewsItemPlayerMention.news_item_id,  # type: ignore[arg-type]
-        )
-        .where(NewsItemPlayerMention.created_at >= cutoff)  # type: ignore[arg-type]
+        .where(PlayerContentMention.published_at >= cutoff)  # type: ignore[arg-type,operator]
         .where(
-            NewsItemPlayerMention.player_id.in_(player_ids)  # type: ignore[attr-defined]
+            PlayerContentMention.player_id.in_(player_ids)  # type: ignore[attr-defined]
         )
-        .group_by(NewsItemPlayerMention.player_id, day_col)
+        .group_by(PlayerContentMention.player_id, day_col)
     )
 
     result = await db.execute(stmt)
@@ -363,10 +357,12 @@ async def get_player_news_feed(
         NewsFeedResponse with items marked with is_player_specific
     """
     # Subquery: news_item IDs that mention this player (via junction table)
-    mention_subq = select(  # type: ignore[call-overload]
-        NewsItemPlayerMention.news_item_id.label("item_id")  # type: ignore[attr-defined]
-    ).where(
-        NewsItemPlayerMention.player_id == player_id  # type: ignore[arg-type]
+    mention_subq = (
+        select(  # type: ignore[call-overload]
+            PlayerContentMention.content_id.label("item_id")  # type: ignore[attr-defined]
+        )
+        .where(PlayerContentMention.player_id == player_id)  # type: ignore[arg-type]
+        .where(PlayerContentMention.content_type == ContentType.NEWS)  # type: ignore[arg-type]
     )
 
     # Subquery: news_item IDs where player_id is set directly
