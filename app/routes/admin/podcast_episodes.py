@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
@@ -16,6 +16,7 @@ from app.routes.admin.helpers import (
     base_context_with_permissions,
     require_dataset_access,
 )
+from app.schemas.player_content_mentions import ContentType, PlayerContentMention
 from app.schemas.podcast_episodes import PodcastEpisode, PodcastEpisodeTag
 from app.schemas.podcast_shows import PodcastShow
 from app.schemas.players_master import PlayerMaster
@@ -296,6 +297,13 @@ async def delete_podcast_episode(
         episode = result.scalar_one_or_none()
         if episode is None:
             raise HTTPException(status_code=404, detail="Podcast episode not found")
+
+        # Remove orphan mention rows before deleting the episode
+        await db.execute(
+            delete(PlayerContentMention)
+            .where(PlayerContentMention.content_type == ContentType.PODCAST.value)  # type: ignore[arg-type]
+            .where(PlayerContentMention.content_id == episode_id)  # type: ignore[arg-type]
+        )
 
         await db.delete(episode)
 
