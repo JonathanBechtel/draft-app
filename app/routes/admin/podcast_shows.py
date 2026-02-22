@@ -86,7 +86,11 @@ async def ingest_podcasts(
 ) -> Response:
     """Trigger a full podcast ingestion cycle."""
     redirect, user = await require_dataset_access(
-        request, db, "podcasts", need_edit=True, next_path="/admin/podcast-shows"
+        request,
+        db,
+        "podcast_ingestion",
+        need_edit=True,
+        next_path="/admin/podcast-shows",
     )
     if redirect:
         return redirect
