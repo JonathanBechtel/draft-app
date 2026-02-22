@@ -208,6 +208,7 @@ async def home(
             "id": ep.id,
             "show_name": ep.show_name,
             "artwork_url": ep.artwork_url,
+            "show_artwork_url": ep.show_artwork_url,
             "title": ep.title,
             "summary": ep.summary,
             "tag": ep.tag,
@@ -218,11 +219,11 @@ async def home(
             "listen_on_text": ep.listen_on_text,
             "mentioned_players": [
                 {
-                    "player_id": mp.player_id,
-                    "display_name": mp.display_name,
-                    "slug": mp.slug,
+                    "player_id": p.player_id,
+                    "display_name": p.display_name,
+                    "slug": p.slug,
                 }
-                for mp in ep.mentioned_players
+                for p in ep.mentioned_players
             ],
         }
         for ep in podcast_episodes_raw
@@ -278,6 +279,7 @@ async def podcasts_page(
             "id": ep.id,
             "show_name": ep.show_name,
             "artwork_url": ep.artwork_url,
+            "show_artwork_url": ep.show_artwork_url,
             "title": ep.title,
             "summary": ep.summary,
             "tag": ep.tag,
@@ -288,11 +290,11 @@ async def podcasts_page(
             "listen_on_text": ep.listen_on_text,
             "mentioned_players": [
                 {
-                    "player_id": mp.player_id,
-                    "display_name": mp.display_name,
-                    "slug": mp.slug,
+                    "player_id": p.player_id,
+                    "display_name": p.display_name,
+                    "slug": p.slug,
                 }
-                for mp in ep.mentioned_players
+                for p in ep.mentioned_players
             ],
         }
         for ep in feed.items
