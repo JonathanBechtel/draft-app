@@ -1003,10 +1003,6 @@ const HomePodcastModule = {
             <span class="meta-dot"></span>
             <span>${esc(ep.time)}</span>
           </div>
-          ${ep.mentioned_players && ep.mentioned_players.length > 0 ? `
-          <div class="podcast-featured__tags">
-            ${ep.mentioned_players.map(p => `<a href="/players/${esc(p.slug)}" class="player-tag" onclick="event.stopPropagation()">${esc(p.display_name)}</a>`).join('')}
-          </div>` : ''}
         </div>
       </a>
     `;
@@ -1043,10 +1039,6 @@ const HomePodcastModule = {
                 </span>
                 ${episodeTag}
               </div>
-              ${ep.mentioned_players && ep.mentioned_players.length > 0 ? `
-              <div class="episode-row__tags">
-                ${ep.mentioned_players.slice(0, 3).map(p => `<a href="/players/${esc(p.slug)}" class="player-tag" onclick="event.stopPropagation()">${esc(p.display_name)}</a>`).join('')}
-              </div>` : ''}
             </div>
             <span class="episode-row__play" aria-label="Listen on podcasts page">
               <svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"></polygon></svg>

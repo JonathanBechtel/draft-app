@@ -145,10 +145,6 @@ const PodcastHeroModule = {
             <span class="meta-dot"></span>
             <span>${esc(ep.time)}</span>
           </div>
-          ${ep.mentioned_players && ep.mentioned_players.length > 0 ? `
-          <div class="podcast-featured__tags">
-            ${ep.mentioned_players.map(p => `<a href="/players/${esc(p.slug)}" class="player-tag">${esc(p.display_name)}</a>`).join('')}
-          </div>` : ''}
           <div class="podcast-featured__player">
             <button class="play-btn" aria-label="Play episode" data-audio="${esc(ep.audio_url)}">
               <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
@@ -218,10 +214,6 @@ const PodcastListModule = {
               <span class="meta-dot"></span>
               <span>${esc(ep.time)}</span>
             </div>
-            ${ep.mentioned_players && ep.mentioned_players.length > 0 ? `
-            <div class="episode-row__tags">
-              ${ep.mentioned_players.map(p => `<a href="/players/${esc(p.slug)}" class="player-tag">${esc(p.display_name)}</a>`).join('')}
-            </div>` : ''}
           </div>
           <button class="episode-row__play" aria-label="Play episode" data-audio="${esc(ep.audio_url)}">
             <svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"></polygon></svg>
