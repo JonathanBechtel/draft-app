@@ -1,0 +1,162 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Edit Podcast Show" if show else "New Podcast Show" %}
+{% set active_nav = "podcast-shows" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">{{ "Edit Podcast Show" if show else "New Podcast Show" }}</h1>
+  <p class="admin-main__subtitle">
+    {% if show %}
+    Modify the settings for {{ show.name }}
+    {% else %}
+    Add a new podcast RSS feed
+    {% endif %}
+  </p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <form
+    class="admin-form"
+    method="post"
+    action="{% if show %}/admin/podcast-shows/{{ show.id }}{% else %}/admin/podcast-shows{% endif %}"
+  >
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="name">Name</label>
+      <input
+        class="admin-form__input"
+        id="name"
+        name="name"
+        type="text"
+        value="{{ show.name if show else '' }}"
+        required
+      />
+      <span class="admin-form__help">Internal identifier (e.g., "ringer-nba-draft")</span>
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="display_name">Display Name</label>
+      <input
+        class="admin-form__input"
+        id="display_name"
+        name="display_name"
+        type="text"
+        value="{{ show.display_name if show else '' }}"
+        required
+      />
+      <span class="admin-form__help">Name shown to users (e.g., "The Ringer NBA Draft Show")</span>
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="feed_url">Feed URL</label>
+      <input
+        class="admin-form__input"
+        id="feed_url"
+        name="feed_url"
+        type="url"
+        value="{{ show.feed_url if show else '' }}"
+        placeholder="https://example.com/podcast/feed.rss"
+        required
+      />
+      <span class="admin-form__help">The RSS feed URL for the podcast</span>
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="artwork_url">Artwork URL</label>
+      <input
+        class="admin-form__input"
+        id="artwork_url"
+        name="artwork_url"
+        type="url"
+        value="{{ show.artwork_url if show and show.artwork_url else '' }}"
+        placeholder="https://example.com/artwork.jpg"
+      />
+      <span class="admin-form__help">Optional cover art URL</span>
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="author">Author</label>
+      <input
+        class="admin-form__input"
+        id="author"
+        name="author"
+        type="text"
+        value="{{ show.author if show and show.author else '' }}"
+      />
+      <span class="admin-form__help">Optional podcast host or author name</span>
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="description">Description</label>
+      <textarea
+        class="admin-form__textarea"
+        id="description"
+        name="description"
+        rows="3"
+        placeholder="Brief description of the podcast..."
+      >{{ show.description if show and show.description else '' }}</textarea>
+      <span class="admin-form__help">Optional description of the podcast</span>
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="website_url">Website URL</label>
+      <input
+        class="admin-form__input"
+        id="website_url"
+        name="website_url"
+        type="url"
+        value="{{ show.website_url if show and show.website_url else '' }}"
+        placeholder="https://example.com/podcast"
+      />
+      <span class="admin-form__help">Optional podcast website</span>
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="fetch_interval_minutes">Fetch Interval (minutes)</label>
+      <input
+        class="admin-form__input"
+        id="fetch_interval_minutes"
+        name="fetch_interval_minutes"
+        type="number"
+        min="5"
+        max="1440"
+        value="{{ show.fetch_interval_minutes if show else 30 }}"
+        required
+      />
+      <span class="admin-form__help">How often to check for new episodes (5-1440 minutes)</span>
+    </div>
+
+    <div class="admin-form__checkbox-field">
+      <input
+        class="admin-form__checkbox"
+        id="is_draft_focused"
+        name="is_draft_focused"
+        type="checkbox"
+        value="1"
+        {% if not show or show.is_draft_focused %}checked{% endif %}
+      />
+      <label class="admin-form__checkbox-label" for="is_draft_focused">Draft Focused</label>
+      <span class="admin-form__help">When checked, all episodes are ingested without relevance filtering</span>
+    </div>
+
+    <div class="admin-form__checkbox-field">
+      <input
+        class="admin-form__checkbox"
+        id="is_active"
+        name="is_active"
+        type="checkbox"
+        value="1"
+        {% if not show or show.is_active %}checked{% endif %}
+      />
+      <label class="admin-form__checkbox-label" for="is_active">Active</label>
+    </div>
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">
+        {{ "Save Changes" if show else "Create Show" }}
+      </button>
+      <a href="/admin/podcast-shows" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

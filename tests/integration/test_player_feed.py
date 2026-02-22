@@ -7,7 +7,7 @@ import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.news_item_player_mentions import MentionSource, NewsItemPlayerMention
+from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
 from app.services.news_service import get_player_news_feed
@@ -44,8 +44,9 @@ class TestGetPlayerNewsFeed:
         db_session.add(article)
         await db_session.flush()
 
-        mention = NewsItemPlayerMention(
-            news_item_id=article.id,  # type: ignore[arg-type]
+        mention = PlayerContentMention(
+            content_type=ContentType.NEWS,
+            content_id=article.id,  # type: ignore[arg-type]
             player_id=target_player.id,  # type: ignore[arg-type]
             source=MentionSource.AI,
             created_at=datetime.now(timezone.utc).replace(tzinfo=None),
@@ -96,8 +97,9 @@ class TestGetPlayerNewsFeed:
         db_session.add(article)
         await db_session.flush()
 
-        mention = NewsItemPlayerMention(
-            news_item_id=article.id,  # type: ignore[arg-type]
+        mention = PlayerContentMention(
+            content_type=ContentType.NEWS,
+            content_id=article.id,  # type: ignore[arg-type]
             player_id=target_player.id,  # type: ignore[arg-type]
             source=MentionSource.AI,
             created_at=datetime.now(timezone.utc).replace(tzinfo=None),

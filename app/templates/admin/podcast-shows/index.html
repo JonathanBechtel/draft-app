@@ -1,0 +1,116 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Podcast Shows" %}
+{% set active_nav = "podcast-shows" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Podcast Shows</h1>
+  <p class="admin-main__subtitle">Manage podcast RSS feeds</p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">All Shows</h2>
+    <div style="display: flex; gap: 0.5rem;">
+      <form method="post" action="/admin/podcast-shows/ingest" class="admin-form--inline" id="ingest-form">
+        <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small" id="ingest-btn">
+          Ingest Now
+        </button>
+      </form>
+      <a href="/admin/podcast-shows/new" class="admin-btn admin-btn--primary admin-btn--small">
+        Add Show
+      </a>
+    </div>
+  </div>
+
+  {% if shows %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Draft Focused</th>
+        <th>Status</th>
+        <th>Interval</th>
+        <th>Last Fetched</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for show in shows %}
+      <tr>
+        <td>
+          <strong>{{ show.name }}</strong>
+          {% if show.name != show.display_name %}
+          <br><span class="admin-text--small">{{ show.display_name }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if show.is_draft_focused %}
+          <span class="admin-badge admin-badge--active">Yes</span>
+          {% else %}
+          <span class="admin-badge admin-badge--inactive">No</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if show.is_active %}
+          <span class="admin-badge admin-badge--active">Active</span>
+          {% else %}
+          <span class="admin-badge admin-badge--inactive">Inactive</span>
+          {% endif %}
+        </td>
+        <td>{{ show.fetch_interval_minutes }} min</td>
+        <td>
+          {% if show.last_fetched_at %}
+          {{ show.last_fetched_at.strftime('%Y-%m-%d %H:%M') }}
+          {% else %}
+          <span class="admin-text--placeholder">Never</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="admin-table__actions">
+            <a href="/admin/podcast-shows/{{ show.id }}" class="admin-btn admin-btn--secondary admin-btn--small">Edit</a>
+            <form method="post" action="/admin/podcast-shows/{{ show.id }}/delete" class="admin-form--inline" onsubmit="return confirm('Are you sure you want to delete this podcast show?');">
+              <button type="submit" class="admin-btn admin-btn--danger admin-btn--small">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="admin-empty">
+    <div class="admin-empty__icon">&#127911;</div>
+    <h3 class="admin-empty__title">No Podcast Shows</h3>
+    <p class="admin-empty__text">Get started by adding your first podcast show.</p>
+    <a href="/admin/podcast-shows/new" class="admin-btn admin-btn--primary">Add Show</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block admin_js %}
+<script>
+document.getElementById('ingest-form').addEventListener('submit', function () {
+  var btn = document.getElementById('ingest-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="admin-spinner"></span> Ingesting\u2026';
+});
+</script>
+<style>
+.admin-spinner {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: admin-spin 0.6s linear infinite;
+  vertical-align: -0.1em;
+}
+@keyframes admin-spin {
+  to { transform: rotate(360deg); }
+}
+</style>
+{% endblock %}

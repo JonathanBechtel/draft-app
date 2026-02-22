@@ -125,7 +125,9 @@ async def async_engine(
     from app.schemas import seasons  # noqa: F401
     from app.schemas import news_sources  # noqa: F401
     from app.schemas import news_items  # noqa: F401
-    from app.schemas import news_item_player_mentions  # noqa: F401
+    from app.schemas import player_content_mentions  # noqa: F401
+    from app.schemas import podcast_shows  # noqa: F401
+    from app.schemas import podcast_episodes  # noqa: F401
     from app.schemas import auth  # noqa: F401
 
     connect_args = {
@@ -249,6 +251,8 @@ from datetime import datetime, timedelta, timezone
 from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.players_master import PlayerMaster
+from app.schemas.podcast_episodes import PodcastEpisode, PodcastEpisodeTag
+from app.schemas.podcast_shows import PodcastShow
 
 
 @pytest_asyncio.fixture()
@@ -304,6 +308,54 @@ def make_article(
         author=None,
         summary=f"Summary for {external_id}",
         tag=NewsItemTag.SCOUTING_REPORT,
+        published_at=now - timedelta(hours=hours_ago),
+        created_at=now,
+        player_id=player_id,
+    )
+
+
+def make_podcast_show(
+    name: str = "Test Draft Pod",
+    feed_url: str = "https://example.com/podcast-feed",
+    is_draft_focused: bool = True,
+) -> PodcastShow:
+    """Build an unsaved PodcastShow instance for testing."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return PodcastShow(
+        name=name,
+        display_name=name,
+        feed_url=feed_url,
+        artwork_url="https://example.com/artwork.jpg",
+        author="Test Host",
+        is_draft_focused=is_draft_focused,
+        is_active=True,
+        fetch_interval_minutes=30,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def make_podcast_episode(
+    show_id: int,
+    external_id: str,
+    hours_ago: float = 1,
+    duration_seconds: int = 2700,
+    tag: PodcastEpisodeTag = PodcastEpisodeTag.DRAFT_ANALYSIS,
+    player_id: int | None = None,
+) -> PodcastEpisode:
+    """Build an unsaved PodcastEpisode instance for testing."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return PodcastEpisode(
+        show_id=show_id,
+        external_id=external_id,
+        title=f"Episode {external_id}",
+        description=f"Description for {external_id}",
+        audio_url=f"https://example.com/audio/{external_id}.mp3",
+        duration_seconds=duration_seconds,
+        episode_url=f"https://example.com/episode/{external_id}",
+        artwork_url="https://example.com/ep-art.jpg",
+        summary=f"Summary for {external_id}",
+        tag=tag,
         published_at=now - timedelta(hours=hours_ago),
         created_at=now,
         player_id=player_id,

@@ -32,9 +32,10 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
     async_sessionmaker,
     create_async_engine,
 )
-from app.schemas.news_item_player_mentions import (  # noqa: E402
+from app.schemas.player_content_mentions import (  # noqa: E402
+    ContentType,
     MentionSource,
-    NewsItemPlayerMention,
+    PlayerContentMention,
 )
 from app.schemas.news_items import NewsItem  # noqa: E402
 from app.schemas.player_aliases import PlayerAlias  # noqa: E402
@@ -105,6 +106,7 @@ async def backfill() -> None:
                 NewsItem.title,
                 NewsItem.description,
                 NewsItem.player_id,
+                NewsItem.published_at,
             )
         )
         items = result.all()
@@ -113,7 +115,7 @@ async def backfill() -> None:
         mention_rows: list[dict] = []
         seen: set[tuple[int, int]] = set()
 
-        for news_item_id, title, description, existing_player_id in items:
+        for news_item_id, title, description, existing_player_id, published_at in items:
             # Word-boundary regex matching
             text = f"{title or ''} {description or ''}"
             matched_ids = _find_mentions(text, name_lookup)
@@ -128,18 +130,20 @@ async def backfill() -> None:
                     seen.add(key)
                     mention_rows.append(
                         {
-                            "news_item_id": news_item_id,
+                            "content_type": ContentType.NEWS,
+                            "content_id": news_item_id,
                             "player_id": player_id,
+                            "published_at": published_at,
                             "source": MentionSource.BACKFILL,
                         }
                     )
 
         if mention_rows:
             stmt = (
-                insert(NewsItemPlayerMention)
+                insert(PlayerContentMention)
                 .values(mention_rows)
-                .on_conflict_do_nothing(constraint="uq_news_item_player_mention")
-                .returning(NewsItemPlayerMention.__table__.c.id)  # type: ignore[attr-defined]
+                .on_conflict_do_nothing(constraint="uq_content_mention")
+                .returning(PlayerContentMention.__table__.c.id)  # type: ignore[attr-defined]
             )
             result = await db.execute(stmt)
             inserted_count = len(list(result.scalars().all()))

@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.news_item_player_mentions import MentionSource, NewsItemPlayerMention
+from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
 from app.services.news_ingestion_service import _persist_player_mentions
@@ -39,8 +39,9 @@ class TestPersistPlayerMentions:
         assert inserted == 1
 
         # Verify the row in the database
-        stmt = select(NewsItemPlayerMention).where(
-            NewsItemPlayerMention.news_item_id == article.id  # type: ignore[arg-type]
+        stmt = select(PlayerContentMention).where(  # type: ignore[call-overload]
+            PlayerContentMention.content_id == article.id,  # type: ignore[arg-type]
+            PlayerContentMention.content_type == ContentType.NEWS,  # type: ignore[arg-type]
         )
         rows = (await db_session.execute(stmt)).scalars().all()
         assert len(rows) == 1
@@ -202,10 +203,10 @@ class TestPersistPlayerMentions:
         assert inserted == 2
 
         # Verify each article has its own mention row
-        stmt = select(NewsItemPlayerMention).where(
-            NewsItemPlayerMention.player_id == player.id  # type: ignore[arg-type]
+        stmt = select(PlayerContentMention).where(  # type: ignore[call-overload]
+            PlayerContentMention.player_id == player.id  # type: ignore[arg-type]
         )
         rows = (await db_session.execute(stmt)).scalars().all()
-        article_ids = {r.news_item_id for r in rows}
+        article_ids = {r.content_id for r in rows}
         assert art1.id in article_ids
         assert art2.id in article_ids

@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DraftGuru — Podcast Feed Mockup</title>
+
+  <!-- Google Fonts: Russo One (headings) and Azeret Mono (monospace) -->
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       CSS CUSTOM PROPERTIES
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    /* ============================================================================
+       RESET & BASE
+       ========================================================================= */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ============================================================================
+       TYPOGRAPHY UTILITIES
+       ========================================================================= */
+    .heading-font { font-family: var(--font-heading); letter-spacing: 0.02em; }
+    .mono-font { font-family: var(--font-mono); }
+    .uppercase { text-transform: uppercase; letter-spacing: 0.06em; }
+
+    /* ============================================================================
+       LAYOUT
+       ========================================================================= */
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 4rem; }
+
+    .section-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .section-header-row .section-header { margin-bottom: 0; }
+
+    .section-header {
+      font-size: 1.5rem;
+      font-weight: 600;
+      padding-left: 0.5rem;
+      border-left: 4px solid;
+      margin-bottom: 1rem;
+    }
+
+    .section-subtitle {
+      font-size: 0.875rem;
+      color: var(--color-slate-500);
+      margin-bottom: 1rem;
+      padding-left: 0.5rem;
+    }
+
+    .section-cta {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-accent-fuchsia);
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      transition: color 0.2s ease;
+    }
+
+    .section-cta:hover { color: #c026d3; }
+
+    .section-header-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(148,163,184,0.3) 20%, rgba(148,163,184,0.3) 80%, transparent);
+      margin: 3rem 0;
+    }
+
+    .mt-28 { margin-top: 7rem; }
+
+    /* ============================================================================
+       NAVIGATION BAR
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .navbar-brand { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+
+    .navbar-links { display: flex; align-items: center; gap: 1rem; }
+
+    .navbar-link {
+      font-family: var(--font-mono); font-size: 0.8rem;
+      color: rgba(255,255,255,0.85); text-decoration: none;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      transition: color 0.2s;
+    }
+    .navbar-link:hover { color: #fff; }
+    .navbar-link.active { color: #fff; border-bottom: 2px solid #fbbf24; padding-bottom: 2px; }
+
+    .navbar-search { display: flex; align-items: center; gap: 0.5rem; }
+
+    .search-input {
+      width: 288px; background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; color: var(--color-slate-900);
+      border-radius: 0.375rem; padding: 0.5rem 0.75rem; outline: none;
+      transition: all var(--transition-speed);
+    }
+    .search-input:focus { border-color: var(--color-white); box-shadow: 0 0 0 2px rgba(255,255,255,0.4); }
+    .search-input::placeholder { color: var(--color-slate-500); }
+
+    .search-button {
+      width: 2.5rem; height: 2.5rem; background: #fbbf24; color: #1e3a8a;
+      border: none; border-radius: 0.375rem; display: grid; place-items: center;
+      cursor: pointer; transition: background var(--transition-speed);
+    }
+    .search-button:hover { background: #fcd34d; }
+
+    /* ============================================================================
+       ICONS
+       ========================================================================= */
+    .icon {
+      display: inline-block; width: 1rem; height: 1rem;
+      stroke: currentColor; stroke-width: 2; fill: none;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .icon-lg { width: 1.25rem; height: 1.25rem; }
+    .icon-xl { width: 1.5rem; height: 1.5rem; }
+
+    /* ============================================================================
+       SCANLINES OVERLAY
+       ========================================================================= */
+    .scanlines {
+      position: absolute; inset: 0;
+      background-image: repeating-linear-gradient(0deg, rgba(0,0,0,1) 0, rgba(0,0,0,1) 1px, transparent 1px, transparent 3px);
+      opacity: 0.05; pointer-events: none;
+    }
+
+    /* ============================================================================
+       CARDS
+       ========================================================================= */
+    .card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .card-ring {
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      outline: 2px solid; outline-offset: -2px;
+    }
+
+    .card-ring-fuchsia { outline-color: rgba(217,70,239,0.6); }
+
+    /* ============================================================================
+       PAGE MODE SWITCHER
+       Toggle between "Homepage Section" and "Podcasts Page" views
+       ========================================================================= */
+    .mode-switcher {
+      position: fixed;
+      top: 5rem;
+      right: 1.5rem;
+      z-index: 999;
+      display: flex;
+      gap: 0;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      border: 2px solid var(--color-accent-fuchsia);
+      box-shadow: 0 4px 12px rgba(217,70,239,0.2);
+    }
+
+    .mode-btn {
+      padding: 0.5rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      border: none;
+      background: var(--color-white);
+      color: var(--color-slate-600);
+      transition: all 0.2s;
+    }
+
+    .mode-btn.active {
+      background: var(--color-accent-fuchsia);
+      color: #fff;
+    }
+
+    .mode-btn:hover:not(.active) { background: #fae8ff; }
+
+    .view-section { display: none; }
+    .view-section.active { display: block; }
+
+    /* ============================================================================
+       FOOTER
+       ========================================================================= */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+
+    .footer-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    .footer-copyright {
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-600);
+    }
+
+
+    /* ========================================================================
+       ========================================================================
+       SECTION 1: HOMEPAGE PODCAST MODULE
+       The podcast section as it appears on the DraftGuru homepage
+       ========================================================================
+       ======================================================================== */
+
+    /* --- Featured Episode (homepage hero) --- */
+    .podcast-featured {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 1.5rem;
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      outline: 2px solid rgba(217,70,239,0.5);
+      position: relative;
+      margin-bottom: 1.5rem;
+    }
+
+    .podcast-featured__artwork {
+      width: 100%;
+      height: 100%;
+      min-height: 280px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .podcast-featured__artwork img {
+      width: 100%; height: 100%; object-fit: cover;
+    }
+
+    /* "NOW PLAYING" badge */
+    .podcast-featured__badge {
+      position: absolute; top: 0.75rem; left: 0.75rem;
+      font-family: var(--font-mono); font-size: 0.5625rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 0.25rem 0.625rem; border-radius: 9999px;
+      background: var(--color-accent-fuchsia); color: #fff;
+      display: flex; align-items: center; gap: 0.375rem;
+      box-shadow: 0 2px 6px rgba(217,70,239,0.4);
+    }
+
+    .pulse-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #fff;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .podcast-featured__body {
+      padding: 1.25rem 1.25rem 1rem 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .podcast-featured__show {
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--color-accent-fuchsia); margin-bottom: 0.375rem;
+    }
+
+    .podcast-featured__title {
+      font-family: var(--font-heading); font-size: 1.125rem; line-height: 1.3;
+      color: var(--color-slate-900); margin-bottom: 0.5rem;
+    }
+
+    .podcast-featured__summary {
+      font-size: 0.8125rem; color: var(--color-slate-600);
+      line-height: 1.5; margin-bottom: 0.75rem;
+      display: -webkit-box; -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    .podcast-featured__meta {
+      display: flex; align-items: center; gap: 0.75rem;
+      font-family: var(--font-mono); font-size: 0.625rem;
+      color: var(--color-slate-500); margin-bottom: 0.75rem;
+    }
+
+    .podcast-featured__meta-dot {
+      width: 3px; height: 3px; border-radius: 50%;
+      background: var(--color-slate-300);
+    }
+
+    /* Player tags */
+    .player-tags {
+      display: flex; flex-wrap: wrap; gap: 0.375rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .player-tag {
+      font-family: var(--font-mono); font-size: 0.5625rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 0.1875rem 0.5rem; border-radius: 9999px;
+      background: #fae8ff; color: #86198f;
+      border: 1px solid rgba(217,70,239,0.3);
+      cursor: pointer; text-decoration: none;
+      transition: all 0.15s ease;
+    }
+
+    .player-tag:hover {
+      background: var(--color-accent-fuchsia); color: #fff;
+      border-color: var(--color-accent-fuchsia);
+    }
+
+    /* Featured inline player */
+    .podcast-featured__player {
+      display: flex; align-items: center; gap: 0.625rem;
+    }
+
+    .play-btn {
+      width: 2.25rem; height: 2.25rem; border-radius: 50%;
+      border: none; background: var(--color-accent-fuchsia); color: #fff;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: background 0.2s, transform 0.1s;
+    }
+    .play-btn:hover { background: #c026d3; transform: scale(1.05); }
+    .play-btn:active { transform: scale(0.95); }
+    .play-btn svg { width: 0.875rem; height: 0.875rem; fill: currentColor; }
+
+    .progress-track {
+      flex: 1; display: flex; align-items: center; gap: 0.5rem;
+    }
+
+    .progress-bar {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 4px; border-radius: 2px;
+      background: var(--color-slate-200); outline: none; cursor: pointer;
+    }
+    .progress-bar::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--color-accent-fuchsia); cursor: pointer;
+    }
+    .progress-bar::-moz-range-thumb {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--color-accent-fuchsia); border: none; cursor: pointer;
+    }
+
+    .progress-time {
+      font-family: var(--font-mono); font-size: 0.6rem;
+      color: var(--color-slate-500); min-width: 2.5rem; text-align: right;
+    }
+
+    /* --- Recent Episodes Grid (homepage) --- */
+    .podcasts-home-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+
+    /* --- Podcast Card --- */
+    .podcast-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      outline: 2px solid rgba(217,70,239,0.4);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .podcast-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    }
+
+    .podcast-card__artwork {
+      position: relative; width: 100%;
+      aspect-ratio: 1 / 1; overflow: hidden;
+      background: var(--color-slate-100);
+    }
+
+    .podcast-card__artwork img {
+      width: 100%; height: 100%; object-fit: cover;
+      transition: transform 0.2s ease;
+    }
+
+    .podcast-card:hover .podcast-card__artwork img { transform: scale(1.03); }
+
+    .podcast-card__artwork-placeholder {
+      width: 100%; height: 100%;
+      display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, var(--color-slate-100) 0%, var(--color-slate-200) 100%);
+      font-size: 3rem; color: var(--color-slate-400);
+    }
+
+    /* "NEW" episode badge */
+    .episode-badge {
+      position: absolute; top: 0.5rem; right: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.5rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 0.1875rem 0.5rem; border-radius: 9999px;
+      background: var(--color-accent-emerald); color: #fff;
+      box-shadow: 0 1px 4px rgba(16,185,129,0.3);
+    }
+
+    .podcast-card__content {
+      padding: 0.875rem 1rem; flex: 1;
+      display: flex; flex-direction: column; gap: 0.375rem;
+    }
+
+    .podcast-card__show-name {
+      font-family: var(--font-mono); font-size: 0.625rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.03em;
+      color: var(--color-accent-fuchsia);
+    }
+
+    .podcast-card__title {
+      font-family: var(--font-heading); font-size: 0.875rem; line-height: 1.3;
+      color: var(--color-slate-900);
+      display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    .podcast-card__summary {
+      font-size: 0.75rem; line-height: 1.4; color: var(--color-slate-600);
+      display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
+    }
+
+    .podcast-card__tags {
+      display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.25rem;
+    }
+
+    .podcast-card__meta {
+      display: flex; align-items: center; gap: 0.5rem;
+      margin-top: auto; padding-top: 0.375rem;
+      font-family: var(--font-mono); font-size: 0.625rem;
+      color: var(--color-slate-500);
+    }
+
+    .podcast-card__meta-dot {
+      width: 3px; height: 3px; border-radius: 50%;
+      background: var(--color-slate-300);
+    }
+
+    /* Player (inline audio controls) */
+    .podcast-player {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem 1rem 0.75rem;
+      border-top: 1px solid var(--color-slate-100);
+    }
+
+    .podcast-player__play-btn {
+      width: 2rem; height: 2rem; border-radius: 50%;
+      border: none; background: var(--color-accent-fuchsia); color: #fff;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: background 0.2s ease, transform 0.1s ease;
+    }
+    .podcast-player__play-btn:hover { background: #c026d3; transform: scale(1.05); }
+    .podcast-player__play-btn svg { width: 0.875rem; height: 0.875rem; fill: currentColor; }
+
+    .podcast-player__progress {
+      flex: 1; display: flex; align-items: center; gap: 0.375rem;
+    }
+
+    .podcast-player__bar {
+      flex: 1; -webkit-appearance: none; appearance: none;
+      height: 4px; border-radius: 2px;
+      background: var(--color-slate-200); outline: none; cursor: pointer;
+    }
+    .podcast-player__bar::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 10px; height: 10px; border-radius: 50%;
+      background: var(--color-accent-fuchsia); cursor: pointer;
+    }
+
+    .podcast-player__time {
+      font-family: var(--font-mono); font-size: 0.6rem;
+      color: var(--color-slate-500); min-width: 2.5rem; text-align: right;
+    }
+
+    .podcast-card__listen-link {
+      display: block; padding: 0.375rem 1rem 0.625rem;
+      font-family: var(--font-mono); font-size: 0.625rem;
+      color: var(--color-accent-fuchsia); text-decoration: none;
+      text-transform: uppercase; letter-spacing: 0.03em;
+      transition: color 0.2s ease;
+    }
+    .podcast-card__listen-link:hover { color: #c026d3; }
+
+
+    /* ========================================================================
+       ========================================================================
+       SECTION 2: DEDICATED PODCAST PAGE
+       Full podcast feed with filtering, sorting, and show directory
+       ========================================================================
+       ======================================================================== */
+
+    /* --- Page Header with Stats --- */
+    .podcast-page-header {
+      display: flex; align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;
+    }
+
+    .podcast-page-stats {
+      display: flex; gap: 1.5rem;
+    }
+
+    .podcast-stat {
+      text-align: center;
+    }
+
+    .podcast-stat__value {
+      font-family: var(--font-heading); font-size: 1.5rem;
+      color: var(--color-accent-fuchsia);
+    }
+
+    .podcast-stat__label {
+      font-family: var(--font-mono); font-size: 0.625rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    /* --- Podcast Show Ticker --- */
+    .show-ticker {
+      border-radius: var(--border-radius);
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-white);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+      outline: 2px solid rgba(217,70,239,0.5);
+      margin-bottom: 2rem;
+    }
+
+    .show-ticker__header {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.5rem 1rem; font-size: 0.875rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+    }
+
+    .show-ticker__header span:first-of-type {
+      font-weight: 600; font-family: var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+
+    .show-ticker__wrapper { position: relative; overflow: hidden; }
+
+    .show-ticker__content {
+      display: flex; gap: 1.5rem; white-space: nowrap;
+      padding: 0.625rem 1rem; font-size: 0.8125rem;
+      animation: tickerScroll 40s linear infinite;
+    }
+
+    @keyframes tickerScroll {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    .show-ticker__item {
+      display: flex; align-items: center; gap: 0.625rem;
+      padding-right: 1.5rem;
+      border-right: 1px dotted rgba(203,213,225,0.8);
+    }
+
+    .show-ticker__item-art {
+      width: 28px; height: 28px; border-radius: 0.25rem;
+      object-fit: cover; border: 1px solid var(--color-slate-200);
+    }
+
+    .show-ticker__item-name {
+      font-family: var(--font-mono); font-weight: 600;
+      color: var(--color-slate-900); font-size: 0.75rem;
+    }
+
+    .show-ticker__item-count {
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      color: var(--color-accent-fuchsia);
+    }
+
+    /* --- Filter / Sort Bar --- */
+    .podcast-controls {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .podcast-filters {
+      display: flex; flex-wrap: wrap; gap: 0.375rem;
+    }
+
+    .filter-chip {
+      padding: 0.375rem 0.75rem;
+      background: var(--color-white);
+      border: 1.5px solid var(--color-slate-300);
+      border-radius: 9999px;
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--color-slate-600); cursor: pointer;
+      transition: all 0.15s ease; font-weight: 600;
+    }
+
+    .filter-chip:hover {
+      background: var(--color-slate-50);
+      border-color: var(--color-slate-400);
+    }
+
+    .filter-chip.active {
+      background: #fae8ff;
+      border-color: var(--color-accent-fuchsia);
+      color: #86198f;
+    }
+
+    .filter-chip__count {
+      font-size: 0.5625rem; color: var(--color-slate-400);
+      margin-left: 0.25rem;
+    }
+
+    .filter-chip.active .filter-chip__count { color: #a855f7; }
+
+    /* Sort dropdown */
+    .podcast-sort {
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+
+    .podcast-sort__label {
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .podcast-sort__select {
+      background: var(--color-white);
+      border: 1.5px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      padding: 0.375rem 0.625rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem; color: var(--color-slate-700);
+      cursor: pointer; transition: all 0.15s;
+    }
+
+    .podcast-sort__select:focus {
+      outline: none;
+      border-color: var(--color-accent-fuchsia);
+      box-shadow: 0 0 0 2px rgba(217,70,239,0.15);
+    }
+
+    /* --- Main Layout: Grid + Sidebar --- */
+    .podcast-page-layout {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    /* Podcast grid (page) */
+    .podcasts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.25rem;
+    }
+
+    /* --- Sidebar --- */
+    .podcast-sidebar {
+      display: flex; flex-direction: column; gap: 1.5rem;
+      position: sticky; top: 6rem;
+    }
+
+    .sidebar-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      outline: 1px solid rgba(217,70,239,0.3);
+    }
+
+    .sidebar-card__header {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--color-slate-100);
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--color-slate-700);
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+
+    .sidebar-card__header svg { color: var(--color-accent-fuchsia); }
+
+    .sidebar-card__body { padding: 0.75rem 1rem; }
+
+    /* Show directory */
+    .show-directory-item {
+      display: flex; align-items: center; gap: 0.625rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--color-slate-100);
+      cursor: pointer; transition: background 0.15s;
+    }
+
+    .show-directory-item:last-child { border-bottom: none; }
+    .show-directory-item:hover { background: var(--color-slate-50); margin: 0 -1rem; padding: 0.5rem 1rem; }
+
+    .show-directory-item__art {
+      width: 40px; height: 40px; border-radius: 0.375rem;
+      object-fit: cover; border: 1px solid var(--color-slate-200);
+      flex-shrink: 0;
+    }
+
+    .show-directory-item__info { flex: 1; min-width: 0; }
+
+    .show-directory-item__name {
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+      color: var(--color-slate-800);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    .show-directory-item__episodes {
+      font-family: var(--font-mono); font-size: 0.5625rem;
+      color: var(--color-slate-500);
+    }
+
+    /* Trending Mentions */
+    .trending-mention {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--color-slate-100);
+    }
+
+    .trending-mention:last-child { border-bottom: none; }
+
+    .trending-mention__rank {
+      font-family: var(--font-mono); font-size: 0.625rem; font-weight: 700;
+      color: var(--color-accent-fuchsia); min-width: 1.5rem;
+    }
+
+    .trending-mention__name {
+      font-size: 0.8125rem; font-weight: 600; color: var(--color-slate-800);
+      flex: 1; margin-left: 0.5rem;
+    }
+
+    .trending-mention__count {
+      font-family: var(--font-mono); font-size: 0.625rem;
+      color: var(--color-slate-500);
+    }
+
+    .trending-mention__bar {
+      width: 48px; height: 4px; border-radius: 2px;
+      background: var(--color-slate-200); margin-left: 0.5rem;
+      overflow: hidden;
+    }
+
+    .trending-mention__bar-fill {
+      height: 100%; border-radius: 2px;
+      background: var(--color-accent-fuchsia);
+    }
+
+    /* --- Pagination --- */
+    .pagination {
+      display: flex; align-items: center; justify-content: center;
+      gap: 0.5rem; margin-top: 2rem;
+    }
+
+    .pagination__button {
+      display: flex; align-items: center; gap: 0.25rem;
+      padding: 0.5rem 0.875rem;
+      border: 1.5px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      background: var(--color-white);
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--color-slate-600);
+      cursor: pointer; transition: all 0.15s;
+      text-decoration: none;
+    }
+
+    .pagination__button:hover {
+      border-color: var(--color-accent-fuchsia);
+      color: var(--color-accent-fuchsia);
+    }
+
+    .pagination__button[disabled] {
+      opacity: 0.4; cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .pagination__info {
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      color: var(--color-slate-500); padding: 0 0.5rem;
+    }
+
+    .pagination__number {
+      width: 2rem; height: 2rem;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 0.375rem; font-family: var(--font-mono);
+      font-size: 0.75rem; cursor: pointer;
+      border: 1.5px solid var(--color-slate-200);
+      background: var(--color-white); color: var(--color-slate-600);
+      transition: all 0.15s;
+    }
+
+    .pagination__number:hover { border-color: var(--color-slate-400); }
+
+    .pagination__number.active {
+      background: var(--color-accent-fuchsia); color: #fff;
+      border-color: var(--color-accent-fuchsia);
+    }
+
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 1024px) {
+      .podcast-page-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .podcast-sidebar {
+        position: static;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .podcasts-grid { grid-template-columns: repeat(2, 1fr); }
+      .podcasts-home-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 768px) {
+      .podcast-featured {
+        grid-template-columns: 1fr;
+      }
+
+      .podcast-featured__artwork { min-height: 200px; }
+
+      .podcast-featured__body { padding: 1rem; }
+
+      .podcasts-home-grid { grid-template-columns: 1fr; }
+
+      .podcast-sidebar { grid-template-columns: 1fr; }
+
+      .mode-switcher {
+        top: auto; bottom: 1rem; right: 1rem;
+        position: fixed;
+      }
+
+      .podcast-controls {
+        flex-direction: column; align-items: stretch;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .podcasts-grid { grid-template-columns: 1fr; }
+
+      .podcast-card__artwork { aspect-ratio: 16 / 9; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================================
+       NAVIGATION BAR
+       ========================================================================= -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand">
+        <svg class="icon icon-xl" style="color: #fbbf24;" viewBox="0 0 24 24" stroke-width="2.5">
+          <path d="M12 3l1.5 3.5L17 8l-3.5 1.5L12 13l-1.5-3.5L7 8l3.5-1.5L12 3z"/>
+          <path d="M5 16l.7 1.6L7.3 18l-1.6.7L5 20l-.7-1.3L3 18l1.3-.4L5 16zM19 16l.7 1.6L21.3 18l-1.6.7L19 20l-.7-1.3L17 18l1.3-.4L19 16z"/>
+        </svg>
+        <h1>DraftGuru</h1>
+      </div>
+
+      <div class="navbar-links">
+        <a href="#" class="navbar-link">News</a>
+        <a href="#" class="navbar-link active">Podcasts</a>
+        <a href="#" class="navbar-link">Prospects</a>
+        <a href="#" class="navbar-link">Mock Draft</a>
+        <a href="#" class="navbar-link">Compare</a>
+      </div>
+
+      <div class="navbar-search">
+        <input type="text" class="search-input" placeholder="Search prospects..." aria-label="Search prospects" />
+        <button class="search-button" aria-label="Search">
+          <svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============================================================================
+       MODE SWITCHER (for mockup review)
+       Lets the reviewer toggle between the Homepage section and the full page
+       ========================================================================= -->
+  <div class="mode-switcher">
+    <button class="mode-btn active" data-view="homepage">Homepage</button>
+    <button class="mode-btn" data-view="page">Podcast Page</button>
+  </div>
+
+
+  <!-- ========================================================================
+       VIEW 1: HOMEPAGE PODCAST SECTION
+       Shows how podcasts appear on the main DraftGuru homepage
+       ======================================================================== -->
+  <div id="homepageView" class="view-section active">
+    <main class="container mt-28">
+
+      <!-- Placeholder for sections above podcasts on homepage -->
+      <section class="section">
+        <p style="text-align: center; padding: 3rem; background: var(--color-slate-50); border-radius: var(--border-radius); color: var(--color-slate-400); font-family: var(--font-mono); font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.06em; border: 2px dashed var(--color-slate-200);">
+          &uarr; News Hero + Articles Grid + Sidebar (existing) &uarr;
+        </p>
+      </section>
+
+      <div class="section-divider"></div>
+
+      <!-- ==========================================================================
+           LATEST PODCASTS (Homepage Section)
+           Featured episode + 3-card grid
+           ========================================================================== -->
+      <section class="section" id="podcastsSection">
+        <div class="section-header-row">
+          <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+            <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+              <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+            </svg>
+            Latest Podcasts
+          </h3>
+          <div class="section-header-actions">
+            <a href="#" class="section-cta" onclick="switchView('page'); return false;">View All Podcasts &rarr;</a>
+          </div>
+        </div>
+
+        <!-- Featured Episode -->
+        <div class="podcast-featured">
+          <div class="podcast-featured__artwork">
+            <img src="https://placehold.co/560x560/1e293b/d946ef?text=No+Ceilings+Pod" alt="No Ceilings Podcast" />
+            <div class="podcast-featured__badge">
+              <span class="pulse-dot"></span>
+              Latest Episode
+            </div>
+          </div>
+          <div class="podcast-featured__body">
+            <div class="podcast-featured__show">No Ceilings Draft Pod</div>
+            <div class="podcast-featured__title">Cooper Flagg's Ceiling Is Limitless: Duke Film Breakdown + Combine Projection</div>
+            <div class="podcast-featured__summary">
+              Deep dive into Flagg's Duke tape: scoring versatility, defensive IQ, and why his combine measurements could vault him into a tier of his own. Plus, how scouts are comparing his trajectory to Luka Doncic.
+            </div>
+            <div class="podcast-featured__meta">
+              <span>1h 23m</span>
+              <span class="podcast-featured__meta-dot"></span>
+              <span>2 hours ago</span>
+              <span class="podcast-featured__meta-dot"></span>
+              <span>Season 4, Ep. 87</span>
+            </div>
+            <div class="player-tags">
+              <a href="#" class="player-tag">Cooper Flagg</a>
+              <a href="#" class="player-tag">Ace Bailey</a>
+              <a href="#" class="player-tag">Luka Doncic</a>
+            </div>
+            <div class="podcast-featured__player">
+              <button class="play-btn" aria-label="Play episode">
+                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
+              </button>
+              <div class="progress-track">
+                <input type="range" class="progress-bar" min="0" max="100" value="0" step="0.1" />
+                <span class="progress-time">0:00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Episodes Grid -->
+        <div class="podcasts-home-grid">
+          <!-- Card 1 -->
+          <div class="podcast-card">
+            <div class="podcast-card__artwork">
+              <img src="https://placehold.co/400x400/0f172a/06b6d4?text=The+Draft+Room" alt="The Draft Room" loading="lazy" />
+              <span class="episode-badge">New</span>
+            </div>
+            <div class="podcast-card__content">
+              <div class="podcast-card__show-name">The Draft Room</div>
+              <div class="podcast-card__title">Mock Draft 5.0: Post-Combine Risers & Fallers</div>
+              <div class="podcast-card__summary">Complete top-30 mock draft shakeup after the combine. Who climbed and who slid?</div>
+              <div class="podcast-card__tags">
+                <a href="#" class="player-tag">Zachary Rioux</a>
+                <a href="#" class="player-tag">KJ Evans Jr.</a>
+              </div>
+              <div class="podcast-card__meta">
+                <span>58m</span>
+                <span class="podcast-card__meta-dot"></span>
+                <span>5 hours ago</span>
+              </div>
+            </div>
+            <div class="podcast-player">
+              <button class="podcast-player__play-btn" aria-label="Play episode">
+                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
+              </button>
+              <div class="podcast-player__progress">
+                <input type="range" class="podcast-player__bar" min="0" max="100" value="0" step="0.1" />
+                <span class="podcast-player__time">0:00</span>
+              </div>
+            </div>
+            <a href="#" class="podcast-card__listen-link">Listen on Apple Podcasts &rarr;</a>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="podcast-card">
+            <div class="podcast-card__artwork">
+              <img src="https://placehold.co/400x400/1e3a8a/fbbf24?text=Hoop+Intellect" alt="Hoop Intellect" loading="lazy" />
+            </div>
+            <div class="podcast-card__content">
+              <div class="podcast-card__show-name">Hoop Intellect</div>
+              <div class="podcast-card__title">Film Study: Ace Bailey's Off-Ball Gravity & Shooting Mechanics</div>
+              <div class="podcast-card__summary">Frame-by-frame analysis of Bailey's shooting form evolution and NBA-ready catch-and-shoot ability.</div>
+              <div class="podcast-card__tags">
+                <a href="#" class="player-tag">Ace Bailey</a>
+              </div>
+              <div class="podcast-card__meta">
+                <span>1h 12m</span>
+                <span class="podcast-card__meta-dot"></span>
+                <span>1 day ago</span>
+              </div>
+            </div>
+            <div class="podcast-player">
+              <button class="podcast-player__play-btn" aria-label="Play episode">
+                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
+              </button>
+              <div class="podcast-player__progress">
+                <input type="range" class="podcast-player__bar" min="0" max="100" value="0" step="0.1" />
+                <span class="podcast-player__time">0:00</span>
+              </div>
+            </div>
+            <a href="#" class="podcast-card__listen-link">Listen on Spotify &rarr;</a>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="podcast-card">
+            <div class="podcast-card__artwork">
+              <img src="https://placehold.co/400x400/4A7FB8/ffffff?text=Scouting+Report" alt="The Scouting Report" loading="lazy" />
+            </div>
+            <div class="podcast-card__content">
+              <div class="podcast-card__show-name">The Scouting Report</div>
+              <div class="podcast-card__title">Rioux's Rim Protection: Why He Could Be This Draft's Anchor</div>
+              <div class="podcast-card__summary">Breaking down Rioux's shot-blocking instincts, rim deterrence numbers, and his NBA comp profile.</div>
+              <div class="podcast-card__tags">
+                <a href="#" class="player-tag">Zachary Rioux</a>
+                <a href="#" class="player-tag">Victor Wembanyama</a>
+              </div>
+              <div class="podcast-card__meta">
+                <span>45m</span>
+                <span class="podcast-card__meta-dot"></span>
+                <span>2 days ago</span>
+              </div>
+            </div>
+            <div class="podcast-player">
+              <button class="podcast-player__play-btn" aria-label="Play episode">
+                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
+              </button>
+              <div class="podcast-player__progress">
+                <input type="range" class="podcast-player__bar" min="0" max="100" value="0" step="0.1" />
+                <span class="podcast-player__time">0:00</span>
+              </div>
+            </div>
+            <a href="#" class="podcast-card__listen-link">Listen on YouTube &rarr;</a>
+          </div>
+        </div>
+      </section>
+
+      <div class="section-divider"></div>
+
+      <!-- Placeholder for sections below podcasts -->
+      <section class="section">
+        <p style="text-align: center; padding: 3rem; background: var(--color-slate-50); border-radius: var(--border-radius); color: var(--color-slate-400); font-family: var(--font-mono); font-size: 0.8125rem; text-transform: uppercase; letter-spacing: 0.06em; border: 2px dashed var(--color-slate-200);">
+          &darr; Trending Players + Top Prospects + VS Arena (existing) &darr;
+        </p>
+      </section>
+
+    </main>
+  </div>
+
+
+  <!-- ========================================================================
+       VIEW 2: DEDICATED PODCAST PAGE (/podcasts)
+       Full-page podcast feed with filtering, sorting, sidebar
+       ======================================================================== -->
+  <div id="pageView" class="view-section">
+    <main class="container mt-28">
+
+      <!-- Page Header -->
+      <section class="section" style="margin-bottom: 1.5rem;">
+        <div class="podcast-page-header">
+          <div>
+            <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia); margin-bottom: 0.25rem;">
+              <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+              </svg>
+              Podcast Feed
+            </h2>
+            <p class="section-subtitle" style="margin-bottom: 0;">NBA Draft podcasts from the best voices in scouting</p>
+          </div>
+          <div class="podcast-page-stats">
+            <div class="podcast-stat">
+              <div class="podcast-stat__value">127</div>
+              <div class="podcast-stat__label">Episodes</div>
+            </div>
+            <div class="podcast-stat">
+              <div class="podcast-stat__value">8</div>
+              <div class="podcast-stat__label">Shows</div>
+            </div>
+            <div class="podcast-stat">
+              <div class="podcast-stat__value">42</div>
+              <div class="podcast-stat__label">Players Tagged</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Show Ticker -->
+      <div class="show-ticker">
+        <div class="show-ticker__header">
+          <svg class="icon" style="color: var(--color-accent-fuchsia);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+          </svg>
+          <span>Show Directory</span>
+        </div>
+        <div class="show-ticker__wrapper">
+          <div class="show-ticker__content" id="showTicker"></div>
+        </div>
+      </div>
+
+      <!-- Featured Episode (Page) -->
+      <div class="podcast-featured" style="margin-bottom: 2rem;">
+        <div class="podcast-featured__artwork">
+          <img src="https://placehold.co/560x560/1e293b/d946ef?text=No+Ceilings+Pod" alt="No Ceilings Podcast" />
+          <div class="podcast-featured__badge">
+            <span class="pulse-dot"></span>
+            Latest Episode
+          </div>
+        </div>
+        <div class="podcast-featured__body">
+          <div class="podcast-featured__show">No Ceilings Draft Pod</div>
+          <div class="podcast-featured__title">Cooper Flagg's Ceiling Is Limitless: Duke Film Breakdown + Combine Projection</div>
+          <div class="podcast-featured__summary">
+            Deep dive into Flagg's Duke tape: scoring versatility, defensive IQ, and why his combine measurements could vault him into a tier of his own. Plus, how scouts are comparing his trajectory to Luka Doncic.
+          </div>
+          <div class="podcast-featured__meta">
+            <span>1h 23m</span>
+            <span class="podcast-featured__meta-dot"></span>
+            <span>2 hours ago</span>
+            <span class="podcast-featured__meta-dot"></span>
+            <span>Season 4, Ep. 87</span>
+          </div>
+          <div class="player-tags">
+            <a href="#" class="player-tag">Cooper Flagg</a>
+            <a href="#" class="player-tag">Ace Bailey</a>
+            <a href="#" class="player-tag">Luka Doncic</a>
+          </div>
+          <div class="podcast-featured__player">
+            <button class="play-btn" aria-label="Play episode">
+              <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
+            </button>
+            <div class="progress-track">
+              <input type="range" class="progress-bar" min="0" max="100" value="0" step="0.1" />
+              <span class="progress-time">0:00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter / Sort Controls -->
+      <div class="podcast-controls">
+        <div class="podcast-filters">
+          <button class="filter-chip active">All Shows</button>
+          <button class="filter-chip">No Ceilings <span class="filter-chip__count">(24)</span></button>
+          <button class="filter-chip">The Draft Room <span class="filter-chip__count">(31)</span></button>
+          <button class="filter-chip">Hoop Intellect <span class="filter-chip__count">(18)</span></button>
+          <button class="filter-chip">Scouting Report <span class="filter-chip__count">(22)</span></button>
+          <button class="filter-chip">Draft Dudes <span class="filter-chip__count">(15)</span></button>
+          <button class="filter-chip">Locked On <span class="filter-chip__count">(12)</span></button>
+          <button class="filter-chip">Game Theory <span class="filter-chip__count">(5)</span></button>
+        </div>
+        <div class="podcast-sort">
+          <span class="podcast-sort__label">Sort:</span>
+          <select class="podcast-sort__select">
+            <option>Newest First</option>
+            <option>Oldest First</option>
+            <option>Longest</option>
+            <option>Shortest</option>
+            <option>Most Mentioned</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Main Content: Grid + Sidebar -->
+      <div class="podcast-page-layout">
+        <!-- Episode Grid -->
+        <div>
+          <div class="podcasts-grid" id="pageGrid">
+            <!-- populated by JS below -->
+          </div>
+
+          <!-- Pagination -->
+          <div class="pagination">
+            <button class="pagination__button" disabled>
+              <svg class="icon" viewBox="0 0 24 24" style="width:0.875rem;height:0.875rem;">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              Prev
+            </button>
+            <span class="pagination__number active">1</span>
+            <span class="pagination__number">2</span>
+            <span class="pagination__number">3</span>
+            <span class="pagination__number">4</span>
+            <span class="pagination__number">5</span>
+            <span class="pagination__info">1-12 of 127</span>
+            <button class="pagination__button">
+              Next
+              <svg class="icon" viewBox="0 0 24 24" style="width:0.875rem;height:0.875rem;">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sidebar -->
+        <aside class="podcast-sidebar">
+          <!-- Show Directory -->
+          <div class="sidebar-card">
+            <div class="sidebar-card__header">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:0.875rem;height:0.875rem;">
+                <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+              </svg>
+              Shows
+            </div>
+            <div class="sidebar-card__body" id="showDirectory">
+              <!-- populated by JS -->
+            </div>
+          </div>
+
+          <!-- Trending Player Mentions -->
+          <div class="sidebar-card">
+            <div class="sidebar-card__header">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:0.875rem;height:0.875rem;">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              Trending in Podcasts
+            </div>
+            <div class="sidebar-card__body" id="trendingMentions">
+              <!-- populated by JS -->
+            </div>
+          </div>
+        </aside>
+      </div>
+
+    </main>
+  </div>
+
+
+  <!-- ============================================================================
+       FOOTER
+       ========================================================================= -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-copyright">
+        <p>&copy; 2025 DraftGuru. All rights reserved. Stay informed, draft smarter.</p>
+      </div>
+    </div>
+  </footer>
+
+
+  <!-- ============================================================================
+       JAVASCRIPT
+       ========================================================================= -->
+  <script>
+    /**
+     * ============================================================================
+     * MOCK DATA
+     * ============================================================================
+     */
+    const SHOWS = [
+      { name: 'No Ceilings Draft Pod', art: 'https://placehold.co/80x80/1e293b/d946ef?text=NC', episodes: 24, color: '#d946ef' },
+      { name: 'The Draft Room', art: 'https://placehold.co/80x80/0f172a/06b6d4?text=DR', episodes: 31, color: '#06b6d4' },
+      { name: 'Hoop Intellect', art: 'https://placehold.co/80x80/1e3a8a/fbbf24?text=HI', episodes: 18, color: '#fbbf24' },
+      { name: 'The Scouting Report', art: 'https://placehold.co/80x80/4A7FB8/ffffff?text=SR', episodes: 22, color: '#4A7FB8' },
+      { name: 'Draft Dudes Podcast', art: 'https://placehold.co/80x80/10b981/ffffff?text=DD', episodes: 15, color: '#10b981' },
+      { name: 'Locked On NBA Draft', art: 'https://placehold.co/80x80/f43f5e/ffffff?text=LO', episodes: 12, color: '#f43f5e' },
+      { name: 'Game Theory Pod', art: 'https://placehold.co/80x80/6366f1/ffffff?text=GT', episodes: 5, color: '#6366f1' },
+      { name: 'The Athletic Draft Show', art: 'https://placehold.co/80x80/f59e0b/1e293b?text=TA', episodes: 8, color: '#f59e0b' },
+    ];
+
+    const TRENDING_PLAYERS = [
+      { name: 'Cooper Flagg', mentions: 34 },
+      { name: 'Ace Bailey', mentions: 28 },
+      { name: 'Zachary Rioux', mentions: 22 },
+      { name: 'KJ Evans Jr.', mentions: 19 },
+      { name: 'Matas Buzelis', mentions: 16 },
+      { name: 'VJ Edgecombe', mentions: 13 },
+      { name: 'Kasparas Jakucionis', mentions: 11 },
+    ];
+
+    const PAGE_EPISODES = [
+      {
+        show: 'The Draft Room', art: 'https://placehold.co/400x400/0f172a/06b6d4?text=Draft+Room',
+        title: 'Mock Draft 5.0: Post-Combine Risers & Fallers',
+        summary: 'Complete top-30 mock draft shakeup after the combine. Who climbed and who slid?',
+        duration: '58m', time: '5 hours ago', isNew: true,
+        players: ['Zachary Rioux', 'KJ Evans Jr.'], listenOn: 'Apple Podcasts'
+      },
+      {
+        show: 'Hoop Intellect', art: 'https://placehold.co/400x400/1e3a8a/fbbf24?text=Hoop+Intellect',
+        title: "Film Study: Ace Bailey's Off-Ball Gravity & Shooting Mechanics",
+        summary: "Frame-by-frame analysis of Bailey's shooting form evolution and NBA-ready catch-and-shoot ability.",
+        duration: '1h 12m', time: '1 day ago', isNew: false,
+        players: ['Ace Bailey'], listenOn: 'Spotify'
+      },
+      {
+        show: 'The Scouting Report', art: 'https://placehold.co/400x400/4A7FB8/ffffff?text=Scouting+Rpt',
+        title: "Rioux's Rim Protection: Why He Could Be This Draft's Anchor",
+        summary: "Breaking down Rioux's shot-blocking instincts, rim deterrence numbers, and his NBA comp profile.",
+        duration: '45m', time: '2 days ago', isNew: false,
+        players: ['Zachary Rioux', 'Victor Wembanyama'], listenOn: 'YouTube'
+      },
+      {
+        show: 'Draft Dudes Podcast', art: 'https://placehold.co/400x400/10b981/ffffff?text=Draft+Dudes',
+        title: 'Big Board Update: Buzelis Climbs After Pro Day Workout',
+        summary: 'Live reaction to Buzelis pro day tape and what it means for lottery positioning.',
+        duration: '1h 05m', time: '3 days ago', isNew: false,
+        players: ['Matas Buzelis', 'Cooper Flagg'], listenOn: 'Apple Podcasts'
+      },
+      {
+        show: 'Locked On NBA Draft', art: 'https://placehold.co/400x400/f43f5e/ffffff?text=Locked+On',
+        title: 'VJ Edgecombe: The Most Explosive Guard in This Class',
+        summary: 'Baylor guard VJ Edgecombe has the highest vertical in this class. Where does he fit in the lottery?',
+        duration: '34m', time: '3 days ago', isNew: false,
+        players: ['VJ Edgecombe'], listenOn: 'Spotify'
+      },
+      {
+        show: 'No Ceilings Draft Pod', art: 'https://placehold.co/400x400/1e293b/d946ef?text=No+Ceilings',
+        title: 'Top 5 Debate: Who Deserves the #2 Pick After Flagg?',
+        summary: 'Heated debate about the true second-best prospect in this class. Bailey? Rioux? Someone else?',
+        duration: '1h 45m', time: '4 days ago', isNew: false,
+        players: ['Cooper Flagg', 'Ace Bailey', 'Zachary Rioux'], listenOn: 'Apple Podcasts'
+      },
+      {
+        show: 'Game Theory Pod', art: 'https://placehold.co/400x400/6366f1/ffffff?text=Game+Theory',
+        title: 'Statistical Model: Predicting NBA Success From College Advanced Stats',
+        summary: 'Using RAPTOR, EPM, and BPM to project which prospects have the best statistical floor.',
+        duration: '52m', time: '5 days ago', isNew: false,
+        players: ['Cooper Flagg', 'Matas Buzelis'], listenOn: 'YouTube'
+      },
+      {
+        show: 'The Athletic Draft Show', art: 'https://placehold.co/400x400/f59e0b/1e293b?text=The+Athletic',
+        title: 'Team Fit Series: Jakucionis and the Point Guard Needy Teams',
+        summary: 'Which NBA teams need a PG the most? And is Jakucionis the answer for any of them?',
+        duration: '1h 01m', time: '6 days ago', isNew: false,
+        players: ['Kasparas Jakucionis'], listenOn: 'Spotify'
+      },
+    ];
+
+
+    /**
+     * ============================================================================
+     * VIEW SWITCHING
+     * ============================================================================
+     */
+    function switchView(viewName) {
+      document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+
+      if (viewName === 'page') {
+        document.getElementById('pageView').classList.add('active');
+        document.querySelector('[data-view="page"]').classList.add('active');
+      } else {
+        document.getElementById('homepageView').classList.add('active');
+        document.querySelector('[data-view="homepage"]').classList.add('active');
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+
+    /**
+     * ============================================================================
+     * SHOW TICKER
+     * ============================================================================
+     */
+    function renderShowTicker() {
+      const ticker = document.getElementById('showTicker');
+      const chunk = SHOWS.map(s => `
+        <span class="show-ticker__item">
+          <img class="show-ticker__item-art" src="${s.art}" alt="${s.name}" />
+          <span class="show-ticker__item-name">${s.name}</span>
+          <span class="show-ticker__item-count">${s.episodes} eps</span>
+        </span>
+      `).join('');
+      ticker.innerHTML = chunk + chunk; // duplicate for seamless scroll
+    }
+
+
+    /**
+     * ============================================================================
+     * SHOW DIRECTORY (Sidebar)
+     * ============================================================================
+     */
+    function renderShowDirectory() {
+      const container = document.getElementById('showDirectory');
+      container.innerHTML = SHOWS.map(s => `
+        <div class="show-directory-item">
+          <img class="show-directory-item__art" src="${s.art}" alt="${s.name}" />
+          <div class="show-directory-item__info">
+            <div class="show-directory-item__name">${s.name}</div>
+            <div class="show-directory-item__episodes">${s.episodes} episodes</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+
+    /**
+     * ============================================================================
+     * TRENDING MENTIONS (Sidebar)
+     * ============================================================================
+     */
+    function renderTrendingMentions() {
+      const container = document.getElementById('trendingMentions');
+      const maxMentions = TRENDING_PLAYERS[0].mentions;
+
+      container.innerHTML = TRENDING_PLAYERS.map((p, i) => {
+        const pct = (p.mentions / maxMentions) * 100;
+        return `
+          <div class="trending-mention">
+            <span class="trending-mention__rank">${i + 1}</span>
+            <span class="trending-mention__name">${p.name}</span>
+            <span class="trending-mention__count">${p.mentions}</span>
+            <div class="trending-mention__bar">
+              <div class="trending-mention__bar-fill" style="width: ${pct}%"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+
+    /**
+     * ============================================================================
+     * PAGE EPISODE GRID
+     * ============================================================================
+     */
+    function renderPageGrid() {
+      const grid = document.getElementById('pageGrid');
+      grid.innerHTML = PAGE_EPISODES.map(ep => {
+        const badge = ep.isNew ? '<span class="episode-badge">New</span>' : '';
+        const tags = ep.players.map(p => `<a href="#" class="player-tag">${p}</a>`).join('');
+
+        return `
+          <div class="podcast-card">
+            <div class="podcast-card__artwork">
+              <img src="${ep.art}" alt="${ep.show}" loading="lazy" />
+              ${badge}
+            </div>
+            <div class="podcast-card__content">
+              <div class="podcast-card__show-name">${ep.show}</div>
+              <div class="podcast-card__title">${ep.title}</div>
+              <div class="podcast-card__summary">${ep.summary}</div>
+              <div class="podcast-card__tags">${tags}</div>
+              <div class="podcast-card__meta">
+                <span>${ep.duration}</span>
+                <span class="podcast-card__meta-dot"></span>
+                <span>${ep.time}</span>
+              </div>
+            </div>
+            <div class="podcast-player">
+              <button class="podcast-player__play-btn" aria-label="Play episode">
+                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
+              </button>
+              <div class="podcast-player__progress">
+                <input type="range" class="podcast-player__bar" min="0" max="100" value="0" step="0.1" />
+                <span class="podcast-player__time">0:00</span>
+              </div>
+            </div>
+            <a href="#" class="podcast-card__listen-link">Listen on ${ep.listenOn} &rarr;</a>
+          </div>
+        `;
+      }).join('');
+    }
+
+
+    /**
+     * ============================================================================
+     * FILTER CHIP TOGGLE
+     * ============================================================================
+     */
+    function setupFilterChips() {
+      document.querySelectorAll('.filter-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+          document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+        });
+      });
+    }
+
+
+    /**
+     * ============================================================================
+     * INIT
+     * ============================================================================
+     */
+    document.addEventListener('DOMContentLoaded', () => {
+      // Mode switcher
+      document.querySelectorAll('.mode-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchView(btn.dataset.view));
+      });
+
+      // Render page components
+      renderShowTicker();
+      renderShowDirectory();
+      renderTrendingMentions();
+      renderPageGrid();
+      setupFilterChips();
+    });
+  </script>
+
+</body>
+</html>

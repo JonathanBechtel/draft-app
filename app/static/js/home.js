@@ -942,6 +942,116 @@ const TrendingModule = {
 
 /**
  * ============================================================================
+ * HOME PODCAST MODULE
+ * Renders the Latest Podcasts section on the homepage
+ * Play buttons link to /podcasts (no inline audio on homepage)
+ * ============================================================================
+ */
+const HomePodcastModule = {
+  TAG_CLASSES: {
+    'Draft Analysis': 'draft-analysis',
+    'Mock Draft': 'mock-draft',
+    'Game Breakdown': 'game-breakdown',
+    'Interview': 'interview',
+    'Trade & Intel': 'trade-intel',
+    'Prospect Debate': 'prospect-debate',
+    'Mailbag': 'mailbag',
+    'Event Preview': 'event-preview',
+  },
+
+  init() {
+    const episodes = window.PODCAST_EPISODES;
+    if (!episodes || episodes.length === 0) return;
+
+    const section = document.getElementById('podcastsSection');
+    if (!section) return;
+
+    section.style.display = '';
+    this.renderHero(episodes[0]);
+    this.renderList(episodes.slice(1));
+  },
+
+  renderHero(ep) {
+    const container = document.getElementById('podcastHero');
+    if (!container) return;
+
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    const tagClass = this.TAG_CLASSES[ep.tag] || '';
+    const episodeTag = tagClass
+      ? `<span class="episode-tag episode-tag--lg episode-tag--${tagClass}" style="align-self: flex-start; margin-bottom: 0.375rem;">${esc(ep.tag)}</span>`
+      : '';
+
+    container.innerHTML = `
+      <a href="/podcasts" class="podcast-featured" style="text-decoration: none; color: inherit;">
+        <div class="podcast-featured__artwork">
+          ${(ep.artwork_url || ep.show_artwork_url)
+            ? `<img src="${esc(ep.artwork_url || ep.show_artwork_url)}" alt="${esc(ep.show_name)}" />`
+            : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--color-slate-200);font-family:var(--font-mono);color:var(--color-slate-500);font-size:2rem;">DG</div>`
+          }
+          <div class="podcast-featured__badge">
+            <span class="pulse-dot"></span>
+            Latest Episode
+          </div>
+        </div>
+        <div class="podcast-featured__body">
+          ${episodeTag}
+          <div class="podcast-featured__show">${esc(ep.show_name)}</div>
+          <div class="podcast-featured__title">${esc(ep.title)}</div>
+          ${ep.summary ? `<div class="podcast-featured__summary">${esc(ep.summary)}</div>` : ''}
+          <div class="podcast-featured__meta">
+            <span>${esc(ep.duration)}</span>
+            <span class="meta-dot"></span>
+            <span>${esc(ep.time)}</span>
+          </div>
+        </div>
+      </a>
+    `;
+  },
+
+  renderList(episodes) {
+    const container = document.getElementById('homeEpisodeList');
+    if (!container) return;
+
+    if (episodes.length === 0) return;
+
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    container.innerHTML = episodes.map(ep => {
+      const tagClass = this.TAG_CLASSES[ep.tag] || '';
+      const episodeTag = tagClass ? `<span class="episode-tag episode-tag--${tagClass}">${esc(ep.tag)}</span>` : '';
+
+      return `
+        <a href="/podcasts" class="episode-row">
+          <div class="episode-row__inner">
+            ${(ep.artwork_url || ep.show_artwork_url)
+              ? `<img class="episode-row__art" src="${esc(ep.artwork_url || ep.show_artwork_url)}" alt="${esc(ep.show_name)}" loading="lazy" />`
+              : `<div class="episode-row__art" style="display:flex;align-items:center;justify-content:center;background:var(--color-slate-100);font-family:var(--font-mono);color:var(--color-slate-400);font-size:0.625rem;">DG</div>`
+            }
+            <div class="episode-row__info">
+              <div class="episode-row__top-line">
+                <span class="episode-row__show">${esc(ep.show_name)}</span>
+                <span class="episode-row__title">${esc(ep.title)}</span>
+              </div>
+              <div class="episode-row__bottom-line">
+                <span class="episode-row__meta">
+                  <span>${esc(ep.duration)}</span>
+                  <span class="meta-dot"></span>
+                  <span>${esc(ep.time)}</span>
+                </span>
+                ${episodeTag}
+              </div>
+            </div>
+            <span class="episode-row__play" aria-label="Listen on podcasts page">
+              <svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"></polygon></svg>
+            </span>
+          </div>
+        </a>
+      `;
+    }).join('');
+  }
+};
+
+/**
+ * ============================================================================
  * EXPORT FUNCTIONS
  * Handle exporting share card images for VS Arena
  * ============================================================================
@@ -985,4 +1095,7 @@ document.addEventListener('DOMContentLoaded', () => {
   HeroModule.init();
   SidebarModule.init();
   NewsGridModule.init();
+
+  // Initialize podcast section
+  HomePodcastModule.init();
 });

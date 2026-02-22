@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.news_item_player_mentions import MentionSource, NewsItemPlayerMention
+from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
 from app.schemas.news_sources import NewsSource
 from app.services.news_service import get_trending_players
 from tests.integration.conftest import make_article, make_player
@@ -30,6 +30,7 @@ class TestGetTrendingPlayers:
         await db_session.flush()
 
         # Player A: 3 articles published now, Player B: 1 article published now
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         articles = [
             make_article(news_source.id, f"art-{i}", hours_ago=0)  # type: ignore[arg-type]
             for i in range(4)
@@ -38,29 +39,36 @@ class TestGetTrendingPlayers:
             db_session.add(a)
         await db_session.flush()
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
         mentions = [
-            NewsItemPlayerMention(
-                news_item_id=articles[0].id,  # type: ignore[arg-type]
+            PlayerContentMention(
+                content_type=ContentType.NEWS,
+                content_id=articles[0].id,  # type: ignore[arg-type]
                 player_id=player_a.id,  # type: ignore[arg-type]
+                published_at=now,
                 source=MentionSource.AI,
                 created_at=now,
             ),
-            NewsItemPlayerMention(
-                news_item_id=articles[1].id,  # type: ignore[arg-type]
+            PlayerContentMention(
+                content_type=ContentType.NEWS,
+                content_id=articles[1].id,  # type: ignore[arg-type]
                 player_id=player_a.id,  # type: ignore[arg-type]
+                published_at=now,
                 source=MentionSource.AI,
                 created_at=now,
             ),
-            NewsItemPlayerMention(
-                news_item_id=articles[2].id,  # type: ignore[arg-type]
+            PlayerContentMention(
+                content_type=ContentType.NEWS,
+                content_id=articles[2].id,  # type: ignore[arg-type]
                 player_id=player_a.id,  # type: ignore[arg-type]
+                published_at=now,
                 source=MentionSource.AI,
                 created_at=now,
             ),
-            NewsItemPlayerMention(
-                news_item_id=articles[3].id,  # type: ignore[arg-type]
+            PlayerContentMention(
+                content_type=ContentType.NEWS,
+                content_id=articles[3].id,  # type: ignore[arg-type]
                 player_id=player_b.id,  # type: ignore[arg-type]
+                published_at=now,
                 source=MentionSource.AI,
                 created_at=now,
             ),
@@ -86,6 +94,9 @@ class TestGetTrendingPlayers:
         db_session.add_all([player_recent, player_old])
         await db_session.flush()
 
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        old_pub = now - timedelta(days=6)
+
         # Article published ~0h ago vs ~6 days ago
         art_recent = make_article(
             news_source.id, "recent-art", hours_ago=0  # type: ignore[arg-type]
@@ -96,18 +107,21 @@ class TestGetTrendingPlayers:
         db_session.add_all([art_recent, art_old])
         await db_session.flush()
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
         db_session.add_all(
             [
-                NewsItemPlayerMention(
-                    news_item_id=art_recent.id,  # type: ignore[arg-type]
+                PlayerContentMention(
+                    content_type=ContentType.NEWS,
+                    content_id=art_recent.id,  # type: ignore[arg-type]
                     player_id=player_recent.id,  # type: ignore[arg-type]
+                    published_at=now,
                     source=MentionSource.AI,
                     created_at=now,
                 ),
-                NewsItemPlayerMention(
-                    news_item_id=art_old.id,  # type: ignore[arg-type]
+                PlayerContentMention(
+                    content_type=ContentType.NEWS,
+                    content_id=art_old.id,  # type: ignore[arg-type]
                     player_id=player_old.id,  # type: ignore[arg-type]
+                    published_at=old_pub,
                     source=MentionSource.AI,
                     created_at=now - timedelta(days=6),
                 ),
@@ -130,6 +144,10 @@ class TestGetTrendingPlayers:
         db_session.add(player)
         await db_session.flush()
 
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        pub_today = now - timedelta(hours=1)
+        pub_2d = now - timedelta(hours=48)
+
         # Articles published today and 2 days ago
         art_today = make_article(
             news_source.id, "today-art", hours_ago=1  # type: ignore[arg-type]
@@ -140,18 +158,21 @@ class TestGetTrendingPlayers:
         db_session.add_all([art_today, art_2d])
         await db_session.flush()
 
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
         db_session.add_all(
             [
-                NewsItemPlayerMention(
-                    news_item_id=art_today.id,  # type: ignore[arg-type]
+                PlayerContentMention(
+                    content_type=ContentType.NEWS,
+                    content_id=art_today.id,  # type: ignore[arg-type]
                     player_id=player.id,  # type: ignore[arg-type]
+                    published_at=pub_today,
                     source=MentionSource.AI,
                     created_at=now,
                 ),
-                NewsItemPlayerMention(
-                    news_item_id=art_2d.id,  # type: ignore[arg-type]
+                PlayerContentMention(
+                    content_type=ContentType.NEWS,
+                    content_id=art_2d.id,  # type: ignore[arg-type]
                     player_id=player.id,  # type: ignore[arg-type]
+                    published_at=pub_2d,
                     source=MentionSource.AI,
                     created_at=now - timedelta(days=2),
                 ),
@@ -184,9 +205,11 @@ class TestGetTrendingPlayers:
         await db_session.flush()
 
         old_time = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=10)
-        mention = NewsItemPlayerMention(
-            news_item_id=article.id,  # type: ignore[arg-type]
+        mention = PlayerContentMention(
+            content_type=ContentType.NEWS,
+            content_id=article.id,  # type: ignore[arg-type]
             player_id=player.id,  # type: ignore[arg-type]
+            published_at=old_time,
             source=MentionSource.AI,
             created_at=old_time,
         )
@@ -217,9 +240,11 @@ class TestGetTrendingPlayers:
         await db_session.flush()
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        mention = NewsItemPlayerMention(
-            news_item_id=article.id,  # type: ignore[arg-type]
+        mention = PlayerContentMention(
+            content_type=ContentType.NEWS,
+            content_id=article.id,  # type: ignore[arg-type]
             player_id=player.id,  # type: ignore[arg-type]
+            published_at=now,
             source=MentionSource.AI,
             created_at=now,
         )
@@ -256,9 +281,11 @@ class TestGetTrendingPlayers:
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         for i, player in enumerate(players):
-            mention = NewsItemPlayerMention(
-                news_item_id=articles[i].id,  # type: ignore[arg-type]
+            mention = PlayerContentMention(
+                content_type=ContentType.NEWS,
+                content_id=articles[i].id,  # type: ignore[arg-type]
                 player_id=player.id,  # type: ignore[arg-type]
+                published_at=now,
                 source=MentionSource.AI,
                 created_at=now,
             )
