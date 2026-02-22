@@ -265,17 +265,23 @@ const PodcastSidebarModule = {
     }
 
     const esc = DraftGuru.escapeHtml.bind(DraftGuru);
-    container.innerHTML = shows.map(s => `
-      <div class="show-directory-item">
-        ${s.artwork_url
-          ? `<img class="show-directory-item__art" src="${esc(s.artwork_url)}" alt="${esc(s.name)}" />`
-          : `<div class="show-directory-item__art" style="display:flex;align-items:center;justify-content:center;background:var(--color-slate-100);font-family:var(--font-mono);color:var(--color-slate-400);font-size:0.625rem;">DG</div>`
-        }
-        <div class="show-directory-item__info">
-          <div class="show-directory-item__name">${esc(s.name)}</div>
-        </div>
-      </div>
-    `).join('');
+    const activeShow = window.ACTIVE_SHOW;
+
+    container.innerHTML = shows.map(s => {
+      const isActive = activeShow === s.id;
+      const href = isActive ? '/podcasts' : `/podcasts?show=${s.id}`;
+      return `
+        <a href="${href}" class="show-directory-item${isActive ? ' show-directory-item--active' : ''}">
+          ${s.artwork_url
+            ? `<img class="show-directory-item__art" src="${esc(s.artwork_url)}" alt="${esc(s.name)}" />`
+            : `<div class="show-directory-item__art" style="display:flex;align-items:center;justify-content:center;background:var(--color-slate-100);font-family:var(--font-mono);color:var(--color-slate-400);font-size:0.625rem;">DG</div>`
+          }
+          <div class="show-directory-item__info">
+            <div class="show-directory-item__name">${esc(s.name)}</div>
+          </div>
+        </a>
+      `;
+    }).join('');
   },
 
   renderTrendingMentions(trending) {
