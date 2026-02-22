@@ -65,7 +65,9 @@ async def sample_episode(
 class TestListPodcasts:
     """Tests for GET /api/podcasts endpoint."""
 
-    async def test_list_podcasts_empty(self, app_client: AsyncClient):
+    async def test_list_podcasts_empty(
+        self, app_client: AsyncClient, db_session: AsyncSession
+    ):
         """GET /api/podcasts returns empty list when no episodes exist."""
         response = await app_client.get("/api/podcasts")
         assert response.status_code == 200
@@ -201,3 +203,35 @@ class TestTriggerPodcastIngestion:
         """POST /api/podcasts/ingest without auth returns 401."""
         response = await app_client.post("/api/podcasts/ingest")
         assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+class TestPodcastsPage:
+    """Tests for the /podcasts UI page."""
+
+    async def test_podcasts_page_returns_html(
+        self, app_client: AsyncClient, db_session: AsyncSession
+    ):
+        """GET /podcasts returns 200 with HTML containing 'Podcast Feed'."""
+        response = await app_client.get("/podcasts")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Podcast Feed" in response.text
+
+    async def test_podcasts_page_with_episodes(
+        self,
+        app_client: AsyncClient,
+        sample_episode: PodcastEpisode,
+    ):
+        """GET /podcasts includes episode data when episodes exist."""
+        response = await app_client.get("/podcasts")
+        assert response.status_code == 200
+        assert sample_episode.title in response.text
+
+    async def test_homepage_includes_podcast_section(
+        self, app_client: AsyncClient, db_session: AsyncSession
+    ):
+        """GET / returns 200 and contains the podcastsSection container."""
+        response = await app_client.get("/")
+        assert response.status_code == 200
+        assert "podcastsSection" in response.text

@@ -8,11 +8,16 @@ from typing import Any
 from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.podcasts import PodcastEpisodeRead, PodcastFeedResponse
+from app.models.podcasts import MentionedPlayer, PodcastEpisodeRead, PodcastFeedResponse
 from app.schemas.player_content_mentions import ContentType, PlayerContentMention
+from app.schemas.players_master import PlayerMaster
 from app.schemas.podcast_episodes import PodcastEpisode
 from app.schemas.podcast_shows import PodcastShow
-from app.services.news_service import format_relative_time
+from app.services.news_service import (
+    TrendingPlayer,
+    format_relative_time,
+    get_trending_players,
+)
 
 # Shared column list for podcast feed queries.
 # Keep in sync with _row_to_episode_read() which maps these columns.
@@ -27,7 +32,58 @@ _PODCAST_FEED_COLUMNS = [
     PodcastEpisode.tag,
     PodcastEpisode.published_at,
     PodcastShow.display_name.label("show_name"),  # type: ignore[attr-defined]
+    PodcastShow.artwork_url.label("show_artwork_url"),  # type: ignore[union-attr]
 ]
+
+
+async def _load_mentions_for_episodes(
+    db: AsyncSession,
+    episode_ids: list[int],
+) -> dict[int, list[MentionedPlayer]]:
+    """Batch-load player mentions for a set of podcast episodes.
+
+    Args:
+        db: Async database session
+        episode_ids: List of episode (content) IDs to load mentions for
+
+    Returns:
+        Dict mapping episode ID to list of MentionedPlayer
+    """
+    if not episode_ids:
+        return {}
+
+    stmt = (
+        select(  # type: ignore[call-overload]
+            PlayerContentMention.content_id,
+            PlayerMaster.id,  # type: ignore[union-attr]
+            PlayerMaster.display_name,
+            PlayerMaster.slug,
+        )
+        .join(
+            PlayerMaster,
+            PlayerMaster.id == PlayerContentMention.player_id,  # type: ignore[arg-type]
+        )
+        .where(
+            PlayerContentMention.content_type == ContentType.PODCAST.value  # type: ignore[arg-type]
+        )
+        .where(
+            PlayerContentMention.content_id.in_(episode_ids)  # type: ignore[attr-defined]
+        )
+        .order_by(PlayerMaster.display_name)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    mentions: dict[int, list[MentionedPlayer]] = {}
+    for row in rows:
+        content_id = row[0]
+        player = MentionedPlayer(
+            player_id=row[1],
+            display_name=row[2] or "",
+            slug=row[3] or "",
+        )
+        mentions.setdefault(content_id, []).append(player)
+    return mentions
 
 
 def format_duration(seconds: int | None) -> str:
@@ -64,6 +120,7 @@ async def get_podcast_feed(
     db: AsyncSession,
     limit: int = 20,
     offset: int = 0,
+    tag: str | None = None,
 ) -> PodcastFeedResponse:
     """Fetch paginated podcast feed with joined show info.
 
@@ -71,6 +128,7 @@ async def get_podcast_feed(
         db: Async database session
         limit: Maximum items to return
         offset: Number of items to skip
+        tag: Optional tag value to filter by (e.g. "Mock Draft")
 
     Returns:
         PodcastFeedResponse with items and pagination info
@@ -82,6 +140,12 @@ async def get_podcast_feed(
     )
 
     count_query = select(func.count()).select_from(PodcastEpisode)
+
+    if tag:
+        tag_filter = PodcastEpisode.tag == tag
+        base_query = base_query.where(tag_filter)  # type: ignore[arg-type]
+        count_query = count_query.where(tag_filter)  # type: ignore[arg-type]
+
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
 
@@ -93,7 +157,9 @@ async def get_podcast_feed(
     result = await db.execute(items_query)
     rows = result.mappings().all()
 
-    items = [_row_to_episode_read(row) for row in rows]  # type: ignore[arg-type]
+    episode_ids = [row["id"] for row in rows]
+    mentions = await _load_mentions_for_episodes(db, episode_ids)
+    items = [_row_to_episode_read(row, mentions=mentions) for row in rows]  # type: ignore[arg-type]
 
     return PodcastFeedResponse(
         items=items,
@@ -125,7 +191,10 @@ async def get_latest_podcast_episodes(
     )
     result = await db.execute(query)
     rows = result.mappings().all()
-    return [_row_to_episode_read(row) for row in rows]  # type: ignore[arg-type]
+
+    episode_ids = [row["id"] for row in rows]
+    mentions = await _load_mentions_for_episodes(db, episode_ids)
+    return [_row_to_episode_read(row, mentions=mentions) for row in rows]  # type: ignore[arg-type]
 
 
 async def get_player_podcast_feed(
@@ -155,7 +224,7 @@ async def get_player_podcast_feed(
             PlayerContentMention.content_id.label("item_id")  # type: ignore[attr-defined]
         )
         .where(PlayerContentMention.player_id == player_id)  # type: ignore[arg-type]
-        .where(PlayerContentMention.content_type == ContentType.PODCAST)  # type: ignore[arg-type]
+        .where(PlayerContentMention.content_type == ContentType.PODCAST.value)  # type: ignore[arg-type]
     )
 
     # Subquery: episode IDs via direct player_id column
@@ -179,7 +248,13 @@ async def get_player_podcast_feed(
 
     result = await db.execute(player_query)
     rows = result.mappings().all()
-    items = [_row_to_episode_read(row, is_player_specific=True) for row in rows]  # type: ignore[arg-type]
+
+    episode_ids = [row["id"] for row in rows]
+    mentions = await _load_mentions_for_episodes(db, episode_ids)
+    items = [
+        _row_to_episode_read(row, is_player_specific=True, mentions=mentions)  # type: ignore[arg-type]
+        for row in rows
+    ]
 
     # Count total player-specific episodes
     count_query = (
@@ -196,6 +271,31 @@ async def get_player_podcast_feed(
         limit=limit,
         offset=offset,
     )
+
+
+async def get_podcast_page_data(
+    db: AsyncSession,
+    limit: int = 20,
+    offset: int = 0,
+    tag: str | None = None,
+) -> dict[str, Any]:
+    """Fetch all data needed for the /podcasts page in a single call.
+
+    Args:
+        db: Async database session
+        limit: Maximum episodes to return
+        offset: Number of episodes to skip
+        tag: Optional tag value to filter by
+
+    Returns:
+        Dict with keys: feed, shows, trending
+    """
+    feed = await get_podcast_feed(db, limit=limit, offset=offset, tag=tag)
+    shows = await get_active_shows(db)
+    trending: list[TrendingPlayer] = await get_trending_players(
+        db, days=7, limit=7, content_type=ContentType.PODCAST
+    )
+    return {"feed": feed, "shows": shows, "trending": trending}
 
 
 async def get_active_shows(db: AsyncSession) -> list[PodcastShow]:
@@ -215,14 +315,18 @@ async def get_active_shows(db: AsyncSession) -> list[PodcastShow]:
 
 
 def _row_to_episode_read(
-    row: dict[str, Any], is_player_specific: bool = False
+    row: dict[str, Any],
+    is_player_specific: bool = False,
+    mentions: dict[int, list[MentionedPlayer]] | None = None,
 ) -> PodcastEpisodeRead:
     """Convert a database row mapping to a PodcastEpisodeRead response model."""
     show_name = row["show_name"]
+    episode_id: int = row["id"]
     return PodcastEpisodeRead(
-        id=row["id"],
+        id=episode_id,
         show_name=show_name,
         artwork_url=row["artwork_url"],
+        show_artwork_url=row["show_artwork_url"],
         title=row["title"],
         summary=row["summary"] or "",
         tag=row["tag"].value,
@@ -232,4 +336,5 @@ def _row_to_episode_read(
         time=format_relative_time(row["published_at"]),
         listen_on_text=build_listen_on_text(show_name),
         is_player_specific=is_player_specific,
+        mentioned_players=(mentions or {}).get(episode_id, []),
     )

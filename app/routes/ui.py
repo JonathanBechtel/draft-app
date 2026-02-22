@@ -14,6 +14,10 @@ from app.services.news_service import (
     get_player_news_feed,
     get_trending_players,
 )
+from app.services.podcast_service import (
+    get_latest_podcast_episodes,
+    get_podcast_page_data,
+)
 from app.config import settings
 from app.services.player_service import get_player_profile_by_slug
 from app.utils.db_async import get_session
@@ -197,6 +201,33 @@ async def home(
         )
     ]
 
+    # Fetch latest podcast episodes for homepage section
+    podcast_episodes_raw = await get_latest_podcast_episodes(db, limit=6)
+    podcast_episodes = [
+        {
+            "id": ep.id,
+            "show_name": ep.show_name,
+            "artwork_url": ep.artwork_url,
+            "title": ep.title,
+            "summary": ep.summary,
+            "tag": ep.tag,
+            "audio_url": ep.audio_url,
+            "episode_url": ep.episode_url,
+            "duration": ep.duration,
+            "time": ep.time,
+            "listen_on_text": ep.listen_on_text,
+            "mentioned_players": [
+                {
+                    "player_id": mp.player_id,
+                    "display_name": mp.display_name,
+                    "slug": mp.slug,
+                }
+                for mp in ep.mentioned_players
+            ],
+        }
+        for ep in podcast_episodes_raw
+    ]
+
     # Build mappings for JS image URL generation
     slug_to_id = {slug: player_id for slug, (player_id, _) in player_id_map.items()}
     id_to_slug = {player_id: slug for slug, (player_id, _) in player_id_map.items()}
@@ -212,12 +243,93 @@ async def home(
             "source_counts": source_counts,
             "author_counts": author_counts,
             "sidebar_limit": HOME_NEWS_SIDEBAR_LIMIT,
+            "podcast_episodes": podcast_episodes,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "image_style": requested_style,  # Current image style for JS
             "player_id_map": slug_to_id,  # slug -> player_id for JS image URLs
             "id_to_slug_map": id_to_slug,  # player_id -> slug for JS image URLs
             "s3_image_base_url": get_s3_image_base_url(),  # S3 base URL for images
+        },
+    )
+
+
+PODCAST_PAGE_LIMIT = 10
+
+
+@router.get("/podcasts", response_class=HTMLResponse)
+async def podcasts_page(
+    request: Request,
+    offset: int = Query(0, ge=0),
+    tag: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_session),
+):
+    """Render the dedicated Podcasts page with feed, sidebar, and filtering."""
+    page_data = await get_podcast_page_data(
+        db, limit=PODCAST_PAGE_LIMIT, offset=offset, tag=tag
+    )
+
+    feed = page_data["feed"]
+    shows = page_data["shows"]
+    trending_raw = page_data["trending"]
+
+    episodes = [
+        {
+            "id": ep.id,
+            "show_name": ep.show_name,
+            "artwork_url": ep.artwork_url,
+            "title": ep.title,
+            "summary": ep.summary,
+            "tag": ep.tag,
+            "audio_url": ep.audio_url,
+            "episode_url": ep.episode_url,
+            "duration": ep.duration,
+            "time": ep.time,
+            "listen_on_text": ep.listen_on_text,
+            "mentioned_players": [
+                {
+                    "player_id": mp.player_id,
+                    "display_name": mp.display_name,
+                    "slug": mp.slug,
+                }
+                for mp in ep.mentioned_players
+            ],
+        }
+        for ep in feed.items
+    ]
+
+    shows_data = [
+        {
+            "id": s.id,
+            "name": s.display_name,
+            "artwork_url": s.artwork_url,
+        }
+        for s in shows
+    ]
+
+    trending_players = [
+        {
+            "player_id": tp.player_id,
+            "display_name": tp.display_name,
+            "slug": tp.slug,
+            "mention_count": tp.mention_count,
+        }
+        for tp in trending_raw
+    ]
+
+    return request.app.state.templates.TemplateResponse(
+        "podcasts.html",
+        {
+            "request": request,
+            "episodes": episodes,
+            "shows": shows_data,
+            "trending_players": trending_players,
+            "total": feed.total,
+            "limit": PODCAST_PAGE_LIMIT,
+            "offset": offset,
+            "active_tag": tag,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
         },
     )
 

@@ -5,12 +5,21 @@ from typing import Optional
 from sqlmodel import SQLModel
 
 
+class MentionedPlayer(SQLModel):
+    """Lightweight player reference for episode tags."""
+
+    player_id: int
+    display_name: str
+    slug: str
+
+
 class PodcastEpisodeRead(SQLModel):
     """Response model for a podcast episode in the feed."""
 
     id: int
     show_name: str
     artwork_url: Optional[str] = None
+    show_artwork_url: Optional[str] = None
     title: str
     summary: str
     tag: str  # PodcastEpisodeTag display value
@@ -20,6 +29,7 @@ class PodcastEpisodeRead(SQLModel):
     time: str  # Relative time "2h", "1d"
     listen_on_text: str  # "Listen on The Ringer"
     is_player_specific: bool = False
+    mentioned_players: list[MentionedPlayer] = []
 
 
 class PodcastFeedResponse(SQLModel):

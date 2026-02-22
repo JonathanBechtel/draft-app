@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/news-hero.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/news-grid.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/news-sidebar.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/podcasts.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -89,6 +90,35 @@
       </div>
     </aside>
   </div>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
+       LATEST PODCASTS
+       Recent podcast episodes with featured hero
+       ========================================================================== -->
+  <section class="section" id="podcastsSection" style="display: none;">
+    <div class="section-header-row" style="margin-bottom: 1rem;">
+      <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+        <svg class="icon icon-lg" style="color: var(--color-accent-fuchsia); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+          <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+        </svg>
+        Latest Podcasts
+      </h3>
+      <a href="/podcasts" class="section-cta">View All Podcasts &rarr;</a>
+    </div>
+
+    <div id="podcastHero"></div>
+
+    <div class="podcast-scoreboard">
+      <div class="podcast-scoreboard__header">
+        <span class="podcast-scoreboard__title">Recent Episodes</span>
+        <a href="/podcasts" class="section-cta">View All &rarr;</a>
+      </div>
+      <div id="homeEpisodeList"></div>
+    </div>
+  </section>
 
   <div class="section-divider"></div>
 
@@ -250,6 +280,8 @@
   window.PLAYER_ID_MAP = {{ player_id_map | tojson | safe }};
   window.ID_TO_SLUG_MAP = {{ id_to_slug_map | tojson | safe }};
   window.S3_IMAGE_BASE_URL = {{ s3_image_base_url | tojson | safe }};
+  // Podcast episodes for homepage section
+  window.PODCAST_EPISODES = {{ podcast_episodes | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/home.js') }}"></script>
 {% endblock %}

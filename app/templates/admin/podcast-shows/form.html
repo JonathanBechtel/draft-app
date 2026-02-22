@@ -68,7 +68,7 @@
         id="artwork_url"
         name="artwork_url"
         type="url"
-        value="{{ show.artwork_url if show else '' }}"
+        value="{{ show.artwork_url if show and show.artwork_url else '' }}"
         placeholder="https://example.com/artwork.jpg"
       />
       <span class="admin-form__help">Optional cover art URL</span>
@@ -81,7 +81,7 @@
         id="author"
         name="author"
         type="text"
-        value="{{ show.author if show else '' }}"
+        value="{{ show.author if show and show.author else '' }}"
       />
       <span class="admin-form__help">Optional podcast host or author name</span>
     </div>
@@ -94,7 +94,7 @@
         name="description"
         rows="3"
         placeholder="Brief description of the podcast..."
-      >{{ show.description if show else '' }}</textarea>
+      >{{ show.description if show and show.description else '' }}</textarea>
       <span class="admin-form__help">Optional description of the podcast</span>
     </div>
 
@@ -105,7 +105,7 @@
         id="website_url"
         name="website_url"
         type="url"
-        value="{{ show.website_url if show else '' }}"
+        value="{{ show.website_url if show and show.website_url else '' }}"
         placeholder="https://example.com/podcast"
       />
       <span class="admin-form__help">Optional podcast website</span>

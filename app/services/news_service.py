@@ -188,6 +188,7 @@ async def get_trending_players(
     db: AsyncSession,
     days: int = 7,
     limit: int = 10,
+    content_type: ContentType | None = None,
 ) -> list[TrendingPlayer]:
     """Get players with the most content mentions, ranked by recency-weighted score.
 
@@ -195,13 +196,14 @@ async def get_trending_players(
     ``days`` ago has weight ~0.0.  The trending score is SUM(weights).
     Raw ``mention_count`` is still returned for badge display.
 
-    Aggregates across ALL content types (news + podcasts) using the
-    denormalized ``PlayerContentMention.published_at``.
+    Aggregates across ALL content types (news + podcasts) by default, or
+    a single content type when ``content_type`` is provided.
 
     Args:
         db: Async database session
         days: Number of days to look back for mentions
         limit: Maximum number of players to return
+        content_type: Optional filter to scope to a single content type
 
     Returns:
         List of TrendingPlayer sorted by trending_score desc
@@ -245,6 +247,11 @@ async def get_trending_players(
         .limit(limit)
     )
 
+    if content_type is not None:
+        stmt = stmt.where(
+            PlayerContentMention.content_type == content_type.value  # type: ignore[arg-type]
+        )
+
     result = await db.execute(stmt)
     rows = result.mappings().all()
 
@@ -252,7 +259,7 @@ async def get_trending_players(
         return []
 
     player_ids = [row["player_id"] for row in rows]
-    daily_map = await _get_daily_mention_counts(db, player_ids, days)
+    daily_map = await _get_daily_mention_counts(db, player_ids, days, content_type)
 
     return [
         TrendingPlayer(
@@ -273,17 +280,19 @@ async def _get_daily_mention_counts(
     db: AsyncSession,
     player_ids: list[int],
     days: int = 7,
+    content_type: ContentType | None = None,
 ) -> dict[int, list[int]]:
     """Fetch per-day mention counts for a set of players.
 
     Buckets by ``date_trunc('day', player_content_mentions.published_at)``
     and fills zeros for days with no mentions.  Aggregates across all
-    content types.
+    content types by default, or a single type when ``content_type`` is given.
 
     Args:
         db: Async database session
         player_ids: Player IDs to fetch counts for
         days: Number of days to look back
+        content_type: Optional filter to scope to a single content type
 
     Returns:
         Mapping of player_id → list of daily counts (oldest-first, length=days)
@@ -307,6 +316,11 @@ async def _get_daily_mention_counts(
         )
         .group_by(PlayerContentMention.player_id, day_col)
     )
+
+    if content_type is not None:
+        stmt = stmt.where(
+            PlayerContentMention.content_type == content_type.value  # type: ignore[arg-type]
+        )
 
     result = await db.execute(stmt)
     rows = result.mappings().all()
@@ -362,7 +376,7 @@ async def get_player_news_feed(
             PlayerContentMention.content_id.label("item_id")  # type: ignore[attr-defined]
         )
         .where(PlayerContentMention.player_id == player_id)  # type: ignore[arg-type]
-        .where(PlayerContentMention.content_type == ContentType.NEWS)  # type: ignore[arg-type]
+        .where(PlayerContentMention.content_type == ContentType.NEWS.value)  # type: ignore[arg-type]
     )
 
     # Subquery: news_item IDs where player_id is set directly

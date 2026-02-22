@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
@@ -16,7 +17,10 @@ from app.routes.admin.helpers import (
 )
 from app.schemas.podcast_episodes import PodcastEpisode
 from app.schemas.podcast_shows import PodcastShow
+from app.services.podcast_ingestion_service import run_ingestion_cycle
 from app.utils.db_async import get_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/podcast-shows", tags=["admin-podcast-shows"])
 
@@ -25,6 +29,7 @@ router = APIRouter(prefix="/podcast-shows", tags=["admin-podcast-shows"])
 async def list_podcast_shows(
     request: Request,
     success: str | None = Query(default=None),
+    error: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """List all podcast shows."""
@@ -44,7 +49,22 @@ async def list_podcast_shows(
         "created": "Podcast show created successfully.",
         "updated": "Podcast show updated successfully.",
         "deleted": "Podcast show deleted successfully.",
+        "ingested": "Ingestion complete.",
     }
+
+    # Build richer message for ingestion results
+    if success == "ingested":
+        parts = []
+        added = request.query_params.get("added", "0")
+        shows_count = request.query_params.get("shows", "0")
+        filtered = request.query_params.get("filtered", "0")
+        mentions = request.query_params.get("mentions", "0")
+        parts.append(f"{added} episodes added from {shows_count} shows")
+        if filtered != "0":
+            parts.append(f"{filtered} filtered")
+        if mentions != "0":
+            parts.append(f"{mentions} mentions")
+        success_messages["ingested"] = f"Ingestion complete: {', '.join(parts)}."
 
     return request.app.state.templates.TemplateResponse(
         "admin/podcast-shows/index.html",
@@ -54,8 +74,42 @@ async def list_podcast_shows(
             user,
             shows=shows,
             success=success_messages.get(success) if success else None,
+            error=error,
         ),
     )
+
+
+@router.post("/ingest", response_class=HTMLResponse)
+async def ingest_podcasts(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Trigger a full podcast ingestion cycle."""
+    redirect, user = await require_dataset_access(
+        request, db, "podcasts", need_edit=True, next_path="/admin/podcast-shows"
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    try:
+        result = await run_ingestion_cycle(db)
+        return RedirectResponse(
+            url=(
+                f"/admin/podcast-shows?success=ingested"
+                f"&added={result.episodes_added}"
+                f"&shows={result.shows_processed}"
+                f"&filtered={result.episodes_filtered}"
+                f"&mentions={result.mentions_added}"
+            ),
+            status_code=303,
+        )
+    except Exception:
+        logger.exception("Podcast ingestion failed")
+        return RedirectResponse(
+            url="/admin/podcast-shows?error=Ingestion+failed.+Check+server+logs.",
+            status_code=303,
+        )
 
 
 @router.get("/new", response_class=HTMLResponse)

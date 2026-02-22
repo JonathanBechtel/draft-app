@@ -11,7 +11,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from typing import Any, Optional
 
@@ -76,6 +76,7 @@ class PodcastShowSnapshot:
     name: str
     feed_url: str
     is_draft_focused: bool
+    last_fetched_at: datetime | None
 
 
 async def run_ingestion_cycle(db: AsyncSession) -> PodcastIngestionResult:
@@ -100,6 +101,7 @@ async def run_ingestion_cycle(db: AsyncSession) -> PodcastIngestionResult:
                     name=s.name,
                     feed_url=s.feed_url,
                     is_draft_focused=s.is_draft_focused,
+                    last_fetched_at=s.last_fetched_at,
                 )
             )
 
@@ -154,7 +156,15 @@ async def ingest_podcast_show(
     logger.info(f"-> {show.name}")
 
     entries = await fetch_podcast_rss_feed(show.feed_url)
-    logger.info(f"  Fetched {len(entries)} entries")
+    logger.info(f"  Fetched {len(entries)} entries from feed")
+
+    # Skip entries older than last fetch (with 1-day buffer for late-arriving items)
+    if show.last_fetched_at is not None:
+        cutoff = show.last_fetched_at - timedelta(days=1)
+        entries = [e for e in entries if e.get("published_at", datetime.min) >= cutoff]
+        logger.info(
+            f"  After date filter (since {cutoff.isoformat()}): {len(entries)} entries"
+        )
 
     episodes_skipped = 0
 
@@ -334,10 +344,12 @@ async def fetch_podcast_rss_feed(url: str) -> list[dict[str, Any]]:
         return []
 
     try:
-        import feedparser  # type: ignore[import-not-found]
+        import feedparser  # type: ignore[import-untyped]
     except ModuleNotFoundError:
-        logger.warning("feedparser is not installed; skipping RSS parsing")
-        return []
+        raise RuntimeError(
+            "feedparser is required for podcast ingestion. "
+            "Install it with: pip install feedparser"
+        )
 
     feed = await asyncio.to_thread(feedparser.parse, content)
 
