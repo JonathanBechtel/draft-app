@@ -12,9 +12,16 @@
 <div class="admin-card">
   <div class="admin-card__header">
     <h2 class="admin-card__title">All Sources</h2>
-    <a href="/admin/news-sources/new" class="admin-btn admin-btn--primary admin-btn--small">
-      Add Source
-    </a>
+    <div style="display: flex; gap: 0.5rem;">
+      <form method="post" action="/admin/news-sources/ingest" class="admin-form--inline" id="ingest-form">
+        <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small" id="ingest-btn">
+          Ingest Now
+        </button>
+      </form>
+      <a href="/admin/news-sources/new" class="admin-btn admin-btn--primary admin-btn--small">
+        Add Source
+      </a>
+    </div>
   </div>
 
   {% if sources %}
@@ -75,4 +82,29 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block admin_js %}
+<script>
+document.getElementById('ingest-form').addEventListener('submit', function () {
+  var btn = document.getElementById('ingest-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="admin-spinner"></span> Ingesting\u2026';
+});
+</script>
+<style>
+.admin-spinner {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: admin-spin 0.6s linear infinite;
+  vertical-align: -0.1em;
+}
+@keyframes admin-spin {
+  to { transform: rotate(360deg); }
+}
+</style>
 {% endblock %}

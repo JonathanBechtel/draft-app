@@ -263,11 +263,12 @@ async def podcasts_page(
     request: Request,
     offset: int = Query(0, ge=0),
     tag: str | None = Query(default=None),
+    show: int | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ):
     """Render the dedicated Podcasts page with feed, sidebar, and filtering."""
     page_data = await get_podcast_page_data(
-        db, limit=PODCAST_PAGE_LIMIT, offset=offset, tag=tag
+        db, limit=PODCAST_PAGE_LIMIT, offset=offset, tag=tag, show_id=show
     )
 
     feed = page_data["feed"]
@@ -330,6 +331,7 @@ async def podcasts_page(
             "limit": PODCAST_PAGE_LIMIT,
             "offset": offset,
             "active_tag": tag,
+            "active_show": show,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

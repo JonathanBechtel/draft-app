@@ -5,13 +5,13 @@ Handles fetching and formatting podcast episodes for display.
 
 from typing import Any
 
-from sqlalchemy import func, select, union
+from sqlalchemy import String, cast, func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.podcasts import MentionedPlayer, PodcastEpisodeRead, PodcastFeedResponse
 from app.schemas.player_content_mentions import ContentType, PlayerContentMention
 from app.schemas.players_master import PlayerMaster
-from app.schemas.podcast_episodes import PodcastEpisode
+from app.schemas.podcast_episodes import PodcastEpisode, PodcastEpisodeTag
 from app.schemas.podcast_shows import PodcastShow
 from app.services.news_service import (
     TrendingPlayer,
@@ -121,6 +121,7 @@ async def get_podcast_feed(
     limit: int = 20,
     offset: int = 0,
     tag: str | None = None,
+    show_id: int | None = None,
 ) -> PodcastFeedResponse:
     """Fetch paginated podcast feed with joined show info.
 
@@ -129,6 +130,7 @@ async def get_podcast_feed(
         limit: Maximum items to return
         offset: Number of items to skip
         tag: Optional tag value to filter by (e.g. "Mock Draft")
+        show_id: Optional show ID to filter episodes by
 
     Returns:
         PodcastFeedResponse with items and pagination info
@@ -142,9 +144,15 @@ async def get_podcast_feed(
     count_query = select(func.count()).select_from(PodcastEpisode)
 
     if tag:
-        tag_filter = PodcastEpisode.tag == tag
+        tag_enum = PodcastEpisodeTag(tag)
+        tag_filter = cast(PodcastEpisode.tag, String) == tag_enum.name
         base_query = base_query.where(tag_filter)  # type: ignore[arg-type]
         count_query = count_query.where(tag_filter)  # type: ignore[arg-type]
+
+    if show_id is not None:
+        show_filter = PodcastEpisode.show_id == show_id  # type: ignore[arg-type]
+        base_query = base_query.where(show_filter)  # type: ignore[arg-type]
+        count_query = count_query.where(show_filter)  # type: ignore[arg-type]
 
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
@@ -278,6 +286,7 @@ async def get_podcast_page_data(
     limit: int = 20,
     offset: int = 0,
     tag: str | None = None,
+    show_id: int | None = None,
 ) -> dict[str, Any]:
     """Fetch all data needed for the /podcasts page in a single call.
 
@@ -286,11 +295,14 @@ async def get_podcast_page_data(
         limit: Maximum episodes to return
         offset: Number of episodes to skip
         tag: Optional tag value to filter by
+        show_id: Optional show ID to filter episodes by
 
     Returns:
         Dict with keys: feed, shows, trending
     """
-    feed = await get_podcast_feed(db, limit=limit, offset=offset, tag=tag)
+    feed = await get_podcast_feed(
+        db, limit=limit, offset=offset, tag=tag, show_id=show_id
+    )
     shows = await get_active_shows(db)
     trending: list[TrendingPlayer] = await get_trending_players(
         db, days=7, limit=7, content_type=ContentType.PODCAST
