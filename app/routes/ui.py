@@ -16,6 +16,7 @@ from app.services.news_service import (
 )
 from app.services.podcast_service import (
     get_latest_podcast_episodes,
+    get_player_podcast_feed,
     get_podcast_page_data,
 )
 from app.config import settings
@@ -509,6 +510,39 @@ async def player_detail(
         for item in news_feed.items
     ]
 
+    # Fetch player-specific podcast feed (mentions + direct player_id)
+    podcast_feed_resp = await get_player_podcast_feed(
+        db,
+        player_id=player_profile.id,  # type: ignore[arg-type]
+        limit=50,
+    )
+    player_podcast_feed = [
+        {
+            "id": ep.id,
+            "show_name": ep.show_name,
+            "artwork_url": ep.artwork_url,
+            "show_artwork_url": ep.show_artwork_url,
+            "title": ep.title,
+            "summary": ep.summary,
+            "tag": ep.tag,
+            "audio_url": ep.audio_url,
+            "episode_url": ep.episode_url,
+            "duration": ep.duration,
+            "time": ep.time,
+            "listen_on_text": ep.listen_on_text,
+            "is_player_specific": ep.is_player_specific,
+            "mentioned_players": [
+                {
+                    "player_id": p.player_id,
+                    "display_name": p.display_name,
+                    "slug": p.slug,
+                }
+                for p in ep.mentioned_players
+            ],
+        }
+        for ep in podcast_feed_resp.items
+    ]
+
     return request.app.state.templates.TemplateResponse(
         "player-detail.html",
         {
@@ -517,6 +551,7 @@ async def player_detail(
             "percentile_data": percentile_data,
             "comparison_data": comparison_data,
             "player_feed": player_feed,
+            "player_podcast_feed": player_podcast_feed,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "image_style": requested_style,  # Current image style for JS
