@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
@@ -16,7 +17,10 @@ from app.routes.admin.helpers import (
 )
 from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import FeedType, NewsSource
+from app.services.news_ingestion_service import run_ingestion_cycle
 from app.utils.db_async import get_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/news-sources", tags=["admin-news-sources"])
 
@@ -40,11 +44,27 @@ async def list_news_sources(
     )
     sources = result.scalars().all()
 
-    success_messages = {
+    success_messages: dict[str, str] = {
         "created": "News source created successfully.",
         "updated": "News source updated successfully.",
         "deleted": "News source deleted successfully.",
+        "ingested": "Ingestion complete.",
     }
+
+    # Build richer message for ingestion results
+    if success == "ingested":
+        parts: list[str] = []
+        added = request.query_params.get("added")
+        sources_count = request.query_params.get("sources")
+        mentions = request.query_params.get("mentions")
+        if sources_count:
+            parts.append(f"{sources_count} source(s)")
+        if added:
+            parts.append(f"{added} item(s) added")
+        if mentions:
+            parts.append(f"{mentions} mention(s)")
+        if parts:
+            success_messages["ingested"] = f"Ingestion complete: {', '.join(parts)}."
 
     return request.app.state.templates.TemplateResponse(
         "admin/news-sources/index.html",
@@ -56,6 +76,42 @@ async def list_news_sources(
             success=success_messages.get(success) if success else None,
         ),
     )
+
+
+@router.post("/ingest", response_class=HTMLResponse)
+async def ingest_news(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Trigger a full news ingestion cycle."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "news_ingestion",
+        need_edit=True,
+        next_path="/admin/news-sources",
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    try:
+        result = await run_ingestion_cycle(db)
+        return RedirectResponse(
+            url=(
+                f"/admin/news-sources?success=ingested"
+                f"&added={result.items_added}"
+                f"&sources={result.sources_processed}"
+                f"&mentions={result.mentions_added}"
+            ),
+            status_code=303,
+        )
+    except Exception:
+        logger.exception("News ingestion failed")
+        return RedirectResponse(
+            url="/admin/news-sources?error=Ingestion+failed.+Check+server+logs.",
+            status_code=303,
+        )
 
 
 @router.get("/new", response_class=HTMLResponse)
