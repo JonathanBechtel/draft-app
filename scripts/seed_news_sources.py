@@ -73,6 +73,13 @@ INITIAL_SOURCES = [
         "feed_url": "https://assisteddevelopment.substack.com/feed",
         "fetch_interval_minutes": 30,
     },
+    {
+        "name": "NBA Draft Room",
+        "display_name": "NBA Draft Room",
+        "feed_type": "rss",
+        "feed_url": "https://nbadraftroom.com/feed/",
+        "fetch_interval_minutes": 30,
+    },
 ]
 
 

@@ -498,7 +498,11 @@ async def fetch_rss_feed(url: str) -> list[dict]:
 def _extract_image_url(entry: dict[str, Any]) -> Optional[str]:
     """Extract image URL from RSS entry.
 
-    Checks enclosures and media content for image URLs.
+    Checks, in priority order:
+    1. RSS enclosures with image MIME type
+    2. media:content with medium="image" or image MIME type
+    3. media:thumbnail
+    4. First <img> tag in content:encoded HTML (feedparser exposes as entry.content)
 
     Args:
         entry: feedparser entry dict
@@ -526,6 +530,32 @@ def _extract_image_url(entry: dict[str, Any]) -> Optional[str]:
     if media_thumbnail:
         return media_thumbnail[0].get("url")
 
+    # Fallback: extract first <img> src from content:encoded HTML
+    content_list = entry.get("content", [])
+    for content_block in content_list:
+        html = content_block.get("value", "")
+        if html:
+            img_url = _extract_first_img_src(html)
+            if img_url:
+                return img_url
+
+    return None
+
+
+def _extract_first_img_src(html: str) -> Optional[str]:
+    """Extract the src URL from the first <img> tag in HTML content.
+
+    Args:
+        html: HTML string (e.g. from content:encoded)
+
+    Returns:
+        Image URL if found, None otherwise
+    """
+    import re
+
+    match = re.search(r'<img\s[^>]*?\bsrc=["\']([^"\']+)["\']', html)
+    if match:
+        return match.group(1)
     return None
 
 
