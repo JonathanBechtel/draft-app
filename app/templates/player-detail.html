@@ -186,7 +186,7 @@
           <line x1="18" y1="20" x2="18" y2="4"></line>
           <line x1="6" y1="20" x2="6" y2="16"></line>
         </svg>
-        Performance Metrics
+        {% if player.combine_year %}{{ player.combine_year }} {% endif %}Draft Combine Statistics
       </h2>
       <div class="section-header-actions">
         <button class="export-btn" title="Save as Image" onclick="exportPerformance()">

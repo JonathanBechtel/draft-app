@@ -411,6 +411,7 @@ async def player_detail(
         "age": player_profile.age_formatted,
         "hometown": player_profile.hometown,
         "wingspan": player_profile.wingspan_formatted,
+        "combine_year": player_profile.combine_year,
         "photo_url": requested_photo_url,
         "photo_url_default": fallback_photo_url,
         "photo_url_placeholder": placeholder_photo_url,

@@ -59,11 +59,13 @@ const H2HComparison = {
 
       // Handle initial player selection based on mode
       if (this.config.playerAFixed) {
-        // Player-detail mode: pre-select first available player as Player B
-        const first = Object.keys(this.players).find((slug) => slug !== this.selectedPlayerA);
-        if (first) {
-          this.selectedPlayerB = first;
-          document.getElementById('h2hPlayerB').value = this.players[first].name;
+        // Player-detail mode: prefer Cooper Flagg as default Player B, else first available
+        const preferred = 'cooper-flagg';
+        const availableKeys = Object.keys(this.players).filter((slug) => slug !== this.selectedPlayerA);
+        const pick = availableKeys.includes(preferred) ? preferred : availableKeys[0];
+        if (pick) {
+          this.selectedPlayerB = pick;
+          document.getElementById('h2hPlayerB').value = this.players[pick].name;
           this.updateExportButtonState();
         }
       } else {
