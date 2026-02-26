@@ -43,6 +43,7 @@ class PlayerProfileRead(SQLModel):
 
     # From CombineAnthro (most recent)
     wingspan_in: Optional[float] = None
+    combine_year: Optional[int] = None
 
     # Photo URL (computed at runtime from filesystem, not stored in DB)
     photo_url: Optional[str] = None

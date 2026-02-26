@@ -928,6 +928,23 @@ const PlayerFeedModule = {
   itemsPerPage: 10,
   currentPage: 1,
   totalPages: 1,
+  hasPodcasts: false,
+  activeTab: 'articles',
+  podcastPage: 1,
+  podcastTotalPages: 1,
+  podcastRendered: false,
+
+  /** Podcast tag → CSS class mapping */
+  PODCAST_TAG_CLASSES: {
+    'Draft Analysis': 'draft-analysis',
+    'Mock Draft': 'mock-draft',
+    'Game Breakdown': 'game-breakdown',
+    'Interview': 'interview',
+    'Trade & Intel': 'trade-intel',
+    'Prospect Debate': 'prospect-debate',
+    'Mailbag': 'mailbag',
+    'Event Preview': 'event-preview',
+  },
 
   /**
    * Initialize the feed
@@ -941,14 +958,22 @@ const PlayerFeedModule = {
       return;
     }
 
-    // If no articles mention this player, update the heading to generic "Draft News"
+    // If no articles or podcasts mention this player, update the heading to generic "Draft News"
     this.hasPlayerSpecific = window.PLAYER_FEED.some(i => i.is_player_specific);
-    if (!this.hasPlayerSpecific) {
+    const hasPodcastSpecific = window.PLAYER_PODCAST_FEED && window.PLAYER_PODCAST_FEED.some(i => i.is_player_specific);
+    if (!this.hasPlayerSpecific && !hasPodcastSpecific) {
       const heading = document.getElementById('newsFeedHeading');
       if (heading) heading.textContent = 'Draft News';
     }
 
     this.totalPages = Math.ceil(window.PLAYER_FEED.length / this.itemsPerPage);
+
+    // Check if there are podcast mentions
+    if (window.PLAYER_PODCAST_FEED && window.PLAYER_PODCAST_FEED.length > 0) {
+      this.hasPodcasts = true;
+      this.podcastTotalPages = Math.ceil(window.PLAYER_PODCAST_FEED.length / this.itemsPerPage);
+    }
+
     this.render();
   },
 
@@ -959,21 +984,301 @@ const PlayerFeedModule = {
     const feedContainer = document.getElementById('playerFeedContainer');
     if (!feedContainer) return;
 
+    if (this.hasPodcasts) {
+      // Render tabbed layout
+      let html = this.renderTabs();
+      html += '<div class="media-feed-panel active" id="articlePanel">';
+      html += this.renderArticlePage();
+      html += '</div>';
+      html += '<div class="media-feed-panel" id="podcastPanel"></div>';
+      feedContainer.innerHTML = html;
+      this.attachTabListeners();
+      this.attachPaginationListeners();
+    } else {
+      // Original layout — no tabs
+      let html = this.renderArticlePage();
+      feedContainer.innerHTML = html;
+      this.attachPaginationListeners();
+    }
+  },
+
+  /**
+   * Render the article page content (items + pagination)
+   */
+  renderArticlePage() {
     const startIndex = (this.currentPage - 1) * this.itemsPerPage;
     const endIndex = startIndex + this.itemsPerPage;
     const pageItems = window.PLAYER_FEED.slice(startIndex, endIndex);
 
     let html = this.renderFeedItems(pageItems);
-
-    // Add pagination if more than one page
     if (this.totalPages > 1) {
       html += this.renderPagination();
     }
+    return html;
+  },
 
-    feedContainer.innerHTML = html;
+  /**
+   * Render tab bar for Articles / Podcasts
+   */
+  renderTabs() {
+    const articleCount = window.PLAYER_FEED.filter(i => i.is_player_specific).length;
+    const podcastCount = window.PLAYER_PODCAST_FEED.filter(i => i.is_player_specific).length;
+    const isArticlesActive = this.activeTab === 'articles';
+    const isPodcastsActive = this.activeTab === 'podcasts';
 
-    // Attach event listeners to pagination pills
-    this.attachPaginationListeners();
+    return `
+      <div class="media-feed-tabs">
+        <button class="media-feed-tab ${isArticlesActive ? 'active active--articles' : ''}" data-tab="articles">
+          <svg class="icon" viewBox="0 0 24 24" style="width: 0.875rem; height: 0.875rem;">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+          </svg>
+          Articles
+          ${articleCount > 0 ? `<span class="media-feed-tab__count">${articleCount}</span>` : ''}
+        </button>
+        <button class="media-feed-tab ${isPodcastsActive ? 'active active--podcasts' : ''}" data-tab="podcasts">
+          <svg class="icon" viewBox="0 0 24 24" style="width: 0.875rem; height: 0.875rem;">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+            <line x1="12" y1="19" x2="12" y2="23"></line>
+            <line x1="8" y1="23" x2="16" y2="23"></line>
+          </svg>
+          Podcasts
+          ${podcastCount > 0 ? `<span class="media-feed-tab__count">${podcastCount}</span>` : ''}
+        </button>
+      </div>
+    `;
+  },
+
+  /**
+   * Attach click listeners to tab buttons
+   */
+  attachTabListeners() {
+    const tabs = document.querySelectorAll('.media-feed-tab');
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        if (tabName && tabName !== this.activeTab) {
+          this.switchTab(tabName);
+        }
+      });
+    });
+  },
+
+  /**
+   * Switch between Articles and Podcasts tabs
+   */
+  switchTab(tab) {
+    this.activeTab = tab;
+
+    // Update tab active states
+    const tabs = document.querySelectorAll('.media-feed-tab');
+    tabs.forEach((t) => {
+      t.classList.remove('active', 'active--articles', 'active--podcasts');
+      if (t.dataset.tab === tab) {
+        t.classList.add('active', `active--${tab}`);
+      }
+    });
+
+    // Toggle panels
+    const articlePanel = document.getElementById('articlePanel');
+    const podcastPanel = document.getElementById('podcastPanel');
+
+    if (tab === 'articles') {
+      if (articlePanel) articlePanel.classList.add('active');
+      if (podcastPanel) podcastPanel.classList.remove('active');
+    } else {
+      if (articlePanel) articlePanel.classList.remove('active');
+      if (podcastPanel) podcastPanel.classList.add('active');
+
+      // Render podcast feed on first switch
+      if (!this.podcastRendered) {
+        this.renderPodcastFeed();
+        this.podcastRendered = true;
+      }
+    }
+  },
+
+  /**
+   * Render the podcast feed panel
+   */
+  renderPodcastFeed() {
+    const panel = document.getElementById('podcastPanel');
+    if (!panel) return;
+
+    const startIndex = (this.podcastPage - 1) * this.itemsPerPage;
+    const endIndex = startIndex + this.itemsPerPage;
+    const episodes = window.PLAYER_PODCAST_FEED.slice(startIndex, endIndex);
+
+    const hasPodcastSpecific = window.PLAYER_PODCAST_FEED.some(i => i.is_player_specific);
+    let podcastDividerInserted = false;
+    let html = episodes.map((ep) => {
+      let dividerHtml = '';
+      if (!ep.is_player_specific && !podcastDividerInserted) {
+        podcastDividerInserted = true;
+        if (hasPodcastSpecific) {
+          dividerHtml = `
+            <div class="feed-divider">
+              <span class="feed-divider__label">More Podcasts</span>
+            </div>
+          `;
+        }
+      }
+      return dividerHtml + this.renderPodcastCard(ep);
+    }).join('');
+
+    if (this.podcastTotalPages > 1) {
+      html += this.renderPodcastPagination();
+    }
+
+    panel.innerHTML = html;
+    this.attachPodcastPaginationListeners();
+  },
+
+  /**
+   * Render a single podcast card
+   */
+  renderPodcastCard(episode) {
+    const esc = DraftGuru.escapeHtml;
+    const artworkSrc = episode.artwork_url || episode.show_artwork_url;
+    const artworkHtml = artworkSrc
+      ? `<img src="${esc(artworkSrc)}" alt="${esc(episode.show_name)}" class="podcast-card__artwork" loading="lazy" />`
+      : `<div class="podcast-card__artwork podcast-card__artwork--placeholder">DG</div>`;
+
+    const tagClass = this.PODCAST_TAG_CLASSES[episode.tag] || '';
+    const tagHtml = tagClass
+      ? `<span class="episode-tag episode-tag--${tagClass}">${esc(episode.tag)}</span>`
+      : (episode.tag ? `<span class="episode-tag">${esc(episode.tag)}</span>` : '');
+
+    const summaryHtml = episode.summary
+      ? `<p class="podcast-card__summary">${esc(episode.summary)}</p>`
+      : '';
+
+    const episodeLink = episode.episode_url || '/podcasts';
+    const cardClass = episode.is_player_specific
+      ? 'podcast-card podcast-card--player-specific'
+      : 'podcast-card';
+    const mentionBadge = episode.is_player_specific
+      ? '<span class="podcast-card__mention-badge">Tagged</span>'
+      : '';
+
+    return `
+      <article class="${cardClass}">
+        <div class="podcast-card__artwork-wrapper">
+          ${artworkHtml}
+        </div>
+        <div class="podcast-card__content">
+          <div class="podcast-card__show-line">
+            <span class="podcast-card__show">${esc(episode.show_name)}</span>
+            ${tagHtml}
+          </div>
+          <h4 class="podcast-card__title">${esc(episode.title)}</h4>
+          ${summaryHtml}
+          <div class="podcast-card__meta">
+            <span class="podcast-card__duration">${esc(episode.duration)}</span>
+            <span class="podcast-card__time">${esc(episode.time)}</span>
+            ${mentionBadge}
+            <a href="${esc(episodeLink)}" target="_blank" rel="noopener noreferrer" class="podcast-card__cta">
+              View Episode
+              <svg class="icon" viewBox="0 0 24 24" style="width: 0.875rem; height: 0.875rem;">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </a>
+          </div>
+        </div>
+      </article>
+    `;
+  },
+
+  /**
+   * Render podcast pagination
+   */
+  renderPodcastPagination() {
+    const pills = [];
+    const maxVisiblePills = 5;
+
+    let startPage = Math.max(1, this.podcastPage - Math.floor(maxVisiblePills / 2));
+    let endPage = Math.min(this.podcastTotalPages, startPage + maxVisiblePills - 1);
+    if (endPage - startPage + 1 < maxVisiblePills) {
+      startPage = Math.max(1, endPage - maxVisiblePills + 1);
+    }
+
+    const prevDisabled = this.podcastPage === 1 ? 'disabled' : '';
+    pills.push(`
+      <button class="feed-pagination__arrow feed-pagination__arrow--prev podcast-page-nav" ${prevDisabled} aria-label="Previous page">
+        <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+          <polyline points="15 18 9 12 15 6"></polyline>
+        </svg>
+      </button>
+    `);
+
+    if (startPage > 1) {
+      pills.push(`<button class="feed-pagination__pill active--fuchsia podcast-page-pill" data-page="1">1</button>`);
+      if (startPage > 2) {
+        pills.push(`<span class="feed-pagination__ellipsis">…</span>`);
+      }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      const activeClass = i === this.podcastPage ? 'active active--fuchsia' : '';
+      pills.push(`<button class="feed-pagination__pill ${activeClass} podcast-page-pill" data-page="${i}">${i}</button>`);
+    }
+
+    if (endPage < this.podcastTotalPages) {
+      if (endPage < this.podcastTotalPages - 1) {
+        pills.push(`<span class="feed-pagination__ellipsis">…</span>`);
+      }
+      pills.push(`<button class="feed-pagination__pill podcast-page-pill" data-page="${this.podcastTotalPages}">${this.podcastTotalPages}</button>`);
+    }
+
+    const nextDisabled = this.podcastPage === this.podcastTotalPages ? 'disabled' : '';
+    pills.push(`
+      <button class="feed-pagination__arrow feed-pagination__arrow--next podcast-page-nav" ${nextDisabled} aria-label="Next page">
+        <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+    `);
+
+    return `
+      <nav class="feed-pagination" aria-label="Podcast feed pagination">
+        ${pills.join('')}
+      </nav>
+    `;
+  },
+
+  /**
+   * Attach click listeners for podcast pagination
+   */
+  attachPodcastPaginationListeners() {
+    const pills = document.querySelectorAll('.podcast-page-pill');
+    pills.forEach((pill) => {
+      pill.addEventListener('click', (e) => {
+        const page = parseInt(e.target.dataset.page, 10);
+        if (!isNaN(page) && page !== this.podcastPage) {
+          this.goToPodcastPage(page);
+        }
+      });
+    });
+
+    const prevBtn = document.querySelector('.podcast-page-nav.feed-pagination__arrow--prev');
+    const nextBtn = document.querySelector('.podcast-page-nav.feed-pagination__arrow--next');
+    if (prevBtn) prevBtn.addEventListener('click', () => this.goToPodcastPage(this.podcastPage - 1));
+    if (nextBtn) nextBtn.addEventListener('click', () => this.goToPodcastPage(this.podcastPage + 1));
+  },
+
+  /**
+   * Navigate to a specific podcast page
+   */
+  goToPodcastPage(page) {
+    if (page < 1 || page > this.podcastTotalPages) return;
+    this.podcastPage = page;
+    this.renderPodcastFeed();
+
+    const feedContainer = document.getElementById('playerFeedContainer');
+    if (feedContainer) {
+      feedContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   },
 
   /**
@@ -1007,7 +1312,17 @@ const PlayerFeedModule = {
   goToPage(page) {
     if (page < 1 || page > this.totalPages) return;
     this.currentPage = page;
-    this.render();
+
+    if (this.hasPodcasts) {
+      // Re-render just the article panel
+      const articlePanel = document.getElementById('articlePanel');
+      if (articlePanel) {
+        articlePanel.innerHTML = this.renderArticlePage();
+        this.attachPaginationListeners();
+      }
+    } else {
+      this.render();
+    }
 
     // Scroll to feed section
     const feedContainer = document.getElementById('playerFeedContainer');

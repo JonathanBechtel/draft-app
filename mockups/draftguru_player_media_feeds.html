@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cooper Flagg — Media Feeds (Articles + Podcasts) | DraftGuru</title>
+  <title>Player Media Feeds — Coverage Scenarios | DraftGuru</title>
 
-  <!-- Google Fonts: Russo One (headings) and Azeret Mono (monospace) -->
   <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 
   <style>
@@ -44,9 +43,6 @@
       --transition-speed: 0.2s;
     }
 
-    /* ============================================================================
-       RESET & BASE
-       ========================================================================= */
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
@@ -57,16 +53,10 @@
       line-height: 1.6;
     }
 
-    /* ============================================================================
-       TYPOGRAPHY UTILITIES
-       ========================================================================= */
     .heading-font { font-family: var(--font-heading); letter-spacing: 0.02em; }
     .mono-font { font-family: var(--font-mono); }
     .uppercase { text-transform: uppercase; letter-spacing: 0.06em; }
 
-    /* ============================================================================
-       LAYOUT
-       ========================================================================= */
     .container {
       max-width: 1152px;
       width: var(--content-width);
@@ -142,23 +132,88 @@
     .navbar-link:hover { color: #fff; }
 
     /* ============================================================================
-       PLACEHOLDER SECTION (simulating rest of player page above)
+       SCENARIO SWITCHER (mockup-only control)
+       ========================================================================= */
+    .scenario-switcher {
+      position: fixed;
+      top: 5rem;
+      right: 1.5rem;
+      z-index: 999;
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      padding: 1rem;
+      width: 260px;
+      border: 1px solid var(--color-slate-200);
+    }
+
+    .scenario-switcher__title {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-400);
+      margin-bottom: 0.625rem;
+    }
+
+    .scenario-switcher__btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      border: 1.5px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      background: var(--color-white);
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      margin-bottom: 0.375rem;
+    }
+
+    .scenario-switcher__btn:last-of-type { margin-bottom: 0; }
+
+    .scenario-switcher__btn:hover {
+      border-color: var(--color-accent-indigo);
+      color: var(--color-accent-indigo);
+    }
+
+    .scenario-switcher__btn.active {
+      background: var(--color-accent-indigo);
+      border-color: var(--color-accent-indigo);
+      color: #fff;
+    }
+
+    .scenario-switcher__hint {
+      font-size: 0.625rem;
+      color: var(--color-slate-400);
+      margin-top: 0.5rem;
+      line-height: 1.4;
+    }
+
+    .scenario-section { display: none; }
+    .scenario-section.active { display: block; }
+
+    /* ============================================================================
+       PLACEHOLDER
        ========================================================================= */
     .placeholder-section {
       text-align: center;
-      padding: 3rem;
+      padding: 2rem;
       background: var(--color-slate-50);
       border-radius: var(--border-radius);
       color: var(--color-slate-400);
       font-family: var(--font-mono);
-      font-size: 0.8125rem;
+      font-size: 0.75rem;
       text-transform: uppercase;
       letter-spacing: 0.06em;
       border: 2px dashed var(--color-slate-200);
     }
 
     /* ============================================================================
-       MEDIA FEED TABS — Toggle between Articles and Podcasts
+       MEDIA FEED TABS
        ========================================================================= */
     .media-feed-tabs {
       display: flex;
@@ -186,9 +241,7 @@
       transition: all 0.2s ease;
     }
 
-    .media-feed-tab:hover {
-      color: var(--color-slate-700);
-    }
+    .media-feed-tab:hover { color: var(--color-slate-700); }
 
     .media-feed-tab.active--articles {
       color: var(--color-accent-cyan);
@@ -224,16 +277,11 @@
       color: var(--color-accent-fuchsia);
     }
 
-    .media-feed-panel {
-      display: none;
-    }
-
-    .media-feed-panel.active {
-      display: block;
-    }
+    .media-feed-panel { display: none; }
+    .media-feed-panel.active { display: block; }
 
     /* ============================================================================
-       ARTICLES FEED (existing pattern from player-detail)
+       ARTICLES FEED CARDS
        ========================================================================= */
     .feed-card {
       display: flex;
@@ -257,76 +305,39 @@
     }
 
     .feed-card__image-wrapper {
-      width: 120px;
-      min-width: 120px;
-      height: 80px;
-      border-radius: 0.5rem;
-      overflow: hidden;
-      background: var(--color-slate-100);
-      flex-shrink: 0;
+      width: 120px; min-width: 120px; height: 80px;
+      border-radius: 0.5rem; overflow: hidden;
+      background: var(--color-slate-100); flex-shrink: 0;
     }
 
-    .feed-card__image {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
+    .feed-card__image { width: 100%; height: 100%; object-fit: cover; }
 
-    .feed-card__image--placeholder {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--color-slate-300);
-      font-size: 1.5rem;
-    }
-
-    .feed-card__content {
-      flex: 1;
-      min-width: 0;
-    }
+    .feed-card__content { flex: 1; min-width: 0; }
 
     .feed-card__title {
       font-family: var(--font-heading);
-      font-size: 0.9375rem;
-      line-height: 1.3;
-      color: var(--color-slate-900);
-      margin-bottom: 0.25rem;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+      font-size: 0.9375rem; line-height: 1.3;
+      color: var(--color-slate-900); margin-bottom: 0.25rem;
+      display: -webkit-box; -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical; overflow: hidden;
     }
 
     .feed-card__summary {
-      font-size: 0.8125rem;
-      color: var(--color-slate-600);
-      line-height: 1.5;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      margin-bottom: 0.5rem;
+      font-size: 0.8125rem; color: var(--color-slate-600);
+      line-height: 1.5; display: -webkit-box;
+      -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; margin-bottom: 0.5rem;
     }
 
     .feed-card__meta {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex-wrap: wrap;
+      display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
     }
 
     .feed-card__tag {
-      display: inline-block;
-      padding: 0.125rem 0.4375rem;
-      border-radius: 0.25rem;
-      font-family: var(--font-mono);
-      font-size: 0.625rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      white-space: nowrap;
+      display: inline-block; padding: 0.125rem 0.4375rem;
+      border-radius: 0.25rem; font-family: var(--font-mono);
+      font-size: 0.625rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.03em; white-space: nowrap;
     }
 
     .feed-card__tag.scouting-report { color: #4338ca; background: #e0e7ff; }
@@ -337,50 +348,36 @@
     .feed-card__tag.draft-intel     { color: #be123c; background: #ffe4e6; }
 
     .feed-card__mention-badge {
-      font-family: var(--font-mono);
-      font-size: 0.5625rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--color-accent-emerald);
+      font-family: var(--font-mono); font-size: 0.5625rem;
+      font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--color-accent-emerald);
       background: rgba(16, 185, 129, 0.1);
-      padding: 0.125rem 0.375rem;
-      border-radius: 0.25rem;
+      padding: 0.125rem 0.375rem; border-radius: 0.25rem;
     }
 
     .feed-card__author-time {
-      font-family: var(--font-mono);
-      font-size: 0.6875rem;
+      font-family: var(--font-mono); font-size: 0.6875rem;
       color: var(--color-slate-400);
     }
 
     .feed-card__cta {
-      font-family: var(--font-mono);
-      font-size: 0.6875rem;
-      color: var(--color-accent-cyan);
-      text-decoration: none;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-left: auto;
-      white-space: nowrap;
-      transition: color 0.2s;
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      color: var(--color-accent-cyan); text-decoration: none;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin-left: auto; white-space: nowrap; transition: color 0.2s;
     }
-
     .feed-card__cta:hover { color: #0891b2; }
 
     /* ============================================================================
-       PODCAST EPISODE CARDS (for player page context)
+       PODCAST EPISODE CARDS
        ========================================================================= */
     .podcast-card {
-      display: flex;
-      gap: 1rem;
-      background: var(--color-white);
-      padding: 1rem;
+      display: flex; gap: 1rem;
+      background: var(--color-white); padding: 1rem;
       border-radius: var(--border-radius);
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
       border: 1px solid var(--color-slate-100);
-      transition: all 0.2s ease;
-      margin-bottom: 0.75rem;
+      transition: all 0.2s ease; margin-bottom: 0.75rem;
       cursor: pointer;
     }
 
@@ -390,93 +387,53 @@
     }
 
     .podcast-card__artwork {
-      width: 80px;
-      min-width: 80px;
-      height: 80px;
-      border-radius: 0.5rem;
-      overflow: hidden;
-      background: var(--color-slate-100);
-      flex-shrink: 0;
+      width: 80px; min-width: 80px; height: 80px;
+      border-radius: 0.5rem; overflow: hidden;
+      background: var(--color-slate-100); flex-shrink: 0;
       position: relative;
     }
 
-    .podcast-card__artwork img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
+    .podcast-card__artwork img { width: 100%; height: 100%; object-fit: cover; }
 
     .podcast-card__play-overlay {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0, 0, 0, 0.3);
-      opacity: 0;
-      transition: opacity 0.2s ease;
-      border-radius: 0.5rem;
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.3); opacity: 0;
+      transition: opacity 0.2s ease; border-radius: 0.5rem;
     }
-
-    .podcast-card:hover .podcast-card__play-overlay {
-      opacity: 1;
-    }
+    .podcast-card:hover .podcast-card__play-overlay { opacity: 1; }
 
     .podcast-card__play-icon {
-      width: 2rem;
-      height: 2rem;
-      background: var(--color-accent-fuchsia);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 2rem; height: 2rem; background: var(--color-accent-fuchsia);
+      border-radius: 50%; display: flex;
+      align-items: center; justify-content: center;
       box-shadow: 0 2px 8px rgba(217, 70, 239, 0.5);
     }
-
     .podcast-card__play-icon svg {
-      width: 0.75rem;
-      height: 0.75rem;
-      fill: #fff;
-      margin-left: 2px;
+      width: 0.75rem; height: 0.75rem; fill: #fff; margin-left: 2px;
     }
 
     .podcast-card__content {
-      flex: 1;
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
+      flex: 1; min-width: 0;
+      display: flex; flex-direction: column; justify-content: center;
     }
 
     .podcast-card__show-line {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-bottom: 0.25rem;
+      display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;
     }
 
     .podcast-card__show {
-      font-family: var(--font-mono);
-      font-size: 0.6875rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--color-accent-fuchsia);
-      flex-shrink: 0;
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--color-accent-fuchsia); flex-shrink: 0;
     }
 
     .episode-tag {
-      display: inline-block;
-      padding: 0.1875rem 0.5rem;
-      border-radius: 0.25rem;
-      font-family: var(--font-mono);
-      font-size: 0.5625rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      color: #fff;
-      white-space: nowrap;
-      flex-shrink: 0;
+      display: inline-block; padding: 0.1875rem 0.5rem;
+      border-radius: 0.25rem; font-family: var(--font-mono);
+      font-size: 0.5625rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.03em;
+      color: #fff; white-space: nowrap; flex-shrink: 0;
     }
 
     .episode-tag--interview       { background: rgba(16, 185, 129, 0.85); }
@@ -485,271 +442,153 @@
     .episode-tag--game-breakdown  { background: rgba(100, 116, 139, 0.85); }
     .episode-tag--trade-intel     { background: rgba(244, 63, 94, 0.85); }
     .episode-tag--prospect-debate { background: rgba(245, 158, 11, 0.85); }
-    .episode-tag--mailbag         { background: rgba(6, 182, 212, 0.85); }
-    .episode-tag--event-preview   { background: rgba(217, 70, 239, 0.85); }
 
     .podcast-card__title {
-      font-family: var(--font-heading);
-      font-size: 0.9375rem;
-      line-height: 1.3;
-      color: var(--color-slate-900);
-      margin-bottom: 0.25rem;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
+      font-family: var(--font-heading); font-size: 0.9375rem;
+      line-height: 1.3; color: var(--color-slate-900);
+      margin-bottom: 0.25rem; display: -webkit-box;
+      -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
     }
 
     .podcast-card__summary {
-      font-size: 0.8125rem;
-      color: var(--color-slate-600);
-      line-height: 1.5;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      margin-bottom: 0.5rem;
+      font-size: 0.8125rem; color: var(--color-slate-600);
+      line-height: 1.5; display: -webkit-box;
+      -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; margin-bottom: 0.5rem;
     }
 
     .podcast-card__meta {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      flex-wrap: wrap;
+      display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+    }
+
+    .podcast-card__play-btn {
+      width: 1.75rem; height: 1.75rem; border-radius: 50%;
+      border: 1.5px solid var(--color-slate-300);
+      background: transparent; color: var(--color-slate-500);
+      cursor: pointer; display: flex;
+      align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all 0.2s ease; margin-right: 0.25rem;
+    }
+    .podcast-card__play-btn svg {
+      width: 0.625rem; height: 0.625rem; fill: currentColor; margin-left: 1px;
+    }
+    .podcast-card__play-btn:hover {
+      border-color: var(--color-accent-fuchsia);
+      color: var(--color-accent-fuchsia); background: #fae8ff;
     }
 
     .podcast-card__duration {
-      font-family: var(--font-mono);
-      font-size: 0.6875rem;
+      font-family: var(--font-mono); font-size: 0.6875rem;
       color: var(--color-slate-400);
-      display: flex;
-      align-items: center;
-      gap: 0.25rem;
+      display: flex; align-items: center; gap: 0.25rem;
     }
 
     .podcast-card__time {
-      font-family: var(--font-mono);
-      font-size: 0.6875rem;
+      font-family: var(--font-mono); font-size: 0.6875rem;
       color: var(--color-slate-400);
     }
 
     .meta-dot {
-      width: 3px;
-      height: 3px;
-      border-radius: 50%;
+      width: 3px; height: 3px; border-radius: 50%;
       background: var(--color-slate-300);
     }
 
     .podcast-card__mention-badge {
-      font-family: var(--font-mono);
-      font-size: 0.5625rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--color-accent-fuchsia);
+      font-family: var(--font-mono); font-size: 0.5625rem;
+      font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--color-accent-fuchsia);
       background: rgba(217, 70, 239, 0.1);
-      padding: 0.125rem 0.375rem;
-      border-radius: 0.25rem;
+      padding: 0.125rem 0.375rem; border-radius: 0.25rem;
     }
 
     .podcast-card__cta {
-      font-family: var(--font-mono);
-      font-size: 0.6875rem;
-      color: var(--color-accent-fuchsia);
-      text-decoration: none;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-left: auto;
-      white-space: nowrap;
-      transition: color 0.2s;
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      color: var(--color-accent-fuchsia); text-decoration: none;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      margin-left: auto; white-space: nowrap; transition: color 0.2s;
     }
-
     .podcast-card__cta:hover { color: #c026d3; }
 
-    /* Inline play button in meta row */
-    .podcast-card__play-btn {
-      width: 1.75rem;
-      height: 1.75rem;
-      border-radius: 50%;
-      border: 1.5px solid var(--color-slate-300);
-      background: transparent;
-      color: var(--color-slate-500);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-      transition: all 0.2s ease;
-      margin-right: 0.25rem;
-    }
-
-    .podcast-card__play-btn svg {
-      width: 0.625rem;
-      height: 0.625rem;
-      fill: currentColor;
-      margin-left: 1px;
-    }
-
-    .podcast-card__play-btn:hover {
-      border-color: var(--color-accent-fuchsia);
-      color: var(--color-accent-fuchsia);
-      background: #fae8ff;
-    }
-
     /* ============================================================================
-       PAGINATION (shared between both tabs)
+       PAGINATION
        ========================================================================= */
     .feed-pagination {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.375rem;
-      margin-top: 1.5rem;
-      padding-top: 1rem;
-      border-top: 1px solid var(--color-slate-100);
+      display: flex; align-items: center; justify-content: center;
+      gap: 0.375rem; margin-top: 1.5rem;
+      padding-top: 1rem; border-top: 1px solid var(--color-slate-100);
     }
 
     .feed-pagination__btn {
-      width: 2rem;
-      height: 2rem;
-      border-radius: 0.375rem;
-      border: 1px solid var(--color-slate-200);
-      background: var(--color-white);
-      font-family: var(--font-mono);
-      font-size: 0.75rem;
-      color: var(--color-slate-600);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: 2rem; height: 2rem; border-radius: 0.375rem;
+      border: 1px solid var(--color-slate-200); background: var(--color-white);
+      font-family: var(--font-mono); font-size: 0.75rem;
+      color: var(--color-slate-600); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
       transition: all 0.15s ease;
     }
 
     .feed-pagination__btn:hover {
-      border-color: var(--color-slate-300);
-      background: var(--color-slate-50);
+      border-color: var(--color-slate-300); background: var(--color-slate-50);
     }
 
     .feed-pagination__btn.active {
-      background: var(--color-accent-cyan);
-      border-color: var(--color-accent-cyan);
-      color: #fff;
+      background: var(--color-accent-cyan); border-color: var(--color-accent-cyan); color: #fff;
     }
 
     .feed-pagination__btn.active--fuchsia {
-      background: var(--color-accent-fuchsia);
-      border-color: var(--color-accent-fuchsia);
-      color: #fff;
+      background: var(--color-accent-fuchsia); border-color: var(--color-accent-fuchsia); color: #fff;
     }
 
-    .feed-pagination__btn:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
+    .feed-pagination__btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-    /* ============================================================================
-       EMPTY STATE
-       ========================================================================= */
-    .feed-empty {
-      text-align: center;
-      padding: 3rem 1.5rem;
-      background: var(--color-slate-50);
-      border-radius: var(--border-radius);
-      border: 2px dashed var(--color-slate-200);
-    }
-
-    .feed-empty__icon {
-      font-size: 2rem;
-      margin-bottom: 0.75rem;
-      opacity: 0.5;
-    }
-
-    .feed-empty__title {
-      font-family: var(--font-heading);
-      font-size: 1rem;
-      color: var(--color-slate-600);
-      margin-bottom: 0.25rem;
-    }
-
-    .feed-empty__desc {
-      font-size: 0.8125rem;
-      color: var(--color-slate-400);
-    }
-
-    /* ============================================================================
-       "MORE COVERAGE" DIVIDER (within article feed)
-       ========================================================================= */
+    /* "More Draft News" divider */
     .feed-divider {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      margin: 1rem 0;
+      display: flex; align-items: center; gap: 1rem; margin: 1rem 0;
     }
 
     .feed-divider__line {
-      flex: 1;
-      height: 1px;
-      background: var(--color-slate-200);
+      flex: 1; height: 1px; background: var(--color-slate-200);
     }
 
     .feed-divider__label {
-      font-family: var(--font-mono);
-      font-size: 0.625rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--color-slate-400);
-      white-space: nowrap;
+      font-family: var(--font-mono); font-size: 0.625rem;
+      font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--color-slate-400); white-space: nowrap;
     }
 
     /* ============================================================================
        FOOTER
        ========================================================================= */
     .footer {
-      background: var(--color-secondary);
-      margin-top: 4rem;
-      padding: 3rem 0;
+      background: var(--color-secondary); margin-top: 4rem; padding: 3rem 0;
     }
 
     .footer-content {
-      max-width: 1152px;
-      width: var(--content-width);
-      margin: 0 auto;
-      padding: 0 1.5rem;
+      max-width: 1152px; width: var(--content-width);
+      margin: 0 auto; padding: 0 1.5rem;
     }
 
     .footer-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 2rem;
-      margin-bottom: 2rem;
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 2rem; margin-bottom: 2rem;
     }
 
     .footer-column h4 {
-      font-family: var(--font-heading);
-      font-size: 0.875rem;
-      margin-bottom: 0.75rem;
+      font-family: var(--font-heading); font-size: 0.875rem; margin-bottom: 0.75rem;
     }
 
     .footer-column ul { list-style: none; }
-
     .footer-column li { margin-bottom: 0.375rem; }
 
     .footer-column a {
-      font-size: 0.8125rem;
-      color: var(--color-slate-700);
-      text-decoration: none;
-      transition: color 0.2s;
+      font-size: 0.8125rem; color: var(--color-slate-700);
+      text-decoration: none; transition: color 0.2s;
     }
-
     .footer-column a:hover { color: var(--color-slate-900); }
 
     .footer-copyright {
-      text-align: center;
-      font-size: 0.75rem;
-      color: var(--color-slate-600);
-      padding-top: 1.5rem;
-      border-top: 1px solid rgba(0,0,0,0.1);
+      text-align: center; font-size: 0.75rem; color: var(--color-slate-600);
+      padding-top: 1.5rem; border-top: 1px solid rgba(0,0,0,0.1);
     }
 
     /* ============================================================================
@@ -757,34 +596,17 @@
        ========================================================================= */
     @media (max-width: 768px) {
       .container { width: 95%; }
-
-      .feed-card,
-      .podcast-card {
-        flex-direction: column;
-        gap: 0.75rem;
-      }
-
-      .feed-card__image-wrapper {
-        width: 100%;
-        height: 160px;
-      }
-
-      .podcast-card__artwork {
-        width: 100%;
-        height: 160px;
-      }
-
-      .footer-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
+      .scenario-switcher { position: static; width: 100%; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+      .feed-card, .podcast-card { flex-direction: column; gap: 0.75rem; }
+      .feed-card__image-wrapper { width: 100%; height: 160px; }
+      .podcast-card__artwork { width: 100%; height: 160px; }
+      .footer-grid { grid-template-columns: repeat(2, 1fr); }
     }
   </style>
 </head>
 <body>
 
-  <!-- ============================================================================
-       NAVIGATION BAR
-       ========================================================================= -->
+  <!-- NAVIGATION BAR -->
   <nav class="navbar">
     <div class="navbar-content">
       <a class="navbar-brand" href="#">
@@ -803,130 +625,79 @@
     </div>
   </nav>
 
+  <!-- SCENARIO SWITCHER (mockup-only) -->
+  <div class="scenario-switcher">
+    <div class="scenario-switcher__title">Player Scenario</div>
+    <button class="scenario-switcher__btn active" onclick="showScenario('a', this)">
+      A: Tyler Betsey — No mentions
+    </button>
+    <button class="scenario-switcher__btn" onclick="showScenario('b', this)">
+      B: Khaman Maluach — Articles only
+    </button>
+    <button class="scenario-switcher__btn" onclick="showScenario('c', this)">
+      C: Cooper Flagg — Articles + Podcasts
+    </button>
+    <div class="scenario-switcher__hint">
+      Toggle to see how the media section progressively enhances based on coverage level.
+    </div>
+  </div>
+
   <!-- ============================================================================
        MAIN CONTENT
        ========================================================================= -->
   <main class="container mt-28">
 
-    <!-- Placeholder for sections above (bio, scoreboard, metrics, comps) -->
     <section class="section">
       <p class="placeholder-section">
-        &uarr; Player Bio &bull; Scoreboard &bull; Percentile Bars &bull; H2H &bull; Comps (existing) &uarr;
+        &uarr; Player Bio &bull; Scoreboard &bull; Percentile Bars &bull; H2H &bull; Comps (existing sections) &uarr;
       </p>
     </section>
 
     <div class="section-divider"></div>
 
-    <!-- ==========================================================================
-         PLAYER MEDIA FEED — Articles + Podcasts in Tabbed View
-         ========================================================================== -->
-    <section class="section">
-      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
-        <svg class="icon icon-lg" style="color: var(--color-accent-cyan); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
-          <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-          <path d="M2 13h8"></path>
-          <path d="M2 17h8"></path>
-          <path d="M2 21h8"></path>
-        </svg>
-        Media Coverage
-      </h2>
-      <p class="section-subtitle">Articles, analysis, and podcast mentions for Cooper Flagg</p>
 
-      <!-- Tab Switcher -->
-      <div class="media-feed-tabs">
-        <button class="media-feed-tab active--articles" data-tab="articles" onclick="switchTab('articles')">
-          <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+    <!-- ======================================================================
+         SCENARIO A: TYLER BETSEY — No specific mentions at all
+         Plain news feed. No tabs, no divider, no mention badges.
+         Just backfill articles. Identical to current default behavior.
+         ====================================================================== -->
+    <div id="scenario-a" class="scenario-section active">
+      <section class="section">
+        <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+          <svg class="icon icon-lg" style="color: var(--color-accent-cyan); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
             <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"></path>
             <polyline points="14 2 14 8 20 8"></polyline>
-            <path d="M2 13h8"></path>
-            <path d="M2 17h8"></path>
+            <path d="M2 13h8"></path><path d="M2 17h8"></path><path d="M2 21h8"></path>
           </svg>
-          Articles
-          <span class="media-feed-tab__count">12</span>
-        </button>
-        <button class="media-feed-tab" data-tab="podcasts" onclick="switchTab('podcasts')">
-          <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
-            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
-          </svg>
-          Podcasts
-          <span class="media-feed-tab__count">5</span>
-        </button>
-      </div>
+          Latest News & Updates
+        </h2>
+        <p class="section-subtitle">Recent draft coverage and analysis</p>
 
-      <!-- ===== ARTICLES PANEL ===== -->
-      <div id="articlesPanel" class="media-feed-panel active">
-
-        <!-- Player-specific article -->
-        <article class="feed-card feed-card--player-specific">
-          <div class="feed-card__image-wrapper">
-            <img src="https://placehold.co/240x160/1e293b/06b6d4?text=Flagg+Film" class="feed-card__image" alt="" />
-          </div>
-          <div class="feed-card__content">
-            <h4 class="feed-card__title">Cooper Flagg Film Breakdown: Why His Defensive Versatility Sets Him Apart</h4>
-            <p class="feed-card__summary">An in-depth look at Flagg's ability to guard 1-through-5 and how his lateral quickness compares to past top picks at the forward position.</p>
-            <div class="feed-card__meta">
-              <span class="feed-card__tag scouting-report">Scouting Report</span>
-              <span class="feed-card__mention-badge">Player Focus</span>
-              <span class="feed-card__author-time">Sam Vecenie &bull; 3h ago</span>
-              <a href="#" class="feed-card__cta">Read More &nearr;</a>
-            </div>
-          </div>
-        </article>
-
-        <!-- Player-specific article -->
-        <article class="feed-card feed-card--player-specific">
-          <div class="feed-card__image-wrapper">
-            <img src="https://placehold.co/240x160/1e293b/6366f1?text=Big+Board" class="feed-card__image" alt="" />
-          </div>
-          <div class="feed-card__content">
-            <h4 class="feed-card__title">Updated Big Board: Flagg Holds Firm at No. 1 After March Madness Showing</h4>
-            <p class="feed-card__summary">Our latest rankings keep Flagg at the top despite Ace Bailey's hot streak, thanks to his two-way impact and leadership in Duke's tourney run.</p>
-            <div class="feed-card__meta">
-              <span class="feed-card__tag big-board">Big Board</span>
-              <span class="feed-card__mention-badge">Mentioned</span>
-              <span class="feed-card__author-time">Jonathan Givony &bull; 1d ago</span>
-              <a href="#" class="feed-card__cta">Read More &nearr;</a>
-            </div>
-          </div>
-        </article>
-
-        <!-- Player-specific article -->
-        <article class="feed-card feed-card--player-specific">
-          <div class="feed-card__image-wrapper">
-            <img src="https://placehold.co/240x160/1e293b/10b981?text=Game+Recap" class="feed-card__image" alt="" />
-          </div>
-          <div class="feed-card__content">
-            <h4 class="feed-card__title">Duke 82, UNC 74: Flagg's 28-Point Masterclass Cements Legacy</h4>
-            <p class="feed-card__summary">Flagg put on a show in the rivalry game with 28 points, 9 rebounds, and 5 assists. He hit 4 threes and locked down RJ Davis in crunch time.</p>
-            <div class="feed-card__meta">
-              <span class="feed-card__tag game-recap">Game Recap</span>
-              <span class="feed-card__mention-badge">Player Focus</span>
-              <span class="feed-card__author-time">Kyle Boone &bull; 2d ago</span>
-              <a href="#" class="feed-card__cta">Read More &nearr;</a>
-            </div>
-          </div>
-        </article>
-
-        <!-- Divider: more general coverage -->
-        <div class="feed-divider">
-          <div class="feed-divider__line"></div>
-          <span class="feed-divider__label">More Draft News</span>
-          <div class="feed-divider__line"></div>
-        </div>
-
-        <!-- General article (not player-specific) -->
         <article class="feed-card">
           <div class="feed-card__image-wrapper">
             <img src="https://placehold.co/240x160/1e293b/f43f5e?text=Draft+Intel" class="feed-card__image" alt="" />
           </div>
           <div class="feed-card__content">
             <h4 class="feed-card__title">2025 NBA Draft: 5 Prospects Who Could Surprise on Draft Night</h4>
-            <p class="feed-card__summary">A look at five names who are quietly rising up boards, including a few international prospects who could sneak into the lottery.</p>
+            <p class="feed-card__summary">Five names quietly rising up boards, including international prospects who could sneak into the lottery.</p>
             <div class="feed-card__meta">
               <span class="feed-card__tag draft-intel">Draft Intel</span>
               <span class="feed-card__author-time">Kevin O'Connor &bull; 3d ago</span>
+              <a href="#" class="feed-card__cta">Read More &nearr;</a>
+            </div>
+          </div>
+        </article>
+
+        <article class="feed-card">
+          <div class="feed-card__image-wrapper">
+            <img src="https://placehold.co/240x160/1e293b/6366f1?text=Big+Board" class="feed-card__image" alt="" />
+          </div>
+          <div class="feed-card__content">
+            <h4 class="feed-card__title">Updated Big Board: Full 60-Pick Rankings Ahead of March Madness</h4>
+            <p class="feed-card__summary">Our pre-tournament rankings across the entire draft class, with risers and fallers from conference play.</p>
+            <div class="feed-card__meta">
+              <span class="feed-card__tag big-board">Big Board</span>
+              <span class="feed-card__author-time">Jonathan Givony &bull; 5d ago</span>
               <a href="#" class="feed-card__cta">Read More &nearr;</a>
             </div>
           </div>
@@ -947,7 +718,21 @@
           </div>
         </article>
 
-        <!-- Pagination -->
+        <article class="feed-card">
+          <div class="feed-card__image-wrapper">
+            <img src="https://placehold.co/240x160/1e293b/15803d?text=Game+Recap" class="feed-card__image" alt="" />
+          </div>
+          <div class="feed-card__content">
+            <h4 class="feed-card__title">March Madness Day 1 Recap: Draft Stock Winners and Losers</h4>
+            <p class="feed-card__summary">Who helped themselves and who hurt their stock on the opening day of the tournament? We break it all down.</p>
+            <div class="feed-card__meta">
+              <span class="feed-card__tag game-recap">Game Recap</span>
+              <span class="feed-card__author-time">Kyle Boone &bull; 6d ago</span>
+              <a href="#" class="feed-card__cta">Read More &nearr;</a>
+            </div>
+          </div>
+        </article>
+
         <div class="feed-pagination">
           <button class="feed-pagination__btn" disabled>&lsaquo;</button>
           <button class="feed-pagination__btn active">1</button>
@@ -955,211 +740,373 @@
           <button class="feed-pagination__btn">3</button>
           <button class="feed-pagination__btn">&rsaquo;</button>
         </div>
-      </div>
+      </section>
+    </div>
 
-      <!-- ===== PODCASTS PANEL ===== -->
-      <div id="podcastsPanel" class="media-feed-panel">
 
-        <!-- Podcast episode card 1 -->
-        <article class="podcast-card">
-          <div class="podcast-card__artwork">
-            <img src="https://placehold.co/160x160/1e293b/d946ef?text=No+Ceilings" alt="No Ceilings Draft Pod" />
-            <div class="podcast-card__play-overlay">
-              <div class="podcast-card__play-icon">
-                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-              </div>
-            </div>
+    <!-- ======================================================================
+         SCENARIO B: KHAMAN MALUACH — Article mentions, no podcasts
+         No tabs. Player-specific articles on top, divider, then backfill.
+         ====================================================================== -->
+    <div id="scenario-b" class="scenario-section">
+      <section class="section">
+        <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+          <svg class="icon icon-lg" style="color: var(--color-accent-cyan); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+            <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <path d="M2 13h8"></path><path d="M2 17h8"></path><path d="M2 21h8"></path>
+          </svg>
+          Latest News & Updates
+        </h2>
+        <p class="section-subtitle">Recent coverage and analysis of Khaman Maluach</p>
+
+        <!-- Player-specific articles float to the top -->
+        <article class="feed-card feed-card--player-specific">
+          <div class="feed-card__image-wrapper">
+            <img src="https://placehold.co/240x160/1e293b/7c3aed?text=Maluach" class="feed-card__image" alt="" />
           </div>
-          <div class="podcast-card__content">
-            <div class="podcast-card__show-line">
-              <span class="podcast-card__show">No Ceilings Draft Pod</span>
-              <span class="episode-tag episode-tag--draft-analysis">Draft Analysis</span>
-            </div>
-            <h4 class="podcast-card__title">Cooper Flagg's Ceiling Is Limitless: Duke Film Breakdown + Combine Projection</h4>
-            <p class="podcast-card__summary">Deep dive into Flagg's Duke tape: scoring versatility, defensive IQ, and why his combine measurements could vault him into a tier of his own.</p>
-            <div class="podcast-card__meta">
-              <button class="podcast-card__play-btn" aria-label="Play episode">
-                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-              </button>
-              <span class="podcast-card__duration">
-                <svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                1h 23m
-              </span>
-              <span class="meta-dot"></span>
-              <span class="podcast-card__time">2 hours ago</span>
-              <span class="meta-dot"></span>
-              <span class="podcast-card__mention-badge">Tagged</span>
-              <a href="#" class="podcast-card__cta">View Episode &nearr;</a>
+          <div class="feed-card__content">
+            <h4 class="feed-card__title">Khaman Maluach Scouting Report: Duke's Rim-Protecting Freshman</h4>
+            <p class="feed-card__summary">Breaking down how Maluach's length and shot-blocking translate to the next level, and where he needs to develop offensively.</p>
+            <div class="feed-card__meta">
+              <span class="feed-card__tag scouting-report">Scouting Report</span>
+              <span class="feed-card__mention-badge">Player Focus</span>
+              <span class="feed-card__author-time">Kyle Boone &bull; 2d ago</span>
+              <a href="#" class="feed-card__cta">Read More &nearr;</a>
             </div>
           </div>
         </article>
 
-        <!-- Podcast episode card 2 -->
-        <article class="podcast-card">
-          <div class="podcast-card__artwork">
-            <img src="https://placehold.co/160x160/1e293b/6366f1?text=Locked+On" alt="Locked On NBA Draft" />
-            <div class="podcast-card__play-overlay">
-              <div class="podcast-card__play-icon">
-                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-              </div>
-            </div>
+        <article class="feed-card feed-card--player-specific">
+          <div class="feed-card__image-wrapper">
+            <img src="https://placehold.co/240x160/1e293b/1d4ed8?text=Mock+Draft" class="feed-card__image" alt="" />
           </div>
-          <div class="podcast-card__content">
-            <div class="podcast-card__show-line">
-              <span class="podcast-card__show">Locked On NBA Draft</span>
-              <span class="episode-tag episode-tag--prospect-debate">Prospect Debate</span>
-            </div>
-            <h4 class="podcast-card__title">Flagg vs. Bailey: The Great 2025 Debate — Who Deserves No. 1?</h4>
-            <p class="podcast-card__summary">We break down both sides of the argument: Flagg's two-way dominance vs. Bailey's scoring ceiling, and what each would mean for a lottery franchise.</p>
-            <div class="podcast-card__meta">
-              <button class="podcast-card__play-btn" aria-label="Play episode">
-                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-              </button>
-              <span class="podcast-card__duration">
-                <svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                52m
-              </span>
-              <span class="meta-dot"></span>
-              <span class="podcast-card__time">1 day ago</span>
-              <span class="meta-dot"></span>
-              <span class="podcast-card__mention-badge">Tagged</span>
-              <a href="#" class="podcast-card__cta">View Episode &nearr;</a>
+          <div class="feed-card__content">
+            <h4 class="feed-card__title">2025 Mock Draft 6.0: Lottery Picks and Sleeper Picks</h4>
+            <p class="feed-card__summary">Maluach slots in at 7th overall in our latest mock. His combination of size and mobility makes him a top-10 lock.</p>
+            <div class="feed-card__meta">
+              <span class="feed-card__tag mock-draft">Mock Draft</span>
+              <span class="feed-card__mention-badge">Mentioned</span>
+              <span class="feed-card__author-time">Sam Vecenie &bull; 5d ago</span>
+              <a href="#" class="feed-card__cta">Read More &nearr;</a>
             </div>
           </div>
         </article>
 
-        <!-- Podcast episode card 3 -->
-        <article class="podcast-card">
-          <div class="podcast-card__artwork">
-            <img src="https://placehold.co/160x160/1e293b/f59e0b?text=Ringer+NBA" alt="The Ringer NBA Draft Show" />
-            <div class="podcast-card__play-overlay">
-              <div class="podcast-card__play-icon">
-                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-              </div>
-            </div>
+        <article class="feed-card feed-card--player-specific">
+          <div class="feed-card__image-wrapper">
+            <img src="https://placehold.co/240x160/1e293b/06b6d4?text=Duke+Film" class="feed-card__image" alt="" />
           </div>
-          <div class="podcast-card__content">
-            <div class="podcast-card__show-line">
-              <span class="podcast-card__show">The Ringer NBA Draft Show</span>
-              <span class="episode-tag episode-tag--interview">Interview</span>
-            </div>
-            <h4 class="podcast-card__title">Exclusive: Duke Coach on Flagg's Growth, Leadership, and Draft Readiness</h4>
-            <p class="podcast-card__summary">We sit down with Duke's coaching staff to discuss Flagg's evolution as a player, his mental toughness, and why they think he's the most NBA-ready prospect they've coached.</p>
-            <div class="podcast-card__meta">
-              <button class="podcast-card__play-btn" aria-label="Play episode">
-                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-              </button>
-              <span class="podcast-card__duration">
-                <svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                1h 08m
-              </span>
-              <span class="meta-dot"></span>
-              <span class="podcast-card__time">3 days ago</span>
-              <span class="meta-dot"></span>
-              <span class="podcast-card__mention-badge">Tagged</span>
-              <a href="#" class="podcast-card__cta">View Episode &nearr;</a>
+          <div class="feed-card__content">
+            <h4 class="feed-card__title">Duke's Freshman Class: Film Grading Flagg, Maluach, and Swinney</h4>
+            <p class="feed-card__summary">We grade each Duke freshman's college tape and break down how their skills project to the next level.</p>
+            <div class="feed-card__meta">
+              <span class="feed-card__tag film-study">Film Study</span>
+              <span class="feed-card__mention-badge">Mentioned</span>
+              <span class="feed-card__author-time">Mike Schmitz &bull; 1w ago</span>
+              <a href="#" class="feed-card__cta">Read More &nearr;</a>
             </div>
           </div>
         </article>
 
-        <!-- Podcast episode card 4 -->
-        <article class="podcast-card">
-          <div class="podcast-card__artwork">
-            <img src="https://placehold.co/160x160/1e293b/06b6d4?text=ESPN+Draft" alt="ESPN NBA Draft Pod" />
-            <div class="podcast-card__play-overlay">
-              <div class="podcast-card__play-icon">
-                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-              </div>
-            </div>
+        <!-- Divider separating player-specific from backfill -->
+        <div class="feed-divider">
+          <div class="feed-divider__line"></div>
+          <span class="feed-divider__label">More Draft News</span>
+          <div class="feed-divider__line"></div>
+        </div>
+
+        <article class="feed-card">
+          <div class="feed-card__image-wrapper">
+            <img src="https://placehold.co/240x160/1e293b/f43f5e?text=Draft+Intel" class="feed-card__image" alt="" />
           </div>
-          <div class="podcast-card__content">
-            <div class="podcast-card__show-line">
-              <span class="podcast-card__show">ESPN NBA Draft Pod</span>
-              <span class="episode-tag episode-tag--mock-draft">Mock Draft</span>
-            </div>
-            <h4 class="podcast-card__title">Mock Draft 5.0: Flagg to Atlanta, Bailey to Washington — Full First Round Breakdown</h4>
-            <p class="podcast-card__summary">Our updated mock draft has Flagg going first overall to the Hawks. We explain the fit, the need, and why Atlanta won't overthink this pick.</p>
-            <div class="podcast-card__meta">
-              <button class="podcast-card__play-btn" aria-label="Play episode">
-                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-              </button>
-              <span class="podcast-card__duration">
-                <svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                1h 45m
-              </span>
-              <span class="meta-dot"></span>
-              <span class="podcast-card__time">5 days ago</span>
-              <span class="meta-dot"></span>
-              <span class="podcast-card__mention-badge">Tagged</span>
-              <a href="#" class="podcast-card__cta">View Episode &nearr;</a>
+          <div class="feed-card__content">
+            <h4 class="feed-card__title">2025 NBA Draft: 5 Prospects Who Could Surprise on Draft Night</h4>
+            <p class="feed-card__summary">Five names quietly rising up boards, including international prospects who could sneak into the lottery.</p>
+            <div class="feed-card__meta">
+              <span class="feed-card__tag draft-intel">Draft Intel</span>
+              <span class="feed-card__author-time">Kevin O'Connor &bull; 3d ago</span>
+              <a href="#" class="feed-card__cta">Read More &nearr;</a>
             </div>
           </div>
         </article>
 
-        <!-- Podcast episode card 5 -->
-        <article class="podcast-card">
-          <div class="podcast-card__artwork">
-            <img src="https://placehold.co/160x160/1e293b/f43f5e?text=Draft+Room" alt="The Draft Room" />
-            <div class="podcast-card__play-overlay">
-              <div class="podcast-card__play-icon">
-                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-              </div>
-            </div>
+        <article class="feed-card">
+          <div class="feed-card__image-wrapper">
+            <img src="https://placehold.co/240x160/1e293b/6366f1?text=Big+Board" class="feed-card__image" alt="" />
           </div>
-          <div class="podcast-card__content">
-            <div class="podcast-card__show-line">
-              <span class="podcast-card__show">The Draft Room</span>
-              <span class="episode-tag episode-tag--trade-intel">Trade Intel</span>
-            </div>
-            <h4 class="podcast-card__title">Trade Scenarios That Could Shake Up the Top 3 — Flagg, Bailey, and the Hawks Factor</h4>
-            <p class="podcast-card__summary">Multiple teams are reportedly exploring trade-up packages. We detail the scenarios and what they'd mean for Flagg's landing spot.</p>
-            <div class="podcast-card__meta">
-              <button class="podcast-card__play-btn" aria-label="Play episode">
-                <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-              </button>
-              <span class="podcast-card__duration">
-                <svg class="icon" viewBox="0 0 24 24" style="width: 0.75rem; height: 0.75rem;">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                38m
-              </span>
-              <span class="meta-dot"></span>
-              <span class="podcast-card__time">1 week ago</span>
-              <span class="meta-dot"></span>
-              <span class="podcast-card__mention-badge">Tagged</span>
-              <a href="#" class="podcast-card__cta">View Episode &nearr;</a>
+          <div class="feed-card__content">
+            <h4 class="feed-card__title">Updated Big Board: Full 60-Pick Rankings Ahead of March Madness</h4>
+            <p class="feed-card__summary">Our pre-tournament rankings across the entire draft class, with risers and fallers from conference play.</p>
+            <div class="feed-card__meta">
+              <span class="feed-card__tag big-board">Big Board</span>
+              <span class="feed-card__author-time">Jonathan Givony &bull; 5d ago</span>
+              <a href="#" class="feed-card__cta">Read More &nearr;</a>
             </div>
           </div>
         </article>
 
-        <!-- Pagination -->
         <div class="feed-pagination">
           <button class="feed-pagination__btn" disabled>&lsaquo;</button>
-          <button class="feed-pagination__btn active--fuchsia">1</button>
+          <button class="feed-pagination__btn active">1</button>
+          <button class="feed-pagination__btn">2</button>
           <button class="feed-pagination__btn">&rsaquo;</button>
         </div>
-      </div>
+      </section>
+    </div>
 
-    </section>
+
+    <!-- ======================================================================
+         SCENARIO C: COOPER FLAGG — Articles + Podcast mentions
+         Tabbed layout unlocked. Both panels populated.
+         ====================================================================== -->
+    <div id="scenario-c" class="scenario-section">
+      <section class="section">
+        <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
+          <svg class="icon icon-lg" style="color: var(--color-accent-cyan); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24">
+            <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <path d="M2 13h8"></path><path d="M2 17h8"></path><path d="M2 21h8"></path>
+          </svg>
+          Latest News & Updates
+        </h2>
+        <p class="section-subtitle">Recent coverage and analysis of Cooper Flagg</p>
+
+        <!-- Tab Switcher — only rendered when podcast count > 0 -->
+        <div class="media-feed-tabs">
+          <button class="media-feed-tab active--articles" data-tab="c-articles" onclick="switchTab('c','articles')">
+            <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+              <path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <path d="M2 13h8"></path><path d="M2 17h8"></path>
+            </svg>
+            Articles
+            <span class="media-feed-tab__count">12</span>
+          </button>
+          <button class="media-feed-tab" data-tab="c-podcasts" onclick="switchTab('c','podcasts')">
+            <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+              <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+            </svg>
+            Podcasts
+            <span class="media-feed-tab__count">5</span>
+          </button>
+        </div>
+
+        <!-- ARTICLES PANEL -->
+        <div id="c-articlesPanel" class="media-feed-panel active">
+          <article class="feed-card feed-card--player-specific">
+            <div class="feed-card__image-wrapper">
+              <img src="https://placehold.co/240x160/1e293b/06b6d4?text=Flagg+Film" class="feed-card__image" alt="" />
+            </div>
+            <div class="feed-card__content">
+              <h4 class="feed-card__title">Cooper Flagg Film Breakdown: Why His Defensive Versatility Sets Him Apart</h4>
+              <p class="feed-card__summary">An in-depth look at Flagg's ability to guard 1-through-5 and how his lateral quickness compares to past top picks.</p>
+              <div class="feed-card__meta">
+                <span class="feed-card__tag scouting-report">Scouting Report</span>
+                <span class="feed-card__mention-badge">Player Focus</span>
+                <span class="feed-card__author-time">Sam Vecenie &bull; 3h ago</span>
+                <a href="#" class="feed-card__cta">Read More &nearr;</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="feed-card feed-card--player-specific">
+            <div class="feed-card__image-wrapper">
+              <img src="https://placehold.co/240x160/1e293b/6366f1?text=Big+Board" class="feed-card__image" alt="" />
+            </div>
+            <div class="feed-card__content">
+              <h4 class="feed-card__title">Updated Big Board: Flagg Holds Firm at No. 1 After March Madness Showing</h4>
+              <p class="feed-card__summary">Our latest rankings keep Flagg at the top despite Ace Bailey's hot streak.</p>
+              <div class="feed-card__meta">
+                <span class="feed-card__tag big-board">Big Board</span>
+                <span class="feed-card__mention-badge">Mentioned</span>
+                <span class="feed-card__author-time">Jonathan Givony &bull; 1d ago</span>
+                <a href="#" class="feed-card__cta">Read More &nearr;</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="feed-card feed-card--player-specific">
+            <div class="feed-card__image-wrapper">
+              <img src="https://placehold.co/240x160/1e293b/10b981?text=Game+Recap" class="feed-card__image" alt="" />
+            </div>
+            <div class="feed-card__content">
+              <h4 class="feed-card__title">Duke 82, UNC 74: Flagg's 28-Point Masterclass Cements Legacy</h4>
+              <p class="feed-card__summary">Flagg put on a show in the rivalry game with 28 points, 9 rebounds, and 5 assists.</p>
+              <div class="feed-card__meta">
+                <span class="feed-card__tag game-recap">Game Recap</span>
+                <span class="feed-card__mention-badge">Player Focus</span>
+                <span class="feed-card__author-time">Kyle Boone &bull; 2d ago</span>
+                <a href="#" class="feed-card__cta">Read More &nearr;</a>
+              </div>
+            </div>
+          </article>
+
+          <div class="feed-divider">
+            <div class="feed-divider__line"></div>
+            <span class="feed-divider__label">More Draft News</span>
+            <div class="feed-divider__line"></div>
+          </div>
+
+          <article class="feed-card">
+            <div class="feed-card__image-wrapper">
+              <img src="https://placehold.co/240x160/1e293b/f43f5e?text=Draft+Intel" class="feed-card__image" alt="" />
+            </div>
+            <div class="feed-card__content">
+              <h4 class="feed-card__title">2025 NBA Draft: 5 Prospects Who Could Surprise on Draft Night</h4>
+              <p class="feed-card__summary">Five names quietly rising up boards, including international prospects who could sneak into the lottery.</p>
+              <div class="feed-card__meta">
+                <span class="feed-card__tag draft-intel">Draft Intel</span>
+                <span class="feed-card__author-time">Kevin O'Connor &bull; 3d ago</span>
+                <a href="#" class="feed-card__cta">Read More &nearr;</a>
+              </div>
+            </div>
+          </article>
+
+          <div class="feed-pagination">
+            <button class="feed-pagination__btn" disabled>&lsaquo;</button>
+            <button class="feed-pagination__btn active">1</button>
+            <button class="feed-pagination__btn">2</button>
+            <button class="feed-pagination__btn">3</button>
+            <button class="feed-pagination__btn">&rsaquo;</button>
+          </div>
+        </div>
+
+        <!-- PODCASTS PANEL -->
+        <div id="c-podcastsPanel" class="media-feed-panel">
+          <article class="podcast-card">
+            <div class="podcast-card__artwork">
+              <img src="https://placehold.co/160x160/1e293b/d946ef?text=No+Ceilings" alt="No Ceilings Draft Pod" />
+              <div class="podcast-card__play-overlay"><div class="podcast-card__play-icon"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg></div></div>
+            </div>
+            <div class="podcast-card__content">
+              <div class="podcast-card__show-line">
+                <span class="podcast-card__show">No Ceilings Draft Pod</span>
+                <span class="episode-tag episode-tag--draft-analysis">Draft Analysis</span>
+              </div>
+              <h4 class="podcast-card__title">Cooper Flagg's Ceiling Is Limitless: Duke Film Breakdown + Combine Projection</h4>
+              <p class="podcast-card__summary">Deep dive into Flagg's Duke tape: scoring versatility, defensive IQ, and combine measurement projections.</p>
+              <div class="podcast-card__meta">
+                <button class="podcast-card__play-btn" aria-label="Play"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg></button>
+                <span class="podcast-card__duration">1h 23m</span>
+                <span class="meta-dot"></span>
+                <span class="podcast-card__time">2 hours ago</span>
+                <span class="meta-dot"></span>
+                <span class="podcast-card__mention-badge">Tagged</span>
+                <a href="#" class="podcast-card__cta">View Episode &nearr;</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="podcast-card">
+            <div class="podcast-card__artwork">
+              <img src="https://placehold.co/160x160/1e293b/6366f1?text=Locked+On" alt="Locked On NBA Draft" />
+              <div class="podcast-card__play-overlay"><div class="podcast-card__play-icon"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg></div></div>
+            </div>
+            <div class="podcast-card__content">
+              <div class="podcast-card__show-line">
+                <span class="podcast-card__show">Locked On NBA Draft</span>
+                <span class="episode-tag episode-tag--prospect-debate">Prospect Debate</span>
+              </div>
+              <h4 class="podcast-card__title">Flagg vs. Bailey: The Great 2025 Debate — Who Deserves No. 1?</h4>
+              <p class="podcast-card__summary">Both sides of the argument: Flagg's two-way dominance vs. Bailey's scoring ceiling.</p>
+              <div class="podcast-card__meta">
+                <button class="podcast-card__play-btn" aria-label="Play"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg></button>
+                <span class="podcast-card__duration">52m</span>
+                <span class="meta-dot"></span>
+                <span class="podcast-card__time">1 day ago</span>
+                <span class="meta-dot"></span>
+                <span class="podcast-card__mention-badge">Tagged</span>
+                <a href="#" class="podcast-card__cta">View Episode &nearr;</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="podcast-card">
+            <div class="podcast-card__artwork">
+              <img src="https://placehold.co/160x160/1e293b/f59e0b?text=Ringer+NBA" alt="The Ringer NBA Draft Show" />
+              <div class="podcast-card__play-overlay"><div class="podcast-card__play-icon"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg></div></div>
+            </div>
+            <div class="podcast-card__content">
+              <div class="podcast-card__show-line">
+                <span class="podcast-card__show">The Ringer NBA Draft Show</span>
+                <span class="episode-tag episode-tag--interview">Interview</span>
+              </div>
+              <h4 class="podcast-card__title">Exclusive: Duke Coach on Flagg's Growth, Leadership, and Draft Readiness</h4>
+              <p class="podcast-card__summary">Duke's coaching staff discusses Flagg's evolution, mental toughness, and why they think he's the most NBA-ready prospect they've coached.</p>
+              <div class="podcast-card__meta">
+                <button class="podcast-card__play-btn" aria-label="Play"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg></button>
+                <span class="podcast-card__duration">1h 08m</span>
+                <span class="meta-dot"></span>
+                <span class="podcast-card__time">3 days ago</span>
+                <span class="meta-dot"></span>
+                <span class="podcast-card__mention-badge">Tagged</span>
+                <a href="#" class="podcast-card__cta">View Episode &nearr;</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="podcast-card">
+            <div class="podcast-card__artwork">
+              <img src="https://placehold.co/160x160/1e293b/06b6d4?text=ESPN+Draft" alt="ESPN NBA Draft Pod" />
+              <div class="podcast-card__play-overlay"><div class="podcast-card__play-icon"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg></div></div>
+            </div>
+            <div class="podcast-card__content">
+              <div class="podcast-card__show-line">
+                <span class="podcast-card__show">ESPN NBA Draft Pod</span>
+                <span class="episode-tag episode-tag--mock-draft">Mock Draft</span>
+              </div>
+              <h4 class="podcast-card__title">Mock Draft 5.0: Flagg to Atlanta, Bailey to Washington — Full First Round</h4>
+              <p class="podcast-card__summary">Flagg goes first overall to the Hawks. We explain the fit, the need, and why Atlanta won't overthink this.</p>
+              <div class="podcast-card__meta">
+                <button class="podcast-card__play-btn" aria-label="Play"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg></button>
+                <span class="podcast-card__duration">1h 45m</span>
+                <span class="meta-dot"></span>
+                <span class="podcast-card__time">5 days ago</span>
+                <span class="meta-dot"></span>
+                <span class="podcast-card__mention-badge">Tagged</span>
+                <a href="#" class="podcast-card__cta">View Episode &nearr;</a>
+              </div>
+            </div>
+          </article>
+
+          <article class="podcast-card">
+            <div class="podcast-card__artwork">
+              <img src="https://placehold.co/160x160/1e293b/f43f5e?text=Draft+Room" alt="The Draft Room" />
+              <div class="podcast-card__play-overlay"><div class="podcast-card__play-icon"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg></div></div>
+            </div>
+            <div class="podcast-card__content">
+              <div class="podcast-card__show-line">
+                <span class="podcast-card__show">The Draft Room</span>
+                <span class="episode-tag episode-tag--trade-intel">Trade Intel</span>
+              </div>
+              <h4 class="podcast-card__title">Trade Scenarios That Could Shake Up the Top 3 — Flagg, Bailey, and the Hawks Factor</h4>
+              <p class="podcast-card__summary">Multiple teams exploring trade-up packages. We detail the scenarios and what they'd mean for Flagg's landing spot.</p>
+              <div class="podcast-card__meta">
+                <button class="podcast-card__play-btn" aria-label="Play"><svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg></button>
+                <span class="podcast-card__duration">38m</span>
+                <span class="meta-dot"></span>
+                <span class="podcast-card__time">1 week ago</span>
+                <span class="meta-dot"></span>
+                <span class="podcast-card__mention-badge">Tagged</span>
+                <a href="#" class="podcast-card__cta">View Episode &nearr;</a>
+              </div>
+            </div>
+          </article>
+
+          <div class="feed-pagination">
+            <button class="feed-pagination__btn" disabled>&lsaquo;</button>
+            <button class="feed-pagination__btn active--fuchsia">1</button>
+            <button class="feed-pagination__btn">&rsaquo;</button>
+          </div>
+        </div>
+      </section>
+    </div>
 
   </main>
 
-  <!-- ============================================================================
-       FOOTER
-       ========================================================================= -->
+  <!-- FOOTER -->
   <footer class="footer">
     <div class="footer-content">
       <div class="footer-grid">
@@ -1206,26 +1153,23 @@
     </div>
   </footer>
 
-  <!-- ============================================================================
-       JAVASCRIPT — Tab switching
-       ========================================================================= -->
   <script>
-    function switchTab(tab) {
-      // Update tab buttons
-      document.querySelectorAll('.media-feed-tab').forEach(btn => {
+    function showScenario(id, btn) {
+      document.querySelectorAll('.scenario-section').forEach(s => s.classList.remove('active'));
+      document.getElementById('scenario-' + id).classList.add('active');
+      document.querySelectorAll('.scenario-switcher__btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+
+    function switchTab(scenario, tab) {
+      const section = document.getElementById('scenario-' + scenario);
+      section.querySelectorAll('.media-feed-tab').forEach(btn => {
         btn.classList.remove('active--articles', 'active--podcasts');
       });
-
-      const activeBtn = document.querySelector(`[data-tab="${tab}"]`);
-      activeBtn.classList.add(tab === 'articles' ? 'active--articles' : 'active--podcasts');
-
-      // Update panels
-      document.querySelectorAll('.media-feed-panel').forEach(panel => {
-        panel.classList.remove('active');
-      });
-
-      document.getElementById(tab === 'articles' ? 'articlesPanel' : 'podcastsPanel')
-        .classList.add('active');
+      section.querySelector(`[data-tab="${scenario}-${tab}"]`)
+        .classList.add(tab === 'articles' ? 'active--articles' : 'active--podcasts');
+      section.querySelectorAll('.media-feed-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById(scenario + '-' + tab + 'Panel').classList.add('active');
     }
   </script>
 

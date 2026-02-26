@@ -210,21 +210,25 @@ async def get_player_podcast_feed(
     player_id: int,
     limit: int = 20,
     offset: int = 0,
+    min_items: int = 5,
 ) -> PodcastFeedResponse:
     """Fetch podcast feed for a specific player.
 
     Queries episodes where the player has a mention row (via
     PlayerContentMention with content_type=PODCAST) OR where
-    PodcastEpisode.player_id matches directly.
+    PodcastEpisode.player_id matches directly. If results are below
+    min_items, backfills with general podcast episodes (excluding
+    already-included IDs).
 
     Args:
         db: Async database session
         player_id: Player to get episodes for
         limit: Maximum items to return
         offset: Number of items to skip
+        min_items: Minimum items before backfilling with general feed
 
     Returns:
-        PodcastFeedResponse with items marked as player-specific
+        PodcastFeedResponse with items marked with is_player_specific
     """
     # Subquery: episode IDs via mention junction table
     mention_subq = (
@@ -257,12 +261,47 @@ async def get_player_podcast_feed(
     result = await db.execute(player_query)
     rows = result.mappings().all()
 
+    player_episode_ids: set[int] = set()
     episode_ids = [row["id"] for row in rows]
     mentions = await _load_mentions_for_episodes(db, episode_ids)
-    items = [
-        _row_to_episode_read(row, is_player_specific=True, mentions=mentions)  # type: ignore[arg-type]
-        for row in rows
-    ]
+    items: list[PodcastEpisodeRead] = []
+
+    for row in rows:
+        player_episode_ids.add(row["id"])
+        items.append(
+            _row_to_episode_read(row, is_player_specific=True, mentions=mentions)  # type: ignore[arg-type]
+        )
+
+    # Backfill with general podcast feed if insufficient player-specific episodes
+    if len(items) < min_items and offset == 0:
+        backfill_needed = min_items - len(items)
+        backfill_query = (
+            select(*_PODCAST_FEED_COLUMNS)  # type: ignore[call-overload]
+            .select_from(PodcastEpisode)
+            .join(PodcastShow, PodcastShow.id == PodcastEpisode.show_id)  # type: ignore[arg-type]
+            .order_by(PodcastEpisode.published_at.desc())  # type: ignore[attr-defined]
+            .limit(backfill_needed)
+        )
+
+        if player_episode_ids:
+            backfill_query = backfill_query.where(
+                PodcastEpisode.id.notin_(list(player_episode_ids))  # type: ignore[union-attr]
+            )
+
+        backfill_result = await db.execute(backfill_query)
+        backfill_rows = backfill_result.mappings().all()
+        backfill_ids = [row["id"] for row in backfill_rows]
+        backfill_mentions = await _load_mentions_for_episodes(db, backfill_ids)
+        for row in backfill_rows:
+            if len(items) >= limit:
+                break
+            items.append(
+                _row_to_episode_read(
+                    row,  # type: ignore[arg-type]
+                    is_player_specific=False,
+                    mentions=backfill_mentions,
+                )
+            )
 
     # Count total player-specific episodes
     count_query = (
