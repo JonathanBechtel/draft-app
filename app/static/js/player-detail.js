@@ -953,23 +953,28 @@ const PlayerFeedModule = {
     const feedContainer = document.getElementById('playerFeedContainer');
     if (!feedContainer) return;
 
-    if (!window.PLAYER_FEED || window.PLAYER_FEED.length === 0) {
+    const hasArticles = window.PLAYER_FEED && window.PLAYER_FEED.length > 0;
+    const hasPodcastFeed = window.PLAYER_PODCAST_FEED && window.PLAYER_PODCAST_FEED.length > 0;
+
+    if (!hasArticles && !hasPodcastFeed) {
       feedContainer.innerHTML = this.renderEmptyState();
       return;
     }
 
     // If no articles or podcasts mention this player, update the heading to generic "Draft News"
-    this.hasPlayerSpecific = window.PLAYER_FEED.some(i => i.is_player_specific);
-    const hasPodcastSpecific = window.PLAYER_PODCAST_FEED && window.PLAYER_PODCAST_FEED.some(i => i.is_player_specific);
+    this.hasPlayerSpecific = hasArticles && window.PLAYER_FEED.some(i => i.is_player_specific);
+    const hasPodcastSpecific = hasPodcastFeed && window.PLAYER_PODCAST_FEED.some(i => i.is_player_specific);
     if (!this.hasPlayerSpecific && !hasPodcastSpecific) {
       const heading = document.getElementById('newsFeedHeading');
       if (heading) heading.textContent = 'Draft News';
     }
 
-    this.totalPages = Math.ceil(window.PLAYER_FEED.length / this.itemsPerPage);
+    if (hasArticles) {
+      this.totalPages = Math.ceil(window.PLAYER_FEED.length / this.itemsPerPage);
+    }
 
-    // Check if there are podcast mentions
-    if (window.PLAYER_PODCAST_FEED && window.PLAYER_PODCAST_FEED.length > 0) {
+    // Check if there are podcast episodes
+    if (hasPodcastFeed) {
       this.hasPodcasts = true;
       this.podcastTotalPages = Math.ceil(window.PLAYER_PODCAST_FEED.length / this.itemsPerPage);
     }
@@ -984,18 +989,32 @@ const PlayerFeedModule = {
     const feedContainer = document.getElementById('playerFeedContainer');
     if (!feedContainer) return;
 
-    if (this.hasPodcasts) {
-      // Render tabbed layout
+    const hasArticles = window.PLAYER_FEED && window.PLAYER_FEED.length > 0;
+
+    if (this.hasPodcasts && hasArticles) {
+      // Tabbed layout with both panels
+      const articlesActive = this.activeTab === 'articles';
       let html = this.renderTabs();
-      html += '<div class="media-feed-panel active" id="articlePanel">';
+      html += `<div class="media-feed-panel ${articlesActive ? 'active' : ''}" id="articlePanel">`;
       html += this.renderArticlePage();
       html += '</div>';
-      html += '<div class="media-feed-panel" id="podcastPanel"></div>';
+      html += `<div class="media-feed-panel ${articlesActive ? '' : 'active'}" id="podcastPanel"></div>`;
       feedContainer.innerHTML = html;
       this.attachTabListeners();
       this.attachPaginationListeners();
+      if (!articlesActive && !this.podcastRendered) {
+        this.renderPodcastFeed();
+        this.podcastRendered = true;
+      }
+    } else if (this.hasPodcasts) {
+      // Podcasts only — no tabs needed
+      this.podcastRendered = false;
+      let html = '<div id="podcastPanel"></div>';
+      feedContainer.innerHTML = html;
+      this.renderPodcastFeed();
+      this.podcastRendered = true;
     } else {
-      // Original layout — no tabs
+      // Articles only — no tabs
       let html = this.renderArticlePage();
       feedContainer.innerHTML = html;
       this.attachPaginationListeners();
@@ -1021,8 +1040,8 @@ const PlayerFeedModule = {
    * Render tab bar for Articles / Podcasts
    */
   renderTabs() {
-    const articleCount = window.PLAYER_FEED.filter(i => i.is_player_specific).length;
-    const podcastCount = window.PLAYER_PODCAST_FEED.filter(i => i.is_player_specific).length;
+    const articleCount = (window.PLAYER_FEED || []).filter(i => i.is_player_specific).length;
+    const podcastCount = (window.PLAYER_PODCAST_FEED || []).filter(i => i.is_player_specific).length;
     const isArticlesActive = this.activeTab === 'articles';
     const isPodcastsActive = this.activeTab === 'podcasts';
 
@@ -1285,7 +1304,11 @@ const PlayerFeedModule = {
    * Attach click listeners to pagination buttons
    */
   attachPaginationListeners() {
-    const pills = document.querySelectorAll('.feed-pagination__pill');
+    // Scope to article panel (or full container if no tabs) to avoid podcast collisions
+    const scope = document.getElementById('articlePanel') || document.getElementById('playerFeedContainer');
+    if (!scope) return;
+
+    const pills = scope.querySelectorAll('.feed-pagination__pill:not(.podcast-page-pill)');
     pills.forEach((pill) => {
       pill.addEventListener('click', (e) => {
         const page = parseInt(e.target.dataset.page, 10);
@@ -1295,8 +1318,8 @@ const PlayerFeedModule = {
       });
     });
 
-    const prevBtn = document.querySelector('.feed-pagination__arrow--prev');
-    const nextBtn = document.querySelector('.feed-pagination__arrow--next');
+    const prevBtn = scope.querySelector('.feed-pagination__arrow--prev:not(.podcast-page-nav)');
+    const nextBtn = scope.querySelector('.feed-pagination__arrow--next:not(.podcast-page-nav)');
 
     if (prevBtn) {
       prevBtn.addEventListener('click', () => this.goToPage(this.currentPage - 1));
