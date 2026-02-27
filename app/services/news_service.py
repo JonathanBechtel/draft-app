@@ -622,7 +622,7 @@ def _row_to_news_item_read(row: dict, is_player_specific: bool = False) -> NewsI
         image_url=row["image_url"],
         author=row["author"],
         time=format_relative_time(row["published_at"]),
-        tag=NewsItemTag[row["tag"]].value
+        tag=NewsItemTag(row["tag"]).value
         if isinstance(row["tag"], str)
         else row["tag"].value,
         read_more_text=build_read_more_text(source_name),
