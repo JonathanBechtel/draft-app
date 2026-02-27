@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+
+{% block title %}News Feed — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/news-hero.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/news-grid.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/news.css') }}">
+{% endblock %}
+
+{% set tags = [
+  "Scouting Report", "Big Board", "Mock Draft", "Tier Update",
+  "Game Recap", "Film Study", "Skill Theme", "Team Fit",
+  "Draft Intel", "Statistical Analysis"
+] %}
+
+{% set periods = [
+  ("today", "Today"),
+  ("week", "This Week"),
+  ("month", "This Month")
+] %}
+
+{# Helper: build URL preserving all active filters except one being toggled #}
+{% macro filter_url(new_tag=None, new_source=None, new_author=None, new_player=None, new_period=None, clear=None) %}
+  {%- set ns = namespace(params='') -%}
+  {#- Tag param -#}
+  {%- if clear != 'tag' -%}
+    {%- if new_tag is not none -%}
+      {%- if new_tag -%}{%- set ns.params = ns.params ~ '&tag=' ~ (new_tag | urlencode) -%}{%- endif -%}
+    {%- elif active_tag -%}
+      {%- set ns.params = ns.params ~ '&tag=' ~ (active_tag | urlencode) -%}
+    {%- endif -%}
+  {%- endif -%}
+  {#- Source param -#}
+  {%- if clear != 'source' -%}
+    {%- if new_source is not none -%}
+      {%- if new_source -%}{%- set ns.params = ns.params ~ '&source=' ~ new_source -%}{%- endif -%}
+    {%- elif active_source -%}
+      {%- set ns.params = ns.params ~ '&source=' ~ active_source -%}
+    {%- endif -%}
+  {%- endif -%}
+  {#- Author param -#}
+  {%- if clear != 'author' -%}
+    {%- if new_author is not none -%}
+      {%- if new_author -%}{%- set ns.params = ns.params ~ '&author=' ~ (new_author | urlencode) -%}{%- endif -%}
+    {%- elif active_author -%}
+      {%- set ns.params = ns.params ~ '&author=' ~ (active_author | urlencode) -%}
+    {%- endif -%}
+  {%- endif -%}
+  {#- Player param -#}
+  {%- if clear != 'player' -%}
+    {%- if new_player is not none -%}
+      {%- if new_player -%}{%- set ns.params = ns.params ~ '&player=' ~ new_player -%}{%- endif -%}
+    {%- elif active_player -%}
+      {%- set ns.params = ns.params ~ '&player=' ~ active_player -%}
+    {%- endif -%}
+  {%- endif -%}
+  {#- Period param -#}
+  {%- if clear != 'period' -%}
+    {%- if new_period is not none -%}
+      {%- if new_period -%}{%- set ns.params = ns.params ~ '&period=' ~ new_period -%}{%- endif -%}
+    {%- elif active_period -%}
+      {%- set ns.params = ns.params ~ '&period=' ~ active_period -%}
+    {%- endif -%}
+  {%- endif -%}
+  /news{%- if ns.params %}?{{ ns.params[1:] }}{% endif -%}
+{% endmacro %}
+
+{# Build pagination params string once (no do needed) #}
+{%- set ns_pg = namespace(params='') -%}
+{%- if active_tag -%}{%- set ns_pg.params = ns_pg.params ~ '&tag=' ~ (active_tag | urlencode) -%}{%- endif -%}
+{%- if active_source -%}{%- set ns_pg.params = ns_pg.params ~ '&source=' ~ active_source -%}{%- endif -%}
+{%- if active_author -%}{%- set ns_pg.params = ns_pg.params ~ '&author=' ~ (active_author | urlencode) -%}{%- endif -%}
+{%- if active_player -%}{%- set ns_pg.params = ns_pg.params ~ '&player=' ~ active_player -%}{%- endif -%}
+{%- if active_period -%}{%- set ns_pg.params = ns_pg.params ~ '&period=' ~ active_period -%}{%- endif -%}
+{%- set extra_params = ns_pg.params -%}
+
+{% block content %}
+<main class="news-page-container mt-28">
+
+  <!-- ==========================================================================
+       PAGE HEADER WITH STATS
+       ========================================================================== -->
+  <section class="section" style="margin-bottom: 1.5rem;">
+    <div class="news-page-header">
+      <div>
+        <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan); margin-bottom: 0.25rem;">
+          <svg class="icon icon-lg" style="color: var(--color-accent-cyan); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2"></path>
+          </svg>
+          News Feed
+        </h2>
+        <p class="section-subtitle" style="margin-bottom: 0;">NBA Draft news and analysis from top sources</p>
+      </div>
+      <div class="news-page-stats">
+        <div class="news-stat">
+          <div class="news-stat__value">{{ total }}</div>
+          <div class="news-stat__label">Articles</div>
+        </div>
+        <div class="news-stat">
+          <div class="news-stat__value">{{ sources | length }}</div>
+          <div class="news-stat__label">Sources</div>
+        </div>
+        <div class="news-stat">
+          <div class="news-stat__value">{{ authors | length }}</div>
+          <div class="news-stat__label">Authors</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       FEATURED HERO (only on first unfiltered page)
+       ========================================================================== -->
+  {% if hero_article and offset == 0 %}
+  <section id="newsHeroSection" style="margin-bottom: 2rem;">
+    <div id="heroArticle" class="news-hero"></div>
+  </section>
+  {% endif %}
+
+  <!-- ==========================================================================
+       TAG FILTER CHIPS (server-side navigation)
+       ========================================================================== -->
+  <div class="news-controls">
+    <div class="news-filters">
+      <a href="{{ filter_url(new_tag='') }}" class="filter-chip filter-chip--news {{ 'active' if not active_tag else '' }}">All Stories</a>
+      {% for t in tags %}
+      <a href="{{ filter_url(new_tag=t) }}" class="filter-chip filter-chip--news {{ 'active' if active_tag == t else '' }}">{{ t }}</a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       ACTIVE FILTERS BAR (removable pills for non-tag filters)
+       ========================================================================== -->
+  {% set has_active_filters = active_source or active_author or active_player or active_period %}
+  {% if has_active_filters %}
+  <div class="news-active-filters">
+    <span class="news-active-filters__label">Filters:</span>
+    {% if active_source %}
+    <a href="{{ filter_url(clear='source') }}" class="news-active-filter">
+      <span class="news-active-filter__icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:0.75rem;height:0.75rem;">
+          <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2"></path>
+        </svg>
+      </span>
+      {{ active_source_name or 'Source #' ~ active_source }}
+      <span class="news-active-filter__remove">&times;</span>
+    </a>
+    {% endif %}
+    {% if active_author %}
+    <a href="{{ filter_url(clear='author') }}" class="news-active-filter">
+      <span class="news-active-filter__icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:0.75rem;height:0.75rem;">
+          <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+      </span>
+      {{ active_author }}
+      <span class="news-active-filter__remove">&times;</span>
+    </a>
+    {% endif %}
+    {% if active_player %}
+    <a href="{{ filter_url(clear='player') }}" class="news-active-filter">
+      <span class="news-active-filter__icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:0.75rem;height:0.75rem;">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+        </svg>
+      </span>
+      {{ active_player_name or 'Player #' ~ active_player }}
+      <span class="news-active-filter__remove">&times;</span>
+    </a>
+    {% endif %}
+    {% if active_period %}
+    <a href="{{ filter_url(clear='period') }}" class="news-active-filter">
+      <span class="news-active-filter__icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:0.75rem;height:0.75rem;">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+      </span>
+      {{ dict(periods).get(active_period, active_period) }}
+      <span class="news-active-filter__remove">&times;</span>
+    </a>
+    {% endif %}
+    <a href="/news" class="news-active-filters__clear">Clear All</a>
+  </div>
+  {% endif %}
+
+  <!-- ==========================================================================
+       MAIN LAYOUT: ARTICLE GRID + SIDEBAR
+       ========================================================================== -->
+  <div class="news-page-layout">
+    <!-- Article Grid -->
+    <div>
+      <div class="articles-grid" id="articlesGrid">
+        <!-- populated by JS -->
+      </div>
+
+      <!-- Pagination -->
+      {% set total_pages = ((total - 1) // limit + 1) if total > 0 else 1 %}
+      {% set current_page = (offset // limit) + 1 %}
+      {% if total > limit %}
+      <nav class="news-pagination" aria-label="News articles pagination">
+        <a href="/news?offset={{ (current_page - 2) * limit }}{{ extra_params }}"
+           class="pagination__button pagination__button--nav {{ 'disabled' if current_page == 1 else '' }}"
+           {% if current_page == 1 %}aria-disabled="true" tabindex="-1"{% endif %}>
+          <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+            <polyline points="15 18 9 12 15 6" stroke="currentColor" stroke-width="2" fill="none"></polyline>
+          </svg>
+          Prev
+        </a>
+        <div class="pagination__numbers">
+          {% for p in range(1, total_pages + 1) %}
+          {% if p <= 3 or p > total_pages - 2 or (p >= current_page - 1 and p <= current_page + 1) %}
+          <a href="/news?offset={{ (p - 1) * limit }}{{ extra_params }}"
+             class="pagination__button {{ 'active' if p == current_page else '' }}">{{ p }}</a>
+          {% elif p == 4 and current_page > 5 %}
+          <span class="pagination__ellipsis">...</span>
+          {% elif p == total_pages - 2 and current_page < total_pages - 4 %}
+          <span class="pagination__ellipsis">...</span>
+          {% endif %}
+          {% endfor %}
+        </div>
+        <a href="/news?offset={{ current_page * limit }}{{ extra_params }}"
+           class="pagination__button pagination__button--nav {{ 'disabled' if current_page == total_pages else '' }}"
+           {% if current_page == total_pages %}aria-disabled="true" tabindex="-1"{% endif %}>
+          Next
+          <svg class="icon" viewBox="0 0 24 24" style="width: 1rem; height: 1rem;">
+            <polyline points="9 18 15 12 9 6" stroke="currentColor" stroke-width="2" fill="none"></polyline>
+          </svg>
+        </a>
+        <span class="pagination__info">{{ offset + 1 }}-{{ [offset + limit, total] | min }} of {{ total }}</span>
+      </nav>
+      {% endif %}
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="news-sidebar">
+      <!-- Time Period Filter -->
+      <div class="sidebar-card sidebar-card--news">
+        <div class="sidebar-card__header">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:0.875rem;height:0.875rem;">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
+          Time Period
+        </div>
+        <div class="sidebar-card__body">
+          {% for period_val, period_label in periods %}
+          <a href="{{ filter_url(new_period=period_val) }}" class="sidebar-filter-item {{ 'sidebar-filter-item--active' if active_period == period_val else '' }}">
+            {{ period_label }}
+          </a>
+          {% endfor %}
+          {% if active_period %}
+          <a href="{{ filter_url(clear='period') }}" class="sidebar-filter-clear">Clear</a>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Source Directory -->
+      <div class="sidebar-card sidebar-card--news">
+        <div class="sidebar-card__header">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:0.875rem;height:0.875rem;">
+            <path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2"></path>
+          </svg>
+          Sources
+        </div>
+        <div class="sidebar-card__body" id="sourceDirectory">
+          {% for s in sources %}
+          <a href="{{ filter_url(new_source=s.id) }}" class="sidebar-filter-item sidebar-filter-item--counted {{ 'sidebar-filter-item--active' if active_source == s.id else '' }}">
+            <span class="sidebar-filter-item__name">{{ s.name }}</span>
+            <span class="sidebar-filter-item__count">{{ s.count }}</span>
+          </a>
+          {% endfor %}
+          {% if active_source %}
+          <a href="{{ filter_url(clear='source') }}" class="sidebar-filter-clear">Clear</a>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Author Directory -->
+      <div class="sidebar-card sidebar-card--news">
+        <div class="sidebar-card__header">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:0.875rem;height:0.875rem;">
+            <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          Authors
+        </div>
+        <div class="sidebar-card__body" id="authorDirectory">
+          {% set author_limit = 8 %}
+          {% for a in authors[:author_limit] %}
+          <a href="{{ filter_url(new_author=a.name) }}" class="sidebar-filter-item sidebar-filter-item--counted {{ 'sidebar-filter-item--active' if active_author == a.name else '' }}">
+            <span class="sidebar-filter-item__name">{{ a.name }}</span>
+            <span class="sidebar-filter-item__count">{{ a.count }}</span>
+          </a>
+          {% endfor %}
+          {% if authors | length > author_limit %}
+          <div class="sidebar-overflow" id="authorOverflow" style="display: none;">
+            {% for a in authors[author_limit:] %}
+            <a href="{{ filter_url(new_author=a.name) }}" class="sidebar-filter-item sidebar-filter-item--counted {{ 'sidebar-filter-item--active' if active_author == a.name else '' }}">
+              <span class="sidebar-filter-item__name">{{ a.name }}</span>
+              <span class="sidebar-filter-item__count">{{ a.count }}</span>
+            </a>
+            {% endfor %}
+          </div>
+          <button class="sidebar-show-more" id="authorShowMore" type="button">
+            Show {{ authors | length - author_limit }} more
+          </button>
+          {% endif %}
+          {% if active_author %}
+          <a href="{{ filter_url(clear='author') }}" class="sidebar-filter-clear">Clear</a>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Trending in News -->
+      <div class="sidebar-card sidebar-card--news">
+        <div class="sidebar-card__header">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:0.875rem;height:0.875rem;">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+          Trending in News
+        </div>
+        <div class="sidebar-card__body" id="trendingMentions">
+          <!-- populated by JS -->
+        </div>
+      </div>
+    </aside>
+  </div>
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  window.NEWS_ITEMS = {{ feed_items | tojson | safe }};
+  window.NEWS_HERO = {{ hero_article | tojson | safe }};
+  window.NEWS_TRENDING = {{ trending_players | tojson | safe }};
+</script>
+<script src="{{ url_for('static', path='js/news.js') }}"></script>
+{% endblock %}
