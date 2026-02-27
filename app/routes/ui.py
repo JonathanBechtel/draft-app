@@ -9,11 +9,15 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.news_service import (
+    get_author_counts,
+    get_filtered_news_feed,
     get_hero_article,
     get_news_feed,
     get_player_news_feed,
+    get_source_counts,
     get_trending_players,
 )
+from app.schemas.player_content_mentions import ContentType
 from app.services.podcast_service import (
     get_latest_podcast_episodes,
     get_player_podcast_feed,
@@ -333,6 +337,139 @@ async def podcasts_page(
             "offset": offset,
             "active_tag": tag,
             "active_show": show,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+NEWS_PAGE_LIMIT = 12
+
+
+@router.get("/news", response_class=HTMLResponse)
+async def news_page(
+    request: Request,
+    offset: int = Query(0, ge=0),
+    tag: str | None = Query(default=None),
+    source: int | None = Query(default=None),
+    author: str | None = Query(default=None),
+    player: int | None = Query(default=None),
+    period: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_session),
+):
+    """Render the dedicated News page with filterable article feed."""
+    # Fetch filtered news feed
+    feed = await get_filtered_news_feed(
+        db,
+        limit=NEWS_PAGE_LIMIT,
+        offset=offset,
+        tag=tag,
+        source_id=source,
+        author=author,
+        player_id=player,
+        period=period,
+    )
+
+    feed_items: list[dict] = []
+    for item in feed.items:
+        item_source = item.source_name.strip()
+        item_author = (item.author or "").strip() or None
+        feed_items.append(
+            {
+                "id": item.id,
+                "source": item_source,
+                "title": item.title,
+                "summary": item.summary,
+                "url": item.url,
+                "image_url": item.image_url,
+                "author": item_author,
+                "time": item.time,
+                "tag": item.tag,
+                "read_more_text": item.read_more_text,
+            }
+        )
+
+    # Hero article: first page of any filter view
+    hero_article_dict = None
+    if offset == 0:
+        hero_article = await get_hero_article(db)
+        if hero_article:
+            hero_author = (hero_article.author or "").strip() or None
+            hero_article_dict = {
+                "id": hero_article.id,
+                "source": hero_article.source_name.strip(),
+                "title": hero_article.title,
+                "summary": hero_article.summary,
+                "url": hero_article.url,
+                "image_url": hero_article.image_url,
+                "author": hero_author,
+                "time": hero_article.time,
+                "tag": hero_article.tag,
+            }
+
+    # Sidebar data
+    source_counts_raw = await get_source_counts(db)
+    sources_data = [
+        {"id": sid, "name": name, "count": count}
+        for sid, name, count in source_counts_raw
+    ]
+
+    author_counts_raw = await get_author_counts(db)
+    authors_list = [{"name": name, "count": count} for name, count in author_counts_raw]
+
+    trending_raw = await get_trending_players(
+        db, days=30, limit=10, content_type=ContentType.NEWS
+    )
+    trending_players = [
+        {
+            "player_id": tp.player_id,
+            "display_name": tp.display_name,
+            "slug": tp.slug,
+            "mention_count": tp.mention_count,
+        }
+        for tp in trending_raw
+    ]
+
+    # Resolve active filter labels for display
+    active_source_name = None
+    if source:
+        for s in sources_data:
+            if s["id"] == source:
+                active_source_name = s["name"]
+                break
+
+    active_player_name = None
+    if player:
+        from sqlalchemy import select as sa_select
+
+        from app.schemas.players_master import PlayerMaster
+
+        result = await db.execute(
+            sa_select(PlayerMaster.display_name).where(  # type: ignore[call-overload]
+                PlayerMaster.id == player  # type: ignore[arg-type]
+            )
+        )
+        active_player_name = result.scalar()
+
+    return request.app.state.templates.TemplateResponse(
+        "news.html",
+        {
+            "request": request,
+            "feed_items": feed_items,
+            "hero_article": hero_article_dict,
+            "sources": sources_data,
+            "authors": authors_list,
+            "trending_players": trending_players,
+            "total": feed.total,
+            "limit": NEWS_PAGE_LIMIT,
+            "offset": offset,
+            "active_tag": tag,
+            "active_source": source,
+            "active_source_name": active_source_name,
+            "active_author": author,
+            "active_player": player,
+            "active_player_name": active_player_name,
+            "active_period": period,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

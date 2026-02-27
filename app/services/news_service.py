@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.news import NewsFeedResponse, NewsItemRead
 from app.schemas.player_content_mentions import ContentType, PlayerContentMention
-from app.schemas.news_items import NewsItem
+from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
 
@@ -140,6 +140,31 @@ async def get_active_sources(db: AsyncSession) -> list[NewsSource]:
     )
     result = await db.execute(stmt)
     return list(result.scalars().all())
+
+
+async def get_source_counts(db: AsyncSession) -> list[tuple[int, str, int]]:
+    """Fetch active sources with article counts, sorted by count descending.
+
+    Args:
+        db: Async database session
+
+    Returns:
+        List of (source_id, display_name, article_count) tuples
+    """
+    stmt = (
+        select(  # type: ignore[call-overload]
+            NewsSource.id,
+            NewsSource.display_name,
+            func.count(NewsItem.id).label("cnt"),  # type: ignore[arg-type]
+        )
+        .select_from(NewsSource)
+        .join(NewsItem, NewsItem.source_id == NewsSource.id)  # type: ignore[arg-type]
+        .where(NewsSource.is_active.is_(True))  # type: ignore[attr-defined]
+        .group_by(NewsSource.id, NewsSource.display_name)
+        .order_by(func.count(NewsItem.id).desc(), NewsSource.display_name)  # type: ignore[arg-type,call-overload]
+    )
+    result = await db.execute(stmt)
+    return [(row[0], row[1], row[2]) for row in result.all()]
 
 
 async def get_hero_article(db: AsyncSession) -> Optional[NewsItemRead]:
@@ -347,6 +372,138 @@ async def _get_daily_mention_counts(
     return result_map
 
 
+async def get_filtered_news_feed(
+    db: AsyncSession,
+    limit: int = 20,
+    offset: int = 0,
+    tag: str | None = None,
+    source_id: int | None = None,
+    author: str | None = None,
+    player_id: int | None = None,
+    period: str | None = None,
+) -> NewsFeedResponse:
+    """Fetch paginated news feed with optional multi-dimensional filters.
+
+    All non-None filters are combined with AND logic.
+
+    Args:
+        db: Async database session
+        limit: Maximum items to return
+        offset: Number of items to skip
+        tag: Filter by NewsItemTag value (e.g. "Mock Draft")
+        source_id: Filter by news source ID
+        author: Filter by author name (case-insensitive)
+        player_id: Filter to articles mentioning this player
+        period: Time window filter ("today", "week", "month", or None for all)
+
+    Returns:
+        NewsFeedResponse with filtered items and accurate total
+    """
+    base_query = (
+        select(*_NEWS_FEED_COLUMNS)  # type: ignore[call-overload]
+        .select_from(NewsItem)
+        .join(NewsSource, NewsSource.id == NewsItem.source_id)  # type: ignore[arg-type]
+    )
+
+    count_base = select(func.count()).select_from(NewsItem)
+
+    # Apply filters to both queries
+    if tag:
+        # Resolve display value ("Scouting Report") to DB name ("SCOUTING_REPORT")
+        try:
+            tag_db = NewsItemTag(tag).name
+        except ValueError:
+            tag_db = None
+        if tag_db:
+            base_query = base_query.where(NewsItem.tag == tag_db)  # type: ignore[arg-type]
+            count_base = count_base.where(NewsItem.tag == tag_db)  # type: ignore[arg-type]
+
+    if source_id is not None:
+        base_query = base_query.where(NewsItem.source_id == source_id)  # type: ignore[arg-type]
+        count_base = count_base.where(NewsItem.source_id == source_id)  # type: ignore[arg-type]
+
+    if author:
+        base_query = base_query.where(
+            func.lower(NewsItem.author) == author.lower()  # type: ignore[union-attr]
+        )
+        count_base = count_base.where(
+            func.lower(NewsItem.author) == author.lower()  # type: ignore[union-attr]
+        )
+
+    if player_id is not None:
+        mention_subq = (
+            select(  # type: ignore[call-overload]
+                PlayerContentMention.content_id.label("item_id")  # type: ignore[attr-defined]
+            )
+            .where(PlayerContentMention.player_id == player_id)  # type: ignore[arg-type]
+            .where(PlayerContentMention.content_type == ContentType.NEWS.value)  # type: ignore[arg-type]
+        )
+        base_query = base_query.where(
+            NewsItem.id.in_(mention_subq)  # type: ignore[union-attr]
+        )
+        count_base = count_base.where(
+            NewsItem.id.in_(mention_subq)  # type: ignore[union-attr]
+        )
+
+    if period:
+        now = datetime.utcnow()
+        cutoff_map = {"today": 1, "week": 7, "month": 30}
+        days = cutoff_map.get(period, 0)
+        if days:
+            cutoff = now - timedelta(days=days)
+            base_query = base_query.where(
+                NewsItem.published_at >= cutoff  # type: ignore[arg-type,operator]
+            )
+            count_base = count_base.where(
+                NewsItem.published_at >= cutoff  # type: ignore[arg-type,operator]
+            )
+
+    # Execute count
+    count_result = await db.execute(count_base)
+    total = count_result.scalar() or 0
+
+    # Execute paginated items
+    items_query = (
+        base_query.order_by(NewsItem.published_at.desc())  # type: ignore[attr-defined]
+        .limit(limit)
+        .offset(offset)
+    )
+    result = await db.execute(items_query)
+    rows = result.mappings().all()
+
+    items: list[NewsItemRead] = [_row_to_news_item_read(row) for row in rows]  # type: ignore[arg-type]
+
+    return NewsFeedResponse(
+        items=items,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+async def get_author_counts(db: AsyncSession) -> list[tuple[str, int]]:
+    """Fetch author names with article counts, sorted by count descending.
+
+    Args:
+        db: Async database session
+
+    Returns:
+        List of (author_name, article_count) tuples, highest count first
+    """
+    stmt = (
+        select(  # type: ignore[call-overload]
+            NewsItem.author,
+            func.count().label("cnt"),
+        )
+        .where(NewsItem.author.isnot(None))  # type: ignore[union-attr]
+        .where(NewsItem.author != "")  # type: ignore[arg-type]
+        .group_by(NewsItem.author)
+        .order_by(func.count().desc(), NewsItem.author)  # type: ignore[call-overload]
+    )
+    result = await db.execute(stmt)
+    return [(row[0], row[1]) for row in result.all() if row[0]]
+
+
 async def get_player_news_feed(
     db: AsyncSession,
     player_id: int,
@@ -465,7 +622,9 @@ def _row_to_news_item_read(row: dict, is_player_specific: bool = False) -> NewsI
         image_url=row["image_url"],
         author=row["author"],
         time=format_relative_time(row["published_at"]),
-        tag=row["tag"].value,
+        tag=NewsItemTag[row["tag"]].value
+        if isinstance(row["tag"], str)
+        else row["tag"].value,
         read_more_text=build_read_more_text(source_name),
         is_player_specific=is_player_specific,
     )

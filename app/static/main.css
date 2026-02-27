@@ -185,23 +185,25 @@ body {
 }
 
 .navbar-link {
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  color: rgba(255, 255, 255, 0.8);
   text-decoration: none;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  transition: color 0.2s;
+  letter-spacing: 0.08em;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  transition: color 0.2s, background 0.2s;
 }
 
 .navbar-link:hover {
   color: #fff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .navbar-link.active {
-  color: #fff;
-  border-bottom: 2px solid #fbbf24;
-  padding-bottom: 2px;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
 }
 
 .navbar-search {
