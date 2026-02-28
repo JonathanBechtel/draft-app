@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
@@ -47,6 +47,18 @@ class TestPersistPlayerMentions:
         assert len(rows) == 1
         assert rows[0].player_id == player.id
         assert rows[0].source == MentionSource.AI
+
+        # Enum-backed columns should persist canonical enum names.
+        raw = await db_session.execute(
+            text(
+                "SELECT content_type::text, source::text "
+                "FROM player_content_mentions WHERE id = :id"
+            ),
+            {"id": rows[0].id},
+        )
+        content_type, source = raw.one()
+        assert content_type == "NEWS"
+        assert source == "AI"
 
     async def test_creates_stub_for_unknown_player(
         self,

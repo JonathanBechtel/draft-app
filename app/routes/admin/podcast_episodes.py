@@ -301,7 +301,7 @@ async def delete_podcast_episode(
         # Remove orphan mention rows before deleting the episode
         await db.execute(
             delete(PlayerContentMention)
-            .where(PlayerContentMention.content_type == ContentType.PODCAST.value)  # type: ignore[arg-type]
+            .where(PlayerContentMention.content_type == ContentType.PODCAST)  # type: ignore[arg-type]
             .where(PlayerContentMention.content_id == episode_id)  # type: ignore[arg-type]
         )
 
