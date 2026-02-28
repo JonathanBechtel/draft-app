@@ -610,6 +610,16 @@ async def _execute_mappings(db: AsyncSession, query: object) -> list[dict]:
     return list(result.mappings().all())  # type: ignore[union-attr]
 
 
+def _resolve_tag(raw: str | NewsItemTag) -> str:
+    """Return the display value for a tag stored as either name or value."""
+    if isinstance(raw, NewsItemTag):
+        return raw.value
+    try:
+        return NewsItemTag(raw).value
+    except ValueError:
+        return NewsItemTag[raw].value
+
+
 def _row_to_news_item_read(row: dict, is_player_specific: bool = False) -> NewsItemRead:
     """Convert a database row mapping to a NewsItemRead response model."""
     source_name = row["source_name"]
@@ -622,9 +632,7 @@ def _row_to_news_item_read(row: dict, is_player_specific: bool = False) -> NewsI
         image_url=row["image_url"],
         author=row["author"],
         time=format_relative_time(row["published_at"]),
-        tag=NewsItemTag(row["tag"]).value
-        if isinstance(row["tag"], str)
-        else row["tag"].value,
+        tag=_resolve_tag(row["tag"]),
         read_more_text=build_read_more_text(source_name),
         is_player_specific=is_player_specific,
     )
