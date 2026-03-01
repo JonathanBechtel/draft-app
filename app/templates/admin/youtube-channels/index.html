@@ -1,0 +1,51 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "YouTube Channels" %}
+{% set active_nav = "youtube-channels" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">YouTube Channels</h1>
+  <p class="admin-main__subtitle">Manage Film Room source channels and ingestion.</p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <div class="admin-form__actions" style="justify-content: space-between; margin-bottom: 1rem;">
+    <a href="/admin/youtube-channels/new" class="admin-btn admin-btn--primary">Add Channel</a>
+    <form method="post" action="/admin/youtube-channels/ingest" class="admin-form--inline">
+      <button type="submit" class="admin-btn admin-btn--secondary">Run Ingestion</button>
+    </form>
+  </div>
+
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Channel ID</th>
+        <th>Status</th>
+        <th>Draft Focused</th>
+        <th>Last Fetched</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for channel in channels %}
+      <tr>
+        <td>{{ channel.display_name }}</td>
+        <td><code>{{ channel.channel_id }}</code></td>
+        <td>{{ "Active" if channel.is_active else "Inactive" }}</td>
+        <td>{{ "Yes" if channel.is_draft_focused else "No" }}</td>
+        <td>{{ channel.last_fetched_at or "Never" }}</td>
+        <td>
+          <a href="/admin/youtube-channels/{{ channel.id }}" class="admin-btn admin-btn--secondary">Edit</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6">No channels configured yet.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

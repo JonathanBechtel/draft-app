@@ -21,6 +21,8 @@ from app.routes.admin.news_sources import router as news_sources_router
 from app.routes.admin.players import router as players_router
 from app.routes.admin.podcast_episodes import router as podcast_episodes_router
 from app.routes.admin.podcast_shows import router as podcast_shows_router
+from app.routes.admin.youtube_channels import router as youtube_channels_router
+from app.routes.admin.youtube_videos import router as youtube_videos_router
 from app.routes.admin.users import router as users_router
 from app.utils.db_async import get_session
 
@@ -52,4 +54,6 @@ router.include_router(players_router)
 router.include_router(images_router)
 router.include_router(podcast_shows_router)
 router.include_router(podcast_episodes_router)
+router.include_router(youtube_channels_router)
+router.include_router(youtube_videos_router)
 router.include_router(users_router)

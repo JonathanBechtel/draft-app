@@ -1,0 +1,36 @@
+{% if film_room_videos %}
+<section class="section" id="filmRoomHomeSection">
+  <div class="section-header-row">
+    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+      Film Room
+    </h3>
+    <a href="/film-room" class="section-cta">View All Film &rarr;</a>
+  </div>
+
+  <div class="film-room-home-grid">
+    {% for video in film_room_videos %}
+    <article class="film-room-home-card">
+      <a href="/film-room" class="film-room-home-card__link">
+        {% if video.thumbnail_url %}
+        <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" />
+        {% else %}
+        <div class="film-room-home-card__placeholder">DG</div>
+        {% endif %}
+        <div class="film-room-home-card__body">
+          <div class="film-room-home-card__topline">
+            <span class="film-room-tag">{{ video.tag }}</span>
+            <span>{{ video.duration }}</span>
+          </div>
+          <h4>{{ video.title }}</h4>
+          <p>{{ video.summary }}</p>
+          <div class="film-room-home-card__meta">
+            <span>{{ video.channel_name }}</span>
+            <span>{{ video.time }}</span>
+          </div>
+        </div>
+      </a>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}

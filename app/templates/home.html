@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/news-grid.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/news-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/podcasts.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/film-room.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -120,7 +121,13 @@
     </div>
   </section>
 
+  {% if film_room_videos %}
   <div class="section-divider"></div>
+
+  {% include "partials/film-room-section.html" %}
+
+  <div class="section-divider"></div>
+  {% endif %}
 
   <!-- ==========================================================================
        TRENDING PLAYERS
@@ -282,6 +289,7 @@
   window.S3_IMAGE_BASE_URL = {{ s3_image_base_url | tojson | safe }};
   // Podcast episodes for homepage section
   window.PODCAST_EPISODES = {{ podcast_episodes | tojson | safe }};
+  window.FILM_ROOM_VIDEOS = {{ film_room_videos | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/home.js') }}"></script>
 {% endblock %}

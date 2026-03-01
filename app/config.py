@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     gemini_summarization_api_key: Optional[str] = (
         None  # Separate key for RSS summarization
     )
+    youtube_api_key: Optional[str] = None
 
     # Image generation settings
     image_gen_size: str = "512"  # Options: "512", "1K", "2K"

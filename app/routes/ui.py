@@ -23,6 +23,12 @@ from app.services.podcast_service import (
     get_player_podcast_feed,
     get_podcast_page_data,
 )
+from app.services.video_service import (
+    get_latest_videos_by_tag,
+    get_player_video_counts_by_tag,
+    get_player_video_feed,
+    get_video_page_data,
+)
 from app.config import settings
 from app.services.player_service import get_player_profile_by_slug
 from app.utils.db_async import get_session
@@ -54,6 +60,7 @@ TOP_PROSPECT_SLUGS = [
 # Homepage news/feed constants
 HOME_NEWS_FEED_LIMIT = 100
 HOME_NEWS_SIDEBAR_LIMIT = 8
+HOME_FILM_ROOM_LIMIT = 6
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -234,6 +241,34 @@ async def home(
         for ep in podcast_episodes_raw
     ]
 
+    # Fetch latest videos for homepage film-room section
+    film_room_raw = await get_latest_videos_by_tag(db, limit=HOME_FILM_ROOM_LIMIT)
+    film_room_videos = [
+        {
+            "id": item.id,
+            "channel_name": item.channel_name,
+            "thumbnail_url": item.thumbnail_url,
+            "title": item.title,
+            "summary": item.summary,
+            "tag": item.tag,
+            "youtube_url": item.youtube_url,
+            "youtube_embed_id": item.youtube_embed_id,
+            "duration": item.duration,
+            "time": item.time,
+            "view_count_display": item.view_count_display,
+            "watch_on_text": item.watch_on_text,
+            "mentioned_players": [
+                {
+                    "player_id": p.player_id,
+                    "display_name": p.display_name,
+                    "slug": p.slug,
+                }
+                for p in item.mentioned_players
+            ],
+        }
+        for item in film_room_raw
+    ]
+
     # Build mappings for JS image URL generation
     slug_to_id = {slug: player_id for slug, (player_id, _) in player_id_map.items()}
     id_to_slug = {player_id: slug for slug, (player_id, _) in player_id_map.items()}
@@ -250,6 +285,7 @@ async def home(
             "author_counts": author_counts,
             "sidebar_limit": HOME_NEWS_SIDEBAR_LIMIT,
             "podcast_episodes": podcast_episodes,
+            "film_room_videos": film_room_videos,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "image_style": requested_style,  # Current image style for JS
@@ -261,6 +297,7 @@ async def home(
 
 
 PODCAST_PAGE_LIMIT = 10
+FILM_ROOM_PAGE_LIMIT = 12
 
 
 @router.get("/podcasts", response_class=HTMLResponse)
@@ -337,6 +374,94 @@ async def podcasts_page(
             "offset": offset,
             "active_tag": tag,
             "active_show": show,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/film-room", response_class=HTMLResponse)
+async def film_room_page(
+    request: Request,
+    offset: int = Query(0, ge=0),
+    tag: str | None = Query(default=None),
+    channel: int | None = Query(default=None),
+    player: int | None = Query(default=None),
+    search: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_session),
+):
+    """Render the dedicated Film Room page."""
+    page_data = await get_video_page_data(
+        db=db,
+        limit=FILM_ROOM_PAGE_LIMIT,
+        offset=offset,
+        tag=tag,
+        channel_id=channel,
+        player_id=player,
+        search=search,
+    )
+    feed = page_data["feed"]
+    channels = page_data["channels"]
+    trending_raw = page_data["trending"]
+
+    videos = [
+        {
+            "id": item.id,
+            "channel_name": item.channel_name,
+            "thumbnail_url": item.thumbnail_url,
+            "title": item.title,
+            "summary": item.summary,
+            "tag": item.tag,
+            "youtube_url": item.youtube_url,
+            "youtube_embed_id": item.youtube_embed_id,
+            "duration": item.duration,
+            "time": item.time,
+            "view_count_display": item.view_count_display,
+            "watch_on_text": item.watch_on_text,
+            "is_player_specific": item.is_player_specific,
+            "mentioned_players": [
+                {
+                    "player_id": p.player_id,
+                    "display_name": p.display_name,
+                    "slug": p.slug,
+                }
+                for p in item.mentioned_players
+            ],
+        }
+        for item in feed.items
+    ]
+    channels_data = [
+        {
+            "id": c.id,
+            "name": c.display_name,
+            "thumbnail_url": c.thumbnail_url,
+        }
+        for c in channels
+    ]
+    trending_players = [
+        {
+            "player_id": tp.player_id,
+            "display_name": tp.display_name,
+            "slug": tp.slug,
+            "mention_count": tp.mention_count,
+        }
+        for tp in trending_raw
+    ]
+
+    return request.app.state.templates.TemplateResponse(
+        "film-room.html",
+        {
+            "request": request,
+            "videos": videos,
+            "channels": channels_data,
+            "trending_players": trending_players,
+            "total": feed.total,
+            "limit": FILM_ROOM_PAGE_LIMIT,
+            "offset": offset,
+            "active_tag": tag,
+            "active_channel": channel,
+            "active_player": player,
+            "search_query": search or "",
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },
@@ -681,6 +806,42 @@ async def player_detail(
         for ep in podcast_feed_resp.items
     ]
 
+    player_video_feed_resp = await get_player_video_feed(
+        db,
+        player_id=player_profile.id,  # type: ignore[arg-type]
+        limit=50,
+    )
+    player_video_feed = [
+        {
+            "id": item.id,
+            "channel_name": item.channel_name,
+            "thumbnail_url": item.thumbnail_url,
+            "title": item.title,
+            "summary": item.summary,
+            "tag": item.tag,
+            "youtube_url": item.youtube_url,
+            "youtube_embed_id": item.youtube_embed_id,
+            "duration": item.duration,
+            "time": item.time,
+            "view_count_display": item.view_count_display,
+            "watch_on_text": item.watch_on_text,
+            "is_player_specific": item.is_player_specific,
+            "mentioned_players": [
+                {
+                    "player_id": p.player_id,
+                    "display_name": p.display_name,
+                    "slug": p.slug,
+                }
+                for p in item.mentioned_players
+            ],
+        }
+        for item in player_video_feed_resp.items
+    ]
+    player_video_counts = await get_player_video_counts_by_tag(
+        db,
+        player_id=player_profile.id,  # type: ignore[arg-type]
+    )
+
     return request.app.state.templates.TemplateResponse(
         "player-detail.html",
         {
@@ -690,6 +851,9 @@ async def player_detail(
             "comparison_data": comparison_data,
             "player_feed": player_feed,
             "player_podcast_feed": player_podcast_feed,
+            "player_video_feed": player_video_feed,
+            "player_video_counts": player_video_counts,
+            "has_player_videos": bool(player_video_feed_resp.total),
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "image_style": requested_style,  # Current image style for JS

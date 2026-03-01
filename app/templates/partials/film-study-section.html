@@ -1,0 +1,51 @@
+{% set film_tags = ["Scouting Report", "Highlights", "Think Piece", "Conversation", "Montage"] %}
+<section class="section" id="playerFilmStudySection">
+  <div class="section-header-row">
+    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
+      Film Study
+    </h3>
+    <a href="/film-room" class="section-cta">Open Film Room &rarr;</a>
+  </div>
+
+  {% if not has_player_videos %}
+  <div class="film-no-videos">No player-specific film clips tagged yet.</div>
+  {% else %}
+  <div class="film-study-tabs" id="filmStudyTabs">
+    <button type="button" class="film-study-tab active" data-tag="all">
+      All <span class="film-study-tab__count">{{ player_video_feed | length }}</span>
+    </button>
+    {% for tag in film_tags %}
+    <button type="button" class="film-study-tab" data-tag="{{ tag }}">
+      {{ tag }} <span class="film-study-tab__count">{{ player_video_counts.get(tag, 0) }}</span>
+    </button>
+    {% endfor %}
+  </div>
+  <div class="film-study-list" id="filmStudyList">
+    {% for video in player_video_feed %}
+    <article class="film-study-card" data-tag="{{ video.tag }}">
+      <a href="{{ video.youtube_url }}" target="_blank" rel="noopener noreferrer" class="film-study-card__link">
+        {% if video.thumbnail_url %}
+        <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" />
+        {% else %}
+        <div class="film-study-card__placeholder">DG</div>
+        {% endif %}
+        <div class="film-study-card__body">
+          <div class="film-study-card__topline">
+            <span class="film-room-tag">{{ video.tag }}</span>
+            <span>{{ video.duration }}</span>
+          </div>
+          <h4>{{ video.title }}</h4>
+          <p>{{ video.summary }}</p>
+          <div class="film-study-card__meta">
+            <span>{{ video.channel_name }}</span>
+            <span>{{ video.time }}</span>
+            <span>{{ video.view_count_display }}</span>
+          </div>
+        </div>
+      </a>
+    </article>
+    {% endfor %}
+  </div>
+  <div class="film-study-empty" id="filmStudyEmpty" hidden>No videos in this tab yet.</div>
+  {% endif %}
+</section>

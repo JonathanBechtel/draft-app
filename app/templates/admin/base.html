@@ -34,7 +34,10 @@
         {% set can_view_images = is_admin or (permissions and permissions.images.can_view) %}
         {% set can_view_podcasts = is_admin or (permissions and permissions.podcasts.can_view) %}
         {% set can_view_podcast_ingestion = is_admin or (permissions and permissions.podcast_ingestion.can_view) %}
-        {% set show_data_section = can_view_players or can_view_news_sources or can_view_news_ingestion or can_view_images or can_view_podcasts or can_view_podcast_ingestion %}
+        {% set can_view_youtube_channels = is_admin or (permissions and permissions.youtube_channels.can_view) %}
+        {% set can_view_youtube_videos = is_admin or (permissions and permissions.youtube_videos.can_view) %}
+        {% set can_view_youtube_ingestion = is_admin or (permissions and permissions.youtube_ingestion.can_view) %}
+        {% set show_data_section = can_view_players or can_view_news_sources or can_view_news_ingestion or can_view_images or can_view_podcasts or can_view_podcast_ingestion or can_view_youtube_channels or can_view_youtube_videos or can_view_youtube_ingestion %}
         {% if show_data_section %}
         <li class="admin-sidebar__nav-divider"></li>
         <li class="admin-sidebar__nav-section">Data Management</li>
@@ -77,6 +80,20 @@
         <li class="admin-sidebar__nav-item">
           <a href="/admin/podcast-episodes" class="admin-sidebar__nav-link{% if active_nav == 'podcast-episodes' %} admin-sidebar__nav-link--active{% endif %}">
             Podcast Episodes
+          </a>
+        </li>
+        {% endif %}
+        {% if can_view_youtube_channels %}
+        <li class="admin-sidebar__nav-item">
+          <a href="/admin/youtube-channels" class="admin-sidebar__nav-link{% if active_nav == 'youtube-channels' %} admin-sidebar__nav-link--active{% endif %}">
+            YouTube Channels
+          </a>
+        </li>
+        {% endif %}
+        {% if can_view_youtube_videos or can_view_youtube_ingestion %}
+        <li class="admin-sidebar__nav-item">
+          <a href="/admin/youtube-videos" class="admin-sidebar__nav-link{% if active_nav == 'youtube-videos' %} admin-sidebar__nav-link--active{% endif %}">
+            Film Room Videos
           </a>
         </li>
         {% endif %}

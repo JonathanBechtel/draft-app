@@ -1,0 +1,55 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Edit Film Room Video" %}
+{% set active_nav = "youtube-videos" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Edit Video</h1>
+  <p class="admin-main__subtitle">{{ channel.display_name if channel else "Unknown Channel" }}</p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <form class="admin-form" method="post" action="/admin/youtube-videos/{{ video.id }}">
+    <label class="admin-form__field">
+      <span class="admin-form__label">Title</span>
+      <input class="admin-form__input" type="text" name="title" value="{{ video.title }}" required>
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">Summary</span>
+      <textarea class="admin-form__textarea" name="summary">{{ video.summary or "" }}</textarea>
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">Tag</span>
+      <select class="admin-form__select" name="tag">
+        {% for tag in tags %}
+        <option value="{{ tag.name }}" {% if video.tag == tag %}selected{% endif %}>{{ tag.value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">Manual Player Tags</span>
+      <select class="admin-form__select" name="player_ids" multiple size="12">
+        {% for player in players %}
+        <option value="{{ player.id }}" {% if player.id in selected_player_ids %}selected{% endif %}>
+          {{ player.display_name }} ({{ player.id }})
+        </option>
+        {% endfor %}
+      </select>
+      <span class="admin-form__help">Hold Cmd/Ctrl to select multiple players.</span>
+    </label>
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">Save Changes</button>
+      <a href="/admin/youtube-videos" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+
+  <form method="post" action="/admin/youtube-videos/{{ video.id }}/delete" class="admin-form--inline" style="margin-top: 0.75rem;">
+    <button type="submit" class="admin-btn admin-btn--danger">Delete Video</button>
+  </form>
+</div>
+{% endblock %}

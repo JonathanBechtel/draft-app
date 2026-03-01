@@ -1,0 +1,40 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Add Film Room Video" %}
+{% set active_nav = "youtube-videos" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Add Video by URL</h1>
+  <p class="admin-main__subtitle">Import a YouTube video and optionally set manual player IDs.</p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <form class="admin-form" method="post" action="/admin/youtube-videos/add">
+    <label class="admin-form__field">
+      <span class="admin-form__label">YouTube URL</span>
+      <input class="admin-form__input" type="url" name="youtube_url" required placeholder="https://www.youtube.com/watch?v=...">
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">Tag (optional)</span>
+      <select class="admin-form__select" name="tag">
+        <option value="">Auto / Default</option>
+        {% for tag in tags %}
+        <option value="{{ tag.name }}">{{ tag.value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">Manual Player IDs (comma-separated)</span>
+      <input class="admin-form__input" type="text" name="player_ids" placeholder="123,456,789">
+    </label>
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">Add Video</button>
+      <a href="/admin/youtube-videos" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

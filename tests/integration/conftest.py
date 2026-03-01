@@ -128,6 +128,8 @@ async def async_engine(
     from app.schemas import player_content_mentions  # noqa: F401
     from app.schemas import podcast_shows  # noqa: F401
     from app.schemas import podcast_episodes  # noqa: F401
+    from app.schemas import youtube_channels  # noqa: F401
+    from app.schemas import youtube_videos  # noqa: F401
     from app.schemas import auth  # noqa: F401
 
     connect_args = {
@@ -253,6 +255,8 @@ from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.players_master import PlayerMaster
 from app.schemas.podcast_episodes import PodcastEpisode, PodcastEpisodeTag
 from app.schemas.podcast_shows import PodcastShow
+from app.schemas.youtube_channels import YouTubeChannel
+from app.schemas.youtube_videos import YouTubeVideo, YouTubeVideoTag
 
 
 @pytest_asyncio.fixture()
@@ -359,4 +363,52 @@ def make_podcast_episode(
         published_at=now - timedelta(hours=hours_ago),
         created_at=now,
         player_id=player_id,
+    )
+
+
+def make_youtube_channel(
+    name: str = "Draft Film Hub",
+    channel_id: str = "UC_draft_film_hub",
+    is_draft_focused: bool = True,
+) -> YouTubeChannel:
+    """Build an unsaved YouTubeChannel instance for testing."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return YouTubeChannel(
+        name=name,
+        display_name=name,
+        channel_id=channel_id,
+        channel_url=f"https://www.youtube.com/channel/{channel_id}",
+        thumbnail_url="https://example.com/channel-thumb.jpg",
+        description="Test channel",
+        is_draft_focused=is_draft_focused,
+        is_active=True,
+        fetch_interval_minutes=60,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def make_youtube_video(
+    channel_id: int,
+    external_id: str,
+    hours_ago: float = 1,
+    duration_seconds: int = 600,
+    tag: YouTubeVideoTag = YouTubeVideoTag.SCOUTING_REPORT,
+) -> YouTubeVideo:
+    """Build an unsaved YouTubeVideo instance for testing."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return YouTubeVideo(
+        channel_id=channel_id,
+        external_id=external_id,
+        title=f"Video {external_id}",
+        description=f"Description for {external_id}",
+        youtube_url=f"https://www.youtube.com/watch?v={external_id}",
+        thumbnail_url="https://example.com/video-thumb.jpg",
+        duration_seconds=duration_seconds,
+        view_count=12345,
+        summary=f"Summary for {external_id}",
+        tag=tag,
+        published_at=now - timedelta(hours=hours_ago),
+        created_at=now,
+        is_manually_added=False,
     )

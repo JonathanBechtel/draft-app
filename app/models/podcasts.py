@@ -4,13 +4,7 @@ from typing import Optional
 
 from sqlmodel import SQLModel
 
-
-class MentionedPlayer(SQLModel):
-    """Lightweight player reference for episode tags."""
-
-    player_id: int
-    display_name: str
-    slug: str
+from app.models.content_mentions import MentionedPlayer
 
 
 class PodcastEpisodeRead(SQLModel):
