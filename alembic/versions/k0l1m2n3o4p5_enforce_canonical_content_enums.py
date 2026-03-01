@@ -83,6 +83,31 @@ def upgrade() -> None:
         bind, checkfirst=True
     )
 
+    # Normalize against text columns first so this migration works regardless of
+    # prior lineage (enum-backed or varchar-backed source columns).
+    op.execute("ALTER TABLE news_items ALTER COLUMN tag DROP DEFAULT")
+    op.execute(
+        "ALTER TABLE news_items "
+        "ALTER COLUMN tag TYPE TEXT "
+        "USING tag::text"
+    )
+    op.execute("ALTER TABLE podcast_episodes ALTER COLUMN tag DROP DEFAULT")
+    op.execute(
+        "ALTER TABLE podcast_episodes "
+        "ALTER COLUMN tag TYPE TEXT "
+        "USING tag::text"
+    )
+    op.execute(
+        "ALTER TABLE player_content_mentions "
+        "ALTER COLUMN content_type TYPE TEXT "
+        "USING content_type::text"
+    )
+    op.execute(
+        "ALTER TABLE player_content_mentions "
+        "ALTER COLUMN source TYPE TEXT "
+        "USING source::text"
+    )
+
     # Normalize news tags from display/legacy forms to canonical enum names.
     op.execute(
         """
@@ -166,7 +191,6 @@ def upgrade() -> None:
     )
 
     # Enforce enum-backed storage.
-    op.execute("ALTER TABLE news_items ALTER COLUMN tag DROP DEFAULT")
     op.execute(
         "ALTER TABLE news_items "
         "ALTER COLUMN tag TYPE newsitemtag "
@@ -178,7 +202,6 @@ def upgrade() -> None:
     )
     op.execute("ALTER TABLE news_items ALTER COLUMN tag SET NOT NULL")
 
-    op.execute("ALTER TABLE podcast_episodes ALTER COLUMN tag DROP DEFAULT")
     op.execute(
         "ALTER TABLE podcast_episodes "
         "ALTER COLUMN tag TYPE podcastepisodetag "
