@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import FeedType, NewsSource
+from app.services.news_service import get_filtered_news_feed
 from app.services.news_summarization_service import ArticleAnalysis
 from tests.integration.auth_helpers import create_auth_user, login_staff
 
@@ -188,6 +189,27 @@ class TestGetNewsFeed:
         )
         assert article_2["image_url"] is None
         assert article_2["author"] is None
+
+    async def test_filtered_news_feed_accepts_tag_name_and_value(
+        self,
+        db_session: AsyncSession,
+        sample_news_items: list[NewsItem],
+    ):
+        """Tag filtering works for both display-value and enum-name inputs."""
+        _ = sample_news_items
+        feed_by_value = await get_filtered_news_feed(
+            db_session,
+            tag=NewsItemTag.MOCK_DRAFT.value,
+        )
+        feed_by_name = await get_filtered_news_feed(
+            db_session,
+            tag=NewsItemTag.MOCK_DRAFT.name,
+        )
+
+        assert feed_by_value.total == 1
+        assert feed_by_name.total == 1
+        assert feed_by_value.items[0].title == "Test Article 3"
+        assert feed_by_name.items[0].title == "Test Article 3"
 
 
 @pytest.mark.asyncio

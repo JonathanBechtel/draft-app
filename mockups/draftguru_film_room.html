@@ -1,0 +1,2127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DraftGuru — Film Room Mockup</title>
+
+  <!-- Google Fonts: Russo One (headings) and Azeret Mono (monospace) -->
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       CSS CUSTOM PROPERTIES
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      /* Film Room accent — warm amber/orange to evoke projector light */
+      --film-accent: #f59e0b;
+      --film-accent-hover: #d97706;
+      --film-bg: #0c0f1a;
+      --film-surface: #151929;
+      --film-surface-hover: #1c2137;
+      --film-border: rgba(245, 158, 11, 0.25);
+      --film-glow: rgba(245, 158, 11, 0.08);
+
+      --max-width: 1280px;
+      --content-width: 90%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    /* ============================================================================
+       RESET & BASE
+       ========================================================================= */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ============================================================================
+       TYPOGRAPHY UTILITIES
+       ========================================================================= */
+    .heading-font { font-family: var(--font-heading); letter-spacing: 0.02em; }
+    .mono-font { font-family: var(--font-mono); }
+    .uppercase { text-transform: uppercase; letter-spacing: 0.06em; }
+
+    /* ============================================================================
+       LAYOUT
+       ========================================================================= */
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 4rem; }
+
+    .section-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .section-header-row .section-header { margin-bottom: 0; }
+
+    .section-header {
+      font-size: 1.5rem;
+      font-weight: 600;
+      padding-left: 0.5rem;
+      border-left: 4px solid;
+      margin-bottom: 1rem;
+    }
+
+    .section-subtitle {
+      font-size: 0.875rem;
+      color: var(--color-slate-500);
+      margin-bottom: 1rem;
+      padding-left: 0.5rem;
+    }
+
+    .section-cta {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--film-accent);
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      transition: color 0.2s ease;
+    }
+
+    .section-cta:hover { color: var(--film-accent-hover); }
+
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(148,163,184,0.3) 20%, rgba(148,163,184,0.3) 80%, transparent);
+      margin: 3rem 0;
+    }
+
+    .mt-28 { margin-top: 7rem; }
+
+    /* ============================================================================
+       NAVIGATION BAR
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .navbar-brand { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+
+    .navbar-links { display: flex; align-items: center; gap: 1rem; }
+
+    .navbar-link {
+      font-family: var(--font-mono); font-size: 0.8rem;
+      color: rgba(255,255,255,0.85); text-decoration: none;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      transition: color 0.2s;
+    }
+    .navbar-link:hover { color: #fff; }
+    .navbar-link.active { color: #fff; border-bottom: 2px solid #fbbf24; padding-bottom: 2px; }
+
+    .navbar-search { display: flex; align-items: center; gap: 0.5rem; }
+
+    .search-input {
+      width: 240px; background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; color: var(--color-slate-900);
+      border-radius: 0.375rem; padding: 0.5rem 0.75rem; outline: none;
+      transition: all var(--transition-speed);
+    }
+    .search-input:focus { border-color: var(--color-white); box-shadow: 0 0 0 2px rgba(255,255,255,0.4); }
+
+    .search-button {
+      width: 2.5rem; height: 2.5rem; background: #fbbf24; color: #1e3a8a;
+      border: none; border-radius: 0.375rem; display: grid; place-items: center;
+      cursor: pointer; transition: background var(--transition-speed);
+    }
+    .search-button:hover { background: #fcd34d; }
+
+    /* ============================================================================
+       ICONS
+       ========================================================================= */
+    .icon {
+      display: inline-block; width: 1rem; height: 1rem;
+      stroke: currentColor; stroke-width: 2; fill: none;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .icon-lg { width: 1.25rem; height: 1.25rem; }
+    .icon-xl { width: 1.5rem; height: 1.5rem; }
+
+    /* ============================================================================
+       PAGE MODE SWITCHER (3 views in this mockup)
+       ========================================================================= */
+    .mode-switcher {
+      position: fixed;
+      top: 5rem;
+      right: 1.5rem;
+      z-index: 999;
+      display: flex;
+      gap: 0;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      border: 2px solid var(--film-accent);
+      box-shadow: 0 4px 12px rgba(245,158,11,0.2);
+    }
+
+    .mode-btn {
+      padding: 0.5rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      border: none;
+      background: var(--color-white);
+      color: var(--color-slate-600);
+      transition: all 0.2s;
+    }
+
+    .mode-btn.active {
+      background: var(--film-accent);
+      color: #fff;
+    }
+
+    .mode-btn:hover:not(.active) { background: #fef3c7; }
+
+    .view-section { display: none; }
+    .view-section.active { display: block; }
+
+    /* ============================================================================
+       FOOTER
+       ========================================================================= */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+
+    .footer-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    .footer-copyright {
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-600);
+    }
+
+    /* ============================================================================
+       PLAYER TAGS (shared)
+       ========================================================================= */
+    .player-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+
+    .player-tag {
+      font-family: var(--font-mono); font-size: 0.5625rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 0.1875rem 0.5rem; border-radius: 9999px;
+      background: #fef3c7; color: #92400e;
+      border: 1px solid rgba(245,158,11,0.3);
+      cursor: pointer; text-decoration: none;
+      transition: all 0.15s ease;
+    }
+
+    .player-tag:hover {
+      background: var(--film-accent); color: #fff;
+      border-color: var(--film-accent);
+    }
+
+    /* ============================================================================
+       VIDEO TYPE TAGS
+       ========================================================================= */
+    .video-type-tag {
+      font-family: var(--font-mono); font-size: 0.5625rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 0.1875rem 0.5rem; border-radius: 0.25rem;
+    }
+
+    .video-type-tag--think-piece { background: #dbeafe; color: #1e40af; }
+    .video-type-tag--conversation { background: #f3e8ff; color: #6b21a8; }
+    .video-type-tag--scouting { background: #dcfce7; color: #166534; }
+    .video-type-tag--highlights { background: #fef3c7; color: #92400e; }
+    .video-type-tag--montage { background: #fce7f3; color: #9d174d; }
+
+    /* ============================================================================
+       ============================================================================
+       FILM ROOM — SCREENING ROOM AESTHETIC
+       Dark background, warm amber accents, projector/film motifs
+       ============================================================================
+       ============================================================================ */
+
+    .film-room {
+      background: var(--film-bg);
+      border-radius: var(--border-radius);
+      padding: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Subtle film grain overlay */
+    .film-room::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(245,158,11,0.015) 2px,
+        rgba(245,158,11,0.015) 4px
+      );
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Projector beam glow from top center */
+    .film-room::after {
+      content: '';
+      position: absolute;
+      top: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 300px;
+      height: 120px;
+      background: radial-gradient(ellipse, rgba(245,158,11,0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .film-room > * { position: relative; z-index: 2; }
+
+    /* --- Section Header (dark mode) --- */
+    .film-room__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+
+    .film-room__title {
+      font-family: var(--font-heading);
+      font-size: 1.375rem;
+      color: var(--color-white);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding-left: 0.75rem;
+      border-left: 4px solid var(--film-accent);
+    }
+
+    .film-room__title-icon {
+      width: 1.5rem; height: 1.5rem;
+      color: var(--film-accent);
+    }
+
+    .film-room__cta {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--film-accent);
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      transition: color 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .film-room__cta:hover { color: #fbbf24; }
+
+    /* --- Tab Navigation --- */
+    .film-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 1.25rem;
+      border-bottom: 1px solid rgba(245,158,11,0.15);
+    }
+
+    .film-tab {
+      padding: 0.625rem 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-400);
+      background: none;
+      border: none;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s;
+    }
+
+    .film-tab:hover { color: var(--color-slate-200); }
+
+    .film-tab.active {
+      color: var(--film-accent);
+    }
+
+    .film-tab.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--film-accent);
+    }
+
+    .film-tab__count {
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+      margin-left: 0.25rem;
+    }
+
+    .film-tab.active .film-tab__count { color: rgba(245,158,11,0.6); }
+
+    /* --- Playlist Layout: Main Player (left) + Thumbnail List (right) --- */
+    .film-playlist {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 1.25rem;
+    }
+
+    /* Main video player area */
+    .film-player {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .film-player__embed {
+      position: relative;
+      width: 100%;
+      padding-bottom: 56.25%; /* 16:9 */
+      background: #000;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      box-shadow: 0 0 40px rgba(245,158,11,0.06);
+      border: 1px solid var(--film-border);
+    }
+
+    .film-player__embed iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* Placeholder when no real embed (mockup use) */
+    .film-player__placeholder {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, #1a1f35 0%, #0c0f1a 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+    }
+
+    .film-player__play-icon {
+      width: 4rem; height: 4rem;
+      color: var(--film-accent);
+      opacity: 0.8;
+      filter: drop-shadow(0 0 20px rgba(245,158,11,0.3));
+    }
+
+    .film-player__placeholder-text {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-400);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .film-player__info {
+      padding: 1rem 0.25rem 0;
+    }
+
+    .film-player__video-title {
+      font-family: var(--font-heading);
+      font-size: 1.0625rem;
+      color: var(--color-white);
+      line-height: 1.35;
+      margin-bottom: 0.5rem;
+    }
+
+    .film-player__meta {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-400);
+      margin-bottom: 0.625rem;
+    }
+
+    .film-player__meta .meta-dot {
+      width: 3px; height: 3px; border-radius: 50%;
+      background: var(--color-slate-600);
+    }
+
+    .film-player__channel {
+      color: var(--film-accent);
+      font-weight: 600;
+    }
+
+    .film-player__tags {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    /* --- Thumbnail Playlist (right sidebar) --- */
+    .film-playlist-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      background: var(--film-surface);
+      border-radius: 0.5rem;
+      border: 1px solid var(--film-border);
+      overflow: hidden;
+      max-height: 500px;
+    }
+
+    .film-playlist__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      background: rgba(245,158,11,0.05);
+      border-bottom: 1px solid var(--film-border);
+    }
+
+    .film-playlist__label {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-300);
+    }
+
+    .film-playlist__count {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+    }
+
+    .film-playlist__items {
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    /* Scrollbar styling for dark container */
+    .film-playlist__items::-webkit-scrollbar { width: 4px; }
+    .film-playlist__items::-webkit-scrollbar-track { background: transparent; }
+    .film-playlist__items::-webkit-scrollbar-thumb {
+      background: rgba(245,158,11,0.2);
+      border-radius: 2px;
+    }
+    .film-playlist__items::-webkit-scrollbar-thumb:hover {
+      background: rgba(245,158,11,0.4);
+    }
+
+    /* Individual thumbnail item */
+    .film-thumb {
+      display: flex;
+      gap: 0.75rem;
+      padding: 0.625rem 0.875rem;
+      cursor: pointer;
+      transition: background 0.15s;
+      border-bottom: 1px solid rgba(245,158,11,0.06);
+    }
+
+    .film-thumb:hover { background: var(--film-surface-hover); }
+
+    .film-thumb.active {
+      background: rgba(245,158,11,0.08);
+      border-left: 3px solid var(--film-accent);
+      padding-left: calc(0.875rem - 3px);
+    }
+
+    .film-thumb__image {
+      position: relative;
+      width: 120px;
+      min-width: 120px;
+      height: 68px;
+      border-radius: 0.25rem;
+      overflow: hidden;
+      background: var(--film-bg);
+      flex-shrink: 0;
+    }
+
+    .film-thumb__image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Placeholder thumbnail (mockup) */
+    .film-thumb__image-placeholder {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1a1f35, #252b45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .film-thumb__image-placeholder svg {
+      width: 1.25rem;
+      height: 1.25rem;
+      color: var(--color-slate-500);
+      opacity: 0.5;
+    }
+
+    .film-thumb__duration {
+      position: absolute;
+      bottom: 4px;
+      right: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 700;
+      color: #fff;
+      background: rgba(0,0,0,0.8);
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    .film-thumb__info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .film-thumb__title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-slate-200);
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      margin-bottom: 0.25rem;
+    }
+
+    .film-thumb.active .film-thumb__title { color: var(--film-accent); }
+
+    .film-thumb__channel {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+    }
+
+    .film-thumb__date {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-600);
+    }
+
+
+    /* ============================================================================
+       ============================================================================
+       VIEW 3: DEDICATED FILM ROOM PAGE — Full Screening Room
+       ============================================================================
+       ============================================================================ */
+
+    .film-page {
+      background: var(--film-bg);
+      min-height: 100vh;
+      padding-top: 5rem;
+    }
+
+    .film-page .container {
+      max-width: 1280px;
+    }
+
+    /* Page header */
+    .film-page__header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 2rem;
+      padding-top: 2rem;
+    }
+
+    .film-page__title-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+
+    .film-page__title {
+      font-family: var(--font-heading);
+      font-size: 2rem;
+      color: var(--color-white);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .film-page__title svg {
+      width: 2rem; height: 2rem;
+      color: var(--film-accent);
+    }
+
+    .film-page__subtitle {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-400);
+    }
+
+    /* Search/filter bar */
+    .film-page__controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .film-search {
+      flex: 1;
+      max-width: 400px;
+      position: relative;
+    }
+
+    .film-search__input {
+      width: 100%;
+      padding: 0.625rem 1rem 0.625rem 2.5rem;
+      background: var(--film-surface);
+      border: 1px solid var(--film-border);
+      border-radius: 0.5rem;
+      color: var(--color-white);
+      font-family: var(--font-body);
+      font-size: 0.875rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .film-search__input:focus {
+      border-color: var(--film-accent);
+      box-shadow: 0 0 0 2px rgba(245,158,11,0.15);
+    }
+
+    .film-search__input::placeholder { color: var(--color-slate-500); }
+
+    .film-search__icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 1rem; height: 1rem;
+      color: var(--color-slate-400);
+    }
+
+    /* Filter chips */
+    .film-filters {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .film-filter {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.375rem 0.875rem;
+      border-radius: 9999px;
+      background: var(--film-surface);
+      color: var(--color-slate-400);
+      border: 1px solid rgba(245,158,11,0.1);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .film-filter:hover {
+      background: var(--film-surface-hover);
+      color: var(--color-slate-200);
+      border-color: var(--film-border);
+    }
+
+    .film-filter.active {
+      background: rgba(245,158,11,0.15);
+      color: var(--film-accent);
+      border-color: var(--film-accent);
+    }
+
+    .film-filter__label {
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-right: 0.5rem;
+      padding-right: 0.5rem;
+      border-right: 1px solid var(--color-slate-700);
+    }
+
+    /* Player filter tags (on full page) */
+    .film-player-filters {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .film-player-filter {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.3125rem 0.75rem;
+      border-radius: 9999px;
+      background: transparent;
+      color: var(--color-slate-400);
+      border: 1px solid rgba(245,158,11,0.15);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .film-player-filter:hover {
+      background: rgba(245,158,11,0.08);
+      color: var(--film-accent);
+      border-color: var(--film-border);
+    }
+
+    .film-player-filter.active {
+      background: rgba(245,158,11,0.15);
+      color: var(--film-accent);
+      border-color: var(--film-accent);
+    }
+
+    /* Featured video (full page) — larger player, full width */
+    .film-page__featured {
+      margin-bottom: 2rem;
+    }
+
+    .film-page__featured .film-playlist {
+      grid-template-columns: 1fr 380px;
+    }
+
+    .film-page__featured .film-playlist-list {
+      max-height: 540px;
+    }
+
+    /* Film divider (amber themed) */
+    .film-divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(245,158,11,0.15) 20%, rgba(245,158,11,0.15) 80%, transparent);
+      margin: 2rem 0;
+    }
+
+    /* Video grid (below featured, on full page) */
+    .film-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .film-card {
+      background: var(--film-surface);
+      border-radius: 0.5rem;
+      overflow: hidden;
+      border: 1px solid var(--film-border);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .film-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      border-color: rgba(245,158,11,0.4);
+    }
+
+    .film-card__image {
+      position: relative;
+      width: 100%;
+      padding-bottom: 56.25%; /* 16:9 */
+      background: var(--film-bg);
+    }
+
+    .film-card__image-placeholder {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, #1a1f35, #252b45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .film-card__image-placeholder svg {
+      width: 2rem; height: 2rem;
+      color: var(--color-slate-500);
+      opacity: 0.4;
+    }
+
+    .film-card__duration {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: #fff;
+      background: rgba(0,0,0,0.85);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
+    .film-card__type-badge {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+    }
+
+    .film-card__body {
+      padding: 0.875rem 1rem;
+    }
+
+    .film-card__title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-white);
+      line-height: 1.4;
+      margin-bottom: 0.5rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .film-card__channel {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: var(--film-accent);
+      margin-bottom: 0.375rem;
+    }
+
+    .film-card__meta {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-bottom: 0.625rem;
+    }
+
+    .film-card__meta .meta-dot {
+      width: 3px; height: 3px; border-radius: 50%;
+      background: var(--color-slate-600);
+    }
+
+    .film-card__tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.375rem;
+    }
+
+
+    /* ============================================================================
+       EMPTY STATES
+       ========================================================================= */
+
+    /* Empty tab message — shown inside playlist area when a category has 0 videos */
+    .film-empty-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem 2rem;
+      text-align: center;
+      grid-column: 1 / -1;
+    }
+
+    .film-empty-tab__icon {
+      width: 3rem;
+      height: 3rem;
+      color: var(--color-slate-600);
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    .film-empty-tab__title {
+      font-family: var(--font-heading);
+      font-size: 0.9375rem;
+      color: var(--color-slate-400);
+      margin-bottom: 0.5rem;
+    }
+
+    .film-empty-tab__subtitle {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+      max-width: 320px;
+      line-height: 1.5;
+    }
+
+    /* Dimmed tab count for empty categories */
+    .film-tab__count--empty {
+      color: var(--color-slate-600);
+      opacity: 0.5;
+    }
+
+    .film-tab--empty {
+      opacity: 0.5;
+    }
+
+    .film-tab--empty.active {
+      opacity: 1;
+      color: var(--color-slate-400);
+    }
+
+    .film-tab--empty.active::after {
+      background: var(--color-slate-500);
+    }
+
+    /* No videos placeholder — collapsed section when player has zero videos */
+    .film-no-videos {
+      background: var(--film-bg);
+      border-radius: var(--border-radius);
+      padding: 2rem 2.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Subtle film grain on the empty state too */
+    .film-no-videos::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(245,158,11,0.015) 2px,
+        rgba(245,158,11,0.015) 4px
+      );
+      pointer-events: none;
+    }
+
+    .film-no-videos > * { position: relative; z-index: 1; }
+
+    .film-no-videos__icon {
+      width: 2.5rem;
+      height: 2.5rem;
+      color: var(--color-slate-600);
+      flex-shrink: 0;
+      opacity: 0.6;
+    }
+
+    .film-no-videos__text {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .film-no-videos__title {
+      font-family: var(--font-heading);
+      font-size: 1rem;
+      color: var(--color-slate-400);
+    }
+
+    .film-no-videos__subtitle {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-600);
+    }
+
+    /* ============================================================================
+       SPROCKET DECORATION (film strip motif for section borders)
+       ========================================================================= */
+    .sprocket-border {
+      position: relative;
+    }
+
+    .sprocket-border::before,
+    .sprocket-border::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 12px;
+      background:
+        repeating-linear-gradient(
+          to bottom,
+          var(--film-bg) 0px,
+          var(--film-bg) 6px,
+          rgba(245,158,11,0.12) 6px,
+          rgba(245,158,11,0.12) 10px,
+          var(--film-bg) 10px,
+          var(--film-bg) 16px
+        );
+      z-index: 3;
+    }
+
+    .sprocket-border::before { left: 0; }
+    .sprocket-border::after { right: 0; }
+
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 900px) {
+      .film-playlist {
+        grid-template-columns: 1fr;
+      }
+
+      .film-playlist-list {
+        max-height: 300px;
+      }
+
+      .film-page__featured .film-playlist {
+        grid-template-columns: 1fr;
+      }
+
+      .film-grid {
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      }
+    }
+
+    @media (max-width: 768px) {
+      .navbar-links { display: none; }
+      .mode-switcher { top: 4rem; right: 0.5rem; }
+      .film-room { padding: 1.25rem; }
+      .film-page__header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+      .film-page__controls { flex-direction: column; align-items: stretch; }
+      .film-search { max-width: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================================
+       NAVIGATION BAR
+       ========================================================================= -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <a href="#" class="navbar-brand">
+        <h1 class="heading-font">DraftGuru</h1>
+      </a>
+
+      <div class="navbar-links">
+        <a href="#" class="navbar-link">News</a>
+        <a href="#" class="navbar-link">Prospects</a>
+        <a href="#" class="navbar-link active">Film Room</a>
+        <a href="#" class="navbar-link">Mock Draft</a>
+        <a href="#" class="navbar-link">Compare</a>
+      </div>
+
+      <div class="navbar-search">
+        <input type="text" class="search-input" placeholder="Search prospects..." />
+        <button class="search-button">
+          <svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============================================================================
+       MODE SWITCHER — Toggle between 3 mockup views
+       ========================================================================= -->
+  <div class="mode-switcher">
+    <button class="mode-btn active" onclick="switchView('homepage')">Homepage</button>
+    <button class="mode-btn" onclick="switchView('player')">Player</button>
+    <button class="mode-btn" onclick="switchView('fullpage')">Full Page</button>
+    <button class="mode-btn" onclick="switchView('empty-tab')">Empty Tab</button>
+    <button class="mode-btn" onclick="switchView('no-videos')">No Videos</button>
+  </div>
+
+
+  <!-- ============================================================================
+       ============================================================================
+       VIEW 1: HOMEPAGE FILM ROOM MODULE
+       Sits between News Grid and Podcasts section
+       ============================================================================
+       ============================================================================ -->
+  <div id="view-homepage" class="view-section active">
+    <main class="container mt-28">
+
+      <!-- Placeholder for news sections above -->
+      <div class="section" style="background: var(--color-slate-50); border-radius: var(--border-radius); padding: 2rem; text-align: center; color: var(--color-slate-400);">
+        <p class="mono-font uppercase" style="font-size: 0.75rem; letter-spacing: 0.1em;">[ News Hero + Feed Grid Above ]</p>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- ===================== FILM ROOM SECTION ===================== -->
+      <section class="section">
+        <div class="film-room sprocket-border">
+
+          <!-- Header row -->
+          <div class="film-room__header">
+            <h2 class="film-room__title">
+              <!-- Film projector icon -->
+              <svg class="film-room__title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="6" width="20" height="12" rx="2"/>
+                <circle cx="8" cy="12" r="2.5"/>
+                <circle cx="16" cy="12" r="2.5"/>
+                <path d="M2 9h20M2 15h20"/>
+                <rect x="9" y="2" width="6" height="4" rx="1"/>
+              </svg>
+              Film Room
+            </h2>
+            <a href="#" class="film-room__cta">
+              View All
+              <svg class="icon" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+            </a>
+          </div>
+
+          <!-- Tabs: content categories -->
+          <div class="film-tabs">
+            <button class="film-tab active">Think Pieces <span class="film-tab__count">(8)</span></button>
+            <button class="film-tab">Conversations <span class="film-tab__count">(12)</span></button>
+            <button class="film-tab">Scouting Reports <span class="film-tab__count">(15)</span></button>
+          </div>
+
+          <!-- Playlist layout -->
+          <div class="film-playlist">
+
+            <!-- LEFT: Main video player -->
+            <div class="film-player">
+              <div class="film-player__embed">
+                <div class="film-player__placeholder">
+                  <svg class="film-player__play-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                  <span class="film-player__placeholder-text">Now Playing</span>
+                </div>
+              </div>
+
+              <div class="film-player__info">
+                <h3 class="film-player__video-title">
+                  Why Cooper Flagg Is the Most Complete Prospect Since LeBron
+                </h3>
+                <div class="film-player__meta">
+                  <span class="film-player__channel">The Ringer</span>
+                  <span class="meta-dot"></span>
+                  <span>Feb 24, 2026</span>
+                  <span class="meta-dot"></span>
+                  <span>42:15</span>
+                </div>
+                <div class="film-player__tags">
+                  <span class="video-type-tag video-type-tag--think-piece">Think Piece</span>
+                  <a href="#" class="player-tag">Cooper Flagg</a>
+                  <a href="#" class="player-tag">Ace Bailey</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- RIGHT: Thumbnail playlist -->
+            <div class="film-playlist-list">
+              <div class="film-playlist__header">
+                <span class="film-playlist__label">Up Next</span>
+                <span class="film-playlist__count">8 videos</span>
+              </div>
+              <div class="film-playlist__items">
+
+                <!-- Active item -->
+                <div class="film-thumb active">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">42:15</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Why Cooper Flagg Is the Most Complete Prospect Since LeBron</div>
+                    <div class="film-thumb__channel">The Ringer</div>
+                    <div class="film-thumb__date">Feb 24, 2026</div>
+                  </div>
+                </div>
+
+                <!-- Item 2 -->
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">58:30</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">2025 Draft Big Board Breakdown: Tiers, Sleepers, and Busts</div>
+                    <div class="film-thumb__channel">No Dunks</div>
+                    <div class="film-thumb__date">Feb 22, 2026</div>
+                  </div>
+                </div>
+
+                <!-- Item 3 -->
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">35:47</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">The Athletic's Draft Model — How Analytics Are Reshaping Scouting</div>
+                    <div class="film-thumb__channel">Thinking Basketball</div>
+                    <div class="film-thumb__date">Feb 20, 2026</div>
+                  </div>
+                </div>
+
+                <!-- Item 4 -->
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">1:12:05</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Bill Simmons & Zach Lowe: Full 2025 Mock Draft</div>
+                    <div class="film-thumb__channel">The Ringer</div>
+                    <div class="film-thumb__date">Feb 18, 2026</div>
+                  </div>
+                </div>
+
+                <!-- Item 5 -->
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">27:33</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Dylan Harper's Case for #1: A Statistical Deep Dive</div>
+                    <div class="film-thumb__channel">The Stepien</div>
+                    <div class="film-thumb__date">Feb 16, 2026</div>
+                  </div>
+                </div>
+
+                <!-- Item 6 -->
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">45:20</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Which 2025 Prospects Will Actually Translate to the NBA?</div>
+                    <div class="film-thumb__channel">Locked On NBA</div>
+                    <div class="film-thumb__date">Feb 14, 2026</div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div><!-- /film-playlist -->
+
+        </div><!-- /film-room -->
+      </section>
+
+      <div class="section-divider"></div>
+
+      <!-- Placeholder for Podcasts section below -->
+      <div class="section" style="background: var(--color-slate-50); border-radius: var(--border-radius); padding: 2rem; text-align: center; color: var(--color-slate-400);">
+        <p class="mono-font uppercase" style="font-size: 0.75rem; letter-spacing: 0.1em;">[ Podcasts Section Below ]</p>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- Placeholder for remaining sections -->
+      <div class="section" style="background: var(--color-slate-50); border-radius: var(--border-radius); padding: 2rem; text-align: center; color: var(--color-slate-400);">
+        <p class="mono-font uppercase" style="font-size: 0.75rem; letter-spacing: 0.1em;">[ Trending Players + Top Prospects + VS Arena Below ]</p>
+      </div>
+
+    </main>
+  </div>
+
+
+  <!-- ============================================================================
+       ============================================================================
+       VIEW 2: PLAYER PAGE FILM STUDY MODULE
+       Sits between Combine Stats and Comparisons
+       ============================================================================
+       ============================================================================ -->
+  <div id="view-player" class="view-section">
+    <main class="container mt-28">
+
+      <!-- Placeholder for player info above -->
+      <div class="section" style="background: var(--color-slate-50); border-radius: var(--border-radius); padding: 2rem; text-align: center; color: var(--color-slate-400);">
+        <p class="mono-font uppercase" style="font-size: 0.75rem; letter-spacing: 0.1em;">[ Player Info + Scoreboard + Combine Stats Above ]</p>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- ===================== PLAYER FILM STUDY ===================== -->
+      <section class="section">
+        <div class="film-room sprocket-border">
+
+          <div class="film-room__header">
+            <h2 class="film-room__title">
+              <svg class="film-room__title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="6" width="20" height="12" rx="2"/>
+                <circle cx="8" cy="12" r="2.5"/>
+                <circle cx="16" cy="12" r="2.5"/>
+                <path d="M2 9h20M2 15h20"/>
+                <rect x="9" y="2" width="6" height="4" rx="1"/>
+              </svg>
+              Film Study — Cooper Flagg
+            </h2>
+          </div>
+
+          <!-- Tabs: player-specific categories -->
+          <div class="film-tabs">
+            <button class="film-tab active">Highlights <span class="film-tab__count">(6)</span></button>
+            <button class="film-tab">Scouting Reports <span class="film-tab__count">(4)</span></button>
+            <button class="film-tab">Montages <span class="film-tab__count">(3)</span></button>
+          </div>
+
+          <div class="film-playlist">
+
+            <div class="film-player">
+              <div class="film-player__embed">
+                <div class="film-player__placeholder">
+                  <svg class="film-player__play-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                  <span class="film-player__placeholder-text">Now Playing</span>
+                </div>
+              </div>
+
+              <div class="film-player__info">
+                <h3 class="film-player__video-title">
+                  Cooper Flagg Full Season Highlights — Duke 2024-25
+                </h3>
+                <div class="film-player__meta">
+                  <span class="film-player__channel">MaxaMillion711</span>
+                  <span class="meta-dot"></span>
+                  <span>Feb 20, 2026</span>
+                  <span class="meta-dot"></span>
+                  <span>12:34</span>
+                </div>
+                <div class="film-player__tags">
+                  <span class="video-type-tag video-type-tag--highlights">Highlights</span>
+                  <a href="#" class="player-tag">Cooper Flagg</a>
+                </div>
+              </div>
+            </div>
+
+            <div class="film-playlist-list">
+              <div class="film-playlist__header">
+                <span class="film-playlist__label">Highlights</span>
+                <span class="film-playlist__count">6 videos</span>
+              </div>
+              <div class="film-playlist__items">
+
+                <div class="film-thumb active">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">12:34</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Cooper Flagg Full Season Highlights — Duke 2024-25</div>
+                    <div class="film-thumb__channel">MaxaMillion711</div>
+                    <div class="film-thumb__date">Feb 20, 2026</div>
+                  </div>
+                </div>
+
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">8:45</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Flagg 32 PTS vs UNC — Complete Domination</div>
+                    <div class="film-thumb__channel">House of Highlights</div>
+                    <div class="film-thumb__date">Feb 15, 2026</div>
+                  </div>
+                </div>
+
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">15:20</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Cooper Flagg — Every Poster Dunk This Season</div>
+                    <div class="film-thumb__channel">Swish Out</div>
+                    <div class="film-thumb__date">Feb 10, 2026</div>
+                  </div>
+                </div>
+
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">6:18</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Flagg Triple-Double vs Kentucky Highlights</div>
+                    <div class="film-thumb__channel">NCAA March Madness</div>
+                    <div class="film-thumb__date">Feb 1, 2026</div>
+                  </div>
+                </div>
+
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">10:55</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Cooper Flagg ACC Tournament — All Games Recap</div>
+                    <div class="film-thumb__channel">ACC Digital Network</div>
+                    <div class="film-thumb__date">Jan 28, 2026</div>
+                  </div>
+                </div>
+
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">4:22</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Flagg's Defensive Highlights — Blocks & Steals Reel</div>
+                    <div class="film-thumb__channel">NBA Draft Room</div>
+                    <div class="film-thumb__date">Jan 20, 2026</div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
+      <div class="section-divider"></div>
+
+      <div class="section" style="background: var(--color-slate-50); border-radius: var(--border-radius); padding: 2rem; text-align: center; color: var(--color-slate-400);">
+        <p class="mono-font uppercase" style="font-size: 0.75rem; letter-spacing: 0.1em;">[ H2H Comparison + Player Comps + News Feed Below ]</p>
+      </div>
+
+    </main>
+  </div>
+
+
+  <!-- ============================================================================
+       ============================================================================
+       VIEW 4: PLAYER PAGE — EMPTY TAB STATE
+       Player has videos in some categories, but not in the active tab
+       ============================================================================
+       ============================================================================ -->
+  <div id="view-empty-tab" class="view-section">
+    <main class="container mt-28">
+
+      <div class="section" style="background: var(--color-slate-50); border-radius: var(--border-radius); padding: 2rem; text-align: center; color: var(--color-slate-400);">
+        <p class="mono-font uppercase" style="font-size: 0.75rem; letter-spacing: 0.1em;">[ Player Info + Scoreboard + Combine Stats Above ]</p>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <section class="section">
+        <div class="film-room sprocket-border">
+
+          <div class="film-room__header">
+            <h2 class="film-room__title">
+              <svg class="film-room__title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="6" width="20" height="12" rx="2"/>
+                <circle cx="8" cy="12" r="2.5"/>
+                <circle cx="16" cy="12" r="2.5"/>
+                <path d="M2 9h20M2 15h20"/>
+                <rect x="9" y="2" width="6" height="4" rx="1"/>
+              </svg>
+              Film Study — Kon Knueppel
+            </h2>
+          </div>
+
+          <!-- Tabs with dimmed empty categories -->
+          <div class="film-tabs">
+            <button class="film-tab">Highlights <span class="film-tab__count">(3)</span></button>
+            <button class="film-tab film-tab--empty active">Scouting Reports <span class="film-tab__count film-tab__count--empty">(0)</span></button>
+            <button class="film-tab">Montages <span class="film-tab__count">(1)</span></button>
+          </div>
+
+          <!-- Empty state message instead of playlist -->
+          <div class="film-empty-tab">
+            <!-- Film reel icon -->
+            <svg class="film-empty-tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="2" y="6" width="20" height="12" rx="2"/>
+              <circle cx="8" cy="12" r="2.5"/>
+              <circle cx="16" cy="12" r="2.5"/>
+              <path d="M2 9h20M2 15h20"/>
+            </svg>
+            <div class="film-empty-tab__title">No scouting reports yet for Kon Knueppel</div>
+            <div class="film-empty-tab__subtitle">Check back soon or browse his highlights and montages</div>
+          </div>
+
+        </div>
+      </section>
+
+      <div class="section-divider"></div>
+
+      <div class="section" style="background: var(--color-slate-50); border-radius: var(--border-radius); padding: 2rem; text-align: center; color: var(--color-slate-400);">
+        <p class="mono-font uppercase" style="font-size: 0.75rem; letter-spacing: 0.1em;">[ H2H Comparison + Player Comps + News Feed Below ]</p>
+      </div>
+
+    </main>
+  </div>
+
+
+  <!-- ============================================================================
+       ============================================================================
+       VIEW 5: PLAYER PAGE — NO VIDEOS AT ALL
+       Player has zero videos; show collapsed placeholder
+       ============================================================================
+       ============================================================================ -->
+  <div id="view-no-videos" class="view-section">
+    <main class="container mt-28">
+
+      <div class="section" style="background: var(--color-slate-50); border-radius: var(--border-radius); padding: 2rem; text-align: center; color: var(--color-slate-400);">
+        <p class="mono-font uppercase" style="font-size: 0.75rem; letter-spacing: 0.1em;">[ Player Info + Scoreboard + Combine Stats Above ]</p>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- Collapsed Film Study placeholder — no tabs, no playlist -->
+      <section class="section">
+        <div class="film-no-videos">
+          <svg class="film-no-videos__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="2" y="6" width="20" height="12" rx="2"/>
+            <circle cx="8" cy="12" r="2.5"/>
+            <circle cx="16" cy="12" r="2.5"/>
+            <path d="M2 9h20M2 15h20"/>
+            <rect x="9" y="2" width="6" height="4" rx="1"/>
+          </svg>
+          <div class="film-no-videos__text">
+            <div class="film-no-videos__title">Film Study</div>
+            <div class="film-no-videos__subtitle">No videos yet for Jase Richardson — check back soon</div>
+          </div>
+        </div>
+      </section>
+
+      <div class="section-divider"></div>
+
+      <div class="section" style="background: var(--color-slate-50); border-radius: var(--border-radius); padding: 2rem; text-align: center; color: var(--color-slate-400);">
+        <p class="mono-font uppercase" style="font-size: 0.75rem; letter-spacing: 0.1em;">[ H2H Comparison + Player Comps + News Feed Below ]</p>
+      </div>
+
+    </main>
+  </div>
+
+
+  <!-- ============================================================================
+       ============================================================================
+       VIEW 3: DEDICATED FILM ROOM PAGE
+       Full-page screening room experience
+       ============================================================================
+       ============================================================================ -->
+  <div id="view-fullpage" class="view-section">
+    <div class="film-page">
+      <div class="container">
+
+        <!-- Page header -->
+        <div class="film-page__header">
+          <div class="film-page__title-group">
+            <h1 class="film-page__title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="6" width="20" height="12" rx="2"/>
+                <circle cx="8" cy="12" r="2.5"/>
+                <circle cx="16" cy="12" r="2.5"/>
+                <path d="M2 9h20M2 15h20"/>
+                <rect x="9" y="2" width="6" height="4" rx="1"/>
+              </svg>
+              Film Room
+            </h1>
+            <p class="film-page__subtitle">Curated draft video — scouting reports, breakdowns, and highlights</p>
+          </div>
+        </div>
+
+        <!-- Search & type filters -->
+        <div class="film-page__controls">
+          <div class="film-search">
+            <svg class="film-search__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" class="film-search__input" placeholder="Search videos by title, channel, or player..." />
+          </div>
+
+          <div class="film-filters">
+            <span class="film-filter__label mono-font uppercase">Type:</span>
+            <button class="film-filter active">All</button>
+            <button class="film-filter">Think Pieces</button>
+            <button class="film-filter">Conversations</button>
+            <button class="film-filter">Scouting</button>
+            <button class="film-filter">Highlights</button>
+            <button class="film-filter">Montages</button>
+          </div>
+        </div>
+
+        <!-- Player tag filters -->
+        <div class="film-player-filters">
+          <span class="film-filter__label mono-font uppercase">Players:</span>
+          <button class="film-player-filter active">All</button>
+          <button class="film-player-filter">Cooper Flagg</button>
+          <button class="film-player-filter">Ace Bailey</button>
+          <button class="film-player-filter">Dylan Harper</button>
+          <button class="film-player-filter">VJ Edgecombe</button>
+          <button class="film-player-filter">Kon Knueppel</button>
+        </div>
+
+        <!-- Featured video: playlist layout -->
+        <div class="film-page__featured">
+          <div class="film-playlist">
+
+            <div class="film-player">
+              <div class="film-player__embed">
+                <div class="film-player__placeholder">
+                  <svg class="film-player__play-icon" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                  <span class="film-player__placeholder-text">Now Playing</span>
+                </div>
+              </div>
+
+              <div class="film-player__info">
+                <h3 class="film-player__video-title">
+                  The 2025 NBA Draft Is LOADED — Full Class Breakdown
+                </h3>
+                <div class="film-player__meta">
+                  <span class="film-player__channel">Thinking Basketball</span>
+                  <span class="meta-dot"></span>
+                  <span>Feb 26, 2026</span>
+                  <span class="meta-dot"></span>
+                  <span>1:05:32</span>
+                </div>
+                <div class="film-player__tags">
+                  <span class="video-type-tag video-type-tag--think-piece">Think Piece</span>
+                  <a href="#" class="player-tag">Cooper Flagg</a>
+                  <a href="#" class="player-tag">Ace Bailey</a>
+                  <a href="#" class="player-tag">Dylan Harper</a>
+                  <a href="#" class="player-tag">VJ Edgecombe</a>
+                </div>
+              </div>
+            </div>
+
+            <div class="film-playlist-list">
+              <div class="film-playlist__header">
+                <span class="film-playlist__label">Recent</span>
+                <span class="film-playlist__count">24 videos</span>
+              </div>
+              <div class="film-playlist__items">
+
+                <div class="film-thumb active">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">1:05:32</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">The 2025 NBA Draft Is LOADED — Full Class Breakdown</div>
+                    <div class="film-thumb__channel">Thinking Basketball</div>
+                    <div class="film-thumb__date">Feb 26, 2026</div>
+                  </div>
+                </div>
+
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">42:15</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Why Cooper Flagg Is the Most Complete Prospect Since LeBron</div>
+                    <div class="film-thumb__channel">The Ringer</div>
+                    <div class="film-thumb__date">Feb 24, 2026</div>
+                  </div>
+                </div>
+
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">58:30</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">2025 Draft Big Board Breakdown: Tiers, Sleepers, and Busts</div>
+                    <div class="film-thumb__channel">No Dunks</div>
+                    <div class="film-thumb__date">Feb 22, 2026</div>
+                  </div>
+                </div>
+
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">12:34</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Cooper Flagg Full Season Highlights — Duke 2024-25</div>
+                    <div class="film-thumb__channel">MaxaMillion711</div>
+                    <div class="film-thumb__date">Feb 20, 2026</div>
+                  </div>
+                </div>
+
+                <div class="film-thumb">
+                  <div class="film-thumb__image">
+                    <div class="film-thumb__image-placeholder">
+                      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    </div>
+                    <span class="film-thumb__duration">35:47</span>
+                  </div>
+                  <div class="film-thumb__info">
+                    <div class="film-thumb__title">Ace Bailey Scouting Report — NBA Draft Breakdown</div>
+                    <div class="film-thumb__channel">The Stepien</div>
+                    <div class="film-thumb__date">Feb 18, 2026</div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="film-divider"></div>
+
+        <!-- Video grid — browse all -->
+        <div style="margin-bottom: 1.5rem;">
+          <h2 style="font-family: var(--font-heading); font-size: 1.125rem; color: var(--color-white); padding-left: 0.75rem; border-left: 3px solid var(--film-accent);">
+            Browse All Videos
+          </h2>
+        </div>
+
+        <div class="film-grid">
+
+          <!-- Card 1 -->
+          <div class="film-card">
+            <div class="film-card__image">
+              <div class="film-card__image-placeholder">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="color: var(--color-slate-500);"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <span class="film-card__duration">1:12:05</span>
+              <div class="film-card__type-badge">
+                <span class="video-type-tag video-type-tag--conversation">Conversation</span>
+              </div>
+            </div>
+            <div class="film-card__body">
+              <div class="film-card__title">Bill Simmons & Zach Lowe: Full 2025 Mock Draft — Who Goes #1?</div>
+              <div class="film-card__channel">The Ringer</div>
+              <div class="film-card__meta">
+                <span>Feb 18, 2026</span>
+                <span class="meta-dot"></span>
+                <span>245K views</span>
+              </div>
+              <div class="film-card__tags">
+                <a href="#" class="player-tag">Cooper Flagg</a>
+                <a href="#" class="player-tag">Dylan Harper</a>
+                <a href="#" class="player-tag">Ace Bailey</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="film-card">
+            <div class="film-card__image">
+              <div class="film-card__image-placeholder">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="color: var(--color-slate-500);"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <span class="film-card__duration">15:20</span>
+              <div class="film-card__type-badge">
+                <span class="video-type-tag video-type-tag--scouting">Scouting</span>
+              </div>
+            </div>
+            <div class="film-card__body">
+              <div class="film-card__title">VJ Edgecombe Full Scouting Report — Explosive Guard Breakdown</div>
+              <div class="film-card__channel">Mike Schmitz</div>
+              <div class="film-card__meta">
+                <span>Feb 16, 2026</span>
+                <span class="meta-dot"></span>
+                <span>89K views</span>
+              </div>
+              <div class="film-card__tags">
+                <a href="#" class="player-tag">VJ Edgecombe</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="film-card">
+            <div class="film-card__image">
+              <div class="film-card__image-placeholder">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="color: var(--color-slate-500);"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <span class="film-card__duration">8:45</span>
+              <div class="film-card__type-badge">
+                <span class="video-type-tag video-type-tag--highlights">Highlights</span>
+              </div>
+            </div>
+            <div class="film-card__body">
+              <div class="film-card__title">Dylan Harper 28 PTS, 8 AST vs Villanova — Full Game Highlights</div>
+              <div class="film-card__channel">House of Highlights</div>
+              <div class="film-card__meta">
+                <span>Feb 14, 2026</span>
+                <span class="meta-dot"></span>
+                <span>156K views</span>
+              </div>
+              <div class="film-card__tags">
+                <a href="#" class="player-tag">Dylan Harper</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4 -->
+          <div class="film-card">
+            <div class="film-card__image">
+              <div class="film-card__image-placeholder">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="color: var(--color-slate-500);"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <span class="film-card__duration">4:33</span>
+              <div class="film-card__type-badge">
+                <span class="video-type-tag video-type-tag--montage">Montage</span>
+              </div>
+            </div>
+            <div class="film-card__body">
+              <div class="film-card__title">Ace Bailey — "Built Different" NBA Draft Hype Mix</div>
+              <div class="film-card__channel">Swish Out</div>
+              <div class="film-card__meta">
+                <span>Feb 12, 2026</span>
+                <span class="meta-dot"></span>
+                <span>72K views</span>
+              </div>
+              <div class="film-card__tags">
+                <a href="#" class="player-tag">Ace Bailey</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 5 -->
+          <div class="film-card">
+            <div class="film-card__image">
+              <div class="film-card__image-placeholder">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="color: var(--color-slate-500);"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <span class="film-card__duration">27:33</span>
+              <div class="film-card__type-badge">
+                <span class="video-type-tag video-type-tag--think-piece">Think Piece</span>
+              </div>
+            </div>
+            <div class="film-card__body">
+              <div class="film-card__title">Dylan Harper's Case for #1: A Statistical Deep Dive</div>
+              <div class="film-card__channel">The Stepien</div>
+              <div class="film-card__meta">
+                <span>Feb 10, 2026</span>
+                <span class="meta-dot"></span>
+                <span>63K views</span>
+              </div>
+              <div class="film-card__tags">
+                <a href="#" class="player-tag">Dylan Harper</a>
+                <a href="#" class="player-tag">Cooper Flagg</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 6 -->
+          <div class="film-card">
+            <div class="film-card__image">
+              <div class="film-card__image-placeholder">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="color: var(--color-slate-500);"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <span class="film-card__duration">22:10</span>
+              <div class="film-card__type-badge">
+                <span class="video-type-tag video-type-tag--scouting">Scouting</span>
+              </div>
+            </div>
+            <div class="film-card__body">
+              <div class="film-card__title">Kon Knueppel — The Most Underrated Shooter in This Draft Class</div>
+              <div class="film-card__channel">Locked On NBA</div>
+              <div class="film-card__meta">
+                <span>Feb 8, 2026</span>
+                <span class="meta-dot"></span>
+                <span>41K views</span>
+              </div>
+              <div class="film-card__tags">
+                <a href="#" class="player-tag">Kon Knueppel</a>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /film-grid -->
+
+        <!-- Load more -->
+        <div style="text-align: center; margin-top: 2rem;">
+          <button style="
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 0.625rem 2rem;
+            background: transparent;
+            color: var(--film-accent);
+            border: 1px solid var(--film-border);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+          " onmouseover="this.style.background='rgba(245,158,11,0.08)'" onmouseout="this.style.background='transparent'">
+            Load More Videos
+          </button>
+        </div>
+
+      </div><!-- /container -->
+    </div><!-- /film-page -->
+  </div>
+
+
+  <!-- ============================================================================
+       FOOTER
+       ========================================================================= -->
+  <footer class="footer">
+    <div class="footer-content">
+      <p class="footer-copyright">&copy; 2026 DraftGuru. All rights reserved.</p>
+    </div>
+  </footer>
+
+
+  <!-- ============================================================================
+       VIEW SWITCHER SCRIPT
+       ========================================================================= -->
+  <script>
+    function switchView(view) {
+      // Hide all views
+      document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
+      // Deactivate all buttons
+      document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+
+      // Show selected view
+      document.getElementById('view-' + view).classList.add('active');
+
+      // Activate the clicked button
+      const buttons = document.querySelectorAll('.mode-btn');
+      const map = { homepage: 0, player: 1, fullpage: 2, 'empty-tab': 3, 'no-videos': 4 };
+      buttons[map[view]].classList.add('active');
+
+      // Toggle body background for full page view
+      if (view === 'fullpage') {
+        document.body.style.background = 'var(--film-bg)';
+      } else {
+        document.body.style.background = '';
+      }
+    }
+
+    // Tab interactivity (just visual switching for the mockup)
+    document.querySelectorAll('.film-tabs').forEach(tabGroup => {
+      tabGroup.querySelectorAll('.film-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabGroup.querySelectorAll('.film-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+        });
+      });
+    });
+
+    // Filter interactivity (visual only)
+    document.querySelectorAll('.film-filters').forEach(group => {
+      group.querySelectorAll('.film-filter').forEach(filter => {
+        filter.addEventListener('click', () => {
+          group.querySelectorAll('.film-filter').forEach(f => f.classList.remove('active'));
+          filter.classList.add('active');
+        });
+      });
+    });
+
+    document.querySelectorAll('.film-player-filters').forEach(group => {
+      group.querySelectorAll('.film-player-filter').forEach(filter => {
+        filter.addEventListener('click', () => {
+          group.querySelectorAll('.film-player-filter').forEach(f => f.classList.remove('active'));
+          filter.classList.add('active');
+        });
+      });
+    });
+
+    // Thumbnail click → visual swap (mockup only)
+    document.querySelectorAll('.film-playlist-list').forEach(list => {
+      list.querySelectorAll('.film-thumb').forEach(thumb => {
+        thumb.addEventListener('click', () => {
+          list.querySelectorAll('.film-thumb').forEach(t => t.classList.remove('active'));
+          thumb.classList.add('active');
+        });
+      });
+    });
+  </script>
+
+</body>
+</html>

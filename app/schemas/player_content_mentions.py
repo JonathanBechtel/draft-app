@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column, Index, String, UniqueConstraint
+from sqlalchemy import Column, Enum as SAEnum, Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -48,15 +48,23 @@ class PlayerContentMention(SQLModel, table=True):  # type: ignore[call-arg]
 
     id: Optional[int] = Field(default=None, primary_key=True)
     player_id: int = Field(foreign_key="players_master.id", index=True)
-    content_type: str = Field(
-        sa_column=Column("content_type", String, nullable=False),
+    content_type: ContentType = Field(
+        sa_column=Column(
+            "content_type",
+            SAEnum(ContentType, name="contenttype"),
+            nullable=False,
+        ),
     )
     content_id: int = Field(description="ID of the content item (polymorphic, no FK)")
     published_at: Optional[datetime] = Field(
         default=None, description="Denormalized from content table"
     )
-    source: str = Field(
-        sa_column=Column("source", String, nullable=False),
+    source: MentionSource = Field(
+        sa_column=Column(
+            "source",
+            SAEnum(MentionSource, name="mentionsource"),
+            nullable=False,
+        ),
     )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC).replace(tzinfo=None)

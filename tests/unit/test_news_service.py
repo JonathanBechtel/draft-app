@@ -3,7 +3,10 @@
 from datetime import datetime, timedelta, timezone
 
 
+from app.schemas.news_items import NewsItemTag
 from app.services.news_service import (
+    _coerce_news_tag,
+    _resolve_tag,
     build_read_more_text,
     format_relative_time,
 )
@@ -84,3 +87,35 @@ class TestBuildReadMoreText:
         """Should handle empty source name gracefully."""
         result = build_read_more_text("")
         assert result == "Read at "
+
+
+class TestTagHelpers:
+    """Tests for news tag parsing/formatting helpers."""
+
+    def test_coerce_news_tag_from_display_value(self):
+        """Display-value tags map to enum members."""
+        assert _coerce_news_tag("Mock Draft") == NewsItemTag.MOCK_DRAFT
+
+    def test_coerce_news_tag_from_enum_name(self):
+        """Enum-name tags map to enum members."""
+        assert _coerce_news_tag("MOCK_DRAFT") == NewsItemTag.MOCK_DRAFT
+
+    def test_coerce_news_tag_invalid_returns_none(self):
+        """Unknown tags return None instead of raising."""
+        assert _coerce_news_tag("Unknown Tag") is None
+
+    def test_resolve_tag_from_enum_member(self):
+        """Enum member resolves to display value."""
+        assert _resolve_tag(NewsItemTag.GAME_RECAP) == "Game Recap"
+
+    def test_resolve_tag_from_display_value(self):
+        """Display-value strings round-trip cleanly."""
+        assert _resolve_tag("Game Recap") == "Game Recap"
+
+    def test_resolve_tag_from_enum_name(self):
+        """Enum-name strings resolve to display values."""
+        assert _resolve_tag("GAME_RECAP") == "Game Recap"
+
+    def test_resolve_tag_unknown_falls_back_to_raw(self):
+        """Unknown strings do not crash the feed formatter."""
+        assert _resolve_tag("UNMAPPED_TAG") == "UNMAPPED_TAG"

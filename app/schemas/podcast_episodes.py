@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import Column, Enum as SAEnum, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -53,7 +53,14 @@ class PodcastEpisode(SQLModel, table=True):  # type: ignore[call-arg]
     summary: Optional[str] = Field(default=None)
 
     # Classification
-    tag: PodcastEpisodeTag = Field(default=PodcastEpisodeTag.DRAFT_ANALYSIS)
+    tag: PodcastEpisodeTag = Field(
+        default=PodcastEpisodeTag.DRAFT_ANALYSIS,
+        sa_column=Column(
+            SAEnum(PodcastEpisodeTag, name="podcastepisodetag"),
+            nullable=False,
+            server_default="DRAFT_ANALYSIS",
+        ),
+    )
 
     # Timestamps
     published_at: datetime = Field(index=True)

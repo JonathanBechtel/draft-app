@@ -5,12 +5,14 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.podcast_episodes import PodcastEpisode, PodcastEpisodeTag
 from app.schemas.podcast_shows import PodcastShow
 from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
 from app.schemas.players_master import PlayerMaster
+from app.services.podcast_service import get_podcast_feed
 from tests.integration.auth_helpers import create_auth_user, login_staff
 from tests.integration.conftest import make_player, make_podcast_episode, make_podcast_show
 
@@ -79,6 +81,7 @@ class TestListPodcasts:
         self,
         app_client: AsyncClient,
         sample_episode: PodcastEpisode,
+        db_session: AsyncSession,
     ):
         """GET /api/podcasts returns episodes with correct format."""
         response = await app_client.get("/api/podcasts")
@@ -95,6 +98,13 @@ class TestListPodcasts:
         assert "audio_url" in item
         assert "duration" in item
         assert "listen_on_text" in item
+
+        # Enum-backed storage should persist canonical enum names.
+        raw = await db_session.execute(
+            text("SELECT tag::text FROM podcast_episodes WHERE id = :id"),
+            {"id": sample_episode.id},
+        )
+        assert raw.scalar_one() == "DRAFT_ANALYSIS"
 
     async def test_list_podcasts_with_player_id(
         self,
@@ -134,6 +144,39 @@ class TestListPodcasts:
         assert data["total"] == 1
         assert data["items"][0]["title"] == "Episode ep-player-1"
         assert data["items"][0]["is_player_specific"] is True
+
+    async def test_get_podcast_feed_accepts_tag_name_and_value(
+        self,
+        db_session: AsyncSession,
+        sample_show: PodcastShow,
+    ):
+        """Podcast tag filtering works for display-value and enum-name inputs."""
+        ep_a = make_podcast_episode(
+            show_id=sample_show.id,  # type: ignore[arg-type]
+            external_id="ep-filter-a",
+            tag=PodcastEpisodeTag.MOCK_DRAFT,
+        )
+        ep_b = make_podcast_episode(
+            show_id=sample_show.id,  # type: ignore[arg-type]
+            external_id="ep-filter-b",
+            tag=PodcastEpisodeTag.DRAFT_ANALYSIS,
+        )
+        db_session.add_all([ep_a, ep_b])
+        await db_session.commit()
+
+        feed_by_value = await get_podcast_feed(
+            db_session,
+            tag=PodcastEpisodeTag.MOCK_DRAFT.value,
+        )
+        feed_by_name = await get_podcast_feed(
+            db_session,
+            tag=PodcastEpisodeTag.MOCK_DRAFT.name,
+        )
+
+        assert feed_by_value.total == 1
+        assert feed_by_name.total == 1
+        assert feed_by_value.items[0].title == "Episode ep-filter-a"
+        assert feed_by_name.items[0].title == "Episode ep-filter-a"
 
 
 @pytest.mark.asyncio

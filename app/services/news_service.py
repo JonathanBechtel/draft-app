@@ -79,6 +79,17 @@ def build_read_more_text(source_name: str) -> str:
     return f"Read at {source_name}"
 
 
+def _coerce_news_tag(raw: str) -> NewsItemTag | None:
+    """Parse a tag string that may be an enum value or enum name."""
+    try:
+        return NewsItemTag(raw)
+    except ValueError:
+        try:
+            return NewsItemTag[raw]
+        except KeyError:
+            return None
+
+
 async def get_news_feed(
     db: AsyncSession,
     limit: int = 20,
@@ -274,7 +285,7 @@ async def get_trending_players(
 
     if content_type is not None:
         stmt = stmt.where(
-            PlayerContentMention.content_type == content_type.value  # type: ignore[arg-type]
+            PlayerContentMention.content_type == content_type  # type: ignore[arg-type]
         )
 
     result = await db.execute(stmt)
@@ -344,7 +355,7 @@ async def _get_daily_mention_counts(
 
     if content_type is not None:
         stmt = stmt.where(
-            PlayerContentMention.content_type == content_type.value  # type: ignore[arg-type]
+            PlayerContentMention.content_type == content_type  # type: ignore[arg-type]
         )
 
     result = await db.execute(stmt)
@@ -409,14 +420,10 @@ async def get_filtered_news_feed(
 
     # Apply filters to both queries
     if tag:
-        # Resolve display value ("Scouting Report") to DB name ("SCOUTING_REPORT")
-        try:
-            tag_db = NewsItemTag(tag).name
-        except ValueError:
-            tag_db = None
-        if tag_db:
-            base_query = base_query.where(NewsItem.tag == tag_db)  # type: ignore[arg-type]
-            count_base = count_base.where(NewsItem.tag == tag_db)  # type: ignore[arg-type]
+        tag_enum = _coerce_news_tag(tag)
+        if tag_enum:
+            base_query = base_query.where(NewsItem.tag == tag_enum)  # type: ignore[arg-type]
+            count_base = count_base.where(NewsItem.tag == tag_enum)  # type: ignore[arg-type]
 
     if source_id is not None:
         base_query = base_query.where(NewsItem.source_id == source_id)  # type: ignore[arg-type]
@@ -436,7 +443,7 @@ async def get_filtered_news_feed(
                 PlayerContentMention.content_id.label("item_id")  # type: ignore[attr-defined]
             )
             .where(PlayerContentMention.player_id == player_id)  # type: ignore[arg-type]
-            .where(PlayerContentMention.content_type == ContentType.NEWS.value)  # type: ignore[arg-type]
+            .where(PlayerContentMention.content_type == ContentType.NEWS)  # type: ignore[arg-type]
         )
         base_query = base_query.where(
             NewsItem.id.in_(mention_subq)  # type: ignore[union-attr]
@@ -533,7 +540,7 @@ async def get_player_news_feed(
             PlayerContentMention.content_id.label("item_id")  # type: ignore[attr-defined]
         )
         .where(PlayerContentMention.player_id == player_id)  # type: ignore[arg-type]
-        .where(PlayerContentMention.content_type == ContentType.NEWS.value)  # type: ignore[arg-type]
+        .where(PlayerContentMention.content_type == ContentType.NEWS)  # type: ignore[arg-type]
     )
 
     # Subquery: news_item IDs where player_id is set directly
@@ -617,7 +624,10 @@ def _resolve_tag(raw: str | NewsItemTag) -> str:
     try:
         return NewsItemTag(raw).value
     except ValueError:
-        return NewsItemTag[raw].value
+        try:
+            return NewsItemTag[raw].value
+        except KeyError:
+            return raw
 
 
 def _row_to_news_item_read(row: dict, is_player_specific: bool = False) -> NewsItemRead:

@@ -2,7 +2,13 @@
 
 import pytest
 
-from app.services.podcast_service import build_listen_on_text, format_duration
+from app.schemas.podcast_episodes import PodcastEpisodeTag
+from app.services.podcast_service import (
+    _coerce_podcast_tag,
+    _resolve_podcast_tag,
+    build_listen_on_text,
+    format_duration,
+)
 
 
 class TestFormatDuration:
@@ -62,3 +68,35 @@ class TestBuildListenOnText:
     def test_empty_show_name(self) -> None:
         """Empty show name still produces valid text."""
         assert build_listen_on_text("") == "Listen on "
+
+
+class TestPodcastTagHelpers:
+    """Tests for podcast tag parsing/formatting helpers."""
+
+    def test_coerce_from_display_value(self) -> None:
+        """Display-value tags map to enum members."""
+        assert _coerce_podcast_tag("Mock Draft") == PodcastEpisodeTag.MOCK_DRAFT
+
+    def test_coerce_from_enum_name(self) -> None:
+        """Enum-name tags map to enum members."""
+        assert _coerce_podcast_tag("MOCK_DRAFT") == PodcastEpisodeTag.MOCK_DRAFT
+
+    def test_coerce_invalid_returns_none(self) -> None:
+        """Unknown tags return None instead of raising."""
+        assert _coerce_podcast_tag("Unknown Podcast Tag") is None
+
+    def test_resolve_from_enum_member(self) -> None:
+        """Enum member resolves to display value."""
+        assert _resolve_podcast_tag(PodcastEpisodeTag.TRADE_INTEL) == "Trade & Intel"
+
+    def test_resolve_from_enum_name(self) -> None:
+        """Enum-name strings resolve to display values."""
+        assert _resolve_podcast_tag("TRADE_INTEL") == "Trade & Intel"
+
+    def test_resolve_from_display_value(self) -> None:
+        """Display-value strings round-trip cleanly."""
+        assert _resolve_podcast_tag("Trade & Intel") == "Trade & Intel"
+
+    def test_resolve_unknown_falls_back_to_raw(self) -> None:
+        """Unknown strings do not crash the formatter."""
+        assert _resolve_podcast_tag("UNMAPPED_TAG") == "UNMAPPED_TAG"

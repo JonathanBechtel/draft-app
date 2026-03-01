@@ -5,7 +5,7 @@ Handles fetching and formatting podcast episodes for display.
 
 from typing import Any
 
-from sqlalchemy import String, cast, func, select, union
+from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.podcasts import MentionedPlayer, PodcastEpisodeRead, PodcastFeedResponse
@@ -36,6 +36,30 @@ _PODCAST_FEED_COLUMNS = [
 ]
 
 
+def _coerce_podcast_tag(raw: str) -> PodcastEpisodeTag | None:
+    """Parse a tag string that may be an enum value or enum name."""
+    try:
+        return PodcastEpisodeTag(raw)
+    except ValueError:
+        try:
+            return PodcastEpisodeTag[raw]
+        except KeyError:
+            return None
+
+
+def _resolve_podcast_tag(raw: str | PodcastEpisodeTag) -> str:
+    """Return display text for a podcast tag stored as enum, name, or value."""
+    if isinstance(raw, PodcastEpisodeTag):
+        return raw.value
+    try:
+        return PodcastEpisodeTag(raw).value
+    except ValueError:
+        try:
+            return PodcastEpisodeTag[raw].value
+        except KeyError:
+            return raw
+
+
 async def _load_mentions_for_episodes(
     db: AsyncSession,
     episode_ids: list[int],
@@ -64,7 +88,7 @@ async def _load_mentions_for_episodes(
             PlayerMaster.id == PlayerContentMention.player_id,  # type: ignore[arg-type]
         )
         .where(
-            PlayerContentMention.content_type == ContentType.PODCAST.value  # type: ignore[arg-type]
+            PlayerContentMention.content_type == ContentType.PODCAST  # type: ignore[arg-type]
         )
         .where(
             PlayerContentMention.content_id.in_(episode_ids)  # type: ignore[attr-defined]
@@ -144,10 +168,11 @@ async def get_podcast_feed(
     count_query = select(func.count()).select_from(PodcastEpisode)
 
     if tag:
-        tag_enum = PodcastEpisodeTag(tag)
-        tag_filter = cast(PodcastEpisode.tag, String) == tag_enum.name
-        base_query = base_query.where(tag_filter)  # type: ignore[arg-type]
-        count_query = count_query.where(tag_filter)  # type: ignore[arg-type]
+        tag_enum = _coerce_podcast_tag(tag)
+        if tag_enum:
+            tag_filter = PodcastEpisode.tag == tag_enum  # type: ignore[arg-type]
+            base_query = base_query.where(tag_filter)  # type: ignore[arg-type]
+            count_query = count_query.where(tag_filter)  # type: ignore[arg-type]
 
     if show_id is not None:
         show_filter = PodcastEpisode.show_id == show_id  # type: ignore[arg-type]
@@ -236,7 +261,7 @@ async def get_player_podcast_feed(
             PlayerContentMention.content_id.label("item_id")  # type: ignore[attr-defined]
         )
         .where(PlayerContentMention.player_id == player_id)  # type: ignore[arg-type]
-        .where(PlayerContentMention.content_type == ContentType.PODCAST.value)  # type: ignore[arg-type]
+        .where(PlayerContentMention.content_type == ContentType.PODCAST)  # type: ignore[arg-type]
     )
 
     # Subquery: episode IDs via direct player_id column
@@ -380,7 +405,7 @@ def _row_to_episode_read(
         show_artwork_url=row["show_artwork_url"],
         title=row["title"],
         summary=row["summary"] or "",
-        tag=row["tag"].value,
+        tag=_resolve_podcast_tag(row["tag"]),
         audio_url=row["audio_url"],
         episode_url=row["episode_url"],
         duration=format_duration(row["duration_seconds"]),
