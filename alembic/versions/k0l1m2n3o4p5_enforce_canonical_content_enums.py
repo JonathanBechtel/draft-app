@@ -87,7 +87,7 @@ def upgrade() -> None:
     op.execute(
         """
         UPDATE news_items
-        SET tag = CASE lower(tag)
+        SET tag = CASE lower(tag::text)
             WHEN 'scouting report' THEN 'SCOUTING_REPORT'
             WHEN 'big board' THEN 'BIG_BOARD'
             WHEN 'mock draft' THEN 'MOCK_DRAFT'
@@ -98,7 +98,7 @@ def upgrade() -> None:
             WHEN 'team fit' THEN 'TEAM_FIT'
             WHEN 'draft intel' THEN 'DRAFT_INTEL'
             WHEN 'statistical analysis' THEN 'STATS_ANALYSIS'
-            ELSE upper(tag)
+            ELSE upper(tag::text)
         END
         WHERE tag IS NOT NULL
         """
@@ -108,7 +108,7 @@ def upgrade() -> None:
     op.execute(
         """
         UPDATE podcast_episodes
-        SET tag = CASE lower(tag)
+        SET tag = CASE lower(tag::text)
             WHEN 'interview' THEN 'INTERVIEW'
             WHEN 'draft analysis' THEN 'DRAFT_ANALYSIS'
             WHEN 'mock draft' THEN 'MOCK_DRAFT'
@@ -117,7 +117,7 @@ def upgrade() -> None:
             WHEN 'prospect debate' THEN 'PROSPECT_DEBATE'
             WHEN 'mailbag' THEN 'MAILBAG'
             WHEN 'event preview' THEN 'EVENT_PREVIEW'
-            ELSE upper(tag)
+            ELSE upper(tag::text)
         END
         WHERE tag IS NOT NULL
         """
@@ -127,14 +127,14 @@ def upgrade() -> None:
     op.execute(
         """
         UPDATE player_content_mentions
-        SET content_type = upper(content_type)
+        SET content_type = upper(content_type::text)
         WHERE content_type IS NOT NULL
         """
     )
     op.execute(
         """
         UPDATE player_content_mentions
-        SET source = upper(source)
+        SET source = upper(source::text)
         WHERE source IS NOT NULL
         """
     )
@@ -209,7 +209,6 @@ def downgrade() -> None:
         "ALTER COLUMN tag TYPE VARCHAR "
         "USING tag::text"
     )
-    op.execute("ALTER TABLE news_items ALTER COLUMN tag DROP NOT NULL")
     op.execute(
         "ALTER TABLE news_items "
         "ALTER COLUMN tag SET DEFAULT 'SCOUTING_REPORT'::character varying"
