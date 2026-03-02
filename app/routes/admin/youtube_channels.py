@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
@@ -15,7 +15,9 @@ from app.routes.admin.helpers import (
     base_context_with_permissions,
     require_dataset_access,
 )
+from app.schemas.player_content_mentions import ContentType, PlayerContentMention
 from app.schemas.youtube_channels import YouTubeChannel
+from app.schemas.youtube_videos import YouTubeVideo
 from app.services.video_ingestion_service import run_ingestion_cycle
 from app.utils.db_async import get_session
 
@@ -177,10 +179,24 @@ async def create_youtube_channel(
         return redirect
     assert user is not None
 
+    normalized_channel_id = channel_id.strip()
+    if not normalized_channel_id:
+        return request.app.state.templates.TemplateResponse(
+            "admin/youtube-channels/form.html",
+            await base_context_with_permissions(
+                request,
+                db,
+                user,
+                channel=None,
+                error="Channel ID cannot be empty.",
+                active_nav="youtube-channels",
+            ),
+        )
+
     async with db.begin():
         existing = await db.execute(
             select(YouTubeChannel).where(
-                YouTubeChannel.channel_id == channel_id  # type: ignore[arg-type]
+                YouTubeChannel.channel_id == normalized_channel_id  # type: ignore[arg-type]
             )
         )
         if existing.scalar_one_or_none():
@@ -200,7 +216,7 @@ async def create_youtube_channel(
         channel = YouTubeChannel(
             name=name,
             display_name=display_name,
-            channel_id=channel_id.strip(),
+            channel_id=normalized_channel_id,
             channel_url=channel_url or None,
             thumbnail_url=thumbnail_url or None,
             description=description or None,
@@ -285,6 +301,20 @@ async def update_youtube_channel(
         return redirect
     assert user is not None
 
+    normalized_channel_key = channel_key.strip()
+    if not normalized_channel_key:
+        return request.app.state.templates.TemplateResponse(
+            "admin/youtube-channels/form.html",
+            await base_context_with_permissions(
+                request,
+                db,
+                user,
+                channel=None,
+                error="Channel ID cannot be empty.",
+                active_nav="youtube-channels",
+            ),
+        )
+
     async with db.begin():
         channel = (
             await db.execute(
@@ -296,7 +326,7 @@ async def update_youtube_channel(
 
         existing = await db.execute(
             select(YouTubeChannel).where(
-                YouTubeChannel.channel_id == channel_key,  # type: ignore[arg-type]
+                YouTubeChannel.channel_id == normalized_channel_key,  # type: ignore[arg-type]
                 YouTubeChannel.id != channel_id,  # type: ignore[arg-type]
             )
         )
@@ -315,7 +345,7 @@ async def update_youtube_channel(
 
         channel.name = name
         channel.display_name = display_name
-        channel.channel_id = channel_key.strip()
+        channel.channel_id = normalized_channel_key
         channel.channel_url = channel_url or None
         channel.thumbnail_url = thumbnail_url or None
         channel.description = description or None
@@ -369,6 +399,27 @@ async def delete_youtube_channel(
         ).scalar_one_or_none()
         if channel is None:
             raise HTTPException(status_code=404, detail="YouTube channel not found")
+
+        channel_video_ids = (
+            (
+                await db.execute(
+                    select(YouTubeVideo.__table__.c.id).where(  # type: ignore[attr-defined]
+                        YouTubeVideo.channel_id == channel_id  # type: ignore[arg-type]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if channel_video_ids:
+            await db.execute(
+                delete(PlayerContentMention)
+                .where(PlayerContentMention.content_type == ContentType.VIDEO)  # type: ignore[arg-type]
+                .where(PlayerContentMention.content_id.in_(channel_video_ids))  # type: ignore[attr-defined]
+            )
+            await db.execute(
+                delete(YouTubeVideo).where(YouTubeVideo.channel_id == channel_id)  # type: ignore[arg-type]
+            )
         await db.delete(channel)
 
     return RedirectResponse(

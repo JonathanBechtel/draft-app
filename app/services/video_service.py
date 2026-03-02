@@ -7,6 +7,7 @@ from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content_mentions import MentionedPlayer
@@ -103,7 +104,7 @@ def build_watch_on_text(channel_name: str) -> str:
     return f"Watch on {channel_name}"
 
 
-def _coerce_video_tag(raw: str) -> YouTubeVideoTag | None:
+def coerce_video_tag(raw: str) -> YouTubeVideoTag | None:
     """Parse a tag string that may be enum value or enum name."""
     try:
         return YouTubeVideoTag(raw)
@@ -114,7 +115,7 @@ def _coerce_video_tag(raw: str) -> YouTubeVideoTag | None:
             return None
 
 
-def _resolve_video_tag(raw: str | YouTubeVideoTag) -> str:
+def resolve_video_tag(raw: str | YouTubeVideoTag) -> str:
     """Return display tag from enum/name/value input."""
     if isinstance(raw, YouTubeVideoTag):
         return raw.value
@@ -166,7 +167,7 @@ async def _load_mentions_for_videos(
 
 
 def _row_to_video_read(
-    row: dict[str, Any],
+    row: RowMapping,
     *,
     is_player_specific: bool = False,
     mentions: dict[int, list[MentionedPlayer]] | None = None,
@@ -181,7 +182,7 @@ def _row_to_video_read(
         thumbnail_url=row["thumbnail_url"],
         title=row["title"],
         summary=row["summary"] or "",
-        tag=_resolve_video_tag(row["tag"]),
+        tag=resolve_video_tag(row["tag"]),
         youtube_url=youtube_url,
         youtube_embed_id=parse_youtube_video_id(youtube_url),
         duration=format_duration(row["duration_seconds"]),
@@ -220,7 +221,7 @@ async def get_video_feed(
         count_query = count_query.join(PlayerContentMention, mention_join)
 
     if tag:
-        tag_enum = _coerce_video_tag(tag)
+        tag_enum = coerce_video_tag(tag)
         if tag_enum:
             base = base.where(YouTubeVideo.tag == tag_enum)  # type: ignore[arg-type]
             count_query = count_query.where(YouTubeVideo.tag == tag_enum)  # type: ignore[arg-type]
@@ -310,7 +311,7 @@ async def get_player_video_counts_by_tag(
     rows = (await db.execute(stmt)).all()
     counts: dict[str, int] = {}
     for row in rows:
-        counts[_resolve_video_tag(row[0])] = int(row[1])
+        counts[resolve_video_tag(row[0])] = int(row[1])
     return counts
 
 

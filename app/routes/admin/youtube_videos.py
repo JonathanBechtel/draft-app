@@ -24,6 +24,7 @@ from app.services.video_ingestion_service import (
     add_video_by_url,
     reconcile_manual_mentions,
 )
+from app.services.video_service import coerce_video_tag
 from app.utils.db_async import get_session
 
 router = APIRouter(prefix="/youtube-videos", tags=["admin-youtube-videos"])
@@ -62,7 +63,7 @@ async def list_youtube_videos(
         count_query = count_query.where(YouTubeVideo.channel_id == channel_id)  # type: ignore[arg-type]
 
     if tag:
-        tag_enum = _coerce_tag(tag)
+        tag_enum = coerce_video_tag(tag)
         if tag_enum:
             query = query.where(YouTubeVideo.tag == tag_enum)  # type: ignore[arg-type]
             count_query = count_query.where(YouTubeVideo.tag == tag_enum)  # type: ignore[arg-type]
@@ -292,7 +293,7 @@ async def update_youtube_video(
         return redirect
     assert user is not None
 
-    tag_enum = _coerce_tag(tag)
+    tag_enum = coerce_video_tag(tag)
     if tag_enum is None:
         raise HTTPException(status_code=400, detail=f"Invalid tag: {tag}")
 
@@ -311,7 +312,14 @@ async def update_youtube_video(
         video.tag = tag_enum
         video.is_manually_added = True
 
-    await reconcile_manual_mentions(db, video_id=video_id, player_ids=parsed_player_ids)
+    try:
+        await reconcile_manual_mentions(
+            db,
+            video_id=video_id,
+            player_ids=parsed_player_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(
         url="/admin/youtube-videos?success=updated", status_code=303
     )
@@ -354,16 +362,6 @@ async def delete_youtube_video(
     return RedirectResponse(
         url="/admin/youtube-videos?success=deleted", status_code=303
     )
-
-
-def _coerce_tag(raw: str) -> YouTubeVideoTag | None:
-    try:
-        return YouTubeVideoTag(raw)
-    except ValueError:
-        try:
-            return YouTubeVideoTag[raw]
-        except KeyError:
-            return None
 
 
 def _parse_player_ids_csv(raw: str | None) -> list[int]:

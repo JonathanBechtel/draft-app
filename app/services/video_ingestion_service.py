@@ -20,10 +20,15 @@ from app.schemas.player_content_mentions import (
     MentionSource,
     PlayerContentMention,
 )
+from app.schemas.players_master import PlayerMaster
 from app.schemas.youtube_channels import YouTubeChannel
 from app.schemas.youtube_videos import YouTubeVideo, YouTubeVideoTag
 from app.services.player_mention_service import resolve_player_names_as_map
-from app.services.video_service import parse_iso8601_duration, parse_youtube_video_id
+from app.services.video_service import (
+    coerce_video_tag,
+    parse_iso8601_duration,
+    parse_youtube_video_id,
+)
 from app.services.video_summarization_service import video_summarization_service
 
 logger = logging.getLogger(__name__)
@@ -192,34 +197,36 @@ async def add_video_by_url(
     if raw is None:
         raise ValueError("Video not found")
 
-    channel = await _get_or_create_channel_for_manual_add(
-        db=db,
-        api_key=api_key,
-        channel_external_id=raw["channel_id"],
-        channel_name=raw["channel_title"],
-    )
-    if channel.id is None:
-        raise RuntimeError("Failed to resolve channel id for manual add")
-
-    now = datetime.now(UTC).replace(tzinfo=None)
-    resolved_tag = _coerce_video_tag(tag) or YouTubeVideoTag.SCOUTING_REPORT
-    row = {
-        "channel_id": channel.id,
-        "external_id": video_id,
-        "title": raw["title"],
-        "description": raw["description"] or None,
-        "youtube_url": f"https://www.youtube.com/watch?v={video_id}",
-        "thumbnail_url": raw["thumbnail_url"],
-        "duration_seconds": raw["duration_seconds"],
-        "view_count": raw["view_count"],
-        "summary": raw["description"][:200] if raw["description"] else raw["title"],
-        "tag": resolved_tag,
-        "published_at": raw["published_at"],
-        "created_at": now,
-        "is_manually_added": True,
-    }
+    manual_player_ids = await _validate_manual_player_ids(db, player_ids or [])
 
     async with db.begin():
+        channel = await _get_or_create_channel_for_manual_add(
+            db=db,
+            api_key=api_key,
+            channel_external_id=raw["channel_id"],
+            channel_name=raw["channel_title"],
+        )
+        if channel.id is None:
+            raise RuntimeError("Failed to resolve channel id for manual add")
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+        resolved_tag = coerce_video_tag(tag or "") or YouTubeVideoTag.SCOUTING_REPORT
+        row = {
+            "channel_id": channel.id,
+            "external_id": video_id,
+            "title": raw["title"],
+            "description": raw["description"] or None,
+            "youtube_url": f"https://www.youtube.com/watch?v={video_id}",
+            "thumbnail_url": raw["thumbnail_url"],
+            "duration_seconds": raw["duration_seconds"],
+            "view_count": raw["view_count"],
+            "summary": raw["description"][:200] if raw["description"] else raw["title"],
+            "tag": resolved_tag,
+            "published_at": raw["published_at"],
+            "created_at": now,
+            "is_manually_added": True,
+        }
+
         stmt = (
             insert(YouTubeVideo)
             .values(row)
@@ -242,12 +249,11 @@ async def add_video_by_url(
             .returning(YouTubeVideo.__table__.c.id)  # type: ignore[attr-defined]
         )
         video_db_id = int((await db.execute(stmt)).scalar_one())
-
-    await reconcile_manual_mentions(
-        db=db,
-        video_id=video_db_id,
-        player_ids=player_ids or [],
-    )
+        await _reconcile_manual_mentions(
+            db,
+            video_id=video_db_id,
+            player_ids=manual_player_ids,
+        )
     return video_db_id
 
 
@@ -258,43 +264,84 @@ async def reconcile_manual_mentions(
     player_ids: list[int],
 ) -> int:
     """Upsert submitted MANUAL rows and remove stale MANUAL rows only."""
+    valid_ids = await _validate_manual_player_ids(db, player_ids)
     async with db.begin():
-        video = await db.get(YouTubeVideo, video_id)
-        published_at = video.published_at if video is not None else None  # type: ignore[union-attr]
-
-        unique_ids = sorted({pid for pid in player_ids if pid > 0})
-        inserted = 0
-        if unique_ids:
-            rows = [
-                {
-                    "content_type": ContentType.VIDEO,
-                    "content_id": video_id,
-                    "player_id": player_id,
-                    "published_at": published_at,
-                    "source": MentionSource.MANUAL,
-                }
-                for player_id in unique_ids
-            ]
-            stmt = (
-                insert(PlayerContentMention)
-                .values(rows)
-                .on_conflict_do_nothing(constraint="uq_content_mention")
-                .returning(PlayerContentMention.__table__.c.id)  # type: ignore[attr-defined]
-            )
-            inserted = len(list((await db.execute(stmt)).scalars().all()))
-
-        delete_stmt = (
-            delete(PlayerContentMention)
-            .where(PlayerContentMention.content_type == ContentType.VIDEO)  # type: ignore[arg-type]
-            .where(PlayerContentMention.content_id == video_id)  # type: ignore[arg-type]
-            .where(PlayerContentMention.source == MentionSource.MANUAL)  # type: ignore[arg-type]
+        return await _reconcile_manual_mentions(
+            db,
+            video_id=video_id,
+            player_ids=valid_ids,
         )
-        if unique_ids:
-            delete_stmt = delete_stmt.where(  # type: ignore[assignment]
-                PlayerContentMention.player_id.notin_(unique_ids)  # type: ignore[attr-defined]
-            )
-        await db.execute(delete_stmt)
+
+
+async def _reconcile_manual_mentions(
+    db: AsyncSession,
+    *,
+    video_id: int,
+    player_ids: list[int],
+) -> int:
+    """Reconcile MANUAL mentions for a video within an existing transaction."""
+    video = await db.get(YouTubeVideo, video_id)
+    published_at = video.published_at if video is not None else None  # type: ignore[union-attr]
+
+    inserted = 0
+    if player_ids:
+        rows = [
+            {
+                "content_type": ContentType.VIDEO,
+                "content_id": video_id,
+                "player_id": player_id,
+                "published_at": published_at,
+                "source": MentionSource.MANUAL,
+            }
+            for player_id in player_ids
+        ]
+        stmt = (
+            insert(PlayerContentMention)
+            .values(rows)
+            .on_conflict_do_nothing(constraint="uq_content_mention")
+            .returning(PlayerContentMention.__table__.c.id)  # type: ignore[attr-defined]
+        )
+        inserted = len(list((await db.execute(stmt)).scalars().all()))
+
+    delete_stmt = (
+        delete(PlayerContentMention)
+        .where(PlayerContentMention.content_type == ContentType.VIDEO)  # type: ignore[arg-type]
+        .where(PlayerContentMention.content_id == video_id)  # type: ignore[arg-type]
+        .where(PlayerContentMention.source == MentionSource.MANUAL)  # type: ignore[arg-type]
+    )
+    if player_ids:
+        delete_stmt = delete_stmt.where(  # type: ignore[assignment]
+            PlayerContentMention.player_id.notin_(player_ids)  # type: ignore[attr-defined]
+        )
+    await db.execute(delete_stmt)
     return inserted
+
+
+async def _validate_manual_player_ids(
+    db: AsyncSession,
+    player_ids: list[int],
+) -> list[int]:
+    """Validate and normalize manual player IDs."""
+    unique_ids = sorted({pid for pid in player_ids if pid > 0})
+    if not unique_ids:
+        return []
+
+    valid_ids = set(
+        (
+            await db.execute(
+                select(PlayerMaster.__table__.c.id).where(  # type: ignore[attr-defined]
+                    PlayerMaster.__table__.c.id.in_(unique_ids)  # type: ignore[attr-defined]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    invalid_ids = sorted(set(unique_ids) - valid_ids)
+    if invalid_ids:
+        joined = ", ".join(str(item) for item in invalid_ids)
+        raise ValueError(f"Invalid manual player ID(s): {joined}")
+    return unique_ids
 
 
 async def fetch_channel_videos(
@@ -506,18 +553,6 @@ async def _persist_ai_mentions(
     return inserted
 
 
-def _coerce_video_tag(raw: str | None) -> YouTubeVideoTag | None:
-    if not raw:
-        return None
-    try:
-        return YouTubeVideoTag(raw)
-    except ValueError:
-        try:
-            return YouTubeVideoTag[raw]
-        except KeyError:
-            return None
-
-
 async def _get_or_create_channel_for_manual_add(
     db: AsyncSession,
     *,
@@ -549,9 +584,8 @@ async def _get_or_create_channel_for_manual_add(
         created_at=now,
         updated_at=now,
     )
-    async with db.begin():
-        db.add(channel)
-        await db.flush()
+    db.add(channel)
+    await db.flush()
     return channel
 
 
