@@ -23,14 +23,16 @@ def upgrade() -> None:
         op.execute("ALTER TYPE contenttype ADD VALUE IF NOT EXISTS 'VIDEO'")
 
     bind = op.get_bind()
-    postgresql.ENUM(
+    youtube_video_tag_enum = postgresql.ENUM(
         "THINK_PIECE",
         "CONVERSATION",
         "SCOUTING_REPORT",
         "HIGHLIGHTS",
         "MONTAGE",
         name="youtubevideotag",
-    ).create(bind, checkfirst=True)
+        create_type=False,
+    )
+    youtube_video_tag_enum.create(bind, checkfirst=True)
 
     op.create_table(
         "youtube_channels",
@@ -87,14 +89,7 @@ def upgrade() -> None:
         sa.Column("summary", sa.String(), nullable=True),
         sa.Column(
             "tag",
-            sa.Enum(
-                "THINK_PIECE",
-                "CONVERSATION",
-                "SCOUTING_REPORT",
-                "HIGHLIGHTS",
-                "MONTAGE",
-                name="youtubevideotag",
-            ),
+            youtube_video_tag_enum,
             nullable=False,
             server_default="SCOUTING_REPORT",
         ),
