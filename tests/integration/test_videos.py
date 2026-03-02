@@ -223,7 +223,7 @@ class TestFilmRoomPages:
         db_session: AsyncSession,
         sample_video: YouTubeVideo,
     ) -> None:
-        """Player page includes film-study cards for mention-linked videos."""
+        """Player page renders film playlist UI for mention-linked videos."""
         player = PlayerMaster(
             first_name="Ace",
             last_name="Bailey",
@@ -249,4 +249,6 @@ class TestFilmRoomPages:
 
         response = await app_client.get(f"/players/{player.slug}")
         assert response.status_code == 200
+        assert "film-playlist" in response.text
+        assert "film-thumb" in response.text
         assert sample_video.title in response.text
