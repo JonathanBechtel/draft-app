@@ -929,7 +929,7 @@ def parse_args() -> argparse.Namespace:
         "--size",
         type=str,
         default=settings.image_gen_size,
-        choices=["512", "1K", "2K"],
+        choices=["1K", "2K"],
         help="Image size (default from config)",
     )
 
