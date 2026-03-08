@@ -290,7 +290,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         Args:
             user_prompt: Player-specific prompt
             system_prompt: System instructions for style
-            image_size: Size setting ("512", "1K", "2K")
+            image_size: Size setting ("1K", "2K")
 
         Returns:
             Image data as bytes
@@ -585,7 +585,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
         Args:
             player: Player to generate image for
             system_prompt: System instructions for style
-            image_size: Size setting ("512", "1K", "2K")
+            image_size: Size setting ("1K", "2K")
             likeness_description: Optional likeness description
             dg_request_id: Per-request correlation id stored in request metadata
 

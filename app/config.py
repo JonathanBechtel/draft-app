@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     )
 
     # Image generation settings
-    image_gen_size: str = "512"  # Options: "512", "1K", "2K"
+    image_gen_size: str = "1K"  # Options: "1K", "2K"
     image_gen_quality: str = "standard"  # Options: "draft", "standard", "high"
     default_image_style: str = Field(
         default="default",

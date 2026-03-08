@@ -103,7 +103,7 @@ class PlayerImageSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Cost tracking
     image_size: str = Field(
-        description="Image size setting: '512', '1K', '2K'",
+        description="Image size setting: '1K', '2K'",
     )
     estimated_cost_usd: Optional[float] = Field(
         default=None,
@@ -243,7 +243,7 @@ class ImageBatchJob(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Generation settings (needed to rebuild S3 keys on retrieve)
     style: str = Field(description="Image style used for this batch")
-    image_size: str = Field(description="Image size setting: '512', '1K', '2K'")
+    image_size: str = Field(description="Image size setting: '1K', '2K'")
     fetch_likeness: bool = Field(
         default=False,
         description="Whether likeness references were used",
