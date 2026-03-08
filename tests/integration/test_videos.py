@@ -182,6 +182,48 @@ async def test_video_ingest_requires_auth(app_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_manual_add_video_returns_400_for_invalid_input(
+    admin_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Manual add returns 400 when validation fails for user-correctable input."""
+
+    async def _fake_add_video_by_url(**_: object) -> int:
+        raise ValueError("Invalid YouTube URL")
+
+    monkeypatch.setattr("app.routes.videos.add_video_by_url", _fake_add_video_by_url)
+
+    response = await admin_client.post(
+        "/api/videos/add",
+        json={"youtube_url": "not-a-youtube-url", "player_ids": []},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Invalid YouTube URL"}
+
+
+@pytest.mark.asyncio
+async def test_manual_add_video_returns_503_when_api_key_missing(
+    admin_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Manual add returns 503 when the server is missing required YouTube config."""
+
+    async def _fake_add_video_by_url(**_: object) -> int:
+        raise ValueError("YOUTUBE_API_KEY is not configured")
+
+    monkeypatch.setattr("app.routes.videos.add_video_by_url", _fake_add_video_by_url)
+
+    response = await admin_client.post(
+        "/api/videos/add",
+        json={"youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "YOUTUBE_API_KEY is not configured"}
+
+
+@pytest.mark.asyncio
 class TestFilmRoomPages:
     """Tests for film-room UI surfaces."""
 

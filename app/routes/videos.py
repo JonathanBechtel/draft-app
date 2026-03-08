@@ -152,10 +152,15 @@ async def manual_add_video(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, int]:
     """Add a film-room video by URL and optional manual player tags."""
-    video_id = await add_video_by_url(
-        db=db,
-        youtube_url=payload.youtube_url,
-        tag=payload.tag,
-        player_ids=payload.player_ids,
-    )
+    try:
+        video_id = await add_video_by_url(
+            db=db,
+            youtube_url=payload.youtube_url,
+            tag=payload.tag,
+            player_ids=payload.player_ids,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = 503 if detail == "YOUTUBE_API_KEY is not configured" else 400
+        raise HTTPException(status_code=status_code, detail=detail) from exc
     return {"id": video_id}
