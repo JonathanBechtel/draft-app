@@ -9,13 +9,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.position_taxonomy import derive_position_tags
+from app.schemas.combine_agility import CombineAgility
+from app.schemas.combine_anthro import CombineAnthro
+from app.schemas.combine_shooting import CombineShooting
+from app.schemas.image_snapshots import PlayerImageAsset
+from app.schemas.metrics import PlayerMetricValue, PlayerSimilarity
 from app.schemas.news_items import NewsItem
+from app.schemas.player_aliases import PlayerAlias
+from app.schemas.player_bio_snapshots import PlayerBioSnapshot
+from app.schemas.player_content_mentions import PlayerContentMention
+from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
+from app.schemas.podcast_episodes import PodcastEpisode
 from app.schemas.positions import Position
 
 
@@ -423,7 +434,7 @@ async def update_player(
 async def can_delete_player(
     db: AsyncSession, player_id: int
 ) -> tuple[bool, str | None]:
-    """Check if a player can be deleted (has no linked news items).
+    """Check if a player can be deleted (has no linked news items or podcast episodes).
 
     Args:
         db: Async database session
@@ -443,16 +454,90 @@ async def can_delete_player(
             f"it has {news_count} linked news item(s). Unlink the news items first.",
         )
 
+    podcast_count_result = await db.execute(
+        select(func.count()).where(PodcastEpisode.player_id == player_id)  # type: ignore[arg-type]
+    )
+    podcast_count = podcast_count_result.scalar_one()
+
+    if podcast_count > 0:
+        return (
+            False,
+            f"it has {podcast_count} linked podcast episode(s). Unlink them first.",
+        )
+
     return (True, None)
 
 
 async def delete_player(db: AsyncSession, player: PlayerMaster) -> None:
-    """Delete a player from the database.
+    """Delete a player and all owned child records from the database.
+
+    Removes dependent rows from child tables before deleting the player
+    to avoid foreign-key constraint violations.
 
     Args:
         db: Async database session
         player: PlayerMaster instance to delete
     """
+    pid = player.id
+    # Delete child records in dependency order (assets before snapshots)
+    await db.execute(
+        sa_delete(PlayerImageAsset).where(
+            PlayerImageAsset.player_id == pid  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(PlayerSimilarity).where(
+            or_(
+                PlayerSimilarity.anchor_player_id == pid,  # type: ignore[arg-type]
+                PlayerSimilarity.comparison_player_id == pid,  # type: ignore[arg-type]
+            )
+        )
+    )
+    await db.execute(
+        sa_delete(PlayerMetricValue).where(
+            PlayerMetricValue.player_id == pid  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(PlayerContentMention).where(
+            PlayerContentMention.player_id == pid  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(PlayerBioSnapshot).where(
+            PlayerBioSnapshot.player_id == pid  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(PlayerExternalId).where(
+            PlayerExternalId.player_id == pid  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(PlayerAlias).where(
+            PlayerAlias.player_id == pid  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(PlayerStatus).where(
+            PlayerStatus.player_id == pid  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(CombineAnthro).where(
+            CombineAnthro.player_id == pid  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(CombineAgility).where(
+            CombineAgility.player_id == pid  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(CombineShooting).where(
+            CombineShooting.player_id == pid  # type: ignore[arg-type]
+        )
+    )
     await db.delete(player)
     await db.flush()
 
