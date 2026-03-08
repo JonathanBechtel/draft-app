@@ -298,26 +298,26 @@ async def update_youtube_video(
         raise HTTPException(status_code=400, detail=f"Invalid tag: {tag}")
 
     parsed_player_ids = [int(value) for value in (player_ids or []) if value.isdigit()]
-    async with db.begin():
-        video = (
-            await db.execute(
-                select(YouTubeVideo).where(YouTubeVideo.id == video_id)  # type: ignore[arg-type]
-            )
-        ).scalar_one_or_none()
-        if video is None:
-            raise HTTPException(status_code=404, detail="Video not found")
-
-        video.title = title
-        video.summary = summary.strip() if summary and summary.strip() else None
-        video.tag = tag_enum
-        video.is_manually_added = True
-
     try:
-        await reconcile_manual_mentions(
-            db,
-            video_id=video_id,
-            player_ids=parsed_player_ids,
-        )
+        async with db.begin():
+            video = (
+                await db.execute(
+                    select(YouTubeVideo).where(YouTubeVideo.id == video_id)  # type: ignore[arg-type]
+                )
+            ).scalar_one_or_none()
+            if video is None:
+                raise HTTPException(status_code=404, detail="Video not found")
+
+            video.title = title
+            video.summary = summary.strip() if summary and summary.strip() else None
+            video.tag = tag_enum
+            video.is_manually_added = True
+
+            await reconcile_manual_mentions(
+                db,
+                video_id=video_id,
+                player_ids=parsed_player_ids,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return RedirectResponse(

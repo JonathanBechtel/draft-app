@@ -265,6 +265,13 @@ async def reconcile_manual_mentions(
 ) -> int:
     """Upsert submitted MANUAL rows and remove stale MANUAL rows only."""
     valid_ids = await _validate_manual_player_ids(db, player_ids)
+    if db.in_transaction():
+        return await _reconcile_manual_mentions(
+            db,
+            video_id=video_id,
+            player_ids=valid_ids,
+        )
+
     async with db.begin():
         return await _reconcile_manual_mentions(
             db,

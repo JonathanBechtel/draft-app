@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
@@ -252,3 +253,50 @@ class TestFilmRoomPages:
         assert "film-playlist" in response.text
         assert "film-thumb" in response.text
         assert sample_video.title in response.text
+
+
+@pytest.mark.asyncio
+async def test_update_youtube_video_rejects_invalid_manual_player_ids_atomically(
+    admin_client: AsyncClient,
+    db_session: AsyncSession,
+    sample_video: YouTubeVideo,
+) -> None:
+    """Invalid manual player IDs roll back the video edit instead of partially saving."""
+    original_title = sample_video.title
+    original_summary = sample_video.summary
+    original_tag = sample_video.tag
+
+    response = await admin_client.post(
+        f"/admin/youtube-videos/{sample_video.id}",
+        data={
+            "title": "Updated title that should roll back",
+            "summary": "Updated summary that should roll back",
+            "tag": "MONTAGE",
+            "player_ids": ["999999"],
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert "Invalid manual player ID(s): 999999" in response.text
+
+    refreshed_video = await db_session.get(YouTubeVideo, sample_video.id)
+    assert refreshed_video is not None
+    assert refreshed_video.title == original_title
+    assert refreshed_video.summary == original_summary
+    assert refreshed_video.tag == original_tag
+
+    mention_rows = (
+        (
+            await db_session.execute(
+                select(PlayerContentMention).where(
+                    PlayerContentMention.content_type == ContentType.VIDEO,  # type: ignore[arg-type]
+                    PlayerContentMention.content_id == sample_video.id,  # type: ignore[arg-type]
+                    PlayerContentMention.source == MentionSource.MANUAL,  # type: ignore[arg-type]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert mention_rows == []
