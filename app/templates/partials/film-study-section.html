@@ -1,0 +1,147 @@
+{% set film_tags = ["Highlights", "Scouting Report", "Montage", "Think Piece", "Conversation"] %}
+<section class="section" id="playerFilmStudySection" data-player-name="{{ player.display_name }}">
+  <div class="film-room film-room--player sprocket-border">
+    <div class="film-room__header">
+      <h3 class="film-room__title">
+        <svg class="film-room__title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+          <circle cx="8" cy="12" r="2.5"></circle>
+          <circle cx="16" cy="12" r="2.5"></circle>
+          <path d="M2 9h20M2 15h20"></path>
+          <rect x="9" y="2" width="6" height="4" rx="1"></rect>
+        </svg>
+        Film Study — {{ player.display_name }}
+      </h3>
+      <a href="/film-room" class="film-room__cta">Open Film Room &rarr;</a>
+    </div>
+
+    {% if not has_player_videos %}
+    <div class="film-no-videos">
+      <svg class="film-no-videos__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+        <circle cx="8" cy="12" r="2.5"></circle>
+        <circle cx="16" cy="12" r="2.5"></circle>
+        <path d="M2 9h20M2 15h20"></path>
+        <rect x="9" y="2" width="6" height="4" rx="1"></rect>
+      </svg>
+      <div class="film-no-videos__text">
+        <div class="film-no-videos__title">Film Study</div>
+        <div class="film-no-videos__subtitle">No videos yet for {{ player.display_name }} — check back soon</div>
+      </div>
+    </div>
+    {% else %}
+    {% set ns = namespace(active_tag=None) %}
+    {% for tag in film_tags %}
+      {% if ns.active_tag is none and player_video_counts.get(tag, 0) > 0 %}
+        {% set ns.active_tag = tag %}
+      {% endif %}
+    {% endfor %}
+    {% if ns.active_tag is none %}
+      {% set ns.active_tag = film_tags[0] %}
+    {% endif %}
+
+    {% set initial = namespace(video=None) %}
+    {% for video in player_video_feed %}
+      {% if initial.video is none and video.tag == ns.active_tag %}
+        {% set initial.video = video %}
+      {% endif %}
+    {% endfor %}
+    {% if initial.video is none %}
+      {% set initial.video = player_video_feed[0] %}
+    {% endif %}
+
+    <div class="film-tabs" id="filmStudyTabs">
+      {% for tag in film_tags %}
+      {% set tag_count = player_video_counts.get(tag, 0) %}
+      <button
+        type="button"
+        class="film-tab{% if ns.active_tag == tag %} active{% endif %}{% if tag_count == 0 %} film-tab--empty{% endif %}"
+        data-tag="{{ tag }}"
+        data-label="{{ tag }}"
+      >
+        {{ tag }} <span class="film-tab__count{% if tag_count == 0 %} film-tab__count--empty{% endif %}">({{ tag_count }})</span>
+      </button>
+      {% endfor %}
+    </div>
+
+    <div class="film-playlist" id="playerFilmPlaylist">
+      <div class="film-player">
+        <div class="film-player__embed">
+          <iframe
+            id="playerFilmEmbed"
+            src="https://www.youtube.com/embed/{{ initial.video.youtube_embed_id }}?rel=0&modestbranding=1"
+            title="{{ initial.video.title }}"
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+          ></iframe>
+        </div>
+
+        <div class="film-player__info">
+          <h3 class="film-player__video-title" id="playerFilmTitle">{{ initial.video.title }}</h3>
+          <div class="film-player__meta">
+            <span class="film-player__channel" id="playerFilmChannel">{{ initial.video.channel_name }}</span>
+            <span class="meta-dot"></span>
+            <span id="playerFilmTime">{{ initial.video.time }}</span>
+            <span class="meta-dot"></span>
+            <span id="playerFilmDuration">{{ initial.video.duration }}</span>
+          </div>
+          <div class="film-player__tags">
+            <span class="video-type-tag" id="playerFilmTypeTag">{{ initial.video.tag }}</span>
+            <a href="/players/{{ player.slug }}" class="film-player-tag">{{ player.display_name }}</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="film-playlist-list">
+        <div class="film-playlist__header">
+          <span class="film-playlist__label" id="playerFilmPlaylistLabel">{{ ns.active_tag }}</span>
+          <span class="film-playlist__count" id="playerFilmPlaylistCount"></span>
+        </div>
+        <div class="film-playlist__items" id="playerFilmPlaylistItems">
+          {% for video in player_video_feed %}
+          <button
+            type="button"
+            class="film-thumb{% if initial.video and video.id == initial.video.id %} active{% endif %}"
+            data-video-id="{{ video.id }}"
+            data-tag="{{ video.tag }}"
+            data-embed-id="{{ video.youtube_embed_id }}"
+            data-title="{{ video.title }}"
+            data-channel="{{ video.channel_name }}"
+            data-time="{{ video.time }}"
+            data-duration="{{ video.duration }}"
+          >
+            <span class="film-thumb__image">
+              {% if video.thumbnail_url %}
+              <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" />
+              {% else %}
+              <span class="film-thumb__image-placeholder">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
+              </span>
+              {% endif %}
+              <span class="film-thumb__duration">{{ video.duration }}</span>
+            </span>
+            <span class="film-thumb__info">
+              <span class="film-thumb__title">{{ video.title }}</span>
+              <span class="film-thumb__channel">{{ video.channel_name }}</span>
+              <span class="film-thumb__date">{{ video.time }}</span>
+            </span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="film-empty-tab" id="playerFilmEmptyTab" hidden>
+      <svg class="film-empty-tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+        <circle cx="8" cy="12" r="2.5"></circle>
+        <circle cx="16" cy="12" r="2.5"></circle>
+        <path d="M2 9h20M2 15h20"></path>
+      </svg>
+      <div class="film-empty-tab__title" id="playerFilmEmptyTitle"></div>
+      <div class="film-empty-tab__subtitle" id="playerFilmEmptySubtitle"></div>
+    </div>
+    {% endif %}
+  </div>
+</section>

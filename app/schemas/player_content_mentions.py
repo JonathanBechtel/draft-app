@@ -13,6 +13,7 @@ class ContentType(str, Enum):
 
     NEWS = "news"
     PODCAST = "podcast"
+    VIDEO = "video"
 
 
 class MentionSource(str, Enum):

@@ -5,6 +5,7 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/feed.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/film-room.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -170,6 +171,10 @@
       </div>
     </div>
   </section>
+
+  <div class="section-divider"></div>
+
+  {% include "partials/film-study-section.html" %}
 
   <div class="section-divider"></div>
 
@@ -463,9 +468,11 @@
   window.COMPARISON_DATA = {{ comparison_data | tojson | safe }};
   window.PLAYER_FEED = {{ player_feed | tojson | safe }};
   window.PLAYER_PODCAST_FEED = {{ player_podcast_feed | tojson | safe }};
+  window.PLAYER_VIDEO_FEED = {{ player_video_feed | tojson | safe }};
   // Image style and S3 base URL for dynamic image URLs
   window.IMAGE_STYLE = {{ image_style | tojson | safe }};
   window.S3_IMAGE_BASE_URL = {{ s3_image_base_url | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/player-detail.js') }}"></script>
+<script src="{{ url_for('static', path='js/film-room.js') }}"></script>
 {% endblock %}

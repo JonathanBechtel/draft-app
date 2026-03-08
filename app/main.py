@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import DBAPIError
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from app.routes import admin, export, news, players, podcasts, share, ui
+from app.routes import admin, export, news, players, podcasts, share, ui, videos
 from app.utils.db_async import (
     init_db,
     dispose_engine,
@@ -69,6 +69,7 @@ app.state.templates = Jinja2Templates(directory="app/templates")
 app.include_router(export.router)
 app.include_router(news.router)
 app.include_router(podcasts.router)
+app.include_router(videos.router)
 app.include_router(players.router)
 app.include_router(share.router)
 app.include_router(ui.router)

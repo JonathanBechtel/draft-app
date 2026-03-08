@@ -8,7 +8,8 @@ from typing import Any
 from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.podcasts import MentionedPlayer, PodcastEpisodeRead, PodcastFeedResponse
+from app.models.content_mentions import MentionedPlayer
+from app.models.podcasts import PodcastEpisodeRead, PodcastFeedResponse
 from app.schemas.player_content_mentions import ContentType, PlayerContentMention
 from app.schemas.players_master import PlayerMaster
 from app.schemas.podcast_episodes import PodcastEpisode, PodcastEpisodeTag

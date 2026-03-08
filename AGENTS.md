@@ -55,6 +55,8 @@ Whenever a change could influence monetization, growth, or user retention, refer
 3. **Run relevant tests** — `pytest tests/unit -q` at minimum; `pytest tests/integration -q` if touching DB/routes
 4. **For UI changes** — run `make visual` and visually verify screenshots (see [Visual Testing](#visual-testing))
 
+**All checks must be run via Conda:** use `conda run -n draftguru <command>` for every lint, type, and test command.
+
 Do not ask if the user wants you to run these checks — run them proactively after completing implementation work. If any check fails, fix the issues before reporting that work is done.
 
 ---
@@ -130,9 +132,6 @@ Do not ask if the user wants you to run these checks — run them proactively af
 
 For UI changes, use Playwright to capture screenshots for visual verification. Run `make dev` first, then `make visual` to save screenshots to `tests/visual/screenshots/`. Read the PNGs to verify correctness. Use `make visual.headed` to watch the browser for debugging. See **[docs/visual_testing.md](docs/visual_testing.md)** for details.
 
-## Commit & Pull Request Guidelines
-- Follow the prevailing Conventional Commits style (`feat:`, `fix:`, `chore:`) observed in git history; keep subject lines under 72 characters.
-- Each PR should describe intent, outline testing evidence (e.g., "`make run` locally"), and link to the tracking issue when available; include screenshots for UI-facing updates (`app/templates`).
 
 ## Configuration Tips
 - Copy `.env.example` to `.env` and supply `DATABASE_URL`, `SECRET_KEY`, and optional toggles (`DEBUG`, `ACCESS_LOG`, `SQL_ECHO`); never commit real secrets.

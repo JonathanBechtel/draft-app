@@ -18,6 +18,9 @@ KNOWN_DATASETS = [
     "images",
     "podcasts",
     "podcast_ingestion",
+    "youtube_channels",
+    "youtube_videos",
+    "youtube_ingestion",
 ]
 
 

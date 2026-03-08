@@ -1,0 +1,47 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Film Room Videos" %}
+{% set active_nav = "youtube-videos" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Film Room Videos</h1>
+  <p class="admin-main__subtitle">Edit metadata and manual player tags for videos.</p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <div class="admin-form__actions" style="justify-content: space-between; margin-bottom: 1rem;">
+    <a href="/admin/youtube-videos/add" class="admin-btn admin-btn--primary">Add by URL</a>
+    <a href="/admin/youtube-channels" class="admin-btn admin-btn--secondary">Manage Channels</a>
+  </div>
+
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Channel</th>
+        <th>Tag</th>
+        <th>Published</th>
+        <th>Manual</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for video in videos %}
+      <tr>
+        <td>{{ video.title }}</td>
+        <td>{{ channels_map[video.channel_id].display_name if video.channel_id in channels_map else "Unknown" }}</td>
+        <td>{{ video.tag.value if video.tag else "" }}</td>
+        <td>{{ video.published_at }}</td>
+        <td>{{ "Yes" if video.is_manually_added else "No" }}</td>
+        <td><a href="/admin/youtube-videos/{{ video.id }}" class="admin-btn admin-btn--secondary">Edit</a></td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6">No videos found.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

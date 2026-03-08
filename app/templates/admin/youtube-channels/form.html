@@ -1,0 +1,74 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "YouTube Channel" %}
+{% set active_nav = "youtube-channels" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">{{ "Edit YouTube Channel" if channel else "Add YouTube Channel" }}</h1>
+  <p class="admin-main__subtitle">Configure a source for Film Room ingestion.</p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <form
+    class="admin-form"
+    method="post"
+    action="{{ '/admin/youtube-channels/' ~ channel.id if channel else '/admin/youtube-channels' }}"
+  >
+    <label class="admin-form__field">
+      <span class="admin-form__label">Internal Name</span>
+      <input class="admin-form__input" type="text" name="name" required value="{{ channel.name if channel else '' }}">
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">Display Name</span>
+      <input class="admin-form__input" type="text" name="display_name" required value="{{ channel.display_name if channel else '' }}">
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">YouTube Channel ID</span>
+      <input class="admin-form__input" type="text" name="{{ 'channel_key' if channel else 'channel_id' }}" required value="{{ channel.channel_id if channel else '' }}">
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">Channel URL</span>
+      <input class="admin-form__input" type="url" name="channel_url" value="{{ channel.channel_url if channel else '' }}">
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">Thumbnail URL</span>
+      <input class="admin-form__input" type="url" name="thumbnail_url" value="{{ channel.thumbnail_url if channel else '' }}">
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">Description</span>
+      <textarea class="admin-form__textarea" name="description">{{ channel.description if channel else '' }}</textarea>
+    </label>
+
+    <label class="admin-form__field">
+      <span class="admin-form__label">Fetch Interval (minutes)</span>
+      <input class="admin-form__input" type="number" min="5" step="5" name="fetch_interval_minutes" value="{{ channel.fetch_interval_minutes if channel else 60 }}">
+    </label>
+
+    <label class="admin-form__checkbox">
+      <input type="checkbox" name="is_draft_focused" value="1" {% if not channel or channel.is_draft_focused %}checked{% endif %}>
+      <span>Draft-focused channel</span>
+    </label>
+
+    <label class="admin-form__checkbox">
+      <input type="checkbox" name="is_active" value="1" {% if not channel or channel.is_active %}checked{% endif %}>
+      <span>Active</span>
+    </label>
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">{{ "Save Changes" if channel else "Create Channel" }}</button>
+      <a href="/admin/youtube-channels" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+  {% if channel %}
+  <form method="post" action="/admin/youtube-channels/{{ channel.id }}/delete" class="admin-form--inline" style="margin-top: 0.75rem;">
+    <button type="submit" class="admin-btn admin-btn--danger">Delete</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
