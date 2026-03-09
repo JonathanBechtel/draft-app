@@ -2,9 +2,11 @@
 
 import pytest
 
+from app.schemas.player_content_mentions import PlayerContentMention
 from app.schemas.podcast_episodes import PodcastEpisodeTag
 from app.services.podcast_service import (
     _coerce_podcast_tag,
+    _podcast_content_type_filter,
     _resolve_podcast_tag,
     build_listen_on_text,
     format_duration,
@@ -100,3 +102,12 @@ class TestPodcastTagHelpers:
     def test_resolve_unknown_falls_back_to_raw(self) -> None:
         """Unknown strings do not crash the formatter."""
         assert _resolve_podcast_tag("UNMAPPED_TAG") == "UNMAPPED_TAG"
+
+
+class TestPodcastMentionFilter:
+    """Tests for enum-typed podcast mention filtering."""
+
+    def test_podcast_content_type_filter_uses_column_enum_type(self) -> None:
+        """The PODCAST bind must use the enum column type, not a plain VARCHAR."""
+        clause = _podcast_content_type_filter()
+        assert clause.right.type == PlayerContentMention.__table__.c.content_type.type
