@@ -1,9 +1,9 @@
 """Standalone cron runner for scheduled content ingestion.
 
 This script is designed to run as a scheduled Fly.io machine,
-executing the news and podcast ingestion cycles directly without going through
-the HTTP API. This avoids timeout issues and keeps the web app
-responsive.
+executing the news, podcast, and video ingestion cycles directly without
+going through the HTTP API. This avoids timeout issues and keeps the web
+app responsive.
 
 Usage:
     python -m app.cron_runner
@@ -23,6 +23,9 @@ from app.services.news_ingestion_service import (
 )
 from app.services.podcast_ingestion_service import (
     run_ingestion_cycle as run_podcast_ingestion_cycle,
+)
+from app.services.video_ingestion_service import (
+    run_ingestion_cycle as run_video_ingestion_cycle,
 )
 from app.utils.db_async import SessionLocal, dispose_engine
 
@@ -65,8 +68,23 @@ async def _run_podcast_job() -> None:
         logger.warning("Podcast ingestion error: %s", error)
 
 
+async def _run_video_job() -> None:
+    """Run video ingestion and log a concise summary."""
+    async with SessionLocal() as db:
+        result = await run_video_ingestion_cycle(db)
+
+    logger.info(
+        "Video ingestion complete: %s channels, %s added, %s skipped",
+        result.channels_processed,
+        result.videos_added,
+        result.videos_skipped,
+    )
+    for error in result.errors:
+        logger.warning("Video ingestion error: %s", error)
+
+
 async def main() -> int:
-    """Run the scheduled news and podcast ingestion cycles.
+    """Run the scheduled news, podcast, and video ingestion cycles.
 
     Returns:
         Exit code (0 for success, 1 for failure)
@@ -87,6 +105,12 @@ async def main() -> int:
         except Exception as exc:
             failed = True
             logger.error("Podcast ingestion failed: %s", exc, exc_info=True)
+
+        try:
+            await _run_video_job()
+        except Exception as exc:
+            failed = True
+            logger.error("Video ingestion failed: %s", exc, exc_info=True)
 
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         if failed:

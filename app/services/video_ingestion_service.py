@@ -466,7 +466,7 @@ async def _persist_videos(
 ) -> tuple[int, int]:
     if not rows and uploads_playlist_id is None:
         return 0, 0
-    async with db.begin():
+    async with db.begin_nested():
         inserted = 0
         conflict_skipped = 0
         if rows:
@@ -498,7 +498,7 @@ async def _persist_ai_mentions(
     fetched_at: datetime,
 ) -> int:
     """Persist AI mentions and finalize channel watermark in one transaction."""
-    async with db.begin():
+    async with db.begin_nested():
         inserted = 0
         if mention_map:
             ext_ids = list(mention_map.keys())

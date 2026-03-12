@@ -11,17 +11,17 @@ from sqlmodel import Field, SQLModel
 class ContentType(str, Enum):
     """Type of content a player is mentioned in."""
 
-    NEWS = "news"
-    PODCAST = "podcast"
-    VIDEO = "video"
+    NEWS = "NEWS"
+    PODCAST = "PODCAST"
+    VIDEO = "VIDEO"
 
 
 class MentionSource(str, Enum):
     """How a player mention was detected."""
 
-    AI = "ai"
-    BACKFILL = "backfill"
-    MANUAL = "manual"
+    AI = "AI"
+    BACKFILL = "BACKFILL"
+    MANUAL = "MANUAL"
 
 
 class PlayerContentMention(SQLModel, table=True):  # type: ignore[call-arg]
