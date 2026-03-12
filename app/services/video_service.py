@@ -22,6 +22,9 @@ from app.services.news_service import (
     get_trending_players,
 )
 
+# Videos shorter than this are excluded from public feeds (e.g. YouTube Shorts).
+MIN_VIDEO_DURATION_SECONDS = 120
+
 # Keep in sync with _row_to_video_read().
 _VIDEO_FEED_COLUMNS = [
     YouTubeVideo.id,
@@ -204,12 +207,17 @@ async def get_video_feed(
     search: str | None = None,
 ) -> VideoFeedResponse:
     """Fetch paginated film-room feed with optional filters."""
+    duration_filter = YouTubeVideo.duration_seconds >= MIN_VIDEO_DURATION_SECONDS  # type: ignore[operator]
+
     base = (
         select(*_VIDEO_FEED_COLUMNS)  # type: ignore[call-overload]
         .select_from(YouTubeVideo)
         .join(YouTubeChannel, YouTubeChannel.id == YouTubeVideo.channel_id)  # type: ignore[arg-type]
+        .where(duration_filter)  # type: ignore[arg-type]
     )
-    count_query = select(func.count()).select_from(YouTubeVideo)
+    count_query = (
+        select(func.count()).select_from(YouTubeVideo).where(duration_filter)  # type: ignore[arg-type]
+    )
 
     if player_id is not None:
         mention_join = and_(
@@ -273,6 +281,25 @@ async def get_latest_videos_by_tag(
     return feed.items
 
 
+async def get_global_video_counts_by_tag(
+    db: AsyncSession,
+) -> dict[str, int]:
+    """Return per-tag counts across all videos."""
+    stmt = (
+        select(  # type: ignore[call-overload]
+            YouTubeVideo.tag,
+            func.count().label("count"),
+        )
+        .where(YouTubeVideo.duration_seconds >= MIN_VIDEO_DURATION_SECONDS)  # type: ignore[operator]
+        .group_by(YouTubeVideo.tag)
+    )
+    rows = (await db.execute(stmt)).all()
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[resolve_video_tag(row[0])] = int(row[1])
+    return counts
+
+
 async def get_player_video_feed(
     db: AsyncSession,
     player_id: int,
@@ -306,6 +333,7 @@ async def get_player_video_counts_by_tag(
                 PlayerContentMention.player_id == player_id,  # type: ignore[arg-type]
             ),
         )
+        .where(YouTubeVideo.duration_seconds >= MIN_VIDEO_DURATION_SECONDS)  # type: ignore[operator]
         .group_by(YouTubeVideo.tag)
     )
     rows = (await db.execute(stmt)).all()
