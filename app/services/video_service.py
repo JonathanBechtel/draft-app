@@ -403,8 +403,15 @@ async def get_video_player_filters(
 
 
 async def get_active_channels(db: AsyncSession) -> list[YouTubeChannel]:
-    """Fetch all active YouTube channels."""
-    stmt = select(YouTubeChannel).where(
-        YouTubeChannel.is_active.is_(True)  # type: ignore[attr-defined]
+    """Fetch active YouTube channels that have at least one eligible video."""
+    channels_with_videos = (
+        select(YouTubeVideo.channel_id)  # type: ignore[call-overload]
+        .where(YouTubeVideo.duration_seconds >= MIN_VIDEO_DURATION_SECONDS)  # type: ignore[operator]
+        .group_by(YouTubeVideo.channel_id)
+    )
+    stmt = (
+        select(YouTubeChannel)
+        .where(YouTubeChannel.is_active.is_(True))  # type: ignore[attr-defined]
+        .where(YouTubeChannel.id.in_(channels_with_videos))  # type: ignore[union-attr]
     )
     return list((await db.execute(stmt)).scalars().all())
