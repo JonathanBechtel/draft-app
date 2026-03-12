@@ -1,5 +1,6 @@
 """AI-powered YouTube video summarization and tagging service."""
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ from app.config import settings
 from app.schemas.youtube_videos import YouTubeVideoTag
 
 logger = logging.getLogger(__name__)
+
+_GEMINI_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,18 +82,21 @@ class VideoSummarizationService:
         """Return whether the video is draft relevant."""
         user_prompt = f"Title: {title}\n\nDescription: {description}"
         try:
-            response = await self.client.aio.models.generate_content(
-                model="gemini-3-flash-preview",
-                contents=types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=user_prompt)],
+            response = await asyncio.wait_for(
+                self.client.aio.models.generate_content(
+                    model="gemini-3-flash-preview",
+                    contents=types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=user_prompt)],
+                    ),
+                    config=types.GenerateContentConfig(
+                        system_instruction=[
+                            types.Part.from_text(text=RELEVANCE_CHECK_PROMPT)
+                        ],
+                        temperature=0.1,
+                    ),
                 ),
-                config=types.GenerateContentConfig(
-                    system_instruction=[
-                        types.Part.from_text(text=RELEVANCE_CHECK_PROMPT)
-                    ],
-                    temperature=0.1,
-                ),
+                timeout=_GEMINI_TIMEOUT_SECONDS,
             )
             return _parse_relevance_response(response.text or "")
         except Exception as exc:  # pragma: no cover - defensive fallback
@@ -101,18 +107,21 @@ class VideoSummarizationService:
         """Analyze video metadata into summary/tag/player mentions."""
         user_prompt = f"Title: {title}\n\nDescription: {description}"
         try:
-            response = await self.client.aio.models.generate_content(
-                model="gemini-3-flash-preview",
-                contents=types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=user_prompt)],
+            response = await asyncio.wait_for(
+                self.client.aio.models.generate_content(
+                    model="gemini-3-flash-preview",
+                    contents=types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=user_prompt)],
+                    ),
+                    config=types.GenerateContentConfig(
+                        system_instruction=[
+                            types.Part.from_text(text=VIDEO_ANALYSIS_PROMPT)
+                        ],
+                        temperature=0.3,
+                    ),
                 ),
-                config=types.GenerateContentConfig(
-                    system_instruction=[
-                        types.Part.from_text(text=VIDEO_ANALYSIS_PROMPT)
-                    ],
-                    temperature=0.3,
-                ),
+                timeout=_GEMINI_TIMEOUT_SECONDS,
             )
             return _parse_analysis_response(response.text or "")
         except Exception as exc:  # pragma: no cover - defensive fallback

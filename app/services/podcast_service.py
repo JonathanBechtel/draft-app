@@ -5,7 +5,7 @@ Handles fetching and formatting podcast episodes for display.
 
 from typing import Any
 
-from sqlalchemy import bindparam, func, select, union
+from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content_mentions import MentionedPlayer
@@ -38,17 +38,8 @@ _PODCAST_FEED_COLUMNS = [
 
 
 def _podcast_content_type_filter():
-    """Return a typed filter for PODCAST mention rows.
-
-    Fly/stage has exhibited cases where comparing the enum column directly to the
-    Python enum member binds as VARCHAR; this forces the bind to use the column's
-    Postgres enum type.
-    """
-    return PlayerContentMention.content_type == bindparam(
-        "podcast_content_type",
-        value=ContentType.PODCAST,
-        type_=PlayerContentMention.__table__.c.content_type.type,  # type: ignore[attr-defined]
-    )
+    """Return a filter for PODCAST mention rows."""
+    return PlayerContentMention.content_type == ContentType.PODCAST  # type: ignore[arg-type]
 
 
 def _coerce_podcast_tag(raw: str) -> PodcastEpisodeTag | None:

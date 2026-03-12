@@ -24,6 +24,7 @@ from app.services.podcast_service import (
     get_podcast_page_data,
 )
 from app.services.video_service import (
+    get_global_video_counts_by_tag,
     get_latest_videos_by_tag,
     get_player_video_counts_by_tag,
     get_player_video_feed,
@@ -60,7 +61,7 @@ TOP_PROSPECT_SLUGS = [
 # Homepage news/feed constants
 HOME_NEWS_FEED_LIMIT = 100
 HOME_NEWS_SIDEBAR_LIMIT = 8
-HOME_FILM_ROOM_LIMIT = 6
+HOME_FILM_ROOM_LIMIT = 24
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -243,6 +244,7 @@ async def home(
 
     # Fetch latest videos for homepage film-room section
     film_room_raw = await get_latest_videos_by_tag(db, limit=HOME_FILM_ROOM_LIMIT)
+    film_room_video_counts = await get_global_video_counts_by_tag(db)
     film_room_videos = [
         {
             "id": item.id,
@@ -286,6 +288,7 @@ async def home(
             "sidebar_limit": HOME_NEWS_SIDEBAR_LIMIT,
             "podcast_episodes": podcast_episodes,
             "film_room_videos": film_room_videos,
+            "film_room_video_counts": film_room_video_counts,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "image_style": requested_style,  # Current image style for JS

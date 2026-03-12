@@ -2,6 +2,14 @@
    HOME.CSS - Homepage-specific styles
    ========================================================================= */
 
+/* --- Wider container to match News page --- */
+.home-container {
+  max-width: 1440px;
+  width: 95%;
+  margin-inline: auto;
+  padding: 0 1.5rem;
+}
+
 /* ============================================================================
    TABLES
    Data tables for comparisons

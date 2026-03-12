@@ -4,6 +4,7 @@ Uses Gemini to check draft relevance, generate summaries, classify episodes
 into tags, and extract mentioned player names.
 """
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ from app.config import settings
 from app.schemas.podcast_episodes import PodcastEpisodeTag
 
 logger = logging.getLogger(__name__)
+
+_GEMINI_TIMEOUT_SECONDS = 30
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,18 +101,21 @@ class PodcastSummarizationService:
         user_prompt = f"Title: {title}\n\nDescription: {description}"
 
         try:
-            response = await self.client.aio.models.generate_content(
-                model="gemini-3-flash-preview",
-                contents=types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=user_prompt)],
+            response = await asyncio.wait_for(
+                self.client.aio.models.generate_content(
+                    model="gemini-3-flash-preview",
+                    contents=types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=user_prompt)],
+                    ),
+                    config=types.GenerateContentConfig(
+                        system_instruction=[
+                            types.Part.from_text(text=RELEVANCE_CHECK_PROMPT)
+                        ],
+                        temperature=0.1,
+                    ),
                 ),
-                config=types.GenerateContentConfig(
-                    system_instruction=[
-                        types.Part.from_text(text=RELEVANCE_CHECK_PROMPT)
-                    ],
-                    temperature=0.1,
-                ),
+                timeout=_GEMINI_TIMEOUT_SECONDS,
             )
 
             response_text = response.text if response.text else ""
@@ -132,18 +138,21 @@ class PodcastSummarizationService:
         user_prompt = f"Title: {title}\n\nDescription: {description}"
 
         try:
-            response = await self.client.aio.models.generate_content(
-                model="gemini-3-flash-preview",
-                contents=types.Content(
-                    role="user",
-                    parts=[types.Part.from_text(text=user_prompt)],
+            response = await asyncio.wait_for(
+                self.client.aio.models.generate_content(
+                    model="gemini-3-flash-preview",
+                    contents=types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=user_prompt)],
+                    ),
+                    config=types.GenerateContentConfig(
+                        system_instruction=[
+                            types.Part.from_text(text=EPISODE_ANALYSIS_PROMPT)
+                        ],
+                        temperature=0.3,
+                    ),
                 ),
-                config=types.GenerateContentConfig(
-                    system_instruction=[
-                        types.Part.from_text(text=EPISODE_ANALYSIS_PROMPT)
-                    ],
-                    temperature=0.3,
-                ),
+                timeout=_GEMINI_TIMEOUT_SECONDS,
             )
 
             response_text = response.text if response.text else ""
