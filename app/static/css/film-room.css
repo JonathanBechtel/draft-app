@@ -264,6 +264,164 @@
   font-size: 0.72rem;
 }
 
+/* ============================================================================
+   Homepage film-room module (dark screening-room, reuses player film-study vars)
+   ========================================================================= */
+
+.film-room--home {
+  --film-accent: #f59e0b;
+  --film-accent-hover: #d97706;
+  --film-bg: #0c0f1a;
+  --film-surface: #151929;
+  --film-surface-hover: #1c2137;
+  --film-border: rgba(245, 158, 11, 0.24);
+
+  background: var(--film-bg);
+  border-radius: var(--border-radius);
+  padding: 2rem 2rem 1.25rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.film-room--home::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(245, 158, 11, 0.015) 2px,
+    rgba(245, 158, 11, 0.015) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.film-room--home::after {
+  content: "";
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 300px;
+  height: 120px;
+  background: radial-gradient(ellipse, rgba(245, 158, 11, 0.08) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.film-room--home > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Inactive tab text must be visible on dark backgrounds */
+.film-room--home .film-tab,
+.film-room--player .film-tab {
+  color: #94a3b8;
+}
+
+.film-room--home .film-tab:hover,
+.film-room--player .film-tab:hover {
+  color: #e2e8f0;
+}
+
+.film-room--home .film-tab.active,
+.film-room--player .film-tab.active {
+  color: var(--film-accent);
+}
+
+.film-room--home .film-tab__count,
+.film-room--player .film-tab__count {
+  color: #64748b;
+}
+
+.film-room--home .film-tab.active .film-tab__count,
+.film-room--player .film-tab.active .film-tab__count {
+  color: rgba(245, 158, 11, 0.6);
+}
+
+/* Tighten bottom spacing */
+.film-room--home .film-player__info {
+  padding-bottom: 0;
+}
+
+.film-room--home .film-playlist {
+  margin-bottom: 0;
+}
+
+/* Play overlay for featured video placeholder */
+.film-player__embed--placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #111528, #1a1f35);
+  cursor: pointer;
+}
+
+.film-player__embed--placeholder iframe {
+  display: none;
+}
+
+.film-player__play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.film-player__play-icon {
+  width: 3.5rem;
+  height: 3.5rem;
+  color: var(--film-accent);
+  opacity: 0.8;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.film-player__play-overlay:hover .film-player__play-icon {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.film-player__now-playing {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-500);
+}
+
+/* Playlist thumb play icon overlay */
+.film-thumb__play-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 1.25rem;
+  height: 1.25rem;
+  color: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+  transition: color 0.15s ease;
+}
+
+.film-thumb:hover .film-thumb__play-icon {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+@media (max-width: 768px) {
+  .film-room--home {
+    padding: 1.25rem;
+  }
+}
+
+/* Legacy grid styles below (kept for backwards compat) */
+
 .film-room-home-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1021,7 +1179,7 @@
 }
 
 .film-page .film-room-stat__label {
-  color: var(--color-slate-400);
+  color: #94a3b8;
 }
 
 .film-page .film-room-featured {

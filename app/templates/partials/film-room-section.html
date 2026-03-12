@@ -1,36 +1,150 @@
+{% set film_tags = ["Think Piece", "Conversation", "Scouting Report", "Highlights", "Montage"] %}
 {% if film_room_videos %}
 <section class="section" id="filmRoomHomeSection">
-  <div class="section-header-row">
-    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
-      Film Room
-    </h3>
-    <a href="/film-room" class="section-cta">View All Film &rarr;</a>
-  </div>
+  <div class="film-room film-room--home sprocket-border">
+    <div class="film-room__header">
+      <h3 class="film-room__title">
+        <svg class="film-room__title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+          <circle cx="8" cy="12" r="2.5"></circle>
+          <circle cx="16" cy="12" r="2.5"></circle>
+          <path d="M2 9h20M2 15h20"></path>
+          <rect x="9" y="2" width="6" height="4" rx="1"></rect>
+        </svg>
+        Film Room
+      </h3>
+      <a href="/film-room" class="film-room__cta">View All &rsaquo;</a>
+    </div>
 
-  <div class="film-room-home-grid">
+    {# Pick the first tag that has videos #}
+    {% set ns = namespace(active_tag=None) %}
+    {% for tag in film_tags %}
+      {% if ns.active_tag is none and film_room_video_counts.get(tag, 0) > 0 %}
+        {% set ns.active_tag = tag %}
+      {% endif %}
+    {% endfor %}
+    {% if ns.active_tag is none %}
+      {% set ns.active_tag = film_tags[0] %}
+    {% endif %}
+
+    {# Pick initial featured video from the active tag #}
+    {% set initial = namespace(video=None) %}
     {% for video in film_room_videos %}
-    <article class="film-room-home-card">
-      <a href="/film-room" class="film-room-home-card__link">
-        {% if video.thumbnail_url %}
-        <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" />
-        {% else %}
-        <div class="film-room-home-card__placeholder">DG</div>
-        {% endif %}
-        <div class="film-room-home-card__body">
-          <div class="film-room-home-card__topline">
-            <span class="film-room-tag">{{ video.tag }}</span>
-            <span>{{ video.duration }}</span>
+      {% if initial.video is none and video.tag == ns.active_tag %}
+        {% set initial.video = video %}
+      {% endif %}
+    {% endfor %}
+    {% if initial.video is none and film_room_videos %}
+      {% set initial.video = film_room_videos[0] %}
+    {% endif %}
+
+    <div class="film-tabs" id="homeFilmTabs">
+      {% for tag in film_tags %}
+      {% set tag_count = film_room_video_counts.get(tag, 0) %}
+      <button
+        type="button"
+        class="film-tab{% if ns.active_tag == tag %} active{% endif %}{% if tag_count == 0 %} film-tab--empty{% endif %}"
+        data-tag="{{ tag }}"
+        data-label="{{ tag }}s"
+      >
+        {{ tag }}s <span class="film-tab__count{% if tag_count == 0 %} film-tab__count--empty{% endif %}">({{ tag_count }})</span>
+      </button>
+      {% endfor %}
+    </div>
+
+    <div class="film-playlist" id="homeFilmPlaylist">
+      <div class="film-player">
+        <div class="film-player__embed film-player__embed--placeholder" id="homeFilmEmbedWrap">
+          <div class="film-player__play-overlay" id="homeFilmPlayOverlay">
+            <svg class="film-player__play-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M8 5v14l11-7z"></path>
+            </svg>
+            <span class="film-player__now-playing">Now Playing</span>
           </div>
-          <h4>{{ video.title }}</h4>
-          <p>{{ video.summary }}</p>
-          <div class="film-room-home-card__meta">
-            <span>{{ video.channel_name }}</span>
-            <span>{{ video.time }}</span>
+          <iframe
+            id="homeFilmEmbed"
+            src=""
+            title="{{ initial.video.title if initial.video else '' }}"
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+            hidden
+          ></iframe>
+        </div>
+
+        <div class="film-player__info">
+          <h3 class="film-player__video-title" id="homeFilmTitle">{{ initial.video.title if initial.video else '' }}</h3>
+          <div class="film-player__meta">
+            <span class="film-player__channel" id="homeFilmChannel">{{ initial.video.channel_name if initial.video else '' }}</span>
+            <span class="meta-dot"></span>
+            <span id="homeFilmTime">{{ initial.video.time if initial.video else '' }}</span>
+            <span class="meta-dot"></span>
+            <span id="homeFilmDuration">{{ initial.video.duration if initial.video else '' }}</span>
+          </div>
+          <div class="film-player__tags" id="homeFilmTags">
+            {% if initial.video %}
+            <span class="video-type-tag" id="homeFilmTypeTag">{{ initial.video.tag }}</span>
+            {% for p in initial.video.mentioned_players %}
+            <a href="/players/{{ p.slug }}" class="film-player-tag">{{ p.display_name }}</a>
+            {% endfor %}
+            {% endif %}
           </div>
         </div>
-      </a>
-    </article>
-    {% endfor %}
+      </div>
+
+      <div class="film-playlist-list">
+        <div class="film-playlist__header">
+          <span class="film-playlist__label" id="homeFilmPlaylistLabel">Up Next</span>
+          <span class="film-playlist__count" id="homeFilmPlaylistCount"></span>
+        </div>
+        <div class="film-playlist__items" id="homeFilmPlaylistItems">
+          {% for video in film_room_videos %}
+          <button
+            type="button"
+            class="film-thumb{% if initial.video and video.id == initial.video.id %} active{% endif %}"
+            data-video-id="{{ video.id }}"
+            data-tag="{{ video.tag }}"
+            data-embed-id="{{ video.youtube_embed_id }}"
+            data-title="{{ video.title }}"
+            data-channel="{{ video.channel_name }}"
+            data-time="{{ video.time }}"
+            data-duration="{{ video.duration }}"
+            data-mentions='{{ video.mentioned_players | tojson }}'
+          >
+            <span class="film-thumb__image">
+              {% if video.thumbnail_url %}
+              <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" />
+              {% else %}
+              <span class="film-thumb__image-placeholder">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
+              </span>
+              {% endif %}
+              <span class="film-thumb__play-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
+              </span>
+              <span class="film-thumb__duration">{{ video.duration }}</span>
+            </span>
+            <span class="film-thumb__info">
+              <span class="film-thumb__title">{{ video.title }}</span>
+              <span class="film-thumb__channel">{{ video.channel_name }}</span>
+              <span class="film-thumb__date">{{ video.time }}</span>
+            </span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="film-empty-tab" id="homeFilmEmptyTab" hidden>
+      <svg class="film-empty-tab__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+        <circle cx="8" cy="12" r="2.5"></circle>
+        <circle cx="16" cy="12" r="2.5"></circle>
+        <path d="M2 9h20M2 15h20"></path>
+      </svg>
+      <div class="film-empty-tab__title" id="homeFilmEmptyTitle"></div>
+      <div class="film-empty-tab__subtitle" id="homeFilmEmptySubtitle"></div>
+    </div>
   </div>
 </section>
 {% endif %}
