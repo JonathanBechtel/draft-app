@@ -16,10 +16,18 @@
       <a href="/film-room" class="film-room__cta">View All &rsaquo;</a>
     </div>
 
-    {# Pick the first tag that has videos #}
+    {# Build set of tags that exist in the loaded video slice #}
+    {% set loaded_tags = namespace(set=[]) %}
+    {% for video in film_room_videos %}
+      {% if video.tag not in loaded_tags.set %}
+        {% set loaded_tags.set = loaded_tags.set + [video.tag] %}
+      {% endif %}
+    {% endfor %}
+
+    {# Pick the first tag that has loaded videos (not just global counts) #}
     {% set ns = namespace(active_tag=None) %}
     {% for tag in film_tags %}
-      {% if ns.active_tag is none and film_room_video_counts.get(tag, 0) > 0 %}
+      {% if ns.active_tag is none and tag in loaded_tags.set %}
         {% set ns.active_tag = tag %}
       {% endif %}
     {% endfor %}
