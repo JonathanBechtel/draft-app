@@ -3,6 +3,14 @@
    Extracted from mockups/draftguru_podcasts_v2.html
    ========================================================================= */
 
+/* --- Wider container to match News page --- */
+.podcast-container {
+  max-width: 1440px;
+  width: 95%;
+  margin-inline: auto;
+  padding: 0 1.5rem;
+}
+
 /* --- Featured Episode Hero (horizontal card) --- */
 .podcast-featured {
   display: flex;
