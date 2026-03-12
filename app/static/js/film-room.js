@@ -105,9 +105,12 @@ const HomeFilmRoomModule = {
       thumbs.forEach((item) => item.classList.remove('active'));
       thumb.classList.add('active');
 
-      // Show play overlay, hide embed until user clicks play
+      // Stop any in-progress playback and show play overlay
+      if (embed) {
+        embed.src = '';
+        embed.hidden = true;
+      }
       if (embedWrap) embedWrap.classList.add('film-player__embed--placeholder');
-      if (embed) embed.hidden = true;
       if (playOverlay) playOverlay.hidden = false;
       // Store embed ID for when user clicks play
       if (embedWrap) embedWrap.dataset.pendingEmbedId = thumb.dataset.embedId || '';
