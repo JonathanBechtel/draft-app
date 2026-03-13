@@ -157,5 +157,6 @@
   window.PODCAST_TRENDING = {{ trending_players | tojson | safe }};
   window.ACTIVE_SHOW = {{ active_show | tojson | safe }};
 </script>
+<script src="{{ url_for('static', path='js/podcast-audio.js') }}"></script>
 <script src="{{ url_for('static', path='js/podcasts.js') }}"></script>
 {% endblock %}
