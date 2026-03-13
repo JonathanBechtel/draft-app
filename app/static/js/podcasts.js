@@ -15,96 +15,7 @@ const TAG_CLASSES = {
   'Mailbag': 'mailbag',
   'Event Preview': 'event-preview',
 };
-
-/**
- * ============================================================================
- * PODCAST AUDIO — Shared Audio() manager
- * ============================================================================
- */
-const PodcastAudio = {
-  audio: null,
-  activeBtn: null,
-  activeProgress: null,
-  activeTime: null,
-
-  init() {
-    this.audio = new Audio();
-    this.audio.addEventListener('timeupdate', () => this._onTimeUpdate());
-    this.audio.addEventListener('ended', () => this._onEnded());
-  },
-
-  play(audioUrl, btn) {
-    if (!this.audio) this.init();
-
-    // If same button clicked, toggle pause/play
-    if (this.activeBtn === btn && !this.audio.paused) {
-      this.pause();
-      return;
-    }
-
-    // If different source, load new
-    if (this.audio.src !== audioUrl) {
-      this.audio.src = audioUrl;
-    }
-
-    // Reset previous active button
-    if (this.activeBtn && this.activeBtn !== btn) {
-      this._resetBtn(this.activeBtn);
-    }
-
-    this.activeBtn = btn;
-    // Find the progress bar and time display near this button
-    const row = btn.closest('.podcast-featured__player, .episode-row--page, .episode-row__inner');
-    if (row) {
-      this.activeProgress = row.querySelector('.progress-bar');
-      this.activeTime = row.querySelector('.progress-time');
-    }
-
-    btn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>';
-    this.audio.play();
-  },
-
-  pause() {
-    if (this.audio) this.audio.pause();
-    if (this.activeBtn) {
-      this._resetBtn(this.activeBtn);
-    }
-  },
-
-  seek(value) {
-    if (this.audio && this.audio.duration) {
-      this.audio.currentTime = (value / 100) * this.audio.duration;
-    }
-  },
-
-  _onTimeUpdate() {
-    if (!this.audio || !this.audio.duration) return;
-    const pct = (this.audio.currentTime / this.audio.duration) * 100;
-    if (this.activeProgress) {
-      this.activeProgress.value = pct;
-    }
-    if (this.activeTime) {
-      this.activeTime.textContent = this._formatTime(this.audio.currentTime);
-    }
-  },
-
-  _onEnded() {
-    if (this.activeBtn) this._resetBtn(this.activeBtn);
-    if (this.activeProgress) this.activeProgress.value = 0;
-    if (this.activeTime) this.activeTime.textContent = '0:00';
-    this.activeBtn = null;
-  },
-
-  _resetBtn(btn) {
-    btn.innerHTML = '<svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>';
-  },
-
-  _formatTime(seconds) {
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  }
-};
+const PodcastAudio = window.PodcastAudio;
 
 /**
  * ============================================================================
@@ -326,6 +237,11 @@ const PodcastPaginationModule = {};
  * ============================================================================
  */
 document.addEventListener('DOMContentLoaded', () => {
+  if (!PodcastAudio) {
+    console.error('PodcastAudio helper is unavailable.');
+    return;
+  }
+
   const episodes = window.PODCAST_EPISODES || [];
   const shows = window.PODCAST_SHOWS || [];
   const trending = window.PODCAST_TRENDING || [];

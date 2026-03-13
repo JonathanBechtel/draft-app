@@ -260,6 +260,7 @@ class TestPodcastsPage:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "Podcast Feed" in response.text
+        assert 'js/podcast-audio.js' in response.text
 
     async def test_podcasts_page_with_episodes(
         self,
@@ -274,7 +275,8 @@ class TestPodcastsPage:
     async def test_homepage_includes_podcast_section(
         self, app_client: AsyncClient, db_session: AsyncSession
     ):
-        """GET / returns 200 and contains the podcastsSection container."""
+        """GET / returns 200, keeps the podcast section, and loads shared audio JS."""
         response = await app_client.get("/")
         assert response.status_code == 200
         assert "podcastsSection" in response.text
+        assert 'js/podcast-audio.js' in response.text
