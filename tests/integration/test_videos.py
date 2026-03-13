@@ -239,11 +239,12 @@ class TestFilmRoomPages:
         app_client: AsyncClient,
         sample_video: YouTubeVideo,
     ) -> None:
-        """Homepage renders Film Room section when videos exist."""
+        """Homepage renders the Film Room section and loads its shared JS."""
         _ = sample_video
         response = await app_client.get("/")
         assert response.status_code == 200
         assert "filmRoomHomeSection" in response.text
+        assert "/static/js/film-room.js" in response.text
 
     async def test_player_page_shows_no_video_placeholder(
         self,
