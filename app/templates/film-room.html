@@ -8,6 +8,39 @@
 
 {% set tags = ["Think Piece", "Conversation", "Scouting Report", "Highlights", "Montage"] %}
 
+{% macro film_room_url(new_tag=None, new_channel=None, new_player=None, new_search=None, clear=None) %}
+  {%- set ns = namespace(params='') -%}
+  {%- if clear != 'tag' -%}
+    {%- if new_tag is not none -%}
+      {%- if new_tag -%}{%- set ns.params = ns.params ~ '&tag=' ~ (new_tag | urlencode) -%}{%- endif -%}
+    {%- elif active_tag -%}
+      {%- set ns.params = ns.params ~ '&tag=' ~ (active_tag | urlencode) -%}
+    {%- endif -%}
+  {%- endif -%}
+  {%- if clear != 'channel' -%}
+    {%- if new_channel is not none -%}
+      {%- if new_channel -%}{%- set ns.params = ns.params ~ '&channel=' ~ new_channel -%}{%- endif -%}
+    {%- elif active_channel -%}
+      {%- set ns.params = ns.params ~ '&channel=' ~ active_channel -%}
+    {%- endif -%}
+  {%- endif -%}
+  {%- if clear != 'player' -%}
+    {%- if new_player is not none -%}
+      {%- if new_player -%}{%- set ns.params = ns.params ~ '&player=' ~ new_player -%}{%- endif -%}
+    {%- elif active_player -%}
+      {%- set ns.params = ns.params ~ '&player=' ~ active_player -%}
+    {%- endif -%}
+  {%- endif -%}
+  {%- if clear != 'search' -%}
+    {%- if new_search is not none -%}
+      {%- if new_search -%}{%- set ns.params = ns.params ~ '&search=' ~ (new_search | urlencode) -%}{%- endif -%}
+    {%- elif search_query -%}
+      {%- set ns.params = ns.params ~ '&search=' ~ (search_query | urlencode) -%}
+    {%- endif -%}
+  {%- endif -%}
+  /film-room{%- if ns.params %}?{{ ns.params[1:] }}{% endif -%}
+{% endmacro %}
+
 {% block content %}
 <main class="film-page">
   <div class="container mt-28 film-page__container">
@@ -71,14 +104,14 @@
     <div class="film-room-filters">
       <a
         class="filter-chip {{ 'active' if not active_tag else '' }}"
-        href="/film-room?{% if active_channel %}channel={{ active_channel }}{% endif %}{% if active_player %}{% if active_channel %}&{% endif %}player={{ active_player }}{% endif %}{% if search_query %}{% if active_channel or active_player %}&{% endif %}search={{ search_query | urlencode }}{% endif %}"
+        href="{{ film_room_url(clear='tag') }}"
       >
         All
       </a>
       {% for t in tags %}
       <a
         class="filter-chip {{ 'active' if active_tag == t else '' }}"
-        href="/film-room?tag={{ t | urlencode }}{% if active_channel %}&channel={{ active_channel }}{% endif %}{% if active_player %}&player={{ active_player }}{% endif %}{% if search_query %}&search={{ search_query | urlencode }}{% endif %}"
+        href="{{ film_room_url(new_tag=t) }}"
       >
         {{ t }}
       </a>
@@ -130,8 +163,12 @@
       <div class="sidebar-card">
         <div class="sidebar-card__header">Channels</div>
         <div class="sidebar-card__body">
+          <a class="film-room-sidebar__item {{ 'film-room-sidebar__item--active' if not active_channel else '' }}" href="{{ film_room_url(clear='channel') }}">
+            <span class="film-room-sidebar__thumb">ALL</span>
+            <span>All Channels</span>
+          </a>
           {% for channel in channels %}
-          <a class="film-room-sidebar__item {{ 'film-room-sidebar__item--active' if active_channel == channel.id else '' }}" href="/film-room?channel={{ channel.id }}">
+          <a class="film-room-sidebar__item {{ 'film-room-sidebar__item--active' if active_channel == channel.id else '' }}" href="{{ film_room_url(new_channel=channel.id) }}">
             {% if channel.thumbnail_url %}
             <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" loading="lazy" />
             {% else %}
