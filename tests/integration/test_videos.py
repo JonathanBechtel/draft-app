@@ -1,5 +1,6 @@
 """Integration tests for film-room video APIs and UI surfaces."""
 
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -11,12 +12,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
 from app.schemas.players_master import PlayerMaster
 from app.schemas.youtube_channels import YouTubeChannel
-from app.schemas.youtube_videos import YouTubeVideo
+from app.schemas.youtube_videos import YouTubeVideo, YouTubeVideoTag
 from tests.integration.auth_helpers import create_auth_user, login_staff
 from tests.integration.conftest import make_player, make_youtube_channel, make_youtube_video
 
 ADMIN_EMAIL = "videos-admin@example.com"
 ADMIN_PASSWORD = "correct horse battery staple"
+
+
+def _assert_film_room_stat(html: str, label: str, expected: int) -> None:
+    """Assert that a film-room summary stat renders the expected value."""
+    pattern = (
+        rf'<div class="film-room-stat__value">\s*{expected}\s*</div>\s*'
+        rf'<div class="film-room-stat__label">{re.escape(label)}</div>'
+    )
+    assert re.search(pattern, html), f"Missing {label} stat value {expected!r}"
 
 
 @pytest_asyncio.fixture
@@ -244,6 +254,62 @@ class TestFilmRoomPages:
         response = await app_client.get("/")
         assert response.status_code == 200
         assert "filmRoomHomeSection" in response.text
+
+    async def test_film_room_stats_follow_tag_filter(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        sample_channel: YouTubeChannel,
+    ) -> None:
+        """Film-room summary tiles should reflect the currently active tag filter."""
+        other_channel = make_youtube_channel(
+            name="Second Look",
+            channel_id="UC_second_look",
+        )
+        player_one = make_player("Cooper", "Flagg")
+        player_two = make_player("Dylan", "Harper")
+        db_session.add_all([other_channel, player_one, player_two])
+        await db_session.flush()
+
+        highlight_video = make_youtube_video(
+            channel_id=sample_channel.id,  # type: ignore[arg-type]
+            external_id="highlight01",
+            tag=YouTubeVideoTag.HIGHLIGHTS,
+        )
+        scouting_video = make_youtube_video(
+            channel_id=other_channel.id,  # type: ignore[arg-type]
+            external_id="scouting01",
+            tag=YouTubeVideoTag.SCOUTING_REPORT,
+        )
+        db_session.add_all([highlight_video, scouting_video])
+        await db_session.flush()
+
+        db_session.add_all(
+            [
+                PlayerContentMention(
+                    content_type=ContentType.VIDEO,
+                    content_id=highlight_video.id,  # type: ignore[arg-type]
+                    player_id=player_one.id,  # type: ignore[arg-type]
+                    published_at=highlight_video.published_at,
+                    source=MentionSource.AI,
+                ),
+                PlayerContentMention(
+                    content_type=ContentType.VIDEO,
+                    content_id=scouting_video.id,  # type: ignore[arg-type]
+                    player_id=player_two.id,  # type: ignore[arg-type]
+                    published_at=scouting_video.published_at,
+                    source=MentionSource.AI,
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        response = await app_client.get("/film-room?tag=Highlights")
+
+        assert response.status_code == 200
+        _assert_film_room_stat(response.text, "Videos", 1)
+        _assert_film_room_stat(response.text, "Channels", 1)
+        _assert_film_room_stat(response.text, "Trending", 1)
 
     async def test_player_page_shows_no_video_placeholder(
         self,
