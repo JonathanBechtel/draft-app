@@ -406,6 +406,7 @@ async def film_room_page(
     feed = page_data["feed"]
     channels = page_data["channels"]
     trending_raw = page_data["trending"]
+    stats = page_data["stats"]
 
     videos = [
         {
@@ -459,6 +460,8 @@ async def film_room_page(
             "channels": channels_data,
             "trending_players": trending_players,
             "total": feed.total,
+            "channel_total": stats["channel_total"],
+            "trending_total": stats["trending_total"],
             "limit": FILM_ROOM_PAGE_LIMIT,
             "offset": offset,
             "active_tag": tag,

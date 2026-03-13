@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
 
@@ -197,6 +198,53 @@ def _row_to_video_read(
     )
 
 
+def _build_filtered_video_ids_query(
+    *,
+    tag: str | None = None,
+    channel_id: int | None = None,
+    player_id: int | None = None,
+    search: str | None = None,
+) -> Any:
+    """Build a query for unique video IDs matching the current film-room filters."""
+    duration_filter = (
+        YouTubeVideo.duration_seconds >= MIN_VIDEO_DURATION_SECONDS  # type: ignore[operator]
+    )
+    stmt = (
+        select(YouTubeVideo.id.label("video_id"))  # type: ignore[call-overload,union-attr]
+        .select_from(YouTubeVideo)
+        .where(duration_filter)  # type: ignore[arg-type]
+    )
+
+    if player_id is not None:
+        stmt = stmt.join(
+            PlayerContentMention,
+            and_(
+                PlayerContentMention.content_type == ContentType.VIDEO,  # type: ignore[arg-type]
+                PlayerContentMention.content_id == YouTubeVideo.id,  # type: ignore[arg-type]
+                PlayerContentMention.player_id == player_id,  # type: ignore[arg-type]
+            ),
+        )
+
+    if tag:
+        tag_enum = coerce_video_tag(tag)
+        if tag_enum:
+            stmt = stmt.where(YouTubeVideo.tag == tag_enum)  # type: ignore[arg-type]
+
+    if channel_id is not None:
+        stmt = stmt.where(YouTubeVideo.channel_id == channel_id)  # type: ignore[arg-type]
+
+    if search:
+        like_term = f"%{search.strip()}%"
+        stmt = stmt.where(
+            or_(
+                YouTubeVideo.title.ilike(like_term),  # type: ignore[attr-defined]
+                YouTubeVideo.summary.ilike(like_term),  # type: ignore[union-attr]
+            )
+        )
+
+    return stmt.distinct()
+
+
 async def get_video_feed(
     db: AsyncSession,
     limit: int = 20,
@@ -207,51 +255,24 @@ async def get_video_feed(
     search: str | None = None,
 ) -> VideoFeedResponse:
     """Fetch paginated film-room feed with optional filters."""
-    duration_filter = YouTubeVideo.duration_seconds >= MIN_VIDEO_DURATION_SECONDS  # type: ignore[operator]
+    filtered_video_ids = _build_filtered_video_ids_query(
+        tag=tag,
+        channel_id=channel_id,
+        player_id=player_id,
+        search=search,
+    ).subquery()
 
-    base = (
-        select(*_VIDEO_FEED_COLUMNS)  # type: ignore[call-overload]
-        .select_from(YouTubeVideo)
-        .join(YouTubeChannel, YouTubeChannel.id == YouTubeVideo.channel_id)  # type: ignore[arg-type]
-        .where(duration_filter)  # type: ignore[arg-type]
+    total_result = await db.execute(
+        select(func.count()).select_from(filtered_video_ids)  # type: ignore[arg-type]
     )
-    count_query = (
-        select(func.count()).select_from(YouTubeVideo).where(duration_filter)  # type: ignore[arg-type]
-    )
-
-    if player_id is not None:
-        mention_join = and_(
-            PlayerContentMention.content_type == ContentType.VIDEO,  # type: ignore[arg-type]
-            PlayerContentMention.content_id == YouTubeVideo.id,  # type: ignore[arg-type]
-            PlayerContentMention.player_id == player_id,  # type: ignore[arg-type]
-        )
-        base = base.join(PlayerContentMention, mention_join)
-        count_query = count_query.join(PlayerContentMention, mention_join)
-
-    if tag:
-        tag_enum = coerce_video_tag(tag)
-        if tag_enum:
-            base = base.where(YouTubeVideo.tag == tag_enum)  # type: ignore[arg-type]
-            count_query = count_query.where(YouTubeVideo.tag == tag_enum)  # type: ignore[arg-type]
-
-    if channel_id is not None:
-        base = base.where(YouTubeVideo.channel_id == channel_id)  # type: ignore[arg-type]
-        count_query = count_query.where(YouTubeVideo.channel_id == channel_id)  # type: ignore[arg-type]
-
-    if search:
-        like_term = f"%{search.strip()}%"
-        search_filter = or_(
-            YouTubeVideo.title.ilike(like_term),  # type: ignore[attr-defined]
-            YouTubeVideo.summary.ilike(like_term),  # type: ignore[union-attr]
-        )
-        base = base.where(search_filter)
-        count_query = count_query.where(search_filter)
-
-    total_result = await db.execute(count_query)
     total = int(total_result.scalar() or 0)
 
     stmt = (
-        base.order_by(
+        select(*_VIDEO_FEED_COLUMNS)  # type: ignore[call-overload]
+        .select_from(YouTubeVideo)
+        .join(YouTubeChannel, YouTubeChannel.id == YouTubeVideo.channel_id)  # type: ignore[arg-type]
+        .join(filtered_video_ids, filtered_video_ids.c.video_id == YouTubeVideo.id)
+        .order_by(
             YouTubeVideo.published_at.desc(),  # type: ignore[attr-defined]
             YouTubeVideo.__table__.c.id.desc(),  # type: ignore[attr-defined]
         )
@@ -269,6 +290,52 @@ async def get_video_feed(
         for row in rows
     ]
     return VideoFeedResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+async def get_filtered_video_stats(
+    db: AsyncSession,
+    *,
+    tag: str | None = None,
+    channel_id: int | None = None,
+    player_id: int | None = None,
+    search: str | None = None,
+    trending_days: int = 7,
+    trending_limit: int = 7,
+) -> dict[str, int]:
+    """Return filtered channel and trending counts for film-room summary tiles."""
+    filtered_video_ids = _build_filtered_video_ids_query(
+        tag=tag,
+        channel_id=channel_id,
+        player_id=player_id,
+        search=search,
+    ).subquery()
+
+    channel_total_result = await db.execute(
+        select(func.count(func.distinct(YouTubeVideo.channel_id)))  # type: ignore[call-overload]
+        .select_from(YouTubeVideo)
+        .join(filtered_video_ids, filtered_video_ids.c.video_id == YouTubeVideo.id)
+    )
+    channel_total = int(channel_total_result.scalar() or 0)
+
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+        days=trending_days
+    )
+    trending_total_result = await db.execute(
+        select(func.count(func.distinct(PlayerContentMention.player_id)))  # type: ignore[call-overload]
+        .select_from(PlayerContentMention)
+        .join(
+            filtered_video_ids,
+            filtered_video_ids.c.video_id == PlayerContentMention.content_id,
+        )
+        .where(PlayerContentMention.content_type == ContentType.VIDEO)  # type: ignore[arg-type]
+        .where(PlayerContentMention.published_at >= cutoff)  # type: ignore[arg-type,operator]
+    )
+    trending_total = int(trending_total_result.scalar() or 0)
+
+    return {
+        "channel_total": channel_total,
+        "trending_total": min(trending_total, trending_limit),
+    }
 
 
 async def get_latest_videos_by_tag(
@@ -362,11 +429,18 @@ async def get_video_page_data(
         player_id=player_id,
         search=search,
     )
+    stats = await get_filtered_video_stats(
+        db=db,
+        tag=tag,
+        channel_id=channel_id,
+        player_id=player_id,
+        search=search,
+    )
     channels = await get_active_channels(db)
     trending: list[TrendingPlayer] = await get_trending_players(
         db, days=7, limit=7, content_type=ContentType.VIDEO
     )
-    return {"feed": feed, "channels": channels, "trending": trending}
+    return {"feed": feed, "channels": channels, "trending": trending, "stats": stats}
 
 
 async def get_video_player_filters(
