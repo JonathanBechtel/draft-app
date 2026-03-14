@@ -260,10 +260,7 @@
   display: block;
   width: 100%;
   border-bottom: 1px solid var(--color-slate-100);
-  cursor: pointer;
   transition: background 0.15s ease;
-  text-decoration: none;
-  color: inherit;
 }
 
 .episode-row:last-child {

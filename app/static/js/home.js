@@ -944,7 +944,6 @@ const TrendingModule = {
  * ============================================================================
  * HOME PODCAST MODULE
  * Renders the Latest Podcasts section on the homepage
- * Play buttons link to /podcasts (no inline audio on homepage)
  * ============================================================================
  */
 const HomePodcastModule = {
@@ -962,6 +961,13 @@ const HomePodcastModule = {
   init() {
     const episodes = window.PODCAST_EPISODES;
     if (!episodes || episodes.length === 0) return;
+
+    if (!window.PodcastAudio) {
+      console.error('PodcastAudio helper is unavailable.');
+      return;
+    }
+
+    window.PodcastAudio.init();
 
     const section = document.getElementById('podcastsSection');
     if (!section) return;
@@ -982,7 +988,7 @@ const HomePodcastModule = {
       : '';
 
     container.innerHTML = `
-      <a href="/podcasts" class="podcast-featured" style="text-decoration: none; color: inherit;">
+      <div class="podcast-featured" style="margin-bottom: 2rem;">
         <div class="podcast-featured__artwork">
           ${(ep.artwork_url || ep.show_artwork_url)
             ? `<img src="${esc(ep.artwork_url || ep.show_artwork_url)}" alt="${esc(ep.show_name)}" />`
@@ -1003,9 +1009,32 @@ const HomePodcastModule = {
             <span class="meta-dot"></span>
             <span>${esc(ep.time)}</span>
           </div>
+          <div class="podcast-featured__player">
+            <button type="button" class="play-btn" aria-label="Play episode" data-audio="${esc(ep.audio_url)}">
+              <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
+            </button>
+            <div class="progress-track">
+              <input type="range" class="progress-bar" min="0" max="100" value="0" step="0.1" />
+              <span class="progress-time">0:00</span>
+            </div>
+          </div>
         </div>
-      </a>
+      </div>
     `;
+
+    const playBtn = container.querySelector('.play-btn');
+    if (playBtn) {
+      playBtn.addEventListener('click', () => {
+        window.PodcastAudio.play(playBtn.dataset.audio, playBtn);
+      });
+    }
+
+    const progressBar = container.querySelector('.progress-bar');
+    if (progressBar) {
+      progressBar.addEventListener('input', (e) => {
+        window.PodcastAudio.seek(parseFloat(e.target.value));
+      });
+    }
   },
 
   renderList(episodes) {
@@ -1020,7 +1049,7 @@ const HomePodcastModule = {
       const episodeTag = tagClass ? `<span class="episode-tag episode-tag--${tagClass}">${esc(ep.tag)}</span>` : '';
 
       return `
-        <a href="/podcasts" class="episode-row">
+        <div class="episode-row">
           <div class="episode-row__inner">
             ${(ep.artwork_url || ep.show_artwork_url)
               ? `<img class="episode-row__art" src="${esc(ep.artwork_url || ep.show_artwork_url)}" alt="${esc(ep.show_name)}" loading="lazy" />`
@@ -1040,13 +1069,19 @@ const HomePodcastModule = {
                 ${episodeTag}
               </div>
             </div>
-            <span class="episode-row__play" aria-label="Listen on podcasts page">
+            <button type="button" class="episode-row__play" aria-label="Play episode" data-audio="${esc(ep.audio_url)}">
               <svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"></polygon></svg>
-            </span>
+            </button>
           </div>
-        </a>
+        </div>
       `;
     }).join('');
+
+    container.querySelectorAll('.episode-row__play').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        window.PodcastAudio.play(btn.dataset.audio, btn);
+      });
+    });
   }
 };
 
