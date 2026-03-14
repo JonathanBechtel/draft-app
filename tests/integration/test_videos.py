@@ -2,9 +2,11 @@
 
 import re
 from datetime import UTC, datetime
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 import pytest_asyncio
+from bs4 import BeautifulSoup, Tag
 from httpx import AsyncClient
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,21 @@ ADMIN_EMAIL = "videos-admin@example.com"
 ADMIN_PASSWORD = "correct horse battery staple"
 
 
+def _channel_sidebar_links(soup: BeautifulSoup) -> list[Tag]:
+    """Return the Film Room channel filter links from the sidebar."""
+    cards = soup.select(".film-room-sidebar .sidebar-card")
+    assert cards
+    return cards[0].select("a.film-room-sidebar__item")
+
+
+def _find_sidebar_link(links: list[Tag], label: str) -> Tag:
+    """Find a channel sidebar link by its visible text label."""
+    for link in links:
+        spans = link.find_all("span")
+        visible_label = spans[-1].get_text(strip=True) if spans else link.get_text(strip=True)
+        if visible_label == label:
+            return link
+    raise AssertionError(f"Could not find sidebar link with label {label!r}")
 def _assert_film_room_stat(html: str, label: str, expected: int) -> None:
     """Assert that a film-room summary stat renders the expected value."""
     pattern = (
@@ -243,6 +260,106 @@ class TestFilmRoomPages:
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
         assert "Film Room" in response.text
+
+    async def test_film_room_page_renders_all_channels_item_as_default_reset(
+        self,
+        app_client: AsyncClient,
+        sample_video: YouTubeVideo,
+    ) -> None:
+        """Film Room renders an active All Channels item when no channel is selected."""
+        _ = sample_video
+        response = await app_client.get("/film-room")
+
+        assert response.status_code == 200
+        soup = BeautifulSoup(response.text, "html.parser")
+        links = _channel_sidebar_links(soup)
+        all_channels = _find_sidebar_link(links, "All Channels")
+
+        assert links[0] == all_channels
+        assert "film-room-sidebar__item--active" in (all_channels.get("class") or [])
+        assert urlsplit(all_channels["href"]).path == "/film-room"
+        assert parse_qs(urlsplit(all_channels["href"]).query) == {}
+
+    async def test_film_room_page_selected_channel_keeps_reset_link(
+        self,
+        app_client: AsyncClient,
+        sample_channel: YouTubeChannel,
+        sample_video: YouTubeVideo,
+    ) -> None:
+        """Selected channel is highlighted and All Channels clears only that filter."""
+        _ = sample_video
+        response = await app_client.get(f"/film-room?channel={sample_channel.id}")
+
+        assert response.status_code == 200
+        soup = BeautifulSoup(response.text, "html.parser")
+        links = _channel_sidebar_links(soup)
+        all_channels = _find_sidebar_link(links, "All Channels")
+        selected_channel = _find_sidebar_link(links, sample_channel.display_name)
+
+        assert "film-room-sidebar__item--active" not in (all_channels.get("class") or [])
+        assert parse_qs(urlsplit(all_channels["href"]).query) == {}
+        assert "film-room-sidebar__item--active" in (selected_channel.get("class") or [])
+        assert parse_qs(urlsplit(selected_channel["href"]).query) == {
+            "channel": [str(sample_channel.id)]
+        }
+
+    async def test_film_room_channel_links_preserve_other_active_filters(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        sample_channel: YouTubeChannel,
+        sample_video: YouTubeVideo,
+    ) -> None:
+        """Channel links preserve tag, player, and search while changing only channel."""
+        second_channel = make_youtube_channel(
+            name="Second Film Hub",
+            channel_id="UC_second_film_hub",
+        )
+        db_session.add(second_channel)
+        await db_session.flush()
+
+        second_video = make_youtube_video(
+            channel_id=second_channel.id,  # type: ignore[arg-type]
+            external_id="altVideo123",
+        )
+        db_session.add(second_video)
+
+        player = make_player("VJ", "Edgecombe")
+        db_session.add(player)
+        await db_session.flush()
+
+        mention = PlayerContentMention(
+            content_type=ContentType.VIDEO,
+            content_id=sample_video.id,  # type: ignore[arg-type]
+            player_id=player.id,  # type: ignore[arg-type]
+            published_at=sample_video.published_at,
+            source=MentionSource.AI,
+        )
+        db_session.add(mention)
+        await db_session.commit()
+
+        response = await app_client.get(
+            f"/film-room?tag=Scouting+Report&channel={sample_channel.id}"
+            f"&player={player.id}&search=Video"
+        )
+
+        assert response.status_code == 200
+        soup = BeautifulSoup(response.text, "html.parser")
+        links = _channel_sidebar_links(soup)
+        all_channels = _find_sidebar_link(links, "All Channels")
+        other_channel = _find_sidebar_link(links, second_channel.display_name)
+
+        assert parse_qs(urlsplit(all_channels["href"]).query) == {
+            "tag": ["Scouting Report"],
+            "player": [str(player.id)],
+            "search": ["Video"],
+        }
+        assert parse_qs(urlsplit(other_channel["href"]).query) == {
+            "tag": ["Scouting Report"],
+            "channel": [str(second_channel.id)],
+            "player": [str(player.id)],
+            "search": ["Video"],
+        }
 
     async def test_homepage_includes_film_room_section_when_videos_exist(
         self,
