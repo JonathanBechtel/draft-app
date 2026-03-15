@@ -318,11 +318,22 @@
   text-overflow: ellipsis;
 }
 
+.episode-row__summary {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--color-slate-600);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .episode-row__bottom-line {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-top: 0.25rem;
+  margin-top: 0.45rem;
 }
 
 .episode-row__meta {

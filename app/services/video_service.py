@@ -12,7 +12,12 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.content_mentions import MentionedPlayer
-from app.models.videos import VideoFeedResponse, YouTubeVideoRead
+from app.models.videos import (
+    FilmSearchSuggestion,
+    FilmSearchSuggestionsResponse,
+    VideoFeedResponse,
+    YouTubeVideoRead,
+)
 from app.schemas.player_content_mentions import ContentType, PlayerContentMention
 from app.schemas.players_master import PlayerMaster
 from app.schemas.youtube_channels import YouTubeChannel
@@ -474,6 +479,90 @@ async def get_video_player_filters(
         }
         for row in rows
     ]
+
+
+async def get_film_search_suggestions(
+    db: AsyncSession,
+    query: str,
+    video_limit: int = 5,
+    player_limit: int = 3,
+    channel_limit: int = 3,
+) -> FilmSearchSuggestionsResponse:
+    """Return typeahead suggestions for the film-room search bar."""
+    like_term = f"%{query.strip()}%"
+    suggestions: list[FilmSearchSuggestion] = []
+
+    # Players with video mentions, ordered by mention count
+    player_stmt = (
+        select(  # type: ignore[call-overload]
+            PlayerMaster.id,
+            PlayerMaster.display_name,
+            PlayerMaster.school,
+            func.count().label("mention_count"),
+        )
+        .join(
+            PlayerContentMention,
+            PlayerContentMention.player_id == PlayerMaster.id,  # type: ignore[arg-type]
+        )
+        .where(PlayerContentMention.content_type == ContentType.VIDEO)  # type: ignore[arg-type]
+        .where(PlayerMaster.display_name.ilike(like_term))  # type: ignore[union-attr]
+        .group_by(PlayerMaster.id, PlayerMaster.display_name, PlayerMaster.school)
+        .order_by(func.count().desc())  # type: ignore[arg-type]
+        .limit(player_limit)
+    )
+    player_rows = (await db.execute(player_stmt)).all()
+    for row in player_rows:
+        suggestions.append(
+            FilmSearchSuggestion(
+                category="player",
+                label=row[1] or "",
+                sublabel=row[2],
+                player_id=row[0],
+            )
+        )
+
+    # Active channels
+    channel_stmt = (
+        select(YouTubeChannel.id, YouTubeChannel.display_name)  # type: ignore[call-overload]
+        .where(YouTubeChannel.is_active.is_(True))  # type: ignore[attr-defined]
+        .where(YouTubeChannel.display_name.ilike(like_term))  # type: ignore[attr-defined]
+        .order_by(YouTubeChannel.display_name)  # type: ignore[arg-type]
+        .limit(channel_limit)
+    )
+    channel_rows = (await db.execute(channel_stmt)).all()
+    for row in channel_rows:
+        suggestions.append(
+            FilmSearchSuggestion(
+                category="channel",
+                label=row[1] or "",
+                channel_id=row[0],
+            )
+        )
+
+    # Videos by title
+    video_stmt = (
+        select(  # type: ignore[call-overload]
+            YouTubeVideo.title,
+            YouTubeChannel.display_name.label("channel_name"),  # type: ignore[attr-defined]
+        )
+        .join(YouTubeChannel, YouTubeChannel.id == YouTubeVideo.channel_id)  # type: ignore[arg-type]
+        .where(YouTubeVideo.duration_seconds >= MIN_VIDEO_DURATION_SECONDS)  # type: ignore[operator]
+        .where(YouTubeVideo.title.ilike(like_term))  # type: ignore[attr-defined]
+        .order_by(YouTubeVideo.published_at.desc())  # type: ignore[attr-defined]
+        .limit(video_limit)
+    )
+    video_rows = (await db.execute(video_stmt)).all()
+    for row in video_rows:
+        suggestions.append(
+            FilmSearchSuggestion(
+                category="video",
+                label=row[0] or "",
+                sublabel=row[1],
+                search_term=row[0] or "",
+            )
+        )
+
+    return FilmSearchSuggestionsResponse(suggestions=suggestions)
 
 
 async def get_active_channels(db: AsyncSession) -> list[YouTubeChannel]:

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.videos import (
+    FilmSearchSuggestionsResponse,
     ManualVideoAddRequest,
     VideoFeedResponse,
     VideoIngestionResult,
@@ -17,7 +18,7 @@ from app.models.videos import (
 from app.schemas.youtube_channels import YouTubeChannel
 from app.services.staff_authz import require_dataset_permission
 from app.services.video_ingestion_service import add_video_by_url, run_ingestion_cycle
-from app.services.video_service import get_video_feed
+from app.services.video_service import get_film_search_suggestions, get_video_feed
 from app.utils.db_async import get_session
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
@@ -43,6 +44,15 @@ async def list_videos(
         player_id=player_id,
         search=search,
     )
+
+
+@router.get("/search-suggestions", response_model=FilmSearchSuggestionsResponse)
+async def search_suggestions(
+    q: str = Query(min_length=2, description="Search query"),
+    db: AsyncSession = Depends(get_session),
+) -> FilmSearchSuggestionsResponse:
+    """Return typeahead suggestions for the film-room search bar."""
+    return await get_film_search_suggestions(db, q)
 
 
 @router.get(

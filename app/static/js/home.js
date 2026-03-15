@@ -1047,6 +1047,9 @@ const HomePodcastModule = {
     container.innerHTML = episodes.map(ep => {
       const tagClass = this.TAG_CLASSES[ep.tag] || '';
       const episodeTag = tagClass ? `<span class="episode-tag episode-tag--${tagClass}">${esc(ep.tag)}</span>` : '';
+      const summaryHtml = ep.summary
+        ? `<div class="episode-row__summary">${esc(ep.summary)}</div>`
+        : '';
 
       return `
         <div class="episode-row">
@@ -1060,6 +1063,7 @@ const HomePodcastModule = {
                 <span class="episode-row__show">${esc(ep.show_name)}</span>
                 <span class="episode-row__title">${esc(ep.title)}</span>
               </div>
+              ${summaryHtml}
               <div class="episode-row__bottom-line">
                 <span class="episode-row__meta">
                   <span>${esc(ep.duration)}</span>

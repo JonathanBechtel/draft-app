@@ -170,37 +170,226 @@ function initTabbedFilmPlayer(config) {
 
 const FilmRoomPageModule = {
   init() {
+    this.initPlaylist();
+    this.initLoadMore();
+    this.initCardClicks();
+  },
+
+  initPlaylist() {
     const embed = document.getElementById('filmRoomEmbed');
-    const cards = Array.from(document.querySelectorAll('.film-room-card'));
-    if (!embed || cards.length === 0) return;
+    const playlistItems = document.getElementById('filmRoomPlaylistItems');
+    if (!embed || !playlistItems) return;
 
-    cards.forEach((card) => {
-      card.addEventListener('click', () => {
-        cards.forEach((item) => item.classList.remove('film-room-card--active'));
-        card.classList.add('film-room-card--active');
+    const thumbs = Array.from(playlistItems.querySelectorAll('.film-thumb'));
+    if (thumbs.length === 0) return;
 
-        const embedId = card.dataset.embedId || '';
+    const titleEl = document.getElementById('filmRoomTitle');
+    const channelEl = document.getElementById('filmRoomChannel');
+    const timeEl = document.getElementById('filmRoomTime');
+    const durationEl = document.getElementById('filmRoomDuration');
+    const viewsEl = document.getElementById('filmRoomViews');
+    const typeTagEl = document.getElementById('filmRoomTypeTag');
+    const tagsContainer = document.getElementById('filmRoomTags');
+
+    const buildPlayerTags = (mentions) => {
+      if (!tagsContainer) return;
+      const existing = tagsContainer.querySelectorAll('.film-player-tag');
+      existing.forEach((el) => el.remove());
+
+      (mentions || []).slice(0, 10).forEach((p) => {
+        const a = document.createElement('a');
+        a.href = `/players/${p.slug}`;
+        a.className = 'film-player-tag';
+        a.textContent = p.display_name;
+        tagsContainer.appendChild(a);
+      });
+    };
+
+    thumbs.forEach((thumb) => {
+      thumb.addEventListener('click', () => {
+        thumbs.forEach((item) => item.classList.remove('active'));
+        thumb.classList.add('active');
+
+        const embedId = thumb.dataset.embedId || '';
         if (embedId) {
           embed.src = `https://www.youtube.com/embed/${encodeURIComponent(embedId)}?rel=0&modestbranding=1`;
         }
 
-        this.updateFeaturedMeta(card);
+        if (titleEl) titleEl.textContent = thumb.dataset.title || '';
+        if (channelEl) channelEl.textContent = thumb.dataset.channel || '';
+        if (timeEl) timeEl.textContent = thumb.dataset.time || '';
+        if (durationEl) durationEl.textContent = thumb.dataset.duration || '';
+        if (viewsEl) viewsEl.textContent = thumb.dataset.views || '';
+
+        if (typeTagEl) {
+          typeTagEl.textContent = thumb.dataset.tag || '';
+          updateVideoTypeTagClass(typeTagEl, thumb.dataset.tag || '');
+        }
+
+        let mentions = [];
+        try {
+          mentions = JSON.parse(thumb.dataset.mentions || '[]');
+        } catch (_e) {
+          /* ignore malformed data */
+        }
+        buildPlayerTags(mentions);
       });
     });
   },
 
-  updateFeaturedMeta(card) {
-    const title = document.getElementById('filmRoomFeaturedTitle');
-    const summary = document.getElementById('filmRoomFeaturedSummary');
-    const channel = document.getElementById('filmRoomFeaturedChannel');
-    const time = document.getElementById('filmRoomFeaturedTime');
-    const views = document.getElementById('filmRoomFeaturedViews');
+  initLoadMore() {
+    const btn = document.getElementById('filmLoadMoreBtn');
+    const grid = document.getElementById('filmGrid');
+    const loadMoreWrap = document.getElementById('filmLoadMore');
+    if (!btn || !grid || !loadMoreWrap) return;
 
-    if (title) title.textContent = card.dataset.title || '';
-    if (summary) summary.textContent = card.dataset.summary || '';
-    if (channel) channel.textContent = card.dataset.channel || '';
-    if (time) time.textContent = card.dataset.time || '';
-    if (views) views.textContent = card.dataset.views || '';
+    const state = window.__filmRoomState;
+    if (!state) return;
+
+    let currentOffset = state.offset + state.limit;
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'Loading...';
+
+      const params = new URLSearchParams();
+      params.set('format', 'json');
+      params.set('offset', String(currentOffset));
+      if (state.tag) params.set('tag', state.tag);
+      if (state.channel) params.set('channel', String(state.channel));
+      if (state.player) params.set('player', String(state.player));
+      if (state.search) params.set('search', state.search);
+
+      try {
+        const resp = await fetch(`/film-room?${params.toString()}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        data.videos.forEach((video) => {
+          const card = document.createElement('div');
+          card.className = 'film-card';
+          card.dataset.embedId = video.youtube_embed_id || '';
+
+          const tagSlug = (video.tag || '').toLowerCase().replace(/\s+/g, '-');
+          const typeTagClass = VIDEO_TYPE_CLASS_BY_TAG[video.tag || ''] || '';
+
+          // Build image section
+          const imageDiv = document.createElement('div');
+          imageDiv.className = 'film-card__image';
+
+          if (video.thumbnail_url) {
+            const img = document.createElement('img');
+            img.src = video.thumbnail_url;
+            img.alt = video.title || '';
+            img.loading = 'lazy';
+            imageDiv.appendChild(img);
+          } else {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'film-card__image-placeholder';
+            placeholder.innerHTML =
+              '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>';
+            imageDiv.appendChild(placeholder);
+          }
+
+          const durationBadge = document.createElement('span');
+          durationBadge.className = 'film-card__duration';
+          durationBadge.textContent = video.duration || '';
+          imageDiv.appendChild(durationBadge);
+
+          const typeBadge = document.createElement('div');
+          typeBadge.className = 'film-card__type-badge';
+          const typeSpan = document.createElement('span');
+          typeSpan.className = `video-type-tag video-type-tag--${tagSlug}`;
+          typeSpan.textContent = video.tag || '';
+          typeBadge.appendChild(typeSpan);
+          imageDiv.appendChild(typeBadge);
+
+          card.appendChild(imageDiv);
+
+          // Build body section
+          const bodyDiv = document.createElement('div');
+          bodyDiv.className = 'film-card__body';
+
+          const titleDiv = document.createElement('div');
+          titleDiv.className = 'film-card__title';
+          titleDiv.textContent = video.title || '';
+          bodyDiv.appendChild(titleDiv);
+
+          const channelDiv = document.createElement('div');
+          channelDiv.className = 'film-card__channel';
+          channelDiv.textContent = video.channel_name || '';
+          bodyDiv.appendChild(channelDiv);
+
+          const metaDiv = document.createElement('div');
+          metaDiv.className = 'film-card__meta';
+          const timeSpan = document.createElement('span');
+          timeSpan.textContent = video.time || '';
+          const dotSpan = document.createElement('span');
+          dotSpan.className = 'meta-dot';
+          const viewsSpan = document.createElement('span');
+          viewsSpan.textContent = video.view_count_display || '';
+          metaDiv.appendChild(timeSpan);
+          metaDiv.appendChild(dotSpan);
+          metaDiv.appendChild(viewsSpan);
+          bodyDiv.appendChild(metaDiv);
+
+          // Player tags
+          const mentions = video.mentioned_players || [];
+          if (mentions.length > 0) {
+            const tagsDiv = document.createElement('div');
+            tagsDiv.className = 'film-card__tags';
+            mentions.slice(0, 10).forEach((p) => {
+              const a = document.createElement('a');
+              a.href = `/players/${p.slug}`;
+              a.className = 'film-player-tag';
+              a.textContent = p.display_name;
+              tagsDiv.appendChild(a);
+            });
+            bodyDiv.appendChild(tagsDiv);
+          }
+
+          card.appendChild(bodyDiv);
+          grid.appendChild(card);
+        });
+
+        currentOffset += state.limit;
+        if (!data.has_more) {
+          loadMoreWrap.remove();
+        } else {
+          btn.disabled = false;
+          btn.textContent = 'Load More Videos';
+        }
+      } catch (_err) {
+        btn.disabled = false;
+        btn.textContent = 'Load More Videos';
+      }
+    });
+  },
+
+  initCardClicks() {
+    const grid = document.getElementById('filmGrid');
+    const playlistItems = document.getElementById('filmRoomPlaylistItems');
+    const featured = document.querySelector('.film-page__featured');
+    if (!grid || !playlistItems || !featured) return;
+
+    grid.addEventListener('click', (e) => {
+      const card = e.target.closest('.film-card');
+      if (!card) return;
+      // Don't intercept clicks on player tag links
+      if (e.target.closest('a')) return;
+
+      const embedId = card.dataset.embedId;
+      if (!embedId) return;
+
+      // Find the matching thumb in the playlist and click it
+      const thumb = playlistItems.querySelector(
+        `.film-thumb[data-embed-id="${CSS.escape(embedId)}"]`,
+      );
+      if (thumb) {
+        thumb.click();
+        featured.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
   },
 };
 
@@ -211,6 +400,7 @@ const HomeFilmRoomModule = {
 
     const embedWrap = section.querySelector('#homeFilmEmbedWrap');
     const embed = section.querySelector('#homeFilmEmbed');
+    const poster = section.querySelector('#homeFilmPoster');
     const playOverlay = section.querySelector('#homeFilmPlayOverlay');
     const tagsContainer = section.querySelector('#homeFilmTags');
 
@@ -235,6 +425,7 @@ const HomeFilmRoomModule = {
         embed.src = `https://www.youtube.com/embed/${encodeURIComponent(embedId)}?rel=0&modestbranding=1&autoplay=1`;
         embed.hidden = false;
       }
+      if (poster) poster.hidden = true;
       if (playOverlay) playOverlay.hidden = true;
       if (embedWrap) embedWrap.classList.remove('film-player__embed--placeholder');
     };
@@ -267,6 +458,11 @@ const HomeFilmRoomModule = {
         if (embedWrap) {
           embedWrap.classList.add('film-player__embed--placeholder');
           embedWrap.dataset.pendingEmbedId = thumb.dataset.embedId || '';
+        }
+        if (poster) {
+          poster.src = thumb.dataset.thumbnail || '';
+          poster.alt = thumb.dataset.title || '';
+          poster.hidden = false;
         }
         if (playOverlay) playOverlay.hidden = false;
 
@@ -319,8 +515,209 @@ const PlayerFilmStudyModule = {
   },
 };
 
+const FilmSearchModule = {
+  DEBOUNCE_MS: 300,
+  MIN_QUERY: 2,
+  input: null,
+  results: null,
+  form: null,
+  controller: null,
+  debounceTimer: null,
+  items: [],
+  selectedIndex: -1,
+  blurTimer: null,
+
+  init() {
+    this.input = document.getElementById('filmSearchInput');
+    this.results = document.getElementById('filmSearchResults');
+    if (!this.input || !this.results) return;
+    this.form = this.input.closest('form');
+
+    this.input.addEventListener('input', () => this.onInput());
+    this.input.addEventListener('keydown', (e) => this.onKeydown(e));
+    this.input.addEventListener('focus', () => this.onFocus());
+    this.input.addEventListener('blur', () => this.onBlur());
+    if (this.form) {
+      this.form.addEventListener('submit', (e) => this.onSubmit(e));
+    }
+  },
+
+  onInput() {
+    clearTimeout(this.debounceTimer);
+    const q = (this.input.value || '').trim();
+    if (q.length < this.MIN_QUERY) {
+      this.close();
+      return;
+    }
+    this.debounceTimer = setTimeout(() => this.fetchSuggestions(q), this.DEBOUNCE_MS);
+  },
+
+  async fetchSuggestions(query) {
+    if (this.controller) this.controller.abort();
+    this.controller = new AbortController();
+
+    try {
+      const resp = await fetch(
+        `/api/videos/search-suggestions?q=${encodeURIComponent(query)}`,
+        { signal: this.controller.signal },
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      this.render(data.suggestions || []);
+    } catch (_e) {
+      /* aborted or network error */
+    }
+  },
+
+  escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  },
+
+  render(suggestions) {
+    if (suggestions.length === 0) {
+      this.results.innerHTML =
+        '<div class="film-search__empty">No matches found</div>';
+      this.open();
+      this.items = [];
+      this.selectedIndex = -1;
+      return;
+    }
+
+    const groups = {};
+    const order = [];
+    suggestions.forEach((s) => {
+      if (!groups[s.category]) {
+        groups[s.category] = [];
+        order.push(s.category);
+      }
+      groups[s.category].push(s);
+    });
+
+    const categoryLabels = {
+      player: 'Players',
+      channel: 'Channels',
+      video: 'Videos',
+    };
+    let html = '';
+    let itemIndex = 0;
+
+    order.forEach((cat) => {
+      html += `<div class="film-search__category">${this.escapeHtml(categoryLabels[cat] || cat)}</div>`;
+      groups[cat].forEach((s) => {
+        const sublabelHtml = s.sublabel
+          ? `<span class="film-search__item-sublabel">${this.escapeHtml(s.sublabel)}</span>`
+          : '';
+        html += `<div class="film-search__item" role="option" data-index="${itemIndex}"
+                      data-category="${this.escapeHtml(s.category)}"
+                      data-player-id="${s.player_id || ''}"
+                      data-channel-id="${s.channel_id || ''}"
+                      data-search-term="${this.escapeHtml(s.search_term || '')}">
+                   <span class="film-search__item-label">${this.escapeHtml(s.label)}</span>
+                   ${sublabelHtml}
+                 </div>`;
+        itemIndex++;
+      });
+    });
+
+    this.results.innerHTML = html;
+    this.items = Array.from(this.results.querySelectorAll('.film-search__item'));
+    this.selectedIndex = -1;
+
+    this.items.forEach((item) => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        this.applyFilter(item);
+      });
+    });
+
+    this.open();
+  },
+
+  open() {
+    this.results.classList.add('open');
+    this.input.setAttribute('aria-expanded', 'true');
+  },
+
+  close() {
+    this.results.classList.remove('open');
+    this.input.setAttribute('aria-expanded', 'false');
+    this.selectedIndex = -1;
+    this.items.forEach((item) => item.classList.remove('selected'));
+  },
+
+  onFocus() {
+    clearTimeout(this.blurTimer);
+    if (this.items.length > 0 || this.results.querySelector('.film-search__empty')) {
+      this.open();
+    }
+  },
+
+  onBlur() {
+    this.blurTimer = setTimeout(() => this.close(), 200);
+  },
+
+  onKeydown(e) {
+    if (!this.results.classList.contains('open') || this.items.length === 0)
+      return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.selectedIndex = Math.min(
+        this.selectedIndex + 1,
+        this.items.length - 1,
+      );
+      this.highlightItem();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+      this.highlightItem();
+    } else if (e.key === 'Enter' && this.selectedIndex >= 0) {
+      e.preventDefault();
+      this.applyFilter(this.items[this.selectedIndex]);
+    } else if (e.key === 'Escape') {
+      this.close();
+    }
+  },
+
+  highlightItem() {
+    this.items.forEach((item, i) => {
+      item.classList.toggle('selected', i === this.selectedIndex);
+    });
+  },
+
+  onSubmit(e) {
+    if (this.selectedIndex >= 0 && this.items[this.selectedIndex]) {
+      e.preventDefault();
+      this.applyFilter(this.items[this.selectedIndex]);
+    }
+  },
+
+  applyFilter(item) {
+    const category = item.dataset.category;
+    const state = window.__filmRoomState || {};
+    const params = new URLSearchParams();
+
+    if (state.tag) params.set('tag', state.tag);
+
+    if (category === 'player') {
+      params.set('player', item.dataset.playerId);
+    } else if (category === 'channel') {
+      params.set('channel', item.dataset.channelId);
+    } else if (category === 'video') {
+      params.set('search', item.dataset.searchTerm);
+    }
+
+    const qs = params.toString();
+    window.location.href = `/film-room${qs ? '?' + qs : ''}`;
+  },
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   FilmRoomPageModule.init();
   HomeFilmRoomModule.init();
   PlayerFilmStudyModule.init();
+  FilmSearchModule.init();
 });

@@ -47,155 +47,234 @@
   <section class="section film-room-page-header film-page__header">
     <div class="film-page__title-group">
       <h2 class="section-header mono-font uppercase film-page__title">
+        <svg class="film-room__title-icon" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+          <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+          <circle cx="8" cy="12" r="2.5"></circle>
+          <circle cx="16" cy="12" r="2.5"></circle>
+          <path d="M2 9h20M2 15h20"></path>
+          <rect x="9" y="2" width="6" height="4" rx="1"></rect>
+        </svg>
         Film Room
       </h2>
       <p class="section-subtitle film-page__subtitle">Curated draft video breakdowns and prospect tape.</p>
-    </div>
-    <div class="film-room-page-stats">
-      <div class="film-room-stat">
-        <div class="film-room-stat__value">{{ total }}</div>
-        <div class="film-room-stat__label">Videos</div>
-      </div>
-      <div class="film-room-stat">
-        <div class="film-room-stat__value">{{ channel_total }}</div>
-        <div class="film-room-stat__label">Channels</div>
-      </div>
-      <div class="film-room-stat">
-        <div class="film-room-stat__value">{{ trending_total }}</div>
-        <div class="film-room-stat__label">Trending</div>
-      </div>
     </div>
   </section>
 
   {% set first_video = videos[0] if videos else None %}
   {% if first_video %}
-  <section class="film-room-featured">
-    <iframe
-      id="filmRoomEmbed"
-      class="film-room-featured__embed"
-      src="https://www.youtube.com/embed/{{ first_video.youtube_embed_id }}?rel=0&modestbranding=1"
-      title="{{ first_video.title }}"
-      loading="lazy"
-      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-      allowfullscreen
-    ></iframe>
-    <div class="film-room-featured__meta">
-      <span class="film-room-tag">{{ first_video.tag }}</span>
-      <h3 id="filmRoomFeaturedTitle">{{ first_video.title }}</h3>
-      <p id="filmRoomFeaturedSummary">{{ first_video.summary }}</p>
-      <div class="film-room-featured__submeta">
-        <span id="filmRoomFeaturedChannel">{{ first_video.channel_name }}</span>
-        <span>{{ first_video.duration }}</span>
-        <span id="filmRoomFeaturedTime">{{ first_video.time }}</span>
-        <span id="filmRoomFeaturedViews">{{ first_video.view_count_display }}</span>
+  <section class="film-page__featured">
+    <div class="film-playlist" id="filmRoomPlaylist">
+      <div class="film-player">
+        <div class="film-player__embed">
+          <iframe
+            id="filmRoomEmbed"
+            src="https://www.youtube.com/embed/{{ first_video.youtube_embed_id }}?rel=0&modestbranding=1"
+            title="{{ first_video.title }}"
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+          ></iframe>
+        </div>
+        <div class="film-player__info">
+          <h3 class="film-player__video-title" id="filmRoomTitle">{{ first_video.title }}</h3>
+          <div class="film-player__meta">
+            <span class="film-player__channel" id="filmRoomChannel">{{ first_video.channel_name }}</span>
+            <span class="meta-dot"></span>
+            <span id="filmRoomTime">{{ first_video.time }}</span>
+            <span class="meta-dot"></span>
+            <span id="filmRoomDuration">{{ first_video.duration }}</span>
+            <span class="meta-dot"></span>
+            <span id="filmRoomViews">{{ first_video.view_count_display }}</span>
+          </div>
+          <div class="film-player__tags" id="filmRoomTags">
+            <span class="video-type-tag video-type-tag--{{ first_video.tag | lower | replace(' ', '-') }}" id="filmRoomTypeTag">{{ first_video.tag }}</span>
+            {% for p in first_video.mentioned_players[:10] %}
+            <a href="/players/{{ p.slug }}" class="film-player-tag">{{ p.display_name }}</a>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="film-playlist-list">
+        <div class="film-playlist__header">
+          <span class="film-playlist__label">Recent</span>
+          <span class="film-playlist__count">{{ videos | length }} video{{ 's' if videos | length != 1 else '' }}</span>
+        </div>
+        <div class="film-playlist__items" id="filmRoomPlaylistItems">
+          {% for video in videos %}
+          <button
+            type="button"
+            class="film-thumb{{ ' active' if loop.first else '' }}"
+            data-embed-id="{{ video.youtube_embed_id }}"
+            data-title="{{ video.title }}"
+            data-channel="{{ video.channel_name }}"
+            data-time="{{ video.time }}"
+            data-duration="{{ video.duration }}"
+            data-views="{{ video.view_count_display }}"
+            data-tag="{{ video.tag }}"
+            data-mentions="{{ video.mentioned_players | tojson | e }}"
+          >
+            <div class="film-thumb__image">
+              {% if video.thumbnail_url %}
+              <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" />
+              {% else %}
+              <div class="film-thumb__image-placeholder">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              {% endif %}
+              <span class="film-thumb__duration">{{ video.duration }}</span>
+            </div>
+            <div class="film-thumb__info">
+              <div class="film-thumb__title">{{ video.title }}</div>
+              <div class="film-thumb__channel">{{ video.channel_name }}</div>
+              <div class="film-thumb__date">{{ video.time }}</div>
+            </div>
+          </button>
+          {% endfor %}
+        </div>
       </div>
     </div>
   </section>
   {% endif %}
 
-  <div class="film-room-controls film-page__controls">
-    <form method="get" action="/film-room" class="film-room-search">
-      {% if active_tag %}<input type="hidden" name="tag" value="{{ active_tag }}">{% endif %}
-      {% if active_channel %}<input type="hidden" name="channel" value="{{ active_channel }}">{% endif %}
-      {% if active_player %}<input type="hidden" name="player" value="{{ active_player }}">{% endif %}
-      <input type="text" name="search" value="{{ search_query }}" placeholder="Search videos…" />
-      <button type="submit">Search</button>
-    </form>
-    <div class="film-room-filters">
-      <a
-        class="filter-chip {{ 'active' if not active_tag else '' }}"
-        href="{{ film_room_url(clear='tag') }}"
-      >
-        All
-      </a>
+  <div class="film-page__controls">
+    <div class="film-search">
+      <svg class="film-search__icon" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="11" cy="11" r="8"></circle>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+      </svg>
+      <form method="get" action="/film-room" class="film-search__form">
+        {% if active_tag %}<input type="hidden" name="tag" value="{{ active_tag }}">{% endif %}
+        {% if active_channel %}<input type="hidden" name="channel" value="{{ active_channel }}">{% endif %}
+        {% if active_player %}<input type="hidden" name="player" value="{{ active_player }}">{% endif %}
+        <input type="text" name="search" class="film-search__input"
+               id="filmSearchInput"
+               value="{{ search_query }}"
+               placeholder="Search videos by title, channel, or player..."
+               role="combobox"
+               aria-expanded="false"
+               aria-controls="filmSearchResults"
+               aria-autocomplete="list"
+               autocomplete="off" />
+      </form>
+      <div class="film-search__results" id="filmSearchResults" role="listbox"></div>
+    </div>
+    <div class="film-filters">
+      <span class="film-filter__label mono-font uppercase">Type:</span>
+      <a class="film-filter {{ 'active' if not active_tag else '' }}"
+         href="{{ film_room_url(clear='tag') }}">All</a>
       {% for t in tags %}
-      <a
-        class="filter-chip {{ 'active' if active_tag == t else '' }}"
-        href="{{ film_room_url(new_tag=t) }}"
-      >
-        {{ t }}
-      </a>
+      <a class="film-filter {{ 'active' if active_tag == t else '' }}"
+         href="{{ film_room_url(new_tag=t) }}">{{ t }}</a>
       {% endfor %}
     </div>
   </div>
 
-  <div class="film-room-layout">
-    <section class="film-room-list">
-      {% if videos %}
-        {% for video in videos %}
-        <article
-          class="film-room-card{% if loop.first %} film-room-card--active{% endif %}"
-          data-embed-id="{{ video.youtube_embed_id }}"
-          data-title="{{ video.title }}"
-          data-summary="{{ video.summary }}"
-          data-channel="{{ video.channel_name }}"
-          data-time="{{ video.time }}"
-          data-views="{{ video.view_count_display }}"
-        >
-          <button type="button" class="film-room-card__button">
-            {% if video.thumbnail_url %}
-            <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" />
-            {% else %}
-            <div class="film-room-card__placeholder">DG</div>
-            {% endif %}
-            <div class="film-room-card__body">
-              <div class="film-room-card__topline">
-                <span class="film-room-tag">{{ video.tag }}</span>
-                <span>{{ video.duration }}</span>
+  <div class="film-divider"></div>
+
+  <div class="film-room-browse">
+    <div class="film-room-browse__header">
+      <h3 class="film-room-browse__title mono-font uppercase">Browse All Videos</h3>
+    </div>
+    <div class="film-room-browse__layout">
+      <div class="film-room-browse__main">
+        {% if videos %}
+        <div class="film-grid" id="filmGrid">
+          {% for video in videos %}
+          <div class="film-card" data-embed-id="{{ video.youtube_embed_id }}">
+            <div class="film-card__image">
+              {% if video.thumbnail_url %}
+              <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}" loading="lazy" />
+              {% else %}
+              <div class="film-card__image-placeholder">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
               </div>
-              <h4>{{ video.title }}</h4>
-              <p>{{ video.summary }}</p>
-              <div class="film-room-card__meta">
-                <span>{{ video.channel_name }}</span>
-                <span>{{ video.time }}</span>
-                <span>{{ video.view_count_display }}</span>
+              {% endif %}
+              <span class="film-card__duration">{{ video.duration }}</span>
+              <div class="film-card__type-badge">
+                <span class="video-type-tag video-type-tag--{{ video.tag | lower | replace(' ', '-') }}">{{ video.tag }}</span>
               </div>
             </div>
-          </button>
-        </article>
-        {% endfor %}
-      {% else %}
-      <div class="film-room-empty">No videos match your current filters.</div>
-      {% endif %}
-    </section>
+            <div class="film-card__body">
+              <div class="film-card__title">{{ video.title }}</div>
+              <div class="film-card__channel">{{ video.channel_name }}</div>
+              <div class="film-card__meta">
+                <span>{{ video.time }}</span>
+                <span class="meta-dot"></span>
+                <span>{{ video.view_count_display }}</span>
+              </div>
+              {% if video.mentioned_players %}
+              <div class="film-card__tags">
+                {% for p in video.mentioned_players[:10] %}
+                <a href="/players/{{ p.slug }}" class="film-player-tag">{{ p.display_name }}</a>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% if offset + limit < total %}
+        <div class="film-grid__load-more" id="filmLoadMore">
+          <button type="button" class="film-grid__load-btn" id="filmLoadMoreBtn">Load More Videos</button>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="film-room-empty">No videos match your current filters.</div>
+        {% endif %}
+      </div>
 
-    <aside class="film-room-sidebar">
-      <div class="sidebar-card">
-        <div class="sidebar-card__header">Channels</div>
-        <div class="sidebar-card__body">
-          <a class="film-room-sidebar__item {{ 'film-room-sidebar__item--active' if not active_channel else '' }}" href="{{ film_room_url(clear='channel') }}">
-            <span class="film-room-sidebar__thumb">ALL</span>
-            <span>All Channels</span>
-          </a>
-          {% for channel in channels %}
-          <a class="film-room-sidebar__item {{ 'film-room-sidebar__item--active' if active_channel == channel.id else '' }}" href="{{ film_room_url(new_channel=channel.id) }}">
-            {% if channel.thumbnail_url %}
-            <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" loading="lazy" />
-            {% else %}
-            <span class="film-room-sidebar__thumb">DG</span>
-            {% endif %}
-            <span>{{ channel.name }}</span>
-          </a>
-          {% endfor %}
+      <aside class="film-room-sidebar">
+        <div class="sidebar-card">
+          <div class="sidebar-card__header">Channels</div>
+          <div class="sidebar-card__body">
+            <a class="film-room-sidebar__item {{ 'film-room-sidebar__item--active' if not active_channel else '' }}" href="{{ film_room_url(clear='channel') }}">
+              <span class="film-room-sidebar__thumb">ALL</span>
+              <span>All Channels</span>
+            </a>
+            {% for channel in channels %}
+            <a class="film-room-sidebar__item {{ 'film-room-sidebar__item--active' if active_channel == channel.id else '' }}" href="{{ film_room_url(new_channel=channel.id) }}">
+              {% if channel.thumbnail_url %}
+              <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" loading="lazy" />
+              {% else %}
+              <span class="film-room-sidebar__thumb">DG</span>
+              {% endif %}
+              <span>{{ channel.name }}</span>
+            </a>
+            {% endfor %}
+          </div>
         </div>
-      </div>
-      <div class="sidebar-card">
-        <div class="sidebar-card__header">Trending in Film Room</div>
-        <div class="sidebar-card__body">
-          {% for player in trending_players %}
-          <a class="film-room-sidebar__item" href="/players/{{ player.slug }}">
-            <span>{{ player.display_name }}</span>
-            <span class="film-room-sidebar__count">{{ player.mention_count }}</span>
-          </a>
-          {% endfor %}
+        <div class="sidebar-card">
+          <div class="sidebar-card__header">Trending in Film Room</div>
+          <div class="sidebar-card__body">
+            {% for player in trending_players %}
+            <a class="film-room-sidebar__item" href="/players/{{ player.slug }}">
+              <span>{{ player.display_name }}</span>
+              <span class="film-room-sidebar__count">{{ player.mention_count }}</span>
+            </a>
+            {% endfor %}
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    </div>
   </div>
   </div>
 </main>
 {% endblock %}
 
 {% block extra_js %}
+<script>
+  window.__filmRoomState = {
+    offset: {{ offset }},
+    limit: {{ limit }},
+    total: {{ total }},
+    tag: {{ (active_tag | tojson) if active_tag else 'null' }},
+    channel: {{ active_channel if active_channel else 'null' }},
+    player: {{ active_player if active_player else 'null' }},
+    search: {{ (search_query | tojson) if search_query else 'null' }}
+  };
+</script>
 <script src="{{ url_for('static', path='js/film-room.js') }}"></script>
 {% endblock %}
