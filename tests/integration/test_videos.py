@@ -373,6 +373,15 @@ class TestFilmRoomPages:
         assert "filmRoomHomeSection" in response.text
         assert "/static/js/film-room.js" in response.text
 
+        soup = BeautifulSoup(response.text, "html.parser")
+        scouting_tab = soup.select_one('#homeFilmTabs .film-tab[data-tag="Scouting Report"]')
+        highlights_tab = soup.select_one('#homeFilmTabs .film-tab[data-tag="Highlights"]')
+
+        assert scouting_tab is not None
+        assert highlights_tab is not None
+        assert scouting_tab.get("disabled") is None
+        assert highlights_tab.get("disabled") == ""
+
     async def test_film_room_stats_follow_tag_filter(
         self,
         app_client: AsyncClient,

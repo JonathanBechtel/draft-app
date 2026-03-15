@@ -30,9 +30,16 @@
       </div>
     </div>
     {% else %}
+    {% set loaded_tags = namespace(set=[]) %}
+    {% for video in player_video_feed %}
+      {% if video.tag not in loaded_tags.set %}
+        {% set loaded_tags.set = loaded_tags.set + [video.tag] %}
+      {% endif %}
+    {% endfor %}
+
     {% set ns = namespace(active_tag=None) %}
     {% for tag in film_tags %}
-      {% if ns.active_tag is none and player_video_counts.get(tag, 0) > 0 %}
+      {% if ns.active_tag is none and tag in loaded_tags.set %}
         {% set ns.active_tag = tag %}
       {% endif %}
     {% endfor %}
@@ -52,14 +59,21 @@
 
     <div class="film-tabs" id="filmStudyTabs">
       {% for tag in film_tags %}
-      {% set tag_count = player_video_counts.get(tag, 0) %}
+      {% set tag_count = namespace(value=0) %}
+      {% for video in player_video_feed %}
+        {% if video.tag == tag %}
+          {% set tag_count.value = tag_count.value + 1 %}
+        {% endif %}
+      {% endfor %}
       <button
         type="button"
-        class="film-tab{% if ns.active_tag == tag %} active{% endif %}{% if tag_count == 0 %} film-tab--empty{% endif %}"
+        class="film-tab{% if ns.active_tag == tag %} active{% endif %}{% if tag_count.value == 0 %} film-tab--empty{% endif %}"
         data-tag="{{ tag }}"
         data-label="{{ tag }}"
+        data-video-count="{{ tag_count.value }}"
+        {% if tag_count.value == 0 %}disabled aria-disabled="true"{% endif %}
       >
-        {{ tag }} <span class="film-tab__count{% if tag_count == 0 %} film-tab__count--empty{% endif %}">({{ tag_count }})</span>
+        {{ tag }} <span class="film-tab__count{% if tag_count.value == 0 %} film-tab__count--empty{% endif %}">({{ tag_count.value }})</span>
       </button>
       {% endfor %}
     </div>

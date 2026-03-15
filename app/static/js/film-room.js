@@ -66,6 +66,30 @@ function initTabbedFilmPlayer(config) {
   const thumbs = Array.from(playlistItems.querySelectorAll('.film-thumb'));
   if (!tabs.length || !thumbs.length) return;
 
+  const thumbCountsByTag = new Map();
+  thumbs.forEach((thumb) => {
+    const tag = thumb.dataset.tag || '';
+    thumbCountsByTag.set(tag, (thumbCountsByTag.get(tag) || 0) + 1);
+  });
+
+  const getTabVideoCount = (tab) => {
+    const explicitCount = Number.parseInt(tab.dataset.videoCount || '', 10);
+    if (Number.isFinite(explicitCount)) return explicitCount;
+    return thumbCountsByTag.get(tab.dataset.tag || '') || 0;
+  };
+
+  tabs.forEach((tab) => {
+    const count = thumbCountsByTag.get(tab.dataset.tag || '') || 0;
+    tab.dataset.videoCount = String(count);
+    if (count === 0) {
+      tab.disabled = true;
+      tab.setAttribute('aria-disabled', 'true');
+    } else {
+      tab.disabled = false;
+      tab.removeAttribute('aria-disabled');
+    }
+  });
+
   const updateFeaturedFromThumb = (thumb) => {
     thumbs.forEach((item) => item.classList.remove('active'));
     thumb.classList.add('active');
@@ -81,6 +105,8 @@ function initTabbedFilmPlayer(config) {
   };
 
   const refreshPlaylistForTab = (tab) => {
+    if (getTabVideoCount(tab) === 0) return;
+
     tabs.forEach((item) => item.classList.remove('active'));
     tab.classList.add('active');
 
@@ -121,7 +147,10 @@ function initTabbedFilmPlayer(config) {
   };
 
   tabs.forEach((tab) => {
-    tab.addEventListener('click', () => refreshPlaylistForTab(tab));
+    tab.addEventListener('click', () => {
+      if (tab.disabled || getTabVideoCount(tab) === 0) return;
+      refreshPlaylistForTab(tab);
+    });
   });
 
   thumbs.forEach((thumb) => {
@@ -132,7 +161,10 @@ function initTabbedFilmPlayer(config) {
     });
   });
 
-  const initialTab = tabs.find((tab) => tab.classList.contains('active')) || tabs[0];
+  const initialTab =
+    tabs.find((tab) => tab.classList.contains('active') && getTabVideoCount(tab) > 0) ||
+    tabs.find((tab) => getTabVideoCount(tab) > 0);
+  if (!initialTab) return;
   refreshPlaylistForTab(initialTab);
 }
 
