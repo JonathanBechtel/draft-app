@@ -391,6 +391,7 @@ async def film_room_page(
     channel: int | None = Query(default=None),
     player: int | None = Query(default=None),
     search: str | None = Query(default=None),
+    response_format: str | None = Query(default=None, alias="format"),
     db: AsyncSession = Depends(get_session),
 ):
     """Render the dedicated Film Room page."""
@@ -451,6 +452,19 @@ async def film_room_page(
         }
         for tp in trending_raw
     ]
+
+    if response_format == "json":
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse(
+            {
+                "videos": videos,
+                "total": feed.total,
+                "offset": offset,
+                "limit": FILM_ROOM_PAGE_LIMIT,
+                "has_more": offset + FILM_ROOM_PAGE_LIMIT < feed.total,
+            }
+        )
 
     return request.app.state.templates.TemplateResponse(
         "film-room.html",
