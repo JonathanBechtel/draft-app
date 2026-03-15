@@ -630,6 +630,15 @@
   color: var(--color-slate-200);
 }
 
+.film-tab:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.film-tab:disabled:hover {
+  color: var(--color-slate-400);
+}
+
 .film-tab.active {
   color: var(--film-accent);
 }
@@ -658,18 +667,15 @@
   opacity: 0.5;
 }
 
-.film-tab--empty.active {
-  opacity: 1;
-  color: var(--color-slate-400);
-}
-
-.film-tab--empty.active::after {
-  background: var(--color-slate-500);
-}
-
 .film-tab__count--empty {
   color: var(--color-slate-600);
   opacity: 0.5;
+}
+
+.film-playlist[hidden],
+.film-empty-tab[hidden],
+.film-thumb[hidden] {
+  display: none !important;
 }
 
 .film-playlist {

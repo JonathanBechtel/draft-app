@@ -38,6 +38,9 @@ def _homepage_markup() -> str:
                 <button type="button" class="film-tab" data-tag="Conversation" data-label="Conversations">
                   Conversations <span class="film-tab__count">(1)</span>
                 </button>
+                <button type="button" class="film-tab" data-tag="Montage" data-label="Montages">
+                  Montages <span class="film-tab__count">(0)</span>
+                </button>
               </div>
 
               <div class="film-playlist" id="homeFilmPlaylist">
@@ -156,6 +159,9 @@ def _player_markup() -> str:
                 <button type="button" class="film-tab" data-tag="Montage" data-label="Montage">
                   Montage <span class="film-tab__count">(1)</span>
                 </button>
+                <button type="button" class="film-tab" data-tag="Think Piece" data-label="Think Piece">
+                  Think Piece <span class="film-tab__count">(0)</span>
+                </button>
               </div>
 
               <div class="film-playlist" id="playerFilmPlaylist">
@@ -268,6 +274,9 @@ class TestFilmRoomInteractions:
         expect(page.locator("#homeFilmTags .film-player-tag")).to_have_text(
             ["Cooper Flagg"]
         )
+        expect(
+            page.locator('#homeFilmTabs .film-tab[data-tag="Montage"]')
+        ).to_be_disabled()
 
         page.locator('#homeFilmTabs .film-tab[data-tag="Conversation"]').click()
         expect(page.locator("#homeFilmTitle")).to_have_text(
@@ -312,6 +321,9 @@ class TestFilmRoomInteractions:
         )
         expect(page.locator("#playerFilmPlaylistLabel")).to_have_text("Highlights")
         expect(page.locator("#playerFilmPlaylistCount")).to_have_text("2 videos")
+        expect(
+            page.locator('#filmStudyTabs .film-tab[data-tag="Think Piece"]')
+        ).to_be_disabled()
 
         page.locator('#filmStudyTabs .film-tab[data-tag="Montage"]').click()
         expect(page.locator("#playerFilmTitle")).to_have_text(

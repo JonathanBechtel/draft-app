@@ -48,14 +48,21 @@
 
     <div class="film-tabs" id="homeFilmTabs">
       {% for tag in film_tags %}
-      {% set tag_count = film_room_video_counts.get(tag, 0) %}
+      {% set tag_count = namespace(value=0) %}
+      {% for video in film_room_videos %}
+        {% if video.tag == tag %}
+          {% set tag_count.value = tag_count.value + 1 %}
+        {% endif %}
+      {% endfor %}
       <button
         type="button"
-        class="film-tab{% if ns.active_tag == tag %} active{% endif %}{% if tag_count == 0 %} film-tab--empty{% endif %}"
+        class="film-tab{% if ns.active_tag == tag %} active{% endif %}{% if tag_count.value == 0 %} film-tab--empty{% endif %}"
         data-tag="{{ tag }}"
         data-label="{{ tag }}s"
+        data-video-count="{{ tag_count.value }}"
+        {% if tag_count.value == 0 %}disabled aria-disabled="true"{% endif %}
       >
-        {{ tag }}s <span class="film-tab__count{% if tag_count == 0 %} film-tab__count--empty{% endif %}">({{ tag_count }})</span>
+        {{ tag }}s <span class="film-tab__count{% if tag_count.value == 0 %} film-tab__count--empty{% endif %}">({{ tag_count.value }})</span>
       </button>
       {% endfor %}
     </div>
