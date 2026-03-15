@@ -103,3 +103,20 @@ class ManualVideoUpdateRequest(SQLModel):
     summary: Optional[str] = None
     tag: Optional[str] = None
     player_ids: list[int] = []
+
+
+class FilmSearchSuggestion(SQLModel):
+    """A single typeahead suggestion for the film-room search bar."""
+
+    category: str  # "player" | "channel" | "video"
+    label: str
+    sublabel: Optional[str] = None
+    player_id: Optional[int] = None
+    channel_id: Optional[int] = None
+    search_term: Optional[str] = None
+
+
+class FilmSearchSuggestionsResponse(SQLModel):
+    """Response wrapper for film-room search suggestions."""
+
+    suggestions: list[FilmSearchSuggestion] = []

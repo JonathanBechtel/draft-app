@@ -150,9 +150,16 @@
         {% if active_channel %}<input type="hidden" name="channel" value="{{ active_channel }}">{% endif %}
         {% if active_player %}<input type="hidden" name="player" value="{{ active_player }}">{% endif %}
         <input type="text" name="search" class="film-search__input"
+               id="filmSearchInput"
                value="{{ search_query }}"
-               placeholder="Search videos by title, channel, or player..." />
+               placeholder="Search videos by title, channel, or player..."
+               role="combobox"
+               aria-expanded="false"
+               aria-controls="filmSearchResults"
+               aria-autocomplete="list"
+               autocomplete="off" />
       </form>
+      <div class="film-search__results" id="filmSearchResults" role="listbox"></div>
     </div>
     <div class="film-filters">
       <span class="film-filter__label mono-font uppercase">Type:</span>

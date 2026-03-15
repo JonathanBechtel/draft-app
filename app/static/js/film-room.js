@@ -400,6 +400,7 @@ const HomeFilmRoomModule = {
 
     const embedWrap = section.querySelector('#homeFilmEmbedWrap');
     const embed = section.querySelector('#homeFilmEmbed');
+    const poster = section.querySelector('#homeFilmPoster');
     const playOverlay = section.querySelector('#homeFilmPlayOverlay');
     const tagsContainer = section.querySelector('#homeFilmTags');
 
@@ -424,6 +425,7 @@ const HomeFilmRoomModule = {
         embed.src = `https://www.youtube.com/embed/${encodeURIComponent(embedId)}?rel=0&modestbranding=1&autoplay=1`;
         embed.hidden = false;
       }
+      if (poster) poster.hidden = true;
       if (playOverlay) playOverlay.hidden = true;
       if (embedWrap) embedWrap.classList.remove('film-player__embed--placeholder');
     };
@@ -456,6 +458,11 @@ const HomeFilmRoomModule = {
         if (embedWrap) {
           embedWrap.classList.add('film-player__embed--placeholder');
           embedWrap.dataset.pendingEmbedId = thumb.dataset.embedId || '';
+        }
+        if (poster) {
+          poster.src = thumb.dataset.thumbnail || '';
+          poster.alt = thumb.dataset.title || '';
+          poster.hidden = false;
         }
         if (playOverlay) playOverlay.hidden = false;
 
@@ -508,8 +515,209 @@ const PlayerFilmStudyModule = {
   },
 };
 
+const FilmSearchModule = {
+  DEBOUNCE_MS: 300,
+  MIN_QUERY: 2,
+  input: null,
+  results: null,
+  form: null,
+  controller: null,
+  debounceTimer: null,
+  items: [],
+  selectedIndex: -1,
+  blurTimer: null,
+
+  init() {
+    this.input = document.getElementById('filmSearchInput');
+    this.results = document.getElementById('filmSearchResults');
+    if (!this.input || !this.results) return;
+    this.form = this.input.closest('form');
+
+    this.input.addEventListener('input', () => this.onInput());
+    this.input.addEventListener('keydown', (e) => this.onKeydown(e));
+    this.input.addEventListener('focus', () => this.onFocus());
+    this.input.addEventListener('blur', () => this.onBlur());
+    if (this.form) {
+      this.form.addEventListener('submit', (e) => this.onSubmit(e));
+    }
+  },
+
+  onInput() {
+    clearTimeout(this.debounceTimer);
+    const q = (this.input.value || '').trim();
+    if (q.length < this.MIN_QUERY) {
+      this.close();
+      return;
+    }
+    this.debounceTimer = setTimeout(() => this.fetchSuggestions(q), this.DEBOUNCE_MS);
+  },
+
+  async fetchSuggestions(query) {
+    if (this.controller) this.controller.abort();
+    this.controller = new AbortController();
+
+    try {
+      const resp = await fetch(
+        `/api/videos/search-suggestions?q=${encodeURIComponent(query)}`,
+        { signal: this.controller.signal },
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      this.render(data.suggestions || []);
+    } catch (_e) {
+      /* aborted or network error */
+    }
+  },
+
+  escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  },
+
+  render(suggestions) {
+    if (suggestions.length === 0) {
+      this.results.innerHTML =
+        '<div class="film-search__empty">No matches found</div>';
+      this.open();
+      this.items = [];
+      this.selectedIndex = -1;
+      return;
+    }
+
+    const groups = {};
+    const order = [];
+    suggestions.forEach((s) => {
+      if (!groups[s.category]) {
+        groups[s.category] = [];
+        order.push(s.category);
+      }
+      groups[s.category].push(s);
+    });
+
+    const categoryLabels = {
+      player: 'Players',
+      channel: 'Channels',
+      video: 'Videos',
+    };
+    let html = '';
+    let itemIndex = 0;
+
+    order.forEach((cat) => {
+      html += `<div class="film-search__category">${this.escapeHtml(categoryLabels[cat] || cat)}</div>`;
+      groups[cat].forEach((s) => {
+        const sublabelHtml = s.sublabel
+          ? `<span class="film-search__item-sublabel">${this.escapeHtml(s.sublabel)}</span>`
+          : '';
+        html += `<div class="film-search__item" role="option" data-index="${itemIndex}"
+                      data-category="${this.escapeHtml(s.category)}"
+                      data-player-id="${s.player_id || ''}"
+                      data-channel-id="${s.channel_id || ''}"
+                      data-search-term="${this.escapeHtml(s.search_term || '')}">
+                   <span class="film-search__item-label">${this.escapeHtml(s.label)}</span>
+                   ${sublabelHtml}
+                 </div>`;
+        itemIndex++;
+      });
+    });
+
+    this.results.innerHTML = html;
+    this.items = Array.from(this.results.querySelectorAll('.film-search__item'));
+    this.selectedIndex = -1;
+
+    this.items.forEach((item) => {
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        this.applyFilter(item);
+      });
+    });
+
+    this.open();
+  },
+
+  open() {
+    this.results.classList.add('open');
+    this.input.setAttribute('aria-expanded', 'true');
+  },
+
+  close() {
+    this.results.classList.remove('open');
+    this.input.setAttribute('aria-expanded', 'false');
+    this.selectedIndex = -1;
+    this.items.forEach((item) => item.classList.remove('selected'));
+  },
+
+  onFocus() {
+    clearTimeout(this.blurTimer);
+    if (this.items.length > 0 || this.results.querySelector('.film-search__empty')) {
+      this.open();
+    }
+  },
+
+  onBlur() {
+    this.blurTimer = setTimeout(() => this.close(), 200);
+  },
+
+  onKeydown(e) {
+    if (!this.results.classList.contains('open') || this.items.length === 0)
+      return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      this.selectedIndex = Math.min(
+        this.selectedIndex + 1,
+        this.items.length - 1,
+      );
+      this.highlightItem();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+      this.highlightItem();
+    } else if (e.key === 'Enter' && this.selectedIndex >= 0) {
+      e.preventDefault();
+      this.applyFilter(this.items[this.selectedIndex]);
+    } else if (e.key === 'Escape') {
+      this.close();
+    }
+  },
+
+  highlightItem() {
+    this.items.forEach((item, i) => {
+      item.classList.toggle('selected', i === this.selectedIndex);
+    });
+  },
+
+  onSubmit(e) {
+    if (this.selectedIndex >= 0 && this.items[this.selectedIndex]) {
+      e.preventDefault();
+      this.applyFilter(this.items[this.selectedIndex]);
+    }
+  },
+
+  applyFilter(item) {
+    const category = item.dataset.category;
+    const state = window.__filmRoomState || {};
+    const params = new URLSearchParams();
+
+    if (state.tag) params.set('tag', state.tag);
+
+    if (category === 'player') {
+      params.set('player', item.dataset.playerId);
+    } else if (category === 'channel') {
+      params.set('channel', item.dataset.channelId);
+    } else if (category === 'video') {
+      params.set('search', item.dataset.searchTerm);
+    }
+
+    const qs = params.toString();
+    window.location.href = `/film-room${qs ? '?' + qs : ''}`;
+  },
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   FilmRoomPageModule.init();
   HomeFilmRoomModule.init();
   PlayerFilmStudyModule.init();
+  FilmSearchModule.init();
 });
