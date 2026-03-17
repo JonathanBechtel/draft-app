@@ -96,6 +96,10 @@ Do not ask if the user wants you to run these checks — run them proactively af
 - CI runs `mypy app --ignore-missing-imports`; pre-commit also runs mypy but only on the files it sees. If you touch types, run the CI command locally to catch anything that pre-commit might skip.
 - Run `make precommit` (or at least `make lint` + `make fmt`) before committing so local changes mirror CI expectations.
 
+## Git Workflow
+- **Authorship:** Never include AI or co-author attribution in commits. The user is the sole author.
+- **Branch naming:** Use the format `<type>/<short-description>` with kebab-case descriptions. Valid type prefixes: `fix`, `bug`, `enhancement`, `refactor`, `feature` (e.g., `feature/player-tags`, `fix/update-nav-ui`, `refactor/service-layer`).
+
 ## Coding Style & Naming Conventions
 - Stick to 4-space indentation, type hints, and descriptive names (`PlayerRead`, `PlayerCreate`) to match existing modules.
 - Keep SQLModel definitions in `app/models` for shared validation logic and persistable tables in `app/schemas`; prefer explicit field validators over ad-hoc runtime checks.

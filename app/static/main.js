@@ -269,10 +269,33 @@ const DraftGuru = {
       'Statistical Analysis': 'stats-analysis',
     };
     return tagMap[tag] || 'scouting-report';
+  },
+
+  /** Mobile navbar hamburger toggle */
+  initNavbarToggle() {
+    const toggle = document.getElementById('navbar-toggle');
+    const menu = document.getElementById('navbar-menu');
+    if (!toggle || !menu) return;
+
+    toggle.addEventListener('click', () => {
+      const isOpen = menu.classList.toggle('open');
+      toggle.classList.toggle('active', isOpen);
+      toggle.setAttribute('aria-expanded', String(isOpen));
+    });
+
+    // Close menu when a nav link is clicked
+    menu.querySelectorAll('.navbar-link').forEach((link) => {
+      link.addEventListener('click', () => {
+        menu.classList.remove('open');
+        toggle.classList.remove('active');
+        toggle.setAttribute('aria-expanded', 'false');
+      });
+    });
   }
 };
 
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   DraftGuru.initSearch();
+  DraftGuru.initNavbarToggle();
 });
