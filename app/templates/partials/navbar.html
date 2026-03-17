@@ -11,31 +11,41 @@
       <h1>DraftGuru</h1>
     </a>
 
-    <!-- Nav links -->
-    <div class="navbar-links">
-      <a href="/news" class="navbar-link">News</a>
-      <a href="/podcasts" class="navbar-link">Podcasts</a>
-      <a href="/film-room" class="navbar-link">Film Room</a>
-    </div>
+    <!-- Hamburger toggle (mobile only) -->
+    <button class="navbar-toggle" id="navbar-toggle" aria-label="Toggle navigation" aria-expanded="false">
+      <span class="navbar-toggle__bar"></span>
+      <span class="navbar-toggle__bar"></span>
+      <span class="navbar-toggle__bar"></span>
+    </button>
 
-    <!-- Search bar -->
-    <div class="navbar-search">
-      <input
-        type="text"
-        id="search"
-        class="search-input"
-        placeholder="Search prospects…"
-        aria-label="Search prospects"
-        autocomplete="off"
-      />
-      <button class="search-button" aria-label="Search">
-        <!-- Search icon -->
-        <svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
-      </button>
-      <div class="search-results" id="search-results" role="listbox" aria-label="Search results"></div>
+    <!-- Collapsible menu -->
+    <div class="navbar-menu" id="navbar-menu">
+      <!-- Nav links -->
+      <div class="navbar-links">
+        <a href="/news" class="navbar-link">News</a>
+        <a href="/podcasts" class="navbar-link">Podcasts</a>
+        <a href="/film-room" class="navbar-link">Film Room</a>
+      </div>
+
+      <!-- Search bar -->
+      <div class="navbar-search">
+        <input
+          type="text"
+          id="search"
+          class="search-input"
+          placeholder="Search prospects…"
+          aria-label="Search prospects"
+          autocomplete="off"
+        />
+        <button class="search-button" aria-label="Search">
+          <!-- Search icon -->
+          <svg class="icon" viewBox="0 0 24 24" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </button>
+        <div class="search-results" id="search-results" role="listbox" aria-label="Search results"></div>
+      </div>
     </div>
   </div>
 </nav>
