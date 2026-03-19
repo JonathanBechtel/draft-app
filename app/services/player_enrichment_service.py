@@ -25,8 +25,11 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
+from app.models.fields import CohortType
+from app.schemas.image_snapshots import PlayerImageSnapshot
 from app.schemas.player_college_stats import PlayerCollegeStats
 from app.schemas.players_master import PlayerMaster
+from app.services.image_generation import image_generation_service
 
 logger = logging.getLogger(__name__)
 
@@ -427,6 +430,67 @@ async def _apply_stats_data(db: AsyncSession, player: PlayerMaster, data: dict) 
 
 
 # ---------------------------------------------------------------------------
+# Stage 3: Player portrait generation
+# ---------------------------------------------------------------------------
+
+
+async def _generate_portrait(db: AsyncSession, player: PlayerMaster) -> None:
+    """Generate a DraftGuru-style portrait using the existing image pipeline.
+
+    Creates a one-off snapshot record and calls the synchronous generation
+    path.  If the player has a reference_image_url, it will be used for
+    likeness matching.
+
+    Args:
+        db: Active database session (caller manages the transaction).
+        player: Enriched player record.
+    """
+    player_id = player.id
+    if player_id is None:
+        return
+
+    system_prompt = image_generation_service.get_system_prompt("default")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    snapshot = PlayerImageSnapshot(
+        run_key=f"enrichment_{player_id}",
+        version=1,
+        is_current=False,
+        style="default",
+        cohort=CohortType.global_scope,
+        population_size=1,
+        image_size=settings.image_gen_size,
+        system_prompt=system_prompt,
+        system_prompt_version="default",
+        notes=f"Auto-generated after enrichment for {player.display_name}",
+        generated_at=now,
+    )
+    db.add(snapshot)
+    await db.flush()
+
+    asset = await image_generation_service.generate_for_player(
+        db=db,
+        player=player,
+        snapshot=snapshot,
+        style="default",
+        fetch_likeness=bool(player.reference_image_url),
+    )
+
+    if asset.error_message:
+        logger.warning(
+            "Portrait generation error for %s: %s",
+            player.display_name,
+            asset.error_message,
+        )
+    else:
+        logger.info(
+            "Generated portrait for %s: %s",
+            player.display_name,
+            asset.public_url,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Single-player enrichment orchestrator
 # ---------------------------------------------------------------------------
 
@@ -482,6 +546,13 @@ async def enrich_player(
             enriched = True
     elif isinstance(reference_image_url, Exception):
         logger.error("Image search failed for %s: %s", player_name, reference_image_url)
+
+    # Stage 3: Generate player portrait (requires reference image or likeness)
+    if enriched:
+        try:
+            await _generate_portrait(db, player)
+        except Exception:
+            logger.exception("Portrait generation failed for %s", player_name)
 
     # Stamp enrichment attempt regardless of outcome
     player.enrichment_attempted_at = datetime.now(timezone.utc).replace(tzinfo=None)
