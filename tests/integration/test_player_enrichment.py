@@ -374,3 +374,71 @@ async def test_partial_failure_image_still_saved(
         assert row.school is None  # bio failed
         assert row.reference_image_url == "https://example.com/photo.jpg"
         assert row.enrichment_attempted_at is not None
+
+
+# ---------------------------------------------------------------------------
+# Test 6: Total failure still stamps enrichment_attempted_at
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_total_failure_stamps_enrichment_attempted(
+    session_factory: async_sessionmaker[AsyncSession],
+    test_schema: str,
+) -> None:
+    """When all stages fail, enrichment_attempted_at is still set to prevent retries."""
+    wrapped = _schema_aware_factory(session_factory, test_schema)
+
+    async with session_factory() as db:
+        await db.execute(text(f'SET search_path TO "{test_schema}"'))
+        await db.commit()
+        async with db.begin():
+            player = _make_stub("Total Fail")
+            db.add(player)
+
+    with (
+        patch.object(
+            player_enrichment_service,
+            "_fetch_bio_and_stats",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("Gemini down"),
+        ),
+        patch.object(
+            player_enrichment_service,
+            "_find_reference_image",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("Wikimedia down"),
+        ),
+        patch.object(
+            player_enrichment_service,
+            "_generate_portrait",
+            new_callable=AsyncMock,
+        ),
+        patch.object(
+            player_enrichment_service,
+            "settings",
+        ) as mock_settings,
+    ):
+        mock_settings.gemini_api_key = "fake-key"
+        mock_settings.image_gen_size = "1K"
+
+        result = await run_enrichment_sweep(wrapped)
+
+    # Nothing enriched, but no crash
+    assert result.players_attempted == 1
+    assert result.players_enriched == 0
+    assert result.players_failed == 0  # errors are caught inside enrich_player
+
+    # Timestamp still stamped to prevent infinite retries
+    async with wrapped() as db:
+        row = (
+            await db.execute(
+                text(
+                    "SELECT school, reference_image_url, enrichment_attempted_at"
+                    " FROM players_master WHERE display_name = 'Total Fail'"
+                ),
+            )
+        ).one()
+        assert row.school is None
+        assert row.reference_image_url is None
+        assert row.enrichment_attempted_at is not None
