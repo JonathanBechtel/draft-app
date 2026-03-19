@@ -40,7 +40,7 @@ def _make_stubs(monkeypatch: pytest.MonkeyPatch, calls: list[str]) -> None:
             mentions_added=1, errors=[],
         )
 
-    async def _fake_video(_: object) -> VideoIngestionResult:
+    async def _fake_video(_session_factory: object) -> VideoIngestionResult:
         calls.append("videos")
         return VideoIngestionResult(
             channels_processed=1, videos_added=3, videos_skipped=1,
@@ -98,7 +98,7 @@ async def test_main_returns_failure_when_video_job_raises(
     calls: list[str] = []
     _make_stubs(monkeypatch, calls)
 
-    async def _failing_video(_: object) -> VideoIngestionResult:
+    async def _failing_video(_session_factory: object) -> VideoIngestionResult:
         calls.append("videos_fail")
         raise RuntimeError("video boom")
 
