@@ -43,6 +43,16 @@ class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
     # Stub flag: auto-created players with just a name, pending enrichment
     is_stub: bool = Field(default=False)
 
+    # Recruiting rank (RSCI composite, if available)
+    rsci_rank: Optional[int] = Field(default=None)
+
+    # Enrichment tracking
+    bio_source: Optional[str] = Field(
+        default=None,
+        description="How bio data was populated: 'manual', 'ai_generated', 'verified'",
+    )
+    enrichment_attempted_at: Optional[datetime] = Field(default=None)
+
     # Image generation
     reference_image_url: Optional[str] = Field(
         default=None,
