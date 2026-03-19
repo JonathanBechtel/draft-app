@@ -308,3 +308,69 @@ async def test_sweep_only_processes_unenriched_stubs(
             )
         ).one()
         assert row.school is None
+
+
+# ---------------------------------------------------------------------------
+# Test 5: Partial failure — bio fails but image succeeds
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_partial_failure_image_still_saved(
+    session_factory: async_sessionmaker[AsyncSession],
+    test_schema: str,
+) -> None:
+    """If Gemini fails but Wikimedia succeeds, reference image is still saved."""
+    wrapped = _schema_aware_factory(session_factory, test_schema)
+
+    async with session_factory() as db:
+        await db.execute(text(f'SET search_path TO "{test_schema}"'))
+        await db.commit()
+        async with db.begin():
+            player = _make_stub("Partial Fail")
+            db.add(player)
+
+    with (
+        patch.object(
+            player_enrichment_service,
+            "_fetch_bio_and_stats",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("Gemini down"),
+        ),
+        patch.object(
+            player_enrichment_service,
+            "_find_reference_image",
+            new_callable=AsyncMock,
+            return_value="https://example.com/photo.jpg",
+        ),
+        patch.object(
+            player_enrichment_service,
+            "_generate_portrait",
+            new_callable=AsyncMock,
+        ),
+        patch.object(
+            player_enrichment_service,
+            "settings",
+        ) as mock_settings,
+    ):
+        mock_settings.gemini_api_key = "fake-key"
+        mock_settings.image_gen_size = "1K"
+
+        result = await run_enrichment_sweep(wrapped)
+
+    assert result.players_attempted == 1
+    assert result.players_enriched == 1
+
+    # Reference image saved, bio untouched, timestamp stamped
+    async with wrapped() as db:
+        row = (
+            await db.execute(
+                text(
+                    "SELECT school, reference_image_url, enrichment_attempted_at"
+                    " FROM players_master WHERE display_name = 'Partial Fail'"
+                ),
+            )
+        ).one()
+        assert row.school is None  # bio failed
+        assert row.reference_image_url == "https://example.com/photo.jpg"
+        assert row.enrichment_attempted_at is not None
