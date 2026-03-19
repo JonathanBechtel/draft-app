@@ -127,11 +127,10 @@ async def main() -> int:
             failed = True
             logger.error("Video ingestion failed: %s", exc, exc_info=True)
 
-        # Enrichment runs last — non-critical, should not block ingestion
+        # Enrichment runs last — non-critical, does not affect exit code
         try:
             await _run_enrichment_job()
         except Exception as exc:
-            failed = True
             logger.error("Enrichment failed: %s", exc, exc_info=True)
 
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()

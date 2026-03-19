@@ -338,15 +338,18 @@ def _parse_date(value: Optional[str]) -> Optional[date]:
         return None
 
 
-async def _apply_bio_data(db: AsyncSession, player: PlayerMaster, data: dict) -> None:
+async def _apply_bio_data(db: AsyncSession, player: PlayerMaster, data: dict) -> bool:
     """Update PlayerMaster fields from Gemini bio response.
 
     Only updates fields that are currently empty on the player record.
+
+    Returns:
+        True if at least one field was updated.
     """
     confidence = data.get("confidence", "low")
     if confidence == "low":
         logger.info("Skipping bio for %s: low confidence", player.display_name)
-        return
+        return False
 
     field_map = {
         "birthdate": ("birthdate", _parse_date),
@@ -382,19 +385,26 @@ async def _apply_bio_data(db: AsyncSession, player: PlayerMaster, data: dict) ->
     if updated_fields:
         player.bio_source = "ai_generated"
         logger.info("Updated bio for %s: %s", player.display_name, updated_fields)
+        return True
+
+    return False
 
 
-async def _apply_stats_data(db: AsyncSession, player: PlayerMaster, data: dict) -> None:
-    """Upsert college stats from Gemini response."""
+async def _apply_stats_data(db: AsyncSession, player: PlayerMaster, data: dict) -> bool:
+    """Upsert college stats from Gemini response.
+
+    Returns:
+        True if stats were persisted.
+    """
     stats = data.get("stats")
     season = data.get("season")
     if not stats or not season:
         logger.debug("No stats/season data for %s", player.display_name)
-        return
+        return False
 
     player_id = player.id
     if player_id is None:
-        return
+        return False
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -427,6 +437,7 @@ async def _apply_stats_data(db: AsyncSession, player: PlayerMaster, data: dict) 
     )
     await db.execute(stmt)
     logger.info("Upserted college stats for %s (%s)", player.display_name, season)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -532,9 +543,10 @@ async def enrich_player(
 
     # Apply Stage 1: Bio + Stats
     if isinstance(bio_data, dict):
-        await _apply_bio_data(db, player, bio_data)
-        await _apply_stats_data(db, player, bio_data)
-        enriched = True
+        bio_updated = await _apply_bio_data(db, player, bio_data)
+        stats_updated = await _apply_stats_data(db, player, bio_data)
+        if bio_updated or stats_updated:
+            enriched = True
     elif isinstance(bio_data, Exception):
         logger.error("Bio fetch failed for %s: %s", player_name, bio_data)
 

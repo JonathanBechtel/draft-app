@@ -116,3 +116,23 @@ async def test_main_returns_failure_when_video_job_raises(
 
     assert result == 1
     assert calls == ["news", "podcasts", "videos_fail", "enrichment", "dispose"]
+
+
+@pytest.mark.asyncio
+async def test_enrichment_failure_does_not_fail_cron(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Enrichment errors are non-critical and don't change the exit code."""
+    calls: list[str] = []
+    _make_stubs(monkeypatch, calls)
+
+    async def _failing_enrichment(_session_factory: object) -> EnrichmentResult:
+        calls.append("enrichment_fail")
+        raise RuntimeError("enrichment boom")
+
+    monkeypatch.setattr(cron_runner, "run_enrichment_sweep", _failing_enrichment)
+
+    result = await cron_runner.main()
+
+    assert result == 0  # enrichment failure is non-critical
+    assert calls == ["news", "podcasts", "videos", "enrichment_fail", "dispose"]
