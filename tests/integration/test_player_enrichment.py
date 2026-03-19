@@ -144,3 +144,34 @@ async def test_stats_insert_and_upsert(db_session: AsyncSession) -> None:
         )
     ).scalar_one()
     assert count == 1
+
+
+# ---------------------------------------------------------------------------
+# Test 3: Only-fill-empty-fields rule
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_apply_bio_preserves_existing_fields(db_session: AsyncSession) -> None:
+    """Bio enrichment does not overwrite fields that already have values."""
+    player = _make_stub("Test Prospect", school="Kentucky", draft_year=2025)
+    db_session.add(player)
+    await db_session.flush()
+
+    data = {
+        "confidence": "high",
+        "school": "Duke",  # different from existing
+        "draft_year": 2026,  # different from existing
+        "birth_city": "Atlanta",  # new field, should be filled
+        "rsci_rank": 3,  # new field, should be filled
+    }
+
+    await _apply_bio_data(db_session, player, data)
+
+    # Existing fields preserved
+    assert player.school == "Kentucky"
+    assert player.draft_year == 2025
+    # Empty fields filled
+    assert player.birth_city == "Atlanta"
+    assert player.rsci_rank == 3
+    assert player.bio_source == "ai_generated"
