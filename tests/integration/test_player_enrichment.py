@@ -2,15 +2,26 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import AsyncGenerator
+from unittest.mock import AsyncMock, patch
+
 import pytest
 import pytest_asyncio
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from sqlalchemy import select, text
 
 from app.schemas.player_college_stats import PlayerCollegeStats
 from app.schemas.players_master import PlayerMaster
-from app.services.player_enrichment_service import _apply_bio_data, _apply_stats_data
+from app.services import player_enrichment_service
+from app.services.player_enrichment_service import (
+    EnrichmentResult,
+    _apply_bio_data,
+    _apply_stats_data,
+    run_enrichment_sweep,
+)
 
 
 def _make_stub(name: str, **kwargs) -> PlayerMaster:  # type: ignore[no-untyped-def]
@@ -175,3 +186,125 @@ async def test_apply_bio_preserves_existing_fields(db_session: AsyncSession) -> 
     assert player.birth_city == "Atlanta"
     assert player.rsci_rank == 3
     assert player.bio_source == "ai_generated"
+
+
+# ---------------------------------------------------------------------------
+# Test 4: Sweep query filters — only unenriched stubs are processed
+# ---------------------------------------------------------------------------
+
+_MOCK_BIO = {
+    "confidence": "high",
+    "school": "Test U",
+    "season": "2025-26",
+    "stats": {"ppg": 10.0, "games": 20},
+}
+
+
+def _schema_aware_factory(
+    base_factory: async_sessionmaker[AsyncSession],
+    schema: str,
+) -> async_sessionmaker[AsyncSession]:
+    """Wrap a session factory so every session sets search_path."""
+
+    @asynccontextmanager
+    async def _make_session() -> AsyncGenerator[AsyncSession, None]:
+        async with base_factory() as session:
+            await session.execute(text(f'SET search_path TO "{schema}"'))
+            await session.commit()
+            yield session
+
+    # run_enrichment_sweep calls session_factory() as a context manager,
+    # so we return an object whose __call__ returns the async CM.
+    class _Factory:
+        def __call__(self) -> AsyncGenerator[AsyncSession, None]:
+            return _make_session()  # type: ignore[return-value]
+
+    return _Factory()  # type: ignore[return-value]
+
+
+@pytest.mark.asyncio
+async def test_sweep_only_processes_unenriched_stubs(
+    session_factory: async_sessionmaker[AsyncSession],
+    test_schema: str,
+) -> None:
+    """Sweep skips non-stubs, already-enriched stubs, and only processes eligible ones."""
+    wrapped = _schema_aware_factory(session_factory, test_schema)
+
+    # Seed three players
+    async with session_factory() as db:
+        await db.execute(text(f'SET search_path TO "{test_schema}"'))
+        await db.commit()
+        async with db.begin():
+            # 1. Non-stub player — should be skipped
+            non_stub = _make_stub("Non Stub")
+            non_stub.is_stub = False
+            db.add(non_stub)
+
+            # 2. Stub already enriched — should be skipped
+            already_done = _make_stub("Already Done")
+            already_done.enrichment_attempted_at = datetime.now(
+                timezone.utc
+            ).replace(tzinfo=None)
+            db.add(already_done)
+
+            # 3. Unenriched stub — should be processed
+            eligible = _make_stub("Eligible Player")
+            db.add(eligible)
+
+    # Mock external calls: Gemini returns bio, Wikimedia returns None, image gen skipped
+    with (
+        patch.object(
+            player_enrichment_service,
+            "_fetch_bio_and_stats",
+            new_callable=AsyncMock,
+            return_value=_MOCK_BIO,
+        ),
+        patch.object(
+            player_enrichment_service,
+            "_find_reference_image",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch.object(
+            player_enrichment_service,
+            "_generate_portrait",
+            new_callable=AsyncMock,
+        ),
+        patch.object(
+            player_enrichment_service,
+            "settings",
+        ) as mock_settings,
+    ):
+        mock_settings.gemini_api_key = "fake-key"
+        mock_settings.image_gen_size = "1K"
+
+        result = await run_enrichment_sweep(wrapped)
+
+    assert result.players_attempted == 1
+    assert result.players_enriched == 1
+    assert result.players_failed == 0
+
+    # Verify the eligible player was enriched
+    async with wrapped() as db:
+        row = (
+            await db.execute(
+                text(
+                    "SELECT school, enrichment_attempted_at FROM players_master"
+                    " WHERE display_name = 'Eligible Player'"
+                ),
+            )
+        ).one()
+        assert row.school == "Test U"
+        assert row.enrichment_attempted_at is not None
+
+    # Verify the other two were untouched
+    async with wrapped() as db:
+        row = (
+            await db.execute(
+                text(
+                    "SELECT school FROM players_master"
+                    " WHERE display_name = 'Non Stub'"
+                ),
+            )
+        ).one()
+        assert row.school is None
