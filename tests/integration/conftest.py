@@ -118,6 +118,7 @@ async def async_engine(
     from app.schemas import combine_shooting  # noqa: F401
     from app.schemas import metrics  # noqa: F401
     from app.schemas import player_aliases  # noqa: F401
+    from app.schemas import player_college_stats  # noqa: F401
     from app.schemas import player_bio_snapshots  # noqa: F401
     from app.schemas import player_external_ids  # noqa: F401
     from app.schemas import image_snapshots  # noqa: F401
