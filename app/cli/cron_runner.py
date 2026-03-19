@@ -24,6 +24,7 @@ from app.services.news_ingestion_service import (
 from app.services.podcast_ingestion_service import (
     run_ingestion_cycle as run_podcast_ingestion_cycle,
 )
+from app.services.player_enrichment_service import run_enrichment_sweep
 from app.services.video_ingestion_service import (
     run_ingestion_cycle as run_video_ingestion_cycle,
 )
@@ -83,6 +84,20 @@ async def _run_video_job() -> None:
         logger.warning("Video ingestion error: %s", error)
 
 
+async def _run_enrichment_job() -> None:
+    """Run stub player enrichment and log a concise summary."""
+    result = await run_enrichment_sweep(SessionLocal)
+
+    logger.info(
+        "Enrichment complete: %s attempted, %s enriched, %s failed",
+        result.players_attempted,
+        result.players_enriched,
+        result.players_failed,
+    )
+    for error in result.errors:
+        logger.warning("Enrichment error: %s", error)
+
+
 async def main() -> int:
     """Run the scheduled news, podcast, and video ingestion cycles.
 
@@ -111,6 +126,13 @@ async def main() -> int:
         except Exception as exc:
             failed = True
             logger.error("Video ingestion failed: %s", exc, exc_info=True)
+
+        # Enrichment runs last — non-critical, should not block ingestion
+        try:
+            await _run_enrichment_job()
+        except Exception as exc:
+            failed = True
+            logger.error("Enrichment failed: %s", exc, exc_info=True)
 
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         if failed:
