@@ -71,8 +71,7 @@ async def _run_podcast_job() -> None:
 
 async def _run_video_job() -> None:
     """Run video ingestion and log a concise summary."""
-    async with SessionLocal() as db:
-        result = await run_video_ingestion_cycle(db)
+    result = await run_video_ingestion_cycle(SessionLocal)
 
     logger.info(
         "Video ingestion complete: %s channels, %s added, %s skipped",

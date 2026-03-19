@@ -11,7 +11,7 @@ from typing import Any, Optional
 import httpx
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
 from app.models.videos import VideoIngestionResult
@@ -65,8 +65,15 @@ class RawVideo:
     published_at: datetime
 
 
-async def run_ingestion_cycle(db: AsyncSession) -> VideoIngestionResult:
-    """Ingest active YouTube channels into film-room videos."""
+async def run_ingestion_cycle(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> VideoIngestionResult:
+    """Ingest active YouTube channels into film-room videos.
+
+    Accepts a session factory instead of a long-lived session so that DB
+    connections are only held open during short read/write bursts, not
+    across the full multi-channel fetch + AI analysis cycle.
+    """
     api_key = settings.youtube_api_key
     if not api_key:
         return VideoIngestionResult(
@@ -78,7 +85,10 @@ async def run_ingestion_cycle(db: AsyncSession) -> VideoIngestionResult:
             errors=["YOUTUBE_API_KEY is not configured"],
         )
 
-    channels = await _get_active_channel_snapshots(db)
+    async with session_factory() as db:
+        async with db.begin():
+            channels = await _get_active_channel_snapshots(db)
+
     added = 0
     skipped = 0
     filtered = 0
@@ -92,6 +102,7 @@ async def run_ingestion_cycle(db: AsyncSession) -> VideoIngestionResult:
                 if channel.last_fetched_at
                 else datetime.now(UTC).replace(tzinfo=None) - timedelta(days=30)
             )
+            # Network + AI phase — no DB connection held.
             raw_videos, uploads_playlist_id = await fetch_channel_videos(
                 channel=channel,
                 api_key=api_key,
@@ -147,21 +158,24 @@ async def run_ingestion_cycle(db: AsyncSession) -> VideoIngestionResult:
                     }
                 )
 
-            inserted, conflict_skipped = await _persist_videos(
-                db=db,
-                channel_id=channel.id,
-                rows=rows,
-                uploads_playlist_id=uploads_playlist_id,
-            )
+            # Persist phase — short-lived sessions per DB operation.
+            async with session_factory() as db:
+                inserted, conflict_skipped = await _persist_videos(
+                    db=db,
+                    channel_id=channel.id,
+                    rows=rows,
+                    uploads_playlist_id=uploads_playlist_id,
+                )
             added += inserted
             skipped += conflict_skipped
 
-            mentions_added = await _persist_ai_mentions(
-                db=db,
-                channel_id=channel.id,
-                mention_map=mention_map,
-                fetched_at=now,
-            )
+            async with session_factory() as db:
+                mentions_added = await _persist_ai_mentions(
+                    db=db,
+                    channel_id=channel.id,
+                    mention_map=mention_map,
+                    fetched_at=now,
+                )
             mentions += mentions_added
         except Exception as exc:
             message = f"Failed channel {channel.display_name}: {exc}"
@@ -466,7 +480,7 @@ async def _persist_videos(
 ) -> tuple[int, int]:
     if not rows and uploads_playlist_id is None:
         return 0, 0
-    async with db.begin_nested():
+    async with db.begin():
         inserted = 0
         conflict_skipped = 0
         if rows:
@@ -498,7 +512,7 @@ async def _persist_ai_mentions(
     fetched_at: datetime,
 ) -> int:
     """Persist AI mentions and finalize channel watermark in one transaction."""
-    async with db.begin_nested():
+    async with db.begin():
         inserted = 0
         if mention_map:
             ext_ids = list(mention_map.keys())

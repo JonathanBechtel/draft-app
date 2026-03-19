@@ -18,6 +18,7 @@ from app.models.videos import (
 from app.schemas.youtube_channels import YouTubeChannel
 from app.services.staff_authz import require_dataset_permission
 from app.services.video_ingestion_service import add_video_by_url, run_ingestion_cycle
+from app.utils.db_async import SessionLocal
 from app.services.video_service import get_film_search_suggestions, get_video_feed
 from app.utils.db_async import get_session
 
@@ -145,11 +146,9 @@ async def create_channel(
     response_model=VideoIngestionResult,
     dependencies=[Depends(require_dataset_permission("youtube_ingestion", "edit"))],
 )
-async def trigger_video_ingestion(
-    db: AsyncSession = Depends(get_session),
-) -> VideoIngestionResult:
+async def trigger_video_ingestion() -> VideoIngestionResult:
     """Trigger YouTube ingestion cycle (admin)."""
-    return await run_ingestion_cycle(db)
+    return await run_ingestion_cycle(SessionLocal)
 
 
 @router.post(

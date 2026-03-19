@@ -19,7 +19,7 @@ from app.schemas.player_content_mentions import ContentType, PlayerContentMentio
 from app.schemas.youtube_channels import YouTubeChannel
 from app.schemas.youtube_videos import YouTubeVideo
 from app.services.video_ingestion_service import run_ingestion_cycle
-from app.utils.db_async import get_session
+from app.utils.db_async import SessionLocal, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ async def ingest_youtube_channels(
     assert user is not None
 
     try:
-        result = await run_ingestion_cycle(db)
+        result = await run_ingestion_cycle(SessionLocal)
         return RedirectResponse(
             url=(
                 f"/admin/youtube-channels?success=ingested"
