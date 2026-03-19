@@ -565,6 +565,9 @@ async def enrich_player(
 # ---------------------------------------------------------------------------
 
 
+_MAX_ENRICHMENTS_PER_RUN = 5
+
+
 async def run_enrichment_sweep(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> EnrichmentResult:
@@ -572,6 +575,8 @@ async def run_enrichment_sweep(
 
     Intended to be called as the last step in the cron runner.  Uses its
     own short-lived sessions so transaction control stays in cron code.
+    Caps at ``_MAX_ENRICHMENTS_PER_RUN`` players per cycle to keep the
+    cron run under its time budget.
 
     Args:
         session_factory: Async session factory for DB access.
@@ -594,6 +599,7 @@ async def run_enrichment_sweep(
             .where(PlayerMaster.is_stub == True)  # type: ignore[arg-type]  # noqa: E712
             .where(PlayerMaster.enrichment_attempted_at.is_(None))  # type: ignore[union-attr]
             .order_by(PlayerMaster.id)  # type: ignore[arg-type]
+            .limit(_MAX_ENRICHMENTS_PER_RUN)
         )
         rows = await db.execute(stmt)
         # Collect IDs+names so we can re-fetch in per-player sessions
