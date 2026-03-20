@@ -158,6 +158,14 @@ async def run_ingestion_cycle(
                     }
                 )
 
+            # Advance the watermark to the newest video we saw from the
+            # API (not "now").  When the channel has no new uploads the
+            # watermark stays put so we keep re-checking the same window
+            # instead of leapfrogging past all content.
+            newest_seen_at: datetime | None = None
+            if raw_videos:
+                newest_seen_at = max(v.published_at for v in raw_videos)
+
             # Persist phase — short-lived sessions per DB operation.
             async with session_factory() as db:
                 inserted, conflict_skipped = await _persist_videos(
@@ -174,7 +182,7 @@ async def run_ingestion_cycle(
                     db=db,
                     channel_id=channel.id,
                     mention_map=mention_map,
-                    fetched_at=now,
+                    watermark=newest_seen_at,
                 )
             mentions += mentions_added
         except Exception as exc:
@@ -509,9 +517,18 @@ async def _persist_ai_mentions(
     *,
     channel_id: int,
     mention_map: dict[str, list[str]],
-    fetched_at: datetime,
+    watermark: datetime | None,
 ) -> int:
-    """Persist AI mentions and finalize channel watermark in one transaction."""
+    """Persist AI mentions and advance channel watermark.
+
+    Args:
+        db: Async session (transaction managed internally).
+        channel_id: Channel whose mentions we're persisting.
+        mention_map: Mapping of video external_id → list of player names.
+        watermark: Newest ``published_at`` seen from the API.  When
+            ``None`` (no new videos returned) the watermark is left
+            unchanged so the next run re-checks the same window.
+    """
     async with db.begin():
         inserted = 0
         if mention_map:
@@ -565,11 +582,17 @@ async def _persist_ai_mentions(
                 )
                 inserted = len(list((await db.execute(insert_stmt)).scalars().all()))
 
-        # Finalize watermark only after mention-phase succeeds.
+        # Advance watermark to newest video seen.  When no new videos
+        # were returned (watermark is None) we leave last_fetched_at
+        # unchanged so the next run re-checks the same time window.
+        now = datetime.now(UTC).replace(tzinfo=None)
+        values: dict[str, Any] = {"updated_at": now}
+        if watermark is not None:
+            values["last_fetched_at"] = watermark
         await db.execute(
             update(YouTubeChannel)
             .where(YouTubeChannel.id == channel_id)  # type: ignore[arg-type]
-            .values(last_fetched_at=fetched_at, updated_at=fetched_at)
+            .values(**values)
         )
     return inserted
 
