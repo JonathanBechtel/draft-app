@@ -643,7 +643,13 @@ async def run_enrichment_sweep(
         result.players_attempted += 1
         try:
             # Phase 1: Fetch external data (no DB transaction held open)
-            name = display_name or ""
+            # Re-read current display_name to avoid stale snapshot data
+            # if the player was renamed/merged since the initial query.
+            async with session_factory() as db:
+                player = await db.get(PlayerMaster, player_id)
+                if player is None:
+                    continue
+                name = player.display_name or ""
             if not name:
                 logger.warning("Player id=%s has no display_name, skipping", player_id)
                 continue
