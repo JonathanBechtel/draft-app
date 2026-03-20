@@ -506,65 +506,87 @@ async def _generate_portrait(db: AsyncSession, player: PlayerMaster) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def enrich_player(
-    db: AsyncSession,
-    player: PlayerMaster,
-    client: genai.Client,
-) -> bool:
-    """Run the enrichment pipeline for a single stub player.
+@dataclass
+class _FetchedData:
+    """External data fetched outside a DB transaction."""
 
-    Stages 1 (bio+stats) and 2 (reference image) run concurrently.
-    Stage 3 (image generation) is deferred to future work.
+    bio_data: Optional[dict] = None
+    bio_error: Optional[Exception] = None
+    reference_image_url: Optional[str] = None
+    image_error: Optional[Exception] = None
+
+
+async def _fetch_external_data(
+    client: genai.Client,
+    player_name: str,
+) -> _FetchedData:
+    """Fetch bio/stats from Gemini and reference image from Wikipedia.
+
+    Runs both calls concurrently.  No database transaction is held open
+    while these external requests are in flight.
 
     Args:
-        db: Active database session.
-        player: The stub PlayerMaster record.
         client: Initialized Gemini client.
+        player_name: Player display name for API queries.
+
+    Returns:
+        Container with fetched data and any errors.
+    """
+    bio_task = asyncio.create_task(_fetch_bio_and_stats(client, player_name))
+    image_task = asyncio.create_task(_find_reference_image(player_name))
+
+    bio_result, image_result = await asyncio.gather(
+        bio_task, image_task, return_exceptions=True
+    )
+
+    fetched = _FetchedData()
+    if isinstance(bio_result, dict):
+        fetched.bio_data = bio_result
+    elif isinstance(bio_result, Exception):
+        fetched.bio_error = bio_result
+    if isinstance(image_result, str) and image_result:
+        fetched.reference_image_url = image_result
+    elif isinstance(image_result, Exception):
+        fetched.image_error = image_result
+
+    return fetched
+
+
+async def _apply_enrichment(
+    db: AsyncSession,
+    player: PlayerMaster,
+    fetched: _FetchedData,
+) -> bool:
+    """Persist fetched enrichment data inside an existing transaction.
+
+    Args:
+        db: Active database session (caller manages the transaction).
+        player: The stub PlayerMaster record.
+        fetched: Pre-fetched external data.
 
     Returns:
         True if any data was persisted, False otherwise.
     """
     player_name = player.display_name or ""
-    if not player_name:
-        logger.warning("Player id=%s has no display_name, skipping", player.id)
-        return False
-
-    logger.info("Enriching stub player: %s (id=%s)", player_name, player.id)
-
-    # Run Stage 1 and Stage 2 concurrently
-    bio_task = asyncio.create_task(_fetch_bio_and_stats(client, player_name))
-    image_task = asyncio.create_task(_find_reference_image(player_name))
-
-    bio_data, reference_image_url = await asyncio.gather(
-        bio_task, image_task, return_exceptions=True
-    )
-
     enriched = False
 
     # Apply Stage 1: Bio + Stats
-    if isinstance(bio_data, dict):
-        bio_updated = await _apply_bio_data(db, player, bio_data)
-        stats_updated = await _apply_stats_data(db, player, bio_data)
+    if fetched.bio_data is not None:
+        bio_updated = await _apply_bio_data(db, player, fetched.bio_data)
+        stats_updated = await _apply_stats_data(db, player, fetched.bio_data)
         if bio_updated or stats_updated:
             enriched = True
-    elif isinstance(bio_data, Exception):
-        logger.error("Bio fetch failed for %s: %s", player_name, bio_data)
+    if fetched.bio_error is not None:
+        logger.error("Bio fetch failed for %s: %s", player_name, fetched.bio_error)
 
     # Apply Stage 2: Reference image
-    if isinstance(reference_image_url, str) and reference_image_url:
+    if fetched.reference_image_url:
         if not player.reference_image_url:
-            player.reference_image_url = reference_image_url
+            player.reference_image_url = fetched.reference_image_url
             logger.info("Set reference image for %s", player_name)
             enriched = True
-    elif isinstance(reference_image_url, Exception):
-        logger.error("Image search failed for %s: %s", player_name, reference_image_url)
-
-    # Stage 3: Generate player portrait (requires reference image or likeness)
-    if enriched:
-        try:
-            await _generate_portrait(db, player)
-        except Exception:
-            logger.exception("Portrait generation failed for %s", player_name)
+    if fetched.image_error is not None:
+        logger.error("Image search failed for %s: %s", player_name, fetched.image_error)
 
     # Stamp enrichment attempt regardless of outcome
     player.enrichment_attempted_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -620,14 +642,36 @@ async def run_enrichment_sweep(
     for player_id, display_name in player_refs:
         result.players_attempted += 1
         try:
+            # Phase 1: Fetch external data (no DB transaction held open)
+            name = display_name or ""
+            if not name:
+                logger.warning("Player id=%s has no display_name, skipping", player_id)
+                continue
+            logger.info("Enriching stub player: %s (id=%s)", name, player_id)
+            fetched = await _fetch_external_data(client, name)
+
+            # Phase 2: Short transaction for DB writes only
             async with session_factory() as db:
                 async with db.begin():
                     player = await db.get(PlayerMaster, player_id)
                     if player is None:
                         continue
-                    enriched = await enrich_player(db, player, client)
+                    enriched = await _apply_enrichment(db, player, fetched)
                     if enriched:
                         result.players_enriched += 1
+
+            # Phase 3: Portrait generation in its own transaction
+            # (also involves external API calls to Gemini + S3)
+            if enriched:
+                try:
+                    async with session_factory() as db:
+                        async with db.begin():
+                            player = await db.get(PlayerMaster, player_id)
+                            if player is not None:
+                                await _generate_portrait(db, player)
+                except Exception:
+                    logger.exception("Portrait generation failed for %s", display_name)
+
         except Exception as exc:
             result.players_failed += 1
             error_msg = f"Failed to enrich {display_name}: {exc}"
