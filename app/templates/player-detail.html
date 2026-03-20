@@ -84,87 +84,128 @@
           </div>
         </div>
 
-        {% if player.metrics.consensusRank is not none %}
-        <!-- Sports Scoreboard -->
-        <div class="sports-scoreboard">
-          <!-- Scanlines overlay -->
+        {% if college_stats %}
+        <!-- College Production Scoreboard -->
+        <div class="stats-scoreboard">
           <div class="scanlines"></div>
 
-          <!-- Scoreboard header -->
-          <div class="scoreboard-header">
-            <div class="scoreboard-title">
-              <!-- Activity icon -->
-              <svg class="icon" viewBox="0 0 24 24">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          <!-- Header with season selector -->
+          <div class="stats-header">
+            <div class="stats-title">
+              <svg style="width:1rem;height:1rem;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"></line>
+                <line x1="12" y1="20" x2="12" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="14"></line>
               </svg>
-              Draft Analytics Dashboard
+              College Production
             </div>
+            {% if college_stats | length > 1 %}
+            <div class="season-selector">
+              {% for s in college_stats %}
+              <button class="season-btn{% if loop.first %} active{% endif %}" data-season-index="{{ loop.index0 }}">{{ s.season }}</button>
+              {% endfor %}
+            </div>
+            {% endif %}
           </div>
 
-          <!-- Scoreboard content -->
-          <div class="scoreboard-content">
+          {% for s in college_stats %}
+          <div class="stats-content season-data" data-season-index="{{ loop.index0 }}"{% if not loop.first %} style="display:none;"{% endif %}>
 
-            <!-- Top row: Primary metrics -->
-            <div class="scoreboard-row">
-
-              <!-- Consensus Mock Position -->
-              <div class="metric-panel">
-                <span class="metric-label">Consensus Mock</span>
-                <div class="metric-value large" id="consensusRank">{{ player.metrics.consensusRank }}</div>
-                <div class="change-indicator {{ 'positive' if player.metrics.consensusChange > 0 else 'negative' if player.metrics.consensusChange < 0 else 'neutral' }}" id="consensusChange">
-                  <span>{{ '▲' if player.metrics.consensusChange > 0 else '▼' if player.metrics.consensusChange < 0 else '=' }}</span>
-                  <span>{{ player.metrics.consensusChange | abs }}</span>
-                </div>
+            <!-- Headline stats: PPG / RPG / APG -->
+            <div class="stats-headline-row">
+              <div class="stat-hero">
+                <span class="stat-hero__label">PPG</span>
+                <div class="stat-hero__value">{{ '%.1f' % s.ppg if s.ppg is not none else '—' }}</div>
+                <div class="stat-hero__sub">Points</div>
               </div>
-
-              <!-- Draft Buzz Score -->
-              <div class="metric-panel metric-panel-wide">
-                <span class="metric-label">Draft Buzz Score</span>
-                <div class="metric-value" id="buzzScore">{{ player.metrics.buzzScore }}</div>
-                <div class="metric-subtext">Volume Index</div>
-                <div class="buzz-meter">
-                  <div class="buzz-fill" id="buzzFill" style="width: {{ player.metrics.buzzScore }}%;"></div>
-                </div>
+              <div class="stat-hero">
+                <span class="stat-hero__label">RPG</span>
+                <div class="stat-hero__value">{{ '%.1f' % s.rpg if s.rpg is not none else '—' }}</div>
+                <div class="stat-hero__sub">Rebounds</div>
               </div>
-
+              <div class="stat-hero">
+                <span class="stat-hero__label">APG</span>
+                <div class="stat-hero__value">{{ '%.1f' % s.apg if s.apg is not none else '—' }}</div>
+                <div class="stat-hero__sub">Assists</div>
+              </div>
             </div>
 
-            <!-- Bottom row: Supporting metrics -->
-            <div class="scoreboard-row">
-
-              <!-- True Draft Position -->
-              <div class="metric-panel">
-                <span class="metric-label">True Position</span>
-                <div class="metric-value" id="truePosition">{{ player.metrics.truePosition }}</div>
-                <div class="metric-subtext" id="trueRange">± {{ player.metrics.trueRange }}</div>
+            <!-- Secondary stats grid -->
+            <div class="stats-detail-grid">
+              <div class="stat-cell">
+                <span class="stat-cell__label">SPG</span>
+                <span class="stat-cell__value">{{ '%.1f' % s.spg if s.spg is not none else '—' }}</span>
               </div>
-
-              <!-- Expected Wins Added -->
-              <div class="metric-panel">
-                <span class="metric-label">Exp. Wins Added</span>
-                <div class="metric-value" id="winsAdded">+{{ player.metrics.winsAdded }}</div>
-                <div class="metric-subtext">Year 1 Impact</div>
+              <div class="stat-cell">
+                <span class="stat-cell__label">BPG</span>
+                <span class="stat-cell__value">{{ '%.1f' % s.bpg if s.bpg is not none else '—' }}</span>
               </div>
-
-              <!-- Stock Trend -->
-              <div class="metric-panel">
-                <span class="metric-label">7-Day Trend</span>
-                <div class="change-indicator {{ 'positive' if player.metrics.trendDirection == 'rising' else 'negative' }}" id="trendIndicator">
-                  <svg class="icon-lg" viewBox="0 0 24 24" style="width: 2rem; height: 2rem;">
-                    {% if player.metrics.trendDirection == 'rising' %}
-                    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-                    <polyline points="17 6 23 6 23 12"></polyline>
-                    {% else %}
-                    <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
-                    <polyline points="17 18 23 18 23 12"></polyline>
-                    {% endif %}
-                  </svg>
-                </div>
-                <div class="metric-subtext">{{ 'Rising' if player.metrics.trendDirection == 'rising' else 'Falling' }}</div>
+              <div class="stat-cell">
+                <span class="stat-cell__label">TOV</span>
+                <span class="stat-cell__value">{{ '%.1f' % s.tov if s.tov is not none else '—' }}</span>
               </div>
-
+              <div class="stat-cell">
+                <span class="stat-cell__label">MPG</span>
+                <span class="stat-cell__value">{{ '%.1f' % s.mpg if s.mpg is not none else '—' }}</span>
+              </div>
+              <div class="stat-cell">
+                <span class="stat-cell__label">Games</span>
+                <span class="stat-cell__value">{{ s.games if s.games is not none else '—' }}</span>
+              </div>
+              <div class="stat-cell">
+                <span class="stat-cell__label">Started</span>
+                <span class="stat-cell__value">{{ s.games_started if s.games_started is not none else '—' }}</span>
+              </div>
             </div>
+
+            <!-- Shooting splits -->
+            <div class="stats-section-label">Shooting Splits</div>
+            <div class="shooting-splits">
+              <div class="split-item">
+                <span class="split-label">FG%</span>
+                <div class="split-value">{{ '%.1f' % s.fg_pct if s.fg_pct is not none else '—' }}</div>
+                <div class="split-bar">
+                  <div class="split-bar__fill split-bar__fill--fg" style="width: {{ s.fg_pct if s.fg_pct is not none else 0 }}%;"></div>
+                </div>
+              </div>
+              <div class="split-item">
+                <span class="split-label">3P%</span>
+                <div class="split-value">{{ '%.1f' % s.three_p_pct if s.three_p_pct is not none else '—' }}</div>
+                <div class="split-bar">
+                  <div class="split-bar__fill split-bar__fill--3p" style="width: {{ s.three_p_pct if s.three_p_pct is not none else 0 }}%;"></div>
+                </div>
+                {% if s.three_pa is not none %}
+                <div class="split-context">{{ '%.1f' % s.three_pa }} 3PA/g</div>
+                {% endif %}
+              </div>
+              <div class="split-item">
+                <span class="split-label">FT%</span>
+                <div class="split-value">{{ '%.1f' % s.ft_pct if s.ft_pct is not none else '—' }}</div>
+                <div class="split-bar">
+                  <div class="split-bar__fill split-bar__fill--ft" style="width: {{ s.ft_pct if s.ft_pct is not none else 0 }}%;"></div>
+                </div>
+                {% if s.fta is not none %}
+                <div class="split-context">{{ '%.1f' % s.fta }} FTA/g</div>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- Context bar -->
+            <div class="stats-context-bar">
+              <div class="context-item">
+                <span class="context-label">Season</span>
+                <span class="context-value">{{ s.season }}</span>
+              </div>
+              {% if s.school %}
+              <div class="context-item">
+                <span class="context-label">School</span>
+                <span class="context-value">{{ s.school }}</span>
+              </div>
+              {% endif %}
+            </div>
+
           </div>
+          {% endfor %}
         </div>
         {% endif %}
 

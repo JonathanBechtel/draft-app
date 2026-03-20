@@ -1,6 +1,6 @@
 """Integration tests for player profile page functionality."""
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -328,3 +328,104 @@ async def test_player_detail_photo_url_uses_player_id(app_client, db_session):
 
     assert response.status_code == 200
     assert f"/players/{player.id}_id-test-player_default.png" in response.text
+
+
+@pytest.mark.asyncio
+async def test_player_detail_shows_college_stats(app_client, db_session):
+    """College Production scoreboard renders when player has college stats."""
+    from app.schemas.players_master import PlayerMaster
+    from app.schemas.player_college_stats import PlayerCollegeStats
+
+    player = PlayerMaster(
+        display_name="Stats Player",
+        slug="stats-player",
+        school="Duke",
+    )
+    db_session.add(player)
+    await db_session.flush()
+
+    stats = PlayerCollegeStats(
+        player_id=player.id,
+        season="2024-25",
+        ppg=18.4,
+        rpg=8.6,
+        apg=4.2,
+        spg=1.5,
+        bpg=1.2,
+        tov=2.3,
+        mpg=33.1,
+        games=36,
+        games_started=36,
+        fg_pct=47.1,
+        three_p_pct=35.8,
+        three_pa=3.4,
+        ft_pct=76.9,
+        fta=5.1,
+        updated_at=datetime.utcnow(),
+    )
+    db_session.add(stats)
+    await db_session.commit()
+
+    response = await app_client.get("/players/stats-player")
+    assert response.status_code == 200
+    content = response.text
+    assert "College Production" in content
+    assert "18.4" in content  # PPG
+    assert "8.6" in content  # RPG
+    assert "4.2" in content  # APG
+    assert "47.1" in content  # FG%
+    assert "2024-25" in content  # Season in context bar
+
+
+@pytest.mark.asyncio
+async def test_player_detail_hides_college_stats_when_none(app_client, db_session):
+    """College Production scoreboard is hidden when no stats exist."""
+    from app.schemas.players_master import PlayerMaster
+
+    player = PlayerMaster(
+        display_name="No Stats Player",
+        slug="no-stats-player",
+        school="UCLA",
+    )
+    db_session.add(player)
+    await db_session.commit()
+
+    response = await app_client.get("/players/no-stats-player")
+    assert response.status_code == 200
+    assert "College Production" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_player_detail_multi_season_college_stats(app_client, db_session):
+    """Multiple seasons show season selector buttons."""
+    from app.schemas.players_master import PlayerMaster
+    from app.schemas.player_college_stats import PlayerCollegeStats
+
+    player = PlayerMaster(
+        display_name="Multi Season",
+        slug="multi-season",
+        school="Kentucky",
+    )
+    db_session.add(player)
+    await db_session.flush()
+
+    for season_label, ppg in [("2024-25", 20.1), ("2023-24", 14.3)]:
+        db_session.add(
+            PlayerCollegeStats(
+                player_id=player.id,
+                season=season_label,
+                ppg=ppg,
+                updated_at=datetime.utcnow(),
+            )
+        )
+    await db_session.commit()
+
+    response = await app_client.get("/players/multi-season")
+    assert response.status_code == 200
+    content = response.text
+    assert "College Production" in content
+    assert "2024-25" in content
+    assert "2023-24" in content
+    assert "season-btn" in content  # Season selector buttons present
+    assert "20.1" in content  # First season PPG
+    assert "14.3" in content  # Second season PPG

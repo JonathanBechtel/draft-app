@@ -1651,8 +1651,37 @@ function shareCompsTweet() {
  * Initialize all modules when DOM is ready
  * ============================================================================
  */
+/**
+ * ============================================================================
+ * COLLEGE STATS MODULE
+ * Season tab switching for the college production scoreboard
+ * ============================================================================
+ */
+const CollegeStatsModule = {
+  init() {
+    const buttons = document.querySelectorAll('.season-btn[data-season-index]');
+    if (!buttons.length) return;
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const index = btn.dataset.seasonIndex;
+
+        // Update active button
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        // Show matching season data, hide others
+        document.querySelectorAll('.season-data[data-season-index]').forEach(div => {
+          div.style.display = div.dataset.seasonIndex === index ? '' : 'none';
+        });
+      });
+    });
+  }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   ScoreboardModule.init();
+  CollegeStatsModule.init();
   PerformanceModule.init();
   PlayerComparisonsModule.init();
 

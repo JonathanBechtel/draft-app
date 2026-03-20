@@ -31,7 +31,10 @@ from app.services.video_service import (
     get_video_page_data,
 )
 from app.config import settings
-from app.services.player_service import get_player_profile_by_slug
+from app.services.player_service import (
+    get_college_stats_by_player_id,
+    get_player_profile_by_slug,
+)
 from app.utils.db_async import get_session
 from app.utils.images import (
     get_placeholder_url,
@@ -709,6 +712,36 @@ async def player_detail(
         },
     }
 
+    # Fetch college production stats for the stats scoreboard
+    college_stats_rows = await get_college_stats_by_player_id(
+        db,
+        player_id=player_profile.id,  # type: ignore[arg-type]
+    )
+    # Only attach school when there's a single season — for multi-season
+    # players the current school may not match earlier seasons (transfers).
+    single_season = len(college_stats_rows) == 1
+    college_stats = [
+        {
+            "season": row.season,
+            "school": player.get("college") if single_season else None,
+            "games": row.games,
+            "games_started": row.games_started,
+            "mpg": row.mpg,
+            "ppg": row.ppg,
+            "rpg": row.rpg,
+            "apg": row.apg,
+            "spg": row.spg,
+            "bpg": row.bpg,
+            "tov": row.tov,
+            "fg_pct": row.fg_pct,
+            "three_p_pct": row.three_p_pct,
+            "three_pa": row.three_pa,
+            "ft_pct": row.ft_pct,
+            "fta": row.fta,
+        }
+        for row in college_stats_rows
+    ]
+
     percentile_data = {
         "anthropometrics": [
             {"metric": "Height", "value": "6'9\"", "percentile": 92, "unit": ""},
@@ -867,6 +900,7 @@ async def player_detail(
         {
             "request": request,
             "player": player,
+            "college_stats": college_stats,
             "percentile_data": percentile_data,
             "comparison_data": comparison_data,
             "player_feed": player_feed,

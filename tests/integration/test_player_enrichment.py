@@ -427,7 +427,7 @@ async def test_total_failure_stamps_enrichment_attempted(
     # Nothing enriched, but no crash
     assert result.players_attempted == 1
     assert result.players_enriched == 0
-    assert result.players_failed == 0  # errors are caught inside enrich_player
+    assert result.players_failed == 0  # errors are caught inside the sweep loop
 
     # Timestamp still stamped to prevent infinite retries
     async with wrapped() as db:
