@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.players import PlayerProfileRead
 from app.schemas.combine_anthro import CombineAnthro
+from app.schemas.player_college_stats import PlayerCollegeStats
 from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.positions import Position
@@ -102,3 +103,25 @@ async def get_player_profile_by_slug(
         combine_year=combine_year,
         photo_url=photo_url,
     )
+
+
+async def get_college_stats_by_player_id(
+    db: AsyncSession,
+    player_id: int,
+) -> list[PlayerCollegeStats]:
+    """Fetch all college stats rows for a player, most recent season first.
+
+    Args:
+        db: Async database session
+        player_id: Player's database ID
+
+    Returns:
+        List of PlayerCollegeStats rows ordered by season descending.
+    """
+    stmt = (
+        select(PlayerCollegeStats)  # type: ignore[call-overload]
+        .where(PlayerCollegeStats.player_id == player_id)  # type: ignore[arg-type]
+        .order_by(desc(PlayerCollegeStats.season))
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())

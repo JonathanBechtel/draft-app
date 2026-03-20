@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Player Stats Display — Mockup | DraftGuru</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       CSS CUSTOM PROPERTIES — matches DraftGuru design system
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --spacing-unit: 1rem;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ============================================================================
+       NAVBAR — simplified from main site
+       ========================================================================= */
+    .navbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: var(--color-primary);
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .navbar-brand {
+      font-family: var(--font-heading);
+      color: var(--color-white);
+      font-size: 1.5rem;
+      letter-spacing: 0.04em;
+      text-decoration: none;
+    }
+    .navbar-subtitle {
+      font-family: var(--font-mono);
+      color: rgba(255,255,255,0.7);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* ============================================================================
+       LAYOUT
+       ========================================================================= */
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1rem;
+    }
+    .mt-28 { margin-top: 7rem; }
+
+    .section {
+      margin-bottom: 2rem;
+    }
+    .section-header {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-slate-800);
+      padding: 0.75rem 0;
+      border-left: 4px solid;
+      padding-left: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    /* ============================================================================
+       PERSONAL INFO GRID — matches existing player-detail layout
+       ========================================================================= */
+    .personal-info-grid {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 2rem;
+      align-items: start;
+    }
+
+    .player-photo-wrapper {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .player-photo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 2px solid rgba(99, 102, 241, 0.4);
+      outline-offset: -2px;
+      background: var(--color-slate-200);
+      min-height: 500px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      color: var(--color-slate-500);
+      font-size: 0.875rem;
+    }
+
+    .player-info-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+      height: 100%;
+    }
+
+    /* Bio card */
+    .player-bio {
+      background: var(--color-white);
+      padding: 1.25rem;
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      flex-shrink: 0;
+    }
+    .bio-header {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-600);
+      font-weight: 600;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+    .player-primary-meta {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: var(--color-slate-600);
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+    .player-secondary-meta {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      font-size: 0.875rem;
+    }
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .meta-label {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.125rem;
+    }
+    .meta-value {
+      color: var(--color-slate-900);
+      font-weight: 500;
+    }
+
+    /* ============================================================================
+       COLLEGE STATS SCOREBOARD — replaces Draft Analytics Dashboard
+       Retro scoreboard aesthetic with emerald accent (production data)
+       ========================================================================= */
+    .stats-scoreboard {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      outline: 2px solid rgba(16, 185, 129, 0.5);
+      outline-offset: -2px;
+      position: relative;
+      overflow: hidden;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      /* Dot-matrix background */
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(16, 185, 129, 0.06) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    /* Scanlines overlay */
+    .scanlines {
+      position: absolute;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 1) 0,
+        rgba(0, 0, 0, 1) 1px,
+        transparent 1px,
+        transparent 3px
+      );
+      opacity: 0.04;
+      pointer-events: none;
+    }
+
+    /* Header bar */
+    .stats-header {
+      position: relative;
+      padding: 0.875rem 1.25rem;
+      background: linear-gradient(to right, #d1fae5, #a7f3d0);
+      border-bottom: 2px solid var(--color-accent-emerald);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stats-title {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-900);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Season selector */
+    .season-selector {
+      display: flex;
+      gap: 0.25rem;
+    }
+    .season-btn {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      padding: 0.25rem 0.625rem;
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.25rem;
+      background: var(--color-white);
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      letter-spacing: 0.04em;
+    }
+    .season-btn:hover {
+      border-color: var(--color-accent-emerald);
+      color: var(--color-accent-emerald);
+    }
+    .season-btn.active {
+      background: var(--color-accent-emerald);
+      border-color: var(--color-accent-emerald);
+      color: var(--color-white);
+    }
+
+    /* Stats content area */
+    .stats-content {
+      position: relative;
+      padding: 1.25rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    /* ---- Headline stats row: PPG / RPG / APG ---- */
+    .stats-headline-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+
+    .stat-hero {
+      background: var(--color-slate-50);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.5rem;
+      padding: 1rem 0.75rem;
+      text-align: center;
+      position: relative;
+      transition: all var(--transition-speed);
+    }
+    .stat-hero:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Pixel corners on hover */
+    .stat-hero::before,
+    .stat-hero::after {
+      content: "";
+      position: absolute;
+      width: 0.75rem;
+      height: 0.75rem;
+      opacity: 0;
+      transition: opacity var(--transition-speed);
+    }
+    .stat-hero::before {
+      top: -0.25rem;
+      left: -0.25rem;
+      background: linear-gradient(45deg, transparent 50%, var(--color-accent-emerald) 50%);
+    }
+    .stat-hero::after {
+      bottom: -0.25rem;
+      right: -0.25rem;
+      background: linear-gradient(225deg, transparent 50%, var(--color-accent-indigo) 50%);
+    }
+    .stat-hero:hover::before,
+    .stat-hero:hover::after {
+      opacity: 1;
+    }
+
+    .stat-hero__label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.375rem;
+      display: block;
+    }
+
+    .stat-hero__value {
+      font-family: var(--font-mono);
+      font-size: 2.25rem;
+      font-weight: 700;
+      color: var(--color-slate-900);
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .stat-hero__sub {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-top: 0.375rem;
+    }
+
+    /* ---- Secondary stats grid: 2 rows x 3 cols ---- */
+    .stats-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+    }
+
+    .stat-cell {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 0.5rem 0.625rem;
+      border-radius: 0.375rem;
+      background: var(--color-slate-50);
+      border: 1px solid transparent;
+      transition: all var(--transition-speed);
+    }
+    .stat-cell:hover {
+      border-color: var(--color-slate-200);
+      background: var(--color-white);
+    }
+
+    .stat-cell__label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .stat-cell__value {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-800);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---- Shooting splits bar ---- */
+    .stats-section-label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-top: 0.25rem;
+      padding-bottom: 0.375rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .shooting-splits {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+    }
+
+    .split-item {
+      text-align: center;
+    }
+
+    .split-label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.375rem;
+      display: block;
+    }
+
+    .split-value {
+      font-family: var(--font-mono);
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--color-slate-800);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    .split-bar {
+      height: 4px;
+      background: var(--color-slate-200);
+      border-radius: 2px;
+      margin-top: 0.5rem;
+      overflow: hidden;
+    }
+    .split-bar__fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.6s ease;
+    }
+    .split-bar__fill--fg {
+      background: var(--color-accent-emerald);
+    }
+    .split-bar__fill--3p {
+      background: var(--color-accent-indigo);
+    }
+    .split-bar__fill--ft {
+      background: var(--color-accent-amber);
+    }
+
+    .split-context {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+      margin-top: 0.25rem;
+    }
+
+    /* ---- Games / Minutes context bar ---- */
+    .stats-context-bar {
+      display: flex;
+      justify-content: center;
+      gap: 1.5rem;
+      padding: 0.5rem;
+      background: var(--color-slate-50);
+      border-radius: 0.375rem;
+      border: 1px solid var(--color-slate-100);
+    }
+
+    .context-item {
+      display: flex;
+      align-items: baseline;
+      gap: 0.375rem;
+    }
+
+    .context-label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .context-value {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-slate-700);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       MOCKUP ANNOTATION
+       ========================================================================= */
+    .mockup-note {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 2rem auto 0;
+      padding: 1rem 1.25rem;
+      background: #fffbeb;
+      border: 1px dashed var(--color-accent-amber);
+      border-radius: var(--border-radius);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      line-height: 1.6;
+    }
+    .mockup-note strong {
+      color: var(--color-slate-900);
+    }
+    .mockup-note ul {
+      margin: 0.5rem 0 0 1.25rem;
+    }
+    .mockup-note li {
+      margin-bottom: 0.25rem;
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 900px) {
+      .personal-info-grid {
+        grid-template-columns: 1fr;
+      }
+      .player-photo {
+        min-height: 300px;
+        max-width: 400px;
+        margin: 0 auto;
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .stats-headline-row {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+      }
+      .stat-hero__value {
+        font-size: 1.75rem;
+      }
+      .stats-detail-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .shooting-splits {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <a class="navbar-brand" href="#">DraftGuru</a>
+    <span class="navbar-subtitle">Mockup — Player Stats Display</span>
+  </nav>
+
+  <!-- Annotation -->
+  <div class="mockup-note" style="margin-top: 5.5rem;">
+    <strong>Mockup: College Stats Scoreboard</strong> — This replaces the "Draft Analytics Dashboard" scoreboard in the player detail right column. It sits between the Bio card and the fold, showing the player's college production data at a glance.
+    <ul>
+      <li>Headline row: PPG / RPG / APG — the "big 3" per-game averages</li>
+      <li>Secondary grid: SPG, BPG, TOV, MPG, Games, Games Started</li>
+      <li>Shooting splits: FG% / 3P% / FT% with visual bars and volume context</li>
+      <li>Season selector for multi-season players (tabs in header)</li>
+      <li>Emerald accent (production data), dot-matrix background, scanlines, pixel corners</li>
+    </ul>
+  </div>
+
+  <!-- Main Content -->
+  <main class="container mt-28" style="margin-top: 2rem;">
+
+    <section class="section">
+      <h2 class="section-header" style="border-left-color: var(--color-accent-indigo);">
+        Cooper Flagg — Player Profile
+      </h2>
+
+      <div class="personal-info-grid">
+
+        <!-- LEFT COLUMN: Photo -->
+        <div class="player-photo-wrapper">
+          <div class="player-photo">
+            [ Player Photo ]
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Bio + Stats Scoreboard -->
+        <div class="player-info-stack">
+
+          <!-- Bio card (unchanged) -->
+          <div class="player-bio">
+            <h3 class="bio-header">Bio</h3>
+            <div class="player-primary-meta">
+              PF/C • Duke • 6'9" • 205 lbs
+            </div>
+            <div class="player-secondary-meta">
+              <div class="meta-item">
+                <span class="meta-label">Age</span>
+                <span class="meta-value">18</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Hometown</span>
+                <span class="meta-value">Newport, ME</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">High School</span>
+                <span class="meta-value">Montverde Academy</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Shoots</span>
+                <span class="meta-value">Left</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">Wingspan</span>
+                <span class="meta-value">7'2"</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ========================================================
+               NEW: College Stats Scoreboard
+               Replaces the "Draft Analytics Dashboard" scoreboard
+               ======================================================== -->
+          <div class="stats-scoreboard">
+            <div class="scanlines"></div>
+
+            <!-- Header with season selector -->
+            <div class="stats-header">
+              <div class="stats-title">
+                <svg style="width:1rem;height:1rem;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="20" x2="18" y2="10"></line>
+                  <line x1="12" y1="20" x2="12" y2="4"></line>
+                  <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
+                College Production
+              </div>
+              <div class="season-selector">
+                <button class="season-btn active">2024-25</button>
+                <button class="season-btn">2023-24</button>
+              </div>
+            </div>
+
+            <div class="stats-content">
+
+              <!-- Headline stats: PPG / RPG / APG -->
+              <div class="stats-headline-row">
+                <div class="stat-hero">
+                  <span class="stat-hero__label">PPG</span>
+                  <div class="stat-hero__value">18.4</div>
+                  <div class="stat-hero__sub">Points</div>
+                </div>
+                <div class="stat-hero">
+                  <span class="stat-hero__label">RPG</span>
+                  <div class="stat-hero__value">8.6</div>
+                  <div class="stat-hero__sub">Rebounds</div>
+                </div>
+                <div class="stat-hero">
+                  <span class="stat-hero__label">APG</span>
+                  <div class="stat-hero__value">4.2</div>
+                  <div class="stat-hero__sub">Assists</div>
+                </div>
+              </div>
+
+              <!-- Secondary stats grid -->
+              <div class="stats-detail-grid">
+                <div class="stat-cell">
+                  <span class="stat-cell__label">SPG</span>
+                  <span class="stat-cell__value">1.5</span>
+                </div>
+                <div class="stat-cell">
+                  <span class="stat-cell__label">BPG</span>
+                  <span class="stat-cell__value">1.2</span>
+                </div>
+                <div class="stat-cell">
+                  <span class="stat-cell__label">TOV</span>
+                  <span class="stat-cell__value">2.3</span>
+                </div>
+                <div class="stat-cell">
+                  <span class="stat-cell__label">MPG</span>
+                  <span class="stat-cell__value">33.1</span>
+                </div>
+                <div class="stat-cell">
+                  <span class="stat-cell__label">Games</span>
+                  <span class="stat-cell__value">36</span>
+                </div>
+                <div class="stat-cell">
+                  <span class="stat-cell__label">Started</span>
+                  <span class="stat-cell__value">36</span>
+                </div>
+              </div>
+
+              <!-- Shooting splits -->
+              <div class="stats-section-label">Shooting Splits</div>
+              <div class="shooting-splits">
+                <div class="split-item">
+                  <span class="split-label">FG%</span>
+                  <div class="split-value">47.1</div>
+                  <div class="split-bar">
+                    <div class="split-bar__fill split-bar__fill--fg" style="width: 47.1%;"></div>
+                  </div>
+                  <div class="split-context">6.2 FGA/g</div>
+                </div>
+                <div class="split-item">
+                  <span class="split-label">3P%</span>
+                  <div class="split-value">35.8</div>
+                  <div class="split-bar">
+                    <div class="split-bar__fill split-bar__fill--3p" style="width: 35.8%;"></div>
+                  </div>
+                  <div class="split-context">3.4 3PA/g</div>
+                </div>
+                <div class="split-item">
+                  <span class="split-label">FT%</span>
+                  <div class="split-value">76.9</div>
+                  <div class="split-bar">
+                    <div class="split-bar__fill split-bar__fill--ft" style="width: 76.9%;"></div>
+                  </div>
+                  <div class="split-context">5.1 FTA/g</div>
+                </div>
+              </div>
+
+              <!-- Context bar -->
+              <div class="stats-context-bar">
+                <div class="context-item">
+                  <span class="context-label">Season</span>
+                  <span class="context-value">2024-25</span>
+                </div>
+                <div class="context-item">
+                  <span class="context-label">School</span>
+                  <span class="context-value">Duke</span>
+                </div>
+                <div class="context-item">
+                  <span class="context-label">Class</span>
+                  <span class="context-value">Freshman</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+          <!-- END: College Stats Scoreboard -->
+
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Interactive season toggle (demo) -->
+  <script>
+    document.querySelectorAll('.season-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.season-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+  </script>
+
+</body>
+</html>
