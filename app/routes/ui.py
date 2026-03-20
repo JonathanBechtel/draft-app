@@ -717,10 +717,13 @@ async def player_detail(
         db,
         player_id=player_profile.id,  # type: ignore[arg-type]
     )
+    # Only attach school when there's a single season — for multi-season
+    # players the current school may not match earlier seasons (transfers).
+    single_season = len(college_stats_rows) == 1
     college_stats = [
         {
             "season": row.season,
-            "school": player.get("college"),
+            "school": player.get("college") if single_season else None,
             "games": row.games,
             "games_started": row.games_started,
             "mpg": row.mpg,
