@@ -217,6 +217,7 @@
 
   {% include "partials/film-study-section.html" %}
 
+  {% if player.combine_year %}
   <div class="section-divider"></div>
 
   <!-- ==========================================================================
@@ -480,6 +481,8 @@
       </div>
     </div>
   </div>
+
+  {% endif %}
 
   <div class="section-divider"></div>
 
