@@ -99,6 +99,7 @@ Do not ask if the user wants you to run these checks — run them proactively af
 ## Git Workflow
 - **Authorship:** Never include AI or co-author attribution in commits. The user is the sole author.
 - **Branch naming:** Use the format `<type>/<short-description>` with kebab-case descriptions. Valid type prefixes: `fix`, `bug`, `enhancement`, `refactor`, `feature` (e.g., `feature/player-tags`, `fix/update-nav-ui`, `refactor/service-layer`).
+- **Commit frequency:** Commit often in logically grouped chunks — e.g., a functional change and its tests together, a bug fix on its own, a refactor separate from new features. Avoid large monolithic commits that mix unrelated concerns.
 
 ## Coding Style & Naming Conventions
 - Stick to 4-space indentation, type hints, and descriptive names (`PlayerRead`, `PlayerCreate`) to match existing modules.
