@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Longest Wingspan — NBA Draft Combine Leaderboard — DraftGuru</title>
+  <meta name="description" content="All-time NBA Draft Combine wingspan leaderboard. See who measured the longest wingspan at the combine, filter by year and position.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .heading-font { font-family: var(--font-heading); letter-spacing: 0.02em; }
+    .mono-font { font-family: var(--font-mono); }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(148,163,184,0.3) 20%, rgba(148,163,184,0.3) 80%, transparent);
+      margin: 2.5rem 0;
+    }
+
+    /* ============================================================================
+       NAVBAR
+       ========================================================================= */
+    .navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--color-primary);
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .navbar-brand h1 {
+      font-size: 1.875rem;
+      color: var(--color-white);
+      font-family: var(--font-heading);
+    }
+
+    .navbar-links {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      padding: 0.25rem 0;
+      border-bottom: 2px solid transparent;
+      transition: all var(--transition-speed);
+    }
+
+    .navbar-link:hover,
+    .navbar-link.active {
+      color: var(--color-white);
+      border-bottom-color: var(--color-accent-amber);
+    }
+
+    .navbar-search {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .search-input {
+      width: 240px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd;
+      color: var(--color-slate-900);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      outline: none;
+    }
+
+    /* ============================================================================
+       BREADCRUMB
+       ========================================================================= */
+    .breadcrumb {
+      padding: 5rem 0 0;
+      margin-top: 4rem;
+    }
+
+    .breadcrumb-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+    }
+
+    .breadcrumb-nav a {
+      color: var(--color-accent-cyan);
+      transition: color var(--transition-speed);
+    }
+
+    .breadcrumb-nav a:hover {
+      color: #0891b2;
+    }
+
+    .breadcrumb-sep {
+      color: var(--color-slate-300);
+    }
+
+    .breadcrumb-current {
+      color: var(--color-slate-700);
+      font-weight: 600;
+    }
+
+    /* ============================================================================
+       METRIC HEADER
+       ========================================================================= */
+    .metric-header {
+      padding: 1.5rem 0 1rem;
+    }
+
+    .metric-header__top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 2rem;
+    }
+
+    .metric-header__title-group {
+      flex: 1;
+    }
+
+    .metric-header__category {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-accent-cyan);
+      margin-bottom: 0.375rem;
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .metric-header__title {
+      font-family: var(--font-heading);
+      font-size: 1.75rem;
+      color: var(--color-slate-900);
+      line-height: 1.2;
+      margin-bottom: 0.5rem;
+    }
+
+    .metric-header__description {
+      font-size: 0.9375rem;
+      color: var(--color-slate-600);
+      line-height: 1.5;
+      max-width: 640px;
+    }
+
+    /* ============================================================================
+       STAT SUMMARY CARDS — Highest, Lowest, Average
+       ========================================================================= */
+    .stat-summary-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .stat-summary-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      outline: 2px solid;
+      outline-offset: -2px;
+      transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+      position: relative;
+    }
+
+    .stat-summary-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+    }
+
+    .stat-summary-card--high {
+      outline-color: rgba(6, 182, 212, 0.5);
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(6, 182, 212, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    .stat-summary-card--low {
+      outline-color: rgba(245, 158, 11, 0.5);
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(245, 158, 11, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    .stat-summary-card--avg {
+      outline-color: rgba(99, 102, 241, 0.4);
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    .stat-summary-card__header {
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .stat-summary-card--high .stat-summary-card__header {
+      background: linear-gradient(to right, #cffafe, #a5f3fc);
+      border-bottom: 2px solid var(--color-accent-cyan);
+      color: #0e7490;
+    }
+
+    .stat-summary-card--low .stat-summary-card__header {
+      background: linear-gradient(to right, #fef3c7, #fde68a);
+      border-bottom: 2px solid var(--color-accent-amber);
+      color: #b45309;
+    }
+
+    .stat-summary-card--avg .stat-summary-card__header {
+      background: linear-gradient(to right, #eef2ff, #e0e7ff);
+      border-bottom: 2px solid var(--color-accent-indigo);
+      color: #4338ca;
+    }
+
+    .stat-summary-card__image-wrapper {
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .stat-summary-card__image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 50% 15%;
+      transition: filter var(--transition-speed);
+    }
+
+    .stat-summary-card:hover .stat-summary-card__image {
+      filter: brightness(1.05);
+    }
+
+    /* Info section below image */
+    .stat-summary-card__info {
+      padding: 0.875rem 1rem;
+      border-top: 2px solid;
+    }
+
+    .stat-summary-card--high .stat-summary-card__info { border-top-color: var(--color-accent-cyan); }
+    .stat-summary-card--low .stat-summary-card__info { border-top-color: var(--color-accent-amber); }
+    .stat-summary-card--avg .stat-summary-card__info { border-top-color: var(--color-accent-indigo); }
+
+    .stat-summary-card__value {
+      font-family: var(--font-heading);
+      font-size: 1.75rem;
+      color: var(--color-slate-900);
+      line-height: 1;
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-summary-card__player {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: var(--color-slate-900);
+      line-height: 1.2;
+    }
+
+    .stat-summary-card__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      margin-top: 0.125rem;
+    }
+
+    /* ============================================================================
+       FILTERS BAR
+       ========================================================================= */
+    .filters-bar {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      border: 1px solid var(--color-slate-200);
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .filters-bar__label {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .filter-select {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      padding: 0.5rem 2rem 0.5rem 0.75rem;
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      background: var(--color-white);
+      color: var(--color-slate-700);
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' fill='none' stroke='%2364748b' stroke-width='1.5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.625rem center;
+      transition: border-color var(--transition-speed);
+    }
+
+    .filter-select:focus {
+      outline: none;
+      border-color: var(--color-accent-cyan);
+      box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.15);
+    }
+
+    .filters-bar__results {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    .filters-bar__results strong {
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       LEADERBOARD TABLE
+       ========================================================================= */
+    .leaderboard-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      outline: 2px solid rgba(6, 182, 212, 0.4);
+      outline-offset: -2px;
+    }
+
+    .leaderboard-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .leaderboard-table thead th {
+      padding: 0.875rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-600);
+      text-align: left;
+      border-bottom: 2px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+    }
+
+    .leaderboard-table thead th.col-rank {
+      width: 60px;
+      text-align: center;
+    }
+
+    .leaderboard-table thead th.col-value {
+      text-align: right;
+    }
+
+    .leaderboard-table thead th.col-year,
+    .leaderboard-table thead th.col-position {
+      text-align: center;
+    }
+
+    .leaderboard-table thead th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: color var(--transition-speed);
+    }
+
+    .leaderboard-table thead th.sortable:hover {
+      color: var(--color-accent-cyan);
+    }
+
+    .leaderboard-table thead th.sorted {
+      color: var(--color-accent-cyan);
+    }
+
+    .sort-arrow {
+      font-size: 0.5rem;
+      margin-left: 0.25rem;
+    }
+
+    .leaderboard-table tbody tr {
+      transition: background var(--transition-speed);
+    }
+
+    .leaderboard-table tbody tr:hover {
+      background: rgba(6, 182, 212, 0.03);
+    }
+
+    .leaderboard-table tbody td {
+      padding: 0.125rem 1rem;
+      border-bottom: 1px solid var(--color-slate-100);
+      font-size: 0.875rem;
+      vertical-align: middle;
+    }
+
+    .leaderboard-table tbody td:nth-child(2) {
+      padding-top: 0.25rem;
+      padding-bottom: 0.25rem;
+    }
+
+    .leaderboard-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* Rank column */
+    .cell-rank {
+      text-align: center;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      font-size: 0.8125rem;
+      color: var(--color-slate-400);
+    }
+
+
+    /* Player cell with image */
+    .cell-player {
+      display: flex;
+      align-items: center;
+      gap: 0.875rem;
+    }
+
+    .cell-player__thumb {
+      width: 72px;
+      height: 96px;
+      border-radius: 0.375rem;
+      object-fit: cover;
+      object-position: 50% 15%;
+      border: none;
+      flex-shrink: 0;
+    }
+
+    .cell-player__info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .cell-player__name {
+      font-weight: 600;
+      color: var(--color-slate-900);
+      line-height: 1.2;
+      transition: color var(--transition-speed);
+    }
+
+    .cell-player__name:hover {
+      color: var(--color-accent-cyan);
+    }
+
+    .cell-player__school {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    /* Position & Year cells */
+    .cell-position,
+    .cell-year {
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-600);
+    }
+
+    /* Value cell */
+    .cell-value {
+      text-align: right;
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Draft pick cell */
+    .cell-draft {
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-600);
+      white-space: nowrap;
+    }
+
+    .cell-draft__pick {
+      font-weight: 700;
+      color: var(--color-slate-800);
+    }
+
+    .cell-draft__round {
+      font-size: 0.625rem;
+      color: var(--color-slate-400);
+      display: block;
+    }
+
+    .cell-draft--undrafted {
+      font-size: 0.6875rem;
+      color: var(--color-slate-400);
+      font-style: italic;
+    }
+
+    /* Percentile cell */
+    .cell-percentile {
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 700;
+    }
+
+    .cell-percentile__value {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      min-width: 3rem;
+    }
+
+    .cell-percentile--elite .cell-percentile__value {
+      background: rgba(6, 182, 212, 0.12);
+      color: #0e7490;
+    }
+
+    .cell-percentile--high .cell-percentile__value {
+      background: rgba(16, 185, 129, 0.1);
+      color: #047857;
+    }
+
+    .cell-percentile--mid .cell-percentile__value {
+      background: rgba(245, 158, 11, 0.1);
+      color: #b45309;
+    }
+
+    .cell-percentile--low .cell-percentile__value {
+      background: rgba(244, 63, 94, 0.08);
+      color: #be123c;
+    }
+
+    /* NBA status badge */
+    .cell-status {
+      text-align: center;
+    }
+
+    .nba-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      white-space: nowrap;
+    }
+
+    .nba-badge--active {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .nba-badge--inactive {
+      background: var(--color-slate-100);
+      color: var(--color-slate-500);
+    }
+
+    /* Alternating row colors */
+    .leaderboard-table tbody tr:nth-child(even) {
+      background: var(--color-slate-50);
+    }
+
+
+    /* ============================================================================
+       PAGINATION
+       ========================================================================= */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.25rem;
+      padding: 1.5rem 0;
+    }
+
+    .pagination__btn {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      background: var(--color-white);
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .pagination__btn:hover {
+      border-color: var(--color-accent-cyan);
+      color: var(--color-accent-cyan);
+    }
+
+    .pagination__btn.active {
+      background: var(--color-accent-cyan);
+      border-color: var(--color-accent-cyan);
+      color: var(--color-white);
+    }
+
+    .pagination__btn.disabled {
+      color: var(--color-slate-300);
+      cursor: default;
+      pointer-events: none;
+    }
+
+    .pagination__info {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      margin: 0 0.75rem;
+    }
+
+    /* Share buttons — reuses .export-btn from export-modal.css */
+    .share-buttons {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-left: auto;
+    }
+
+    .export-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      background: transparent;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      color: #64748b;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .export-btn:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+      color: #0f172a;
+    }
+
+    .export-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .export-btn--tweet {
+      border-color: rgba(29, 155, 240, 0.25);
+      color: #1d9bf0;
+    }
+
+    .export-btn--tweet:hover {
+      background: rgba(29, 155, 240, 0.08);
+      border-color: rgba(29, 155, 240, 0.4);
+      color: #0f172a;
+    }
+
+    /* Back to stats link */
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+      margin-top: 1rem;
+      transition: color var(--transition-speed);
+    }
+
+    .back-link:hover {
+      color: var(--color-accent-cyan);
+    }
+
+    /* ============================================================================
+       FOOTER
+       ========================================================================= */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+
+    .footer-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+
+    .footer-column a {
+      color: var(--color-slate-700);
+      font-size: 0.875rem;
+      transition: color var(--transition-speed);
+    }
+
+    .footer-column a:hover { color: var(--color-slate-900); }
+
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 768px) {
+      .navbar-links { display: none; }
+      .metric-header__top { flex-direction: column; }
+      .stat-summary-row { grid-template-columns: 1fr; }
+      .filters-bar { flex-direction: column; align-items: stretch; }
+      .share-buttons { margin-left: 0; justify-content: space-between; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVIGATION -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <a href="/" class="navbar-brand">
+        <h1 class="heading-font">DraftGuru</h1>
+      </a>
+      <div class="navbar-links">
+        <a href="/news" class="navbar-link">News</a>
+        <a href="/podcasts" class="navbar-link">Podcasts</a>
+        <a href="/film-room" class="navbar-link">Film Room</a>
+        <a href="/stats" class="navbar-link active">Stats</a>
+      </div>
+      <div class="navbar-search">
+        <input type="text" class="search-input" placeholder="Search prospects...">
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <!-- BREADCRUMB -->
+    <div class="breadcrumb">
+      <div class="container">
+        <nav class="breadcrumb-nav">
+          <a href="/stats">Stats</a>
+          <span class="breadcrumb-sep">/</span>
+          <span class="breadcrumb-current">Wingspan</span>
+        </nav>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         METRIC HEADER — Title, description, and record card
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <section class="metric-header">
+      <div class="container">
+        <div class="metric-header__top">
+          <div class="metric-header__title-group">
+            <div class="metric-header__category">
+              &#x1F4CF; Measurements
+            </div>
+            <h2 class="metric-header__title">Wingspan</h2>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         STAT SUMMARY CARDS — Highest, Lowest, Average
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <section class="section">
+      <div class="container">
+        <div class="stat-summary-row">
+
+          <!-- HIGHEST -->
+          <div class="stat-summary-card stat-summary-card--high">
+            <div class="stat-summary-card__header">
+              &#x2B06; Highest
+            </div>
+            <div class="stat-summary-card__image-wrapper">
+              <img src="https://placehold.co/400x533/2d3748/edf2f7?text=Mo+Bamba" alt="Mo Bamba" class="stat-summary-card__image">
+            </div>
+            <div class="stat-summary-card__info">
+              <div class="stat-summary-card__value">7'10"</div>
+              <div class="stat-summary-card__player">Mo Bamba</div>
+              <div class="stat-summary-card__meta">Texas &middot; C &middot; 2018</div>
+            </div>
+          </div>
+
+          <!-- LOWEST -->
+          <div class="stat-summary-card stat-summary-card--low">
+            <div class="stat-summary-card__header">
+              &#x2B07; Lowest
+            </div>
+            <div class="stat-summary-card__image-wrapper">
+              <img src="https://placehold.co/400x533/2d3748/edf2f7?text=Theo+Maledon" alt="Theo Maledon" class="stat-summary-card__image">
+            </div>
+            <div class="stat-summary-card__info">
+              <div class="stat-summary-card__value">5'11.5"</div>
+              <div class="stat-summary-card__player">Theo Maledon</div>
+              <div class="stat-summary-card__meta">France &middot; PG &middot; 2020</div>
+            </div>
+          </div>
+
+          <!-- CLOSEST TO AVERAGE -->
+          <div class="stat-summary-card stat-summary-card--avg">
+            <div class="stat-summary-card__header">
+              &#x1F4CA; Typical (6'8.7" avg)
+            </div>
+            <div class="stat-summary-card__image-wrapper">
+              <img src="https://placehold.co/400x533/2d3748/edf2f7?text=Jalen+Suggs" alt="Jalen Suggs" class="stat-summary-card__image">
+            </div>
+            <div class="stat-summary-card__info">
+              <div class="stat-summary-card__value">6'8.75"</div>
+              <div class="stat-summary-card__player">Jalen Suggs</div>
+              <div class="stat-summary-card__meta">Gonzaga &middot; PG &middot; 2021</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         FILTERS + LEADERBOARD TABLE + SIDEBAR
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <section class="section">
+      <div class="container">
+
+        <!-- Filters -->
+        <div class="filters-bar" style="margin-bottom: 1.25rem;">
+          <span class="filters-bar__label">Metric:</span>
+          <select class="filter-select">
+            <optgroup label="Measurements">
+              <option selected>Wingspan</option>
+              <option>Standing Reach</option>
+              <option>Height (w/ Shoes)</option>
+              <option>Height (Barefoot)</option>
+              <option>Weight</option>
+              <option>Body Fat %</option>
+              <option>Hand Width</option>
+              <option>Hand Length</option>
+            </optgroup>
+            <optgroup label="Athletic Testing">
+              <option>Max Vertical</option>
+              <option>Standing Vertical</option>
+              <option>3/4 Court Sprint</option>
+              <option>Lane Agility</option>
+              <option>Shuttle Run</option>
+              <option>Bench Press</option>
+            </optgroup>
+            <optgroup label="Shooting Drills">
+              <option>Spot-Up</option>
+              <option>Off-Dribble</option>
+              <option>3-Point Star</option>
+              <option>Free Throw</option>
+            </optgroup>
+          </select>
+          <select class="filter-select">
+            <option>All Years</option>
+            <option>2025</option>
+            <option>2024</option>
+            <option>2023</option>
+            <option>2022</option>
+            <option>2021</option>
+            <option>2020</option>
+            <option>2019</option>
+            <option>2018</option>
+            <option>2017</option>
+          </select>
+          <select class="filter-select">
+            <option>All Positions</option>
+            <option>PG</option>
+            <option>SG</option>
+            <option>SF</option>
+            <option>PF</option>
+            <option>C</option>
+          </select>
+          <div class="share-buttons">
+            <span class="filters-bar__results">Showing <strong>1-25</strong> of <strong>847</strong></span>
+            <button class="export-btn" title="Save as Image">
+              <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
+            <button class="export-btn export-btn--tweet" title="Share on X">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M18.87 2H22l-7.33 8.38L23 22h-6.87l-5.37-7.03L4.6 22H1.46l7.9-9.03L1 2h7.03l4.86 6.38L18.87 2Zm-1.2 18.02h1.9L7.46 3.88H5.48l12.19 16.14Z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+          <div class="leaderboard-card">
+              <table class="leaderboard-table">
+                <thead>
+                  <tr>
+                    <th class="col-rank">Rank</th>
+                    <th class="sortable">Player</th>
+                    <th class="col-position sortable">Pos</th>
+                    <th class="col-year sortable">Year</th>
+                    <th class="col-position">Draft</th>
+                    <th class="col-position">Pctl</th>
+                    <th class="col-position">NBA Status</th>
+                    <th class="col-value sorted sortable">Wingspan <span class="sort-arrow">&#x25BC;</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr >
+                    <td class="cell-rank">1</td>
+                    <td>
+                      <a href="/players/mo-bamba" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=MB" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Mo Bamba</span>
+                          <span class="cell-player__school">Texas</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2018</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#6</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--elite"><span class="cell-percentile__value">99th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'10"</td>
+                  </tr>
+                  <tr >
+                    <td class="cell-rank">2</td>
+                    <td>
+                      <a href="/players/rudy-gobert" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=RG" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Rudy Gobert</span>
+                          <span class="cell-player__school">France</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2013</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#27</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--elite"><span class="cell-percentile__value">99th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'8.5"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">3</td>
+                    <td>
+                      <a href="/players/mfiondu-kabengele" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=MK" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Mfiondu Kabengele</span>
+                          <span class="cell-player__school">Florida State</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2019</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#27</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--elite"><span class="cell-percentile__value">99th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--inactive">Out</span></td>
+                    <td class="cell-value tabular-nums">7'6.5"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">4</td>
+                    <td>
+                      <a href="/players/chet-holmgren" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=CH" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Chet Holmgren</span>
+                          <span class="cell-player__school">Gonzaga</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">PF</td>
+                    <td class="cell-year">2022</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#2</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--elite"><span class="cell-percentile__value">98th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'6"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">5</td>
+                    <td>
+                      <a href="/players/walker-kessler" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=WK" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Walker Kessler</span>
+                          <span class="cell-player__school">Auburn</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2022</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#22</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--elite"><span class="cell-percentile__value">98th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'5.5"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">6</td>
+                    <td>
+                      <a href="/players/victor-wembanyama" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=VW" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Victor Wembanyama</span>
+                          <span class="cell-player__school">France</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2023</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#1</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--elite"><span class="cell-percentile__value">97th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'5.25"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">7</td>
+                    <td>
+                      <a href="/players/bol-bol" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=BB" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Bol Bol</span>
+                          <span class="cell-player__school">Oregon</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2019</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#44</span><span class="cell-draft__round">Rd 2</span></td>
+                    <td class="cell-percentile cell-percentile--elite"><span class="cell-percentile__value">97th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'5"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">8</td>
+                    <td>
+                      <a href="/players/deandre-ayton" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=DA" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">DeAndre Ayton</span>
+                          <span class="cell-player__school">Arizona</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2018</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#1</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--elite"><span class="cell-percentile__value">96th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'4.75"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">9</td>
+                    <td>
+                      <a href="/players/paolo-banchero" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=PB" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Paolo Banchero</span>
+                          <span class="cell-player__school">Duke</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">PF</td>
+                    <td class="cell-year">2022</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#1</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">95th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'4.5"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">10</td>
+                    <td>
+                      <a href="/players/jaren-jackson-jr" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=JJ" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Jaren Jackson Jr.</span>
+                          <span class="cell-player__school">Michigan State</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">PF</td>
+                    <td class="cell-year">2018</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#4</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">95th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'4.25"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">11</td>
+                    <td>
+                      <a href="/players/mark-williams" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=MW" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Mark Williams</span>
+                          <span class="cell-player__school">Duke</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2022</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#15</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">94th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'4"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">12</td>
+                    <td>
+                      <a href="/players/mitchell-robinson" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=MR" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Mitchell Robinson</span>
+                          <span class="cell-player__school">Chalmette HS</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2018</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#36</span><span class="cell-draft__round">Rd 2</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">93rd</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'3.75"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">13</td>
+                    <td>
+                      <a href="/players/jalen-smith" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=JS" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Jalen Smith</span>
+                          <span class="cell-player__school">Maryland</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">PF</td>
+                    <td class="cell-year">2020</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#10</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">93rd</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'3.5"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">14</td>
+                    <td>
+                      <a href="/players/robert-williams" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=RW" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Robert Williams III</span>
+                          <span class="cell-player__school">Texas A&amp;M</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2018</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#27</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">92nd</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'3.25"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">15</td>
+                    <td>
+                      <a href="/players/jaxson-hayes" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=JH" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Jaxson Hayes</span>
+                          <span class="cell-player__school">Texas</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2019</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#8</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">91st</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'3"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">16</td>
+                    <td>
+                      <a href="/players/nick-richards" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=NR" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Nick Richards</span>
+                          <span class="cell-player__school">Kentucky</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2020</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#42</span><span class="cell-draft__round">Rd 2</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">90th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'2.75"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">17</td>
+                    <td>
+                      <a href="/players/wendell-carter-jr" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=WC" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Wendell Carter Jr.</span>
+                          <span class="cell-player__school">Duke</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2018</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#7</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">89th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'2.5"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">18</td>
+                    <td>
+                      <a href="/players/isaiah-jackson" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=IJ" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Isaiah Jackson</span>
+                          <span class="cell-player__school">Kentucky</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">PF</td>
+                    <td class="cell-year">2021</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#22</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">88th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'2.25"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">19</td>
+                    <td>
+                      <a href="/players/marvin-bagley" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=MB" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Marvin Bagley III</span>
+                          <span class="cell-player__school">Duke</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">PF</td>
+                    <td class="cell-year">2018</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#2</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">87th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--inactive">Out</span></td>
+                    <td class="cell-value tabular-nums">7'2"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">20</td>
+                    <td>
+                      <a href="/players/evan-mobley" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=EM" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Evan Mobley</span>
+                          <span class="cell-player__school">USC</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">PF</td>
+                    <td class="cell-year">2021</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#3</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">86th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'1.75"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">21</td>
+                    <td>
+                      <a href="/players/james-wiseman" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=JW" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">James Wiseman</span>
+                          <span class="cell-player__school">Memphis</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2020</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#2</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">85th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'1.5"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">22</td>
+                    <td>
+                      <a href="/players/jarrett-allen" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=JA" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Jarrett Allen</span>
+                          <span class="cell-player__school">Texas</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2017</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#22</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">84th</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'1.25"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">23</td>
+                    <td>
+                      <a href="/players/jonathan-isaac" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=JI" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Jonathan Isaac</span>
+                          <span class="cell-player__school">Florida State</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">PF</td>
+                    <td class="cell-year">2017</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#6</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">83rd</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'1"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">24</td>
+                    <td>
+                      <a href="/players/bam-adebayo" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=BA" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Bam Adebayo</span>
+                          <span class="cell-player__school">Kentucky</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">C</td>
+                    <td class="cell-year">2017</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#14</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">82nd</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'0.75"</td>
+                  </tr>
+                  <tr>
+                    <td class="cell-rank">25</td>
+                    <td>
+                      <a href="/players/zion-williamson" class="cell-player">
+                        <img src="https://placehold.co/144x192/edf2f7/1f2937?text=ZW" class="cell-player__thumb" alt="">
+                        <div class="cell-player__info">
+                          <span class="cell-player__name">Zion Williamson</span>
+                          <span class="cell-player__school">Duke</span>
+                        </div>
+                      </a>
+                    </td>
+                    <td class="cell-position">PF</td>
+                    <td class="cell-year">2019</td>
+                    <td class="cell-draft"><span class="cell-draft__pick">#1</span><span class="cell-draft__round">Rd 1</span></td>
+                    <td class="cell-percentile cell-percentile--high"><span class="cell-percentile__value">81st</span></td>
+                    <td class="cell-status"><span class="nba-badge nba-badge--active">Active</span></td>
+                    <td class="cell-value tabular-nums">7'0.5"</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination -->
+            <nav class="pagination">
+              <span class="pagination__btn disabled">&#8592; Prev</span>
+              <span class="pagination__btn active">1</span>
+              <span class="pagination__btn">2</span>
+              <span class="pagination__btn">3</span>
+              <span class="pagination__btn">4</span>
+              <span class="pagination__info">...</span>
+              <span class="pagination__btn">34</span>
+              <span class="pagination__btn">Next &#8594;</span>
+            </nav>
+
+          <a href="/stats" class="back-link">&#8592; Back to All Stats</a>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="/stats">Combine Stats</a></li>
+            <li><a href="/news">News</a></li>
+            <li><a href="/podcasts">Podcasts</a></li>
+            <li><a href="/film-room">Film Room</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Draft Classes</h4>
+          <ul>
+            <li><a href="/stats/combine/2025">2025 Combine</a></li>
+            <li><a href="/stats/combine/2024">2024 Combine</a></li>
+            <li><a href="/stats/combine/2023">2023 Combine</a></li>
+            <li><a href="/stats/combine/2022">2022 Combine</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Top Metrics</h4>
+          <ul>
+            <li><a href="/stats/wingspan_in">Wingspan</a></li>
+            <li><a href="/stats/max_vertical_in">Max Vertical</a></li>
+            <li><a href="/stats/three_quarter_sprint_s">3/4 Sprint</a></li>
+            <li><a href="/stats/bench_press_reps">Bench Press</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">About DraftGuru</a></li>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        &copy; 2026 DraftGuru. NBA Draft Combine data sourced from public records.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

@@ -1,0 +1,2091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NBA Draft Combine Stats & Leaderboards — DraftGuru</title>
+  <meta name="description" content="Explore NBA Draft Combine leaderboards, measurements, and athletic testing results. Browse by year, position, or metric.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       CSS CUSTOM PROPERTIES
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .heading-font { font-family: var(--font-heading); letter-spacing: 0.02em; }
+    .mono-font { font-family: var(--font-mono); }
+    .uppercase { text-transform: uppercase; letter-spacing: 0.06em; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+
+    /* ============================================================================
+       LAYOUT
+       ========================================================================= */
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 4rem; }
+
+    .section-header {
+      font-size: 1.5rem;
+      font-weight: 600;
+      padding-left: 0.5rem;
+      border-left: 4px solid;
+      margin-bottom: 0.5rem;
+    }
+
+    .section-subtitle {
+      font-size: 0.875rem;
+      color: var(--color-slate-500);
+      margin-bottom: 1.5rem;
+      padding-left: 0.5rem;
+    }
+
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(
+        to right, transparent,
+        rgba(148, 163, 184, 0.3) 20%,
+        rgba(148, 163, 184, 0.3) 80%,
+        transparent
+      );
+      margin: 3rem 0;
+    }
+
+    /* ============================================================================
+       NAVBAR
+       ========================================================================= */
+    .navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--color-primary);
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .navbar-brand h1 {
+      font-size: 1.875rem;
+      color: var(--color-white);
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .navbar-links {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      padding: 0.25rem 0;
+      border-bottom: 2px solid transparent;
+      transition: all var(--transition-speed);
+    }
+
+    .navbar-link:hover,
+    .navbar-link.active {
+      color: var(--color-white);
+      border-bottom-color: var(--color-accent-amber);
+    }
+
+    .navbar-search {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .search-input {
+      width: 240px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd;
+      color: var(--color-slate-900);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      outline: none;
+      transition: all var(--transition-speed);
+    }
+
+    .search-input:focus {
+      border-color: var(--color-white);
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
+    }
+
+    /* ============================================================================
+       PAGE HERO — Clean header only
+       ========================================================================= */
+    .stats-hero {
+      padding: 5rem 0 1.5rem;
+      margin-top: 4rem;
+    }
+
+    .stats-hero h2 {
+      font-family: var(--font-heading);
+      font-size: 2rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+    }
+
+    .stats-hero-tagline {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.25rem;
+    }
+
+    /* ============================================================================
+       STAT LEADER CARDS — Used for every metric
+       ========================================================================= */
+    .leaderboard-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+    }
+
+    .stat-leader-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      outline: 2px solid;
+      outline-offset: -2px;
+      transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+      position: relative;
+      cursor: pointer;
+    }
+
+    .stat-leader-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+    }
+
+    /* Pixel corner accents on hover */
+    .stat-leader-card::before,
+    .stat-leader-card::after {
+      content: '';
+      position: absolute;
+      width: 0.75rem;
+      height: 0.75rem;
+      opacity: 0;
+      transition: opacity var(--transition-speed);
+      z-index: 10;
+    }
+
+    .stat-leader-card::before {
+      top: -0.25rem;
+      left: -0.25rem;
+    }
+
+    .stat-leader-card::after {
+      bottom: -0.25rem;
+      right: -0.25rem;
+    }
+
+    .stat-leader-card:hover::before,
+    .stat-leader-card:hover::after {
+      opacity: 1;
+    }
+
+    /* Color themes per category */
+    .stat-leader-card--cyan {
+      outline-color: rgba(6, 182, 212, 0.5);
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(6, 182, 212, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+    .stat-leader-card--cyan::before { background: linear-gradient(45deg, transparent 50%, var(--color-accent-cyan) 50%); }
+    .stat-leader-card--cyan::after { background: linear-gradient(225deg, transparent 50%, var(--color-accent-cyan) 50%); }
+    .stat-leader-card--cyan .stat-leader-card__header {
+      background: linear-gradient(to right, #cffafe, #a5f3fc);
+      border-bottom: 2px solid var(--color-accent-cyan);
+    }
+    .stat-leader-card--cyan .featured-player-rank { color: var(--color-accent-cyan); }
+    .stat-leader-card--cyan .featured-player-image { border-color: rgba(6, 182, 212, 0.4); }
+    .stat-leader-card--cyan .stat-leader-card__view-all { color: var(--color-accent-cyan); }
+
+    .stat-leader-card--amber {
+      outline-color: rgba(245, 158, 11, 0.5);
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(245, 158, 11, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+    .stat-leader-card--amber::before { background: linear-gradient(45deg, transparent 50%, var(--color-accent-amber) 50%); }
+    .stat-leader-card--amber::after { background: linear-gradient(225deg, transparent 50%, var(--color-accent-amber) 50%); }
+    .stat-leader-card--amber .stat-leader-card__header {
+      background: linear-gradient(to right, #fef3c7, #fde68a);
+      border-bottom: 2px solid var(--color-accent-amber);
+    }
+    .stat-leader-card--amber .featured-player-rank { color: var(--color-accent-amber); }
+    .stat-leader-card--amber .featured-player-image { border-color: rgba(245, 158, 11, 0.4); }
+    .stat-leader-card--amber .stat-leader-card__view-all { color: var(--color-accent-amber); }
+
+    .stat-leader-card--rose {
+      outline-color: rgba(244, 63, 94, 0.4);
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(244, 63, 94, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+    .stat-leader-card--rose::before { background: linear-gradient(45deg, transparent 50%, var(--color-accent-rose) 50%); }
+    .stat-leader-card--rose::after { background: linear-gradient(225deg, transparent 50%, var(--color-accent-rose) 50%); }
+    .stat-leader-card--rose .stat-leader-card__header {
+      background: linear-gradient(to right, #ffe4e6, #fecdd3);
+      border-bottom: 2px solid var(--color-accent-rose);
+    }
+    .stat-leader-card--rose .featured-player-rank { color: var(--color-accent-rose); }
+    .stat-leader-card--rose .featured-player-image { border-color: rgba(244, 63, 94, 0.4); }
+    .stat-leader-card--rose .stat-leader-card__view-all { color: var(--color-accent-rose); }
+
+    /* Card header */
+    .stat-leader-card__header {
+      padding: 0.875rem 1rem 0.625rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stat-leader-card__metric {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-800);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .stat-leader-card__metric-icon {
+      font-size: 1rem;
+    }
+
+    .stat-leader-card__view-all {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+
+    /* Featured player (#1) with image */
+    .stat-leader-card__featured {
+      display: grid;
+      grid-template-columns: 100px 1fr;
+      gap: 0.75rem;
+      padding: 0.875rem 1rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      align-items: center;
+    }
+
+    .featured-player-image {
+      width: 100px;
+      height: 120px;
+      border-radius: 0.5rem;
+      object-fit: cover;
+      object-position: 50% 20%;
+      border: 2px solid;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .featured-player-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .featured-player-rank {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .featured-player-name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--color-slate-900);
+      line-height: 1.2;
+    }
+
+    .featured-player-meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    .featured-player-value {
+      font-family: var(--font-heading);
+      font-size: 1.75rem;
+      color: var(--color-slate-900);
+      line-height: 1;
+      margin-top: 0.25rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .featured-player-unit {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      margin-left: 0.25rem;
+    }
+
+    /* Runners-up list */
+    .stat-leader-card__runners {
+      padding: 0.5rem 0;
+    }
+
+    .runner-row {
+      display: grid;
+      grid-template-columns: 2rem 1fr auto;
+      align-items: center;
+      padding: 0.5rem 1rem;
+      gap: 0.5rem;
+      transition: background var(--transition-speed);
+    }
+
+    .runner-row:hover {
+      background: var(--color-slate-50);
+    }
+
+    .runner-rank {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-slate-400);
+      text-align: center;
+    }
+
+    .runner-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .runner-name {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-slate-800);
+      line-height: 1.2;
+    }
+
+    .runner-meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-400);
+    }
+
+    .runner-value {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-700);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       DRAFT CLASS YEAR GRID
+       ========================================================================= */
+    .year-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 1rem;
+    }
+
+    .year-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      padding: 1.25rem 1rem;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+      outline: 2px solid rgba(16, 185, 129, 0.4);
+      outline-offset: -2px;
+      transition: all var(--transition-speed);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(16, 185, 129, 0.06) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+    }
+
+    .year-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+      outline-color: rgba(16, 185, 129, 0.7);
+    }
+
+    .year-card::before,
+    .year-card::after {
+      content: '';
+      position: absolute;
+      width: 0.625rem;
+      height: 0.625rem;
+      opacity: 0;
+      transition: opacity var(--transition-speed);
+    }
+
+    .year-card::before {
+      top: -0.2rem; left: -0.2rem;
+      background: linear-gradient(45deg, transparent 50%, var(--color-accent-emerald) 50%);
+    }
+
+    .year-card::after {
+      bottom: -0.2rem; right: -0.2rem;
+      background: linear-gradient(225deg, transparent 50%, var(--color-accent-emerald) 50%);
+    }
+
+    .year-card:hover::before,
+    .year-card:hover::after { opacity: 1; }
+
+    .year-card__year {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      color: var(--color-slate-900);
+      line-height: 1;
+      margin-bottom: 0.5rem;
+    }
+
+    .year-card__count {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .year-card__metrics {
+      margin-top: 0.75rem;
+      padding-top: 0.625rem;
+      border-top: 1px solid var(--color-slate-200);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      justify-content: center;
+    }
+
+    .year-card__metric-pill {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      line-height: 1.4;
+    }
+
+    .year-card__metric-pill--cyan {
+      background: rgba(6, 182, 212, 0.1);
+      color: #0891b2;
+    }
+
+    .year-card__metric-pill--amber {
+      background: rgba(245, 158, 11, 0.1);
+      color: #d97706;
+    }
+
+    .year-card__metric-pill--rose {
+      background: rgba(244, 63, 94, 0.1);
+      color: #e11d48;
+    }
+
+    /* ============================================================================
+       FOOTER
+       ========================================================================= */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+
+    .footer-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+
+    .footer-column a {
+      color: var(--color-slate-700);
+      font-size: 0.875rem;
+      transition: color var(--transition-speed);
+    }
+
+    .footer-column a:hover { color: var(--color-slate-900); }
+
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       STICKY SECTION NAV
+       ========================================================================= */
+    .stats-section-nav {
+      position: sticky;
+      top: 68px; /* below fixed navbar */
+      z-index: 900;
+      background: var(--color-white);
+      border-bottom: 1px solid var(--color-slate-200);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      margin-bottom: 2rem;
+    }
+
+    .stats-section-nav__inner {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0;
+    }
+
+    .stats-nav-tab {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      padding: 0.875rem 1.25rem;
+      border-bottom: 3px solid transparent;
+      transition: all var(--transition-speed);
+      cursor: pointer;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .stats-nav-tab:hover {
+      color: var(--color-slate-800);
+      background: var(--color-slate-50);
+    }
+
+    .stats-nav-tab--measurements:hover { background: rgba(6, 182, 212, 0.04); }
+    .stats-nav-tab--athletic:hover { background: rgba(245, 158, 11, 0.04); }
+    .stats-nav-tab--shooting:hover { background: rgba(244, 63, 94, 0.04); }
+    .stats-nav-tab--classes:hover { background: rgba(16, 185, 129, 0.04); }
+
+    .stats-nav-tab.active {
+      color: var(--color-slate-900);
+      border-bottom-color: var(--color-accent-cyan);
+    }
+
+    .stats-nav-tab--measurements.active {
+      border-bottom-color: var(--color-accent-cyan);
+      background: rgba(6, 182, 212, 0.06);
+      color: #0e7490;
+    }
+    .stats-nav-tab--athletic.active {
+      border-bottom-color: var(--color-accent-amber);
+      background: rgba(245, 158, 11, 0.06);
+      color: #b45309;
+    }
+    .stats-nav-tab--shooting.active {
+      border-bottom-color: var(--color-accent-rose);
+      background: rgba(244, 63, 94, 0.06);
+      color: #be123c;
+    }
+    .stats-nav-tab--classes.active {
+      border-bottom-color: var(--color-accent-emerald);
+      background: rgba(16, 185, 129, 0.06);
+      color: #047857;
+    }
+
+    .stats-nav-tab__icon {
+      font-size: 0.875rem;
+    }
+
+    .stats-nav-tab__count {
+      font-size: 0.5625rem;
+      background: var(--color-slate-100);
+      color: var(--color-slate-500);
+      padding: 0.125rem 0.375rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    .stats-nav-tab.active .stats-nav-tab__count {
+      background: rgba(6, 182, 212, 0.1);
+      color: var(--color-accent-cyan);
+    }
+
+    .stats-nav-tab--athletic.active .stats-nav-tab__count {
+      background: rgba(245, 158, 11, 0.1);
+      color: var(--color-accent-amber);
+    }
+
+    .stats-nav-tab--shooting.active .stats-nav-tab__count {
+      background: rgba(244, 63, 94, 0.1);
+      color: var(--color-accent-rose);
+    }
+
+    .stats-nav-tab--classes.active .stats-nav-tab__count {
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--color-accent-emerald);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 1024px) {
+      .leaderboard-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 768px) {
+      .leaderboard-grid { grid-template-columns: 1fr; }
+      .year-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+      .stats-hero-row { flex-direction: column; align-items: flex-start; gap: 1rem; }
+      .navbar-links { display: none; }
+      .stats-section-nav__inner { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .stats-nav-tab { padding: 0.75rem 1rem; font-size: 0.6875rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVIGATION -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <a href="/" class="navbar-brand">
+        <h1 class="heading-font">DraftGuru</h1>
+      </a>
+      <div class="navbar-links">
+        <a href="/news" class="navbar-link">News</a>
+        <a href="/podcasts" class="navbar-link">Podcasts</a>
+        <a href="/film-room" class="navbar-link">Film Room</a>
+        <a href="/stats" class="navbar-link active">Stats</a>
+      </div>
+      <div class="navbar-search">
+        <input type="text" class="search-input" placeholder="Search prospects...">
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         HERO — Title + Counters only
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <section class="stats-hero">
+      <div class="container">
+        <h2>NBA Draft Combine</h2>
+        <p class="stats-hero-tagline">Measurements, Testing & Leaderboards</p>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         STICKY SECTION NAV
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <nav class="stats-section-nav">
+      <div class="stats-section-nav__inner">
+        <a href="#measurements" class="stats-nav-tab stats-nav-tab--measurements active">
+          <span class="stats-nav-tab__icon">&#x1F4CF;</span>
+          Measurements
+          <span class="stats-nav-tab__count">8</span>
+        </a>
+        <a href="#athletic-testing" class="stats-nav-tab stats-nav-tab--athletic">
+          <span class="stats-nav-tab__icon">&#x26A1;</span>
+          Athletic Testing
+          <span class="stats-nav-tab__count">6</span>
+        </a>
+        <a href="#shooting-drills" class="stats-nav-tab stats-nav-tab--shooting">
+          <span class="stats-nav-tab__icon">&#x1F3AF;</span>
+          Shooting Drills
+          <span class="stats-nav-tab__count">7</span>
+        </a>
+        <a href="#draft-classes" class="stats-nav-tab stats-nav-tab--classes">
+          <span class="stats-nav-tab__icon">&#x1F4C5;</span>
+          Draft Classes
+          <span class="stats-nav-tab__count">12</span>
+        </a>
+      </div>
+    </nav>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         MEASUREMENTS (Anthropometrics) — Cyan theme
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <section id="measurements" class="section">
+      <div class="container">
+        <h3 class="section-header heading-font" style="border-color: var(--color-accent-cyan);">
+          Measurements
+        </h3>
+        <p class="section-subtitle">Height, wingspan, reach, weight, and hand size</p>
+
+        <div class="leaderboard-grid">
+
+          <!-- Wingspan -->
+          <div class="stat-leader-card stat-leader-card--cyan">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F4CF;</span>
+                Longest Wingspan
+              </span>
+              <a href="/stats/leaderboards?metric=wingspan_in" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=M.+Bamba" alt="Mo Bamba" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Mo Bamba</span>
+                <span class="featured-player-meta">Texas &middot; C &middot; 2018</span>
+                <div>
+                  <span class="featured-player-value">7'10"</span>
+                  <span class="featured-player-unit">wingspan</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Rudy Gobert</span>
+                  <span class="runner-meta">France &middot; C &middot; 2013</span>
+                </div>
+                <span class="runner-value tabular-nums">7'8.5"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Mfiondu Kabengele</span>
+                  <span class="runner-meta">Florida State &middot; C &middot; 2019</span>
+                </div>
+                <span class="runner-value tabular-nums">7'6.5"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Chet Holmgren</span>
+                  <span class="runner-meta">Gonzaga &middot; PF &middot; 2022</span>
+                </div>
+                <span class="runner-value tabular-nums">7'6"</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Standing Reach -->
+          <div class="stat-leader-card stat-leader-card--cyan">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F9CD;</span>
+                Highest Standing Reach
+              </span>
+              <a href="/stats/leaderboards?metric=standing_reach_in" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=T.+Fall" alt="Tacko Fall" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Tacko Fall</span>
+                <span class="featured-player-meta">UCF &middot; C &middot; 2019</span>
+                <div>
+                  <span class="featured-player-value">10'2.5"</span>
+                  <span class="featured-player-unit">reach</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Mo Bamba</span>
+                  <span class="runner-meta">Texas &middot; C &middot; 2018</span>
+                </div>
+                <span class="runner-value tabular-nums">9'7.5"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Rudy Gobert</span>
+                  <span class="runner-meta">France &middot; C &middot; 2013</span>
+                </div>
+                <span class="runner-value tabular-nums">9'7"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Victor Wembanyama</span>
+                  <span class="runner-meta">France &middot; C &middot; 2023</span>
+                </div>
+                <span class="runner-value tabular-nums">9'6.5"</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Height (w/ shoes) -->
+          <div class="stat-leader-card stat-leader-card--cyan">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F4D0;</span>
+                Tallest (w/ Shoes)
+              </span>
+              <a href="/stats/leaderboards?metric=height_w_shoes_in" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=T.+Fall" alt="Tacko Fall" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Tacko Fall</span>
+                <span class="featured-player-meta">UCF &middot; C &middot; 2019</span>
+                <div>
+                  <span class="featured-player-value">7'6.5"</span>
+                  <span class="featured-player-unit">height</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Bol Bol</span>
+                  <span class="runner-meta">Oregon &middot; C &middot; 2019</span>
+                </div>
+                <span class="runner-value tabular-nums">7'2.5"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Victor Wembanyama</span>
+                  <span class="runner-meta">France &middot; C &middot; 2023</span>
+                </div>
+                <span class="runner-value tabular-nums">7'2.25"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Chet Holmgren</span>
+                  <span class="runner-meta">Gonzaga &middot; PF &middot; 2022</span>
+                </div>
+                <span class="runner-value tabular-nums">7'1"</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Weight -->
+          <div class="stat-leader-card stat-leader-card--cyan">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x2696;</span>
+                Heaviest
+              </span>
+              <a href="/stats/leaderboards?metric=weight_lb" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=Z.+Williamson" alt="Zion Williamson" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Zion Williamson</span>
+                <span class="featured-player-meta">Duke &middot; PF &middot; 2019</span>
+                <div>
+                  <span class="featured-player-value">284</span>
+                  <span class="featured-player-unit">lbs</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Tacko Fall</span>
+                  <span class="runner-meta">UCF &middot; C &middot; 2019</span>
+                </div>
+                <span class="runner-value tabular-nums">280 lbs</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Steven Adams</span>
+                  <span class="runner-meta">Pittsburgh &middot; C &middot; 2013</span>
+                </div>
+                <span class="runner-value tabular-nums">277 lbs</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">DeAndre Ayton</span>
+                  <span class="runner-meta">Arizona &middot; C &middot; 2018</span>
+                </div>
+                <span class="runner-value tabular-nums">270 lbs</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hand Width -->
+          <div class="stat-leader-card stat-leader-card--cyan">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x270B;</span>
+                Largest Hand Width
+              </span>
+              <a href="/stats/leaderboards?metric=hand_width_in" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=B.+Bol" alt="Bol Bol" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Bol Bol</span>
+                <span class="featured-player-meta">Oregon &middot; C &middot; 2019</span>
+                <div>
+                  <span class="featured-player-value">11.5"</span>
+                  <span class="featured-player-unit">hand width</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Giannis Antetokounmpo</span>
+                  <span class="runner-meta">Greece &middot; PF &middot; 2013</span>
+                </div>
+                <span class="runner-value tabular-nums">11.25"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Chet Holmgren</span>
+                  <span class="runner-meta">Gonzaga &middot; PF &middot; 2022</span>
+                </div>
+                <span class="runner-value tabular-nums">11.0"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Victor Wembanyama</span>
+                  <span class="runner-meta">France &middot; C &middot; 2023</span>
+                </div>
+                <span class="runner-value tabular-nums">10.75"</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hand Length -->
+          <div class="stat-leader-card stat-leader-card--cyan">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F91A;</span>
+                Longest Hand Length
+              </span>
+              <a href="/stats/leaderboards?metric=hand_length_in" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=G.+Antetokounmpo" alt="Giannis Antetokounmpo" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Giannis Antetokounmpo</span>
+                <span class="featured-player-meta">Greece &middot; PF &middot; 2013</span>
+                <div>
+                  <span class="featured-player-value">9.85"</span>
+                  <span class="featured-player-unit">hand length</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Bol Bol</span>
+                  <span class="runner-meta">Oregon &middot; C &middot; 2019</span>
+                </div>
+                <span class="runner-value tabular-nums">9.75"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Mo Bamba</span>
+                  <span class="runner-meta">Texas &middot; C &middot; 2018</span>
+                </div>
+                <span class="runner-value tabular-nums">9.5"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Tacko Fall</span>
+                  <span class="runner-meta">UCF &middot; C &middot; 2019</span>
+                </div>
+                <span class="runner-value tabular-nums">9.5"</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Body Fat % -->
+          <div class="stat-leader-card stat-leader-card--cyan">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F4AA;</span>
+                Lowest Body Fat %
+              </span>
+              <a href="/stats/leaderboards?metric=body_fat_pct" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=D.+Mitchell" alt="Donovan Mitchell" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Donovan Mitchell</span>
+                <span class="featured-player-meta">Louisville &middot; SG &middot; 2017</span>
+                <div>
+                  <span class="featured-player-value">3.2%</span>
+                  <span class="featured-player-unit">body fat</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">De'Aaron Fox</span>
+                  <span class="runner-meta">Kentucky &middot; PG &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">3.4%</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Dennis Smith Jr.</span>
+                  <span class="runner-meta">NC State &middot; PG &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">3.5%</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Hamidou Diallo</span>
+                  <span class="runner-meta">Kentucky &middot; SG &middot; 2018</span>
+                </div>
+                <span class="runner-value tabular-nums">3.7%</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Height (w/o shoes) -->
+          <div class="stat-leader-card stat-leader-card--cyan">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F9B6;</span>
+                Tallest (Barefoot)
+              </span>
+              <a href="/stats/leaderboards?metric=height_wo_shoes_in" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=T.+Fall" alt="Tacko Fall" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Tacko Fall</span>
+                <span class="featured-player-meta">UCF &middot; C &middot; 2019</span>
+                <div>
+                  <span class="featured-player-value">7'5.25"</span>
+                  <span class="featured-player-unit">barefoot</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Bol Bol</span>
+                  <span class="runner-meta">Oregon &middot; C &middot; 2019</span>
+                </div>
+                <span class="runner-value tabular-nums">7'1.5"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Victor Wembanyama</span>
+                  <span class="runner-meta">France &middot; C &middot; 2023</span>
+                </div>
+                <span class="runner-value tabular-nums">7'1"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Chet Holmgren</span>
+                  <span class="runner-meta">Gonzaga &middot; PF &middot; 2022</span>
+                </div>
+                <span class="runner-value tabular-nums">6'11.75"</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="section-divider"></div></div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         ATHLETIC TESTING (Agility) — Amber theme
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <section id="athletic-testing" class="section">
+      <div class="container">
+        <h3 class="section-header heading-font" style="border-color: var(--color-accent-amber);">
+          Athletic Testing
+        </h3>
+        <p class="section-subtitle">Speed, explosiveness, agility, and strength</p>
+
+        <div class="leaderboard-grid">
+
+          <!-- Max Vertical -->
+          <div class="stat-leader-card stat-leader-card--amber">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F680;</span>
+                Highest Max Vertical
+              </span>
+              <a href="/stats/leaderboards?metric=max_vertical_in" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=K.+Martin+Jr" alt="Kenyon Martin Jr" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Kenyon Martin Jr.</span>
+                <span class="featured-player-meta">IMG Academy &middot; SF &middot; 2020</span>
+                <div>
+                  <span class="featured-player-value">44.5"</span>
+                  <span class="featured-player-unit">max vertical</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Cassius Stanley</span>
+                  <span class="runner-meta">Duke &middot; SG &middot; 2020</span>
+                </div>
+                <span class="runner-value tabular-nums">44.0"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Dennis Smith Jr.</span>
+                  <span class="runner-meta">NC State &middot; PG &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">43.5"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Hamidou Diallo</span>
+                  <span class="runner-meta">Kentucky &middot; SG &middot; 2018</span>
+                </div>
+                <span class="runner-value tabular-nums">43.0"</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Standing Vertical -->
+          <div class="stat-leader-card stat-leader-card--amber">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x2B06;</span>
+                Highest Standing Vertical
+              </span>
+              <a href="/stats/leaderboards?metric=standing_vertical_in" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=D.+Smith+Jr" alt="Dennis Smith Jr" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Dennis Smith Jr.</span>
+                <span class="featured-player-meta">NC State &middot; PG &middot; 2017</span>
+                <div>
+                  <span class="featured-player-value">37.5"</span>
+                  <span class="featured-player-unit">standing vert</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Kenyon Martin Jr.</span>
+                  <span class="runner-meta">IMG Academy &middot; SF &middot; 2020</span>
+                </div>
+                <span class="runner-value tabular-nums">37.0"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Donovan Mitchell</span>
+                  <span class="runner-meta">Louisville &middot; SG &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">36.5"</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Cassius Stanley</span>
+                  <span class="runner-meta">Duke &middot; SG &middot; 2020</span>
+                </div>
+                <span class="runner-value tabular-nums">36.0"</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3/4 Court Sprint -->
+          <div class="stat-leader-card stat-leader-card--amber">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x26A1;</span>
+                Fastest 3/4 Sprint
+              </span>
+              <a href="/stats/leaderboards?metric=three_quarter_sprint_s" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=D.+Fox" alt="De'Aaron Fox" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">De'Aaron Fox</span>
+                <span class="featured-player-meta">Kentucky &middot; PG &middot; 2017</span>
+                <div>
+                  <span class="featured-player-value">3.04s</span>
+                  <span class="featured-player-unit">3/4 sprint</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Jalen Green</span>
+                  <span class="runner-meta">G League &middot; SG &middot; 2021</span>
+                </div>
+                <span class="runner-value tabular-nums">3.08s</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">John Wall</span>
+                  <span class="runner-meta">Kentucky &middot; PG &middot; 2010</span>
+                </div>
+                <span class="runner-value tabular-nums">3.10s</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Donovan Mitchell</span>
+                  <span class="runner-meta">Louisville &middot; SG &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">3.11s</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Lane Agility -->
+          <div class="stat-leader-card stat-leader-card--amber">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F3C3;</span>
+                Fastest Lane Agility
+              </span>
+              <a href="/stats/leaderboards?metric=lane_agility_time_s" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=D.+Mitchell" alt="Donovan Mitchell" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Donovan Mitchell</span>
+                <span class="featured-player-meta">Louisville &middot; SG &middot; 2017</span>
+                <div>
+                  <span class="featured-player-value">9.37s</span>
+                  <span class="featured-player-unit">lane agility</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">De'Aaron Fox</span>
+                  <span class="runner-meta">Kentucky &middot; PG &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">9.50s</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Dennis Smith Jr.</span>
+                  <span class="runner-meta">NC State &middot; PG &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">9.55s</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Collin Sexton</span>
+                  <span class="runner-meta">Alabama &middot; PG &middot; 2018</span>
+                </div>
+                <span class="runner-value tabular-nums">9.62s</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shuttle Run -->
+          <div class="stat-leader-card stat-leader-card--amber">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F504;</span>
+                Fastest Shuttle Run
+              </span>
+              <a href="/stats/leaderboards?metric=shuttle_run_s" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=D.+Fox" alt="De'Aaron Fox" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">De'Aaron Fox</span>
+                <span class="featured-player-meta">Kentucky &middot; PG &middot; 2017</span>
+                <div>
+                  <span class="featured-player-value">2.73s</span>
+                  <span class="featured-player-unit">shuttle run</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Dennis Smith Jr.</span>
+                  <span class="runner-meta">NC State &middot; PG &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">2.80s</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Donovan Mitchell</span>
+                  <span class="runner-meta">Louisville &middot; SG &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">2.82s</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Collin Sexton</span>
+                  <span class="runner-meta">Alabama &middot; PG &middot; 2018</span>
+                </div>
+                <span class="runner-value tabular-nums">2.85s</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bench Press -->
+          <div class="stat-leader-card stat-leader-card--amber">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F3CB;</span>
+                Most Bench Press Reps
+              </span>
+              <a href="/stats/leaderboards?metric=bench_press_reps" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=T.+Fall" alt="Tacko Fall" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">Tacko Fall</span>
+                <span class="featured-player-meta">UCF &middot; C &middot; 2019</span>
+                <div>
+                  <span class="featured-player-value">24</span>
+                  <span class="featured-player-unit">reps @ 185 lbs</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Jonathan Isaac</span>
+                  <span class="runner-meta">FSU &middot; PF &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">22 reps</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Bam Adebayo</span>
+                  <span class="runner-meta">Kentucky &middot; C &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">21 reps</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Jarrett Allen</span>
+                  <span class="runner-meta">Texas &middot; C &middot; 2017</span>
+                </div>
+                <span class="runner-value tabular-nums">20 reps</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="section-divider"></div></div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         SHOOTING DRILLS — Rose theme
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <section id="shooting-drills" class="section">
+      <div class="container">
+        <h3 class="section-header heading-font" style="border-color: var(--color-accent-rose);">
+          Shooting Drills
+        </h3>
+        <p class="section-subtitle">Spot-up, off-dribble, three-point, midrange, and free throw results</p>
+
+        <div class="leaderboard-grid">
+
+          <!-- Spot-Up -->
+          <div class="stat-leader-card stat-leader-card--rose">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F3AF;</span>
+                Best Spot-Up Shooting
+              </span>
+              <a href="/stats/leaderboards?metric=spot_up" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=Player" alt="Player" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">TBD from Data</span>
+                <span class="featured-player-meta">School &middot; POS &middot; Year</span>
+                <div>
+                  <span class="featured-player-value">15/15</span>
+                  <span class="featured-player-unit">100.0%</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">14/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">13/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">13/15</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Off-Dribble -->
+          <div class="stat-leader-card stat-leader-card--rose">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F3C0;</span>
+                Best Off-Dribble
+              </span>
+              <a href="/stats/leaderboards?metric=off_dribble" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=Player" alt="Player" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">TBD from Data</span>
+                <span class="featured-player-meta">School &middot; POS &middot; Year</span>
+                <div>
+                  <span class="featured-player-value">14/15</span>
+                  <span class="featured-player-unit">93.3%</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">13/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">12/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">12/15</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3-Point (Star) -->
+          <div class="stat-leader-card stat-leader-card--rose">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x2B50;</span>
+                Best 3-Point Star
+              </span>
+              <a href="/stats/leaderboards?metric=three_point_star" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=Player" alt="Player" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">TBD from Data</span>
+                <span class="featured-player-meta">School &middot; POS &middot; Year</span>
+                <div>
+                  <span class="featured-player-value">14/15</span>
+                  <span class="featured-player-unit">93.3%</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">13/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">12/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">12/15</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Free Throws -->
+          <div class="stat-leader-card stat-leader-card--rose">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F945;</span>
+                Best Free Throw
+              </span>
+              <a href="/stats/leaderboards?metric=free_throw" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=Player" alt="Player" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">TBD from Data</span>
+                <span class="featured-player-meta">School &middot; POS &middot; Year</span>
+                <div>
+                  <span class="featured-player-value">15/15</span>
+                  <span class="featured-player-unit">100.0%</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">14/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">14/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">13/15</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Midrange Star -->
+          <div class="stat-leader-card stat-leader-card--rose">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F3C0;</span>
+                Best Midrange Star
+              </span>
+              <a href="/stats/leaderboards?metric=midrange_star" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=Player" alt="Player" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">TBD from Data</span>
+                <span class="featured-player-meta">School &middot; POS &middot; Year</span>
+                <div>
+                  <span class="featured-player-value">14/15</span>
+                  <span class="featured-player-unit">93.3%</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">13/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">12/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">12/15</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3-Point Side -->
+          <div class="stat-leader-card stat-leader-card--rose">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F3C0;</span>
+                Best 3-Point Side
+              </span>
+              <a href="/stats/leaderboards?metric=three_point_side" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=Player" alt="Player" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">TBD from Data</span>
+                <span class="featured-player-meta">School &middot; POS &middot; Year</span>
+                <div>
+                  <span class="featured-player-value">13/15</span>
+                  <span class="featured-player-unit">86.7%</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">12/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">12/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">11/15</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Midrange Side -->
+          <div class="stat-leader-card stat-leader-card--rose">
+            <div class="stat-leader-card__header">
+              <span class="stat-leader-card__metric">
+                <span class="stat-leader-card__metric-icon">&#x1F3C0;</span>
+                Best Midrange Side
+              </span>
+              <a href="/stats/leaderboards?metric=midrange_side" class="stat-leader-card__view-all">View All &#8594;</a>
+            </div>
+            <div class="stat-leader-card__featured">
+              <img src="https://placehold.co/200x240/edf2f7/1f2937?text=Player" alt="Player" class="featured-player-image">
+              <div class="featured-player-info">
+                <span class="featured-player-rank mono-font">#1 All-Time</span>
+                <span class="featured-player-name">TBD from Data</span>
+                <span class="featured-player-meta">School &middot; POS &middot; Year</span>
+                <div>
+                  <span class="featured-player-value">14/15</span>
+                  <span class="featured-player-unit">93.3%</span>
+                </div>
+              </div>
+            </div>
+            <div class="stat-leader-card__runners">
+              <div class="runner-row">
+                <span class="runner-rank">2</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">13/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">3</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">12/15</span>
+              </div>
+              <div class="runner-row">
+                <span class="runner-rank">4</span>
+                <div class="runner-info">
+                  <span class="runner-name">Player Name</span>
+                  <span class="runner-meta">School &middot; POS &middot; Year</span>
+                </div>
+                <span class="runner-value tabular-nums">12/15</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <div class="container"><div class="section-divider"></div></div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         DRAFT CLASS YEAR GRID
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <section id="draft-classes" class="section">
+      <div class="container">
+        <h3 class="section-header heading-font" style="border-color: var(--color-accent-emerald);">
+          Browse by Draft Class
+        </h3>
+        <p class="section-subtitle">Explore full combine results for every year</p>
+
+        <div class="year-grid">
+          <a href="/stats/combine/2025" class="year-card">
+            <div class="year-card__year">2025</div>
+            <div class="year-card__count">72 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+              <span class="year-card__metric-pill year-card__metric-pill--rose">Shooting</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2024" class="year-card">
+            <div class="year-card__year">2024</div>
+            <div class="year-card__count">78 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+              <span class="year-card__metric-pill year-card__metric-pill--rose">Shooting</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2023" class="year-card">
+            <div class="year-card__year">2023</div>
+            <div class="year-card__count">76 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+              <span class="year-card__metric-pill year-card__metric-pill--rose">Shooting</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2022" class="year-card">
+            <div class="year-card__year">2022</div>
+            <div class="year-card__count">69 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+              <span class="year-card__metric-pill year-card__metric-pill--rose">Shooting</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2021" class="year-card">
+            <div class="year-card__year">2021</div>
+            <div class="year-card__count">74 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2020" class="year-card">
+            <div class="year-card__year">2020</div>
+            <div class="year-card__count">65 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2019" class="year-card">
+            <div class="year-card__year">2019</div>
+            <div class="year-card__count">71 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+              <span class="year-card__metric-pill year-card__metric-pill--rose">Shooting</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2018" class="year-card">
+            <div class="year-card__year">2018</div>
+            <div class="year-card__count">68 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+              <span class="year-card__metric-pill year-card__metric-pill--rose">Shooting</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2017" class="year-card">
+            <div class="year-card__year">2017</div>
+            <div class="year-card__count">66 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+              <span class="year-card__metric-pill year-card__metric-pill--rose">Shooting</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2016" class="year-card">
+            <div class="year-card__year">2016</div>
+            <div class="year-card__count">63 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2015" class="year-card">
+            <div class="year-card__year">2015</div>
+            <div class="year-card__count">61 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+            </div>
+          </a>
+          <a href="/stats/combine/2014" class="year-card">
+            <div class="year-card__year">2014</div>
+            <div class="year-card__count">58 Players</div>
+            <div class="year-card__metrics">
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="/stats">Combine Stats</a></li>
+            <li><a href="/stats/leaderboards">Leaderboards</a></li>
+            <li><a href="/consensus">Consensus Mock</a></li>
+            <li><a href="/news">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Draft Classes</h4>
+          <ul>
+            <li><a href="/stats/combine/2025">2025 Combine</a></li>
+            <li><a href="/stats/combine/2024">2024 Combine</a></li>
+            <li><a href="/stats/combine/2023">2023 Combine</a></li>
+            <li><a href="/stats/combine/2022">2022 Combine</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Top Metrics</h4>
+          <ul>
+            <li><a href="/stats/metrics/wingspan_in">Wingspan</a></li>
+            <li><a href="/stats/metrics/max_vertical_in">Max Vertical</a></li>
+            <li><a href="/stats/metrics/three_quarter_sprint_s">3/4 Sprint</a></li>
+            <li><a href="/stats/metrics/bench_press_reps">Bench Press</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">About DraftGuru</a></li>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        &copy; 2026 DraftGuru. NBA Draft Combine data sourced from public records.
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scroll-spy: highlight active nav tab based on scroll position -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const tabs = document.querySelectorAll('.stats-nav-tab');
+      const sections = document.querySelectorAll('#measurements, #athletic-testing, #shooting-drills, #draft-classes');
+      const navHeight = 68 + 52; // navbar + sticky nav height
+
+      // Smooth scroll on tab click
+      tabs.forEach(function(tab) {
+        tab.addEventListener('click', function(e) {
+          e.preventDefault();
+          var target = document.querySelector(this.getAttribute('href'));
+          if (target) {
+            window.scrollTo({
+              top: target.offsetTop - navHeight + 4,
+              behavior: 'smooth'
+            });
+          }
+        });
+      });
+
+      // Highlight active tab on scroll
+      function onScroll() {
+        var scrollPos = window.scrollY + navHeight + 20;
+        var activeId = '';
+
+        sections.forEach(function(section) {
+          if (section.offsetTop <= scrollPos) {
+            activeId = section.id;
+          }
+        });
+
+        tabs.forEach(function(tab) {
+          var href = tab.getAttribute('href');
+          if (href === '#' + activeId) {
+            tab.classList.add('active');
+          } else {
+            tab.classList.remove('active');
+          }
+        });
+      }
+
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+    });
+  </script>
+</body>
+</html>
