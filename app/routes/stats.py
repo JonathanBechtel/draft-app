@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.combine_stats_service import (
@@ -82,6 +82,15 @@ def _entry_to_dict(entry: object) -> dict:
     }
     d.update(_player_photo_urls(entry.player_id, entry.slug, entry.display_name))
     return d
+
+
+DEFAULT_METRIC = "wingspan_in"
+
+
+@router.get("/", response_class=RedirectResponse)
+async def stats_landing() -> RedirectResponse:
+    """Redirect /stats to the default metric leaderboard."""
+    return RedirectResponse(url=f"/stats/{DEFAULT_METRIC}", status_code=302)
 
 
 @router.get("/{metric_key}", response_class=HTMLResponse)

@@ -103,7 +103,12 @@
       <!-- Filter Bar -->
       <form method="get" class="stats-filters-bar">
         <span class="stats-filters-bar__label mono-font uppercase">Metric:</span>
-        <select name="metric_key" class="stats-filter-select" onchange="window.location.href='/stats/' + this.value + '{% if active_year %}?year={{ active_year }}{% endif %}{% if active_position %}&position={{ active_position }}{% endif %}';">
+        {# Build query string for metric switch, preserving year/position filters #}
+        {% set ns_qs = namespace(parts=[]) %}
+        {% if active_year %}{% set ns_qs.parts = ns_qs.parts + ['year=' ~ active_year] %}{% endif %}
+        {% if active_position %}{% set ns_qs.parts = ns_qs.parts + ['position=' ~ active_position] %}{% endif %}
+        {% set metric_qs = '?' ~ ns_qs.parts | join('&') if ns_qs.parts else '' %}
+        <select name="metric_key" class="stats-filter-select" onchange="window.location.href='/stats/' + this.value + '{{ metric_qs }}';">
           {% for cat_name, cat_metrics in metrics_grouped.items() %}
           <optgroup label="{{ cat_name | replace('_', ' ') | title }}">
             {% for m in cat_metrics %}

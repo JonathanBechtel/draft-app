@@ -366,12 +366,15 @@ async def get_leaderboard(
     base = _build_base_query(metric_key, year=year, position=position)
     order_col = _order_column(metric_key)
 
+    # PlayerMaster.id as tiebreaker for deterministic ordering
+    tiebreak = PlayerMaster.id.asc()  # type: ignore[union-attr]
+
     if defn.sort_direction == "asc":
-        ordered = base.order_by(order_col.asc())  # type: ignore[union-attr]
-        reverse_ordered = base.order_by(order_col.desc())  # type: ignore[union-attr]
+        ordered = base.order_by(order_col.asc(), tiebreak)  # type: ignore[union-attr]
+        reverse_ordered = base.order_by(order_col.desc(), tiebreak)  # type: ignore[union-attr]
     else:
-        ordered = base.order_by(order_col.desc())  # type: ignore[union-attr]
-        reverse_ordered = base.order_by(order_col.asc())  # type: ignore[union-attr]
+        ordered = base.order_by(order_col.desc(), tiebreak)  # type: ignore[union-attr]
+        reverse_ordered = base.order_by(order_col.asc(), tiebreak)  # type: ignore[union-attr]
 
     # Total count
     count_col = getattr(defn.table, defn.column)
@@ -454,17 +457,18 @@ async def get_leaderboard(
 async def get_available_years(db: AsyncSession) -> list[int]:
     """Get distinct years that have combine data, sorted descending.
 
-    Uses Season.end_year joined to CombineAnthro as the primary signal.
+    Unions anthro and agility seasons so both data sources contribute.
     """
-    stmt = (
-        select(Season.end_year)  # type: ignore[call-overload]
-        .distinct()
-        .join(
-            CombineAnthro,
-            CombineAnthro.season_id == Season.id,  # type: ignore[arg-type]
-        )
-        .order_by(Season.end_year.desc())  # type: ignore[union-attr,attr-defined]
+    anthro_years = select(Season.end_year).join(  # type: ignore[call-overload]
+        CombineAnthro,
+        CombineAnthro.season_id == Season.id,  # type: ignore[arg-type]
     )
+    agility_years = select(Season.end_year).join(  # type: ignore[call-overload]
+        CombineAgility,
+        CombineAgility.season_id == Season.id,  # type: ignore[arg-type]
+    )
+    combined = anthro_years.union(agility_years).subquery()
+    stmt = select(combined.c.end_year).distinct().order_by(combined.c.end_year.desc())
     result = await db.execute(stmt)
     return [row[0] for row in result.all()]
 
@@ -472,9 +476,15 @@ async def get_available_years(db: AsyncSession) -> list[int]:
 async def get_available_positions(db: AsyncSession) -> list[tuple[str, str]]:
     """Get position codes that have combine data.
 
+    Unions anthro and agility player_ids so both data sources contribute.
+
     Returns:
         List of (code, description) tuples sorted alphabetically.
     """
+    anthro_players = select(CombineAnthro.player_id)  # type: ignore[call-overload]
+    agility_players = select(CombineAgility.player_id)  # type: ignore[call-overload]
+    combined_players = anthro_players.union(agility_players).subquery()
+
     stmt = (
         select(Position.code, Position.description)  # type: ignore[call-overload]
         .distinct()
@@ -483,8 +493,8 @@ async def get_available_positions(db: AsyncSession) -> list[tuple[str, str]]:
             PlayerStatus.position_id == Position.id,  # type: ignore[arg-type]
         )
         .join(
-            CombineAnthro,
-            CombineAnthro.player_id == PlayerStatus.player_id,  # type: ignore[arg-type]
+            combined_players,
+            combined_players.c.player_id == PlayerStatus.player_id,  # type: ignore[arg-type]
         )
         .order_by(Position.code)  # type: ignore[union-attr]
     )
