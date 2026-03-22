@@ -263,7 +263,8 @@ def _build_base_query(
 
     Returns a select() statement that yields:
         (combine_table, PlayerMaster, PlayerStatus, Position, Season)
-    filtered by non-null metric values and optional year/position.
+    Position is joined via the combine table's position_id (the position
+    recorded at the combine), not PlayerStatus (current NBA position).
     """
     defn = METRIC_COLUMN_MAP[metric_key]
     table = defn.table
@@ -281,7 +282,7 @@ def _build_base_query(
         )
         .outerjoin(
             Position,
-            PlayerStatus.position_id == Position.id,  # type: ignore[arg-type]
+            table.position_id == Position.id,  # type: ignore[arg-type,attr-defined]
         )
         .join(
             Season,
@@ -386,12 +387,8 @@ async def get_leaderboard(
             defn.table.player_id == PlayerMaster.id,  # type: ignore[arg-type,attr-defined]
         )
         .outerjoin(
-            PlayerStatus,
-            PlayerMaster.id == PlayerStatus.player_id,  # type: ignore[arg-type]
-        )
-        .outerjoin(
             Position,
-            PlayerStatus.position_id == Position.id,  # type: ignore[arg-type]
+            defn.table.position_id == Position.id,  # type: ignore[arg-type,attr-defined]
         )
         .join(
             Season,
@@ -476,25 +473,25 @@ async def get_available_years(db: AsyncSession) -> list[int]:
 async def get_available_positions(db: AsyncSession) -> list[tuple[str, str]]:
     """Get position codes that have combine data.
 
-    Unions anthro and agility player_ids so both data sources contribute.
+    Unions anthro and agility position_ids from combine tables directly.
 
     Returns:
         List of (code, description) tuples sorted alphabetically.
     """
-    anthro_players = select(CombineAnthro.player_id)  # type: ignore[call-overload]
-    agility_players = select(CombineAgility.player_id)  # type: ignore[call-overload]
-    combined_players = anthro_players.union(agility_players).subquery()
+    anthro_positions = select(CombineAnthro.position_id).where(  # type: ignore[call-overload]
+        CombineAnthro.position_id.isnot(None)  # type: ignore[union-attr]
+    )
+    agility_positions = select(CombineAgility.position_id).where(  # type: ignore[call-overload]
+        CombineAgility.position_id.isnot(None)  # type: ignore[union-attr]
+    )
+    combined_pos_ids = anthro_positions.union(agility_positions).subquery()
 
     stmt = (
         select(Position.code, Position.description)  # type: ignore[call-overload]
         .distinct()
         .join(
-            PlayerStatus,
-            PlayerStatus.position_id == Position.id,  # type: ignore[arg-type]
-        )
-        .join(
-            combined_players,
-            combined_players.c.player_id == PlayerStatus.player_id,  # type: ignore[arg-type]
+            combined_pos_ids,
+            combined_pos_ids.c.position_id == Position.id,  # type: ignore[arg-type]
         )
         .order_by(Position.code)  # type: ignore[union-attr]
     )

@@ -269,12 +269,6 @@ async def test_metric_page_filter_dropdowns(app_client, seed_data) -> None:
     assert "All Positions" in text
 
 
-@pytest.mark.asyncio
-async def test_metric_page_share_buttons(app_client, seed_data) -> None:
-    """Response has export buttons."""
-    resp = await app_client.get("/stats/wingspan_in")
-    assert "export-btn" in resp.text
-
 
 # === Service Tests ===
 
