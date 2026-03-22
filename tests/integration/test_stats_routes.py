@@ -1,6 +1,7 @@
 """Integration tests for stats leaderboard routes and service."""
 
 import pytest
+import pytest_asyncio
 
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
@@ -116,7 +117,7 @@ async def _create_agility(
     return agility
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def seed_data(db_session):
     """Seed 5 players with combine anthro data across 2 seasons."""
     pos_c = await _create_position(db_session, "C", ["big"])
