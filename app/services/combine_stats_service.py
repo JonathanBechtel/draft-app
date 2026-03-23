@@ -899,14 +899,37 @@ async def get_year_player_counts(db: AsyncSession) -> list[YearStats]:
         reverse=True,
     )
 
+    # Compute distinct player counts across all sources per year
+    union_stmt: Any = (
+        select(  # type: ignore[call-overload]
+            Season.end_year,
+            CombineAnthro.player_id,
+        )
+        .join(Season, CombineAnthro.season_id == Season.id)  # type: ignore[arg-type]
+        .union(
+            select(  # type: ignore[call-overload]
+                Season.end_year,
+                CombineAgility.player_id,
+            ).join(Season, CombineAgility.season_id == Season.id)  # type: ignore[arg-type]
+        )
+        .union(
+            select(  # type: ignore[call-overload]
+                Season.end_year,
+                CombineShooting.player_id,
+            ).join(Season, CombineShooting.season_id == Season.id)  # type: ignore[arg-type]
+        )
+    ).subquery()
+    count_stmt: Any = select(  # type: ignore[call-overload]
+        union_stmt.c.end_year,
+        func.count(func.distinct(union_stmt.c.player_id)),
+    ).group_by(union_stmt.c.end_year)
+    count_result = await db.execute(count_stmt)
+    combined_counts: dict[int, int] = {row[0]: row[1] for row in count_result.all()}
+
     return [
         YearStats(
             year=y,
-            player_count=max(
-                anthro_counts.get(y, 0),
-                agility_counts.get(y, 0),
-                shooting_counts.get(y, 0),
-            ),
+            player_count=combined_counts.get(y, 0),
             has_anthro=y in anthro_counts,
             has_agility=y in agility_counts,
             has_shooting=y in shooting_counts,

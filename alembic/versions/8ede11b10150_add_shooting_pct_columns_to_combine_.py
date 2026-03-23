@@ -46,7 +46,7 @@ def upgrade() -> None:
     for pct_col, (fgm_col, fga_col) in DRILL_PAIRS.items():
         op.execute(
             f"UPDATE combine_shooting_results "
-            f"SET {pct_col} = ROUND(({fgm_col}::float / {fga_col}) * 100, 1) "
+            f"SET {pct_col} = ROUND(({fgm_col}::numeric / {fga_col}) * 100, 1) "
             f"WHERE {fga_col} IS NOT NULL AND {fga_col} > 0 "
             f"AND {fgm_col} IS NOT NULL"
         )
