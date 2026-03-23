@@ -27,7 +27,12 @@ from app.schemas.player_aliases import PlayerAlias
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.combine_agility import CombineAgility
-from app.schemas.combine_shooting import CombineShooting, SHOOTING_DRILL_COLUMNS
+from app.schemas.combine_shooting import (
+    CombineShooting,
+    SHOOTING_DRILL_COLUMNS,
+    SHOOTING_PCT_COLUMNS,
+    compute_shooting_pct,
+)
 from app.schemas.positions import Position
 from app.models.position_taxonomy import derive_position_tags, get_parents_for_fine
 
@@ -346,7 +351,7 @@ async def ingest_shooting(session: AsyncSession, rows: List[Dict[str, str]]) -> 
         nba_pid = _to_opt_int(row.get("player_id"))
         raw_name = row.get("player_name")
 
-        payload: Dict[str, Optional[int] | Optional[str]] = {
+        payload: Dict[str, Optional[int] | Optional[str] | Optional[float]] = {
             "player_id": pm.id,
             "season_id": season.id,
             "position_id": position_id,
@@ -360,6 +365,7 @@ async def ingest_shooting(session: AsyncSession, rows: List[Dict[str, str]]) -> 
             col_pair = SHOOTING_DRILL_COLUMNS[drill_key]
             payload[col_pair[0]] = fgm
             payload[col_pair[1]] = fga
+            payload[SHOOTING_PCT_COLUMNS[drill_key]] = compute_shooting_pct(fgm, fga)
 
         has_data = any(
             payload[col] is not None

@@ -9,6 +9,7 @@ from app.services.combine_stats_service import (
 )
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
+from app.schemas.combine_shooting import CombineShooting
 from app.utils.combine_formatters import (
     format_agility_value,
     format_anthro_value,
@@ -31,7 +32,7 @@ def test_get_all_metrics_returns_all_entries() -> None:
     assert keys == set(METRIC_COLUMN_MAP.keys())
     for m in metrics:
         assert m.display_name
-        assert m.category in ("measurements", "athletic_testing")
+        assert m.category in ("measurements", "athletic_testing", "shooting")
         assert m.sort_direction in ("asc", "desc")
 
 
@@ -78,7 +79,7 @@ def test_metric_column_map_sort_directions() -> None:
 
 def test_metric_column_map_tables_valid() -> None:
     """Every entry references a real table class with a real column."""
-    valid_tables = {CombineAnthro, CombineAgility}
+    valid_tables = {CombineAnthro, CombineAgility, CombineShooting}
     for key, defn in METRIC_COLUMN_MAP.items():
         assert defn.table in valid_tables, f"{key} has unknown table"
         assert hasattr(

@@ -16,6 +16,27 @@ SHOOTING_DRILL_COLUMNS: Dict[str, Tuple[str, str]] = {
     "free_throw": ("free_throw_fgm", "free_throw_fga"),
 }
 
+# Maps drill key → pct column name on CombineShooting
+SHOOTING_PCT_COLUMNS: Dict[str, str] = {
+    "off_dribble": "off_dribble_pct",
+    "spot_up": "spot_up_pct",
+    "three_point_star": "three_point_star_pct",
+    "midrange_star": "midrange_star_pct",
+    "three_point_side": "three_point_side_pct",
+    "midrange_side": "midrange_side_pct",
+    "free_throw": "free_throw_pct",
+}
+
+
+def compute_shooting_pct(fgm: int | None, fga: int | None) -> float | None:
+    """Compute shooting percentage from makes and attempts.
+
+    Returns percentage (0-100) or None if attempts are missing/zero.
+    """
+    if fgm is None or fga is None or fga == 0:
+        return None
+    return round((fgm / fga) * 100, 1)
+
 
 class CombineShooting(SQLModel, table=True):  # type: ignore[call-arg]
     """Shooting results per player-season (wide format, one row per combine entry)."""
@@ -48,6 +69,15 @@ class CombineShooting(SQLModel, table=True):  # type: ignore[call-arg]
     midrange_side_fga: Optional[int] = Field(default=None)
     free_throw_fgm: Optional[int] = Field(default=None)
     free_throw_fga: Optional[int] = Field(default=None)
+
+    # Pre-computed shooting percentages (fgm / fga * 100), NULL when fga is 0 or NULL
+    off_dribble_pct: Optional[float] = Field(default=None)
+    spot_up_pct: Optional[float] = Field(default=None)
+    three_point_star_pct: Optional[float] = Field(default=None)
+    midrange_star_pct: Optional[float] = Field(default=None)
+    three_point_side_pct: Optional[float] = Field(default=None)
+    midrange_side_pct: Optional[float] = Field(default=None)
+    free_throw_pct: Optional[float] = Field(default=None)
 
     nba_stats_player_id: Optional[int] = Field(default=None)
     raw_player_name: Optional[str] = Field(default=None)

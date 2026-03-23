@@ -5,12 +5,18 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.combine_stats_service import (
+    ATHLETIC_KEYS,
+    HOMEPAGE_METRIC_DISPLAY,
+    MEASUREMENT_KEYS,
+    SHOOTING_DRILL_DISPLAY,
+    SHOOTING_KEYS,
     get_available_positions,
     get_available_years,
+    get_homepage_data,
     get_leaderboard,
     get_metric_info,
     get_metrics_grouped,
@@ -87,10 +93,67 @@ def _entry_to_dict(entry: object) -> dict:
 DEFAULT_METRIC = "wingspan_in"
 
 
-@router.get("/", response_class=RedirectResponse)
-async def stats_landing() -> RedirectResponse:
-    """Redirect /stats to the default metric leaderboard."""
-    return RedirectResponse(url=f"/stats/{DEFAULT_METRIC}", status_code=302)
+def _shooting_entry_to_dict(entry: object) -> dict:
+    """Convert a ShootingLeaderEntry dataclass to a template-friendly dict."""
+    from app.services.combine_stats_service import ShootingLeaderEntry
+
+    assert isinstance(entry, ShootingLeaderEntry)
+    d = {
+        "rank": entry.rank,
+        "player_id": entry.player_id,
+        "display_name": entry.display_name,
+        "slug": entry.slug,
+        "school": entry.school,
+        "position": entry.position,
+        "draft_year": entry.draft_year,
+        "fgm": entry.fgm,
+        "fga": entry.fga,
+        "fg_pct": entry.fg_pct,
+        "formatted_value": entry.formatted_value,
+        "formatted_pct": entry.formatted_pct,
+    }
+    d.update(_player_photo_urls(entry.player_id, entry.slug, entry.display_name))
+    return d
+
+
+@router.get("/", response_class=HTMLResponse)
+async def stats_homepage(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """Stats homepage with leader cards for all combine metrics."""
+    data = await get_homepage_data(db)
+
+    measurement_leaders = {
+        key: [_entry_to_dict(e) for e in entries]
+        for key, entries in data.measurement_leaders.items()
+    }
+    athletic_leaders = {
+        key: [_entry_to_dict(e) for e in entries]
+        for key, entries in data.athletic_leaders.items()
+    }
+    shooting_leaders = {
+        key: [_shooting_entry_to_dict(e) for e in entries]
+        for key, entries in data.shooting_leaders.items()
+    }
+
+    return request.app.state.templates.TemplateResponse(
+        "stats/index.html",
+        {
+            "request": request,
+            "measurement_leaders": measurement_leaders,
+            "athletic_leaders": athletic_leaders,
+            "shooting_leaders": shooting_leaders,
+            "measurement_keys": MEASUREMENT_KEYS,
+            "athletic_keys": ATHLETIC_KEYS,
+            "shooting_keys": SHOOTING_KEYS,
+            "metric_display": HOMEPAGE_METRIC_DISPLAY,
+            "shooting_display": SHOOTING_DRILL_DISPLAY,
+            "year_stats": data.year_stats,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
 
 
 @router.get("/{metric_key}", response_class=HTMLResponse)
@@ -104,7 +167,10 @@ async def metric_leaderboard(
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
     """Metric leaderboard page with filters and summary cards."""
-    years_val = [int(y) for y in year.split(",") if y.strip()] if year else None
+    try:
+        years_val = [int(y) for y in year.split(",") if y.strip()] if year else None
+    except ValueError:
+        years_val = None
     positions_val = (
         [p.strip() for p in position.split(",") if p.strip()] if position else None
     )
@@ -113,7 +179,10 @@ async def metric_leaderboard(
         nba_status_val = True
     elif nba_status == "inactive":
         nba_status_val = False
-    offset_val = int(offset) if offset else 0
+    try:
+        offset_val = max(0, int(offset)) if offset else 0
+    except ValueError:
+        offset_val = 0
 
     metric = get_metric_info(metric_key)
     if not metric:
