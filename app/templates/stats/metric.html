@@ -31,13 +31,36 @@
   </section>
 
   <!-- Summary Cards -->
+  {# Build a human-readable filter context string #}
+  {% set filter_parts = [] %}
+  {% if active_positions %}
+    {% set filter_parts = filter_parts + [active_positions | join(', ') | upper | replace('_', '/')] %}
+  {% else %}
+    {% set filter_parts = filter_parts + ['All Positions'] %}
+  {% endif %}
+  {% if active_years %}
+    {% if active_years | length == 1 %}
+      {% set filter_parts = filter_parts + [active_years[0] | string ~ ' Draft Class'] %}
+    {% else %}
+      {% set filter_parts = filter_parts + [active_years | join(', ')] %}
+    {% endif %}
+  {% else %}
+    {% set filter_parts = filter_parts + ['All Years'] %}
+  {% endif %}
+  {% if active_nba_status == 'active' %}
+    {% set filter_parts = filter_parts + ['Active NBA Only'] %}
+  {% elif active_nba_status == 'inactive' %}
+    {% set filter_parts = filter_parts + ['Out of NBA Only'] %}
+  {% endif %}
+
   {% if highest or lowest or typical %}
   <section class="stats-section">
     <div class="container">
+      <p class="stats-filter-context mono-font">{{ filter_parts | join(' · ') }} · {{ total }} player{{ 's' if total != 1 }}</p>
       <div class="stat-summary-row">
         {% if highest %}
         <div class="stat-summary-card stat-summary-card--high">
-          <div class="stat-summary-card__header">&#x2B06; Highest</div>
+          <div class="stat-summary-card__header">{% if metric.sort_direction == 'desc' %}&#x2B06; Best{% else %}&#x1F3C6; Best (Lowest){% endif %}</div>
           <div class="stat-summary-card__image-wrapper">
             <img
               src="{{ highest.photo_url }}"
@@ -56,7 +79,7 @@
 
         {% if lowest %}
         <div class="stat-summary-card stat-summary-card--low">
-          <div class="stat-summary-card__header">&#x2B07; Lowest</div>
+          <div class="stat-summary-card__header">{% if metric.sort_direction == 'desc' %}&#x2B07; Worst (Lowest){% else %}&#x2B07; Worst{% endif %}</div>
           <div class="stat-summary-card__image-wrapper">
             <img
               src="{{ lowest.photo_url }}"
@@ -101,14 +124,9 @@
     <div class="container">
 
       <!-- Filter Bar -->
-      <form method="get" class="stats-filters-bar">
+      <div class="stats-filters-bar">
         <span class="stats-filters-bar__label mono-font uppercase">Metric:</span>
-        {# Build query string for metric switch, preserving year/position filters #}
-        {% set ns_qs = namespace(parts=[]) %}
-        {% if active_year %}{% set ns_qs.parts = ns_qs.parts + ['year=' ~ active_year] %}{% endif %}
-        {% if active_position %}{% set ns_qs.parts = ns_qs.parts + ['position=' ~ active_position] %}{% endif %}
-        {% set metric_qs = '?' ~ ns_qs.parts | join('&') if ns_qs.parts else '' %}
-        <select name="metric_key" class="stats-filter-select" onchange="window.location.href='/stats/' + this.value + '{{ metric_qs }}';">
+        <select class="stats-filter-select" onchange="window.location.href='/stats/' + this.value + StatsFilters.buildQueryString();">
           {% for cat_name, cat_metrics in metrics_grouped.items() %}
           <optgroup label="{{ cat_name | replace('_', ' ') | title }}">
             {% for m in cat_metrics %}
@@ -118,29 +136,65 @@
           {% endfor %}
         </select>
 
-        <select name="year" class="stats-filter-select" onchange="this.form.submit()">
-          <option value="">All Years</option>
-          {% for y in years %}
-          <option value="{{ y }}" {% if active_year == y %}selected{% endif %}>{{ y }}</option>
-          {% endfor %}
+        <!-- Year multi-select -->
+        <div class="stats-multi-select" data-filter="year">
+          <button type="button" class="stats-multi-select__trigger stats-filter-select">
+            <span class="stats-multi-select__label">
+              {% if active_years %}{{ active_years | length }} Year{{ 's' if active_years | length > 1 }}{% else %}All Years{% endif %}
+            </span>
+            <span class="stats-multi-select__arrow">&#x25BE;</span>
+          </button>
+          <div class="stats-multi-select__dropdown">
+            <label class="stats-multi-select__option stats-multi-select__option--all">
+              <input type="checkbox" value="" data-select-all {% if not active_years %}checked{% endif %}>
+              <span>All Years</span>
+            </label>
+            {% for y in years %}
+            <label class="stats-multi-select__option">
+              <input type="checkbox" value="{{ y }}" {% if y in active_years %}checked{% endif %}>
+              <span>{{ y }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Position multi-select -->
+        <div class="stats-multi-select" data-filter="position">
+          <button type="button" class="stats-multi-select__trigger stats-filter-select">
+            <span class="stats-multi-select__label">
+              {% if active_positions %}{{ active_positions | join(', ') | upper | replace('_', '/') }}{% else %}All Positions{% endif %}
+            </span>
+            <span class="stats-multi-select__arrow">&#x25BE;</span>
+          </button>
+          <div class="stats-multi-select__dropdown">
+            <label class="stats-multi-select__option stats-multi-select__option--all">
+              <input type="checkbox" value="" data-select-all {% if not active_positions %}checked{% endif %}>
+              <span>All Positions</span>
+            </label>
+            {% for code, label in positions %}
+            <label class="stats-multi-select__option">
+              <input type="checkbox" value="{{ code }}" {% if code in active_positions %}checked{% endif %}>
+              <span>{{ label }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- NBA Status -->
+        <select class="stats-filter-select" data-filter="nba_status">
+          <option value="">All Players</option>
+          <option value="active" {% if active_nba_status == 'active' %}selected{% endif %}>Active NBA</option>
+          <option value="inactive" {% if active_nba_status == 'inactive' %}selected{% endif %}>Out of NBA</option>
         </select>
 
-        <select name="position" class="stats-filter-select" onchange="this.form.submit()">
-          <option value="">All Positions</option>
-          {% for code, desc in positions %}
-          <option value="{{ code }}" {% if active_position == code %}selected{% endif %}>{{ code }}</option>
-          {% endfor %}
-        </select>
-
-        <!-- Hidden field to preserve metric_key in form submission -->
-        <input type="hidden" name="__metric_key" value="{{ active_metric_key }}">
+        <button type="button" class="stats-filter-apply-btn" onclick="StatsFilters.apply()">Filter Results</button>
 
         <div class="stats-share-buttons">
           <span class="stats-filters-bar__results mono-font">
             Showing <strong>{{ offset + 1 }}-{{ [offset + limit, total] | min }}</strong> of <strong>{{ total }}</strong>
           </span>
         </div>
-      </form>
+      </div>
 
       <!-- Leaderboard Table -->
       <div class="stats-leaderboard-card">
@@ -209,8 +263,9 @@
       <nav class="stats-pagination">
         {# Build query string for pagination links #}
         {% set ns = namespace(params='') %}
-        {% if active_year %}{% set ns.params = ns.params ~ '&year=' ~ active_year %}{% endif %}
-        {% if active_position %}{% set ns.params = ns.params ~ '&position=' ~ active_position %}{% endif %}
+        {% if active_years %}{% set ns.params = ns.params ~ '&year=' ~ active_years | join(',') %}{% endif %}
+        {% if active_positions %}{% set ns.params = ns.params ~ '&position=' ~ active_positions | join(',') %}{% endif %}
+        {% if active_nba_status %}{% set ns.params = ns.params ~ '&nba_status=' ~ active_nba_status %}{% endif %}
 
         {% if current_page > 1 %}
         <a href="/stats/{{ active_metric_key }}?offset={{ (current_page - 2) * limit }}{{ ns.params }}" class="stats-pagination__btn">&#8592; Prev</a>
@@ -243,4 +298,89 @@
     </div>
   </section>
 </main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const StatsFilters = {
+  init() {
+    document.querySelectorAll('.stats-multi-select').forEach(container => {
+      const trigger = container.querySelector('.stats-multi-select__trigger');
+
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.stats-multi-select--open').forEach(el => {
+          if (el !== container) el.classList.remove('stats-multi-select--open');
+        });
+        container.classList.toggle('stats-multi-select--open');
+      });
+
+      // "All" toggle logic
+      container.querySelectorAll('input[data-select-all]').forEach(allCb => {
+        allCb.addEventListener('change', () => {
+          if (allCb.checked) {
+            container.querySelectorAll('input:not([data-select-all])').forEach(cb => {
+              cb.checked = false;
+            });
+          }
+        });
+      });
+
+      container.querySelectorAll('input:not([data-select-all])').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const allCb = container.querySelector('input[data-select-all]');
+          if (cb.checked && allCb) {
+            allCb.checked = false;
+          }
+          // If nothing specific is checked, re-check "All"
+          const anyChecked = container.querySelectorAll('input:not([data-select-all]):checked').length > 0;
+          if (!anyChecked && allCb) {
+            allCb.checked = true;
+          }
+        });
+      });
+    });
+
+    // Close dropdowns on outside click
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.stats-multi-select--open').forEach(el => {
+        el.classList.remove('stats-multi-select--open');
+      });
+    });
+
+    // Prevent dropdown close when clicking inside
+    document.querySelectorAll('.stats-multi-select__dropdown').forEach(dd => {
+      dd.addEventListener('click', (e) => e.stopPropagation());
+    });
+  },
+
+  getSelected(filterName) {
+    const container = document.querySelector(`.stats-multi-select[data-filter="${filterName}"]`);
+    if (!container) return [];
+    // Exclude "All" checkbox (empty value) from selected values
+    return Array.from(container.querySelectorAll('input:not([data-select-all]):checked')).map(cb => cb.value);
+  },
+
+  buildQueryString() {
+    const parts = [];
+    const years = this.getSelected('year');
+    const positions = this.getSelected('position');
+    const nbaSelect = document.querySelector('select[data-filter="nba_status"]');
+    const nbaStatus = nbaSelect ? nbaSelect.value : '';
+
+    if (years.length) parts.push('year=' + years.join(','));
+    if (positions.length) parts.push('position=' + positions.join(','));
+    if (nbaStatus) parts.push('nba_status=' + nbaStatus);
+
+    return parts.length ? '?' + parts.join('&') : '';
+  },
+
+  apply() {
+    const metricKey = '{{ active_metric_key }}';
+    window.location.href = '/stats/' + metricKey + this.buildQueryString();
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => StatsFilters.init());
+</script>
 {% endblock %}

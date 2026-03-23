@@ -97,12 +97,24 @@ async def stats_landing() -> RedirectResponse:
 async def metric_leaderboard(
     request: Request,
     metric_key: str,
-    year: int | None = Query(default=None),
+    year: str | None = Query(default=None),
     position: str | None = Query(default=None),
-    offset: int = Query(0, ge=0),
+    nba_status: str | None = Query(default=None),
+    offset: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
     """Metric leaderboard page with filters and summary cards."""
+    years_val = [int(y) for y in year.split(",") if y.strip()] if year else None
+    positions_val = (
+        [p.strip() for p in position.split(",") if p.strip()] if position else None
+    )
+    nba_status_val: bool | None = None
+    if nba_status == "active":
+        nba_status_val = True
+    elif nba_status == "inactive":
+        nba_status_val = False
+    offset_val = int(offset) if offset else 0
+
     metric = get_metric_info(metric_key)
     if not metric:
         raise HTTPException(status_code=404, detail="Unknown metric")
@@ -110,13 +122,16 @@ async def metric_leaderboard(
     result = await get_leaderboard(
         db,
         metric_key,
-        year=year,
-        position=position,
+        years=years_val,
+        positions=positions_val,
+        is_active_nba=nba_status_val,
         limit=LEADERBOARD_PAGE_LIMIT,
-        offset=offset,
+        offset=offset_val,
     )
     years = await get_available_years(db)
-    positions = await get_available_positions(db)
+    all_positions = await get_available_positions(db)
+    # Build display labels: "c" → "C", "pf_c" → "PF/C"
+    positions = [(code, code.upper().replace("_", "/")) for code, _ in all_positions]
     metrics_grouped = get_metrics_grouped()
 
     entries = [_entry_to_dict(e) for e in result.entries]
@@ -137,11 +152,12 @@ async def metric_leaderboard(
                 "display_name": metric.display_name,
                 "unit": metric.unit,
                 "category": metric.category,
+                "sort_direction": metric.sort_direction,
             },
             "entries": entries,
             "total": result.total,
             "limit": LEADERBOARD_PAGE_LIMIT,
-            "offset": offset,
+            "offset": offset_val,
             "highest": highest,
             "lowest": lowest,
             "typical": typical,
@@ -149,8 +165,9 @@ async def metric_leaderboard(
             "years": years,
             "positions": positions,
             "metrics_grouped": metrics_grouped,
-            "active_year": year,
-            "active_position": position,
+            "active_years": years_val or [],
+            "active_positions": positions_val or [],
+            "active_nba_status": nba_status or "",
             "active_metric_key": metric_key,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,

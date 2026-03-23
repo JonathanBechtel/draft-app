@@ -256,8 +256,9 @@ def _format_value(metric_key: str, value: Any) -> str:
 def _build_base_query(
     metric_key: str,
     *,
-    year: int | None = None,
-    position: str | None = None,
+    years: list[int] | None = None,
+    positions: list[str] | None = None,
+    is_active_nba: bool | None = None,
 ) -> Any:
     """Build the base SELECT query for a metric with filters.
 
@@ -291,11 +292,14 @@ def _build_base_query(
         .where(col.isnot(None))  # type: ignore[union-attr]
     )
 
-    if year is not None:
-        stmt = stmt.where(Season.end_year == year)  # type: ignore[arg-type]
+    if years:
+        stmt = stmt.where(Season.end_year.in_(years))  # type: ignore[attr-defined]
 
-    if position is not None:
-        stmt = stmt.where(Position.code == position)  # type: ignore[arg-type]
+    if positions:
+        stmt = stmt.where(Position.code.in_(positions))  # type: ignore[attr-defined]
+
+    if is_active_nba is not None:
+        stmt = stmt.where(PlayerStatus.is_active_nba == is_active_nba)  # type: ignore[arg-type]
 
     return stmt
 
@@ -342,8 +346,9 @@ async def get_leaderboard(
     db: AsyncSession,
     metric_key: str,
     *,
-    year: int | None = None,
-    position: str | None = None,
+    years: list[int] | None = None,
+    positions: list[str] | None = None,
+    is_active_nba: bool | None = None,
     limit: int = 25,
     offset: int = 0,
 ) -> LeaderboardResult:
@@ -352,8 +357,9 @@ async def get_leaderboard(
     Args:
         db: Async database session.
         metric_key: Key from METRIC_COLUMN_MAP (e.g., "wingspan_in").
-        year: Optional year filter (matches Season.end_year).
-        position: Optional position code filter (e.g., "C", "PG").
+        years: Optional year filter list (matches Season.end_year).
+        positions: Optional position code filter list (e.g., ["C", "PG"]).
+        is_active_nba: Optional NBA status filter (True=active, False=out).
         limit: Page size.
         offset: Page offset.
 
@@ -364,7 +370,9 @@ async def get_leaderboard(
     metric_info = get_metric_info(metric_key)
     assert metric_info is not None
 
-    base = _build_base_query(metric_key, year=year, position=position)
+    base = _build_base_query(
+        metric_key, years=years, positions=positions, is_active_nba=is_active_nba
+    )
     order_col = _order_column(metric_key)
 
     # PlayerMaster.id as tiebreaker for deterministic ordering
@@ -396,10 +404,15 @@ async def get_leaderboard(
         )
         .where(count_col.isnot(None))  # type: ignore[union-attr]
     )
-    if year is not None:
-        count_stmt = count_stmt.where(Season.end_year == year)  # type: ignore[arg-type]
-    if position is not None:
-        count_stmt = count_stmt.where(Position.code == position)  # type: ignore[arg-type]
+    if years:
+        count_stmt = count_stmt.where(Season.end_year.in_(years))  # type: ignore[attr-defined]
+    if positions:
+        count_stmt = count_stmt.where(Position.code.in_(positions))  # type: ignore[attr-defined]
+    if is_active_nba is not None:
+        count_stmt = count_stmt.outerjoin(
+            PlayerStatus,
+            PlayerMaster.id == PlayerStatus.player_id,  # type: ignore[arg-type]
+        ).where(PlayerStatus.is_active_nba == is_active_nba)  # type: ignore[arg-type]
 
     total_result = await db.execute(count_stmt)
     total = total_result.scalar() or 0
