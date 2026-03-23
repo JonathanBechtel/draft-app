@@ -244,11 +244,11 @@ async def test_metric_page_combined_filters(app_client, seed_data) -> None:
 
 @pytest.mark.asyncio
 async def test_metric_page_summary_cards_present(app_client, seed_data) -> None:
-    """Response has Highest, Lowest, Typical summary cards."""
+    """Response has Best, Worst, Typical summary cards."""
     resp = await app_client.get("/stats/wingspan_in")
     text = resp.text
-    assert "Highest" in text
-    assert "Lowest" in text
+    assert "Best" in text
+    assert "Worst" in text
     assert "Typical" in text
 
 
@@ -298,14 +298,14 @@ async def test_get_leaderboard_filters_nulls(db_session, seed_data) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_leaderboard_highest_lowest_typical(db_session, seed_data) -> None:
-    """Result has correct highest, lowest, and typical (median) entries."""
+async def test_get_leaderboard_best_worst_typical(db_session, seed_data) -> None:
+    """Result has correct best, worst, and typical (median) entries."""
     result = await get_leaderboard(db_session, "wingspan_in")
-    assert result.highest is not None
-    assert result.lowest is not None
+    assert result.best is not None
+    assert result.worst is not None
     assert result.typical is not None
-    assert result.highest.raw_value == 94.0  # Tall Center
-    assert result.lowest.raw_value == 72.0  # Short Guard
+    assert result.best.raw_value == 94.0  # Tall Center
+    assert result.worst.raw_value == 72.0  # Short Guard
     # Median of 5 sorted values [94, 90, 88, 78, 72] is index 2 = 88.0
     assert result.typical.raw_value == 88.0
 

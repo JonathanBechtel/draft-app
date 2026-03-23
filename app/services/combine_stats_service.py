@@ -186,8 +186,8 @@ class LeaderboardResult:
     entries: list[LeaderboardEntry]
     total: int
     metric: MetricInfo
-    highest: LeaderboardEntry | None
-    lowest: LeaderboardEntry | None
+    best: LeaderboardEntry | None
+    worst: LeaderboardEntry | None
     median_value: float | None
     typical: LeaderboardEntry | None
 
@@ -428,15 +428,15 @@ async def get_leaderboard(
         pctl = round((1 - (rank - 1) / total) * 100, 1) if total > 1 else 100.0
         entries.append(_row_to_entry(row, metric_key, rank, pctl))
 
-    # Summary cards: highest (#1)
-    highest_result = await db.execute(ordered.limit(1))
-    highest_row = highest_result.first()
-    highest = _row_to_entry(highest_row, metric_key, 1, 100.0) if highest_row else None
+    # Summary cards: best (#1 in leaderboard order)
+    best_result = await db.execute(ordered.limit(1))
+    best_row = best_result.first()
+    best = _row_to_entry(best_row, metric_key, 1, 100.0) if best_row else None
 
-    # Summary cards: lowest (last)
-    lowest_result = await db.execute(reverse_ordered.limit(1))
-    lowest_row = lowest_result.first()
-    lowest = _row_to_entry(lowest_row, metric_key, total, 0.0) if lowest_row else None
+    # Summary cards: worst (last in leaderboard order)
+    worst_result = await db.execute(reverse_ordered.limit(1))
+    worst_row = worst_result.first()
+    worst = _row_to_entry(worst_row, metric_key, total, 0.0) if worst_row else None
 
     # Summary cards: median (middle of sorted list)
     median_value: float | None = None
@@ -457,8 +457,8 @@ async def get_leaderboard(
         entries=entries,
         total=total,
         metric=metric_info,
-        highest=highest,
-        lowest=lowest,
+        best=best,
+        worst=worst,
         median_value=median_value,
         typical=typical,
     )

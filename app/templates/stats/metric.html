@@ -53,45 +53,45 @@
     {% set filter_parts = filter_parts + ['Out of NBA Only'] %}
   {% endif %}
 
-  {% if highest or lowest or typical %}
+  {% if best or worst or typical %}
   <section class="stats-section">
     <div class="container">
       <p class="stats-filter-context mono-font">{{ filter_parts | join(' · ') }} · {{ total }} player{{ 's' if total != 1 }}</p>
       <div class="stat-summary-row">
-        {% if highest %}
+        {% if best %}
         <div class="stat-summary-card stat-summary-card--high">
           <div class="stat-summary-card__header">{% if metric.sort_direction == 'desc' %}&#x2B06; Best{% else %}&#x1F3C6; Best (Lowest){% endif %}</div>
           <div class="stat-summary-card__image-wrapper">
             <img
-              src="{{ highest.photo_url }}"
-              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='{{ highest.photo_url_default|e }}';}else{this.onerror=null;this.src='{{ highest.photo_url_placeholder|e }}';}"
-              alt="{{ highest.display_name }}"
+              src="{{ best.photo_url }}"
+              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='{{ best.photo_url_default|e }}';}else{this.onerror=null;this.src='{{ best.photo_url_placeholder|e }}';}"
+              alt="{{ best.display_name }}"
               class="stat-summary-card__image"
             >
           </div>
           <div class="stat-summary-card__info">
-            <div class="stat-summary-card__value">{{ highest.formatted_value }}</div>
-            <div class="stat-summary-card__player">{{ highest.display_name }}</div>
-            <div class="stat-summary-card__meta">{{ highest.school or "" }}{% if highest.position %} &middot; {{ highest.position }}{% endif %}{% if highest.draft_year %} &middot; {{ highest.draft_year }}{% endif %}</div>
+            <div class="stat-summary-card__value">{{ best.formatted_value }}</div>
+            <div class="stat-summary-card__player">{{ best.display_name }}</div>
+            <div class="stat-summary-card__meta">{{ best.school or "" }}{% if best.position %} &middot; {{ best.position }}{% endif %}{% if best.draft_year %} &middot; {{ best.draft_year }}{% endif %}</div>
           </div>
         </div>
         {% endif %}
 
-        {% if lowest %}
+        {% if worst %}
         <div class="stat-summary-card stat-summary-card--low">
           <div class="stat-summary-card__header">{% if metric.sort_direction == 'desc' %}&#x2B07; Worst (Lowest){% else %}&#x2B07; Worst{% endif %}</div>
           <div class="stat-summary-card__image-wrapper">
             <img
-              src="{{ lowest.photo_url }}"
-              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='{{ lowest.photo_url_default|e }}';}else{this.onerror=null;this.src='{{ lowest.photo_url_placeholder|e }}';}"
-              alt="{{ lowest.display_name }}"
+              src="{{ worst.photo_url }}"
+              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='{{ worst.photo_url_default|e }}';}else{this.onerror=null;this.src='{{ worst.photo_url_placeholder|e }}';}"
+              alt="{{ worst.display_name }}"
               class="stat-summary-card__image"
             >
           </div>
           <div class="stat-summary-card__info">
-            <div class="stat-summary-card__value">{{ lowest.formatted_value }}</div>
-            <div class="stat-summary-card__player">{{ lowest.display_name }}</div>
-            <div class="stat-summary-card__meta">{{ lowest.school or "" }}{% if lowest.position %} &middot; {{ lowest.position }}{% endif %}{% if lowest.draft_year %} &middot; {{ lowest.draft_year }}{% endif %}</div>
+            <div class="stat-summary-card__value">{{ worst.formatted_value }}</div>
+            <div class="stat-summary-card__player">{{ worst.display_name }}</div>
+            <div class="stat-summary-card__meta">{{ worst.school or "" }}{% if worst.position %} &middot; {{ worst.position }}{% endif %}{% if worst.draft_year %} &middot; {{ worst.draft_year }}{% endif %}</div>
           </div>
         </div>
         {% endif %}

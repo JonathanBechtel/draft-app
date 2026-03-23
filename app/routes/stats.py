@@ -136,8 +136,8 @@ async def metric_leaderboard(
 
     entries = [_entry_to_dict(e) for e in result.entries]
 
-    highest = _entry_to_dict(result.highest) if result.highest else None
-    lowest = _entry_to_dict(result.lowest) if result.lowest else None
+    best = _entry_to_dict(result.best) if result.best else None
+    worst = _entry_to_dict(result.worst) if result.worst else None
     typical = _entry_to_dict(result.typical) if result.typical else None
 
     # Formatted median for card header
@@ -158,8 +158,8 @@ async def metric_leaderboard(
             "total": result.total,
             "limit": LEADERBOARD_PAGE_LIMIT,
             "offset": offset_val,
-            "highest": highest,
-            "lowest": lowest,
+            "best": best,
+            "worst": worst,
             "typical": typical,
             "median_formatted": median_formatted,
             "years": years,
