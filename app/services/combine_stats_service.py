@@ -464,49 +464,86 @@ async def get_leaderboard(
     )
 
 
-async def get_available_years(db: AsyncSession) -> list[int]:
+async def get_available_years(
+    db: AsyncSession, metric_key: str | None = None
+) -> list[int]:
     """Get distinct years that have combine data, sorted descending.
 
-    Unions anthro and agility seasons so both data sources contribute.
+    Args:
+        db: Async database session.
+        metric_key: If provided, scope to the table backing this metric.
+            Otherwise unions anthro and agility seasons.
     """
-    anthro_years = select(Season.end_year).join(  # type: ignore[call-overload]
-        CombineAnthro,
-        CombineAnthro.season_id == Season.id,  # type: ignore[arg-type]
-    )
-    agility_years = select(Season.end_year).join(  # type: ignore[call-overload]
-        CombineAgility,
-        CombineAgility.season_id == Season.id,  # type: ignore[arg-type]
-    )
-    combined = anthro_years.union(agility_years).subquery()
-    stmt = select(combined.c.end_year).distinct().order_by(combined.c.end_year.desc())
+    if metric_key and metric_key in METRIC_COLUMN_MAP:
+        table = METRIC_COLUMN_MAP[metric_key].table
+        col = getattr(table, METRIC_COLUMN_MAP[metric_key].column)
+        stmt = (
+            select(Season.end_year)  # type: ignore[call-overload]
+            .distinct()
+            .join(table, table.season_id == Season.id)  # type: ignore[arg-type,attr-defined]
+            .where(col.isnot(None))  # type: ignore[union-attr]
+            .order_by(Season.end_year.desc())  # type: ignore[union-attr,attr-defined]
+        )
+    else:
+        anthro_years = select(Season.end_year).join(  # type: ignore[call-overload]
+            CombineAnthro,
+            CombineAnthro.season_id == Season.id,  # type: ignore[arg-type]
+        )
+        agility_years = select(Season.end_year).join(  # type: ignore[call-overload]
+            CombineAgility,
+            CombineAgility.season_id == Season.id,  # type: ignore[arg-type]
+        )
+        combined = anthro_years.union(agility_years).subquery()
+        stmt = (
+            select(combined.c.end_year).distinct().order_by(combined.c.end_year.desc())
+        )
     result = await db.execute(stmt)
     return [row[0] for row in result.all()]
 
 
-async def get_available_positions(db: AsyncSession) -> list[tuple[str, str]]:
+async def get_available_positions(
+    db: AsyncSession, metric_key: str | None = None
+) -> list[tuple[str, str]]:
     """Get position codes that have combine data.
 
-    Unions anthro and agility position_ids from combine tables directly.
+    Args:
+        db: Async database session.
+        metric_key: If provided, scope to the table backing this metric.
+            Otherwise unions anthro and agility position_ids.
 
     Returns:
         List of (code, description) tuples sorted alphabetically.
     """
-    anthro_positions = select(CombineAnthro.position_id).where(  # type: ignore[call-overload]
-        CombineAnthro.position_id.isnot(None)  # type: ignore[union-attr]
-    )
-    agility_positions = select(CombineAgility.position_id).where(  # type: ignore[call-overload]
-        CombineAgility.position_id.isnot(None)  # type: ignore[union-attr]
-    )
-    combined_pos_ids = anthro_positions.union(agility_positions).subquery()
-
-    stmt = (
-        select(Position.code, Position.description)  # type: ignore[call-overload]
-        .distinct()
-        .join(
-            combined_pos_ids,
-            combined_pos_ids.c.position_id == Position.id,  # type: ignore[arg-type]
+    if metric_key and metric_key in METRIC_COLUMN_MAP:
+        table = METRIC_COLUMN_MAP[metric_key].table
+        col = getattr(table, METRIC_COLUMN_MAP[metric_key].column)
+        stmt = (
+            select(Position.code, Position.description)  # type: ignore[call-overload]
+            .distinct()
+            .join(
+                table,
+                table.position_id == Position.id,  # type: ignore[arg-type,attr-defined]
+            )
+            .where(col.isnot(None))  # type: ignore[union-attr]
+            .order_by(Position.code)  # type: ignore[union-attr]
         )
-        .order_by(Position.code)  # type: ignore[union-attr]
-    )
+    else:
+        anthro_positions = select(CombineAnthro.position_id).where(  # type: ignore[call-overload]
+            CombineAnthro.position_id.isnot(None)  # type: ignore[union-attr]
+        )
+        agility_positions = select(CombineAgility.position_id).where(  # type: ignore[call-overload]
+            CombineAgility.position_id.isnot(None)  # type: ignore[union-attr]
+        )
+        combined_pos_ids = anthro_positions.union(agility_positions).subquery()
+
+        stmt = (
+            select(Position.code, Position.description)  # type: ignore[call-overload]
+            .distinct()
+            .join(
+                combined_pos_ids,
+                combined_pos_ids.c.position_id == Position.id,  # type: ignore[arg-type]
+            )
+            .order_by(Position.code)  # type: ignore[union-attr]
+        )
     result = await db.execute(stmt)
     return [(row[0], row[1] or row[0]) for row in result.all()]

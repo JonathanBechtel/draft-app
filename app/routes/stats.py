@@ -128,8 +128,8 @@ async def metric_leaderboard(
         limit=LEADERBOARD_PAGE_LIMIT,
         offset=offset_val,
     )
-    years = await get_available_years(db)
-    all_positions = await get_available_positions(db)
+    years = await get_available_years(db, metric_key=metric_key)
+    all_positions = await get_available_positions(db, metric_key=metric_key)
     # Build display labels: "c" → "C", "pf_c" → "PF/C"
     positions = [(code, code.upper().replace("_", "/")) for code, _ in all_positions]
     metrics_grouped = get_metrics_grouped()
