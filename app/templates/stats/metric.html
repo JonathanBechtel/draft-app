@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+
+{% block title %}{{ metric.display_name }} — NBA Draft Combine | DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/stats.css') }}">
+{% endblock %}
+
+{% block content %}
+<main>
+  <!-- Breadcrumb -->
+  <div class="stats-breadcrumb">
+    <div class="container">
+      <nav class="breadcrumb-nav">
+        <a href="/stats">Stats</a>
+        <span class="breadcrumb-sep">/</span>
+        <span class="breadcrumb-current">{{ metric.display_name }}</span>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Metric Header -->
+  <section class="stats-metric-header">
+    <div class="container">
+      <div class="stats-metric-header__category mono-font uppercase">
+        {% if metric.category == "measurements" %}&#x1F4CF;{% elif metric.category == "athletic_testing" %}&#x26A1;{% else %}&#x1F3AF;{% endif %}
+        {{ metric.category | replace("_", " ") | title }}
+      </div>
+      <h2 class="stats-metric-header__title heading-font">{{ metric.display_name }}</h2>
+    </div>
+  </section>
+
+  <!-- Summary Cards -->
+  {# Build a human-readable filter context string #}
+  {% set filter_parts = [] %}
+  {% if active_positions %}
+    {% set filter_parts = filter_parts + [active_positions | join(', ') | upper | replace('_', '/')] %}
+  {% else %}
+    {% set filter_parts = filter_parts + ['All Positions'] %}
+  {% endif %}
+  {% if active_years %}
+    {% if active_years | length == 1 %}
+      {% set filter_parts = filter_parts + [active_years[0] | string ~ ' Draft Class'] %}
+    {% else %}
+      {% set filter_parts = filter_parts + [active_years | join(', ')] %}
+    {% endif %}
+  {% else %}
+    {% set filter_parts = filter_parts + ['All Years'] %}
+  {% endif %}
+  {% if active_nba_status == 'active' %}
+    {% set filter_parts = filter_parts + ['Active NBA Only'] %}
+  {% elif active_nba_status == 'inactive' %}
+    {% set filter_parts = filter_parts + ['Out of NBA Only'] %}
+  {% endif %}
+
+  {% if best or worst or typical %}
+  <section class="stats-section">
+    <div class="container">
+      <p class="stats-filter-context mono-font">{{ filter_parts | join(' · ') }} · {{ total }} player{{ 's' if total != 1 }}</p>
+      <div class="stat-summary-row">
+        {% if best %}
+        <div class="stat-summary-card stat-summary-card--high">
+          <div class="stat-summary-card__header">{% if metric.sort_direction == 'desc' %}&#x2B06; Best{% else %}&#x1F3C6; Best (Lowest){% endif %}</div>
+          <div class="stat-summary-card__image-wrapper">
+            <img
+              src="{{ best.photo_url }}"
+              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='{{ best.photo_url_default|e }}';}else{this.onerror=null;this.src='{{ best.photo_url_placeholder|e }}';}"
+              alt="{{ best.display_name }}"
+              class="stat-summary-card__image"
+            >
+          </div>
+          <div class="stat-summary-card__info">
+            <div class="stat-summary-card__value">{{ best.formatted_value }}</div>
+            <div class="stat-summary-card__player">{{ best.display_name }}</div>
+            <div class="stat-summary-card__meta">{{ best.school or "" }}{% if best.position %} &middot; {{ best.position }}{% endif %}{% if best.draft_year %} &middot; {{ best.draft_year }}{% endif %}</div>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if worst %}
+        <div class="stat-summary-card stat-summary-card--low">
+          <div class="stat-summary-card__header">{% if metric.sort_direction == 'desc' %}&#x2B07; Worst (Lowest){% else %}&#x2B07; Worst{% endif %}</div>
+          <div class="stat-summary-card__image-wrapper">
+            <img
+              src="{{ worst.photo_url }}"
+              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='{{ worst.photo_url_default|e }}';}else{this.onerror=null;this.src='{{ worst.photo_url_placeholder|e }}';}"
+              alt="{{ worst.display_name }}"
+              class="stat-summary-card__image"
+            >
+          </div>
+          <div class="stat-summary-card__info">
+            <div class="stat-summary-card__value">{{ worst.formatted_value }}</div>
+            <div class="stat-summary-card__player">{{ worst.display_name }}</div>
+            <div class="stat-summary-card__meta">{{ worst.school or "" }}{% if worst.position %} &middot; {{ worst.position }}{% endif %}{% if worst.draft_year %} &middot; {{ worst.draft_year }}{% endif %}</div>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if typical %}
+        <div class="stat-summary-card stat-summary-card--avg">
+          <div class="stat-summary-card__header">&#x1F4CA; Typical ({{ median_formatted }} median)</div>
+          <div class="stat-summary-card__image-wrapper">
+            <img
+              src="{{ typical.photo_url }}"
+              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='{{ typical.photo_url_default|e }}';}else{this.onerror=null;this.src='{{ typical.photo_url_placeholder|e }}';}"
+              alt="{{ typical.display_name }}"
+              class="stat-summary-card__image"
+            >
+          </div>
+          <div class="stat-summary-card__info">
+            <div class="stat-summary-card__value">{{ typical.formatted_value }}</div>
+            <div class="stat-summary-card__player">{{ typical.display_name }}</div>
+            <div class="stat-summary-card__meta">{{ typical.school or "" }}{% if typical.position %} &middot; {{ typical.position }}{% endif %}{% if typical.draft_year %} &middot; {{ typical.draft_year }}{% endif %}</div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Filters + Leaderboard -->
+  <section class="stats-section">
+    <div class="container">
+
+      <!-- Filter Bar -->
+      <div class="stats-filters-bar">
+        <span class="stats-filters-bar__label mono-font uppercase">Metric:</span>
+        <select class="stats-filter-select" onchange="window.location.href='/stats/' + this.value + StatsFilters.buildQueryString();">
+          {% for cat_name, cat_metrics in metrics_grouped.items() %}
+          <optgroup label="{{ cat_name | replace('_', ' ') | title }}">
+            {% for m in cat_metrics %}
+            <option value="{{ m.key }}" {% if m.key == active_metric_key %}selected{% endif %}>{{ m.display_name }}</option>
+            {% endfor %}
+          </optgroup>
+          {% endfor %}
+        </select>
+
+        <!-- Year multi-select -->
+        <div class="stats-multi-select" data-filter="year">
+          <button type="button" class="stats-multi-select__trigger stats-filter-select">
+            <span class="stats-multi-select__label">
+              {% if active_years %}{{ active_years | length }} Year{{ 's' if active_years | length > 1 }}{% else %}All Years{% endif %}
+            </span>
+            <span class="stats-multi-select__arrow">&#x25BE;</span>
+          </button>
+          <div class="stats-multi-select__dropdown">
+            <label class="stats-multi-select__option stats-multi-select__option--all">
+              <input type="checkbox" value="" data-select-all {% if not active_years %}checked{% endif %}>
+              <span>All Years</span>
+            </label>
+            {% for y in years %}
+            <label class="stats-multi-select__option">
+              <input type="checkbox" value="{{ y }}" {% if y in active_years %}checked{% endif %}>
+              <span>{{ y }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- Position multi-select -->
+        <div class="stats-multi-select" data-filter="position">
+          <button type="button" class="stats-multi-select__trigger stats-filter-select">
+            <span class="stats-multi-select__label">
+              {% if active_positions %}{{ active_positions | join(', ') | upper | replace('_', '/') }}{% else %}All Positions{% endif %}
+            </span>
+            <span class="stats-multi-select__arrow">&#x25BE;</span>
+          </button>
+          <div class="stats-multi-select__dropdown">
+            <label class="stats-multi-select__option stats-multi-select__option--all">
+              <input type="checkbox" value="" data-select-all {% if not active_positions %}checked{% endif %}>
+              <span>All Positions</span>
+            </label>
+            {% for code, label in positions %}
+            <label class="stats-multi-select__option">
+              <input type="checkbox" value="{{ code }}" {% if code in active_positions %}checked{% endif %}>
+              <span>{{ label }}</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- NBA Status -->
+        <select class="stats-filter-select" data-filter="nba_status">
+          <option value="">All Players</option>
+          <option value="active" {% if active_nba_status == 'active' %}selected{% endif %}>Active NBA</option>
+          <option value="inactive" {% if active_nba_status == 'inactive' %}selected{% endif %}>Out of NBA</option>
+        </select>
+
+        <button type="button" class="stats-filter-apply-btn" onclick="StatsFilters.apply()">Filter Results</button>
+
+        <div class="stats-share-buttons">
+          <span class="stats-filters-bar__results mono-font">
+            Showing <strong>{{ offset + 1 }}-{{ [offset + limit, total] | min }}</strong> of <strong>{{ total }}</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- Leaderboard Table -->
+      <div class="stats-leaderboard-card">
+        <table class="stats-leaderboard-table">
+          <thead>
+            <tr>
+              <th class="col-rank">Rank</th>
+              <th>Player</th>
+              <th class="col-center">Pos</th>
+              <th class="col-center">Year</th>
+              <th class="col-center">Draft</th>
+              <th class="col-center">Pctl</th>
+              <th class="col-center">NBA Status</th>
+              <th class="col-value">{{ metric.display_name }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for entry in entries %}
+            <tr>
+              <td class="cell-rank">{{ entry.rank }}</td>
+              <td>
+                <a href="/players/{{ entry.slug }}" class="cell-player">
+                  <img
+                    src="{{ entry.photo_url }}"
+                    onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='{{ entry.photo_url_default|e }}';}else{this.onerror=null;this.src='{{ entry.photo_url_placeholder|e }}';}"
+                    alt="{{ entry.display_name }}"
+                    class="cell-player__thumb"
+                  >
+                  <div class="cell-player__info">
+                    <span class="cell-player__name">{{ entry.display_name }}</span>
+                    <span class="cell-player__school">{{ entry.school or "" }}</span>
+                  </div>
+                </a>
+              </td>
+              <td class="cell-position">{{ entry.position or "" }}</td>
+              <td class="cell-year">{{ entry.draft_year or "" }}</td>
+              <td class="cell-draft">
+                {% if entry.draft_pick %}
+                <span class="cell-draft__pick">#{{ entry.draft_pick }}</span>
+                <span class="cell-draft__round">Rd {{ entry.draft_round or "?" }}</span>
+                {% else %}
+                <span class="cell-draft--undrafted">Undrafted</span>
+                {% endif %}
+              </td>
+              <td class="cell-percentile {% if entry.percentile and entry.percentile >= 97 %}cell-percentile--elite{% elif entry.percentile and entry.percentile >= 80 %}cell-percentile--high{% elif entry.percentile and entry.percentile >= 50 %}cell-percentile--mid{% else %}cell-percentile--low{% endif %}">
+                <span class="cell-percentile__value">{% if entry.percentile is not none %}{% set pval = entry.percentile | int %}{{ pval }}{% if pval % 100 in [11, 12, 13] %}th{% elif pval % 10 == 1 %}st{% elif pval % 10 == 2 %}nd{% elif pval % 10 == 3 %}rd{% else %}th{% endif %}{% endif %}</span>
+              </td>
+              <td class="cell-status">
+                {% if entry.is_active_nba %}
+                <span class="nba-badge nba-badge--active">Active</span>
+                {% else %}
+                <span class="nba-badge nba-badge--inactive">Out</span>
+                {% endif %}
+              </td>
+              <td class="cell-value tabular-nums">{{ entry.formatted_value }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      {% set total_pages = ((total - 1) // limit + 1) if total > 0 else 1 %}
+      {% set current_page = (offset // limit) + 1 %}
+      {% if total_pages > 1 %}
+      <nav class="stats-pagination">
+        {# Build query string for pagination links #}
+        {% set ns = namespace(params='') %}
+        {% if active_years %}{% set ns.params = ns.params ~ '&year=' ~ active_years | join(',') %}{% endif %}
+        {% if active_positions %}{% set ns.params = ns.params ~ '&position=' ~ active_positions | join(',') %}{% endif %}
+        {% if active_nba_status %}{% set ns.params = ns.params ~ '&nba_status=' ~ active_nba_status %}{% endif %}
+
+        {% if current_page > 1 %}
+        <a href="/stats/{{ active_metric_key }}?offset={{ (current_page - 2) * limit }}{{ ns.params }}" class="stats-pagination__btn">&#8592; Prev</a>
+        {% else %}
+        <span class="stats-pagination__btn stats-pagination__btn--disabled">&#8592; Prev</span>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+          {% if p <= 3 or p > total_pages - 2 or (p >= current_page - 1 and p <= current_page + 1) %}
+            {% if p == current_page %}
+            <span class="stats-pagination__btn stats-pagination__btn--active">{{ p }}</span>
+            {% else %}
+            <a href="/stats/{{ active_metric_key }}?offset={{ (p - 1) * limit }}{{ ns.params }}" class="stats-pagination__btn">{{ p }}</a>
+            {% endif %}
+          {% elif p == 4 or p == total_pages - 2 %}
+            <span class="stats-pagination__ellipsis">...</span>
+          {% endif %}
+        {% endfor %}
+
+        {% if current_page < total_pages %}
+        <a href="/stats/{{ active_metric_key }}?offset={{ current_page * limit }}{{ ns.params }}" class="stats-pagination__btn">Next &#8594;</a>
+        {% else %}
+        <span class="stats-pagination__btn stats-pagination__btn--disabled">Next &#8594;</span>
+        {% endif %}
+      </nav>
+      {% endif %}
+
+      <a href="/stats" class="stats-back-link mono-font">&#8592; Back to All Stats</a>
+
+    </div>
+  </section>
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const StatsFilters = {
+  init() {
+    document.querySelectorAll('.stats-multi-select').forEach(container => {
+      const trigger = container.querySelector('.stats-multi-select__trigger');
+
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.stats-multi-select--open').forEach(el => {
+          if (el !== container) el.classList.remove('stats-multi-select--open');
+        });
+        container.classList.toggle('stats-multi-select--open');
+      });
+
+      // "All" toggle logic
+      container.querySelectorAll('input[data-select-all]').forEach(allCb => {
+        allCb.addEventListener('change', () => {
+          if (allCb.checked) {
+            container.querySelectorAll('input:not([data-select-all])').forEach(cb => {
+              cb.checked = false;
+            });
+          }
+        });
+      });
+
+      container.querySelectorAll('input:not([data-select-all])').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const allCb = container.querySelector('input[data-select-all]');
+          if (cb.checked && allCb) {
+            allCb.checked = false;
+          }
+          // If nothing specific is checked, re-check "All"
+          const anyChecked = container.querySelectorAll('input:not([data-select-all]):checked').length > 0;
+          if (!anyChecked && allCb) {
+            allCb.checked = true;
+          }
+        });
+      });
+    });
+
+    // Close dropdowns on outside click
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.stats-multi-select--open').forEach(el => {
+        el.classList.remove('stats-multi-select--open');
+      });
+    });
+
+    // Prevent dropdown close when clicking inside
+    document.querySelectorAll('.stats-multi-select__dropdown').forEach(dd => {
+      dd.addEventListener('click', (e) => e.stopPropagation());
+    });
+  },
+
+  getSelected(filterName) {
+    const container = document.querySelector(`.stats-multi-select[data-filter="${filterName}"]`);
+    if (!container) return [];
+    // Exclude "All" checkbox (empty value) from selected values
+    return Array.from(container.querySelectorAll('input:not([data-select-all]):checked')).map(cb => cb.value);
+  },
+
+  buildQueryString() {
+    const parts = [];
+    const years = this.getSelected('year');
+    const positions = this.getSelected('position');
+    const nbaSelect = document.querySelector('select[data-filter="nba_status"]');
+    const nbaStatus = nbaSelect ? nbaSelect.value : '';
+
+    if (years.length) parts.push('year=' + years.join(','));
+    if (positions.length) parts.push('position=' + positions.join(','));
+    if (nbaStatus) parts.push('nba_status=' + nbaStatus);
+
+    return parts.length ? '?' + parts.join('&') : '';
+  },
+
+  apply() {
+    const metricKey = '{{ active_metric_key }}';
+    window.location.href = '/stats/' + metricKey + this.buildQueryString();
+  }
+};
+
+document.addEventListener('DOMContentLoaded', () => StatsFilters.init());
+</script>
+{% endblock %}

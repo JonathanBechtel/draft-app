@@ -15,6 +15,11 @@ from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.combine_shooting import CombineShooting
 from app.schemas.seasons import Season
+from app.utils.combine_formatters import (
+    format_agility_value,
+    format_anthro_value,
+    format_shooting_result,
+)
 
 
 # === Dataclasses ===
@@ -71,66 +76,10 @@ ANTHRO_METRICS = [
 ]
 
 
-# === Value Formatting (matches main UI) ===
-
-
-def _format_height_inches(value: float | None) -> str | None:
-    """Format height in inches as feet'inches" (e.g., 6'9" or 6'9.5")."""
-    if value is None:
-        return None
-    # Round to nearest half inch
-    rounded = round(value * 2) / 2
-    feet = int(rounded) // 12
-    inches = rounded % 12
-    if inches == int(inches):
-        return f"{feet}'{int(inches)}\""
-    else:
-        return f"{feet}'{inches}\""
-
-
-def _format_weight(value: float | None) -> str | None:
-    """Format weight with lbs suffix."""
-    if value is None:
-        return None
-    return f"{int(value)} lbs"
-
-
-def _format_percentage(value: float | None) -> str | None:
-    """Format percentage value."""
-    if value is None:
-        return None
-    return f"{value:.1f}%"
-
-
-def _format_inches(value: float | None) -> str | None:
-    """Format inches with decimal precision."""
-    if value is None:
-        return None
-    if value == int(value):
-        return f"{int(value)} in"
-    return f"{value:.1f} in"
-
-
-def _format_anthro_value(field_name: str, value: float | None) -> str | None:
-    """Format an anthropometric value based on field type."""
-    if value is None:
-        return None
-
-    if field_name in (
-        "wingspan_in",
-        "standing_reach_in",
-        "height_w_shoes_in",
-        "height_wo_shoes_in",
-    ):
-        return _format_height_inches(value)
-    elif field_name == "weight_lb":
-        return _format_weight(value)
-    elif field_name == "body_fat_pct":
-        return _format_percentage(value)
-    elif field_name in ("hand_length_in", "hand_width_in"):
-        return _format_inches(value)
-    else:
-        return str(value)
+# === Value Formatting ===
+# Formatting logic lives in app/utils/combine_formatters.py.
+# Local aliases for backward compatibility within this module.
+_format_anthro_value = format_anthro_value
 
 
 # Agility metrics in display order
@@ -155,36 +104,8 @@ SHOOTING_DRILLS = [
 ]
 
 
-def _format_agility_value(field_name: str, value: float | int | None) -> str | None:
-    """Format an agility value based on field type."""
-    if value is None:
-        return None
-
-    if field_name in ("standing_vertical_in", "max_vertical_in"):
-        # Format verticals as inches with decimal
-        if value == int(value):
-            return f"{int(value)} in"
-        return f"{value:.1f} in"
-    elif field_name == "bench_press_reps":
-        return f"{int(value)} reps"
-    elif field_name in (
-        "lane_agility_time_s",
-        "shuttle_run_s",
-        "three_quarter_sprint_s",
-    ):
-        return f"{value:.2f}s"
-    else:
-        return str(value)
-
-
-def _format_shooting_result(fgm: int | None, fga: int | None) -> str | None:
-    """Format shooting result as 'X/Y (Z%)'."""
-    if fgm is None or fga is None:
-        return None
-    if fga == 0:
-        return f"{fgm}/{fga}"
-    pct = (fgm / fga) * 100
-    return f"{fgm}/{fga} ({pct:.1f}%)"
+_format_agility_value = format_agility_value
+_format_shooting_result = format_shooting_result
 
 
 # === Helper Functions ===
