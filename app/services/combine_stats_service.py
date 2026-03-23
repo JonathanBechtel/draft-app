@@ -9,13 +9,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
-from sqlalchemy import cast, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.types import Float
 
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
-from app.schemas.combine_shooting import CombineShooting, SHOOTING_DRILL_COLUMNS
+from app.schemas.combine_shooting import (
+    SHOOTING_DRILL_COLUMNS,
+    SHOOTING_PCT_COLUMNS,
+    CombineShooting,
+)
 from app.schemas.players_master import PlayerMaster
 from app.schemas.player_status import PlayerStatus
 from app.schemas.positions import Position
@@ -781,23 +784,24 @@ async def get_shooting_leaders(
     drill_key: str,
     limit: int = 4,
 ) -> list[ShootingLeaderEntry]:
-    """Fetch the top N leaders for a shooting drill, ranked by FG%."""
+    """Fetch the top N leaders for a shooting drill, ranked by FG%.
+
+    Uses the pre-computed _pct column (0-100 scale) stored in the DB.
+    """
     cols = SHOOTING_DRILL_COLUMNS.get(drill_key)
-    if not cols:
+    pct_col_name = SHOOTING_PCT_COLUMNS.get(drill_key)
+    if not cols or not pct_col_name:
         return []
     fgm_col_name, fga_col_name = cols
     fgm_col = getattr(CombineShooting, fgm_col_name)
     fga_col = getattr(CombineShooting, fga_col_name)
+    pct_col = getattr(CombineShooting, pct_col_name)
 
-    fg_pct_expr = cast(fgm_col, Float) / cast(fga_col, Float)  # type: ignore[arg-type]
-
-    # Select individual columns instead of the full CombineShooting entity
-    # to avoid loading _pct columns that may not exist in the DB yet.
     stmt: Any = (
         select(  # type: ignore[call-overload]
             fgm_col.label("fgm"),
             fga_col.label("fga"),
-            fg_pct_expr.label("fg_pct"),
+            pct_col.label("fg_pct"),
             PlayerMaster.id.label("player_id"),  # type: ignore[union-attr]
             PlayerMaster.display_name,
             PlayerMaster.slug,
@@ -818,11 +822,9 @@ async def get_shooting_leaders(
             Season,
             CombineShooting.season_id == Season.id,  # type: ignore[arg-type]
         )
-        .where(fgm_col.isnot(None))  # type: ignore[union-attr]
-        .where(fga_col.isnot(None))  # type: ignore[union-attr]
-        .where(fga_col > 0)  # type: ignore[operator]
+        .where(pct_col.isnot(None))  # type: ignore[union-attr]
         .order_by(
-            fg_pct_expr.desc(),
+            pct_col.desc(),  # type: ignore[union-attr]
             fga_col.desc(),  # type: ignore[union-attr]
             PlayerMaster.id.asc(),  # type: ignore[union-attr]
         )
@@ -836,7 +838,7 @@ async def get_shooting_leaders(
     for i, row in enumerate(rows):
         fgm = row.fgm
         fga = row.fga
-        pct = row.fg_pct
+        pct = row.fg_pct  # already 0-100 scale
         entries.append(
             ShootingLeaderEntry(
                 rank=i + 1,
@@ -850,7 +852,7 @@ async def get_shooting_leaders(
                 fga=fga,
                 fg_pct=float(pct) if pct is not None else 0.0,
                 formatted_value=f"{fgm}/{fga}",
-                formatted_pct=f"{float(pct) * 100:.1f}%" if pct is not None else "0.0%",
+                formatted_pct=f"{pct:.1f}%" if pct is not None else "0.0%",
             )
         )
     return entries
@@ -899,37 +901,14 @@ async def get_year_player_counts(db: AsyncSession) -> list[YearStats]:
         reverse=True,
     )
 
-    # Compute distinct player counts across all sources per year
-    union_stmt: Any = (
-        select(  # type: ignore[call-overload]
-            Season.end_year,
-            CombineAnthro.player_id,
-        )
-        .join(Season, CombineAnthro.season_id == Season.id)  # type: ignore[arg-type]
-        .union(
-            select(  # type: ignore[call-overload]
-                Season.end_year,
-                CombineAgility.player_id,
-            ).join(Season, CombineAgility.season_id == Season.id)  # type: ignore[arg-type]
-        )
-        .union(
-            select(  # type: ignore[call-overload]
-                Season.end_year,
-                CombineShooting.player_id,
-            ).join(Season, CombineShooting.season_id == Season.id)  # type: ignore[arg-type]
-        )
-    ).subquery()
-    count_stmt: Any = select(  # type: ignore[call-overload]
-        union_stmt.c.end_year,
-        func.count(func.distinct(union_stmt.c.player_id)),
-    ).group_by(union_stmt.c.end_year)
-    count_result = await db.execute(count_stmt)
-    combined_counts: dict[int, int] = {row[0]: row[1] for row in count_result.all()}
-
     return [
         YearStats(
             year=y,
-            player_count=combined_counts.get(y, 0),
+            player_count=max(
+                anthro_counts.get(y, 0),
+                agility_counts.get(y, 0),
+                shooting_counts.get(y, 0),
+            ),
             has_anthro=y in anthro_counts,
             has_agility=y in agility_counts,
             has_shooting=y in shooting_counts,
@@ -942,15 +921,15 @@ async def get_homepage_data(db: AsyncSession) -> HomepageData:
     """Gather all data for the stats homepage."""
     measurement_leaders: dict[str, list[LeaderboardEntry]] = {}
     for key in MEASUREMENT_KEYS:
-        measurement_leaders[key] = await get_metric_leaders(db, key)
+        measurement_leaders[key] = await get_metric_leaders(db, key, limit=5)
 
     athletic_leaders: dict[str, list[LeaderboardEntry]] = {}
     for key in ATHLETIC_KEYS:
-        athletic_leaders[key] = await get_metric_leaders(db, key)
+        athletic_leaders[key] = await get_metric_leaders(db, key, limit=5)
 
     shooting_leaders: dict[str, list[ShootingLeaderEntry]] = {}
     for key in SHOOTING_KEYS:
-        shooting_leaders[key] = await get_shooting_leaders(db, key)
+        shooting_leaders[key] = await get_shooting_leaders(db, key, limit=5)
 
     year_stats = await get_year_player_counts(db)
 
