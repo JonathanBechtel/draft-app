@@ -429,3 +429,59 @@ async def test_player_detail_multi_season_college_stats(app_client, db_session):
     assert "season-btn" in content  # Season selector buttons present
     assert "20.1" in content  # First season PPG
     assert "14.3" in content  # Second season PPG
+
+
+@pytest.mark.asyncio
+async def test_player_detail_hides_combine_sections_without_data(app_client, db_session):
+    """Combine-dependent sections are hidden when player has no combine data."""
+    from app.schemas.players_master import PlayerMaster
+
+    player = PlayerMaster(
+        display_name="No Combine Player",
+        slug="no-combine-player",
+        school="UCLA",
+    )
+    db_session.add(player)
+    await db_session.commit()
+
+    response = await app_client.get("/players/no-combine-player")
+    assert response.status_code == 200
+    content = response.text
+    assert "Draft Combine Statistics" not in content
+    assert "Head-to-Head Comparison" not in content
+    assert "Player Comparisons" not in content
+
+
+@pytest.mark.asyncio
+async def test_player_detail_shows_combine_sections_with_data(app_client, db_session):
+    """Combine-dependent sections are visible when player has combine data."""
+    from app.schemas.players_master import PlayerMaster
+    from app.schemas.combine_anthro import CombineAnthro
+    from app.schemas.seasons import Season
+
+    season = Season(code="2024-25", start_year=2024, end_year=2025)
+    db_session.add(season)
+    await db_session.flush()
+
+    player = PlayerMaster(
+        display_name="Combine Player",
+        slug="combine-player",
+        school="Duke",
+    )
+    db_session.add(player)
+    await db_session.flush()
+
+    anthro = CombineAnthro(
+        player_id=player.id,
+        season_id=season.id,
+        wingspan_in=82.0,
+    )
+    db_session.add(anthro)
+    await db_session.commit()
+
+    response = await app_client.get("/players/combine-player")
+    assert response.status_code == 200
+    content = response.text
+    assert "Draft Combine Statistics" in content
+    assert "Head-to-Head Comparison" in content
+    assert "Player Comparisons" in content
