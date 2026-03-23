@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
-from app.schemas.combine_shooting import CombineShooting
+from app.schemas.combine_shooting import CombineShooting, compute_shooting_pct
 from app.schemas.seasons import Season
 from app.utils.combine_formatters import (
     format_agility_value,
@@ -562,6 +562,28 @@ async def update_combine_shooting(
     record.midrange_side_fga = _parse_int_field(data.midrange_side_fga)
     record.free_throw_fgm = _parse_int_field(data.free_throw_fgm)
     record.free_throw_fga = _parse_int_field(data.free_throw_fga)
+
+    # Compute shooting percentages
+    record.off_dribble_pct = compute_shooting_pct(
+        record.off_dribble_fgm, record.off_dribble_fga
+    )
+    record.spot_up_pct = compute_shooting_pct(record.spot_up_fgm, record.spot_up_fga)
+    record.three_point_star_pct = compute_shooting_pct(
+        record.three_point_star_fgm, record.three_point_star_fga
+    )
+    record.midrange_star_pct = compute_shooting_pct(
+        record.midrange_star_fgm, record.midrange_star_fga
+    )
+    record.three_point_side_pct = compute_shooting_pct(
+        record.three_point_side_fgm, record.three_point_side_fga
+    )
+    record.midrange_side_pct = compute_shooting_pct(
+        record.midrange_side_fgm, record.midrange_side_fga
+    )
+    record.free_throw_pct = compute_shooting_pct(
+        record.free_throw_fgm, record.free_throw_fga
+    )
+
     record.ingested_at = datetime.now(UTC).replace(tzinfo=None)
 
     await db.flush()

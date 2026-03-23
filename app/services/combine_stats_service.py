@@ -9,11 +9,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
-from sqlalchemy import func, select
+from sqlalchemy import cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.types import Float
 
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
+from app.schemas.combine_shooting import CombineShooting, SHOOTING_DRILL_COLUMNS
 from app.schemas.players_master import PlayerMaster
 from app.schemas.player_status import PlayerStatus
 from app.schemas.positions import Position
@@ -143,6 +145,53 @@ METRIC_COLUMN_MAP: dict[str, MetricColumnDef] = {
         "athletic_testing",
         "desc",
     ),
+    # Shooting Drills
+    "off_dribble_pct": MetricColumnDef(
+        CombineShooting,
+        "off_dribble_pct",
+        "Off the Dribble",
+        "%",
+        "shooting",
+        "desc",
+    ),
+    "spot_up_pct": MetricColumnDef(
+        CombineShooting, "spot_up_pct", "Spot Up", "%", "shooting", "desc"
+    ),
+    "three_point_star_pct": MetricColumnDef(
+        CombineShooting,
+        "three_point_star_pct",
+        "3-Point Star",
+        "%",
+        "shooting",
+        "desc",
+    ),
+    "midrange_star_pct": MetricColumnDef(
+        CombineShooting,
+        "midrange_star_pct",
+        "Mid-Range Star",
+        "%",
+        "shooting",
+        "desc",
+    ),
+    "three_point_side_pct": MetricColumnDef(
+        CombineShooting,
+        "three_point_side_pct",
+        "3-Point Side",
+        "%",
+        "shooting",
+        "desc",
+    ),
+    "midrange_side_pct": MetricColumnDef(
+        CombineShooting,
+        "midrange_side_pct",
+        "Mid-Range Side",
+        "%",
+        "shooting",
+        "desc",
+    ),
+    "free_throw_pct": MetricColumnDef(
+        CombineShooting, "free_throw_pct", "Free Throw", "%", "shooting", "desc"
+    ),
 }
 
 
@@ -248,6 +297,8 @@ def _format_value(metric_key: str, value: Any) -> str:
         result = format_anthro_value(defn.column, value)
     elif defn.table is CombineAgility:
         result = format_agility_value(defn.column, value)
+    elif defn.table is CombineShooting:
+        result = f"{value:.1f}%" if value is not None else None
     else:
         result = str(value) if value is not None else None
     return result or str(value)
@@ -493,7 +544,11 @@ async def get_available_years(
             CombineAgility,
             CombineAgility.season_id == Season.id,  # type: ignore[arg-type]
         )
-        combined = anthro_years.union(agility_years).subquery()
+        shooting_years = select(Season.end_year).join(  # type: ignore[call-overload]
+            CombineShooting,
+            CombineShooting.season_id == Season.id,  # type: ignore[arg-type]
+        )
+        combined = anthro_years.union(agility_years).union(shooting_years).subquery()
         stmt = (
             select(combined.c.end_year).distinct().order_by(combined.c.end_year.desc())
         )
@@ -534,7 +589,14 @@ async def get_available_positions(
         agility_positions = select(CombineAgility.position_id).where(  # type: ignore[call-overload]
             CombineAgility.position_id.isnot(None)  # type: ignore[union-attr]
         )
-        combined_pos_ids = anthro_positions.union(agility_positions).subquery()
+        shooting_positions = select(CombineShooting.position_id).where(  # type: ignore[call-overload]
+            CombineShooting.position_id.isnot(None)  # type: ignore[union-attr]
+        )
+        combined_pos_ids = (
+            anthro_positions.union(agility_positions)
+            .union(shooting_positions)
+            .subquery()
+        )
 
         stmt = (
             select(Position.code, Position.description)  # type: ignore[call-overload]
@@ -547,3 +609,331 @@ async def get_available_positions(
         )
     result = await db.execute(stmt)
     return [(row[0], row[1] or row[0]) for row in result.all()]
+
+
+# === Homepage Support ===
+
+
+class HomepageMetricDisplay(NamedTuple):
+    """Display metadata for a metric card on the stats homepage."""
+
+    icon: str  # HTML entity for the card icon
+    superlative: str  # e.g., "Longest Wingspan"
+    unit_label: str  # e.g., "wingspan", shown below the value
+
+
+HOMEPAGE_METRIC_DISPLAY: dict[str, HomepageMetricDisplay] = {
+    # Measurements (cyan)
+    "wingspan_in": HomepageMetricDisplay("&#x1F4CF;", "Longest Wingspan", "wingspan"),
+    "standing_reach_in": HomepageMetricDisplay(
+        "&#x1F9CD;", "Highest Standing Reach", "reach"
+    ),
+    "height_w_shoes_in": HomepageMetricDisplay(
+        "&#x1F4D0;", "Tallest (w/ Shoes)", "height"
+    ),
+    "height_wo_shoes_in": HomepageMetricDisplay(
+        "&#x1F9B6;", "Tallest (Barefoot)", "barefoot"
+    ),
+    "weight_lb": HomepageMetricDisplay("&#x2696;", "Heaviest", "lbs"),
+    "body_fat_pct": HomepageMetricDisplay("&#x1F4AA;", "Lowest Body Fat %", "body fat"),
+    "hand_length_in": HomepageMetricDisplay(
+        "&#x1F91A;", "Longest Hand Length", "hand length"
+    ),
+    "hand_width_in": HomepageMetricDisplay(
+        "&#x270B;", "Largest Hand Width", "hand width"
+    ),
+    # Athletic Testing (amber)
+    "max_vertical_in": HomepageMetricDisplay(
+        "&#x1F680;", "Highest Max Vertical", "max vertical"
+    ),
+    "standing_vertical_in": HomepageMetricDisplay(
+        "&#x2B06;", "Highest Standing Vertical", "standing vert"
+    ),
+    "three_quarter_sprint_s": HomepageMetricDisplay(
+        "&#x26A1;", "Fastest 3/4 Sprint", "3/4 sprint"
+    ),
+    "lane_agility_time_s": HomepageMetricDisplay(
+        "&#x1F3C3;", "Fastest Lane Agility", "lane agility"
+    ),
+    "shuttle_run_s": HomepageMetricDisplay(
+        "&#x1F504;", "Fastest Shuttle Run", "shuttle run"
+    ),
+    "bench_press_reps": HomepageMetricDisplay(
+        "&#x1F3CB;", "Most Bench Press Reps", "reps @ 185 lbs"
+    ),
+}
+
+SHOOTING_DRILL_DISPLAY: dict[str, HomepageMetricDisplay] = {
+    "spot_up": HomepageMetricDisplay("&#x1F3AF;", "Best Spot-Up Shooting", "spot-up"),
+    "off_dribble": HomepageMetricDisplay(
+        "&#x1F3C0;", "Best Off-Dribble", "off-dribble"
+    ),
+    "three_point_star": HomepageMetricDisplay(
+        "&#x2B50;", "Best 3-Point Star", "3PT star"
+    ),
+    "free_throw": HomepageMetricDisplay("&#x1F945;", "Best Free Throw", "free throw"),
+    "midrange_star": HomepageMetricDisplay(
+        "&#x1F3C0;", "Best Midrange Star", "midrange star"
+    ),
+    "three_point_side": HomepageMetricDisplay(
+        "&#x1F3C0;", "Best 3-Point Side", "3PT side"
+    ),
+    "midrange_side": HomepageMetricDisplay(
+        "&#x1F3C0;", "Best Midrange Side", "midrange side"
+    ),
+}
+
+
+@dataclass
+class ShootingLeaderEntry:
+    """Single row in a shooting drill leaderboard."""
+
+    rank: int
+    player_id: int
+    display_name: str
+    slug: str
+    school: str | None
+    position: str | None
+    draft_year: int | None
+    fgm: int
+    fga: int
+    fg_pct: float
+    formatted_value: str  # e.g., "15/15"
+    formatted_pct: str  # e.g., "100.0%"
+
+
+@dataclass
+class YearStats:
+    """Player count and data availability for a single draft class year."""
+
+    year: int
+    player_count: int
+    has_anthro: bool
+    has_agility: bool
+    has_shooting: bool
+
+
+@dataclass
+class HomepageData:
+    """All data needed to render the stats homepage."""
+
+    measurement_leaders: dict[str, list[LeaderboardEntry]]
+    athletic_leaders: dict[str, list[LeaderboardEntry]]
+    shooting_leaders: dict[str, list[ShootingLeaderEntry]]
+    year_stats: list[YearStats]
+
+
+# Ordered lists of metric keys for each homepage section
+MEASUREMENT_KEYS = [
+    "wingspan_in",
+    "standing_reach_in",
+    "height_w_shoes_in",
+    "weight_lb",
+    "hand_width_in",
+    "hand_length_in",
+    "body_fat_pct",
+    "height_wo_shoes_in",
+]
+
+ATHLETIC_KEYS = [
+    "max_vertical_in",
+    "standing_vertical_in",
+    "three_quarter_sprint_s",
+    "lane_agility_time_s",
+    "shuttle_run_s",
+    "bench_press_reps",
+]
+
+SHOOTING_KEYS = [
+    "spot_up",
+    "off_dribble",
+    "three_point_star",
+    "free_throw",
+    "midrange_star",
+    "three_point_side",
+    "midrange_side",
+]
+
+
+async def get_metric_leaders(
+    db: AsyncSession,
+    metric_key: str,
+    limit: int = 4,
+) -> list[LeaderboardEntry]:
+    """Fetch the top N leaders for a single combine metric (anthro/agility)."""
+    defn = METRIC_COLUMN_MAP[metric_key]
+    base = _build_base_query(metric_key)
+    order_col = _order_column(metric_key)
+    tiebreak = PlayerMaster.id.asc()  # type: ignore[union-attr]
+
+    if defn.sort_direction == "asc":
+        ordered = base.order_by(order_col.asc(), tiebreak)  # type: ignore[union-attr]
+    else:
+        ordered = base.order_by(order_col.desc(), tiebreak)  # type: ignore[union-attr]
+
+    result = await db.execute(ordered.limit(limit))
+    rows = result.all()
+    return [_row_to_entry(row, metric_key, i + 1, None) for i, row in enumerate(rows)]
+
+
+async def get_shooting_leaders(
+    db: AsyncSession,
+    drill_key: str,
+    limit: int = 4,
+) -> list[ShootingLeaderEntry]:
+    """Fetch the top N leaders for a shooting drill, ranked by FG%."""
+    cols = SHOOTING_DRILL_COLUMNS.get(drill_key)
+    if not cols:
+        return []
+    fgm_col_name, fga_col_name = cols
+    fgm_col = getattr(CombineShooting, fgm_col_name)
+    fga_col = getattr(CombineShooting, fga_col_name)
+
+    fg_pct_expr = cast(fgm_col, Float) / cast(fga_col, Float)  # type: ignore[arg-type]
+
+    # Select individual columns instead of the full CombineShooting entity
+    # to avoid loading _pct columns that may not exist in the DB yet.
+    stmt: Any = (
+        select(  # type: ignore[call-overload]
+            fgm_col.label("fgm"),
+            fga_col.label("fga"),
+            fg_pct_expr.label("fg_pct"),
+            PlayerMaster.id.label("player_id"),  # type: ignore[union-attr]
+            PlayerMaster.display_name,
+            PlayerMaster.slug,
+            PlayerMaster.school,
+            PlayerMaster.draft_year,
+            Position.code.label("position_code"),  # type: ignore[union-attr,attr-defined]
+        )
+        .select_from(CombineShooting)
+        .join(
+            PlayerMaster,
+            CombineShooting.player_id == PlayerMaster.id,  # type: ignore[arg-type]
+        )
+        .outerjoin(
+            Position,
+            CombineShooting.position_id == Position.id,  # type: ignore[arg-type]
+        )
+        .join(
+            Season,
+            CombineShooting.season_id == Season.id,  # type: ignore[arg-type]
+        )
+        .where(fgm_col.isnot(None))  # type: ignore[union-attr]
+        .where(fga_col.isnot(None))  # type: ignore[union-attr]
+        .where(fga_col > 0)  # type: ignore[operator]
+        .order_by(
+            fg_pct_expr.desc(),
+            fga_col.desc(),  # type: ignore[union-attr]
+            PlayerMaster.id.asc(),  # type: ignore[union-attr]
+        )
+        .limit(limit)
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    entries: list[ShootingLeaderEntry] = []
+    for i, row in enumerate(rows):
+        fgm = row.fgm
+        fga = row.fga
+        pct = row.fg_pct
+        entries.append(
+            ShootingLeaderEntry(
+                rank=i + 1,
+                player_id=row.player_id,
+                display_name=row.display_name or "",
+                slug=row.slug or "",
+                school=row.school,
+                position=row.position_code,
+                draft_year=row.draft_year,
+                fgm=fgm,
+                fga=fga,
+                fg_pct=float(pct) if pct is not None else 0.0,
+                formatted_value=f"{fgm}/{fga}",
+                formatted_pct=f"{float(pct) * 100:.1f}%" if pct is not None else "0.0%",
+            )
+        )
+    return entries
+
+
+async def get_year_player_counts(db: AsyncSession) -> list[YearStats]:
+    """Get player counts and data type availability per draft class year."""
+    # Anthro counts per year
+    anthro_stmt: Any = (
+        select(  # type: ignore[call-overload]
+            Season.end_year,
+            func.count(func.distinct(CombineAnthro.player_id)),
+        )
+        .join(Season, CombineAnthro.season_id == Season.id)  # type: ignore[arg-type]
+        .group_by(Season.end_year)
+    )
+    anthro_result = await db.execute(anthro_stmt)
+    anthro_counts: dict[int, int] = {row[0]: row[1] for row in anthro_result.all()}
+
+    # Agility counts per year
+    agility_stmt: Any = (
+        select(  # type: ignore[call-overload]
+            Season.end_year,
+            func.count(func.distinct(CombineAgility.player_id)),
+        )
+        .join(Season, CombineAgility.season_id == Season.id)  # type: ignore[arg-type]
+        .group_by(Season.end_year)
+    )
+    agility_result = await db.execute(agility_stmt)
+    agility_counts: dict[int, int] = {row[0]: row[1] for row in agility_result.all()}
+
+    # Shooting counts per year
+    shooting_stmt: Any = (
+        select(  # type: ignore[call-overload]
+            Season.end_year,
+            func.count(func.distinct(CombineShooting.player_id)),
+        )
+        .join(Season, CombineShooting.season_id == Season.id)  # type: ignore[arg-type]
+        .group_by(Season.end_year)
+    )
+    shooting_result = await db.execute(shooting_stmt)
+    shooting_counts: dict[int, int] = {row[0]: row[1] for row in shooting_result.all()}
+
+    all_years = sorted(
+        set(anthro_counts) | set(agility_counts) | set(shooting_counts),
+        reverse=True,
+    )
+
+    return [
+        YearStats(
+            year=y,
+            player_count=max(
+                anthro_counts.get(y, 0),
+                agility_counts.get(y, 0),
+                shooting_counts.get(y, 0),
+            ),
+            has_anthro=y in anthro_counts,
+            has_agility=y in agility_counts,
+            has_shooting=y in shooting_counts,
+        )
+        for y in all_years
+    ]
+
+
+async def get_homepage_data(db: AsyncSession) -> HomepageData:
+    """Gather all data for the stats homepage."""
+    measurement_leaders: dict[str, list[LeaderboardEntry]] = {}
+    for key in MEASUREMENT_KEYS:
+        measurement_leaders[key] = await get_metric_leaders(db, key)
+
+    athletic_leaders: dict[str, list[LeaderboardEntry]] = {}
+    for key in ATHLETIC_KEYS:
+        athletic_leaders[key] = await get_metric_leaders(db, key)
+
+    shooting_leaders: dict[str, list[ShootingLeaderEntry]] = {}
+    for key in SHOOTING_KEYS:
+        shooting_leaders[key] = await get_shooting_leaders(db, key)
+
+    year_stats = await get_year_player_counts(db)
+
+    return HomepageData(
+        measurement_leaders=measurement_leaders,
+        athletic_leaders=athletic_leaders,
+        shooting_leaders=shooting_leaders,
+        year_stats=year_stats,
+    )
