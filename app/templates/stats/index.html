@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+
+{% block title %}NBA Draft Combine Stats & Leaderboards — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/stats.css') }}">
+{% endblock %}
+
+{% block content %}
+
+{# ══════════════════════════════════════════════════════════════════════
+   MACROS — Leader card components (must be defined before use)
+   ══════════════════════════════════════════════════════════════════════ #}
+
+{# Standard leader card for anthro/agility metrics #}
+{% macro leader_card(metric_key, display, leaders, color) %}
+<div class="stat-leader-card stat-leader-card--{{ color }}">
+  <div class="stat-leader-card__header">
+    <span class="stat-leader-card__metric">
+      <span class="stat-leader-card__metric-icon">{{ display.icon | safe }}</span>
+      {{ display.superlative }}
+    </span>
+    <a href="/stats/{{ metric_key }}" class="stat-leader-card__view-all">View All &#8594;</a>
+  </div>
+
+  {# Featured player (#1) #}
+  {% set featured = leaders[0] %}
+  <a href="/players/{{ featured.slug }}" class="stat-leader-card__featured">
+    <img
+      src="{{ featured.photo_url }}"
+      alt="{{ featured.display_name }}"
+      class="featured-player-image"
+      onerror="this.onerror=null;this.src='{{ featured.photo_url_placeholder }}';"
+      loading="lazy"
+    >
+    <div class="featured-player-info">
+      <span class="featured-player-name">{{ featured.display_name }}</span>
+      <div>
+        <span class="featured-player-value">{{ featured.formatted_value }}</span>
+        <span class="featured-player-unit">{{ display.unit_label }}</span>
+      </div>
+    </div>
+  </a>
+
+  {# Runners-up #}
+  {% if leaders|length > 1 %}
+  <div class="stat-leader-card__runners">
+    {% for entry in leaders[1:] %}
+    <a href="/players/{{ entry.slug }}" class="runner-row">
+      <span class="runner-rank">{{ entry.rank }}</span>
+      <span class="runner-name">{{ entry.display_name }}</span>
+      <span class="runner-value tabular-nums">{{ entry.formatted_value }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{# Shooting drill leader card #}
+{% macro shooting_leader_card(drill_key, display, leaders) %}
+<div class="stat-leader-card stat-leader-card--rose">
+  <div class="stat-leader-card__header">
+    <span class="stat-leader-card__metric">
+      <span class="stat-leader-card__metric-icon">{{ display.icon | safe }}</span>
+      {{ display.superlative }}
+    </span>
+    <span class="stat-leader-card__view-all-label">All-Time</span>
+  </div>
+
+  {# Featured player (#1) #}
+  {% set featured = leaders[0] %}
+  <a href="/players/{{ featured.slug }}" class="stat-leader-card__featured">
+    <img
+      src="{{ featured.photo_url }}"
+      alt="{{ featured.display_name }}"
+      class="featured-player-image"
+      onerror="this.onerror=null;this.src='{{ featured.photo_url_placeholder }}';"
+      loading="lazy"
+    >
+    <div class="featured-player-info">
+      <span class="featured-player-name">{{ featured.display_name }}</span>
+      <div>
+        <span class="featured-player-value">{{ featured.formatted_value }}</span>
+        <span class="featured-player-unit">{{ featured.formatted_pct }}</span>
+      </div>
+    </div>
+  </a>
+
+  {# Runners-up #}
+  {% if leaders|length > 1 %}
+  <div class="stat-leader-card__runners">
+    {% for entry in leaders[1:] %}
+    <a href="/players/{{ entry.slug }}" class="runner-row">
+      <span class="runner-rank">{{ entry.rank }}</span>
+      <span class="runner-name">{{ entry.display_name }}</span>
+      <span class="runner-value tabular-nums">{{ entry.formatted_value }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+<main>
+  {# ══════════════════════════════════════════════════════════════════════
+     HERO
+     ══════════════════════════════════════════════════════════════════════ #}
+  <section class="stats-hero">
+    <div class="container">
+      <h2>NBA Draft Combine</h2>
+      <p class="stats-hero-tagline">Measurements, Testing & Leaderboards</p>
+    </div>
+  </section>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     STICKY SECTION NAV
+     ══════════════════════════════════════════════════════════════════════ #}
+  <nav class="stats-section-nav">
+    <div class="stats-section-nav__inner">
+      <a href="#measurements" class="stats-nav-tab stats-nav-tab--measurements active">
+        <span class="stats-nav-tab__icon">&#x1F4CF;</span>
+        Measurements
+        <span class="stats-nav-tab__count">{{ measurement_keys|length }}</span>
+      </a>
+      <a href="#athletic-testing" class="stats-nav-tab stats-nav-tab--athletic">
+        <span class="stats-nav-tab__icon">&#x26A1;</span>
+        Athletic Testing
+        <span class="stats-nav-tab__count">{{ athletic_keys|length }}</span>
+      </a>
+      <a href="#shooting-drills" class="stats-nav-tab stats-nav-tab--shooting">
+        <span class="stats-nav-tab__icon">&#x1F3AF;</span>
+        Shooting Drills
+        <span class="stats-nav-tab__count">{{ shooting_keys|length }}</span>
+      </a>
+      <a href="#draft-classes" class="stats-nav-tab stats-nav-tab--classes">
+        <span class="stats-nav-tab__icon">&#x1F4C5;</span>
+        Draft Classes
+        <span class="stats-nav-tab__count">{{ year_stats|length }}</span>
+      </a>
+    </div>
+  </nav>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     MEASUREMENTS — Cyan theme
+     ══════════════════════════════════════════════════════════════════════ #}
+  <section id="measurements" class="section">
+    <div class="container">
+      <h3 class="section-header heading-font" style="border-color: var(--color-accent-cyan);">
+        Measurements
+      </h3>
+      <p class="section-subtitle">Height, wingspan, reach, weight, and hand size</p>
+
+      <div class="leaderboard-grid">
+        {% for key in measurement_keys %}
+          {% set display = metric_display[key] %}
+          {% set leaders = measurement_leaders.get(key, []) %}
+          {% if leaders %}
+            {{ leader_card(key, display, leaders, "cyan") }}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <div class="container"><div class="section-divider"></div></div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     ATHLETIC TESTING — Amber theme
+     ══════════════════════════════════════════════════════════════════════ #}
+  <section id="athletic-testing" class="section">
+    <div class="container">
+      <h3 class="section-header heading-font" style="border-color: var(--color-accent-amber);">
+        Athletic Testing
+      </h3>
+      <p class="section-subtitle">Speed, explosiveness, agility, and strength</p>
+
+      <div class="leaderboard-grid">
+        {% for key in athletic_keys %}
+          {% set display = metric_display[key] %}
+          {% set leaders = athletic_leaders.get(key, []) %}
+          {% if leaders %}
+            {{ leader_card(key, display, leaders, "amber") }}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <div class="container"><div class="section-divider"></div></div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     SHOOTING DRILLS — Rose theme
+     ══════════════════════════════════════════════════════════════════════ #}
+  <section id="shooting-drills" class="section">
+    <div class="container">
+      <h3 class="section-header heading-font" style="border-color: var(--color-accent-rose);">
+        Shooting Drills
+      </h3>
+      <p class="section-subtitle">Spot-up, off-dribble, three-point, midrange, and free throw results</p>
+
+      <div class="leaderboard-grid">
+        {% for key in shooting_keys %}
+          {% set display = shooting_display[key] %}
+          {% set leaders = shooting_leaders.get(key, []) %}
+          {% if leaders %}
+            {{ shooting_leader_card(key, display, leaders) }}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <div class="container"><div class="section-divider"></div></div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     DRAFT CLASS YEAR GRID
+     ══════════════════════════════════════════════════════════════════════ #}
+  <section id="draft-classes" class="section">
+    <div class="container">
+      <h3 class="section-header heading-font" style="border-color: var(--color-accent-emerald);">
+        Browse by Draft Class
+      </h3>
+      <p class="section-subtitle">Explore full combine results for every year</p>
+
+      <div class="year-grid">
+        {% for ys in year_stats %}
+        <a href="/stats/combine/{{ ys.year }}" class="year-card">
+          <div class="year-card__year">{{ ys.year }}</div>
+          <div class="year-card__count">{{ ys.player_count }} Players</div>
+          <div class="year-card__metrics">
+            {% if ys.has_anthro %}
+              <span class="year-card__metric-pill year-card__metric-pill--cyan">Anthro</span>
+            {% endif %}
+            {% if ys.has_agility %}
+              <span class="year-card__metric-pill year-card__metric-pill--amber">Agility</span>
+            {% endif %}
+            {% if ys.has_shooting %}
+              <span class="year-card__metric-pill year-card__metric-pill--rose">Shooting</span>
+            {% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+</main>
+{% endblock %}
