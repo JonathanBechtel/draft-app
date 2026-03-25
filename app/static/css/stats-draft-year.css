@@ -557,6 +557,21 @@
   font-weight: 600;
   white-space: nowrap;
 }
+.dy-data-table th.dy-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.dy-data-table th.dy-sortable:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.dy-sort-arrow {
+  margin-left: 0.25rem;
+  font-size: 0.6rem;
+  opacity: 0.35;
+}
+.dy-sort-arrow.active {
+  opacity: 1;
+}
 .dy-data-table th.text-right,
 .dy-data-table td.text-right {
   text-align: right;

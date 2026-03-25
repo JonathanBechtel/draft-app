@@ -271,6 +271,8 @@
   var PAGE_SIZE = 25;
   var tablePage = 0;
   var filteredPlayers = [];
+  var sortKey = null;   // null, 'name', 'pos', or a metric key
+  var sortDir = 'asc';  // 'asc' or 'desc'
 
   function populatePositionFilter(el) {
     if (!el) return;
@@ -283,15 +285,83 @@
     el.value = currentVal;
   }
 
+  function sortArrow(key) {
+    if (sortKey !== key) return ' <span class="dy-sort-arrow">\u25B4</span>';
+    return sortDir === 'asc'
+      ? ' <span class="dy-sort-arrow active">\u25B4</span>'
+      : ' <span class="dy-sort-arrow active">\u25BE</span>';
+  }
+
+  function handleSort(key) {
+    if (sortKey === key) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortKey = key;
+      // Default sort direction: desc for metrics, asc for name/pos
+      sortDir = (key === 'name' || key === 'pos') ? 'asc' : 'desc';
+    }
+    sortFilteredPlayers();
+    tablePage = 0;
+    renderTablePage();
+    updateSortHeaders();
+  }
+
+  function sortFilteredPlayers() {
+    if (!sortKey) return;
+    var key = sortKey;
+    var dir = sortDir === 'asc' ? 1 : -1;
+
+    filteredPlayers.sort(function (a, b) {
+      var va, vb;
+      if (key === 'name') {
+        va = (a.display_name || '').toLowerCase();
+        vb = (b.display_name || '').toLowerCase();
+        return va < vb ? -dir : va > vb ? dir : 0;
+      } else if (key === 'pos') {
+        va = (a.position || '').toLowerCase();
+        vb = (b.position || '').toLowerCase();
+        return va < vb ? -dir : va > vb ? dir : 0;
+      } else {
+        va = a.metrics[key];
+        vb = b.metrics[key];
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        return (va - vb) * dir;
+      }
+    });
+  }
+
+  function updateSortHeaders() {
+    var thead = document.getElementById('dy-table-head');
+    if (!thead) return;
+    var catData = DATA.categories[CAT_DATA_KEY[currentCategory]];
+
+    var headHtml = '<tr><th>#</th>';
+    headHtml += '<th class="dy-sortable" data-sort="name">Player' + sortArrow('name') + '</th>';
+    headHtml += '<th class="dy-sortable" data-sort="pos">Pos' + sortArrow('pos') + '</th>';
+    catData.metrics.forEach(function (m) {
+      headHtml += '<th class="text-right dy-sortable" data-sort="' + escAttr(m.key) + '">' + escHtml(m.label) + sortArrow(m.key) + '</th>';
+    });
+    headHtml += '</tr>';
+    thead.innerHTML = headHtml;
+  }
+
   function renderTable(cat) {
     var catData = DATA.categories[CAT_DATA_KEY[cat]];
     var thead = document.getElementById('dy-table-head');
     if (!thead) return;
 
-    // Header
-    var headHtml = '<tr><th>#</th><th>Player</th><th>Pos</th>';
+    // Reset sort on category switch
+    sortKey = null;
+    sortDir = 'asc';
+
+    // Build header with sortable columns
+    var headHtml = '<tr><th>#</th>';
+    headHtml += '<th class="dy-sortable" data-sort="name">Player' + sortArrow('name') + '</th>';
+    headHtml += '<th class="dy-sortable" data-sort="pos">Pos' + sortArrow('pos') + '</th>';
     catData.metrics.forEach(function (m) {
-      headHtml += '<th class="text-right">' + escHtml(m.label) + '</th>';
+      headHtml += '<th class="text-right dy-sortable" data-sort="' + escAttr(m.key) + '">' + escHtml(m.label) + sortArrow(m.key) + '</th>';
     });
     headHtml += '</tr>';
     thead.innerHTML = headHtml;
@@ -445,6 +515,13 @@
     var rangePosEl = document.getElementById('dy-range-pos-filter');
     if (rangePosEl) rangePosEl.addEventListener('change', function () {
       renderRangeChart(currentCategory);
+    });
+
+    // Sort by clicking column headers (event delegation on thead)
+    var thead = document.getElementById('dy-table-head');
+    if (thead) thead.addEventListener('click', function (e) {
+      var th = e.target.closest('.dy-sortable');
+      if (th && th.dataset.sort) handleSort(th.dataset.sort);
     });
 
     // Initial render
