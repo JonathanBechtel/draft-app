@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.combine_agility import CombineAgility
@@ -551,7 +551,7 @@ async def get_available_years(
             CombineShooting,
             CombineShooting.season_id == Season.id,  # type: ignore[arg-type]
         )
-        combined = anthro_years.union(agility_years).union(shooting_years).subquery()
+        combined = union(anthro_years, agility_years, shooting_years).subquery()
         stmt = (
             select(combined.c.end_year).distinct().order_by(combined.c.end_year.desc())
         )
@@ -595,11 +595,9 @@ async def get_available_positions(
         shooting_positions = select(CombineShooting.position_id).where(  # type: ignore[call-overload]
             CombineShooting.position_id.isnot(None)  # type: ignore[union-attr]
         )
-        combined_pos_ids = (
-            anthro_positions.union(agility_positions)
-            .union(shooting_positions)
-            .subquery()
-        )
+        combined_pos_ids = union(
+            anthro_positions, agility_positions, shooting_positions
+        ).subquery()
 
         stmt = (
             select(Position.code, Position.description)  # type: ignore[call-overload]
