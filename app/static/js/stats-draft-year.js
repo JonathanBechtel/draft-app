@@ -152,14 +152,42 @@
   // WINNER SHOWCASE
   // ═══════════════════════════════════════════════════════════════
 
+  function getActivePositionFilter() {
+    var posEl = document.getElementById('dy-pos-filter');
+    return posEl ? posEl.value : '';
+  }
+
+  function findLeaderForMetric(players, metricKey, sortDirection) {
+    var best = null;
+    var bestVal = null;
+    for (var i = 0; i < players.length; i++) {
+      var v = players[i].metrics[metricKey];
+      if (v == null) continue;
+      if (bestVal == null ||
+          (sortDirection === 'desc' && v > bestVal) ||
+          (sortDirection === 'asc' && v < bestVal)) {
+        bestVal = v;
+        best = players[i];
+      }
+    }
+    return best;
+  }
+
   function renderWinners(cat) {
     var catData = DATA.categories[CAT_DATA_KEY[cat]];
     var grid = document.getElementById('dy-winners-grid');
     if (!grid) return;
 
+    var pos = getActivePositionFilter();
+    var pool = pos
+      ? catData.players.filter(function (p) { return p.position === pos; })
+      : catData.players;
+
     var html = '';
     catData.metrics.forEach(function (metric, i) {
-      var leader = catData.leaders[metric.key];
+      var leader = pos
+        ? findLeaderForMetric(pool, metric.key, metric.sort_direction)
+        : catData.leaders[metric.key];
       if (!leader) return;
 
       var val = leader.metrics[metric.key];
@@ -224,7 +252,7 @@
     applyFilters();
   }
 
-  function applyFilters() {
+  function applyFilters(updateWinners) {
     var catData = DATA.categories[CAT_DATA_KEY[currentCategory]];
     var searchEl = document.getElementById('dy-grid-search');
     var posEl = document.getElementById('dy-pos-filter');
@@ -239,6 +267,10 @@
 
     tablePage = 0;
     renderTablePage();
+
+    if (updateWinners) {
+      renderWinners(currentCategory);
+    }
   }
 
   function renderTablePage() {
@@ -349,12 +381,13 @@
       });
     });
 
-    // Search & filter handlers
+    // Search only filters the table
     var searchEl = document.getElementById('dy-grid-search');
-    if (searchEl) searchEl.addEventListener('input', applyFilters);
+    if (searchEl) searchEl.addEventListener('input', function () { applyFilters(false); });
 
+    // Position filter updates both winners and table
     var posEl = document.getElementById('dy-pos-filter');
-    if (posEl) posEl.addEventListener('change', applyFilters);
+    if (posEl) posEl.addEventListener('change', function () { applyFilters(true); });
 
     // Initial render
     switchCategory('anthro');
