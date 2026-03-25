@@ -102,26 +102,34 @@
         '<div class="dy-legend-item"><div class="dy-legend-dot dy-legend-dot--avg"></div> Class Average</div>' +
       '</div></div>';
 
+    // Column headers
+    html += '<div class="dy-range-col-headers">' +
+      '<div class="dy-range-col-header left">Min</div>' +
+      '<div class="dy-range-col-header" style="text-align:center">Range</div>' +
+      '<div class="dy-range-col-header right">Max</div>' +
+    '</div>';
+
     catData.range_stats.forEach(function (rs) {
       var span = rs.max_value - rs.min_value || 1;
       var avgPct = ((rs.avg_value - rs.min_value) / span * 100).toFixed(1);
 
-      html += '<div class="dy-range-row">' +
-        '<div class="dy-range-endpoint left">' +
-          '<div class="dy-ep-value">' + rs.formatted_min + '</div>' +
-          '<div class="dy-ep-name">' + escHtml(rs.min_player_name) + '</div>' +
-        '</div>' +
-        '<div class="dy-range-label">' + escHtml(rs.display_name) + '</div>' +
-        '<div class="dy-range-track">' +
-          '<div class="dy-range-bar"></div>' +
-          '<div class="dy-range-avg" data-pct="' + avgPct + '">' +
-            '<div class="dy-range-avg-label">AVG ' + rs.formatted_avg + '</div>' +
+      html += '<div class="dy-range-item">' +
+        '<div class="dy-range-item-label">' + escHtml(rs.display_name) + '</div>' +
+        '<div class="dy-range-row">' +
+          '<div class="dy-range-endpoint left">' +
+            '<div class="dy-ep-value">' + rs.formatted_min + '</div>' +
+            '<div class="dy-ep-name">' + escHtml(rs.min_player_name) + '</div>' +
           '</div>' +
-        '</div>' +
-        '<div class="dy-range-endpoint right" style="text-align:right">&nbsp;</div>' +
-        '<div class="dy-range-endpoint right">' +
-          '<div class="dy-ep-value">' + rs.formatted_max + '</div>' +
-          '<div class="dy-ep-name">' + escHtml(rs.max_player_name) + '</div>' +
+          '<div class="dy-range-track">' +
+            '<div class="dy-range-bar"></div>' +
+            '<div class="dy-range-avg" data-pct="' + avgPct + '">' +
+              '<div class="dy-range-avg-label">AVG ' + rs.formatted_avg + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="dy-range-endpoint right">' +
+            '<div class="dy-ep-value">' + rs.formatted_max + '</div>' +
+            '<div class="dy-ep-name">' + escHtml(rs.max_player_name) + '</div>' +
+          '</div>' +
         '</div>' +
       '</div>';
     });

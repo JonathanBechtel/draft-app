@@ -18,7 +18,7 @@
 
 .dy-container {
   max-width: 1152px;
-  width: var(--content-width);
+  width: 90%;
   margin: 0 auto;
   padding: 0 1.5rem;
 }
@@ -206,21 +206,34 @@
   border-radius: 1px;
 }
 
-.dy-range-row {
-  display: grid;
-  grid-template-columns: 140px 140px 1fr 140px 140px;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0;
+/* Range row: metric label spans full width, data row is 3 columns */
+.dy-range-item {
+  padding: 0.4rem 0;
   border-bottom: 1px solid var(--color-slate-100);
   transition: background 0.15s;
 }
-.dy-range-row:last-child {
+.dy-range-item:last-child {
   border-bottom: none;
 }
-.dy-range-row:hover {
+.dy-range-item:hover {
   background: var(--cat-color-light);
   border-radius: 4px;
+}
+.dy-range-item-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-slate-700);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.25rem 0.15rem;
+}
+.dy-range-row {
+  display: grid;
+  grid-template-columns: 160px 1fr 160px;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.15rem 0.25rem 0.35rem;
 }
 
 .dy-range-endpoint {
@@ -251,18 +264,42 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 130px;
+  max-width: 150px;
 }
 .dy-range-endpoint.left .dy-ep-name {
   margin-left: auto;
 }
-.dy-range-label {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
+.dy-ep-tag {
+  font-size: 0.55rem;
   font-weight: 600;
-  color: var(--color-slate-700);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  color: var(--color-slate-400);
+  margin-bottom: 0.1rem;
+}
+
+/* Column headers for min/max */
+.dy-range-col-headers {
+  display: grid;
+  grid-template-columns: 160px 1fr 160px;
+  gap: 0.75rem;
+  padding: 0 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--color-slate-200);
+  margin-bottom: 0.25rem;
+}
+.dy-range-col-header {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-400);
+}
+.dy-range-col-header.left {
+  text-align: right;
+}
+.dy-range-col-header.right {
+  text-align: left;
 }
 
 /* Visual track */
@@ -604,11 +641,15 @@
     padding: 0 1rem;
   }
   .dy-range-row {
-    grid-template-columns: 90px 90px 1fr 90px 90px;
-    gap: 0.25rem;
+    grid-template-columns: 110px 1fr 110px;
+    gap: 0.35rem;
+  }
+  .dy-range-col-headers {
+    grid-template-columns: 110px 1fr 110px;
+    gap: 0.35rem;
   }
   .dy-ep-name {
-    max-width: 80px;
+    max-width: 100px;
     font-size: 0.58rem;
   }
   .dy-winners-grid {
