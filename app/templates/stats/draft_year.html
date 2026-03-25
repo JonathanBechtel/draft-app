@@ -24,12 +24,17 @@
       <h2>Combine Stats</h2>
       <div class="dy-page-header__subtitle">NBA Draft Combine Performance Data</div>
       <div class="dy-year-selector">
-        {% for y in available_years %}
+        {% set recent_years = available_years[:5] %}
+        {% for y in recent_years %}
         <a href="/stats/combine/{{ y }}"
            class="dy-year-pill{% if y == year %} active{% endif %}">
           {{ y }}
         </a>
         {% endfor %}
+        {% if year not in recent_years %}
+        <a href="/stats/combine/{{ year }}" class="dy-year-pill active">{{ year }}</a>
+        {% endif %}
+        <a href="/stats" class="dy-year-pill" style="font-size:0.7rem">All Years</a>
       </div>
     </div>
 
