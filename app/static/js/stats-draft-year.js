@@ -90,10 +90,55 @@
   // RANGE CHART
   // ═══════════════════════════════════════════════════════════════
 
+  function computeRangeStats(players, metrics) {
+    var stats = [];
+    metrics.forEach(function (m) {
+      var entries = [];
+      players.forEach(function (p) {
+        var v = p.metrics[m.key];
+        if (v != null) entries.push({ val: v, name: p.display_name, formatted: p.formatted[m.key] });
+      });
+      if (entries.length < 2) return;
+
+      var vals = entries.map(function (e) { return e.val; });
+      var minVal = Math.min.apply(null, vals);
+      var maxVal = Math.max.apply(null, vals);
+      var avg = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+
+      var minE = entries.filter(function (e) { return e.val === minVal; })[0];
+      var maxE = entries.filter(function (e) { return e.val === maxVal; })[0];
+
+      stats.push({
+        display_name: m.label,
+        formatted_min: minE.formatted || fmtVal(minVal, m.unit),
+        formatted_max: maxE.formatted || fmtVal(maxVal, m.unit),
+        formatted_avg: fmtVal(avg, m.unit),
+        min_player_name: minE.name,
+        max_player_name: maxE.name,
+        min_value: minVal,
+        max_value: maxVal,
+        avg_value: avg
+      });
+    });
+    return stats;
+  }
+
   function renderRangeChart(cat) {
     var catData = DATA.categories[CAT_DATA_KEY[cat]];
     var chart = document.getElementById('dy-range-chart');
     if (!chart) return;
+
+    // Filter players by range position dropdown
+    var rangePosEl = document.getElementById('dy-range-pos-filter');
+    var rangePos = rangePosEl ? rangePosEl.value : '';
+    var pool = rangePos
+      ? catData.players.filter(function (p) { return p.position === rangePos; })
+      : catData.players;
+
+    // Use pre-computed stats when unfiltered, recompute when filtered
+    var rangeStats = rangePos
+      ? computeRangeStats(pool, catData.metrics)
+      : catData.range_stats;
 
     var html = '<div class="dy-range-chart-header">' +
       '<div class="dy-section-title" style="margin-bottom:0;border-left-color:var(--cat-color)">Distribution Overview</div>' +
@@ -109,7 +154,7 @@
       '<div class="dy-range-col-header right">Max</div>' +
     '</div>';
 
-    catData.range_stats.forEach(function (rs) {
+    rangeStats.forEach(function (rs) {
       var span = rs.max_value - rs.min_value || 1;
       var avgPct = ((rs.avg_value - rs.min_value) / span * 100).toFixed(1);
 
@@ -133,6 +178,10 @@
         '</div>' +
       '</div>';
     });
+
+    if (rangeStats.length === 0) {
+      html += '<div style="text-align:center;padding:2rem;color:var(--color-slate-500);font-family:var(--font-mono);font-size:0.8rem;">No data for this position</div>';
+    }
 
     chart.innerHTML = html;
     positionAvgMarkers(chart);
@@ -223,6 +272,17 @@
   var tablePage = 0;
   var filteredPlayers = [];
 
+  function populatePositionFilter(el) {
+    if (!el) return;
+    var currentVal = el.value;
+    var html = '<option value="">All Positions</option>';
+    DATA.positions.forEach(function (pos) {
+      html += '<option value="' + escAttr(pos) + '">' + escHtml(pos) + '</option>';
+    });
+    el.innerHTML = html;
+    el.value = currentVal;
+  }
+
   function renderTable(cat) {
     var catData = DATA.categories[CAT_DATA_KEY[cat]];
     var thead = document.getElementById('dy-table-head');
@@ -236,20 +296,12 @@
     headHtml += '</tr>';
     thead.innerHTML = headHtml;
 
-    // Populate position filter
-    var posFilter = document.getElementById('dy-pos-filter');
-    if (posFilter) {
-      var currentVal = posFilter.value;
-      var optionsHtml = '<option value="">All Positions</option>';
-      DATA.positions.forEach(function (pos) {
-        optionsHtml += '<option value="' + escAttr(pos) + '">' + escHtml(pos) + '</option>';
-      });
-      posFilter.innerHTML = optionsHtml;
-      posFilter.value = currentVal;
-    }
+    // Populate both position filters
+    populatePositionFilter(document.getElementById('dy-pos-filter'));
+    populatePositionFilter(document.getElementById('dy-range-pos-filter'));
 
     tablePage = 0;
-    applyFilters();
+    applyFilters(false);
   }
 
   function applyFilters(updateWinners) {
@@ -385,9 +437,15 @@
     var searchEl = document.getElementById('dy-grid-search');
     if (searchEl) searchEl.addEventListener('input', function () { applyFilters(false); });
 
-    // Position filter updates both winners and table
+    // Table position filter updates winners and table
     var posEl = document.getElementById('dy-pos-filter');
     if (posEl) posEl.addEventListener('change', function () { applyFilters(true); });
+
+    // Range position filter updates range chart
+    var rangePosEl = document.getElementById('dy-range-pos-filter');
+    if (rangePosEl) rangePosEl.addEventListener('change', function () {
+      renderRangeChart(currentCategory);
+    });
 
     // Initial render
     switchCategory('anthro');

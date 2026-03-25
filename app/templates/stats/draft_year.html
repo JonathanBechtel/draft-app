@@ -48,7 +48,12 @@
 
     {# ── Section 1: Range Chart ── #}
     <div id="dy-range-section" class="dy-animate-in">
-      <div class="dy-section-title">{{ year }} Combine Ranges</div>
+      <div class="dy-section-header">
+        <div class="dy-section-title">{{ year }} Combine Ranges</div>
+        <select class="dy-grid-filter" id="dy-range-pos-filter">
+          <option value="">All Positions</option>
+        </select>
+      </div>
       <div class="dy-range-chart" id="dy-range-chart">
         {# Populated by JS #}
       </div>
