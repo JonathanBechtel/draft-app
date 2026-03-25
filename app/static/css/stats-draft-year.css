@@ -621,6 +621,45 @@
   transition: width 0.3s;
 }
 
+/* ── Pagination ── */
+.dy-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+.dy-page-btn {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--color-slate-300);
+  border-radius: 0.375rem;
+  background: var(--color-white);
+  color: var(--color-slate-600);
+  cursor: pointer;
+  transition: all var(--transition-speed);
+}
+.dy-page-btn:hover:not(:disabled) {
+  background: var(--color-slate-50);
+  border-color: var(--color-slate-500);
+}
+.dy-page-btn.active {
+  background: var(--color-slate-800);
+  color: var(--color-white);
+  border-color: var(--color-slate-800);
+}
+.dy-page-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.dy-page-info {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-slate-500);
+  margin-left: 0.5rem;
+}
+
 /* ============================================================================
    ANIMATIONS
    ========================================================================= */

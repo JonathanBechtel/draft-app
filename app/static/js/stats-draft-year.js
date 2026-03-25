@@ -188,14 +188,17 @@
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // DATA TABLE
+  // DATA TABLE (with pagination)
   // ═══════════════════════════════════════════════════════════════
+
+  var PAGE_SIZE = 25;
+  var tablePage = 0;
+  var filteredPlayers = [];
 
   function renderTable(cat) {
     var catData = DATA.categories[CAT_DATA_KEY[cat]];
     var thead = document.getElementById('dy-table-head');
-    var tbody = document.getElementById('dy-table-body');
-    if (!thead || !tbody) return;
+    if (!thead) return;
 
     // Header
     var headHtml = '<tr><th>#</th><th>Player</th><th>Pos</th>';
@@ -205,15 +208,58 @@
     headHtml += '</tr>';
     thead.innerHTML = headHtml;
 
-    // Body
-    var bodyHtml = '';
-    catData.players.forEach(function (p, i) {
-      var photoUrl = p.photo_url_placeholder || '';
+    // Populate position filter
+    var posFilter = document.getElementById('dy-pos-filter');
+    if (posFilter) {
+      var currentVal = posFilter.value;
+      var optionsHtml = '<option value="">All Positions</option>';
+      DATA.positions.forEach(function (pos) {
+        optionsHtml += '<option value="' + escAttr(pos) + '">' + escHtml(pos) + '</option>';
+      });
+      posFilter.innerHTML = optionsHtml;
+      posFilter.value = currentVal;
+    }
 
-      bodyHtml += '<tr data-name="' + escAttr((p.display_name + ' ' + (p.school || '')).toLowerCase()) + '" data-pos="' + escAttr(p.position || '') + '">';
-      bodyHtml += '<td>' + (i + 1) + '</td>';
+    tablePage = 0;
+    applyFilters();
+  }
+
+  function applyFilters() {
+    var catData = DATA.categories[CAT_DATA_KEY[currentCategory]];
+    var searchEl = document.getElementById('dy-grid-search');
+    var posEl = document.getElementById('dy-pos-filter');
+    var q = searchEl ? searchEl.value.toLowerCase() : '';
+    var pos = posEl ? posEl.value : '';
+
+    filteredPlayers = catData.players.filter(function (p) {
+      var nameMatch = !q || (p.display_name + ' ' + (p.school || '')).toLowerCase().indexOf(q) !== -1;
+      var posMatch = !pos || p.position === pos;
+      return nameMatch && posMatch;
+    });
+
+    tablePage = 0;
+    renderTablePage();
+  }
+
+  function renderTablePage() {
+    var catData = DATA.categories[CAT_DATA_KEY[currentCategory]];
+    var tbody = document.getElementById('dy-table-body');
+    if (!tbody) return;
+
+    var start = tablePage * PAGE_SIZE;
+    var pagePlayers = filteredPlayers.slice(start, start + PAGE_SIZE);
+    var totalPages = Math.ceil(filteredPlayers.length / PAGE_SIZE);
+
+    var bodyHtml = '';
+    pagePlayers.forEach(function (p, i) {
+      var photoUrl = p.photo_url || '';
+      var placeholderUrl = p.photo_url_placeholder || '';
+
+      bodyHtml += '<tr>';
+      bodyHtml += '<td>' + (start + i + 1) + '</td>';
       bodyHtml += '<td><div class="dy-player-cell">' +
-        '<img src="' + escAttr(photoUrl) + '" alt="' + escAttr(p.display_name) + '">' +
+        '<img src="' + escAttr(photoUrl) + '" alt="' + escAttr(p.display_name) + '"' +
+        ' onerror="this.onerror=null;this.src=\'' + escAttr(placeholderUrl) + '\';">' +
         '<div><div class="name"><a href="/players/' + escAttr(p.slug) + '">' + escHtml(p.display_name) + '</a></div>' +
         '<div class="school">' + escHtml(p.school || '') + '</div></div>' +
         '</div></td>';
@@ -239,33 +285,41 @@
     });
     tbody.innerHTML = bodyHtml;
 
-    // Populate position filter
-    var posFilter = document.getElementById('dy-pos-filter');
-    if (posFilter) {
-      var currentVal = posFilter.value;
-      var optionsHtml = '<option value="">All Positions</option>';
-      DATA.positions.forEach(function (pos) {
-        optionsHtml += '<option value="' + escAttr(pos) + '">' + escHtml(pos) + '</option>';
-      });
-      posFilter.innerHTML = optionsHtml;
-      posFilter.value = currentVal;
-    }
+    // Pagination controls
+    renderPagination(totalPages);
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // SEARCH & FILTER
-  // ═══════════════════════════════════════════════════════════════
+  function renderPagination(totalPages) {
+    var existing = document.getElementById('dy-pagination');
+    if (existing) existing.remove();
 
-  function applyFilters() {
-    var searchEl = document.getElementById('dy-grid-search');
-    var posEl = document.getElementById('dy-pos-filter');
-    var q = searchEl ? searchEl.value.toLowerCase() : '';
-    var pos = posEl ? posEl.value : '';
+    if (totalPages <= 1) return;
 
-    document.querySelectorAll('#dy-table-body tr').forEach(function (row) {
-      var nameMatch = !q || (row.dataset.name || '').indexOf(q) !== -1;
-      var posMatch = !pos || row.dataset.pos === pos;
-      row.style.display = nameMatch && posMatch ? '' : 'none';
+    var wrap = document.querySelector('.dy-data-table-wrap');
+    if (!wrap) return;
+
+    var html = '<div id="dy-pagination" class="dy-pagination">';
+    html += '<button class="dy-page-btn" data-page="prev"' + (tablePage === 0 ? ' disabled' : '') + '>&laquo; Prev</button>';
+
+    for (var i = 0; i < totalPages; i++) {
+      html += '<button class="dy-page-btn' + (i === tablePage ? ' active' : '') + '" data-page="' + i + '">' + (i + 1) + '</button>';
+    }
+
+    html += '<button class="dy-page-btn" data-page="next"' + (tablePage >= totalPages - 1 ? ' disabled' : '') + '>Next &raquo;</button>';
+    html += '<span class="dy-page-info">' + filteredPlayers.length + ' players</span>';
+    html += '</div>';
+
+    wrap.insertAdjacentHTML('afterend', html);
+
+    document.getElementById('dy-pagination').addEventListener('click', function (e) {
+      var btn = e.target.closest('.dy-page-btn');
+      if (!btn || btn.disabled) return;
+      var page = btn.dataset.page;
+      var maxPage = Math.ceil(filteredPlayers.length / PAGE_SIZE) - 1;
+      if (page === 'prev') tablePage = Math.max(0, tablePage - 1);
+      else if (page === 'next') tablePage = Math.min(maxPage, tablePage + 1);
+      else tablePage = parseInt(page, 10);
+      renderTablePage();
     });
   }
 
