@@ -103,6 +103,7 @@ async def _run_college_stats_job() -> None:
     result = await run_college_stats_sweep(
         SessionLocal,
         only_missing=True,
+        limit=10,
     )
 
     logger.info(
