@@ -16,6 +16,7 @@ from app.services.combine_stats_service import (
     SHOOTING_KEYS,
     get_available_positions,
     get_available_years,
+    get_draft_year_data,
     get_homepage_data,
     get_leaderboard,
     get_metric_info,
@@ -150,6 +151,111 @@ async def stats_homepage(
             "metric_display": HOMEPAGE_METRIC_DISPLAY,
             "shooting_display": SHOOTING_DRILL_DISPLAY,
             "year_stats": data.year_stats,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/combine/{year}", response_class=HTMLResponse)
+async def draft_year_page(
+    request: Request,
+    year: int,
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """Draft year combine stats page with category tabs and range charts."""
+    import json as json_mod
+
+    from app.services.combine_stats_service import (
+        CategoryYearData,
+        PlayerMetricRow,
+    )
+
+    data = await get_draft_year_data(db, year)
+
+    if not data.available_years or year not in data.available_years:
+        raise HTTPException(status_code=404, detail="No combine data for this year")
+
+    def _build_metrics_list(metric_keys: list[str]) -> list[dict]:
+        result = []
+        for mk in metric_keys:
+            mi = get_metric_info(mk)
+            if mi:
+                result.append(
+                    {
+                        "key": mk,
+                        "label": mi.display_name,
+                        "unit": mi.unit,
+                        "sort_direction": mi.sort_direction,
+                    }
+                )
+            else:
+                result.append(
+                    {"key": mk, "label": mk, "unit": None, "sort_direction": "desc"}
+                )
+        return result
+
+    def _player_row_to_dict(pr: PlayerMetricRow) -> dict:
+        d = {
+            "player_id": pr.player_id,
+            "display_name": pr.display_name,
+            "slug": pr.slug,
+            "school": pr.school,
+            "position": pr.position,
+            "metrics": pr.metrics,
+            "formatted": pr.formatted_metrics,
+            "percentiles": pr.percentiles,
+        }
+        d.update(_player_photo_urls(pr.player_id, pr.slug, pr.display_name))
+        return d
+
+    def _category_to_dict(cat: CategoryYearData) -> dict:
+        return {
+            "range_stats": [
+                {
+                    "metric_key": rs.metric_key,
+                    "display_name": rs.display_name,
+                    "unit": rs.unit,
+                    "sort_direction": rs.sort_direction,
+                    "min_value": rs.min_value,
+                    "min_player_name": rs.min_player_name,
+                    "min_player_slug": rs.min_player_slug,
+                    "max_value": rs.max_value,
+                    "max_player_name": rs.max_player_name,
+                    "max_player_slug": rs.max_player_slug,
+                    "avg_value": rs.avg_value,
+                    "formatted_min": rs.formatted_min,
+                    "formatted_max": rs.formatted_max,
+                    "formatted_avg": rs.formatted_avg,
+                }
+                for rs in cat.range_stats
+            ],
+            "leaders": {mk: _player_row_to_dict(pr) for mk, pr in cat.leaders.items()},
+            "players": [_player_row_to_dict(pr) for pr in cat.players],
+            "metric_keys": cat.metric_keys,
+            "metrics": _build_metrics_list(cat.metric_keys),
+        }
+
+    draft_year_json = json_mod.dumps(
+        {
+            "year": data.year,
+            "available_years": data.available_years,
+            "positions": data.positions,
+            "categories": {
+                "anthro": _category_to_dict(data.anthro),
+                "athletic": _category_to_dict(data.athletic),
+                "shooting": _category_to_dict(data.shooting),
+            },
+        }
+    )
+
+    return request.app.state.templates.TemplateResponse(
+        "stats/draft_year.html",
+        {
+            "request": request,
+            "year": data.year,
+            "available_years": data.available_years,
+            "draft_year_json": draft_year_json,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

@@ -1,0 +1,618 @@
+/* ============================================================================
+   DRAFT YEAR COMBINE STATS — Page-Specific Styles
+   /stats/combine/{year}
+   ========================================================================= */
+
+/* Dynamic category color — set by JS on tab switch */
+.dy-main {
+  --cat-color: var(--color-accent-cyan);
+  --cat-color-light: #ecfeff;
+  --cat-color-muted: rgba(6, 182, 212, 0.15);
+  --cat-color-mid: rgba(6, 182, 212, 0.35);
+}
+
+/* ── Layout ── */
+.dy-main {
+  padding-top: 5rem;
+}
+
+.dy-container {
+  max-width: 1152px;
+  width: var(--content-width);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+/* ── Breadcrumb ── */
+.dy-breadcrumb {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1.5rem 0 0;
+}
+.dy-breadcrumb a {
+  color: var(--color-accent-indigo);
+  text-decoration: none;
+}
+.dy-breadcrumb a:hover {
+  text-decoration: underline;
+}
+.dy-breadcrumb__sep {
+  margin: 0 0.4rem;
+  color: var(--color-slate-300);
+}
+
+/* ── Page Header ── */
+.dy-page-header {
+  text-align: center;
+  padding: 2.5rem 0 1.5rem;
+}
+.dy-page-header h2 {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.25rem;
+}
+.dy-page-header__subtitle {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--color-slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Year Selector Pills ── */
+.dy-year-selector {
+  display: inline-flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.dy-year-pill {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-slate-300);
+  background: var(--color-white);
+  color: var(--color-slate-600);
+  text-decoration: none;
+  transition: all var(--transition-speed);
+}
+.dy-year-pill:hover {
+  background: var(--color-slate-50);
+  border-color: var(--color-slate-500);
+  text-decoration: none;
+}
+.dy-year-pill.active {
+  background: var(--color-slate-800);
+  color: var(--color-white);
+  border-color: var(--color-slate-800);
+}
+
+/* ── Category Tabs ── */
+.dy-category-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  margin: 1.5rem auto 2rem;
+  max-width: 540px;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  border: 2px solid var(--color-slate-200);
+  background: var(--color-white);
+}
+.dy-category-tab {
+  flex: 1;
+  padding: 0.85rem 1.25rem;
+  font-family: var(--font-heading);
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: none;
+  background: transparent;
+  color: var(--color-slate-500);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  position: relative;
+}
+.dy-category-tab:not(:last-child) {
+  border-right: 1px solid var(--color-slate-200);
+}
+.dy-tab-icon {
+  display: block;
+  font-size: 1.25rem;
+  margin-bottom: 0.15rem;
+}
+.dy-category-tab:hover {
+  background: var(--color-slate-50);
+  color: var(--color-slate-700);
+}
+.dy-category-tab.active {
+  background: var(--cat-color);
+  color: var(--color-white);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.15);
+}
+
+/* ── Section Titles ── */
+.dy-section-title {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-slate-700);
+  padding-left: 0.75rem;
+  border-left: 4px solid var(--cat-color);
+  margin-bottom: 1.25rem;
+}
+
+/* ── Section Divider ── */
+.dy-section-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(148, 163, 184, 0.3) 20%, rgba(148, 163, 184, 0.3) 80%, transparent);
+  margin: 2.5rem 0;
+}
+
+/* ============================================================================
+   RANGE CHART
+   ========================================================================= */
+.dy-range-chart {
+  background: var(--color-white);
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-slate-200);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  outline: 2px solid var(--cat-color-mid);
+  outline-offset: -2px;
+  padding: 1.75rem 2rem;
+  margin-bottom: 2.5rem;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+  background-size: 12px 12px;
+}
+.dy-range-chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-slate-100);
+}
+.dy-range-chart-legend {
+  display: flex;
+  gap: 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-slate-500);
+}
+.dy-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.dy-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.dy-legend-dot--range {
+  background: var(--cat-color-muted);
+  border: 1px solid var(--cat-color-mid);
+}
+.dy-legend-dot--avg {
+  background: var(--cat-color);
+  width: 3px;
+  height: 14px;
+  border-radius: 1px;
+}
+
+.dy-range-row {
+  display: grid;
+  grid-template-columns: 140px 140px 1fr 140px 140px;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--color-slate-100);
+  transition: background 0.15s;
+}
+.dy-range-row:last-child {
+  border-bottom: none;
+}
+.dy-range-row:hover {
+  background: var(--cat-color-light);
+  border-radius: 4px;
+}
+
+.dy-range-endpoint {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+.dy-range-endpoint.left {
+  text-align: right;
+}
+.dy-range-endpoint.right {
+  text-align: left;
+}
+.dy-ep-value {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--color-slate-800);
+}
+.dy-ep-unit {
+  font-size: 0.62rem;
+  color: var(--color-slate-400);
+}
+.dy-ep-name {
+  color: var(--color-slate-500);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+.dy-range-endpoint.left .dy-ep-name {
+  margin-left: auto;
+}
+.dy-range-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-slate-700);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Visual track */
+.dy-range-track {
+  position: relative;
+  height: 26px;
+  background: var(--color-slate-50);
+  border-radius: 4px;
+  border: 1px solid var(--color-slate-200);
+}
+.dy-range-bar {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  right: 4px;
+  background: linear-gradient(90deg, var(--cat-color-muted), var(--cat-color-mid), var(--cat-color-muted));
+  border-radius: 3px;
+}
+.dy-range-avg {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  background: var(--cat-color);
+  border-radius: 1px;
+  z-index: 2;
+  transition: left 0.4s ease;
+}
+.dy-range-avg-label {
+  position: absolute;
+  top: -16px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--cat-color);
+  white-space: nowrap;
+  background: var(--color-white);
+  padding: 0 3px;
+  border-radius: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.dy-range-row:hover .dy-range-avg-label {
+  opacity: 1;
+}
+
+/* ============================================================================
+   WINNER SHOWCASE
+   ========================================================================= */
+.dy-winners-section {
+  margin-bottom: 2.5rem;
+}
+.dy-winners-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.25rem;
+}
+.dy-winner-card {
+  background: var(--color-white);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  outline: 2px solid var(--cat-color-mid);
+  outline-offset: -2px;
+  transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+  cursor: pointer;
+  position: relative;
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.dy-winner-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  text-decoration: none;
+}
+.dy-winner-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--cat-color);
+  z-index: 4;
+}
+
+.dy-winner-photo-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  background: linear-gradient(135deg, var(--cat-color-light), var(--color-slate-100));
+  overflow: hidden;
+}
+.dy-winner-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  transition: transform 0.3s;
+}
+.dy-winner-card:hover .dy-winner-photo {
+  transform: scale(1.03);
+}
+.dy-winner-photo-wrap::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 55%;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
+  pointer-events: none;
+}
+
+.dy-winner-stat-ribbon {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: 0.6rem 0.75rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.dy-winner-stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.75);
+}
+.dy-winner-stat-value {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  color: var(--color-white);
+  line-height: 1;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.dy-winner-info {
+  padding: 0.75rem;
+}
+.dy-winner-name {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+  margin-bottom: 0.1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--color-slate-900);
+}
+.dy-winner-meta {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--color-slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.dy-winner-badge {
+  position: absolute;
+  top: 12px;
+  right: 10px;
+  z-index: 5;
+  width: 28px;
+  height: 28px;
+  background: var(--cat-color);
+  color: var(--color-white);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================================================
+   DATA TABLE
+   ========================================================================= */
+.dy-grid-section {
+  margin-bottom: 3rem;
+}
+.dy-grid-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+.dy-grid-search {
+  flex: 1;
+  min-width: 180px;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--color-slate-300);
+  border-radius: 0.375rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color var(--transition-speed);
+}
+.dy-grid-search:focus {
+  border-color: var(--cat-color);
+  box-shadow: 0 0 0 2px var(--cat-color-muted);
+}
+.dy-grid-filter {
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--color-slate-300);
+  border-radius: 0.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--color-white);
+  color: var(--color-slate-600);
+  cursor: pointer;
+}
+.dy-data-table-wrap {
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-slate-200);
+  overflow-x: auto;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+.dy-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.dy-data-table thead {
+  background: var(--color-slate-800);
+  color: var(--color-white);
+}
+.dy-data-table th {
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dy-data-table th.text-right,
+.dy-data-table td.text-right {
+  text-align: right;
+}
+.dy-data-table tbody tr {
+  border-bottom: 1px solid var(--color-slate-100);
+  transition: background 0.15s;
+}
+.dy-data-table tbody tr:hover {
+  background: var(--cat-color-light);
+}
+.dy-data-table td {
+  padding: 0.65rem 0.85rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-slate-700);
+}
+.dy-data-table td:first-child {
+  font-weight: 600;
+  color: var(--color-slate-400);
+}
+
+.dy-player-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.dy-player-cell img {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid var(--color-slate-200);
+  background: var(--color-slate-100);
+}
+.dy-player-cell .name {
+  font-family: var(--font-body);
+  font-weight: 600;
+  color: var(--color-slate-900);
+}
+.dy-player-cell .name a {
+  color: var(--color-accent-indigo);
+  text-decoration: none;
+}
+.dy-player-cell .name a:hover {
+  text-decoration: underline;
+}
+.dy-player-cell .school {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--color-slate-400);
+  text-transform: uppercase;
+}
+
+/* Percentile bar in table cells */
+.dy-pct-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dy-pct-bar-bg {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-slate-100);
+  overflow: hidden;
+  min-width: 40px;
+}
+.dy-pct-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--cat-color);
+  transition: width 0.3s;
+}
+
+/* ============================================================================
+   ANIMATIONS
+   ========================================================================= */
+@keyframes dyFadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.dy-animate-in {
+  animation: dyFadeUp 0.35s ease both;
+}
+
+/* ============================================================================
+   RESPONSIVE
+   ========================================================================= */
+@media (max-width: 768px) {
+  .dy-container {
+    width: 95%;
+    padding: 0 1rem;
+  }
+  .dy-range-row {
+    grid-template-columns: 90px 90px 1fr 90px 90px;
+    gap: 0.25rem;
+  }
+  .dy-ep-name {
+    max-width: 80px;
+    font-size: 0.58rem;
+  }
+  .dy-winners-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+}

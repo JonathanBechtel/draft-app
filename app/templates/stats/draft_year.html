@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}{{ year }} NBA Draft Combine Stats — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/stats.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/stats-draft-year.css') }}">
+{% endblock %}
+
+{% block content %}
+
+<main class="dy-main">
+  <div class="dy-container">
+
+    {# ── Breadcrumb ── #}
+    <nav class="dy-breadcrumb">
+      <a href="/stats">Stats</a>
+      <span class="dy-breadcrumb__sep">/</span>
+      <span>{{ year }} Combine</span>
+    </nav>
+
+    {# ── Page Header ── #}
+    <div class="dy-page-header">
+      <h2>Combine Stats</h2>
+      <div class="dy-page-header__subtitle">NBA Draft Combine Performance Data</div>
+      <div class="dy-year-selector">
+        {% for y in available_years %}
+        <a href="/stats/combine/{{ y }}"
+           class="dy-year-pill{% if y == year %} active{% endif %}">
+          {{ y }}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {# ── Category Tabs ── #}
+    <div class="dy-category-tabs">
+      <button class="dy-category-tab active" data-cat="anthro">
+        <span class="dy-tab-icon">&#x1F4CF;</span>
+        Anthro
+      </button>
+      <button class="dy-category-tab" data-cat="athletic">
+        <span class="dy-tab-icon">&#x26A1;</span>
+        Athletic
+      </button>
+      <button class="dy-category-tab" data-cat="shooting">
+        <span class="dy-tab-icon">&#x1F3AF;</span>
+        Shooting
+      </button>
+    </div>
+
+    {# ── Section 1: Range Chart ── #}
+    <div id="dy-range-section" class="dy-animate-in">
+      <div class="dy-section-title">{{ year }} Combine Ranges</div>
+      <div class="dy-range-chart" id="dy-range-chart">
+        {# Populated by JS #}
+      </div>
+    </div>
+
+    <div class="dy-section-divider"></div>
+
+    {# ── Section 2: Category Leaders ── #}
+    <div id="dy-winners-section" class="dy-winners-section dy-animate-in" style="animation-delay: 0.08s">
+      <div class="dy-section-title">Category Leaders</div>
+      <div class="dy-winners-grid" id="dy-winners-grid">
+        {# Populated by JS #}
+      </div>
+    </div>
+
+    <div class="dy-section-divider"></div>
+
+    {# ── Section 3: Full Results Table ── #}
+    <div class="dy-grid-section dy-animate-in" style="animation-delay: 0.16s">
+      <div class="dy-section-title">Full Results</div>
+      <div class="dy-grid-controls">
+        <input type="text" class="dy-grid-search" placeholder="Search player or school..." id="dy-grid-search">
+        <select class="dy-grid-filter" id="dy-pos-filter">
+          <option value="">All Positions</option>
+          {% for pos in available_years %}{% endfor %}{# positions filled by JS #}
+        </select>
+      </div>
+      <div class="dy-data-table-wrap">
+        <table class="dy-data-table" id="dy-data-table">
+          <thead id="dy-table-head"></thead>
+          <tbody id="dy-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  window.DRAFT_YEAR_DATA = {{ draft_year_json | safe }};
+</script>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='js/stats-draft-year.js') }}"></script>
+{% endblock %}

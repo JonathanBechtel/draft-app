@@ -939,3 +939,296 @@ async def get_homepage_data(db: AsyncSession) -> HomepageData:
         shooting_leaders=shooting_leaders,
         year_stats=year_stats,
     )
+
+
+# === Draft Year Page Support ===
+
+
+@dataclass
+class MetricRangeStats:
+    """Distribution summary for a single metric within a draft year."""
+
+    metric_key: str
+    display_name: str
+    unit: str | None
+    sort_direction: str
+    min_value: float
+    min_player_name: str
+    min_player_slug: str
+    max_value: float
+    max_player_name: str
+    max_player_slug: str
+    avg_value: float
+    formatted_min: str
+    formatted_max: str
+    formatted_avg: str
+
+
+@dataclass
+class PlayerMetricRow:
+    """One player's data for all metrics in a category."""
+
+    player_id: int
+    display_name: str
+    slug: str
+    school: str | None
+    position: str | None
+    metrics: dict[str, float | None]
+    formatted_metrics: dict[str, str | None]
+    percentiles: dict[str, float | None]
+
+
+@dataclass
+class CategoryYearData:
+    """All data for one category in a draft year."""
+
+    category: str
+    range_stats: list[MetricRangeStats]
+    leaders: dict[str, PlayerMetricRow]
+    players: list[PlayerMetricRow]
+    metric_keys: list[str]
+
+
+@dataclass
+class DraftYearData:
+    """Complete data bundle for the draft year page."""
+
+    year: int
+    available_years: list[int]
+    anthro: CategoryYearData
+    athletic: CategoryYearData
+    shooting: CategoryYearData
+    positions: list[str]
+
+
+def _compute_percentiles(
+    values: list[float], sort_direction: str
+) -> dict[float, float]:
+    """Compute rank-based percentiles for a list of values.
+
+    Args:
+        values: Non-null metric values.
+        sort_direction: "desc" means higher is better, "asc" means lower is better.
+
+    Returns:
+        Map from value to percentile (0-100).
+    """
+    if not values:
+        return {}
+    sorted_vals = sorted(values)
+    n = len(sorted_vals)
+    pctl_map: dict[float, float] = {}
+    for i, v in enumerate(sorted_vals):
+        if sort_direction == "desc":
+            # Higher is better: rank from bottom
+            pctl = round(i / (n - 1) * 100, 1) if n > 1 else 100.0
+        else:
+            # Lower is better: rank from top
+            pctl = round((n - 1 - i) / (n - 1) * 100, 1) if n > 1 else 100.0
+        pctl_map[v] = pctl
+    return pctl_map
+
+
+async def _get_category_year_data(
+    db: AsyncSession,
+    year: int,
+    category: str,
+    metric_keys: list[str],
+) -> CategoryYearData:
+    """Fetch all players and metrics for one category in a draft year.
+
+    Works for measurements (CombineAnthro) and athletic_testing (CombineAgility).
+    """
+    # All metric keys in this category share the same table
+    defn0 = METRIC_COLUMN_MAP[metric_keys[0]]
+    table = defn0.table
+
+    stmt: Any = (
+        select(table, PlayerMaster, Position, Season)  # type: ignore[call-overload]
+        .join(
+            PlayerMaster,
+            table.player_id == PlayerMaster.id,  # type: ignore[arg-type,attr-defined]
+        )
+        .outerjoin(
+            Position,
+            table.position_id == Position.id,  # type: ignore[arg-type,attr-defined]
+        )
+        .join(
+            Season,
+            table.season_id == Season.id,  # type: ignore[arg-type,attr-defined]
+        )
+        .where(Season.end_year == year)  # type: ignore[arg-type,attr-defined]
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    # Extract per-player metric values
+    player_rows: list[PlayerMetricRow] = []
+    # Collect all values per metric for range stats / percentiles
+    metric_values: dict[str, list[tuple[float, str, str]]] = {
+        k: [] for k in metric_keys
+    }
+
+    for row in rows:
+        combine_record = row[0]
+        player: PlayerMaster = row[1]
+        position: Position | None = row[2]
+
+        metrics: dict[str, float | None] = {}
+        formatted: dict[str, str | None] = {}
+        has_any = False
+
+        for mk in metric_keys:
+            defn = METRIC_COLUMN_MAP[mk]
+            val = getattr(combine_record, defn.column)
+            if val is not None:
+                fval = float(val)
+                metrics[mk] = fval
+                formatted[mk] = _format_value(mk, val)
+                metric_values[mk].append(
+                    (fval, player.display_name or "", player.slug or "")
+                )
+                has_any = True
+            else:
+                metrics[mk] = None
+                formatted[mk] = None
+
+        if has_any:
+            player_rows.append(
+                PlayerMetricRow(
+                    player_id=player.id,  # type: ignore[arg-type]
+                    display_name=player.display_name or "",
+                    slug=player.slug or "",
+                    school=player.school,
+                    position=position.code if position else None,
+                    metrics=metrics,
+                    formatted_metrics=formatted,
+                    percentiles={},  # filled below
+                )
+            )
+
+    # Compute percentiles per metric
+    pctl_maps: dict[str, dict[float, float]] = {}
+    for mk in metric_keys:
+        defn = METRIC_COLUMN_MAP[mk]
+        vals = [v for v, _, _ in metric_values[mk]]
+        pctl_maps[mk] = _compute_percentiles(vals, defn.sort_direction)
+
+    for pr in player_rows:
+        for mk in metric_keys:
+            v = pr.metrics[mk]
+            if v is not None:
+                pr.percentiles[mk] = pctl_maps[mk].get(v, 0.0)
+            else:
+                pr.percentiles[mk] = None
+
+    # Build range stats
+    range_stats: list[MetricRangeStats] = []
+    for mk in metric_keys:
+        entries = metric_values[mk]
+        if not entries:
+            continue
+        defn = METRIC_COLUMN_MAP[mk]
+        vals = [v for v, _, _ in entries]
+        min_val = min(vals)
+        max_val = max(vals)
+        avg_val = sum(vals) / len(vals)
+
+        min_entry = next(e for e in entries if e[0] == min_val)
+        max_entry = next(e for e in entries if e[0] == max_val)
+
+        range_stats.append(
+            MetricRangeStats(
+                metric_key=mk,
+                display_name=defn.display_name,
+                unit=defn.unit,
+                sort_direction=defn.sort_direction,
+                min_value=min_val,
+                min_player_name=min_entry[1],
+                min_player_slug=min_entry[2],
+                max_value=max_val,
+                max_player_name=max_entry[1],
+                max_player_slug=max_entry[2],
+                avg_value=round(avg_val, 2),
+                formatted_min=_format_value(mk, min_val),
+                formatted_max=_format_value(mk, max_val),
+                formatted_avg=_format_value(mk, avg_val),
+            )
+        )
+
+    # Identify leaders per metric
+    leaders: dict[str, PlayerMetricRow] = {}
+    for mk in metric_keys:
+        defn = METRIC_COLUMN_MAP[mk]
+        best_player: PlayerMetricRow | None = None
+        best_val: float | None = None
+        for pr in player_rows:
+            v = pr.metrics[mk]
+            if v is None:
+                continue
+            if best_val is None:
+                best_val = v
+                best_player = pr
+            elif defn.sort_direction == "desc" and v > best_val:
+                best_val = v
+                best_player = pr
+            elif defn.sort_direction == "asc" and v < best_val:
+                best_val = v
+                best_player = pr
+        if best_player is not None:
+            leaders[mk] = best_player
+
+    return CategoryYearData(
+        category=category,
+        range_stats=range_stats,
+        leaders=leaders,
+        players=player_rows,
+        metric_keys=metric_keys,
+    )
+
+
+# Shooting metric keys (the _pct variants from METRIC_COLUMN_MAP)
+SHOOTING_PCT_KEYS = [
+    "spot_up_pct",
+    "off_dribble_pct",
+    "three_point_star_pct",
+    "midrange_star_pct",
+    "three_point_side_pct",
+    "midrange_side_pct",
+    "free_throw_pct",
+]
+
+
+async def get_draft_year_data(
+    db: AsyncSession,
+    year: int,
+) -> DraftYearData:
+    """Fetch all combine data for a single draft year.
+
+    Returns data for all three categories (anthro, athletic, shooting),
+    including range stats, leaders, and per-player metric rows.
+    """
+    available_years = await get_available_years(db)
+
+    anthro = await _get_category_year_data(db, year, "measurements", MEASUREMENT_KEYS)
+    athletic = await _get_category_year_data(
+        db, year, "athletic_testing", ATHLETIC_KEYS
+    )
+    shooting = await _get_category_year_data(db, year, "shooting", SHOOTING_PCT_KEYS)
+
+    # Collect distinct positions across all categories
+    all_positions: set[str] = set()
+    for cat in (anthro, athletic, shooting):
+        for pr in cat.players:
+            if pr.position:
+                all_positions.add(pr.position)
+
+    return DraftYearData(
+        year=year,
+        available_years=available_years,
+        anthro=anthro,
+        athletic=athletic,
+        shooting=shooting,
+        positions=sorted(all_positions),
+    )
