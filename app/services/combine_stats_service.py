@@ -1177,12 +1177,15 @@ async def _get_category_year_data(
         if best_player is not None:
             leaders[mk] = best_player
 
+    # Only include metrics that have at least one value
+    active_keys = [mk for mk in metric_keys if metric_values[mk]]
+
     return CategoryYearData(
         category=category,
         range_stats=range_stats,
         leaders=leaders,
         players=player_rows,
-        metric_keys=metric_keys,
+        metric_keys=active_keys,
     )
 
 
