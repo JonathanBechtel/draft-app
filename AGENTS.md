@@ -88,7 +88,7 @@ Do not ask if the user wants you to run these checks — run them proactively af
 ## Build, Test, and Development Commands
 - `make dev` boots the FastAPI server with autoreload (`uvicorn app.main:app --reload`) using `HOST` and `PORT` overrides when needed.
 - `make run` launches a production-like instance without reloads—use this before shipping changes.
-- `conda env create -f environment.yml` followed by `conda activate draftguru` provisions the Python 3.12 toolchain and app dependencies.
+- `conda env create -f environment.yml` followed by `conda activate draftguru` provisions the Python 3.12 toolchain and app dependencies. On the sprite, conda requires sourcing first: `source ~/miniconda3/etc/profile.d/conda.sh`.
 
 ## Linting, Formatting, and Pre-commit
 - `make fmt` runs `ruff format .`; `make lint` runs `ruff check .`; `make fix` applies autofixes via `ruff check --fix .`.
@@ -137,7 +137,6 @@ Do not ask if the user wants you to run these checks — run them proactively af
 
 For UI changes, use Playwright to capture screenshots for visual verification. Run `make dev` first, then `make visual` to save screenshots to `tests/visual/screenshots/`. Read the PNGs to verify correctness. Use `make visual.headed` to watch the browser for debugging. See **[docs/visual_testing.md](docs/visual_testing.md)** for details.
 
-
 ## Configuration Tips
 - Copy `.env.example` to `.env` and supply `DATABASE_URL`, `SECRET_KEY`, and optional toggles (`DEBUG`, `ACCESS_LOG`, `SQL_ECHO`); never commit real secrets.
 - Use `describe_database_url()` logs to verify connection targets, and prefer async-friendly drivers (`postgresql+asyncpg`).
@@ -154,3 +153,8 @@ For UI changes, use Playwright to capture screenshots for visual verification. R
 
 ## Infrastructure
 DraftGuru runs on **Fly.io** (staging: `draft-app`, prod: `draft-app-prod`) with **Neon Serverless Postgres** (project: `draftguru`; dev and prod are branches of this project). Use `flyctl` and `neonctl` CLIs for ops. See `docs/fly_infrastructure.md` for details.
+
+## Sprite Remote Environment
+This repo may be operated from a remote sprite (`draft-guru` on sprites.dev) for long-running tasks (scraping, migrations, data backfills) or mobile development sessions. Always `git pull` before starting and push when done.
+- **Detection:** sprite root is `/home/sprite/draft-app`; local is `/Users/jonathan/draft-app`. Check `$HOME` to determine environment.
+- **No visual testing:** sprite is headless — skip `make visual` and Playwright steps.
