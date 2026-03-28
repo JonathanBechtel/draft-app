@@ -15,7 +15,9 @@ from app.services.share_cards.cache_keys import (
 )
 from app.services.share_cards.model_builders import (
     build_comps_model,
+    build_draft_year_model,
     build_h2h_model,
+    build_metric_leaders_model,
     build_performance_model,
 )
 from app.services.share_cards.rasterizer import get_rasterizer
@@ -25,7 +27,9 @@ from app.services.share_cards.svg_renderer import get_svg_renderer
 
 logger = logging.getLogger(__name__)
 
-ComponentType = Literal["vs_arena", "performance", "h2h", "comps"]
+ComponentType = Literal[
+    "vs_arena", "performance", "h2h", "comps", "metric_leaders", "draft_year"
+]
 
 # Map component types to template files
 # Note: vs_arena and h2h both use h2h.svg template (they are functionally identical)
@@ -34,6 +38,8 @@ COMPONENT_TEMPLATES = {
     "performance": "performance.svg",
     "h2h": "h2h.svg",
     "comps": "comps.svg",
+    "metric_leaders": "metric_leaders.svg",
+    "draft_year": "draft_year.svg",
 }
 
 
@@ -108,8 +114,8 @@ class ImageExportService:
             return {
                 "export_id": export_id,
                 "url": cached.url,
-                "title": generate_title(component, player_names),
-                "filename": generate_filename(component, player_names),
+                "title": generate_title(component, player_names, context),
+                "filename": generate_filename(component, player_names, context),
                 "cached": True,
             }
 
@@ -118,6 +124,9 @@ class ImageExportService:
         model_start = time.perf_counter()
         model = await self._build_model(component, player_ids, context)
         model_duration = time.perf_counter() - model_start
+
+        # Enrich context with display name from model for title/filename
+        context = self._enrich_context(component, model, context)
 
         render_start = time.perf_counter()
         svg_content = self._render_svg(component, model)
@@ -129,8 +138,8 @@ class ImageExportService:
 
         upload_start = time.perf_counter()
         player_names = self._extract_player_names(model)
-        title = generate_title(component, player_names)
-        filename = generate_filename(component, player_names)
+        title = generate_title(component, player_names, context)
+        filename = generate_filename(component, player_names, context)
         url = self.storage.upload(
             cache_key,
             png_bytes,
@@ -186,6 +195,10 @@ class ImageExportService:
             return await build_h2h_model(self.db, player_ids, context)
         elif component == "comps":
             return await build_comps_model(self.db, player_ids, context)
+        elif component == "metric_leaders":
+            return await build_metric_leaders_model(self.db, player_ids, context)
+        elif component == "draft_year":
+            return await build_draft_year_model(self.db, player_ids, context)
         else:
             raise ValueError(f"Unknown component: {component}")
 
@@ -213,11 +226,25 @@ class ImageExportService:
 
         return self.renderer.render(template_name, context)
 
+    def _enrich_context(
+        self,
+        component: ComponentType,
+        model: RenderModel,
+        context: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Add model-derived display info to context for title/filename generation."""
+        from app.services.share_cards.render_models import MetricLeadersRenderModel
+
+        if isinstance(model, MetricLeadersRenderModel):
+            return {**context, "metric_display_name": model.metric_label}
+        return context
+
     def _extract_player_names(self, model: RenderModel) -> list[str]:
         """Extract player names from render model for filename/title generation."""
         from app.services.share_cards.render_models import (
             CompsRenderModel,
             H2HRenderModel,
+            MetricLeadersRenderModel,
             PerformanceRenderModel,
         )
 
@@ -225,5 +252,7 @@ class ImageExportService:
             return [model.player_a.name, model.player_b.name]
         elif isinstance(model, (PerformanceRenderModel, CompsRenderModel)):
             return [model.player.name]
+        elif isinstance(model, MetricLeadersRenderModel):
+            return [model.metric_label]
         else:
             return ["Player"]

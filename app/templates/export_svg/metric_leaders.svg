@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 1260" width="2400" height="1260">
+  <defs>
+    <style type="text/css">
+      .title { font-family: 'Russo One', sans-serif; font-size: 72px; fill: #0f172a; text-transform: uppercase; }
+      .subtitle { font-family: 'Azeret Mono', monospace; font-size: 36px; fill: #64748b; }
+      .column-header { font-family: 'Russo One', sans-serif; font-size: 32px; fill: #64748b; text-transform: uppercase; }
+      .rank { font-family: 'Russo One', sans-serif; font-size: 56px; fill: #cbd5e1; }
+      .player-name { font-family: 'Russo One', sans-serif; font-size: 38px; fill: #0f172a; }
+      .player-subtitle { font-family: 'Azeret Mono', monospace; font-size: 26px; fill: #64748b; }
+      .value { font-family: 'Azeret Mono', monospace; font-size: 40px; fill: #0f172a; font-weight: 600; }
+      .percentile { font-family: 'Azeret Mono', monospace; font-size: 26px; fill: #ffffff; font-weight: 600; }
+      .label { font-family: 'Azeret Mono', monospace; font-size: 28px; fill: #334155; }
+      .watermark { font-family: 'Azeret Mono', monospace; font-size: 32px; fill: #ffffff; }
+    </style>
+    <!-- Scanlines pattern -->
+    <pattern id="scanlines" patternUnits="userSpaceOnUse" width="4" height="4">
+      <line x1="0" y1="0" x2="4" y2="0" stroke="#0f172a" stroke-width="1" opacity="0.03"/>
+    </pattern>
+    <!-- Dot matrix pattern -->
+    <pattern id="dotmatrix" patternUnits="userSpaceOnUse" width="24" height="24">
+      <circle cx="12" cy="12" r="1" fill="#64748b" opacity="0.1"/>
+    </pattern>
+    <!-- Percentile bar gradients -->
+    <linearGradient id="bar-elite" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="bar-good" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#6366f1"/>
+    </linearGradient>
+    <linearGradient id="bar-average" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#f97316"/>
+    </linearGradient>
+    <linearGradient id="bar-below" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#f43f5e"/>
+      <stop offset="100%" style="stop-color:#dc2626"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="2400" height="1260" fill="#f8fafc"/>
+  <rect width="2400" height="1260" fill="url(#dotmatrix)"/>
+  <rect width="2400" height="1260" fill="url(#scanlines)"/>
+
+  <!-- Accent bar at top -->
+  <rect x="0" y="0" width="2400" height="12" fill="{{ accent_color }}"/>
+
+  <!-- Header section -->
+  <g transform="translate(96, 60)">
+    <text x="0" y="60" class="title">{{ title }}</text>
+    <text x="0" y="115" class="subtitle">{{ subtitle }}</text>
+  </g>
+
+  <!-- Divider line -->
+  <line x1="96" y1="200" x2="2304" y2="200" stroke="#e2e8f0" stroke-width="2"/>
+
+  <!-- Column headers -->
+  <g transform="translate(96, 240)">
+    <text x="0" y="0" class="column-header">#</text>
+    <text x="120" y="0" class="column-header">Player</text>
+    <text x="1300" y="0" text-anchor="middle" class="column-header">Percentile</text>
+    <text x="2208" y="0" text-anchor="end" class="column-header">Value</text>
+  </g>
+
+  <!-- Player rows -->
+  <g transform="translate(96, 270)">
+    {% for row in rows %}
+    {% set y_offset = loop.index0 * 160 %}
+    {% if row.name != '—' %}
+    <g transform="translate(0, {{ y_offset }})">
+      <!-- Rank number -->
+      <text x="30" y="90" text-anchor="middle" class="rank">{{ row.rank }}</text>
+
+      <!-- Player photo or placeholder -->
+      {% if row.has_photo and row.photo_data_uri %}
+      <clipPath id="leader-photo-{{ loop.index }}">
+        <rect x="80" y="16" width="120" height="120" rx="10"/>
+      </clipPath>
+      <image href="{{ row.photo_data_uri }}" x="80" y="16" width="120" height="120" clip-path="url(#leader-photo-{{ loop.index }})" preserveAspectRatio="xMidYMid slice"/>
+      <rect x="80" y="16" width="120" height="120" rx="10" fill="none" stroke="{{ accent_color }}" stroke-width="3"/>
+      {% else %}
+      <rect x="80" y="16" width="120" height="120" rx="10" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="2"/>
+      <text x="140" y="70" text-anchor="middle" class="label" fill="#475569">{{ row.name.split()[0] }}</text>
+      {% if row.name.split() | length > 1 %}
+      <text x="140" y="100" text-anchor="middle" class="label" fill="#475569" font-size="22">{{ row.name.split()[1:] | join(' ') }}</text>
+      {% endif %}
+      {% endif %}
+
+      <!-- Player name and subtitle -->
+      <text x="230" y="55" class="player-name">{{ row.name }}</text>
+      <text x="230" y="95" class="player-subtitle">{{ row.subtitle }}</text>
+
+      <!-- Percentile bar -->
+      {% set bar_x = 900 %}
+      {% set bar_width_max = 800 %}
+      {% set bar_fill_width = (row.percentile / 100) * bar_width_max %}
+      {% set bar_gradient = 'bar-' ~ row.tier.value %}
+      <rect x="{{ bar_x }}" y="40" width="{{ bar_width_max }}" height="36" rx="6" fill="#e2e8f0"/>
+      <rect x="{{ bar_x }}" y="40" width="{{ bar_fill_width }}" height="36" rx="6" fill="url(#{{ bar_gradient }})"/>
+      {% if bar_fill_width > 80 %}
+      <text x="{{ bar_x + (bar_fill_width / 2) }}" y="66" text-anchor="middle" class="percentile">{{ row.percentile_label }}</text>
+      {% else %}
+      <text x="{{ bar_x + bar_fill_width + 16 }}" y="66" class="label" fill="#64748b" font-size="24">{{ row.percentile_label }}</text>
+      {% endif %}
+
+      <!-- Value on right -->
+      <text x="2208" y="68" text-anchor="end" class="value">{{ row.value }}</text>
+
+      <!-- Separator line (not on last row) -->
+      {% if not loop.last %}
+      <line x1="80" y1="152" x2="2208" y2="152" stroke="#f1f5f9" stroke-width="1"/>
+      {% endif %}
+    </g>
+    {% endif %}
+    {% endfor %}
+  </g>
+
+  <!-- Footer watermark bar -->
+  <rect x="0" y="1148" width="2400" height="112" fill="#1e293b"/>
+  <text x="2304" y="1216" text-anchor="end" class="watermark">nbadraft.app</text>
+
+  <!-- Scanlines overlay on footer -->
+  <rect x="0" y="1148" width="2400" height="112" fill="url(#scanlines)" opacity="0.5"/>
+</svg>
