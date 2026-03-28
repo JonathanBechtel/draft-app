@@ -30,21 +30,8 @@
       </select>
     </div>
 
-    {# ── Category Tabs ── #}
-    <div class="dy-category-tabs">
-      <button class="dy-category-tab active" data-cat="anthro">
-        <span class="dy-tab-icon">&#x1F4CF;</span>
-        Anthro
-      </button>
-      <button class="dy-category-tab" data-cat="athletic">
-        <span class="dy-tab-icon">&#x26A1;</span>
-        Athletic
-      </button>
-      <button class="dy-category-tab" data-cat="shooting">
-        <span class="dy-tab-icon">&#x1F3AF;</span>
-        Shooting
-      </button>
-    </div>
+    {# ── Category Tabs (only show categories that have data) ── #}
+    <div class="dy-category-tabs" id="dy-category-tabs"></div>
 
     {# ── Section 1: Range Chart ── #}
     <div id="dy-range-section" class="dy-animate-in">

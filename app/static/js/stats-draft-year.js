@@ -37,7 +37,18 @@
     shooting: 'shooting'
   };
 
-  var currentCategory = 'anthro';
+  var TAB_CONFIG = [
+    { key: 'anthro',   icon: '\uD83D\uDCCF', label: 'Anthro' },
+    { key: 'athletic', icon: '\u26A1',        label: 'Athletic' },
+    { key: 'shooting', icon: '\uD83C\uDFAF',  label: 'Shooting' }
+  ];
+
+  var availableCategories = TAB_CONFIG.filter(function (t) {
+    var cat = DATA.categories[t.key];
+    return cat && cat.players && cat.players.length > 0;
+  });
+
+  var currentCategory = availableCategories.length > 0 ? availableCategories[0].key : 'anthro';
 
   // ═══════════════════════════════════════════════════════════════
   // FORMAT HELPERS
@@ -65,6 +76,18 @@
   // ═══════════════════════════════════════════════════════════════
   // CATEGORY SWITCHING
   // ═══════════════════════════════════════════════════════════════
+
+  function renderTabs() {
+    var container = document.getElementById('dy-category-tabs');
+    if (!container) return;
+    var html = '';
+    availableCategories.forEach(function (t) {
+      html += '<button class="dy-category-tab" data-cat="' + t.key + '">' +
+        '<span class="dy-tab-icon">' + t.icon + '</span> ' + t.label +
+        '</button>';
+    });
+    container.innerHTML = html;
+  }
 
   function switchCategory(cat) {
     currentCategory = cat;
@@ -172,6 +195,16 @@
             '</div>' +
           '</div>' +
           '<div class="dy-range-endpoint right">' +
+            '<div class="dy-ep-value">' + rs.formatted_max + '</div>' +
+            '<div class="dy-ep-name">' + escHtml(rs.max_player_name) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="dy-range-endpoints-row">' +
+          '<div class="dy-range-endpoint-mobile left">' +
+            '<div class="dy-ep-value">' + rs.formatted_min + '</div>' +
+            '<div class="dy-ep-name">' + escHtml(rs.min_player_name) + '</div>' +
+          '</div>' +
+          '<div class="dy-range-endpoint-mobile right">' +
             '<div class="dy-ep-value">' + rs.formatted_max + '</div>' +
             '<div class="dy-ep-name">' + escHtml(rs.max_player_name) + '</div>' +
           '</div>' +
@@ -496,6 +529,9 @@
   // ═══════════════════════════════════════════════════════════════
 
   document.addEventListener('DOMContentLoaded', function () {
+    // Build tabs from available categories
+    renderTabs();
+
     // Tab click handlers
     document.querySelectorAll('.dy-category-tab').forEach(function (tab) {
       tab.addEventListener('click', function () {
@@ -524,8 +560,8 @@
       if (th && th.dataset.sort) handleSort(th.dataset.sort);
     });
 
-    // Initial render
-    switchCategory('anthro');
+    // Initial render — first available category
+    switchCategory(currentCategory);
 
     // Reposition avg markers on resize
     window.addEventListener('resize', function () {
