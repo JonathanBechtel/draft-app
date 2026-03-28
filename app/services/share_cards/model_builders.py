@@ -670,7 +670,7 @@ async def build_metric_leaders_model(
     is_active_nba: bool | None = None
     if nba_status_raw == "active":
         is_active_nba = True
-    elif nba_status_raw == "out":
+    elif nba_status_raw in ("inactive", "out"):
         is_active_nba = False
 
     max_rows = LIST_LENGTHS["metric_leaders"]

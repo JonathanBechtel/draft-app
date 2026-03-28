@@ -581,11 +581,13 @@
   };
 
   function getDraftYearContext() {
+    var posEl = document.getElementById('dy-pos-filter');
+    var position = posEl && posEl.value ? posEl.value : null;
     return {
       _raw: {
         year: DATA.year,
         category: currentCategory,
-        position: null,
+        position: position,
       },
       redirectPath: window.location.pathname,
     };
