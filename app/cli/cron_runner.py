@@ -24,6 +24,7 @@ from app.services.news_ingestion_service import (
 from app.services.podcast_ingestion_service import (
     run_ingestion_cycle as run_podcast_ingestion_cycle,
 )
+from app.services.college_stats_service import run_college_stats_sweep
 from app.services.player_enrichment_service import run_enrichment_sweep
 from app.services.video_ingestion_service import (
     run_ingestion_cycle as run_video_ingestion_cycle,
@@ -97,6 +98,27 @@ async def _run_enrichment_job() -> None:
         logger.warning("Enrichment error: %s", error)
 
 
+async def _run_college_stats_job() -> None:
+    """Scrape BBRef college stats for players missing authoritative data."""
+    result = await run_college_stats_sweep(
+        SessionLocal,
+        only_missing=True,
+        limit=10,
+    )
+
+    logger.info(
+        "College stats complete: %d attempted, %d scraped, "
+        "%d skipped, %d failed, %d seasons upserted",
+        result.players_attempted,
+        result.players_scraped,
+        result.players_skipped,
+        result.players_failed,
+        result.seasons_upserted,
+    )
+    for error in result.errors:
+        logger.warning("College stats error: %s", error)
+
+
 async def main() -> int:
     """Run the scheduled news, podcast, and video ingestion cycles.
 
@@ -131,6 +153,12 @@ async def main() -> int:
             await _run_enrichment_job()
         except Exception as exc:
             logger.error("Enrichment failed: %s", exc, exc_info=True)
+
+        # College stats backfill — scrapes BBRef for newly enriched players
+        try:
+            await _run_college_stats_job()
+        except Exception as exc:
+            logger.error("College stats scrape failed: %s", exc, exc_info=True)
 
         elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
         if failed:
