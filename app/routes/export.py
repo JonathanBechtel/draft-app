@@ -23,13 +23,23 @@ class ExportContext(BaseModel):
     metric_group: Literal["anthropometrics", "combine", "shooting", "advanced"] = (
         "anthropometrics"
     )
+    # Stats-specific fields (used by metric_leaders and draft_year)
+    metric_key: Optional[str] = None
+    years: Optional[list[int]] = None
+    positions: Optional[list[str]] = None
+    nba_status: Optional[str] = None
+    year: Optional[int] = None
+    category: Optional[str] = None
+    position: Optional[str] = None
 
 
 class ExportRequest(BaseModel):
     """Request body for image export."""
 
-    component: Literal["vs_arena", "performance", "h2h", "comps"]
-    player_ids: list[int] = Field(..., min_length=1, max_length=2)
+    component: Literal[
+        "vs_arena", "performance", "h2h", "comps", "metric_leaders", "draft_year"
+    ]
+    player_ids: list[int] = Field(default_factory=list, max_length=2)
     context: ExportContext = Field(default_factory=ExportContext)
     redirect_path: Optional[str] = Field(
         default=None,
@@ -76,6 +86,9 @@ async def export_image(
                 status_code=400,
                 detail="vs_arena and h2h require exactly 2 player_ids",
             )
+    elif request.component in ("metric_leaders", "draft_year"):
+        # Stats-based cards don't require player_ids
+        pass
     else:
         if len(request.player_ids) != 1:
             raise HTTPException(

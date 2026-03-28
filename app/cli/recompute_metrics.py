@@ -9,6 +9,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.cli.compute_metrics import main_async as compute_metrics_main
+from app.cli.compute_combine_scores import main_async as compute_combine_scores_main
 from app.models.fields import CohortType, MetricSource
 from app.models.position_taxonomy import PARENT_SCOPE_PRESET
 from app.schemas.combine_agility import CombineAgility
@@ -122,6 +123,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help=(
             "After promotion, recompute player similarity for all promoted snapshots. "
             "Requires --promote and --execute."
+        ),
+    )
+    parser.add_argument(
+        "--combine-scores",
+        action="store_true",
+        help=(
+            "After computing base metrics (and optionally promoting), compute "
+            "composite Combine Scores from the resulting z-scores."
         ),
     )
     parser.add_argument(
@@ -375,6 +384,44 @@ async def run_recompute(argv: Optional[Sequence[str]] = None) -> None:
                     db, context, run_key=run_key, verbose=args.verbose
                 )
             await db.commit()
+
+            if args.combine_scores:
+                if args.verbose:
+                    print("\n=== Computing composite Combine Scores ===")
+                # Compute combine scores for each global cohort
+                for cohort in global_cohorts:
+                    cs_season = "all" if cohort == CohortType.global_scope else None
+                    cs_argv: List[str] = [
+                        "--cohort",
+                        cohort.value,
+                        "--position-matrix",
+                        "parent",
+                        "--replace-run",
+                    ]
+                    if cs_season:
+                        cs_argv.extend(["--season", cs_season])
+                    if args.skip_baseline:
+                        cs_argv.append("--skip-baseline")
+                    if args.verbose:
+                        cs_argv.append("--verbose")
+                    await compute_combine_scores_main(cs_argv)
+
+                # Compute combine scores for each draft season
+                for _sid, scode in seasons:
+                    cs_argv = [
+                        "--cohort",
+                        CohortType.current_draft.value,
+                        "--season",
+                        scode,
+                        "--position-matrix",
+                        "parent",
+                        "--replace-run",
+                    ]
+                    if args.skip_baseline:
+                        cs_argv.append("--skip-baseline")
+                    if args.verbose:
+                        cs_argv.append("--verbose")
+                    await compute_combine_scores_main(cs_argv)
 
             if args.similarity:
                 from app.cli.compute_similarity import (

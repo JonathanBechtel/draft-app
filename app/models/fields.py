@@ -20,6 +20,7 @@ class MetricSource(str, Enum):
     combine_anthro = "combine_anthro"
     combine_shooting = "combine_shooting"
     advanced_stats = "advanced_stats"
+    combine_score = "combine_score"
 
 
 class MetricStatistic(str, Enum):
@@ -43,6 +44,7 @@ class MetricCategory(str, Enum):
     combine_performance = "combine_performance"
     shooting = "shooting"
     advanced_stats = "advanced_stats"
+    combine_overall = "combine_overall"
 
 
 class SimilarityDimension(str, Enum):

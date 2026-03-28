@@ -569,4 +569,45 @@
       if (chart) positionAvgMarkers(chart);
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // SHARE CARD EXPORTS
+  // ═══════════════════════════════════════════════════════════════
+
+  var CATEGORY_LABELS = {
+    anthro: 'Measurements',
+    athletic: 'Athletic Testing',
+    shooting: 'Shooting'
+  };
+
+  function getDraftYearContext() {
+    return {
+      _raw: {
+        year: DATA.year,
+        category: currentCategory,
+        position: null,
+      },
+      redirectPath: window.location.pathname,
+    };
+  }
+
+  window.exportDraftYear = function () {
+    if (typeof ExportModal === 'undefined') return;
+    var context = getDraftYearContext();
+    ExportModal.export('draft_year', [], context);
+  };
+
+  window.shareDraftYearTweet = function () {
+    if (typeof TweetShare === 'undefined') return;
+    var context = getDraftYearContext();
+    var catLabel = CATEGORY_LABELS[currentCategory] || 'Combine';
+    var headline = 'DraftGuru: ' + DATA.year + ' Combine — ' + catLabel + ' Leaders';
+    TweetShare.share({
+      component: 'draft_year',
+      playerIds: [],
+      context: context,
+      text: headline,
+      pageUrl: window.location.href,
+    });
+  };
 })();

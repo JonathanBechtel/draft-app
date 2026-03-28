@@ -24,7 +24,11 @@ from app.services.share_cards.render_models import (
     CompTile,
     CompsRenderModel,
     ContextLine,
+    DraftYearRenderModel,
+    DraftYearTile,
     H2HRenderModel,
+    MetricLeaderRow,
+    MetricLeadersRenderModel,
     PercentileTier,
     PerformanceRenderModel,
     PerformanceRow,
@@ -637,3 +641,273 @@ def _filters_for_comparison_group(comparison_group: str) -> tuple[bool, bool]:
     if comparison_group == "current_nba":
         return False, True
     return False, False
+
+
+async def build_metric_leaders_model(
+    db: AsyncSession,
+    player_ids: list[int],
+    context: dict[str, Any],
+) -> "MetricLeadersRenderModel":
+    """Build Metric Leaders render model from context.
+
+    Args:
+        db: Database session
+        player_ids: Ignored (metric-based, not player-based)
+        context: Export context with metric_key, years, positions, nba_status
+
+    Returns:
+        MetricLeadersRenderModel ready for template rendering
+    """
+    from app.services.combine_stats_service import get_leaderboard
+
+    metric_key = context.get("metric_key", "")
+    if not metric_key:
+        raise ValueError("metric_key is required for metric_leaders")
+
+    years: list[int] | None = context.get("years") or None
+    positions: list[str] | None = context.get("positions") or None
+    nba_status_raw = context.get("nba_status")
+    is_active_nba: bool | None = None
+    if nba_status_raw == "active":
+        is_active_nba = True
+    elif nba_status_raw == "out":
+        is_active_nba = False
+
+    max_rows = LIST_LENGTHS["metric_leaders"]
+
+    result = await get_leaderboard(
+        db,
+        metric_key,
+        years=years,
+        positions=positions,
+        is_active_nba=is_active_nba,
+        limit=max_rows,
+        offset=0,
+    )
+
+    # Build title from metric display name
+    metric_display = result.metric.display_name
+    sort_dir = result.metric.sort_direction
+    # Use superlative phrasing
+    if sort_dir == "asc":
+        title = f"Fastest {metric_display}"
+    else:
+        title = f"Top {metric_display}"
+
+    # Build subtitle from active filters
+    subtitle_parts: list[str] = []
+    if years:
+        if len(years) == 1:
+            subtitle_parts.append(str(years[0]))
+        else:
+            subtitle_parts.append(f"{min(years)}-{max(years)}")
+    else:
+        subtitle_parts.append("All Years")
+    if positions:
+        subtitle_parts.append(", ".join(p.upper() for p in positions))
+    if is_active_nba is True:
+        subtitle_parts.append("Active NBA")
+    elif is_active_nba is False:
+        subtitle_parts.append("Out of NBA")
+
+    subtitle = " · ".join(subtitle_parts)
+
+    # Build rows with embedded images
+    rows: list["MetricLeaderRow"] = []
+    for entry in result.entries[:max_rows]:
+        image_url = await get_current_image_url_for_player(
+            db, player_id=entry.player_id, style="default"
+        )
+        photo_uri, has_photo = await fetch_and_embed_image(
+            image_url, entry.display_name
+        )
+
+        # Build subtitle
+        parts: list[str] = []
+        if entry.position:
+            parts.append(entry.position.upper())
+        if entry.school:
+            parts.append(entry.school)
+        if entry.draft_year:
+            parts.append(f"({entry.draft_year})")
+        row_subtitle = " | ".join(parts[:2])
+        if entry.draft_year and len(parts) > 2:
+            row_subtitle = f"{row_subtitle} {parts[-1]}"
+
+        percentile = int(entry.percentile) if entry.percentile is not None else 0
+        tier = PercentileTier(get_percentile_tier(percentile))
+
+        rows.append(
+            MetricLeaderRow(
+                rank=entry.rank,
+                name=entry.display_name,
+                subtitle=row_subtitle,
+                value=entry.formatted_value,
+                percentile=percentile,
+                percentile_label=_format_percentile_label(percentile),
+                tier=tier,
+                photo_data_uri=photo_uri,
+                has_photo=has_photo,
+            )
+        )
+
+    # Pad with empty rows
+    while len(rows) < max_rows:
+        rows.append(
+            MetricLeaderRow(
+                rank=len(rows) + 1,
+                name="—",
+                subtitle="",
+                value="—",
+                percentile=0,
+                percentile_label="—",
+                tier=PercentileTier.unknown,
+                has_photo=False,
+            )
+        )
+
+    return MetricLeadersRenderModel(
+        title=title,
+        subtitle=subtitle,
+        metric_label=metric_display,
+        rows=rows,
+        accent_color=COMPONENT_ACCENTS["metric_leaders"],
+    )
+
+
+async def build_draft_year_model(
+    db: AsyncSession,
+    player_ids: list[int],
+    context: dict[str, Any],
+) -> "DraftYearRenderModel":
+    """Build Draft Year render model from context.
+
+    Args:
+        db: Database session
+        player_ids: Ignored (year-based, not player-based)
+        context: Export context with year, category, position
+
+    Returns:
+        DraftYearRenderModel ready for template rendering
+    """
+    from app.services.combine_stats_service import get_draft_year_data
+
+    year = context.get("year")
+    if not year:
+        raise ValueError("year is required for draft_year")
+
+    category = context.get("category", "athletic")
+    position_filter: str | None = context.get("position") or None
+
+    data = await get_draft_year_data(db, int(year))
+
+    # Select the right category data
+    category_map = {
+        "anthro": data.anthro,
+        "athletic": data.athletic,
+        "shooting": data.shooting,
+    }
+    cat_data = category_map.get(category)
+    if not cat_data:
+        raise ValueError(f"Unknown category: {category}")
+
+    category_labels = {
+        "anthro": "Measurements",
+        "athletic": "Athletic Testing",
+        "shooting": "Shooting",
+    }
+    cat_label = category_labels.get(category, "Combine")
+    title = f"{year} Combine — {cat_label}"
+
+    subtitle = position_filter.upper() if position_filter else "All Positions"
+
+    # Get leaders for each metric, respecting position filter
+    max_tiles = LIST_LENGTHS["draft_year"]
+    tiles: list["DraftYearTile"] = []
+
+    for metric_key in cat_data.metric_keys[:max_tiles]:
+        # Find leader: if position_filter, scan players; otherwise use precomputed
+        leader: Any = None
+        if position_filter:
+            # Find the best player at this position for this metric
+            from app.services.combine_stats_service import METRIC_COLUMN_MAP
+
+            col_def = METRIC_COLUMN_MAP.get(metric_key)
+            sort_desc = col_def.sort_direction == "desc" if col_def else True
+            best_val: float | None = None
+            for player in cat_data.players:
+                if (
+                    player.position
+                    and player.position.upper() != position_filter.upper()
+                ):
+                    continue
+                val = player.metrics.get(metric_key)
+                if val is None:
+                    continue
+                if best_val is None or (
+                    (sort_desc and val > best_val) or (not sort_desc and val < best_val)
+                ):
+                    best_val = val
+                    leader = player
+        else:
+            leader = cat_data.leaders.get(metric_key)
+
+        if not leader:
+            tiles.append(
+                DraftYearTile(
+                    metric_label=_get_metric_display_name(metric_key),
+                    name="—",
+                    value="—",
+                    has_photo=False,
+                )
+            )
+            continue
+
+        image_url = await get_current_image_url_for_player(
+            db, player_id=leader.player_id, style="default"
+        )
+        photo_uri, has_photo = await fetch_and_embed_image(
+            image_url, leader.display_name
+        )
+
+        formatted_val = leader.formatted_metrics.get(metric_key) or str(
+            leader.metrics.get(metric_key, "—")
+        )
+
+        tiles.append(
+            DraftYearTile(
+                metric_label=_get_metric_display_name(metric_key),
+                name=leader.display_name,
+                value=formatted_val,
+                photo_data_uri=photo_uri,
+                has_photo=has_photo,
+            )
+        )
+
+    # Pad with empty tiles
+    while len(tiles) < max_tiles:
+        tiles.append(
+            DraftYearTile(
+                metric_label="",
+                name="—",
+                value="—",
+                has_photo=False,
+            )
+        )
+
+    return DraftYearRenderModel(
+        title=title,
+        subtitle=subtitle,
+        tiles=tiles,
+        accent_color=COMPONENT_ACCENTS["draft_year"],
+    )
+
+
+def _get_metric_display_name(metric_key: str) -> str:
+    """Look up the display name for a metric key."""
+    from app.services.combine_stats_service import METRIC_COLUMN_MAP
+
+    col_def = METRIC_COLUMN_MAP.get(metric_key)
+    if col_def:
+        return col_def.display_name
+    return _shorten_label(metric_key.replace("_", " ").title())

@@ -122,17 +122,20 @@ const ExportModal = {
     }
 
     try {
+      // Stats-based components pass context directly; player-based ones map keys
+      const apiContext = context._raw ? context._raw : {
+        comparison_group: context.comparisonGroup || 'current_draft',
+        same_position: context.samePosition || false,
+        metric_group: context.metricGroup || 'anthropometrics',
+      };
       const response = await fetch('/api/export/image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           component,
           player_ids: playerIds,
-          context: {
-            comparison_group: context.comparisonGroup || 'current_draft',
-            same_position: context.samePosition || false,
-            metric_group: context.metricGroup || 'anthropometrics',
-          },
+          context: apiContext,
+          redirect_path: context.redirectPath || undefined,
         }),
       });
 

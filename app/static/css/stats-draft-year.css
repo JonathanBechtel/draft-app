@@ -157,6 +157,22 @@
   margin-bottom: 1.25rem;
 }
 
+.dy-section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+}
+
+.dy-section-title-row .dy-section-title {
+  margin-bottom: 0;
+}
+
+.dy-share-actions {
+  display: flex;
+  gap: 0.375rem;
+}
+
 /* ── Section Divider ── */
 .dy-section-divider {
   height: 1px;

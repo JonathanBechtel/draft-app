@@ -61,6 +61,8 @@ COMPONENT_ACCENTS = {
     "performance": COLORS["emerald"],
     "h2h": COLORS["fuchsia"],
     "comps": COLORS["cyan"],
+    "metric_leaders": COLORS["amber"],
+    "draft_year": COLORS["indigo"],
 }
 
 # Fixed list lengths for determinism
@@ -69,6 +71,8 @@ LIST_LENGTHS = {
     "performance": 8,
     "h2h": 8,
     "comps": 6,
+    "metric_leaders": 5,
+    "draft_year": 6,
 }
 
 # Metric specs per category
