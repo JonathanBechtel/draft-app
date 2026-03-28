@@ -34,6 +34,8 @@ from app.models.fields import (
 )
 from app.models.position_taxonomy import (
     PARENT_SCOPE_PRESET,
+    PositionScopeKind,
+    parents_for_scope,
     resolve_position_scope,
 )
 from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
@@ -479,7 +481,7 @@ async def compute_scores_for_scope(
             player_pctl = dict(zip(cat_data["metric_key"], cat_data["percentile"]))
 
             score, detail = compute_category_score(player_z, cat_weights, cat_label)
-            if score is not None:
+            if score is not None and detail.get("metric_count", 0) >= min_metrics:
                 category_scores[cat_label] = score
                 category_details[cat_label] = detail
                 # Enrich component details with raw_value and percentile
@@ -694,7 +696,14 @@ def _build_scope_plan(
     """Return list of position_scope_parent values to iterate over."""
     if args.position_scope:
         scope = resolve_position_scope(args.position_scope)
-        return [scope.value if scope else args.position_scope]
+        if scope is None:
+            return [args.position_scope]
+        # Combine scores only support parent-level scopes (guard/wing/forward/big)
+        # since the underlying metric snapshots use position_scope_parent.
+        # Fine scopes (pg, sg, etc.) are resolved to their parent group(s).
+        if scope.kind == PositionScopeKind.fine:
+            return list(parents_for_scope(scope))
+        return [scope.value]
     if args.position_matrix == "parent":
         scopes: List[Optional[str]] = []
         if not args.skip_baseline:
