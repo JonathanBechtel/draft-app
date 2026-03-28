@@ -289,6 +289,30 @@
   margin-bottom: 0.1rem;
 }
 
+/* Mobile endpoints row — hidden by default, shown on small screens */
+.dy-range-endpoints-row {
+  display: none;
+}
+.dy-range-endpoint-mobile {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+.dy-range-endpoint-mobile.right {
+  text-align: right;
+}
+.dy-range-endpoint-mobile .dy-ep-value {
+  font-weight: 600;
+  font-size: 0.78rem;
+  color: var(--color-slate-800);
+}
+.dy-range-endpoint-mobile .dy-ep-name {
+  color: var(--color-slate-500);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 /* Column headers for min/max */
 .dy-range-col-headers {
   display: grid;
@@ -719,5 +743,43 @@
   }
   .dy-winners-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+}
+
+/* Small screens: full-width bar with min/max below */
+@media (max-width: 480px) {
+  .dy-range-chart {
+    padding: 1.25rem 1rem;
+  }
+  .dy-range-chart-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .dy-range-col-headers {
+    display: none;
+  }
+  /* Hide the inline 3-column endpoints, show only the bar */
+  .dy-range-row {
+    display: block;
+  }
+  .dy-range-row > .dy-range-endpoint {
+    display: none;
+  }
+  .dy-range-track {
+    width: 100%;
+    height: 22px;
+  }
+  /* Show the mobile endpoints row below the bar */
+  .dy-range-endpoints-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 0.2rem 0.25rem 0;
+  }
+  .dy-range-avg-label {
+    opacity: 1;
+    font-size: 0.55rem;
+    top: -14px;
   }
 }

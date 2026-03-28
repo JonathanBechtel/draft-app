@@ -199,6 +199,16 @@
             '<div class="dy-ep-name">' + escHtml(rs.max_player_name) + '</div>' +
           '</div>' +
         '</div>' +
+        '<div class="dy-range-endpoints-row">' +
+          '<div class="dy-range-endpoint-mobile left">' +
+            '<div class="dy-ep-value">' + rs.formatted_min + '</div>' +
+            '<div class="dy-ep-name">' + escHtml(rs.min_player_name) + '</div>' +
+          '</div>' +
+          '<div class="dy-range-endpoint-mobile right">' +
+            '<div class="dy-ep-value">' + rs.formatted_max + '</div>' +
+            '<div class="dy-ep-name">' + escHtml(rs.max_player_name) + '</div>' +
+          '</div>' +
+        '</div>' +
       '</div>';
     });
 
