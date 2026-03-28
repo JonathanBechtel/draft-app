@@ -54,16 +54,27 @@ def generate_cache_key(
 def generate_filename(
     component: str,
     player_names: list[str],
+    context: dict[str, Any] | None = None,
 ) -> str:
     """Generate human-readable download filename.
 
     Args:
         component: Component type
         player_names: List of player display names
+        context: Optional export context for stats-based cards
 
     Returns:
         Filename like "cooper-flagg-vs-dylan-harper.png"
     """
+    if component == "metric_leaders":
+        metric_key = (context or {}).get("metric_key", "metric")
+        slug = _slugify(metric_key.replace("_", " "))
+        return f"{slug}-leaders.png"
+    elif component == "draft_year":
+        year = (context or {}).get("year", "draft")
+        category = (context or {}).get("category", "combine")
+        return f"{year}-combine-{category}.png"
+
     slugified = [_slugify(name) for name in player_names]
 
     if component in ("vs_arena", "h2h"):
@@ -77,16 +88,32 @@ def generate_filename(
 def generate_title(
     component: str,
     player_names: list[str],
+    context: dict[str, Any] | None = None,
 ) -> str:
     """Generate display title for the export.
 
     Args:
         component: Component type
         player_names: List of player display names
+        context: Optional export context for stats-based cards
 
     Returns:
         Title like "Cooper Flagg vs Dylan Harper"
     """
+    if component == "metric_leaders":
+        metric_display = (context or {}).get("metric_display_name", "Metric")
+        return f"Top {metric_display} — Combine Leaders"
+    elif component == "draft_year":
+        year = (context or {}).get("year", "")
+        category_labels = {
+            "anthro": "Measurements",
+            "athletic": "Athletic Testing",
+            "shooting": "Shooting",
+        }
+        category = (context or {}).get("category", "combine")
+        cat_label = category_labels.get(category, "Combine")
+        return f"{year} Combine — {cat_label}"
+
     if component == "vs_arena":
         if len(player_names) >= 2:
             return f"{player_names[0]} vs {player_names[1]}"
