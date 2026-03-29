@@ -28,8 +28,21 @@ class VideoAnalysis:
 
 RELEVANCE_CHECK_PROMPT = """You are a sports content filter for DraftGuru, an NBA Draft analytics site.
 
-Determine whether this video is about or substantially discusses the NBA Draft,
-draft prospects, or college basketball players projected for the draft.
+Determine whether this video is **specifically about the NBA Draft** — for example,
+draft prospect evaluations, scouting reports, mock drafts, draft-night coverage,
+pre-draft workouts, combine analysis, or substantive discussion of where college
+players will be selected.
+
+Videos that should be marked **NOT relevant**:
+- Generic game highlights or recap clips, even if draft-eligible players appear
+- Team-focused content (game recaps, team news, standings, rivalries) — even if
+  draft-eligible players are featured, the video must be about the *player* not the *team*
+- General NBA or college basketball news, scores, or standings
+- Entertainment/lifestyle content that only casually name-drops a prospect
+- Highlight montages or dunk compilations with no draft analysis
+
+The key question: is the **primary topic** the NBA Draft, a specific prospect,
+or prospect evaluation — rather than a team, game, or league storyline?
 
 Answer with valid JSON only:
 {"is_draft_relevant": true}
