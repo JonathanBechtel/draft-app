@@ -10,7 +10,7 @@
 </header>
 
 <div class="admin-card admin-card--medium">
-  <form class="admin-form" method="post" action="/admin/players">
+  <form class="admin-form" method="post" action="/admin/players" enctype="multipart/form-data">
     <!-- Basic Info Section -->
     <div class="admin-form__section">
       <h3 class="admin-form__section-title">Basic Info</h3>
@@ -246,7 +246,18 @@
       </div>
 
       <div class="admin-form__field">
-        <label class="admin-form__label" for="reference_image_url">Reference Image URL</label>
+        <label class="admin-form__label">Reference Image</label>
+        <label class="admin-form__label" for="reference_image_file" style="font-weight: normal; font-size: 0.85rem;">Upload Image</label>
+        <input
+          class="admin-form__input"
+          id="reference_image_file"
+          name="reference_image_file"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+        />
+        <span class="admin-form__help" style="margin-bottom: 0.5rem;">JPEG, PNG, or WebP (max 5 MB). Upload takes precedence over URL.</span>
+
+        <label class="admin-form__label" for="reference_image_url" style="font-weight: normal; font-size: 0.85rem;">Or paste URL</label>
         <input
           class="admin-form__input"
           id="reference_image_url"
@@ -254,7 +265,6 @@
           type="url"
           placeholder="https://..."
         />
-        <span class="admin-form__help">URL to reference image for AI likeness generation</span>
       </div>
     </div>
 

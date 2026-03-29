@@ -262,6 +262,8 @@ async def preview_image(
     if preview is None:
         raise HTTPException(status_code=404, detail="Preview not found or expired")
 
+    from_player = request.query_params.get("from") == "player"
+
     return request.app.state.templates.TemplateResponse(
         "admin/images/preview.html",
         await base_context_with_permissions(
@@ -269,6 +271,7 @@ async def preview_image(
             db,
             user,
             preview=preview,
+            from_player=from_player,
             active_nav="images",
         ),
     )
@@ -345,15 +348,17 @@ async def reject_preview(
         source_asset_id = preview.source_asset_id
         await svc_delete_preview(db, preview_id)
 
-    # Redirect back to the original asset detail page
+    # Redirect back to the originating page
     if source_asset_id:
         return RedirectResponse(
             url=f"/admin/images/{source_asset_id}?success=preview_rejected",
             status_code=303,
         )
     else:
+        # Player-originated preview: redirect back to the player page
+        player_id = preview.player_id
         return RedirectResponse(
-            url="/admin/images?success=preview_rejected",
+            url=f"/admin/players/{player_id}?success=preview_rejected",
             status_code=303,
         )
 

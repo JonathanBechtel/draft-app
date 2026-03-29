@@ -58,6 +58,10 @@ class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
         default=None,
         description="URL to reference image for AI likeness generation",
     )
+    reference_image_s3_key: Optional[str] = Field(
+        default=None,
+        description="S3 key for uploaded reference image (private bucket)",
+    )
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

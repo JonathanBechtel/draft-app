@@ -233,19 +233,31 @@ Generic jersey, no logos/numbers. Trim in #4A7FB8 with a tiny cyan highlight."""
 
         return "\n".join(prompt_parts)
 
-    async def describe_reference_image(self, image_url: str) -> str:
-        """Fetch image and generate likeness description via Gemini vision.
+    async def describe_reference_image(
+        self,
+        image_url: str | None = None,
+        *,
+        image_bytes: bytes | None = None,
+        mime_type: str = "image/jpeg",
+    ) -> str:
+        """Generate likeness description via Gemini vision.
 
-        Uses Gemini's vision capabilities to describe a player's distinctive
-        facial features for use in image generation.
+        Accepts either a public URL or raw image bytes (for privately-stored
+        S3 images). Exactly one of image_url or image_bytes must be provided.
 
         Args:
-            image_url: URL to reference image
+            image_url: Public URL to reference image
+            image_bytes: Raw image bytes (from S3 download, etc.)
+            mime_type: MIME type when using image_bytes
 
         Returns:
             Text description of player's appearance
         """
-        logger.info(f"Fetching and describing reference image: {image_url}")
+        if not image_url and not image_bytes:
+            raise ValueError("Either image_url or image_bytes must be provided")
+
+        source_desc = image_url or f"{len(image_bytes or b'')} bytes"
+        logger.info(f"Describing reference image: {source_desc}")
 
         description_prompt = """Analyze this basketball player's face and describe their distinctive features for an illustrator. Focus on:
 
@@ -261,13 +273,20 @@ Generic jersey, no logos/numbers. Trim in #4A7FB8 with a tiny cyan highlight."""
 
 Be specific and objective. This will help an AI illustrator capture their likeness accurately."""
 
+        # Build the image part based on source
+        if image_bytes:
+            image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+        else:
+            assert image_url is not None
+            image_part = types.Part.from_uri(file_uri=image_url, mime_type="image/jpeg")
+
         try:
             response = self.client.models.generate_content(
                 model="gemini-3-flash-preview",
                 contents=types.Content(
                     role="user",
                     parts=[
-                        types.Part.from_uri(file_uri=image_url, mime_type="image/jpeg"),
+                        image_part,
                         types.Part.from_text(text=description_prompt),
                     ],
                 ),
@@ -333,6 +352,71 @@ Be specific and objective. This will help an AI illustrator capture their likene
         logger.info(f"Received image: {len(image_data)} bytes")
         return image_data
 
+    async def _resolve_likeness(
+        self,
+        player: PlayerMaster,
+        fetch_likeness: bool,
+        likeness_url: str | None = None,
+    ) -> tuple[str | None, str | None]:
+        """Resolve likeness description from S3 upload, explicit URL, or player URL.
+
+        Priority order:
+        1. Explicit likeness_url (admin override)
+        2. Player's uploaded S3 reference image (private bucket)
+        3. Player's reference_image_url (public URL)
+
+        Returns:
+            Tuple of (likeness_description, reference_image_url_for_audit).
+        """
+        if not fetch_likeness and not likeness_url:
+            return None, None
+
+        # 1. Explicit URL override
+        if likeness_url:
+            try:
+                desc = await self.describe_reference_image(image_url=likeness_url)
+                return desc, likeness_url
+            except Exception as e:
+                logger.warning(f"Failed to get likeness for {player.display_name}: {e}")
+                return None, likeness_url
+
+        # 2. S3-stored upload (private)
+        if player.reference_image_s3_key:
+            try:
+                ref_bytes = s3_client.download(player.reference_image_s3_key)
+                # Infer mime type from key extension
+                key_lower = player.reference_image_s3_key.lower()
+                if key_lower.endswith(".png"):
+                    mt = "image/png"
+                elif key_lower.endswith(".webp"):
+                    mt = "image/webp"
+                else:
+                    mt = "image/jpeg"
+                desc = await self.describe_reference_image(
+                    image_bytes=ref_bytes, mime_type=mt
+                )
+                # Return None for URL — the image is private and not
+                # browser-accessible; the S3 key is tracked separately.
+                return desc, None
+            except Exception as e:
+                logger.warning(
+                    f"Failed to get likeness from S3 for {player.display_name}: {e}"
+                )
+                return None, None
+
+        # 3. Public URL
+        if player.reference_image_url:
+            try:
+                desc = await self.describe_reference_image(
+                    image_url=player.reference_image_url
+                )
+                return desc, player.reference_image_url
+            except Exception as e:
+                logger.warning(f"Failed to get likeness for {player.display_name}: {e}")
+                return None, player.reference_image_url
+
+        return None, None
+
     async def generate_preview(
         self,
         player: PlayerMaster,
@@ -362,18 +446,10 @@ Be specific and objective. This will help an AI illustrator capture their likene
         size = image_size or settings.image_gen_size
         system_prompt = self.get_system_prompt(system_prompt_version)
 
-        # Determine reference URL
-        ref_url = likeness_url or (
-            player.reference_image_url if fetch_likeness else None
+        # Resolve likeness (S3 upload > URL)
+        likeness_description, ref_url = await self._resolve_likeness(
+            player, fetch_likeness, likeness_url
         )
-
-        # Get likeness description if needed
-        likeness_description: str | None = None
-        if ref_url:
-            try:
-                likeness_description = await self.describe_reference_image(ref_url)
-            except Exception as e:
-                logger.warning(f"Failed to get likeness for {player.display_name}: {e}")
 
         # Build prompt
         user_prompt = self.build_player_prompt(player, likeness_description)
@@ -429,18 +505,10 @@ Be specific and objective. This will help an AI illustrator capture their likene
         start_time = time.time()
         size = image_size or settings.image_gen_size
 
-        # Determine reference URL
-        ref_url = likeness_url or (
-            player.reference_image_url if fetch_likeness else None
+        # Resolve likeness (S3 upload > URL)
+        likeness_description, ref_url = await self._resolve_likeness(
+            player, fetch_likeness, likeness_url
         )
-
-        # Get likeness description if needed
-        likeness_description: Optional[str] = None
-        if ref_url:
-            try:
-                likeness_description = await self.describe_reference_image(ref_url)
-            except Exception as e:
-                logger.warning(f"Failed to get likeness for {player.display_name}: {e}")
 
         # Build prompt
         user_prompt = self.build_player_prompt(player, likeness_description)

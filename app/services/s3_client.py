@@ -101,6 +101,77 @@ class S3Client:
             logger.error(f"Failed to delete {key} from S3: {e}")
             raise
 
+    def upload_private(
+        self,
+        key: str,
+        data: bytes,
+        content_type: str = "image/png",
+        metadata: Optional[dict[str, str]] = None,
+    ) -> str:
+        """Upload file to S3 without public ACL (private object).
+
+        Same as upload() but explicitly skips ACL so the object relies on
+        bucket default permissions (typically private).
+
+        Args:
+            key: S3 object key
+            data: File content as bytes
+            content_type: MIME type of the file
+            metadata: Optional metadata dict
+
+        Returns:
+            S3 key (not a public URL, since the object is private)
+        """
+        if self.use_local:
+            self._upload_local(key, data, metadata=metadata)
+            return key
+
+        if not self.bucket:
+            raise ValueError("S3_BUCKET_NAME not configured")
+
+        try:
+            put_kwargs: dict[str, object] = {
+                "Bucket": self.bucket,
+                "Key": key,
+                "Body": data,
+                "ContentType": content_type,
+            }
+            if metadata:
+                put_kwargs["Metadata"] = metadata
+            # Intentionally no ACL — object stays private
+            self.client.put_object(**put_kwargs)
+            logger.info(f"Uploaded {key} (private) to S3 bucket {self.bucket}")
+            return key
+        except ClientError as e:
+            logger.error(f"Failed to upload {key} to S3: {e}")
+            raise
+
+    def download(self, key: str) -> bytes:
+        """Download file contents from S3.
+
+        Args:
+            key: S3 object key
+
+        Returns:
+            File content as bytes
+        """
+        if self.use_local:
+            return self._download_local(key)
+
+        if not self.bucket:
+            raise ValueError("S3_BUCKET_NAME not configured")
+
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+            data: bytes = response["Body"].read()
+            logger.info(
+                f"Downloaded {key} from S3 bucket {self.bucket}: {len(data)} bytes"
+            )
+            return data
+        except ClientError as e:
+            logger.error(f"Failed to download {key} from S3: {e}")
+            raise
+
     def get_public_url(self, key: str) -> str:
         """Return a URL for serving an object.
 
@@ -153,6 +224,22 @@ class S3Client:
 
         logger.info(f"Saved {key} to local filesystem")
         return f"/static/img/{key}"
+
+    def _download_local(self, key: str) -> bytes:
+        """Download from local filesystem (dev mode).
+
+        Args:
+            key: Relative path within static/img/
+
+        Returns:
+            File content as bytes
+        """
+        from pathlib import Path
+
+        local_path = Path(self.local_root) / key
+        if not local_path.exists():
+            raise FileNotFoundError(f"Local file not found: {local_path}")
+        return local_path.read_bytes()
 
     def _delete_local(self, key: str) -> None:
         """Delete from local filesystem (dev mode).
