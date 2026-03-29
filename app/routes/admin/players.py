@@ -454,15 +454,19 @@ async def edit_player(
     # Fetch combine data context
     combine_context = await get_player_combine_context(db, player_id, season_id)
 
-    # Build S3-first image URL (source of truth for display)
+    # Build S3-first image URL (source of truth for display).
+    # Append updated_at as cache-buster so regenerated images aren't
+    # masked by browser/CDN caches.
     expected_image_url = None
     if player.slug:
-        expected_image_url = get_player_image_url(
+        base = get_player_image_url(
             player_id=player_id,
             slug=player.slug,
             style="default",
             base_url=get_s3_image_base_url(),
         )
+        cache_bust = int(player.updated_at.timestamp())
+        expected_image_url = f"{base}?v={cache_bust}"
 
     # Build placeholder URL for onerror fallback
     placeholder_url = get_placeholder_url(player.display_name, player_id=player_id)
