@@ -61,6 +61,8 @@ from app.services.admin_player_service import (
     update_player_status as svc_update_player_status,
     validate_player_form,
 )
+from app.services.admin_image_service import create_preview as svc_create_preview
+from app.services.image_generation import image_generation_service
 from app.utils.db_async import get_session
 
 logger = logging.getLogger(__name__)
@@ -645,6 +647,54 @@ async def delete_player(
 
         await svc_delete_player(db, player)
     return RedirectResponse(url="/admin/players?success=deleted", status_code=303)
+
+
+@router.post("/{player_id}/generate-image", response_class=HTMLResponse)
+async def generate_player_image(
+    request: Request,
+    player_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Generate a preview image for a player and redirect to the preview page."""
+    redirect, user = await require_dataset_access(
+        request, db, "images", need_edit=True, next_path=f"/admin/players/{player_id}"
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    async with db.begin():
+        player = await get_player_by_id(db, player_id)
+        if player is None:
+            raise HTTPException(status_code=404, detail="Player not found")
+
+    try:
+        preview_result = await image_generation_service.generate_preview(
+            player=player,
+            style="default",
+            fetch_likeness=True,
+        )
+
+        async with db.begin():
+            preview = await svc_create_preview(
+                db=db,
+                player_id=player_id,
+                source_asset_id=None,
+                style="default",
+                preview_result=preview_result,
+            )
+
+        return RedirectResponse(
+            url=f"/admin/images/preview/{preview.id}?from=player",
+            status_code=303,
+        )
+
+    except Exception as e:
+        logger.exception(f"Failed to generate image for player {player_id}")
+        return RedirectResponse(
+            url=f"/admin/players/{player_id}?error=Generation+failed:+{str(e)[:100]}",
+            status_code=303,
+        )
 
 
 # === Combine Data Endpoints ===

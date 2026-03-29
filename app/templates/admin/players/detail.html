@@ -700,13 +700,37 @@ function toggleEditMode(categoryKey) {
           </div>
         </div>
       </div>
-      <a href="/admin/images?player_id={{ player.id }}" class="admin-btn admin-btn--secondary admin-btn--small admin-btn--block" style="margin-top: 1rem;">
-        View All Images
-      </a>
+      <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+        <a href="/admin/images?player_id={{ player.id }}" class="admin-btn admin-btn--secondary admin-btn--small" style="flex: 1; text-align: center;">
+          View All Images
+        </a>
+        <form method="post" action="/admin/players/{{ player.id }}/generate-image" style="flex: 1;" id="generate-image-form">
+          <button type="submit" class="admin-btn admin-btn--primary admin-btn--small admin-btn--block">
+            Generate Photo
+          </button>
+        </form>
+      </div>
       {% else %}
-      <p class="admin-text--muted">No slug set - cannot construct image URL.</p>
+      <p class="admin-text--muted" style="margin-bottom: 1rem;">No image yet.</p>
+      <form method="post" action="/admin/players/{{ player.id }}/generate-image" id="generate-image-form">
+        <button type="submit" class="admin-btn admin-btn--primary admin-btn--small admin-btn--block">
+          Generate Photo
+        </button>
+      </form>
       {% endif %}
     </div>
   </div>
 </div>
+
+<div class="admin-loading-overlay" id="loading-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; justify-content:center; align-items:center; flex-direction:column;">
+  <div class="admin-loading-spinner" style="width:48px; height:48px; border:4px solid #e2e8f0; border-top-color:#4A7FB8; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+  <div style="color:#fff; margin-top:1rem; font-size:1.1rem;">Generating image...</div>
+  <div style="color:#cbd5e1; margin-top:0.25rem; font-size:0.85rem;">This may take 10-20 seconds</div>
+</div>
+<style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+<script>
+document.getElementById('generate-image-form')?.addEventListener('submit', function() {
+  document.getElementById('loading-overlay').style.display = 'flex';
+});
+</script>
 {% endblock %}

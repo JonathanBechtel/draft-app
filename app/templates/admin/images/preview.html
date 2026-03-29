@@ -7,6 +7,8 @@
 <header class="admin-main__header">
   {% if preview.source_asset_id %}
   <a href="/admin/images/{{ preview.source_asset_id }}" class="admin-btn admin-btn--link">&larr; Back to Image Detail</a>
+  {% elif from_player %}
+  <a href="/admin/players/{{ preview.player_id }}" class="admin-btn admin-btn--link">&larr; Back to Player</a>
   {% else %}
   <a href="/admin/images" class="admin-btn admin-btn--link">&larr; Back to Images</a>
   {% endif %}
