@@ -31,6 +31,16 @@ function toggleEditMode(categoryKey) {
     editEl.style.display = 'none';
   }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+  var form = document.getElementById('generate-image-form');
+  if (form) {
+    form.addEventListener('submit', function() {
+      var overlay = document.getElementById('loading-overlay');
+      if (overlay) overlay.style.display = 'flex';
+    });
+  }
+});
 </script>
 {% endblock %}
 
@@ -728,9 +738,4 @@ function toggleEditMode(categoryKey) {
   <div style="color:#cbd5e1; margin-top:0.25rem; font-size:0.85rem;">This may take 10-20 seconds</div>
 </div>
 <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-<script>
-document.getElementById('generate-image-form')?.addEventListener('submit', function() {
-  document.getElementById('loading-overlay').style.display = 'flex';
-});
-</script>
 {% endblock %}
