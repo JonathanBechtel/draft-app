@@ -72,6 +72,7 @@ class PlayerFormData:
     nba_debut_date: str | None = None
     nba_debut_season: str | None = None
     reference_image_url: str | None = None
+    reference_image_s3_key: str | None = None
 
 
 @dataclass
@@ -98,6 +99,7 @@ class ParsedPlayerData:
     nba_debut_date: date | None = None
     nba_debut_season: str | None = None
     reference_image_url: str | None = None
+    reference_image_s3_key: str | None = None
 
 
 def _clean_str(val: str | None) -> str | None:
@@ -351,6 +353,7 @@ def parse_player_form(data: PlayerFormData) -> ParsedPlayerData | str:
         nba_debut_date=parsed_nba_debut_date,
         nba_debut_season=_clean_str(data.nba_debut_season),
         reference_image_url=_clean_str(data.reference_image_url),
+        reference_image_s3_key=_clean_str(data.reference_image_s3_key),
     )
 
 
@@ -385,6 +388,7 @@ async def create_player(db: AsyncSession, data: ParsedPlayerData) -> PlayerMaste
         nba_debut_date=data.nba_debut_date,
         nba_debut_season=data.nba_debut_season,
         reference_image_url=data.reference_image_url,
+        reference_image_s3_key=data.reference_image_s3_key,
     )
     db.add(player)
     await db.flush()
@@ -426,6 +430,7 @@ async def update_player(
     player.nba_debut_date = data.nba_debut_date
     player.nba_debut_season = data.nba_debut_season
     player.reference_image_url = data.reference_image_url
+    player.reference_image_s3_key = data.reference_image_s3_key
     player.updated_at = datetime.now(UTC).replace(tzinfo=None)
     await db.flush()
     return player

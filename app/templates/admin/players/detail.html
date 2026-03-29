@@ -43,7 +43,7 @@ function toggleEditMode(categoryKey) {
 <div class="admin-player-detail-layout">
   <!-- Left Column: Form -->
   <div class="admin-card">
-    <form class="admin-form" method="post" action="/admin/players/{{ player.id }}">
+    <form class="admin-form" method="post" action="/admin/players/{{ player.id }}" enctype="multipart/form-data">
       <!-- Basic Info Section -->
       <div class="admin-form__section">
         <h3 class="admin-form__section-title">Basic Info</h3>
@@ -303,7 +303,28 @@ function toggleEditMode(categoryKey) {
         </div>
 
         <div class="admin-form__field">
-          <label class="admin-form__label" for="reference_image_url">Reference Image URL</label>
+          <label class="admin-form__label">Reference Image</label>
+          {% if player.reference_image_s3_key %}
+          <div style="margin-bottom: 0.5rem; padding: 0.5rem; background: var(--admin-surface-alt, #f1f5f9); border-radius: 4px; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="font-size: 0.85rem; color: var(--admin-text-secondary, #64748b);">
+              Uploaded: <code>{{ player.reference_image_s3_key.split('/')[-1] }}</code>
+            </span>
+            <label style="margin-left: auto; font-size: 0.8rem; display: flex; align-items: center; gap: 0.25rem; color: var(--admin-danger, #dc2626); cursor: pointer;">
+              <input type="checkbox" name="remove_reference_upload" value="1" /> Remove
+            </label>
+          </div>
+          {% endif %}
+          <label class="admin-form__label" for="reference_image_file" style="font-weight: normal; font-size: 0.85rem;">Upload Image</label>
+          <input
+            class="admin-form__input"
+            id="reference_image_file"
+            name="reference_image_file"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+          />
+          <span class="admin-form__help" style="margin-bottom: 0.5rem;">JPEG, PNG, or WebP (max 5 MB). Upload takes precedence over URL.</span>
+
+          <label class="admin-form__label" for="reference_image_url" style="font-weight: normal; font-size: 0.85rem;">Or paste URL</label>
           <input
             class="admin-form__input"
             id="reference_image_url"
@@ -312,7 +333,6 @@ function toggleEditMode(categoryKey) {
             placeholder="https://..."
             value="{{ player.reference_image_url or '' }}"
           />
-          <span class="admin-form__help">URL to reference image for AI likeness generation</span>
         </div>
       </div>
 

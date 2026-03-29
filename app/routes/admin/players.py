@@ -6,10 +6,23 @@ Routes are thin wrappers; business logic lives in admin_player_service.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+import logging
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
+
+from app.services.s3_client import s3_client
 
 from app.routes.admin.helpers import (
     base_context_with_permissions,
@@ -50,11 +63,18 @@ from app.services.admin_player_service import (
 )
 from app.utils.db_async import get_session
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/players", tags=["admin-players"])
 
 # Default pagination values
 DEFAULT_LIMIT = 25
 MAX_LIMIT = 100
+
+# Reference image upload constraints
+_MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB
+_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_CONTENT_TYPE_TO_EXT = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 
 # Success messages for flash-style notifications
 SUCCESS_MESSAGES = {
@@ -145,6 +165,7 @@ def _build_form_data(
     nba_debut_date: str | None,
     nba_debut_season: str | None,
     reference_image_url: str | None,
+    reference_image_s3_key: str | None = None,
 ) -> PlayerFormData:
     """Build PlayerFormData from individual form fields."""
     return PlayerFormData(
@@ -168,7 +189,72 @@ def _build_form_data(
         nba_debut_date=nba_debut_date,
         nba_debut_season=nba_debut_season,
         reference_image_url=reference_image_url,
+        reference_image_s3_key=reference_image_s3_key,
     )
+
+
+async def _validate_reference_upload(
+    file: UploadFile | None,
+) -> tuple[bytes | None, str | None, str | None]:
+    """Validate a reference image upload and return raw bytes.
+
+    Returns:
+        Tuple of (file_bytes, content_type, error_message).
+        file_bytes and content_type are None when no file or on error.
+    """
+    if not file or not file.filename:
+        return None, None, None
+
+    content_type = file.content_type or ""
+    if content_type not in _ALLOWED_CONTENT_TYPES:
+        return (
+            None,
+            None,
+            (f"Invalid file type '{content_type}'. Allowed: JPEG, PNG, WebP."),
+        )
+
+    data = await file.read()
+    if len(data) == 0:
+        return None, None, "Uploaded file is empty."
+    if len(data) > _MAX_UPLOAD_BYTES:
+        return None, None, "File too large. Maximum size is 5 MB."
+
+    return data, content_type, None
+
+
+def _upload_reference_image(
+    player: PlayerMaster,
+    data: bytes,
+    content_type: str,
+) -> str:
+    """Upload reference image to S3 and return the S3 key.
+
+    Deletes any previous reference image if the key changes.
+    """
+    ext = _CONTENT_TYPE_TO_EXT.get(content_type, "jpg")
+    slug = player.slug or str(player.id)
+    s3_key = f"reference-images/{player.id}_{slug}.{ext}"
+
+    old_key = player.reference_image_s3_key
+    if old_key and old_key != s3_key:
+        try:
+            s3_client.delete(old_key)
+        except Exception:
+            logger.warning(f"Failed to delete old reference image: {old_key}")
+
+    s3_client.upload_private(s3_key, data, content_type=content_type)
+    return s3_key
+
+
+def _remove_reference_image(player: PlayerMaster) -> None:
+    """Delete the player's uploaded reference image from S3."""
+    if player.reference_image_s3_key:
+        try:
+            s3_client.delete(player.reference_image_s3_key)
+        except Exception:
+            logger.warning(
+                f"Failed to delete reference image: {player.reference_image_s3_key}"
+            )
 
 
 @router.get("", response_class=HTMLResponse)
@@ -279,6 +365,7 @@ async def create_player(
     nba_debut_date: str | None = Form(default=None),
     nba_debut_season: str | None = Form(default=None),
     reference_image_url: str | None = Form(default=None),
+    reference_image_file: UploadFile | None = File(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """Create a new player."""
@@ -288,6 +375,13 @@ async def create_player(
     if redirect:
         return redirect
     assert user is not None  # Guaranteed by require_dataset_access if no redirect
+
+    # Validate upload early (before DB work)
+    upload_bytes, upload_ct, upload_err = await _validate_reference_upload(
+        reference_image_file
+    )
+    if upload_err:
+        return await _render_form_error(request, db, user, None, upload_err)
 
     form_data = _build_form_data(
         display_name,
@@ -309,7 +403,8 @@ async def create_player(
         draft_team,
         nba_debut_date,
         nba_debut_season,
-        reference_image_url,
+        # If uploading a file, clear the URL — upload takes precedence
+        reference_image_url=None if upload_bytes else reference_image_url,
     )
 
     # Validate required fields
@@ -322,7 +417,13 @@ async def create_player(
         return await _render_form_error(request, db, user, None, parsed)
 
     async with db.begin():
-        await svc_create_player(db, parsed)
+        player = await svc_create_player(db, parsed)
+        # Upload reference image now that we have a player ID
+        if upload_bytes and upload_ct:
+            s3_key = _upload_reference_image(player, upload_bytes, upload_ct)
+            player.reference_image_s3_key = s3_key
+            await db.flush()
+
     return RedirectResponse(url="/admin/players?success=created", status_code=303)
 
 
@@ -405,6 +506,8 @@ async def update_player(
     nba_debut_date: str | None = Form(default=None),
     nba_debut_season: str | None = Form(default=None),
     reference_image_url: str | None = Form(default=None),
+    reference_image_file: UploadFile | None = File(default=None),
+    remove_reference_upload: str | None = Form(default=None),
     # Player status fields
     is_active_nba: str | None = Form(default=None),
     current_team: str | None = Form(default=None),
@@ -422,6 +525,20 @@ async def update_player(
         return redirect
     assert user is not None  # Guaranteed by require_dataset_access if no redirect
 
+    # Validate upload early (before DB work)
+    upload_bytes, upload_ct, upload_err = await _validate_reference_upload(
+        reference_image_file
+    )
+    if upload_err:
+        async with db.begin():
+            player = await get_player_by_id(db, player_id)
+            if player is None:
+                raise HTTPException(status_code=404, detail="Player not found")
+            player_status = await get_player_status_by_player_id(db, player_id)
+            return await _render_form_error(
+                request, db, user, player, upload_err, player_status
+            )
+
     async with db.begin():
         player = await get_player_by_id(db, player_id)
         if player is None:
@@ -429,6 +546,16 @@ async def update_player(
 
         # Fetch player status for error re-renders
         player_status = await get_player_status_by_player_id(db, player_id)
+
+        # Determine reference image s3 key
+        new_s3_key = player.reference_image_s3_key  # preserve by default
+        if remove_reference_upload:
+            _remove_reference_image(player)
+            new_s3_key = None
+        elif upload_bytes and upload_ct:
+            new_s3_key = _upload_reference_image(player, upload_bytes, upload_ct)
+            # Upload takes precedence — clear URL
+            reference_image_url = None
 
         form_data = _build_form_data(
             display_name,
@@ -451,6 +578,7 @@ async def update_player(
             nba_debut_date,
             nba_debut_season,
             reference_image_url,
+            reference_image_s3_key=new_s3_key,
         )
 
         # Validate required fields
