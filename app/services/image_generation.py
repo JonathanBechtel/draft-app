@@ -395,12 +395,14 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 desc = await self.describe_reference_image(
                     image_bytes=ref_bytes, mime_type=mt
                 )
-                return desc, f"s3://{player.reference_image_s3_key}"
+                # Return None for URL — the image is private and not
+                # browser-accessible; the S3 key is tracked separately.
+                return desc, None
             except Exception as e:
                 logger.warning(
                     f"Failed to get likeness from S3 for {player.display_name}: {e}"
                 )
-                return None, f"s3://{player.reference_image_s3_key}"
+                return None, None
 
         # 3. Public URL
         if player.reference_image_url:

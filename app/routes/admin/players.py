@@ -549,15 +549,20 @@ async def update_player(
         # Fetch player status for error re-renders
         player_status = await get_player_status_by_player_id(db, player_id)
 
-        # Determine reference image s3 key
+        # Determine what the s3 key and URL *will* be, but don't mutate
+        # S3 yet — validate form fields first to avoid irreversible side
+        # effects when later validation fails (fixes #140).
         new_s3_key = player.reference_image_s3_key  # preserve by default
+        effective_url = reference_image_url
         if remove_reference_upload:
-            _remove_reference_image(player)
             new_s3_key = None
         elif upload_bytes and upload_ct:
-            new_s3_key = _upload_reference_image(player, upload_bytes, upload_ct)
             # Upload takes precedence — clear URL
-            reference_image_url = None
+            effective_url = None
+            # Compute the key but don't upload yet
+            ext = _CONTENT_TYPE_TO_EXT.get(upload_ct, "jpg")
+            slug = player.slug or str(player.id)
+            new_s3_key = f"reference-images/{player.id}_{slug}.{ext}"
 
         form_data = _build_form_data(
             display_name,
@@ -579,7 +584,7 @@ async def update_player(
             draft_team,
             nba_debut_date,
             nba_debut_season,
-            reference_image_url,
+            effective_url,
             reference_image_s3_key=new_s3_key,
         )
 
@@ -595,6 +600,13 @@ async def update_player(
             return await _render_form_error(
                 request, db, user, player, parsed, player_status
             )
+
+        # Validation passed — now perform S3 mutations safely
+        if remove_reference_upload:
+            _remove_reference_image(player)
+        elif upload_bytes and upload_ct:
+            new_s3_key = _upload_reference_image(player, upload_bytes, upload_ct)
+            parsed.reference_image_s3_key = new_s3_key
 
         await svc_update_player(db, player, parsed)
 
