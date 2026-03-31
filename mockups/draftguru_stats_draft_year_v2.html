@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DraftGuru — 2025 Combine Stats</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ========================================================================
+       CSS CUSTOM PROPERTIES — matches design system tokens
+       ======================================================================== */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+
+      /* Active category color — set by JS */
+      --cat-color: var(--color-accent-cyan);
+      --cat-color-light: #ecfeff;
+      --cat-color-muted: rgba(6, 182, 212, 0.15);
+      --cat-color-mid: rgba(6, 182, 212, 0.35);
+    }
+
+    /* ========================================================================
+       RESET & BASE
+       ======================================================================== */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    a {
+      color: var(--color-accent-indigo);
+      text-decoration: none;
+      transition: color var(--transition-speed);
+    }
+    a:hover { text-decoration: underline; }
+
+    /* Tabular numbers for consistent width in metrics */
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+
+    /* ========================================================================
+       NAVBAR — Fixed top, cool blue, with search
+       ======================================================================== */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand {
+      display: flex; align-items: center; gap: 0.75rem;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-nav { display: flex; gap: 1.5rem; align-items: center; }
+    .navbar-nav a {
+      color: rgba(255,255,255,0.85); text-decoration: none;
+      font-family: var(--font-mono); font-size: 0.8rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+      transition: all var(--transition-speed);
+    }
+    .navbar-nav a:hover, .navbar-nav a.active {
+      color: #fff; border-bottom-color: #fbbf24;
+      text-decoration: none;
+    }
+    .navbar-search {
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .search-input {
+      width: 220px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; color: var(--color-slate-900);
+      border-radius: 0.375rem; padding: 0.4rem 0.75rem;
+      font-size: 0.85rem;
+      outline: none; transition: all var(--transition-speed);
+    }
+    .search-input:focus {
+      border-color: var(--color-white);
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
+    }
+    .search-input::placeholder { color: var(--color-slate-500); }
+    .search-button {
+      width: 2.25rem; height: 2.25rem;
+      background: #fbbf24; color: #1e3a8a;
+      border: none; border-radius: 0.375rem;
+      display: grid; place-items: center;
+      cursor: pointer; font-size: 0.9rem;
+      transition: background var(--transition-speed);
+    }
+    .search-button:hover { background: #fcd34d; }
+
+    /* ========================================================================
+       LAYOUT
+       ======================================================================== */
+    .container {
+      max-width: 1152px; width: var(--content-width);
+      margin: 0 auto; padding: 0 1.5rem;
+    }
+    main { padding-top: 5rem; }
+
+    /* Decorative section divider */
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(148,163,184,0.3) 20%, rgba(148,163,184,0.3) 80%, transparent);
+      margin: 2.5rem 0;
+    }
+
+    /* ========================================================================
+       PAGE HEADER
+       ======================================================================== */
+    .page-header {
+      text-align: center; padding: 2.5rem 0 1.5rem;
+    }
+    .page-header h2 {
+      font-family: var(--font-heading); font-size: 2rem;
+      letter-spacing: 0.02em; margin-bottom: 0.25rem;
+    }
+    .page-header .subtitle {
+      font-family: var(--font-mono); font-size: 0.85rem;
+      color: var(--color-slate-500); text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .year-selector {
+      display: inline-flex; gap: 0.5rem; margin-top: 1rem;
+    }
+    .year-selector button {
+      font-family: var(--font-mono); font-size: 0.8rem;
+      padding: 0.35rem 0.85rem; border-radius: 999px;
+      border: 1px solid var(--color-slate-300); background: var(--color-white);
+      color: var(--color-slate-600); cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+    .year-selector button:hover {
+      background: var(--color-slate-50); border-color: var(--color-slate-500);
+    }
+    .year-selector button.active {
+      background: var(--color-slate-800); color: var(--color-white);
+      border-color: var(--color-slate-800);
+    }
+
+    /* ========================================================================
+       CATEGORY TABS
+       ======================================================================== */
+    .category-tabs {
+      display: flex; justify-content: center; gap: 0;
+      margin: 1.5rem auto 2rem; max-width: 540px;
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      border: 2px solid var(--color-slate-200);
+      background: var(--color-white);
+    }
+    .category-tab {
+      flex: 1; padding: 0.85rem 1.25rem;
+      font-family: var(--font-heading); font-size: 0.9rem;
+      letter-spacing: 0.04em; text-transform: uppercase;
+      border: none; background: transparent;
+      color: var(--color-slate-500); cursor: pointer;
+      transition: all 0.25s ease;
+      position: relative;
+    }
+    .category-tab:not(:last-child) {
+      border-right: 1px solid var(--color-slate-200);
+    }
+    .category-tab .tab-icon {
+      display: block; font-size: 1.25rem; margin-bottom: 0.15rem;
+    }
+    .category-tab:hover {
+      background: var(--color-slate-50);
+      color: var(--color-slate-700);
+    }
+    .category-tab.active {
+      background: var(--cat-color);
+      color: var(--color-white);
+      box-shadow: inset 0 -3px 0 rgba(0,0,0,0.15);
+    }
+
+    /* ========================================================================
+       SECTION TITLES — colored left-border accent per style guide
+       ======================================================================== */
+    .section-title {
+      font-family: var(--font-heading); font-size: 1.1rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-slate-700);
+      padding-left: 0.75rem;
+      border-left: 4px solid var(--cat-color);
+      margin-bottom: 1.25rem;
+    }
+
+    /* ========================================================================
+       RANGE CHART — Horizontal min/max/avg distribution bars
+       Each row: [Min player + val] [===== bar with avg marker =====] [Max player + val]
+       ======================================================================== */
+    .range-chart {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      border: 1px solid var(--color-slate-200);
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      outline: 2px solid var(--cat-color-mid);
+      outline-offset: -2px;
+      padding: 1.75rem 2rem;
+      margin-bottom: 2.5rem;
+      /* dot-matrix tile bg per style guide */
+      background-image: radial-gradient(circle, rgba(0,0,0,0.03) 1px, transparent 1px);
+      background-size: 12px 12px;
+    }
+    .range-chart-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 1.25rem; padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--color-slate-100);
+    }
+    .range-chart-legend {
+      display: flex; gap: 1.25rem; font-family: var(--font-mono);
+      font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+    .legend-item { display: flex; align-items: center; gap: 0.35rem; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+    .legend-dot--range { background: var(--cat-color-muted); border: 1px solid var(--cat-color-mid); }
+    .legend-dot--avg {
+      background: var(--cat-color); width: 3px; height: 14px; border-radius: 1px;
+    }
+
+    .range-row {
+      display: grid;
+      grid-template-columns: 140px 140px 1fr 140px 140px;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 0;
+      border-bottom: 1px solid var(--color-slate-100);
+      transition: background 0.15s;
+    }
+    .range-row:last-child { border-bottom: none; }
+    .range-row:hover { background: var(--cat-color-light); border-radius: 4px; }
+
+    .range-label {
+      font-family: var(--font-mono); font-size: 0.75rem;
+      font-weight: 600; color: var(--color-slate-700);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      grid-column: 1 / -1;
+      margin-bottom: -0.3rem;
+    }
+    .range-label .unit {
+      font-weight: 400; color: var(--color-slate-400);
+      font-size: 0.62rem; margin-left: 0.25rem;
+    }
+
+    /* Two-line layout: label row spanning all columns, then data row */
+    .range-item {
+      display: contents;
+    }
+    .range-item-label {
+      font-family: var(--font-mono); font-size: 0.75rem;
+      font-weight: 600; color: var(--color-slate-700);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      white-space: nowrap;
+      padding: 0.5rem 0 0.2rem;
+    }
+    .range-item-label .unit {
+      font-weight: 400; color: var(--color-slate-400);
+      font-size: 0.62rem; margin-left: 0.25rem;
+    }
+
+    /* Endpoint columns: player name + value */
+    .range-endpoint {
+      font-family: var(--font-mono); font-size: 0.72rem;
+      line-height: 1.3;
+    }
+    .range-endpoint.left { text-align: right; }
+    .range-endpoint.right { text-align: left; }
+    .range-endpoint .ep-value {
+      font-weight: 600; font-size: 0.78rem;
+      color: var(--color-slate-800);
+    }
+    .range-endpoint .ep-name {
+      color: var(--color-slate-500); font-size: 0.62rem;
+      text-transform: uppercase; letter-spacing: 0.03em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 130px;
+    }
+    .range-endpoint.left .ep-name { margin-left: auto; }
+
+    /* The visual track */
+    .range-track {
+      position: relative; height: 26px;
+      background: var(--color-slate-50);
+      border-radius: 4px;
+      border: 1px solid var(--color-slate-200);
+    }
+    /* The filled range bar — always spans the full track (min-to-max) */
+    .range-bar {
+      position: absolute; top: 4px; bottom: 4px;
+      left: 4px; right: 4px;
+      background: linear-gradient(90deg, var(--cat-color-muted), var(--cat-color-mid), var(--cat-color-muted));
+      border-radius: 3px;
+    }
+    /* Average marker line */
+    .range-avg {
+      position: absolute; top: 2px; bottom: 2px; width: 3px;
+      background: var(--cat-color);
+      border-radius: 1px;
+      z-index: 2;
+      transition: left 0.4s ease;
+    }
+    .range-avg-label {
+      position: absolute; top: -16px; left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-mono); font-size: 0.58rem; font-weight: 600;
+      color: var(--cat-color); white-space: nowrap;
+      background: var(--color-white); padding: 0 3px; border-radius: 2px;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .range-row:hover .range-avg-label { opacity: 1; }
+
+    /* ========================================================================
+       WINNER SHOWCASE — Big player-face hero cards with ring outlines
+       ======================================================================== */
+    .winners-section { margin-bottom: 2.5rem; }
+    .winners-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1.25rem;
+    }
+    .winner-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      /* Card ring outline per style guide */
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      outline: 2px solid;
+      outline-color: var(--cat-color-mid);
+      outline-offset: -2px;
+      transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+      cursor: pointer;
+      position: relative;
+    }
+    .winner-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    }
+    .winner-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 4px;
+      background: var(--cat-color);
+      z-index: 4;
+    }
+
+    .winner-photo-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      background: linear-gradient(135deg, var(--cat-color-light), var(--color-slate-100));
+      overflow: hidden;
+    }
+    .winner-photo {
+      width: 100%; height: 100%;
+      object-fit: cover; object-position: top center;
+      transition: transform 0.3s;
+    }
+    .winner-card:hover .winner-photo {
+      transform: scale(1.03);
+    }
+    /* Gradient overlay at bottom of photo for text readability */
+    .winner-photo-wrap::after {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 55%;
+      background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+      pointer-events: none;
+    }
+
+    /* Stat ribbon overlaid at bottom of photo */
+    .winner-stat-ribbon {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      z-index: 2; padding: 0.6rem 0.75rem;
+      display: flex; align-items: flex-end; justify-content: space-between;
+    }
+    .winner-stat-label {
+      font-family: var(--font-mono); font-size: 0.6rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: rgba(255,255,255,0.75);
+    }
+    .winner-stat-value {
+      font-family: var(--font-heading); font-size: 1.5rem;
+      color: var(--color-white); line-height: 1;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    }
+
+    .winner-info {
+      padding: 0.75rem;
+    }
+    .winner-name {
+      font-family: var(--font-heading); font-size: 0.95rem;
+      letter-spacing: 0.01em; margin-bottom: 0.1rem;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .winner-name a {
+      color: var(--color-slate-900);
+    }
+    .winner-name a:hover {
+      color: var(--color-accent-indigo);
+    }
+    .winner-meta {
+      font-family: var(--font-mono); font-size: 0.68rem;
+      color: var(--color-slate-500); text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    /* Crown badge */
+    .winner-badge {
+      position: absolute; top: 12px; right: 10px; z-index: 5;
+      width: 28px; height: 28px;
+      background: var(--cat-color);
+      color: var(--color-white);
+      border-radius: 50%;
+      display: grid; place-items: center;
+      font-size: 0.85rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+
+    /* ========================================================================
+       DATA GRID — Clean table with hover states and sortable headers
+       ======================================================================== */
+    .grid-section { margin-bottom: 3rem; }
+
+    .grid-controls {
+      display: flex; gap: 0.75rem; align-items: center;
+      margin-bottom: 1rem; flex-wrap: wrap;
+    }
+    .grid-search {
+      flex: 1; min-width: 180px;
+      padding: 0.55rem 0.85rem;
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-body); font-size: 0.85rem;
+      outline: none; transition: border-color var(--transition-speed);
+    }
+    .grid-search:focus {
+      border-color: var(--cat-color);
+      box-shadow: 0 0 0 2px var(--cat-color-muted);
+    }
+    .grid-filter {
+      padding: 0.55rem 0.85rem;
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono); font-size: 0.75rem;
+      text-transform: uppercase; letter-spacing: 0.04em;
+      background: var(--color-white);
+      color: var(--color-slate-600);
+      cursor: pointer;
+    }
+
+    .data-table-wrap {
+      border-radius: var(--border-radius);
+      border: 1px solid var(--color-slate-200);
+      overflow: hidden;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .data-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    .data-table thead {
+      background: var(--color-slate-800);
+      color: var(--color-white);
+    }
+    .data-table th {
+      padding: 0.7rem 0.85rem; text-align: left;
+      font-family: var(--font-mono); font-size: 0.7rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      font-weight: 600; cursor: pointer;
+      white-space: nowrap;
+    }
+    .data-table th:hover { background: rgba(255,255,255,0.08); }
+    .data-table th .sort-arrow {
+      margin-left: 0.35rem; opacity: 0.4; font-size: 0.65rem;
+    }
+    .data-table th.sorted .sort-arrow { opacity: 1; }
+    .data-table th.text-right, .data-table td.text-right { text-align: right; }
+
+    .data-table tbody tr {
+      border-bottom: 1px solid var(--color-slate-100);
+      transition: background 0.15s;
+    }
+    .data-table tbody tr:hover { background: var(--cat-color-light); }
+    .data-table td {
+      padding: 0.65rem 0.85rem;
+      font-family: var(--font-mono); font-size: 0.78rem;
+      color: var(--color-slate-700);
+    }
+    .data-table td:first-child { font-weight: 600; color: var(--color-slate-400); }
+
+    .player-cell {
+      display: flex; align-items: center; gap: 0.6rem;
+    }
+    .player-cell img {
+      width: 30px; height: 30px; border-radius: 50%;
+      object-fit: cover; border: 1.5px solid var(--color-slate-200);
+      background: var(--color-slate-100);
+    }
+    .player-cell .name {
+      font-family: var(--font-body); font-weight: 600;
+      color: var(--color-slate-900);
+    }
+    .player-cell .name a {
+      color: var(--color-accent-indigo);
+      text-decoration: none;
+    }
+    .player-cell .name a:hover { text-decoration: underline; }
+    .player-cell .school {
+      font-family: var(--font-mono); font-size: 0.65rem;
+      color: var(--color-slate-400); text-transform: uppercase;
+    }
+
+    /* Percentile bar in table */
+    .pct-cell { display: flex; align-items: center; gap: 0.5rem; }
+    .pct-bar-bg {
+      flex: 1; height: 6px; border-radius: 3px;
+      background: var(--color-slate-100);
+      overflow: hidden;
+    }
+    .pct-bar-fill {
+      height: 100%; border-radius: 3px;
+      background: var(--cat-color);
+      transition: width 0.3s;
+    }
+
+    /* ========================================================================
+       FOOTER — warm peach, multi-column per style guide
+       ======================================================================== */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem; margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-slate-800); margin-bottom: 0.75rem;
+      font-size: 0.8rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a {
+      color: var(--color-slate-700); text-decoration: none; font-size: 0.85rem;
+    }
+    .footer-column a:hover { color: var(--color-slate-900); text-decoration: underline; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem; text-align: center;
+      font-size: 0.8rem; color: var(--color-slate-700);
+    }
+
+    /* ========================================================================
+       ANIMATIONS
+       ======================================================================== */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in { animation: fadeUp 0.35s ease both; }
+
+    /* ========================================================================
+       RESPONSIVE
+       ======================================================================== */
+    @media (max-width: 768px) {
+      .container { width: 95%; padding: 0 1rem; }
+      .range-row {
+        grid-template-columns: 90px 90px 1fr 90px 90px;
+        gap: 0.25rem;
+      }
+      .range-endpoint .ep-name { max-width: 80px; font-size: 0.58rem; }
+      .winners-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+      .navbar-search { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR — matches site pattern: brand + nav links + search -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand">
+        <h1>DraftGuru</h1>
+      </div>
+      <div class="navbar-nav">
+        <a href="#">Players</a>
+        <a href="#">Mock Draft</a>
+        <a href="#" class="active">Stats</a>
+        <a href="#">Compare</a>
+        <a href="#">News</a>
+      </div>
+      <div class="navbar-search">
+        <input type="text" class="search-input" placeholder="Search players...">
+        <button class="search-button">&#x1F50D;</button>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <div class="container">
+
+      <!-- PAGE HEADER -->
+      <div class="page-header">
+        <h2>Combine Stats</h2>
+        <div class="subtitle">NBA Draft Combine Performance Data</div>
+        <div class="year-selector">
+          <button>2022</button>
+          <button>2023</button>
+          <button>2024</button>
+          <button class="active">2025</button>
+        </div>
+      </div>
+
+      <!-- CATEGORY TABS -->
+      <div class="category-tabs">
+        <button class="category-tab active" data-cat="anthro" onclick="switchCategory('anthro')">
+          <span class="tab-icon">&#x1F4CF;</span>
+          Anthro
+        </button>
+        <button class="category-tab" data-cat="athletic" onclick="switchCategory('athletic')">
+          <span class="tab-icon">&#x26A1;</span>
+          Athletic
+        </button>
+        <button class="category-tab" data-cat="shooting" onclick="switchCategory('shooting')">
+          <span class="tab-icon">&#x1F3AF;</span>
+          Shooting
+        </button>
+      </div>
+
+      <!-- SECTION 1: RANGE CHART -->
+      <div id="range-section" class="animate-in">
+        <div class="section-title">2025 Combine Ranges</div>
+        <div class="range-chart" id="range-chart">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- SECTION 2: STAT WINNERS SHOWCASE -->
+      <div id="winners-section" class="winners-section animate-in" style="animation-delay: 0.08s">
+        <div class="section-title">Category Leaders</div>
+        <div class="winners-grid" id="winners-grid">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <div class="section-divider"></div>
+
+      <!-- SECTION 3: FILTERABLE DATA GRID -->
+      <div class="grid-section animate-in" style="animation-delay: 0.16s">
+        <div class="section-title">Full Results</div>
+        <div class="grid-controls">
+          <input type="text" class="grid-search" placeholder="Search player or school..." id="grid-search">
+          <select class="grid-filter" id="pos-filter">
+            <option value="">All Positions</option>
+            <option>PG</option><option>SG</option><option>SF</option>
+            <option>PF</option><option>C</option>
+          </select>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table" id="data-table">
+            <thead id="table-head"></thead>
+            <tbody id="table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- FOOTER — multi-column per style guide -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Mock Draft</a></li>
+            <li><a href="#">Stats</a></li>
+            <li><a href="#">Compare</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Tools</h4>
+          <ul>
+            <li><a href="#">Draft Simulator</a></li>
+            <li><a href="#">Prospect Rankings</a></li>
+            <li><a href="#">Share Cards</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        DraftGuru &copy; 2025 &mdash; NBA Draft Analytics
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // =====================================================================
+    // MOCK DATA
+    // =====================================================================
+
+    // Helper: generate placehold.co URL matching site convention
+    function ph(name, w, h) {
+      return `https://placehold.co/${w}x${h}/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
+    }
+
+    const CATEGORIES = {
+      anthro: {
+        color: '#06b6d4',
+        colorLight: '#ecfeff',
+        colorMuted: 'rgba(6,182,212,0.15)',
+        colorMid: 'rgba(6,182,212,0.35)',
+        metrics: [
+          { key: 'wingspan',        label: 'Wingspan',        unit: 'in', best: 'high' },
+          { key: 'standing_reach',  label: 'Standing Reach',  unit: 'in', best: 'high' },
+          { key: 'height_shoes',    label: 'Height (shoes)',  unit: 'in', best: 'high' },
+          { key: 'height_barefoot', label: 'Height (bare)',   unit: 'in', best: 'high' },
+          { key: 'weight',          label: 'Weight',          unit: 'lb', best: 'high' },
+          { key: 'body_fat',        label: 'Body Fat',        unit: '%',  best: 'low'  },
+          { key: 'hand_length',     label: 'Hand Length',     unit: 'in', best: 'high' },
+          { key: 'hand_width',      label: 'Hand Width',      unit: 'in', best: 'high' },
+        ],
+        columns: ['Wingspan', 'St. Reach', 'Ht (shoes)', 'Weight', 'Hand L', 'Hand W'],
+        colKeys: ['wingspan', 'standing_reach', 'height_shoes', 'weight', 'hand_length', 'hand_width'],
+      },
+      athletic: {
+        color: '#f59e0b',
+        colorLight: '#fffbeb',
+        colorMuted: 'rgba(245,158,11,0.15)',
+        colorMid: 'rgba(245,158,11,0.35)',
+        metrics: [
+          { key: 'max_vert',      label: 'Max Vertical',     unit: 'in', best: 'high' },
+          { key: 'stand_vert',    label: 'Standing Vert',    unit: 'in', best: 'high' },
+          { key: 'sprint',        label: '3/4 Sprint',       unit: 's',  best: 'low'  },
+          { key: 'lane_agility',  label: 'Lane Agility',     unit: 's',  best: 'low'  },
+          { key: 'shuttle',       label: 'Shuttle Run',      unit: 's',  best: 'low'  },
+          { key: 'bench',         label: 'Bench Press',      unit: 'reps', best: 'high' },
+        ],
+        columns: ['Max Vert', 'Stand Vert', 'Sprint', 'Lane Agil', 'Shuttle', 'Bench'],
+        colKeys: ['max_vert', 'stand_vert', 'sprint', 'lane_agility', 'shuttle', 'bench'],
+      },
+      shooting: {
+        color: '#f43f5e',
+        colorLight: '#fff1f2',
+        colorMuted: 'rgba(244,63,94,0.15)',
+        colorMid: 'rgba(244,63,94,0.35)',
+        metrics: [
+          { key: 'spot_up',       label: 'Spot-Up',          unit: '%', best: 'high' },
+          { key: 'off_dribble',   label: 'Off-Dribble',      unit: '%', best: 'high' },
+          { key: '3pt_star',      label: '3-Point Star',     unit: '%', best: 'high' },
+          { key: 'free_throw',    label: 'Free Throw',       unit: '%', best: 'high' },
+          { key: 'midrange_star', label: 'Midrange Star',    unit: '%', best: 'high' },
+          { key: '3pt_side',      label: '3-Point Side',     unit: '%', best: 'high' },
+          { key: 'midrange_side', label: 'Midrange Side',    unit: '%', best: 'high' },
+        ],
+        columns: ['Spot-Up', 'Off-Drib', '3PT Star', 'FT', 'Mid Star', '3PT Side', 'Mid Side'],
+        colKeys: ['spot_up', 'off_dribble', '3pt_star', 'free_throw', 'midrange_star', '3pt_side', 'midrange_side'],
+      }
+    };
+
+    // Mock player data — using placehold.co for images (site convention)
+    const PLAYERS = {
+      anthro: [
+        { name: 'Zach Edey',        school: 'Purdue',     pos: 'C',  photo: ph('Zach Edey', 400, 400), wingspan: 87.75, standing_reach: 114.5, height_shoes: 87.0, height_barefoot: 85.5, weight: 299, body_fat: 11.2, hand_length: 10.75, hand_width: 11.25 },
+        { name: 'Donovan Clingan',   school: 'UConn',      pos: 'C',  photo: ph('Donovan Clingan', 400, 400), wingspan: 87.5,  standing_reach: 113.0, height_shoes: 86.25, height_barefoot: 84.75, weight: 280, body_fat: 10.8, hand_length: 10.5,  hand_width: 11.0 },
+        { name: 'Alex Sarr',        school: 'Perth',      pos: 'C',  photo: ph('Alex Sarr', 400, 400), wingspan: 87.25, standing_reach: 112.5, height_shoes: 85.5,  height_barefoot: 84.0,  weight: 224, body_fat: 5.8,  hand_length: 9.75,  hand_width: 10.5 },
+        { name: 'Reed Sheppard',    school: 'Kentucky',   pos: 'SG', photo: ph('Reed Sheppard', 400, 400), wingspan: 78.75, standing_reach: 103.0, height_shoes: 75.75, height_barefoot: 74.25, weight: 181, body_fat: 6.1,  hand_length: 8.75,  hand_width: 9.25 },
+        { name: 'Stephon Castle',   school: 'UConn',      pos: 'PG', photo: ph('Stephon Castle', 400, 400), wingspan: 82.75, standing_reach: 108.5, height_shoes: 79.5,  height_barefoot: 78.0,  weight: 210, body_fat: 6.9,  hand_length: 9.5,   hand_width: 10.0 },
+        { name: 'Dalton Knecht',    school: 'Tennessee',  pos: 'SF', photo: ph('Dalton Knecht', 400, 400), wingspan: 80.25, standing_reach: 105.5, height_shoes: 78.0,  height_barefoot: 76.5,  weight: 213, body_fat: 7.3,  hand_length: 9.0,   hand_width: 9.5 },
+        { name: 'Cody Williams',    school: 'Colorado',   pos: 'SF', photo: ph('Cody Williams', 400, 400), wingspan: 85.0,  standing_reach: 110.0, height_shoes: 82.25, height_barefoot: 80.75, weight: 189, body_fat: 5.2,  hand_length: 9.25,  hand_width: 9.75 },
+        { name: 'Matas Buzelis',    school: 'G-League',   pos: 'SF', photo: ph('Matas Buzelis', 400, 400), wingspan: 84.5,  standing_reach: 109.5, height_shoes: 82.0,  height_barefoot: 80.5,  weight: 199, body_fat: 5.6,  hand_length: 9.0,   hand_width: 9.5 },
+        { name: 'Ron Holland',      school: 'G-League',   pos: 'SF', photo: ph('Ron Holland', 400, 400), wingspan: 83.75, standing_reach: 108.0, height_shoes: 80.0,  height_barefoot: 78.5,  weight: 197, body_fat: 6.0,  hand_length: 9.25,  hand_width: 10.0 },
+        { name: "Ja'Kobe Walter",   school: 'Baylor',     pos: 'SG', photo: ph("Ja'Kobe Walter", 400, 400), wingspan: 82.0,  standing_reach: 106.5, height_shoes: 78.25, height_barefoot: 76.75, weight: 197, body_fat: 6.5,  hand_length: 9.0,   hand_width: 9.5 },
+      ],
+      athletic: [
+        { name: 'Reed Sheppard',    school: 'Kentucky',   pos: 'SG', photo: ph('Reed Sheppard', 400, 400), max_vert: 42.5, stand_vert: 35.0, sprint: 3.01, lane_agility: 10.41, shuttle: 2.88, bench: 8 },
+        { name: 'Ron Holland',      school: 'G-League',   pos: 'SF', photo: ph('Ron Holland', 400, 400), max_vert: 41.5, stand_vert: 34.5, sprint: 3.10, lane_agility: 10.55, shuttle: 2.93, bench: 10 },
+        { name: 'Stephon Castle',   school: 'UConn',      pos: 'PG', photo: ph('Stephon Castle', 400, 400), max_vert: 40.0, stand_vert: 33.5, sprint: 3.08, lane_agility: 10.48, shuttle: 2.90, bench: 12 },
+        { name: 'Dalton Knecht',    school: 'Tennessee',  pos: 'SF', photo: ph('Dalton Knecht', 400, 400), max_vert: 39.0, stand_vert: 33.0, sprint: 3.15, lane_agility: 10.62, shuttle: 2.98, bench: 15 },
+        { name: 'Cody Williams',    school: 'Colorado',   pos: 'SF', photo: ph('Cody Williams', 400, 400), max_vert: 38.5, stand_vert: 32.5, sprint: 3.12, lane_agility: 10.50, shuttle: 2.95, bench: 7 },
+        { name: 'Matas Buzelis',    school: 'G-League',   pos: 'SF', photo: ph('Matas Buzelis', 400, 400), max_vert: 38.0, stand_vert: 32.0, sprint: 3.18, lane_agility: 10.70, shuttle: 3.00, bench: 5 },
+        { name: 'Donovan Clingan',  school: 'UConn',      pos: 'C',  photo: ph('Donovan Clingan', 400, 400), max_vert: 33.5, stand_vert: 28.0, sprint: 3.40, lane_agility: 11.30, shuttle: 3.20, bench: 18 },
+        { name: 'Zach Edey',        school: 'Purdue',     pos: 'C',  photo: ph('Zach Edey', 400, 400), max_vert: 31.0, stand_vert: 26.5, sprint: 3.52, lane_agility: 11.58, shuttle: 3.35, bench: 14 },
+        { name: "Ja'Kobe Walter",   school: 'Baylor',     pos: 'SG', photo: ph("Ja'Kobe Walter", 400, 400), max_vert: 37.5, stand_vert: 31.5, sprint: 3.14, lane_agility: 10.58, shuttle: 2.96, bench: 9 },
+        { name: 'Alex Sarr',        school: 'Perth',      pos: 'C',  photo: ph('Alex Sarr', 400, 400), max_vert: 36.0, stand_vert: 30.0, sprint: 3.22, lane_agility: 10.85, shuttle: 3.05, bench: 6 },
+      ],
+      shooting: [
+        { name: 'Reed Sheppard',    school: 'Kentucky',   pos: 'SG', photo: ph('Reed Sheppard', 400, 400), spot_up: 88.0, off_dribble: 72.0, '3pt_star': 80.0, free_throw: 92.0, midrange_star: 76.0, '3pt_side': 84.0, midrange_side: 80.0 },
+        { name: 'Dalton Knecht',    school: 'Tennessee',  pos: 'SF', photo: ph('Dalton Knecht', 400, 400), spot_up: 84.0, off_dribble: 68.0, '3pt_star': 76.0, free_throw: 88.0, midrange_star: 80.0, '3pt_side': 72.0, midrange_side: 76.0 },
+        { name: "Ja'Kobe Walter",   school: 'Baylor',     pos: 'SG', photo: ph("Ja'Kobe Walter", 400, 400), spot_up: 76.0, off_dribble: 76.0, '3pt_star': 72.0, free_throw: 84.0, midrange_star: 72.0, '3pt_side': 76.0, midrange_side: 72.0 },
+        { name: 'Stephon Castle',   school: 'UConn',      pos: 'PG', photo: ph('Stephon Castle', 400, 400), spot_up: 72.0, off_dribble: 64.0, '3pt_star': 68.0, free_throw: 80.0, midrange_star: 68.0, '3pt_side': 64.0, midrange_side: 68.0 },
+        { name: 'Cody Williams',    school: 'Colorado',   pos: 'SF', photo: ph('Cody Williams', 400, 400), spot_up: 68.0, off_dribble: 60.0, '3pt_star': 64.0, free_throw: 76.0, midrange_star: 64.0, '3pt_side': 68.0, midrange_side: 64.0 },
+        { name: 'Ron Holland',      school: 'G-League',   pos: 'SF', photo: ph('Ron Holland', 400, 400), spot_up: 56.0, off_dribble: 52.0, '3pt_star': 48.0, free_throw: 72.0, midrange_star: 56.0, '3pt_side': 52.0, midrange_side: 56.0 },
+        { name: 'Matas Buzelis',    school: 'G-League',   pos: 'SF', photo: ph('Matas Buzelis', 400, 400), spot_up: 60.0, off_dribble: 56.0, '3pt_star': 56.0, free_throw: 68.0, midrange_star: 60.0, '3pt_side': 56.0, midrange_side: 60.0 },
+        { name: 'Alex Sarr',        school: 'Perth',      pos: 'C',  photo: ph('Alex Sarr', 400, 400), spot_up: 52.0, off_dribble: 48.0, '3pt_star': 44.0, free_throw: 64.0, midrange_star: 52.0, '3pt_side': 48.0, midrange_side: 52.0 },
+        { name: 'Donovan Clingan',  school: 'UConn',      pos: 'C',  photo: ph('Donovan Clingan', 400, 400), spot_up: 44.0, off_dribble: 40.0, '3pt_star': 36.0, free_throw: 60.0, midrange_star: 48.0, '3pt_side': 40.0, midrange_side: 44.0 },
+        { name: 'Zach Edey',        school: 'Purdue',     pos: 'C',  photo: ph('Zach Edey', 400, 400), spot_up: 40.0, off_dribble: 36.0, '3pt_star': 32.0, free_throw: 56.0, midrange_star: 44.0, '3pt_side': 36.0, midrange_side: 40.0 },
+      ]
+    };
+
+    let currentCategory = 'anthro';
+
+    // =====================================================================
+    // SWITCH CATEGORY
+    // =====================================================================
+    function switchCategory(cat) {
+      currentCategory = cat;
+      const cfg = CATEGORIES[cat];
+
+      document.documentElement.style.setProperty('--cat-color', cfg.color);
+      document.documentElement.style.setProperty('--cat-color-light', cfg.colorLight);
+      document.documentElement.style.setProperty('--cat-color-muted', cfg.colorMuted);
+      document.documentElement.style.setProperty('--cat-color-mid', cfg.colorMid);
+
+      document.querySelectorAll('.category-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.cat === cat);
+      });
+
+      renderRangeChart(cat);
+      renderWinners(cat);
+      renderTable(cat);
+    }
+
+    // =====================================================================
+    // FORMAT HELPERS
+    // =====================================================================
+    function fmtVal(val, unit) {
+      if (unit === '%') return val.toFixed(1);
+      if (unit === 's') return val.toFixed(2);
+      return Number.isInteger(val) ? String(val) : val.toFixed(2);
+    }
+
+    function fmtWithUnit(val, unit) {
+      const v = fmtVal(val, unit);
+      if (unit === 'in') return v + '"';
+      if (unit === 'lb') return v + ' lb';
+      if (unit === '%') return v + '%';
+      if (unit === 's') return v + 's';
+      if (unit === 'reps') return v + ' reps';
+      return v;
+    }
+
+    // =====================================================================
+    // RANGE CHART
+    //   Layout per row: [min endpoint] [====== bar with avg ======] [max endpoint]
+    //   The bar always spans the full track (it IS the min-to-max range).
+    //   The average marker sits proportionally within.
+    //   Min and max endpoints show value + full player name.
+    // =====================================================================
+    function renderRangeChart(cat) {
+      const cfg = CATEGORIES[cat];
+      const players = PLAYERS[cat];
+      const chart = document.getElementById('range-chart');
+
+      let html = `
+        <div class="range-chart-header">
+          <div class="section-title" style="margin-bottom:0; border-left-color: var(--cat-color)">Distribution Overview</div>
+          <div class="range-chart-legend">
+            <div class="legend-item"><div class="legend-dot legend-dot--range"></div> Class Range</div>
+            <div class="legend-item"><div class="legend-dot legend-dot--avg"></div> Class Average</div>
+          </div>
+        </div>
+      `;
+
+      cfg.metrics.forEach(metric => {
+        const entries = players.map(p => ({ player: p, val: p[metric.key] })).filter(e => e.val != null);
+        if (entries.length === 0) return;
+
+        const vals = entries.map(e => e.val);
+        const min = Math.min(...vals);
+        const max = Math.max(...vals);
+        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+
+        const minPlayer = entries.find(e => e.val === min).player;
+        const maxPlayer = entries.find(e => e.val === max).player;
+
+        // Position average proportionally within the bar (0% = min, 100% = max)
+        const span = max - min || 1;
+        const avgPct = ((avg - min) / span * 100).toFixed(1);
+        // Offset from left edge of bar (4px padding on each side)
+        // We use calc() to position within the padded area
+
+        html += `
+          <div class="range-row">
+            <div class="range-endpoint left">
+              <div class="ep-value">${fmtVal(min, metric.unit)}<span style="font-size:0.62rem;color:var(--color-slate-400)"> ${metric.unit}</span></div>
+              <div class="ep-name">${minPlayer.name}</div>
+            </div>
+            <div class="range-endpoint left">
+              <div style="font-family:var(--font-mono);font-size:0.72rem;font-weight:600;color:var(--color-slate-700);text-transform:uppercase;letter-spacing:0.04em">
+                ${metric.label}
+              </div>
+            </div>
+            <div class="range-track">
+              <div class="range-bar"></div>
+              <div class="range-avg" style="left: calc(4px + ${avgPct}% * (100% - 8px) / 100%)">
+                <div class="range-avg-label">AVG ${fmtVal(avg, metric.unit)}</div>
+              </div>
+            </div>
+            <div class="range-endpoint right">
+              <div style="font-family:var(--font-mono);font-size:0.72rem;font-weight:600;color:var(--color-slate-700);text-transform:uppercase;letter-spacing:0.04em;text-align:right">
+                &nbsp;
+              </div>
+            </div>
+            <div class="range-endpoint right">
+              <div class="ep-value">${fmtVal(max, metric.unit)}<span style="font-size:0.62rem;color:var(--color-slate-400)"> ${metric.unit}</span></div>
+              <div class="ep-name">${maxPlayer.name}</div>
+            </div>
+          </div>
+        `;
+      });
+
+      chart.innerHTML = html;
+
+      // Fix avg marker positioning with JS (CSS calc with mixed units is tricky)
+      chart.querySelectorAll('.range-avg').forEach(el => {
+        const row = el.closest('.range-row');
+        const track = el.parentElement;
+        const trackWidth = track.clientWidth;
+        const padded = trackWidth - 8; // 4px padding each side
+        const style = el.style.left;
+        // Extract the percentage from the data
+        const match = style.match(/([\d.]+)%/);
+        if (match) {
+          const pct = parseFloat(match[1]);
+          el.style.left = (4 + pct / 100 * padded) + 'px';
+        }
+      });
+    }
+
+    // =====================================================================
+    // WINNERS SHOWCASE
+    // =====================================================================
+    function renderWinners(cat) {
+      const cfg = CATEGORIES[cat];
+      const players = PLAYERS[cat];
+      const grid = document.getElementById('winners-grid');
+      let html = '';
+
+      cfg.metrics.forEach((metric, i) => {
+        const entries = players.map(p => ({ player: p, val: p[metric.key] })).filter(e => e.val != null);
+        entries.sort((a, b) => metric.best === 'high' ? b.val - a.val : a.val - b.val);
+        const winner = entries[0];
+        if (!winner) return;
+
+        html += `
+          <div class="winner-card" style="animation-delay: ${i * 0.05}s">
+            <div class="winner-badge">&#x1F451;</div>
+            <div class="winner-photo-wrap">
+              <img class="winner-photo" src="${winner.player.photo}" alt="${winner.player.name}">
+              <div class="winner-stat-ribbon">
+                <div>
+                  <div class="winner-stat-label">${metric.label}</div>
+                  <div class="winner-stat-value">${fmtWithUnit(winner.val, metric.unit)}</div>
+                </div>
+              </div>
+            </div>
+            <div class="winner-info">
+              <div class="winner-name"><a href="#">${winner.player.name}</a></div>
+              <div class="winner-meta">${winner.player.school} &middot; ${winner.player.pos}</div>
+            </div>
+          </div>
+        `;
+      });
+
+      grid.innerHTML = html;
+    }
+
+    // =====================================================================
+    // DATA TABLE
+    // =====================================================================
+    function renderTable(cat) {
+      const cfg = CATEGORIES[cat];
+      const players = PLAYERS[cat];
+      const thead = document.getElementById('table-head');
+      const tbody = document.getElementById('table-body');
+
+      let headHtml = '<tr>';
+      headHtml += '<th>#</th>';
+      headHtml += '<th>Player</th>';
+      headHtml += '<th>Pos</th>';
+      cfg.columns.forEach(col => {
+        headHtml += `<th class="text-right">${col} <span class="sort-arrow">&#x25B4;</span></th>`;
+      });
+      headHtml += '</tr>';
+      thead.innerHTML = headHtml;
+
+      let bodyHtml = '';
+      players.forEach((p, i) => {
+        bodyHtml += '<tr>';
+        bodyHtml += `<td>${i + 1}</td>`;
+        bodyHtml += `<td>
+          <div class="player-cell">
+            <img src="${ph(p.name, 60, 60)}" alt="${p.name}">
+            <div>
+              <div class="name"><a href="#">${p.name}</a></div>
+              <div class="school">${p.school}</div>
+            </div>
+          </div>
+        </td>`;
+        bodyHtml += `<td>${p.pos}</td>`;
+
+        cfg.colKeys.forEach(key => {
+          const metric = cfg.metrics.find(m => m.key === key);
+          const val = p[key];
+          if (val == null) {
+            bodyHtml += '<td class="text-right">&mdash;</td>';
+            return;
+          }
+          const formatted = fmtVal(val, metric.unit);
+
+          // Percentile within data set
+          const allVals = players.map(pl => pl[key]).filter(v => v != null).sort((a, b) => a - b);
+          const rank = allVals.indexOf(val);
+          const pct = metric.best === 'high'
+            ? ((rank / (allVals.length - 1)) * 100).toFixed(0)
+            : (((allVals.length - 1 - rank) / (allVals.length - 1)) * 100).toFixed(0);
+
+          bodyHtml += `<td class="text-right">
+            <div class="pct-cell">
+              <span class="tabular-nums" style="min-width:42px; text-align:right">${formatted}</span>
+              <div class="pct-bar-bg" style="width:50px">
+                <div class="pct-bar-fill" style="width:${pct}%"></div>
+              </div>
+            </div>
+          </td>`;
+        });
+
+        bodyHtml += '</tr>';
+      });
+      tbody.innerHTML = bodyHtml;
+    }
+
+    // =====================================================================
+    // SEARCH & FILTER
+    // =====================================================================
+    document.getElementById('grid-search').addEventListener('input', function() {
+      const q = this.value.toLowerCase();
+      document.querySelectorAll('#table-body tr').forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    });
+
+    document.getElementById('pos-filter').addEventListener('change', function() {
+      const pos = this.value;
+      document.querySelectorAll('#table-body tr').forEach(row => {
+        if (!pos) { row.style.display = ''; return; }
+        const rowPos = row.querySelectorAll('td')[2]?.textContent.trim();
+        row.style.display = rowPos === pos ? '' : 'none';
+      });
+    });
+
+    // =====================================================================
+    // INIT
+    // =====================================================================
+    switchCategory('anthro');
+
+    // Re-position avg markers on resize
+    window.addEventListener('resize', () => renderRangeChart(currentCategory));
+  </script>
+
+</body>
+</html>
