@@ -102,6 +102,80 @@
 </div>
 {% endmacro %}
 
+{# Combine score leader card — indigo theme, percentile display #}
+{% macro combine_leader_card(score_key, display, leaders, draft_year) %}
+<div class="stat-leader-card stat-leader-card--indigo">
+  <div class="stat-leader-card__header">
+    <span class="stat-leader-card__metric">
+      <span class="stat-leader-card__metric-icon">{{ display.icon | safe }}</span>
+      {{ display.superlative }}
+    </span>
+    {% if draft_year %}
+    <a href="/stats/combine/{{ draft_year }}" class="stat-leader-card__view-all">View All &#8594;</a>
+    {% endif %}
+  </div>
+
+  {# Featured player (#1) #}
+  {% set featured = leaders[0] %}
+  <a href="/players/{{ featured.slug }}" class="stat-leader-card__featured">
+    <img
+      src="{{ featured.photo_url }}"
+      alt="{{ featured.display_name }}"
+      class="featured-player-image"
+      onerror="this.onerror=null;this.src='{{ featured.photo_url_placeholder }}';"
+      loading="lazy"
+    >
+    <div class="featured-player-info">
+      <span class="featured-player-name">{{ featured.display_name }}</span>
+      {% if featured.position or featured.school %}
+      <span class="featured-player-meta">
+        {{ featured.position }}{% if featured.position and featured.school %} &bull; {% endif %}{{ featured.school }}{% if featured.draft_year %} &bull; {{ featured.draft_year }}{% endif %}
+      </span>
+      {% endif %}
+      <div>
+        <span class="featured-player-value">{{ featured.formatted_value }}</span>
+        <span class="featured-player-unit" style="color: #059669;">pctl</span>
+      </div>
+      {% if score_key == "combine_score_overall" and featured.category_scores %}
+      <div class="featured-score-breakdown">
+        {% if featured.category_scores.get("combine_score_anthropometrics") is not none %}
+        <span class="featured-score-cat">
+          <span class="featured-score-cat__dot featured-score-cat__dot--cyan"></span>
+          {{ featured.category_scores["combine_score_anthropometrics"] | round | int }}
+        </span>
+        {% endif %}
+        {% if featured.category_scores.get("combine_score_athletic") is not none %}
+        <span class="featured-score-cat">
+          <span class="featured-score-cat__dot featured-score-cat__dot--amber"></span>
+          {{ featured.category_scores["combine_score_athletic"] | round | int }}
+        </span>
+        {% endif %}
+        {% if featured.category_scores.get("combine_score_shooting") is not none %}
+        <span class="featured-score-cat">
+          <span class="featured-score-cat__dot featured-score-cat__dot--rose"></span>
+          {{ featured.category_scores["combine_score_shooting"] | round | int }}
+        </span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </a>
+
+  {# Runners-up #}
+  {% if leaders|length > 1 %}
+  <div class="stat-leader-card__runners">
+    {% for entry in leaders[1:] %}
+    <a href="/players/{{ entry.slug }}" class="runner-row">
+      <span class="runner-rank">{{ entry.rank }}</span>
+      <span class="runner-name">{{ entry.display_name }}</span>
+      <span class="runner-value tabular-nums">{{ entry.formatted_ordinal }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}
+
 <main>
   {# ══════════════════════════════════════════════════════════════════════
      HERO
@@ -133,6 +207,13 @@
         Shooting Drills
         <span class="stats-nav-tab__count">{{ shooting_keys|length }}</span>
       </a>
+      {% if combine_score_leaders %}
+      <a href="#combine-scores" class="stats-nav-tab stats-nav-tab--scores">
+        <span class="stats-nav-tab__icon">&#x1F3C6;</span>
+        Combine Scores
+        <span class="stats-nav-tab__count">{{ combine_score_leaders|length }}</span>
+      </a>
+      {% endif %}
       <a href="#draft-classes" class="stats-nav-tab stats-nav-tab--classes">
         <span class="stats-nav-tab__icon">&#x1F4C5;</span>
         Draft Classes
@@ -210,6 +291,32 @@
       </div>
     </div>
   </section>
+
+  {% if combine_score_leaders %}
+  <div class="container"><div class="section-divider"></div></div>
+
+  {# ══════════════════════════════════════════════════════════════════════
+     COMBINE SCORES — Indigo theme
+     ══════════════════════════════════════════════════════════════════════ #}
+  <section id="combine-scores" class="section">
+    <div class="container">
+      <h3 class="section-header heading-font" style="border-color: var(--color-accent-indigo);">
+        Combine Scores
+      </h3>
+      <p class="section-subtitle">Composite rankings blending measurements, athleticism, and shooting</p>
+
+      <div class="leaderboard-grid">
+        {% for key in combine_score_keys %}
+          {% set display = combine_score_display[key] %}
+          {% set leaders = combine_score_leaders.get(key, []) %}
+          {% if leaders %}
+            {{ combine_leader_card(key, display, leaders, combine_draft_year) }}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
 
   <div class="container"><div class="section-divider"></div></div>
 

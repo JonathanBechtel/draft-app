@@ -8,6 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.combine_score_service import (
+    CombineScoreLeaderEntry,
+    get_combine_score_leaders,
+)
 from app.services.combine_stats_service import (
     ATHLETIC_KEYS,
     HOMEPAGE_METRIC_DISPLAY,
@@ -93,6 +97,65 @@ def _entry_to_dict(entry: object) -> dict:
 
 DEFAULT_METRIC = "wingspan_in"
 
+COMBINE_SCORE_DISPLAY = {
+    "combine_score_overall": {
+        "icon": "&#x1F3C6;",
+        "superlative": "Top Overall Score",
+        "color": "indigo",
+    },
+    "combine_score_anthropometrics": {
+        "icon": "&#x1F4CF;",
+        "superlative": "Best Anthro Score",
+        "color": "indigo",
+    },
+    "combine_score_athletic": {
+        "icon": "&#x26A1;",
+        "superlative": "Best Athletic Score",
+        "color": "indigo",
+    },
+    "combine_score_shooting": {
+        "icon": "&#x1F3AF;",
+        "superlative": "Best Shooting Score",
+        "color": "indigo",
+    },
+}
+
+COMBINE_SCORE_KEYS = [
+    "combine_score_overall",
+    "combine_score_anthropometrics",
+    "combine_score_athletic",
+]
+
+
+def _ordinal(n: int) -> str:
+    """Return ordinal string for an integer (e.g. 1 -> '1st')."""
+    if 11 <= (n % 100) <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _combine_leader_to_dict(entry: CombineScoreLeaderEntry) -> dict:
+    """Convert a CombineScoreLeaderEntry to a template-friendly dict."""
+    d: dict = {
+        "rank": entry.rank,
+        "player_id": entry.player_id,
+        "display_name": entry.display_name,
+        "slug": entry.slug,
+        "school": entry.school,
+        "position": entry.position.upper().replace("_", "/")
+        if entry.position
+        else None,
+        "draft_year": entry.draft_year,
+        "percentile": entry.percentile,
+        "formatted_value": str(round(entry.percentile)),
+        "formatted_ordinal": _ordinal(round(entry.percentile)),
+        "category_scores": entry.category_scores,
+    }
+    d.update(_player_photo_urls(entry.player_id, entry.slug, entry.display_name))
+    return d
+
 
 def _shooting_entry_to_dict(entry: object) -> dict:
     """Convert a ShootingLeaderEntry dataclass to a template-friendly dict."""
@@ -138,6 +201,19 @@ async def stats_homepage(
         for key, entries in data.shooting_leaders.items()
     }
 
+    # Combine score leaders
+    raw_combine_leaders = await get_combine_score_leaders(db)
+    combine_score_leaders = {
+        key: [_combine_leader_to_dict(e) for e in entries]
+        for key, entries in raw_combine_leaders.items()
+    }
+    # Resolve draft year for "View All" links
+    combine_draft_year: int | None = None
+    for entries in combine_score_leaders.values():
+        if entries:
+            combine_draft_year = entries[0].get("draft_year")
+            break
+
     return request.app.state.templates.TemplateResponse(
         "stats/index.html",
         {
@@ -145,11 +221,15 @@ async def stats_homepage(
             "measurement_leaders": measurement_leaders,
             "athletic_leaders": athletic_leaders,
             "shooting_leaders": shooting_leaders,
+            "combine_score_leaders": combine_score_leaders,
             "measurement_keys": MEASUREMENT_KEYS,
             "athletic_keys": ATHLETIC_KEYS,
             "shooting_keys": SHOOTING_KEYS,
+            "combine_score_keys": COMBINE_SCORE_KEYS,
             "metric_display": HOMEPAGE_METRIC_DISPLAY,
             "shooting_display": SHOOTING_DRILL_DISPLAY,
+            "combine_score_display": COMBINE_SCORE_DISPLAY,
+            "combine_draft_year": combine_draft_year,
             "year_stats": data.year_stats,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,

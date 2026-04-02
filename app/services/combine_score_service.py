@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, cast
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType, MetricSource
+from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
 from app.schemas.players_master import PlayerMaster
+from app.schemas.positions import Position
 from app.schemas.seasons import Season
 
 
@@ -39,6 +41,7 @@ class PlayerCombineScores:
     player_id: int
     player_name: Optional[str]
     player_slug: Optional[str]
+    school: Optional[str]
     category_scores: Dict[str, CombineScoreEntry]  # keyed by metric_key
     overall_score: Optional[CombineScoreEntry]
 
@@ -172,15 +175,18 @@ async def get_player_combine_scores(
     if not rows:
         return None
 
-    # Look up player name/slug
+    # Look up player name/slug/school
     player_result = await db.execute(
-        select(PlayerMaster.display_name, PlayerMaster.slug).where(  # type: ignore[call-overload]
+        select(PlayerMaster.display_name, PlayerMaster.slug, PlayerMaster.school).where(  # type: ignore[call-overload]
             PlayerMaster.id == player_id  # type: ignore[arg-type]
         )
     )
     player_row = player_result.mappings().first()
     player_name = str(player_row["display_name"]) if player_row else None
     player_slug = str(player_row["slug"]) if player_row else None
+    player_school = (
+        str(player_row["school"]) if player_row and player_row["school"] else None
+    )
 
     category_scores: Dict[str, CombineScoreEntry] = {}
     overall_score: Optional[CombineScoreEntry] = None
@@ -207,6 +213,7 @@ async def get_player_combine_scores(
         player_id=player_id,
         player_name=player_name,
         player_slug=player_slug,
+        school=player_school,
         category_scores=category_scores,
         overall_score=overall_score,
     )
@@ -258,11 +265,16 @@ async def get_year_combine_scores(
         select(
             PlayerMaster.id,
             PlayerMaster.display_name,
-            PlayerMaster.slug,  # type: ignore[call-overload]
+            PlayerMaster.slug,
+            PlayerMaster.school,  # type: ignore[call-overload]
         ).where(PlayerMaster.id.in_(player_ids))  # type: ignore[union-attr,attr-defined]
     )
     player_map = {
-        r["id"]: (str(r["display_name"]), str(r["slug"]))
+        r["id"]: (
+            str(r["display_name"]),
+            str(r["slug"]),
+            str(r["school"]) if r["school"] else None,
+        )
         for r in player_result.mappings().all()
     }
 
@@ -272,7 +284,7 @@ async def get_year_combine_scores(
 
     results: List[PlayerCombineScores] = []
     for pid, pmvs in by_player.items():
-        name, slug = player_map.get(pid, (None, None))
+        name, slug, school = player_map.get(pid, (None, None, None))
         category_scores: Dict[str, CombineScoreEntry] = {}
         overall: Optional[CombineScoreEntry] = None
 
@@ -301,6 +313,7 @@ async def get_year_combine_scores(
                 player_id=pid,
                 player_name=name,
                 player_slug=slug,
+                school=school,
                 category_scores=category_scores,
                 overall_score=overall,
             )
@@ -400,3 +413,163 @@ async def get_year_summary(
         worst=worst,
         category_averages=category_averages,
     )
+
+
+# ---------------------------------------------------------------------------
+# Combine Score Leaders (for stats homepage)
+# ---------------------------------------------------------------------------
+
+COMBINE_LEADER_SCORE_TYPES = [
+    "combine_score_overall",
+    "combine_score_anthropometrics",
+    "combine_score_athletic",
+    "combine_score_shooting",
+]
+
+
+@dataclass
+class CombineScoreLeaderEntry:
+    """A single player entry in a combine score leaderboard."""
+
+    player_id: int
+    display_name: str
+    slug: str
+    position: Optional[str]
+    school: Optional[str]
+    draft_year: Optional[int]
+    percentile: float
+    rank: int
+    category_scores: Dict[str, float] = field(default_factory=dict)
+
+
+async def _find_most_recent_combine_season(db: AsyncSession) -> Optional[int]:
+    """Find the season_id of the most recent combine_score snapshot."""
+    result = await db.execute(
+        select(MetricSnapshot.season_id)  # type: ignore[call-overload]
+        .where(
+            cast(Any, MetricSnapshot.source) == MetricSource.combine_score,
+            cast(Any, MetricSnapshot.cohort) == CohortType.current_draft,
+            cast(Any, MetricSnapshot.is_current).is_(True),
+            cast(Any, MetricSnapshot.position_scope_parent).is_(None),
+            cast(Any, MetricSnapshot.position_scope_fine).is_(None),
+        )
+        .join(Season, MetricSnapshot.season_id == Season.id)  # type: ignore[arg-type]
+        .order_by(desc(Season.end_year))  # type: ignore[arg-type]
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_combine_score_leaders(
+    db: AsyncSession,
+    limit: int = 5,
+    season_id: Optional[int] = None,
+) -> Dict[str, List[CombineScoreLeaderEntry]]:
+    """Fetch top players by combine score for each score type.
+
+    Args:
+        db: Async database session.
+        limit: Number of leaders per score type.
+        season_id: Specific season, or None to auto-detect most recent.
+
+    Returns:
+        Dict keyed by score type (e.g. 'combine_score_overall'), each
+        containing a list of CombineScoreLeaderEntry sorted by percentile
+        descending. Returns empty dict if no data.
+    """
+    if season_id is None:
+        season_id = await _find_most_recent_combine_season(db)
+    if season_id is None:
+        return {}
+
+    all_players = await get_year_combine_scores(db, season_id)
+    if not all_players:
+        return {}
+
+    # Resolve season end_year for draft_year display
+    season_result = await db.execute(
+        select(Season.end_year).where(  # type: ignore[call-overload]
+            Season.id == season_id  # type: ignore[arg-type]
+        )
+    )
+    draft_year = season_result.scalar_one_or_none()
+
+    # Bulk-fetch positions from combine_anthro for these players
+    player_ids = [p.player_id for p in all_players]
+    pos_result = await db.execute(
+        select(
+            CombineAnthro.player_id,
+            Position.code,  # type: ignore[call-overload]
+        )
+        .outerjoin(
+            Position,
+            CombineAnthro.position_id == Position.id,  # type: ignore[arg-type]
+        )
+        .where(
+            CombineAnthro.player_id.in_(player_ids),  # type: ignore[union-attr,attr-defined]
+            CombineAnthro.season_id == season_id,  # type: ignore[arg-type]
+        )
+    )
+    position_map: Dict[int, str] = {}
+    for row in pos_result.mappings().all():
+        pid = row["player_id"]
+        code = row["code"]
+        if pid is not None and code is not None and pid not in position_map:
+            position_map[int(pid)] = str(code)
+
+    # Bulk-fetch school from PlayerMaster
+    school_result = await db.execute(
+        select(
+            PlayerMaster.id,
+            PlayerMaster.school,  # type: ignore[call-overload]
+        ).where(PlayerMaster.id.in_(player_ids))  # type: ignore[union-attr]
+    )
+    school_map: Dict[int, Optional[str]] = {
+        int(r["id"]): r["school"] for r in school_result.mappings().all() if r["id"]
+    }
+
+    leaders: Dict[str, List[CombineScoreLeaderEntry]] = {}
+
+    for score_type in COMBINE_LEADER_SCORE_TYPES:
+        scored: list[tuple[float, PlayerCombineScores]] = []
+        for p in all_players:
+            if score_type == "combine_score_overall":
+                entry = p.overall_score
+            else:
+                entry = p.category_scores.get(score_type)
+            if entry and entry.percentile is not None:
+                scored.append((entry.percentile, p))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        entries: list[CombineScoreLeaderEntry] = []
+        for rank_idx, (pctl, player) in enumerate(scored[:limit], start=1):
+            cat_scores: Dict[str, float] = {}
+            if score_type == "combine_score_overall":
+                for cat_key in [
+                    "combine_score_anthropometrics",
+                    "combine_score_athletic",
+                    "combine_score_shooting",
+                ]:
+                    cat_entry = player.category_scores.get(cat_key)
+                    if cat_entry and cat_entry.percentile is not None:
+                        cat_scores[cat_key] = cat_entry.percentile
+
+            entries.append(
+                CombineScoreLeaderEntry(
+                    player_id=player.player_id,
+                    display_name=player.player_name or "",
+                    slug=player.player_slug or "",
+                    position=position_map.get(player.player_id),
+                    school=school_map.get(player.player_id),
+                    draft_year=draft_year,
+                    percentile=pctl,
+                    rank=rank_idx,
+                    category_scores=cat_scores,
+                )
+            )
+
+        if entries:
+            leaders[score_type] = entries
+
+    return leaders
