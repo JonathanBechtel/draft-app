@@ -30,7 +30,16 @@ from app.services.video_service import (
     get_player_video_feed,
     get_video_page_data,
 )
+from sqlmodel import select
+
 from app.config import settings
+from app.models.fields import MetricSource
+from app.schemas.metrics import MetricSnapshot
+from app.schemas.seasons import Season
+from app.services.combine_score_service import (
+    get_player_combine_scores,
+    grade_label,
+)
 from app.services.player_service import (
     get_college_stats_by_player_id,
     get_player_profile_by_slug,
@@ -712,6 +721,39 @@ async def player_detail(
         },
     }
 
+    # Fetch combine scores for the headline box
+    combine_scores = None
+    combine_grade = None
+    combine_population = None
+    if player.get("combine_year"):
+        season_result = await db.execute(
+            select(Season).where(  # type: ignore[call-overload]
+                Season.start_year == player["combine_year"]
+            )
+        )
+        season = season_result.scalars().first()
+        if season:
+            combine_scores = await get_player_combine_scores(
+                db,
+                player_profile.id,  # type: ignore[arg-type]
+                season_id=season.id,
+            )
+            if combine_scores and combine_scores.overall_score:
+                combine_grade = grade_label(combine_scores.overall_score.percentile)
+                # Fetch population size from the snapshot
+                snap_result = await db.execute(
+                    select(MetricSnapshot.population_size)
+                    .where(  # type: ignore[call-overload]
+                        MetricSnapshot.source == MetricSource.combine_score,  # type: ignore[arg-type]
+                        MetricSnapshot.is_current.is_(True),  # type: ignore[union-attr,attr-defined]
+                        MetricSnapshot.season_id == season.id,  # type: ignore[arg-type]
+                        MetricSnapshot.position_scope_parent.is_(None),  # type: ignore[union-attr]
+                        MetricSnapshot.position_scope_fine.is_(None),  # type: ignore[union-attr]
+                    )
+                    .limit(1)
+                )
+                combine_population = snap_result.scalar_one_or_none()
+
     # Fetch college production stats for the stats scoreboard
     college_stats_rows = await get_college_stats_by_player_id(
         db,
@@ -908,6 +950,9 @@ async def player_detail(
             "player_video_feed": player_video_feed,
             "player_video_counts": player_video_counts,
             "has_player_videos": bool(player_video_feed_resp.total),
+            "combine_scores": combine_scores,
+            "combine_grade": combine_grade,
+            "combine_population": combine_population,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "image_style": requested_style,  # Current image style for JS

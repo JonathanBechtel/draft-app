@@ -1679,7 +1679,31 @@ const CollegeStatsModule = {
   }
 };
 
+/* ============================================================================
+   COMBINE SCORE HEADLINE — donut ring animation
+   ========================================================================= */
+var CombineScoreModule = {
+  init: function () {
+    var ring = document.querySelector('.combine-headline .ring-fill');
+    if (!ring) return;
+
+    var pctl = parseFloat(ring.getAttribute('data-pctl')) || 0;
+    var circumference = parseFloat(ring.getAttribute('stroke-dasharray')) || 0;
+    var offset = circumference * (1 - pctl / 100);
+
+    // Set tier color class
+    var tier = pctl >= 90 ? 'elite' : pctl >= 70 ? 'above-avg' : pctl >= 40 ? 'avg' : 'below-avg';
+    ring.classList.add(tier);
+
+    // Animate after a brief delay so the transition is visible
+    requestAnimationFrame(function () {
+      ring.style.strokeDashoffset = offset;
+    });
+  }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
+  CombineScoreModule.init();
   ScoreboardModule.init();
   CollegeStatsModule.init();
   PerformanceModule.init();
