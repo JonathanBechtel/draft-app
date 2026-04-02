@@ -6,11 +6,14 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.combine_score_service import (
     CombineScoreLeaderEntry,
     get_combine_score_leaders,
+    get_year_combine_scores,
+    grade_label,
 )
 from app.services.combine_stats_service import (
     ATHLETIC_KEYS,
@@ -316,6 +319,79 @@ async def draft_year_page(
             "metrics": _build_metrics_list(cat.metric_keys),
         }
 
+    # Build player→position map from already-loaded category data
+    position_map: dict[int, str] = {}
+    for cat in (data.anthro, data.athletic, data.shooting):
+        for pr in cat.players:
+            if pr.position and pr.player_id not in position_map:
+                position_map[pr.player_id] = pr.position
+
+    # Fetch combine scores for this year
+    from app.schemas.seasons import Season
+
+    season_result = await db.execute(
+        select(Season.id).where(  # type: ignore[call-overload]
+            Season.end_year == year  # type: ignore[arg-type]
+        )
+    )
+    season_id = season_result.scalar_one_or_none()
+
+    combine_scores_list: list[dict] = []
+    if season_id is not None:
+        combine_scores = await get_year_combine_scores(db, season_id)
+        for rank_idx, pcs in enumerate(combine_scores, start=1):
+            overall_pctl = (
+                round(pcs.overall_score.percentile, 1)
+                if pcs.overall_score and pcs.overall_score.percentile is not None
+                else None
+            )
+            combine_scores_list.append(
+                {
+                    "player_id": pcs.player_id,
+                    "player_name": pcs.player_name,
+                    "player_slug": pcs.player_slug,
+                    "position": position_map.get(pcs.player_id),
+                    "school": pcs.school,
+                    "overall_percentile": overall_pctl,
+                    "overall_rank": rank_idx,
+                    "overall_grade": grade_label(overall_pctl),
+                    "anthro_percentile": (
+                        round(
+                            pcs.category_scores[
+                                "combine_score_anthropometrics"
+                            ].percentile,
+                            1,
+                        )
+                        if "combine_score_anthropometrics" in pcs.category_scores
+                        and pcs.category_scores[
+                            "combine_score_anthropometrics"
+                        ].percentile
+                        is not None
+                        else None
+                    ),
+                    "athletic_percentile": (
+                        round(
+                            pcs.category_scores["combine_score_athletic"].percentile,
+                            1,
+                        )
+                        if "combine_score_athletic" in pcs.category_scores
+                        and pcs.category_scores["combine_score_athletic"].percentile
+                        is not None
+                        else None
+                    ),
+                    "shooting_percentile": (
+                        round(
+                            pcs.category_scores["combine_score_shooting"].percentile,
+                            1,
+                        )
+                        if "combine_score_shooting" in pcs.category_scores
+                        and pcs.category_scores["combine_score_shooting"].percentile
+                        is not None
+                        else None
+                    ),
+                }
+            )
+
     draft_year_json = json_mod.dumps(
         {
             "year": data.year,
@@ -326,6 +402,7 @@ async def draft_year_page(
                 "athletic": _category_to_dict(data.athletic),
                 "shooting": _category_to_dict(data.shooting),
             },
+            "combine_scores": combine_scores_list,
         }
     )
 
