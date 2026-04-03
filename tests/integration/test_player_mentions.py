@@ -2,7 +2,7 @@
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_aliases import PlayerAlias
@@ -110,6 +110,27 @@ async def test_create_stub_for_unknown_name(db_session: AsyncSession) -> None:
     assert row.first_name == "Totally"
     assert row.last_name == "New Player"
 
+    alias_stmt = select(PlayerAlias).where(PlayerAlias.player_id == row.id)
+    alias = (await db_session.execute(alias_stmt)).scalar_one()
+    assert alias.full_name == "Totally New Player"
+    assert alias.context == "mention_resolution"
+
+
+@pytest.mark.asyncio
+async def test_stub_parses_suffix_into_player_fields(db_session: AsyncSession) -> None:
+    """Stub creation should store recognized suffixes separately."""
+    results = await resolve_player_names(
+        db_session, ["Walter A. Clayton Jr"], create_stubs=True
+    )
+    assert len(results) == 1
+
+    stmt = select(PlayerMaster).where(PlayerMaster.id == results[0].player_id)
+    row = (await db_session.execute(stmt)).scalar_one()
+    assert row.first_name == "Walter"
+    assert row.middle_name == "A."
+    assert row.last_name == "Clayton"
+    assert row.suffix == "Jr."
+
 
 @pytest.mark.asyncio
 async def test_stub_gets_slug(db_session: AsyncSession) -> None:
@@ -139,6 +160,101 @@ async def test_dedup_within_batch(
     )
     assert len(results) == 1
     assert results[0].player_id == known_player.id
+
+
+@pytest.mark.asyncio
+async def test_resolve_relaxed_suffix_variant(
+    db_session: AsyncSession,
+) -> None:
+    """Suffix-only name differences should resolve to an existing player."""
+    player = PlayerMaster(
+        first_name="Darius",
+        last_name="Acuff",
+        suffix="Jr.",
+        display_name="Darius Acuff Jr.",
+        draft_year=2026,
+        is_stub=False,
+    )
+    db_session.add(player)
+    await db_session.flush()
+
+    results = await resolve_player_names(db_session, ["Darius Acuff"], create_stubs=True)
+    assert len(results) == 1
+    assert results[0].player_id == player.id
+    assert results[0].matched_via == "display_name"
+
+    count_stmt = select(func.count()).select_from(PlayerMaster)
+    total_players = (await db_session.execute(count_stmt)).scalar_one()
+    assert total_players == 1
+
+
+@pytest.mark.asyncio
+async def test_resolve_relaxed_alias_variant(
+    db_session: AsyncSession,
+) -> None:
+    """Middle initial and punctuation variants should resolve via alias."""
+    player = PlayerMaster(
+        first_name="Walter",
+        last_name="Clayton",
+        suffix="Jr.",
+        display_name="Walter Clayton Jr.",
+        draft_year=2025,
+        is_stub=False,
+    )
+    db_session.add(player)
+    await db_session.flush()
+    db_session.add(
+        PlayerAlias(
+            player_id=player.id,  # type: ignore[arg-type]
+            full_name="Walter A. Clayton Jr.",
+            first_name="Walter",
+            middle_name="A.",
+            last_name="Clayton",
+            suffix="Jr.",
+        )
+    )
+    await db_session.flush()
+
+    results = await resolve_player_names(
+        db_session,
+        ["Walter Clayton Jr", "Walter Clayton"],
+        create_stubs=True,
+    )
+    assert len(results) == 1
+    assert results[0].player_id == player.id
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_relaxed_match_does_not_create_stub(
+    db_session: AsyncSession,
+) -> None:
+    """Ambiguous relaxed matches should be skipped instead of creating a duplicate."""
+    db_session.add_all(
+        [
+            PlayerMaster(
+                first_name="John",
+                middle_name="A.",
+                last_name="Smith",
+                display_name="John A. Smith",
+                is_stub=False,
+            ),
+            PlayerMaster(
+                first_name="John",
+                last_name="Smith",
+                suffix="Jr.",
+                display_name="John Smith Jr.",
+                is_stub=False,
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    results = await resolve_player_names(db_session, ["John Smith"], create_stubs=True)
+    assert results == []
+
+    count_stmt = select(func.count()).select_from(PlayerMaster)
+    total_players = (await db_session.execute(count_stmt)).scalar_one()
+    assert total_players == 2
 
 
 @pytest.mark.asyncio
