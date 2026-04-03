@@ -272,7 +272,15 @@
 
       <!-- Details -->
       <div class="combine-headline__details">
-        <div class="combine-headline__title heading-font">Composite Combine Score</div>
+        <div class="combine-headline__title heading-font">Composite Combine Score
+          <span class="combine-headline__tooltip-wrap">
+            <svg class="combine-headline__info-icon" viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+              <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <text x="8" y="12" text-anchor="middle" font-size="11" font-weight="700" font-family="sans-serif">i</text>
+            </svg>
+            <span class="combine-headline__tooltip">Weighted blend of three combine categories: Anthropometrics (40%), Athletic Testing (40%), and Shooting (20%). Each category is a normalized z-score across the selected comparison group. Players missing a category have their weights redistributed across the remaining categories.</span>
+          </span>
+        </div>
         <div class="combine-headline__grade grade-{{ combine_grade | lower | replace(' ', '-') }}">
           <span class="combine-headline__grade-badge">{{ combine_grade }}</span>
           <span class="combine-headline__grade-context mono-font">vs. {{ player.combine_year }} Draft Class</span>
