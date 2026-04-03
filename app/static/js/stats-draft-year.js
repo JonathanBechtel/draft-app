@@ -506,15 +506,19 @@
     var wrap = document.querySelector('.dy-data-table-wrap');
     if (!wrap) return;
 
+    var isCombine = currentCategory === 'combine_scores';
+    var activePage = isCombine ? combinePage : tablePage;
+    var playerCount = isCombine ? filteredCombine.length : filteredPlayers.length;
+
     var html = '<div id="dy-pagination" class="dy-pagination">';
-    html += '<button class="dy-page-btn" data-page="prev"' + (tablePage === 0 ? ' disabled' : '') + '>&laquo; Prev</button>';
+    html += '<button class="dy-page-btn" data-page="prev"' + (activePage === 0 ? ' disabled' : '') + '>&laquo; Prev</button>';
 
     for (var i = 0; i < totalPages; i++) {
-      html += '<button class="dy-page-btn' + (i === tablePage ? ' active' : '') + '" data-page="' + i + '">' + (i + 1) + '</button>';
+      html += '<button class="dy-page-btn' + (i === activePage ? ' active' : '') + '" data-page="' + i + '">' + (i + 1) + '</button>';
     }
 
-    html += '<button class="dy-page-btn" data-page="next"' + (tablePage >= totalPages - 1 ? ' disabled' : '') + '>Next &raquo;</button>';
-    html += '<span class="dy-page-info">' + filteredPlayers.length + ' players</span>';
+    html += '<button class="dy-page-btn" data-page="next"' + (activePage >= totalPages - 1 ? ' disabled' : '') + '>Next &raquo;</button>';
+    html += '<span class="dy-page-info">' + playerCount + ' players</span>';
     html += '</div>';
 
     wrap.insertAdjacentHTML('afterend', html);
@@ -523,11 +527,19 @@
       var btn = e.target.closest('.dy-page-btn');
       if (!btn || btn.disabled) return;
       var page = btn.dataset.page;
-      var maxPage = Math.ceil(filteredPlayers.length / PAGE_SIZE) - 1;
-      if (page === 'prev') tablePage = Math.max(0, tablePage - 1);
-      else if (page === 'next') tablePage = Math.min(maxPage, tablePage + 1);
-      else tablePage = parseInt(page, 10);
-      renderTablePage();
+      if (isCombine) {
+        var maxPage = Math.ceil(filteredCombine.length / PAGE_SIZE) - 1;
+        if (page === 'prev') combinePage = Math.max(0, combinePage - 1);
+        else if (page === 'next') combinePage = Math.min(maxPage, combinePage + 1);
+        else combinePage = parseInt(page, 10);
+        renderCombinePage();
+      } else {
+        var maxPage = Math.ceil(filteredPlayers.length / PAGE_SIZE) - 1;
+        if (page === 'prev') tablePage = Math.max(0, tablePage - 1);
+        else if (page === 'next') tablePage = Math.min(maxPage, tablePage + 1);
+        else tablePage = parseInt(page, 10);
+        renderTablePage();
+      }
     });
   }
 

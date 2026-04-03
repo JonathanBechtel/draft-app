@@ -127,6 +127,7 @@ COMBINE_SCORE_KEYS = [
     "combine_score_overall",
     "combine_score_anthropometrics",
     "combine_score_athletic",
+    "combine_score_shooting",
 ]
 
 
