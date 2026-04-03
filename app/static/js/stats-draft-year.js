@@ -27,6 +27,12 @@
       colorLight: '#fff1f2',
       colorMuted: 'rgba(244,63,94,0.15)',
       colorMid: 'rgba(244,63,94,0.35)'
+    },
+    combine_scores: {
+      color: '#6366f1',
+      colorLight: '#eef2ff',
+      colorMuted: 'rgba(99,102,241,0.15)',
+      colorMid: 'rgba(99,102,241,0.35)'
     }
   };
 
@@ -38,12 +44,16 @@
   };
 
   var TAB_CONFIG = [
-    { key: 'anthro',   icon: '\uD83D\uDCCF', label: 'Anthro' },
-    { key: 'athletic', icon: '\u26A1',        label: 'Athletic' },
-    { key: 'shooting', icon: '\uD83C\uDFAF',  label: 'Shooting' }
+    { key: 'anthro',          icon: '\uD83D\uDCCF', label: 'Anthro' },
+    { key: 'athletic',        icon: '\u26A1',        label: 'Athletic' },
+    { key: 'shooting',        icon: '\uD83C\uDFAF',  label: 'Shooting' },
+    { key: 'combine_scores',  icon: '\uD83C\uDFC6',  label: 'Combine Scores' }
   ];
 
   var availableCategories = TAB_CONFIG.filter(function (t) {
+    if (t.key === 'combine_scores') {
+      return DATA.combine_scores && DATA.combine_scores.length > 0;
+    }
     var cat = DATA.categories[t.key];
     return cat && cat.players && cat.players.length > 0;
   });
@@ -104,9 +114,20 @@
       t.classList.toggle('active', t.dataset.cat === cat);
     });
 
-    renderRangeChart(cat);
-    renderWinners(cat);
-    renderTable(cat);
+    var rangeSection = document.getElementById('dy-range-section');
+    var winnersSection = document.getElementById('dy-winners-section');
+    var isCombine = cat === 'combine_scores';
+
+    if (rangeSection) rangeSection.style.display = isCombine ? 'none' : '';
+    if (winnersSection) winnersSection.style.display = isCombine ? 'none' : '';
+
+    if (isCombine) {
+      renderCombineTable();
+    } else {
+      renderRangeChart(cat);
+      renderWinners(cat);
+      renderTable(cat);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -485,15 +506,19 @@
     var wrap = document.querySelector('.dy-data-table-wrap');
     if (!wrap) return;
 
+    var isCombine = currentCategory === 'combine_scores';
+    var activePage = isCombine ? combinePage : tablePage;
+    var playerCount = isCombine ? filteredCombine.length : filteredPlayers.length;
+
     var html = '<div id="dy-pagination" class="dy-pagination">';
-    html += '<button class="dy-page-btn" data-page="prev"' + (tablePage === 0 ? ' disabled' : '') + '>&laquo; Prev</button>';
+    html += '<button class="dy-page-btn" data-page="prev"' + (activePage === 0 ? ' disabled' : '') + '>&laquo; Prev</button>';
 
     for (var i = 0; i < totalPages; i++) {
-      html += '<button class="dy-page-btn' + (i === tablePage ? ' active' : '') + '" data-page="' + i + '">' + (i + 1) + '</button>';
+      html += '<button class="dy-page-btn' + (i === activePage ? ' active' : '') + '" data-page="' + i + '">' + (i + 1) + '</button>';
     }
 
-    html += '<button class="dy-page-btn" data-page="next"' + (tablePage >= totalPages - 1 ? ' disabled' : '') + '>Next &raquo;</button>';
-    html += '<span class="dy-page-info">' + filteredPlayers.length + ' players</span>';
+    html += '<button class="dy-page-btn" data-page="next"' + (activePage >= totalPages - 1 ? ' disabled' : '') + '>Next &raquo;</button>';
+    html += '<span class="dy-page-info">' + playerCount + ' players</span>';
     html += '</div>';
 
     wrap.insertAdjacentHTML('afterend', html);
@@ -502,12 +527,168 @@
       var btn = e.target.closest('.dy-page-btn');
       if (!btn || btn.disabled) return;
       var page = btn.dataset.page;
-      var maxPage = Math.ceil(filteredPlayers.length / PAGE_SIZE) - 1;
-      if (page === 'prev') tablePage = Math.max(0, tablePage - 1);
-      else if (page === 'next') tablePage = Math.min(maxPage, tablePage + 1);
-      else tablePage = parseInt(page, 10);
-      renderTablePage();
+      if (isCombine) {
+        var maxPage = Math.ceil(filteredCombine.length / PAGE_SIZE) - 1;
+        if (page === 'prev') combinePage = Math.max(0, combinePage - 1);
+        else if (page === 'next') combinePage = Math.min(maxPage, combinePage + 1);
+        else combinePage = parseInt(page, 10);
+        renderCombinePage();
+      } else {
+        var maxPage = Math.ceil(filteredPlayers.length / PAGE_SIZE) - 1;
+        if (page === 'prev') tablePage = Math.max(0, tablePage - 1);
+        else if (page === 'next') tablePage = Math.min(maxPage, tablePage + 1);
+        else tablePage = parseInt(page, 10);
+        renderTablePage();
+      }
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // COMBINE SCORES TABLE
+  // ═══════════════════════════════════════════════════════════════
+
+  var combinePage = 0;
+  var filteredCombine = [];
+  var combineSortKey = 'overall_rank';
+  var combineSortDir = 'asc';
+
+  function pctlTier(pctl) {
+    if (pctl == null) return 'none';
+    if (pctl >= 90) return 'elite';
+    if (pctl >= 75) return 'good';
+    if (pctl >= 40) return 'average';
+    return 'below-average';
+  }
+
+  function gradeLabel(pctl) {
+    if (pctl == null) return 'N/A';
+    if (pctl >= 90) return 'Elite';
+    if (pctl >= 75) return 'Above Avg';
+    if (pctl >= 40) return 'Average';
+    if (pctl >= 20) return 'Below Avg';
+    return 'Poor';
+  }
+
+  function pctlPill(pctl) {
+    if (pctl == null) return '<span class="pctl-pill none">&mdash;</span>';
+    return '<span class="pctl-pill ' + pctlTier(pctl) + '">' + Math.round(pctl) + '</span>';
+  }
+
+  function combineSortArrow(key) {
+    if (combineSortKey !== key) return ' <span class="dy-sort-arrow">\u25B4</span>';
+    return combineSortDir === 'asc'
+      ? ' <span class="dy-sort-arrow active">\u25B4</span>'
+      : ' <span class="dy-sort-arrow active">\u25BE</span>';
+  }
+
+  function handleCombineSort(key) {
+    if (combineSortKey === key) {
+      combineSortDir = combineSortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      combineSortKey = key;
+      combineSortDir = (key === 'player_name') ? 'asc' : 'desc';
+    }
+    sortFilteredCombine();
+    combinePage = 0;
+    renderCombinePage();
+    updateCombineHeaders();
+  }
+
+  function sortFilteredCombine() {
+    var key = combineSortKey;
+    var dir = combineSortDir === 'asc' ? 1 : -1;
+    filteredCombine.sort(function (a, b) {
+      if (key === 'player_name') {
+        var va = (a.player_name || '').toLowerCase();
+        var vb = (b.player_name || '').toLowerCase();
+        return va < vb ? -dir : va > vb ? dir : 0;
+      }
+      var valA = a[key];
+      var valB = b[key];
+      if (valA == null && valB == null) return 0;
+      if (valA == null) return 1;
+      if (valB == null) return -1;
+      return (valA - valB) * dir;
+    });
+  }
+
+  function applyCombineFilters() {
+    var searchEl = document.getElementById('dy-grid-search');
+    var posEl = document.getElementById('dy-pos-filter');
+    var q = searchEl ? searchEl.value.toLowerCase() : '';
+    var pos = posEl ? posEl.value : '';
+
+    filteredCombine = (DATA.combine_scores || []).filter(function (p) {
+      var nameMatch = !q || ((p.player_name || '') + ' ' + (p.school || '')).toLowerCase().indexOf(q) !== -1;
+      var posMatch = !pos || p.position === pos;
+      return nameMatch && posMatch;
+    });
+
+    sortFilteredCombine();
+    combinePage = 0;
+    renderCombinePage();
+  }
+
+  function updateCombineHeaders() {
+    var thead = document.getElementById('dy-table-head');
+    if (!thead) return;
+    var headHtml = '<tr>';
+    headHtml += '<th class="dy-sortable" data-csort="overall_rank">#' + combineSortArrow('overall_rank') + '</th>';
+    headHtml += '<th class="dy-sortable" data-csort="player_name">Player' + combineSortArrow('player_name') + '</th>';
+    headHtml += '<th class="text-center dy-sortable" data-csort="overall_percentile">Overall' + combineSortArrow('overall_percentile') + '</th>';
+    headHtml += '<th class="text-center dy-sortable" data-csort="anthro_percentile">Anthro' + combineSortArrow('anthro_percentile') + '</th>';
+    headHtml += '<th class="text-center dy-sortable" data-csort="athletic_percentile">Athletic' + combineSortArrow('athletic_percentile') + '</th>';
+    headHtml += '<th class="text-center dy-sortable" data-csort="shooting_percentile">Shooting' + combineSortArrow('shooting_percentile') + '</th>';
+    headHtml += '<th class="text-center">Grade</th>';
+    headHtml += '</tr>';
+    thead.innerHTML = headHtml;
+  }
+
+  function renderCombineTable() {
+    var thead = document.getElementById('dy-table-head');
+    if (!thead) return;
+
+    combineSortKey = 'overall_rank';
+    combineSortDir = 'asc';
+
+    updateCombineHeaders();
+
+    // Populate position filter
+    populatePositionFilter(document.getElementById('dy-pos-filter'));
+
+    applyCombineFilters();
+  }
+
+  function renderCombinePage() {
+    var tbody = document.getElementById('dy-table-body');
+    if (!tbody) return;
+
+    var start = combinePage * PAGE_SIZE;
+    var pagePlayers = filteredCombine.slice(start, start + PAGE_SIZE);
+    var totalPages = Math.ceil(filteredCombine.length / PAGE_SIZE);
+
+    var html = '';
+    pagePlayers.forEach(function (p) {
+      html += '<tr>';
+      html += '<td>' + (p.overall_rank || '&mdash;') + '</td>';
+      html += '<td><div class="dy-player-cell">' +
+        '<div><div class="name"><a href="/players/' + escAttr(p.player_slug) + '">' + escHtml(p.player_name) + '</a></div>' +
+        '<div class="school">' + escHtml((p.position || '') + (p.position && p.school ? ' \u00B7 ' : '') + (p.school || '')) + '</div></div>' +
+        '</div></td>';
+      html += '<td class="text-center">' + pctlPill(p.overall_percentile) + '</td>';
+      html += '<td class="text-center">' + pctlPill(p.anthro_percentile) + '</td>';
+      html += '<td class="text-center">' + pctlPill(p.athletic_percentile) + '</td>';
+      html += '<td class="text-center">' + pctlPill(p.shooting_percentile) + '</td>';
+      html += '<td class="text-center"><span class="pctl-pill ' + pctlTier(p.overall_percentile) + '">' + escHtml(gradeLabel(p.overall_percentile)) + '</span></td>';
+      html += '</tr>';
+    });
+
+    if (pagePlayers.length === 0) {
+      html = '<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--color-slate-500);font-family:var(--font-mono);font-size:0.8rem;">No combine score data</td></tr>';
+    }
+
+    tbody.innerHTML = html;
+    renderPagination(totalPages);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -541,11 +722,17 @@
 
     // Search only filters the table
     var searchEl = document.getElementById('dy-grid-search');
-    if (searchEl) searchEl.addEventListener('input', function () { applyFilters(false); });
+    if (searchEl) searchEl.addEventListener('input', function () {
+      if (currentCategory === 'combine_scores') { applyCombineFilters(); }
+      else { applyFilters(false); }
+    });
 
     // Table position filter updates winners and table
     var posEl = document.getElementById('dy-pos-filter');
-    if (posEl) posEl.addEventListener('change', function () { applyFilters(true); });
+    if (posEl) posEl.addEventListener('change', function () {
+      if (currentCategory === 'combine_scores') { applyCombineFilters(); }
+      else { applyFilters(true); }
+    });
 
     // Range position filter updates range chart
     var rangePosEl = document.getElementById('dy-range-pos-filter');
@@ -557,7 +744,12 @@
     var thead = document.getElementById('dy-table-head');
     if (thead) thead.addEventListener('click', function (e) {
       var th = e.target.closest('.dy-sortable');
-      if (th && th.dataset.sort) handleSort(th.dataset.sort);
+      if (!th) return;
+      if (currentCategory === 'combine_scores' && th.dataset.csort) {
+        handleCombineSort(th.dataset.csort);
+      } else if (th.dataset.sort) {
+        handleSort(th.dataset.sort);
+      }
     });
 
     // Initial render — first available category
@@ -577,7 +769,8 @@
   var CATEGORY_LABELS = {
     anthro: 'Measurements',
     athletic: 'Athletic Testing',
-    shooting: 'Shooting'
+    shooting: 'Shooting',
+    combine_scores: 'Combine Scores'
   };
 
   function getDraftYearContext() {

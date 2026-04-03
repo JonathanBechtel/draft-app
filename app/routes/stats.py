@@ -6,8 +6,15 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.combine_score_service import (
+    CombineScoreLeaderEntry,
+    get_combine_score_leaders,
+    get_year_combine_scores,
+    grade_label,
+)
 from app.services.combine_stats_service import (
     ATHLETIC_KEYS,
     HOMEPAGE_METRIC_DISPLAY,
@@ -93,6 +100,66 @@ def _entry_to_dict(entry: object) -> dict:
 
 DEFAULT_METRIC = "wingspan_in"
 
+COMBINE_SCORE_DISPLAY = {
+    "combine_score_overall": {
+        "icon": "&#x1F3C6;",
+        "superlative": "Top Overall Score",
+        "color": "indigo",
+    },
+    "combine_score_anthropometrics": {
+        "icon": "&#x1F4CF;",
+        "superlative": "Best Anthro Score",
+        "color": "indigo",
+    },
+    "combine_score_athletic": {
+        "icon": "&#x26A1;",
+        "superlative": "Best Athletic Score",
+        "color": "indigo",
+    },
+    "combine_score_shooting": {
+        "icon": "&#x1F3AF;",
+        "superlative": "Best Shooting Score",
+        "color": "indigo",
+    },
+}
+
+COMBINE_SCORE_KEYS = [
+    "combine_score_overall",
+    "combine_score_anthropometrics",
+    "combine_score_athletic",
+    "combine_score_shooting",
+]
+
+
+def _ordinal(n: int) -> str:
+    """Return ordinal string for an integer (e.g. 1 -> '1st')."""
+    if 11 <= (n % 100) <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _combine_leader_to_dict(entry: CombineScoreLeaderEntry) -> dict:
+    """Convert a CombineScoreLeaderEntry to a template-friendly dict."""
+    d: dict = {
+        "rank": entry.rank,
+        "player_id": entry.player_id,
+        "display_name": entry.display_name,
+        "slug": entry.slug,
+        "school": entry.school,
+        "position": entry.position.upper().replace("_", "/")
+        if entry.position
+        else None,
+        "draft_year": entry.draft_year,
+        "percentile": entry.percentile,
+        "formatted_value": str(round(entry.percentile)),
+        "formatted_ordinal": _ordinal(round(entry.percentile)),
+        "category_scores": entry.category_scores,
+    }
+    d.update(_player_photo_urls(entry.player_id, entry.slug, entry.display_name))
+    return d
+
 
 def _shooting_entry_to_dict(entry: object) -> dict:
     """Convert a ShootingLeaderEntry dataclass to a template-friendly dict."""
@@ -138,6 +205,19 @@ async def stats_homepage(
         for key, entries in data.shooting_leaders.items()
     }
 
+    # Combine score leaders
+    raw_combine_leaders = await get_combine_score_leaders(db)
+    combine_score_leaders = {
+        key: [_combine_leader_to_dict(e) for e in entries]
+        for key, entries in raw_combine_leaders.items()
+    }
+    # Resolve draft year for "View All" links
+    combine_draft_year: int | None = None
+    for entries in combine_score_leaders.values():
+        if entries:
+            combine_draft_year = entries[0].get("draft_year")
+            break
+
     return request.app.state.templates.TemplateResponse(
         "stats/index.html",
         {
@@ -145,11 +225,15 @@ async def stats_homepage(
             "measurement_leaders": measurement_leaders,
             "athletic_leaders": athletic_leaders,
             "shooting_leaders": shooting_leaders,
+            "combine_score_leaders": combine_score_leaders,
             "measurement_keys": MEASUREMENT_KEYS,
             "athletic_keys": ATHLETIC_KEYS,
             "shooting_keys": SHOOTING_KEYS,
+            "combine_score_keys": COMBINE_SCORE_KEYS,
             "metric_display": HOMEPAGE_METRIC_DISPLAY,
             "shooting_display": SHOOTING_DRILL_DISPLAY,
+            "combine_score_display": COMBINE_SCORE_DISPLAY,
+            "combine_draft_year": combine_draft_year,
             "year_stats": data.year_stats,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
@@ -236,6 +320,79 @@ async def draft_year_page(
             "metrics": _build_metrics_list(cat.metric_keys),
         }
 
+    # Build player→position map from already-loaded category data
+    position_map: dict[int, str] = {}
+    for cat in (data.anthro, data.athletic, data.shooting):
+        for pr in cat.players:
+            if pr.position and pr.player_id not in position_map:
+                position_map[pr.player_id] = pr.position
+
+    # Fetch combine scores for this year
+    from app.schemas.seasons import Season
+
+    season_result = await db.execute(
+        select(Season.id).where(  # type: ignore[call-overload]
+            Season.end_year == year  # type: ignore[arg-type]
+        )
+    )
+    season_id = season_result.scalar_one_or_none()
+
+    combine_scores_list: list[dict] = []
+    if season_id is not None:
+        combine_scores = await get_year_combine_scores(db, season_id)
+        for rank_idx, pcs in enumerate(combine_scores, start=1):
+            overall_pctl = (
+                round(pcs.overall_score.percentile, 1)
+                if pcs.overall_score and pcs.overall_score.percentile is not None
+                else None
+            )
+            combine_scores_list.append(
+                {
+                    "player_id": pcs.player_id,
+                    "player_name": pcs.player_name,
+                    "player_slug": pcs.player_slug,
+                    "position": position_map.get(pcs.player_id),
+                    "school": pcs.school,
+                    "overall_percentile": overall_pctl,
+                    "overall_rank": rank_idx,
+                    "overall_grade": grade_label(overall_pctl),
+                    "anthro_percentile": (
+                        round(
+                            pcs.category_scores[
+                                "combine_score_anthropometrics"
+                            ].percentile,
+                            1,
+                        )
+                        if "combine_score_anthropometrics" in pcs.category_scores
+                        and pcs.category_scores[
+                            "combine_score_anthropometrics"
+                        ].percentile
+                        is not None
+                        else None
+                    ),
+                    "athletic_percentile": (
+                        round(
+                            pcs.category_scores["combine_score_athletic"].percentile,
+                            1,
+                        )
+                        if "combine_score_athletic" in pcs.category_scores
+                        and pcs.category_scores["combine_score_athletic"].percentile
+                        is not None
+                        else None
+                    ),
+                    "shooting_percentile": (
+                        round(
+                            pcs.category_scores["combine_score_shooting"].percentile,
+                            1,
+                        )
+                        if "combine_score_shooting" in pcs.category_scores
+                        and pcs.category_scores["combine_score_shooting"].percentile
+                        is not None
+                        else None
+                    ),
+                }
+            )
+
     draft_year_json = json_mod.dumps(
         {
             "year": data.year,
@@ -246,6 +403,7 @@ async def draft_year_page(
                 "athletic": _category_to_dict(data.athletic),
                 "shooting": _category_to_dict(data.shooting),
             },
+            "combine_scores": combine_scores_list,
         }
     )
 

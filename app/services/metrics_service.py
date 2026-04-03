@@ -9,6 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType, MetricCategory, MetricSource
 from app.models.position_taxonomy import derive_position_tags
+from app.services.combine_score_service import (
+    get_player_combine_scores,
+    grade_label,
+)
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.combine_shooting import CombineShooting, SHOOTING_DRILL_COLUMNS
@@ -25,6 +29,7 @@ class PlayerMetricsResult(dict):
     metrics: List[dict]
     snapshot_id: Optional[int]
     population_size: Optional[int]
+    combine_score: Optional[dict]
 
 
 _CATEGORY_TO_SOURCE: dict[MetricCategory, MetricSource] = {
@@ -393,10 +398,72 @@ async def get_player_metrics(
             }
         )
 
+    # Fetch combine score for the same cohort/scope
+    CATEGORY_COLORS = {
+        "combine_score_anthropometrics": ("Anthro", "cyan"),
+        "combine_score_athletic": ("Athletic", "amber"),
+        "combine_score_shooting": ("Shooting", "rose"),
+    }
+    combine_score_payload: Optional[dict] = None
+    # Resolve position scope for combine_score source (use anthro table)
+    cs_parent_scope = (
+        await _resolve_parent_scope_for_source(
+            db,
+            player_id=player_id,
+            source=MetricSource.combine_anthro,
+            season_id=effective_season_id,
+        )
+        if position_adjusted
+        else None
+    )
+    cs_season_id = effective_season_id if cohort == CohortType.current_draft else None
+    cs_data = await get_player_combine_scores(
+        db,
+        player_id,
+        cohort=cohort,
+        season_id=cs_season_id,
+        position_scope_parent=cs_parent_scope,
+    )
+    if (
+        cs_data
+        and cs_data.overall_score
+        and cs_data.overall_score.percentile is not None
+    ):
+        # Look up population from the combine_score snapshot
+        cs_snap = await _select_snapshot(
+            db,
+            cohort=cohort,
+            source=MetricSource.combine_score,
+            season_id=cs_season_id,
+            parent_scope=cs_parent_scope,
+            prefer_parent=position_adjusted,
+        )
+        cs_pop = cs_snap.population_size if cs_snap else None
+        cs_categories = []
+        for key, entry in cs_data.category_scores.items():
+            if key in CATEGORY_COLORS and entry.percentile is not None:
+                label, color = CATEGORY_COLORS[key]
+                cs_categories.append(
+                    {
+                        "key": key,
+                        "label": label,
+                        "percentile": round(entry.percentile, 1),
+                        "color": color,
+                    }
+                )
+        combine_score_payload = {
+            "overall_percentile": round(cs_data.overall_score.percentile, 1),
+            "overall_rank": cs_data.overall_score.rank,
+            "grade": grade_label(cs_data.overall_score.percentile),
+            "population_size": cs_pop,
+            "categories": cs_categories,
+        }
+
     return PlayerMetricsResult(
         metrics=metrics,
         snapshot_id=snapshot.id,
         population_size=snapshot.population_size,
+        combine_score=combine_score_payload,
     )
 
 

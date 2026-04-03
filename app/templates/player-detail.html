@@ -252,6 +252,69 @@
     </div>
     <p class="section-subtitle">Percentile rankings vs current draft class</p>
 
+    {% if combine_scores and combine_scores.overall_score %}
+    <!-- Combine Score Headline Box -->
+    <div class="combine-headline">
+      <!-- Donut ring -->
+      <div class="combine-headline__ring">
+        <svg viewBox="0 0 120 120">
+          <circle class="ring-bg" cx="60" cy="60" r="52" />
+          <circle class="ring-fill" cx="60" cy="60" r="52"
+                  stroke-dasharray="{{ 2 * 3.14159 * 52 }}"
+                  stroke-dashoffset="{{ 2 * 3.14159 * 52 }}"
+                  data-pctl="{{ combine_scores.overall_score.percentile }}" />
+        </svg>
+        <div class="combine-headline__ring-value">
+          <div class="combine-headline__number">{{ combine_scores.overall_score.percentile | round(0) | int }}</div>
+          <div class="combine-headline__pctl-label mono-font">Percentile</div>
+        </div>
+      </div>
+
+      <!-- Details -->
+      <div class="combine-headline__details">
+        <div class="combine-headline__title heading-font">Composite Combine Score
+          <span class="combine-headline__tooltip-wrap">
+            <svg class="combine-headline__info-icon" viewBox="0 0 16 16" fill="currentColor" width="14" height="14">
+              <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <text x="8" y="12" text-anchor="middle" font-size="11" font-weight="700" font-family="sans-serif">i</text>
+            </svg>
+            <span class="combine-headline__tooltip">Weighted blend of three combine categories: Anthropometrics (40%), Athletic Testing (40%), and Shooting (20%). Each category is a normalized z-score across the selected comparison group. Players missing a category have their weights redistributed across the remaining categories.</span>
+          </span>
+        </div>
+        <div class="combine-headline__grade grade-{{ combine_grade | lower | replace(' ', '-') }}">
+          <span class="combine-headline__grade-badge">{{ combine_grade }}</span>
+          <span class="combine-headline__grade-context mono-font">vs. {{ player.combine_year }} Draft Class</span>
+        </div>
+        <div class="combine-headline__breakdown">
+          {% set cat_config = {
+            'combine_score_anthropometrics': {'label': 'Anthro', 'color': 'cyan'},
+            'combine_score_athletic': {'label': 'Athletic', 'color': 'amber'},
+            'combine_score_shooting': {'label': 'Shooting', 'color': 'rose'}
+          } %}
+          {% for key, entry in combine_scores.category_scores.items() %}
+            {% if key in cat_config and entry.percentile is not none %}
+            <div class="combine-headline__cat">
+              <span class="combine-headline__cat-dot combine-headline__cat-dot--{{ cat_config[key].color }}"></span>
+              <span>{{ cat_config[key].label }}</span>
+              <span class="combine-headline__cat-value">{{ entry.percentile | round(0) | int }}</span>
+            </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div class="combine-headline__scope mono-font">Blends measurements, athleticism &amp; shooting</div>
+      </div>
+
+      <!-- Rank block -->
+      <div class="combine-headline__rank">
+        <div class="combine-headline__rank-label mono-font">Rank</div>
+        <div class="combine-headline__rank-number heading-font">#{{ combine_scores.overall_score.rank }}</div>
+        {% if combine_population %}
+        <div class="combine-headline__rank-total mono-font">of {{ combine_population }}</div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Controls row -->
     <div class="perf-controls-row">
       <div class="perf-control">

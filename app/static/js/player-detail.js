@@ -243,6 +243,7 @@ const PerformanceModule = {
     const key = this.cacheKey();
     if (this.cache[key]) {
       this.renderPercentiles(this.cache[key]);
+      CombineScoreModule.update(this.cache[key].combine_score, this.currentCohort, this.positionAdjusted);
       return;
     }
 
@@ -262,9 +263,11 @@ const PerformanceModule = {
       const data = await response.json();
       this.cache[key] = data;
       this.renderPercentiles(data);
+      CombineScoreModule.update(data.combine_score, this.currentCohort, this.positionAdjusted);
     } catch (err) {
       console.error('Failed to load metrics', err);
       this.renderPercentiles({ metrics: [] });
+      CombineScoreModule.update(null, this.currentCohort, this.positionAdjusted);
     }
   },
 
@@ -1679,7 +1682,128 @@ const CollegeStatsModule = {
   }
 };
 
+/* ============================================================================
+   COMBINE SCORE HEADLINE — static donut ring + dynamic updates
+   ========================================================================= */
+var CombineScoreModule = {
+  CIRCUMFERENCE: 2 * Math.PI * 52,  // matches SVG r=52
+  _currentKey: null,  // tracks cohort|positionAdjusted to skip category-only changes
+
+  COHORT_LABELS: {
+    currentDraft: function () {
+      var year = window.PLAYER_DATA && window.PLAYER_DATA.combine_year;
+      return 'vs. ' + (year || '') + ' Draft Class';
+    },
+    historical: function () { return 'vs. All-Time Draft'; },
+    nbaPlayers: function () { return 'vs. Active NBA'; },
+    allTimeNba: function () { return 'vs. All-Time NBA'; }
+  },
+
+  GRADE_CLASSES: {
+    'Elite': 'grade-elite',
+    'Above Average': 'grade-above-average',
+    'Average': 'grade-average',
+    'Below Average': 'grade-below-average',
+    'Poor': 'grade-poor'
+  },
+
+  init: function () {
+    var container = document.querySelector('.combine-headline');
+    if (!container) return;
+
+    // Set the server-rendered donut ring immediately (no animation)
+    var ring = container.querySelector('.ring-fill');
+    if (!ring) return;
+
+    var pctl = parseFloat(ring.getAttribute('data-pctl')) || 0;
+    var offset = this.CIRCUMFERENCE * (1 - pctl / 100);
+    ring.classList.add(this._tierClass(pctl));
+    ring.style.strokeDashoffset = offset;
+  },
+
+  /**
+   * Update the headline box with new data from the metrics API.
+   * Only re-renders when cohort or position scope changes.
+   * @param {Object|null} data - CombineScorePayload from API, or null
+   * @param {string} cohortKey - UI cohort key (e.g., 'currentDraft')
+   * @param {boolean} posAdj - whether position-adjusted is on
+   */
+  update: function (data, cohortKey, posAdj) {
+    var key = (cohortKey || '') + '|' + (posAdj ? '1' : '0');
+    if (key === this._currentKey) return;
+    this._currentKey = key;
+
+    var container = document.querySelector('.combine-headline');
+    if (!data) {
+      if (container) container.style.display = 'none';
+      return;
+    }
+    if (!container) return;
+    container.style.display = '';
+
+    var pctl = data.overall_percentile;
+    var tier = this._tierClass(pctl);
+
+    // Update donut ring (instant, no animation)
+    var ring = container.querySelector('.ring-fill');
+    if (ring) {
+      ring.className.baseVal = 'ring-fill';
+      ring.classList.add(tier);
+      ring.style.strokeDashoffset = this.CIRCUMFERENCE * (1 - pctl / 100);
+    }
+
+    // Update percentile number
+    var numEl = container.querySelector('.combine-headline__number');
+    if (numEl) numEl.textContent = Math.round(pctl);
+
+    // Update grade badge
+    var gradeParent = container.querySelector('.combine-headline__grade');
+    if (gradeParent) {
+      var cls = gradeParent.className.split(' ').filter(function (c) { return c.indexOf('grade-') !== 0; });
+      cls.push(this.GRADE_CLASSES[data.grade] || 'grade-average');
+      gradeParent.className = cls.join(' ');
+    }
+    var badgeEl = container.querySelector('.combine-headline__grade-badge');
+    if (badgeEl) badgeEl.textContent = data.grade;
+
+    // Update cohort context label
+    var contextEl = container.querySelector('.combine-headline__grade-context');
+    if (contextEl) {
+      var labelFn = this.COHORT_LABELS[cohortKey || 'currentDraft'];
+      contextEl.textContent = labelFn ? labelFn() : 'vs. Draft Class';
+    }
+
+    // Update category dots
+    var breakdownEl = container.querySelector('.combine-headline__breakdown');
+    if (breakdownEl) {
+      var html = '';
+      (data.categories || []).forEach(function (cat) {
+        html += '<div class="combine-headline__cat">' +
+          '<span class="combine-headline__cat-dot combine-headline__cat-dot--' + cat.color + '"></span>' +
+          '<span>' + cat.label + '</span>' +
+          '<span class="combine-headline__cat-value">' + Math.round(cat.percentile) + '</span>' +
+          '</div>';
+      });
+      breakdownEl.innerHTML = html;
+    }
+
+    // Update rank
+    var rankEl = container.querySelector('.combine-headline__rank-number');
+    if (rankEl) rankEl.textContent = '#' + data.overall_rank;
+
+    var totalEl = container.querySelector('.combine-headline__rank-total');
+    if (totalEl) {
+      totalEl.textContent = data.population_size ? 'of ' + data.population_size : '';
+    }
+  },
+
+  _tierClass: function (pctl) {
+    return pctl >= 90 ? 'elite' : pctl >= 70 ? 'above-avg' : pctl >= 40 ? 'avg' : 'below-avg';
+  }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
+  CombineScoreModule.init();
   ScoreboardModule.init();
   CollegeStatsModule.init();
   PerformanceModule.init();

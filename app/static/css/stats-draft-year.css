@@ -687,6 +687,40 @@
   transition: width 0.3s;
 }
 
+/* Percentile pills (combine scores table) */
+.pctl-pill {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+.pctl-pill.elite {
+  background: rgba(5, 150, 105, 0.1);
+  color: #059669;
+}
+.pctl-pill.good {
+  background: rgba(14, 165, 233, 0.1);
+  color: #0ea5e9;
+}
+.pctl-pill.average {
+  background: rgba(245, 158, 11, 0.1);
+  color: #d97706;
+}
+.pctl-pill.below-average {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+.pctl-pill.none {
+  color: var(--color-slate-400);
+}
+
+.dy-data-table th.text-center,
+.dy-data-table td.text-center {
+  text-align: center;
+}
+
 /* ── Pagination ── */
 .dy-pagination {
   display: flex;

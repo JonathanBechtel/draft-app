@@ -751,6 +751,7 @@
 .stats-nav-tab--athletic:hover { background: rgba(245, 158, 11, 0.04); }
 .stats-nav-tab--shooting:hover { background: rgba(244, 63, 94, 0.04); }
 .stats-nav-tab--classes:hover { background: rgba(16, 185, 129, 0.04); }
+.stats-nav-tab--scores:hover { background: rgba(99, 102, 241, 0.04); }
 
 .stats-nav-tab.active {
   color: var(--color-slate-900);
@@ -776,6 +777,11 @@
   border-bottom-color: var(--color-accent-emerald);
   background: rgba(16, 185, 129, 0.06);
   color: #047857;
+}
+.stats-nav-tab--scores.active {
+  border-bottom-color: var(--color-accent-indigo);
+  background: rgba(99, 102, 241, 0.06);
+  color: #4338ca;
 }
 
 .stats-nav-tab__icon {
@@ -809,6 +815,11 @@
 .stats-nav-tab--classes.active .stats-nav-tab__count {
   background: rgba(16, 185, 129, 0.1);
   color: var(--color-accent-emerald);
+}
+
+.stats-nav-tab--scores.active .stats-nav-tab__count {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--color-accent-indigo);
 }
 
 /* --- Section Layout --- */
@@ -937,6 +948,24 @@
 .stat-leader-card--rose .featured-player-rank { color: var(--color-accent-rose); }
 .stat-leader-card--rose .featured-player-image { border-color: rgba(244, 63, 94, 0.4); }
 .stat-leader-card--rose .stat-leader-card__view-all { color: var(--color-accent-rose); }
+
+/* Indigo variant */
+.stat-leader-card--indigo {
+  outline-color: rgba(99, 102, 241, 0.5);
+  background-image:
+    linear-gradient(#ffffff, #ffffff),
+    radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.05) 1px, transparent 1px);
+  background-size: 100% 100%, 12px 12px;
+}
+.stat-leader-card--indigo::before { background: linear-gradient(45deg, transparent 50%, var(--color-accent-indigo) 50%); }
+.stat-leader-card--indigo::after { background: linear-gradient(225deg, transparent 50%, var(--color-accent-indigo) 50%); }
+.stat-leader-card--indigo .stat-leader-card__header {
+  background: linear-gradient(to right, #e0e7ff, #c7d2fe);
+  border-bottom: 2px solid var(--color-accent-indigo);
+}
+.stat-leader-card--indigo .featured-player-rank { color: var(--color-accent-indigo); }
+.stat-leader-card--indigo .featured-player-image { border-color: rgba(99, 102, 241, 0.4); }
+.stat-leader-card--indigo .stat-leader-card__view-all { color: var(--color-accent-indigo); }
 
 /* Card header */
 .stat-leader-card__header {
@@ -1206,6 +1235,33 @@
   background: rgba(244, 63, 94, 0.1);
   color: #e11d48;
 }
+
+/* --- Featured Score Breakdown (combine score overall card) --- */
+.featured-score-breakdown {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.375rem;
+}
+
+.featured-score-cat {
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  color: var(--color-slate-500);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.featured-score-cat__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.featured-score-cat__dot--cyan { background: var(--color-accent-cyan); }
+.featured-score-cat__dot--amber { background: var(--color-accent-amber); }
+.featured-score-cat__dot--rose { background: var(--color-accent-rose); }
 
 /* --- Homepage Responsive --- */
 @media (max-width: 1024px) {
