@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Positional Breakdown Mockup — DraftGuru</title>
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-heading: 'Russo One', sans-serif;
+      --font-mono: 'Azeret Mono', monospace;
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-500: #64748b;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-accent-emerald: #10b981;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-fuchsia: #d946ef;
+      --transition-speed: 0.2s;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--color-slate-50);
+      padding: 2rem;
+      color: var(--color-slate-800);
+    }
+
+    h1 {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+    }
+
+    .mockup-label {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-accent-fuchsia);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 2rem;
+      font-weight: 600;
+    }
+
+    .section-subtitle {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+      margin-bottom: 1.5rem;
+    }
+
+    /* ========== PERFORMANCE BARS (matching production CSS) ========== */
+    .perf-bars-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-width: 800px;
+    }
+
+    .perf-header-row {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      padding: 0 0.75rem 0.75rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      margin-bottom: 0.5rem;
+    }
+
+    .perf-header-label {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      font-weight: 600;
+    }
+
+    .perf-bar-row {
+      display: grid;
+      grid-template-columns: 180px 1fr 120px;
+      gap: 1rem;
+      align-items: center;
+      padding: 0.75rem;
+      background: var(--color-white);
+      border-radius: 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      transition: all var(--transition-speed);
+    }
+
+    .perf-bar-row:hover {
+      background: var(--color-slate-50);
+      transform: translateX(4px);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .perf-metric-label {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-700);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .perf-bar-track {
+      position: relative;
+      height: 1.5rem;
+      background: var(--color-slate-100);
+      border-radius: 9999px;
+      overflow: hidden;
+      border: 1px solid var(--color-slate-200);
+    }
+
+    .perf-bar-fill {
+      height: 100%;
+      border-radius: 9999px;
+      transition: width 0.4s ease-out;
+      position: relative;
+      min-width: 2.5rem;
+    }
+
+    .perf-bar-fill::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: rgba(255, 255, 255, 0.8);
+    }
+
+    .perf-bar-fill.elite { background: linear-gradient(to right, #059669, #10b981); }
+    .perf-bar-fill.good { background: linear-gradient(to right, #0ea5e9, #06b6d4); }
+    .perf-bar-fill.average { background: linear-gradient(to right, #f59e0b, #fbbf24); }
+    .perf-bar-fill.below-average { background: linear-gradient(to right, #ef4444, #f87171); }
+
+    .perf-bar-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1e293b;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.75rem;
+      text-shadow: 0 0 2px rgba(255, 255, 255, 0.8);
+    }
+
+    .perf-values {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 0.25rem;
+    }
+
+    .perf-actual-value {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.875rem;
+      color: var(--color-slate-800);
+    }
+
+    .perf-rank-value {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    /* ========== POSITIONAL AVERAGE MARKER (new) ========== */
+
+    /*
+     * The marker sits inside .perf-bar-track, positioned absolutely.
+     * It's a thin vertical line with a small tooltip label on hover.
+     * overflow:hidden on .perf-bar-track is removed so the label can peek out.
+     */
+    .perf-bar-track--with-marker {
+      overflow: visible;  /* allow marker label to peek above the bar */
+    }
+
+    .pos-avg-marker {
+      position: absolute;
+      top: -3px;
+      bottom: -3px;
+      width: 2px;
+      background: var(--color-slate-700);
+      z-index: 2;
+      transition: left 0.4s ease-out;
+    }
+
+    /* Diamond cap on top of the marker line */
+    .pos-avg-marker::before {
+      content: "";
+      position: absolute;
+      top: -4px;
+      left: 50%;
+      transform: translateX(-50%) rotate(45deg);
+      width: 6px;
+      height: 6px;
+      background: var(--color-slate-700);
+      border-radius: 1px;
+    }
+
+    /* Tooltip label — always visible in a subtle way, bolder on hover */
+    .pos-avg-label {
+      position: absolute;
+      bottom: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      color: var(--color-slate-500);
+      white-space: nowrap;
+      letter-spacing: 0.04em;
+      opacity: 0.7;
+      transition: opacity var(--transition-speed);
+    }
+
+    .perf-bar-row:hover .pos-avg-label {
+      opacity: 1;
+      color: var(--color-slate-700);
+    }
+
+    /* ========== OPTION B: DEVIATION BARS ========== */
+
+    .deviation-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      max-width: 800px;
+      margin-top: 3rem;
+    }
+
+    .dev-bar-row {
+      display: grid;
+      grid-template-columns: 180px 1fr 100px;
+      gap: 1rem;
+      align-items: center;
+      padding: 0.75rem;
+      background: var(--color-white);
+      border-radius: 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      transition: all var(--transition-speed);
+    }
+
+    .dev-bar-row:hover {
+      background: var(--color-slate-50);
+      transform: translateX(4px);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .dev-bar-track {
+      position: relative;
+      height: 1.5rem;
+      background: var(--color-slate-100);
+      border-radius: 0.25rem;
+      border: 1px solid var(--color-slate-200);
+    }
+
+    /* Center line representing position average */
+    .dev-bar-center {
+      position: absolute;
+      top: -2px;
+      bottom: -2px;
+      left: 50%;
+      width: 2px;
+      background: var(--color-slate-500);
+      z-index: 2;
+    }
+
+    .dev-bar-center::after {
+      content: "AVG";
+      position: absolute;
+      top: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      color: var(--color-slate-400);
+      letter-spacing: 0.08em;
+      display: none;  /* only show on first row via JS or special class */
+    }
+
+    .dev-bar-row:first-of-type .dev-bar-center::after {
+      display: block;
+    }
+
+    /* The deviation fill — extends from center */
+    .dev-bar-fill {
+      position: absolute;
+      top: 2px;
+      bottom: 2px;
+      border-radius: 0.125rem;
+      transition: all 0.4s ease-out;
+    }
+
+    .dev-bar-fill.positive {
+      left: 50%;
+      background: linear-gradient(to right, #10b981, #059669);
+    }
+
+    .dev-bar-fill.negative {
+      right: 50%;
+      background: linear-gradient(to left, #ef4444, #dc2626);
+    }
+
+    .dev-bar-fill.strong-positive {
+      left: 50%;
+      background: linear-gradient(to right, #059669, #047857);
+    }
+
+    .dev-bar-fill.strong-negative {
+      right: 50%;
+      background: linear-gradient(to left, #dc2626, #b91c1c);
+    }
+
+    .dev-value {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.8125rem;
+      text-align: right;
+    }
+
+    .dev-value.positive { color: #059669; }
+    .dev-value.negative { color: #dc2626; }
+
+    .dev-value-sub {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      text-align: right;
+    }
+
+    /* ========== LEGEND ========== */
+    .legend {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+      padding: 0.5rem 0.75rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      font-weight: 500;
+    }
+
+    .legend-swatch {
+      width: 16px;
+      height: 4px;
+      border-radius: 2px;
+    }
+
+    .legend-swatch.player { background: linear-gradient(to right, #0ea5e9, #06b6d4); }
+
+    .legend-marker {
+      width: 2px;
+      height: 14px;
+      background: var(--color-slate-700);
+      position: relative;
+    }
+
+    .legend-marker::before {
+      content: "";
+      position: absolute;
+      top: -3px;
+      left: 50%;
+      transform: translateX(-50%) rotate(45deg);
+      width: 5px;
+      height: 5px;
+      background: var(--color-slate-700);
+      border-radius: 1px;
+    }
+
+    /* ========== LAYOUT HELPERS ========== */
+    .mockup-section {
+      margin-bottom: 4rem;
+    }
+
+    hr {
+      border: none;
+      border-top: 2px dashed var(--color-slate-200);
+      margin: 3rem 0;
+    }
+
+    .design-note {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      background: #fef3c7;
+      border: 1px solid #fde68a;
+      border-radius: 0.375rem;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- OPTION A: Overlay Marker on Existing Percentile Bars          -->
+  <!-- ============================================================ -->
+  <div class="mockup-section">
+    <h1>Option A: Position Average Marker</h1>
+    <div class="mockup-label">Overlay on existing percentile bars</div>
+
+    <div class="design-note">
+      A thin marker line with a diamond cap shows the position average (e.g., "PG Avg")
+      directly on the existing percentile bar. At a glance you can see if the player's
+      fill extends past the marker (above average) or falls short (below). Zero new UI
+      sections — just a subtle layer on what's already there.
+    </div>
+
+    <div class="legend">
+      <div class="legend-item">
+        <span class="legend-swatch player"></span>
+        Player Percentile
+      </div>
+      <div class="legend-item">
+        <span class="legend-marker"></span>
+        PG Average
+      </div>
+    </div>
+
+    <div class="perf-bars-container">
+      <div class="perf-header-row">
+        <span class="perf-header-label">Percentile</span>
+        <span class="perf-header-label">Value</span>
+      </div>
+
+      <!-- Wingspan — player above PG avg -->
+      <div class="perf-bar-row">
+        <div class="perf-metric-label">Wingspan</div>
+        <div class="perf-bar-track perf-bar-track--with-marker">
+          <div class="perf-bar-fill elite" style="width: 91%;">
+            <span class="perf-bar-overlay">91st</span>
+          </div>
+          <div class="pos-avg-marker" style="left: 52%;">
+            <span class="pos-avg-label">PG Avg: 52nd</span>
+          </div>
+        </div>
+        <div class="perf-values">
+          <span class="perf-actual-value">6'11"</span>
+          <span class="perf-rank-value">#3 of 78</span>
+        </div>
+      </div>
+
+      <!-- Standing Reach — player well above PG avg -->
+      <div class="perf-bar-row">
+        <div class="perf-metric-label">Standing Reach</div>
+        <div class="perf-bar-track perf-bar-track--with-marker">
+          <div class="perf-bar-fill elite" style="width: 88%;">
+            <span class="perf-bar-overlay">88th</span>
+          </div>
+          <div class="pos-avg-marker" style="left: 48%;">
+            <span class="pos-avg-label">PG Avg: 48th</span>
+          </div>
+        </div>
+        <div class="perf-values">
+          <span class="perf-actual-value">8'6"</span>
+          <span class="perf-rank-value">#5 of 78</span>
+        </div>
+      </div>
+
+      <!-- Height — player near PG avg -->
+      <div class="perf-bar-row">
+        <div class="perf-metric-label">Height (no shoes)</div>
+        <div class="perf-bar-track perf-bar-track--with-marker">
+          <div class="perf-bar-fill good" style="width: 72%;">
+            <span class="perf-bar-overlay">72nd</span>
+          </div>
+          <div class="pos-avg-marker" style="left: 65%;">
+            <span class="pos-avg-label">PG Avg: 65th</span>
+          </div>
+        </div>
+        <div class="perf-values">
+          <span class="perf-actual-value">6'4.5"</span>
+          <span class="perf-rank-value">#22 of 78</span>
+        </div>
+      </div>
+
+      <!-- Weight — player below PG avg -->
+      <div class="perf-bar-row">
+        <div class="perf-metric-label">Weight</div>
+        <div class="perf-bar-track perf-bar-track--with-marker">
+          <div class="perf-bar-fill average" style="width: 45%;">
+            <span class="perf-bar-overlay">45th</span>
+          </div>
+          <div class="pos-avg-marker" style="left: 55%;">
+            <span class="pos-avg-label">PG Avg: 55th</span>
+          </div>
+        </div>
+        <div class="perf-values">
+          <span class="perf-actual-value">185 lbs</span>
+          <span class="perf-rank-value">#43 of 78</span>
+        </div>
+      </div>
+
+      <!-- Max Vertical — player well below PG avg -->
+      <div class="perf-bar-row">
+        <div class="perf-metric-label">Max Vertical</div>
+        <div class="perf-bar-track perf-bar-track--with-marker">
+          <div class="perf-bar-fill below-average" style="width: 28%;">
+            <span class="perf-bar-overlay">28th</span>
+          </div>
+          <div class="pos-avg-marker" style="left: 60%;">
+            <span class="pos-avg-label">PG Avg: 60th</span>
+          </div>
+        </div>
+        <div class="perf-values">
+          <span class="perf-actual-value">34.5"</span>
+          <span class="perf-rank-value">#56 of 78</span>
+        </div>
+      </div>
+
+      <!-- 3/4 Sprint — player above PG avg -->
+      <div class="perf-bar-row">
+        <div class="perf-metric-label">3/4 Sprint</div>
+        <div class="perf-bar-track perf-bar-track--with-marker">
+          <div class="perf-bar-fill good" style="width: 76%;">
+            <span class="perf-bar-overlay">76th</span>
+          </div>
+          <div class="pos-avg-marker" style="left: 58%;">
+            <span class="pos-avg-label">PG Avg: 58th</span>
+          </div>
+        </div>
+        <div class="perf-values">
+          <span class="perf-actual-value">3.12s</span>
+          <span class="perf-rank-value">#19 of 78</span>
+        </div>
+      </div>
+
+      <!-- Hand Width — player right at PG avg -->
+      <div class="perf-bar-row">
+        <div class="perf-metric-label">Hand Width</div>
+        <div class="perf-bar-track perf-bar-track--with-marker">
+          <div class="perf-bar-fill average" style="width: 50%;">
+            <span class="perf-bar-overlay">50th</span>
+          </div>
+          <div class="pos-avg-marker" style="left: 50%;">
+            <span class="pos-avg-label">PG Avg: 50th</span>
+          </div>
+        </div>
+        <div class="perf-values">
+          <span class="perf-actual-value">9.0"</span>
+          <span class="perf-rank-value">#39 of 78</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <!-- OPTION B: Deviation Bars (centered on position average)       -->
+  <!-- ============================================================ -->
+  <div class="mockup-section">
+    <h1>Option B: Deviation Bars</h1>
+    <div class="mockup-label">Separate section showing +/− vs position average</div>
+
+    <div class="design-note">
+      A standalone card where each bar is centered on the position average. Bars extend
+      right (green) when above average or left (red) when below. This is more prominent
+      and would work as a collapsible sub-section beneath the existing percentile bars.
+      More visual weight, but immediately shows strengths/weaknesses at a glance.
+    </div>
+
+    <div class="section-subtitle">Percentile deviation vs PG average · 2025 Draft Class</div>
+
+    <div class="deviation-container">
+      <!-- Wingspan: +39 above avg -->
+      <div class="dev-bar-row">
+        <div class="perf-metric-label">Wingspan</div>
+        <div class="dev-bar-track">
+          <div class="dev-bar-center"></div>
+          <div class="dev-bar-fill strong-positive" style="width: 39%;"></div>
+        </div>
+        <div class="perf-values">
+          <span class="dev-value positive">+39</span>
+          <span class="dev-value-sub">91st vs 52nd</span>
+        </div>
+      </div>
+
+      <!-- Standing Reach: +40 above avg -->
+      <div class="dev-bar-row">
+        <div class="perf-metric-label">Standing Reach</div>
+        <div class="dev-bar-track">
+          <div class="dev-bar-center"></div>
+          <div class="dev-bar-fill strong-positive" style="width: 40%;"></div>
+        </div>
+        <div class="perf-values">
+          <span class="dev-value positive">+40</span>
+          <span class="dev-value-sub">88th vs 48th</span>
+        </div>
+      </div>
+
+      <!-- 3/4 Sprint: +18 above avg -->
+      <div class="dev-bar-row">
+        <div class="perf-metric-label">3/4 Sprint</div>
+        <div class="dev-bar-track">
+          <div class="dev-bar-center"></div>
+          <div class="dev-bar-fill positive" style="width: 18%;"></div>
+        </div>
+        <div class="perf-values">
+          <span class="dev-value positive">+18</span>
+          <span class="dev-value-sub">76th vs 58th</span>
+        </div>
+      </div>
+
+      <!-- Height: +7 above avg -->
+      <div class="dev-bar-row">
+        <div class="perf-metric-label">Height (no shoes)</div>
+        <div class="dev-bar-track">
+          <div class="dev-bar-center"></div>
+          <div class="dev-bar-fill positive" style="width: 7%;"></div>
+        </div>
+        <div class="perf-values">
+          <span class="dev-value positive">+7</span>
+          <span class="dev-value-sub">72nd vs 65th</span>
+        </div>
+      </div>
+
+      <!-- Hand Width: 0 (at avg) -->
+      <div class="dev-bar-row">
+        <div class="perf-metric-label">Hand Width</div>
+        <div class="dev-bar-track">
+          <div class="dev-bar-center"></div>
+          <!-- no fill — exactly at average -->
+        </div>
+        <div class="perf-values">
+          <span class="dev-value" style="color: var(--color-slate-500);">0</span>
+          <span class="dev-value-sub">50th vs 50th</span>
+        </div>
+      </div>
+
+      <!-- Weight: -10 below avg -->
+      <div class="dev-bar-row">
+        <div class="perf-metric-label">Weight</div>
+        <div class="dev-bar-track">
+          <div class="dev-bar-center"></div>
+          <div class="dev-bar-fill negative" style="width: 10%;"></div>
+        </div>
+        <div class="perf-values">
+          <span class="dev-value negative">−10</span>
+          <span class="dev-value-sub">45th vs 55th</span>
+        </div>
+      </div>
+
+      <!-- Max Vertical: -32 below avg -->
+      <div class="dev-bar-row">
+        <div class="perf-metric-label">Max Vertical</div>
+        <div class="dev-bar-track">
+          <div class="dev-bar-center"></div>
+          <div class="dev-bar-fill strong-negative" style="width: 32%;"></div>
+        </div>
+        <div class="perf-values">
+          <span class="dev-value negative">−32</span>
+          <span class="dev-value-sub">28th vs 60th</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
