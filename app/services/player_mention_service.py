@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_aliases import PlayerAlias
+from app.schemas.player_lifecycle import DraftStatus, PlayerLifecycle
 from app.schemas.players_master import PlayerMaster
 
 logger = logging.getLogger(__name__)
@@ -328,6 +329,30 @@ async def _insert_stub_alias(
     )
 
 
+async def _upsert_stub_lifecycle(
+    db: AsyncSession,
+    player_id: int,
+    draft_year: Optional[int],
+) -> None:
+    """Ensure stub players get a lifecycle row without writing speculative facts."""
+    result = await db.execute(
+        select(PlayerLifecycle).where(
+            PlayerLifecycle.player_id == player_id  # type: ignore[arg-type]
+        )
+    )
+    lifecycle = result.scalar_one_or_none()
+    if lifecycle is None:
+        lifecycle = PlayerLifecycle(
+            player_id=player_id,
+            source="mention_resolution",
+        )
+        db.add(lifecycle)
+
+    lifecycle.expected_draft_year = draft_year
+    lifecycle.draft_status = DraftStatus.UNKNOWN
+    lifecycle.is_draft_prospect = True if draft_year is not None else None
+
+
 async def _resolve_iter(
     db: AsyncSession,
     names: list[str],
@@ -489,12 +514,12 @@ async def _create_stub_player(
         last_name=parsed.last_name,
         suffix=parsed.suffix,
         display_name=display_name,
-        draft_year=draft_year,
         is_stub=True,
     )
     db.add(player)
     await db.flush()
     await _insert_stub_alias(db, player.id, display_name)  # type: ignore[arg-type]
+    await _upsert_stub_lifecycle(db, player.id, draft_year)  # type: ignore[arg-type]
     logger.info(f"Created stub player: {display_name} (id={player.id})")
     return PlayerMatch(
         player_id=player.id,  # type: ignore[arg-type]
