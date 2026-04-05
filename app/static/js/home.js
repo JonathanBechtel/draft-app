@@ -962,13 +962,6 @@ const HomePodcastModule = {
     const episodes = window.PODCAST_EPISODES;
     if (!episodes || episodes.length === 0) return;
 
-    if (!window.PodcastAudio) {
-      console.error('PodcastAudio helper is unavailable.');
-      return;
-    }
-
-    window.PodcastAudio.init();
-
     const section = document.getElementById('podcastsSection');
     if (!section) return;
 
@@ -1009,32 +1002,19 @@ const HomePodcastModule = {
             <span class="meta-dot"></span>
             <span>${esc(ep.time)}</span>
           </div>
-          <div class="podcast-featured__player">
-            <button type="button" class="play-btn" aria-label="Play episode" data-audio="${esc(ep.audio_url)}">
-              <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"></polygon></svg>
-            </button>
-            <div class="progress-track">
-              <input type="range" class="progress-bar" min="0" max="100" value="0" step="0.1" />
-              <span class="progress-time">0:00</span>
-            </div>
+          <div class="podcast-featured__actions">
+            <a href="${esc(ep.episode_url || '#')}" target="_blank" rel="noopener noreferrer" class="listen-cta">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 1rem; height: 1rem;">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+              ${esc(ep.listen_on_text || 'Listen to Episode')}
+            </a>
           </div>
         </div>
       </div>
     `;
-
-    const playBtn = container.querySelector('.play-btn');
-    if (playBtn) {
-      playBtn.addEventListener('click', () => {
-        window.PodcastAudio.play(playBtn.dataset.audio, playBtn);
-      });
-    }
-
-    const progressBar = container.querySelector('.progress-bar');
-    if (progressBar) {
-      progressBar.addEventListener('input', (e) => {
-        window.PodcastAudio.seek(parseFloat(e.target.value));
-      });
-    }
   },
 
   renderList(episodes) {
@@ -1073,19 +1053,18 @@ const HomePodcastModule = {
                 ${episodeTag}
               </div>
             </div>
-            <button type="button" class="episode-row__play" aria-label="Play episode" data-audio="${esc(ep.audio_url)}">
-              <svg viewBox="0 0 24 24"><polygon points="6,3 20,12 6,21"></polygon></svg>
-            </button>
+            <a href="${esc(ep.episode_url || '#')}" target="_blank" rel="noopener noreferrer" class="episode-row__listen" aria-label="${esc(ep.listen_on_text || 'Listen to Episode')}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                <polyline points="15 3 21 3 21 9"></polyline>
+                <line x1="10" y1="14" x2="21" y2="3"></line>
+              </svg>
+            </a>
           </div>
         </div>
       `;
     }).join('');
 
-    container.querySelectorAll('.episode-row__play').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        window.PodcastAudio.play(btn.dataset.audio, btn);
-      });
-    });
   }
 };
 
