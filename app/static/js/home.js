@@ -1003,7 +1003,7 @@ const HomePodcastModule = {
             <span>${esc(ep.time)}</span>
           </div>
           <div class="podcast-featured__actions">
-            <a href="${esc(ep.episode_url || '#')}" target="_blank" rel="noopener noreferrer" class="listen-cta">
+            <a href="${esc(ep.episode_url || ep.audio_url)}" target="_blank" rel="noopener noreferrer" class="listen-cta">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 1rem; height: 1rem;">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                 <polyline points="15 3 21 3 21 9"></polyline>
@@ -1053,7 +1053,7 @@ const HomePodcastModule = {
                 ${episodeTag}
               </div>
             </div>
-            <a href="${esc(ep.episode_url || '#')}" target="_blank" rel="noopener noreferrer" class="episode-row__listen" aria-label="${esc(ep.listen_on_text || 'Listen to Episode')}">
+            <a href="${esc(ep.episode_url || ep.audio_url)}" target="_blank" rel="noopener noreferrer" class="episode-row__listen" aria-label="${esc(ep.listen_on_text || 'Listen to Episode')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
                 <polyline points="15 3 21 3 21 9"></polyline>
