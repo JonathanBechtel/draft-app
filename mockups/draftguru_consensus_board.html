@@ -1,0 +1,1928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DraftGuru — Consensus Board Mockup</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       CSS CUSTOM PROPERTIES (matching project design tokens)
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .heading-font { font-family: var(--font-heading); letter-spacing: 0.02em; }
+    .mono-font { font-family: var(--font-mono); }
+    .uppercase { text-transform: uppercase; letter-spacing: 0.06em; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(
+        to right, transparent,
+        rgba(148, 163, 184, 0.3) 20%,
+        rgba(148, 163, 184, 0.3) 80%,
+        transparent
+      );
+      margin: 3rem 0;
+    }
+
+    /* ============================================================================
+       MOCKUP SECTION DIVIDERS
+       ========================================================================= */
+    .mockup-divider {
+      margin: 4rem 0;
+      padding: 2rem 0;
+      border-top: 3px dashed var(--color-slate-300);
+      border-bottom: 3px dashed var(--color-slate-300);
+      background: repeating-linear-gradient(
+        -45deg, transparent, transparent 8px,
+        rgba(148, 163, 184, 0.06) 8px, rgba(148, 163, 184, 0.06) 16px
+      );
+      text-align: center;
+    }
+
+    .mockup-divider__label {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--color-white);
+      background: var(--color-slate-700);
+      padding: 0.5rem 1.5rem;
+      border-radius: 0.375rem;
+    }
+
+    .mockup-divider__note {
+      display: block;
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+      margin-top: 0.5rem;
+      max-width: 600px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* ============================================================================
+       NAVBAR (simplified for mockup)
+       ========================================================================= */
+    .navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--color-primary);
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .navbar-brand h1 {
+      font-size: 1.875rem;
+      color: var(--color-white);
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .navbar-nav {
+      display: flex;
+      gap: 1.5rem;
+      list-style: none;
+    }
+
+    .navbar-nav a {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      transition: color var(--transition-speed);
+    }
+
+    .navbar-nav a:hover, .navbar-nav a.active {
+      color: #fff;
+    }
+
+    /* ============================================================================
+       CONSENSUS HERO SECTION
+       The main splash — 2026 Big Board or Mock Draft consensus
+       ========================================================================= */
+    .consensus-hero {
+      margin-top: 6rem;
+      margin-bottom: 2rem;
+    }
+
+    .consensus-hero__header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .consensus-hero__title-group {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .consensus-hero__title {
+      font-family: var(--font-heading);
+      font-size: 2rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+    }
+
+    .consensus-hero__year-badge {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-accent-emerald);
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      padding: 0.3rem 0.75rem;
+      border-radius: 9999px;
+    }
+
+    .consensus-hero__meta {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+      text-align: right;
+    }
+
+    .consensus-hero__meta strong {
+      color: var(--color-slate-700);
+    }
+
+    /* Board type toggle: Big Board vs Mock Draft */
+    .board-toggle {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .board-toggle__btn {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 1.25rem;
+      border: 1px solid var(--color-slate-300);
+      background: var(--color-white);
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .board-toggle__btn:first-child { border-radius: 0.375rem 0 0 0.375rem; }
+    .board-toggle__btn:last-child { border-radius: 0 0.375rem 0.375rem 0; }
+
+    .board-toggle__btn.active {
+      background: var(--color-accent-emerald);
+      color: var(--color-white);
+      border-color: var(--color-accent-emerald);
+    }
+
+    .board-toggle__btn:hover:not(.active) {
+      background: var(--color-slate-50);
+    }
+
+    /* ============================================================================
+       MAIN BOARD LAYOUT — Table + Sidebar
+       ========================================================================= */
+    .consensus-layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .consensus-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ============================================================================
+       CONSENSUS TABLE
+       ========================================================================= */
+    .consensus-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      outline: 2px solid rgba(16, 185, 129, 0.5);
+      outline-offset: -2px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Scanline overlay */
+    .consensus-card .scanlines {
+      position: absolute;
+      inset: 0;
+      background-image: repeating-linear-gradient(
+        0deg, rgba(0,0,0,1) 0, rgba(0,0,0,1) 1px,
+        transparent 1px, transparent 3px
+      );
+      opacity: 0.03;
+      pointer-events: none;
+    }
+
+    /* Dot-matrix background */
+    .consensus-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(circle at 1px 1px, rgba(16, 185, 129, 0.04) 1px, transparent 1px);
+      background-size: 12px 12px;
+      pointer-events: none;
+    }
+
+    .consensus-table {
+      width: 100%;
+      border-collapse: collapse;
+      position: relative;
+      z-index: 1;
+    }
+
+    .consensus-table thead th {
+      padding: 0.75rem 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      border-bottom: 2px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+      text-align: left;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    .consensus-table thead th:first-child { padding-left: 1rem; }
+    .consensus-table thead th.col-rank { width: 3.5rem; text-align: center; }
+    .consensus-table thead th.col-delta { width: 3.5rem; text-align: center; }
+    .consensus-table thead th.col-avg { width: 4rem; text-align: center; }
+    .consensus-table thead th.col-range { width: 7rem; text-align: center; }
+    .consensus-table thead th.col-sources { width: 4.5rem; text-align: center; }
+    .consensus-table thead th.col-status { width: 5.5rem; text-align: center; }
+
+    .consensus-table tbody tr {
+      border-bottom: 1px solid var(--color-slate-100);
+      transition: background var(--transition-speed);
+      cursor: pointer;
+    }
+
+    .consensus-table tbody tr:hover {
+      background: rgba(16, 185, 129, 0.04);
+    }
+
+    .consensus-table tbody td {
+      padding: 0.625rem 0.75rem;
+      font-size: 0.875rem;
+    }
+
+    .consensus-table tbody td:first-child { padding-left: 1rem; }
+
+    /* Rank column */
+    .rank-cell {
+      text-align: center;
+      font-family: var(--font-mono);
+      font-weight: 600;
+      font-size: 1rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-slate-800);
+    }
+
+    .rank-cell--top3 {
+      color: var(--color-accent-emerald);
+      font-size: 1.125rem;
+    }
+
+    /* Delta column */
+    .delta-cell {
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .delta-up {
+      color: #15803d;
+    }
+
+    .delta-down {
+      color: #be123c;
+    }
+
+    .delta-flat {
+      color: var(--color-slate-400);
+    }
+
+    .delta-new {
+      color: var(--color-accent-cyan);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* Player column */
+    .player-cell {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .player-cell__avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--color-slate-200);
+      flex-shrink: 0;
+      display: grid;
+      place-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      color: var(--color-slate-600);
+    }
+
+    .player-cell__info {
+      min-width: 0;
+    }
+
+    .player-cell__name {
+      font-weight: 600;
+      font-size: 0.875rem;
+      color: var(--color-accent-indigo);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .player-cell__name:hover {
+      text-decoration: underline;
+    }
+
+    .player-cell__meta {
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    /* Avg rank column */
+    .avg-cell {
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-slate-700);
+    }
+
+    /* Range bar column */
+    .range-cell {
+      text-align: center;
+      padding: 0.625rem 0.5rem;
+    }
+
+    .range-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      justify-content: center;
+    }
+
+    .range-bar__label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-slate-500);
+      min-width: 1.25rem;
+    }
+
+    .range-bar__track {
+      flex: 1;
+      max-width: 60px;
+      height: 6px;
+      background: var(--color-slate-100);
+      border-radius: 3px;
+      position: relative;
+    }
+
+    .range-bar__fill {
+      position: absolute;
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, var(--color-accent-emerald), var(--color-accent-cyan));
+      opacity: 0.6;
+    }
+
+    .range-bar__marker {
+      position: absolute;
+      top: -2px;
+      width: 3px;
+      height: 10px;
+      background: var(--color-slate-700);
+      border-radius: 1px;
+      transform: translateX(-50%);
+    }
+
+    /* Sources column */
+    .sources-cell {
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-variant-numeric: tabular-nums;
+      color: var(--color-slate-500);
+    }
+
+    .sources-cell__dots {
+      display: flex;
+      justify-content: center;
+      gap: 2px;
+      margin-top: 2px;
+    }
+
+    .sources-cell__dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--color-accent-emerald);
+      opacity: 0.5;
+    }
+
+    .sources-cell__dot--active { opacity: 1; }
+
+    /* Status badge column */
+    .status-badge {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.2rem 0.5rem;
+      border-radius: 9999px;
+      white-space: nowrap;
+    }
+
+    .status-badge--locked {
+      background: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+
+    .status-badge--rising {
+      background: #ecfeff;
+      color: #155e75;
+      border: 1px solid #a5f3fc;
+    }
+
+    .status-badge--falling {
+      background: #fff1f2;
+      color: #9f1239;
+      border: 1px solid #fecdd3;
+    }
+
+    .status-badge--polarizing {
+      background: #fffbeb;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+
+    .status-badge--new {
+      background: #f0f9ff;
+      color: #075985;
+      border: 1px solid #bae6fd;
+    }
+
+    /* ============================================================================
+       SIDEBAR PANELS
+       ========================================================================= */
+    .sidebar-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .sidebar-panel {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      overflow: hidden;
+    }
+
+    .sidebar-panel__header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+    }
+
+    .sidebar-panel__icon {
+      width: 1rem;
+      height: 1rem;
+      flex-shrink: 0;
+    }
+
+    .sidebar-panel__title {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-700);
+    }
+
+    .sidebar-panel__body {
+      padding: 0.75rem 1rem;
+    }
+
+    /* ---- Biggest Movers Panel ---- */
+    .movers-section-label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-slate-400);
+      margin-bottom: 0.375rem;
+    }
+
+    .movers-section-label:not(:first-child) {
+      margin-top: 0.75rem;
+    }
+
+    .mover-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.375rem 0;
+      border-bottom: 1px solid var(--color-slate-100);
+    }
+
+    .mover-row:last-child { border-bottom: none; }
+
+    .mover-row__player {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .mover-row__rank {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: var(--color-slate-400);
+      min-width: 1.5rem;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mover-row__name {
+      font-size: 0.8125rem;
+      font-weight: 500;
+    }
+
+    .mover-row__delta {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mover-row__delta--up { color: #15803d; }
+    .mover-row__delta--down { color: #be123c; }
+
+    /* ---- Source Spotlight Panel ---- */
+    .source-spotlight {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .source-spotlight__item {
+      padding: 0.625rem;
+      border-radius: 0.5rem;
+      background: var(--color-slate-50);
+      border-left: 3px solid;
+    }
+
+    .source-spotlight__item--contrarian {
+      border-left-color: var(--color-accent-amber);
+    }
+
+    .source-spotlight__item--aligned {
+      border-left-color: var(--color-accent-emerald);
+    }
+
+    .source-spotlight__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-slate-400);
+      margin-bottom: 0.25rem;
+    }
+
+    .source-spotlight__name {
+      font-weight: 600;
+      font-size: 0.8125rem;
+      margin-bottom: 0.125rem;
+    }
+
+    .source-spotlight__detail {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    .source-spotlight__outlier {
+      font-size: 0.6875rem;
+      color: var(--color-slate-600);
+      margin-top: 0.25rem;
+    }
+
+    /* ---- Player Volatility Panel ---- */
+    .volatility-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.375rem 0;
+      border-bottom: 1px solid var(--color-slate-100);
+    }
+
+    .volatility-row:last-child { border-bottom: none; }
+
+    .volatility-row__player {
+      font-size: 0.8125rem;
+      font-weight: 500;
+    }
+
+    .volatility-row__bar {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .volatility-row__track {
+      width: 50px;
+      height: 5px;
+      background: var(--color-slate-100);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .volatility-row__fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+
+    .volatility-row__fill--low {
+      background: var(--color-accent-emerald);
+    }
+
+    .volatility-row__fill--mid {
+      background: var(--color-accent-amber);
+    }
+
+    .volatility-row__fill--high {
+      background: var(--color-accent-rose);
+    }
+
+    .volatility-row__value {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      min-width: 2rem;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---- Source Rankings Panel ---- */
+    .source-rankings-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .source-rankings-table th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-400);
+      padding: 0.25rem 0.375rem;
+      text-align: center;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .source-rankings-table th:first-child { text-align: left; }
+
+    .source-rankings-table td {
+      padding: 0.3rem 0.375rem;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-variant-numeric: tabular-nums;
+      border-bottom: 1px solid var(--color-slate-100);
+    }
+
+    .source-rankings-table td:first-child {
+      text-align: left;
+      font-family: var(--font-body);
+      font-size: 0.75rem;
+    }
+
+    .source-rankings-table .rank-outlier-high {
+      color: var(--color-accent-emerald);
+      font-weight: 600;
+    }
+
+    .source-rankings-table .rank-outlier-low {
+      color: var(--color-accent-rose);
+      font-weight: 600;
+    }
+
+    /* ============================================================================
+       TICKER — MARKET MOVES (above the board)
+       ========================================================================= */
+    .ticker-container {
+      border-radius: var(--border-radius);
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-white);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(16, 185, 129, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 12px 12px;
+      outline: 2px solid rgba(16, 185, 129, 0.4);
+      margin-bottom: 1.25rem;
+    }
+
+    .ticker-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+    }
+
+    .ticker-header__label {
+      font-weight: 600;
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.75rem;
+    }
+
+    .ticker-header__date {
+      color: var(--color-slate-500);
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+    }
+
+    .ticker-wrapper {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ticker-content {
+      display: flex;
+      gap: 2rem;
+      white-space: nowrap;
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      animation: tickerScroll 40s linear infinite;
+    }
+
+    @keyframes tickerScroll {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    .ticker-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-right: 2rem;
+      border-right: 1px dotted rgba(203, 213, 225, 0.8);
+    }
+
+    .ticker-item strong {
+      font-family: var(--font-mono);
+      color: var(--color-slate-900);
+      font-size: 0.8125rem;
+    }
+
+    .ticker-change {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 0.8125rem;
+      font-weight: 600;
+    }
+
+    .ticker-change.positive { color: #15803d; }
+    .ticker-change.negative { color: #be123c; }
+
+    .ticker-school {
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    /* ============================================================================
+       SOURCE DEVIATION TABLE (below the board)
+       ========================================================================= */
+    .source-deviation-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      outline: 2px solid rgba(245, 158, 11, 0.4);
+      outline-offset: -2px;
+      overflow: hidden;
+    }
+
+    .source-deviation-card__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1.25rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+    }
+
+    .source-deviation-card__title {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .source-deviation-card__subtitle {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    .source-deviation-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .source-deviation-table thead th {
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      border-bottom: 1px solid var(--color-slate-200);
+      text-align: left;
+    }
+
+    .source-deviation-table tbody tr {
+      border-bottom: 1px solid var(--color-slate-100);
+      transition: background var(--transition-speed);
+    }
+
+    .source-deviation-table tbody tr:hover {
+      background: rgba(245, 158, 11, 0.04);
+    }
+
+    .source-deviation-table tbody td {
+      padding: 0.625rem 1rem;
+      font-size: 0.8125rem;
+    }
+
+    .source-deviation-table .source-name {
+      font-weight: 600;
+    }
+
+    .source-deviation-table .mono-val {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+      font-size: 0.8125rem;
+    }
+
+    .deviation-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .deviation-bar__track {
+      width: 80px;
+      height: 6px;
+      background: var(--color-slate-100);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .deviation-bar__fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+
+    .deviation-bar__fill--low { background: var(--color-accent-emerald); }
+    .deviation-bar__fill--mid { background: var(--color-accent-amber); }
+    .deviation-bar__fill--high { background: var(--color-accent-rose); }
+
+    .outlier-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+    }
+
+    .outlier-tag__player {
+      color: var(--color-accent-indigo);
+      font-weight: 500;
+    }
+
+    .outlier-tag__delta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-variant-numeric: tabular-nums;
+      padding: 0.1rem 0.375rem;
+      border-radius: 0.25rem;
+    }
+
+    .outlier-tag__delta--high {
+      color: #15803d;
+      background: #ecfdf5;
+    }
+
+    .outlier-tag__delta--low {
+      color: #be123c;
+      background: #fff1f2;
+    }
+
+    /* ============================================================================
+       FOOTER
+       ========================================================================= */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+
+    .footer-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ====================================================================
+       NAVBAR
+       ==================================================================== -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand">
+        <h1 class="heading-font">DraftGuru</h1>
+      </div>
+      <ul class="navbar-nav">
+        <li><a href="#" class="active">Consensus</a></li>
+        <li><a href="#">Players</a></li>
+        <li><a href="#">Stats</a></li>
+        <li><a href="#">News</a></li>
+        <li><a href="#">Podcasts</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ====================================================================
+       MOCKUP 1: HOMEPAGE — CONSENSUS BIG BOARD (PRE-LOTTERY)
+       ==================================================================== -->
+  <div class="mockup-divider" style="margin-top: 6rem;">
+    <span class="mockup-divider__label">Mockup 1 — Homepage Consensus Big Board (Pre-Lottery)</span>
+    <span class="mockup-divider__note">This is the main splash hero. Replaces the current news hero at the top of the homepage.</span>
+  </div>
+
+  <div class="container">
+    <section class="consensus-hero">
+
+      <!-- Header row: title + meta -->
+      <div class="consensus-hero__header">
+        <div class="consensus-hero__title-group">
+          <h2 class="consensus-hero__title heading-font">Consensus Big Board</h2>
+          <span class="consensus-hero__year-badge">2026 NBA Draft</span>
+        </div>
+        <div class="consensus-hero__meta">
+          Based on <strong>7 boards</strong> from <strong>6 sources</strong><br>
+          Last updated Apr 1, 2026
+        </div>
+      </div>
+
+      <!-- Board type toggle -->
+      <div class="board-toggle">
+        <button class="board-toggle__btn active">Big Board</button>
+        <button class="board-toggle__btn">Mock Draft</button>
+      </div>
+
+      <!-- Ticker: Biggest movers -->
+      <div class="ticker-container">
+        <div class="ticker-header">
+          <span class="ticker-header__label">Market Moves</span>
+          <span class="ticker-header__date">Week of Mar 31</span>
+        </div>
+        <div class="ticker-wrapper">
+          <div class="ticker-content">
+            <!-- Set 1 -->
+            <span class="ticker-item"><strong>V. Edgecombe</strong> <span class="ticker-school">Baylor</span> <span class="ticker-change positive">+3</span></span>
+            <span class="ticker-item"><strong>K. Flagg</strong> <span class="ticker-school">Duke</span> <span class="ticker-change negative">-2</span></span>
+            <span class="ticker-item"><strong>J. Omoruyi</strong> <span class="ticker-school">Alabama</span> <span class="ticker-change positive">+5</span></span>
+            <span class="ticker-item"><strong>N. Ogbonna</strong> <span class="ticker-school">Kentucky</span> <span class="ticker-change positive">+4</span></span>
+            <span class="ticker-item"><strong>T. Acuff</strong> <span class="ticker-school">Louisville</span> <span class="ticker-change negative">-3</span></span>
+            <span class="ticker-item"><strong>B. Flagg</strong> <span class="ticker-school">UConn</span> <span class="ticker-change positive">+2</span></span>
+            <span class="ticker-item"><strong>D. Harper</strong> <span class="ticker-school">Rutgers</span> <span class="ticker-change negative">-1</span></span>
+            <!-- Duplicate for seamless scroll -->
+            <span class="ticker-item"><strong>V. Edgecombe</strong> <span class="ticker-school">Baylor</span> <span class="ticker-change positive">+3</span></span>
+            <span class="ticker-item"><strong>K. Flagg</strong> <span class="ticker-school">Duke</span> <span class="ticker-change negative">-2</span></span>
+            <span class="ticker-item"><strong>J. Omoruyi</strong> <span class="ticker-school">Alabama</span> <span class="ticker-change positive">+5</span></span>
+            <span class="ticker-item"><strong>N. Ogbonna</strong> <span class="ticker-school">Kentucky</span> <span class="ticker-change positive">+4</span></span>
+            <span class="ticker-item"><strong>T. Acuff</strong> <span class="ticker-school">Louisville</span> <span class="ticker-change negative">-3</span></span>
+            <span class="ticker-item"><strong>B. Flagg</strong> <span class="ticker-school">UConn</span> <span class="ticker-change positive">+2</span></span>
+            <span class="ticker-item"><strong>D. Harper</strong> <span class="ticker-school">Rutgers</span> <span class="ticker-change negative">-1</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Main layout: table + sidebar -->
+      <div class="consensus-layout">
+
+        <!-- ---- CONSENSUS TABLE ---- -->
+        <div class="consensus-card">
+          <div class="scanlines"></div>
+          <table class="consensus-table">
+            <thead>
+              <tr>
+                <th class="col-rank">#</th>
+                <th class="col-delta"></th>
+                <th>Player</th>
+                <th class="col-avg">Avg</th>
+                <th class="col-range">Range</th>
+                <th class="col-sources">Src</th>
+                <th class="col-status">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- 1 -->
+              <tr>
+                <td class="rank-cell rank-cell--top3">1</td>
+                <td class="delta-cell delta-flat">--</td>
+                <td>
+                  <div class="player-cell">
+                    <div class="player-cell__avatar">CF</div>
+                    <div class="player-cell__info">
+                      <div class="player-cell__name">Cooper Flagg</div>
+                      <div class="player-cell__meta">Duke &middot; PF &middot; Fr</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="avg-cell">1.0</td>
+                <td class="range-cell">
+                  <div class="range-bar">
+                    <span class="range-bar__label">1</span>
+                    <div class="range-bar__track">
+                      <div class="range-bar__fill" style="left: 0%; width: 3%;"></div>
+                      <div class="range-bar__marker" style="left: 0%;"></div>
+                    </div>
+                    <span class="range-bar__label">1</span>
+                  </div>
+                </td>
+                <td class="sources-cell">
+                  7/7
+                  <div class="sources-cell__dots">
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                  </div>
+                </td>
+                <td style="text-align: center;"><span class="status-badge status-badge--locked">Locked</span></td>
+              </tr>
+              <!-- 2 -->
+              <tr>
+                <td class="rank-cell rank-cell--top3">2</td>
+                <td class="delta-cell delta-flat">--</td>
+                <td>
+                  <div class="player-cell">
+                    <div class="player-cell__avatar">AB</div>
+                    <div class="player-cell__info">
+                      <div class="player-cell__name">Ace Bailey</div>
+                      <div class="player-cell__meta">Rutgers &middot; SF &middot; Fr</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="avg-cell">2.3</td>
+                <td class="range-cell">
+                  <div class="range-bar">
+                    <span class="range-bar__label">2</span>
+                    <div class="range-bar__track">
+                      <div class="range-bar__fill" style="left: 2%; width: 8%;"></div>
+                      <div class="range-bar__marker" style="left: 3%;"></div>
+                    </div>
+                    <span class="range-bar__label">4</span>
+                  </div>
+                </td>
+                <td class="sources-cell">
+                  7/7
+                  <div class="sources-cell__dots">
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                  </div>
+                </td>
+                <td style="text-align: center;"><span class="status-badge status-badge--locked">Locked</span></td>
+              </tr>
+              <!-- 3 -->
+              <tr>
+                <td class="rank-cell rank-cell--top3">3</td>
+                <td class="delta-cell delta-up">&#9650; 1</td>
+                <td>
+                  <div class="player-cell">
+                    <div class="player-cell__avatar">DH</div>
+                    <div class="player-cell__info">
+                      <div class="player-cell__name">Dylan Harper</div>
+                      <div class="player-cell__meta">Rutgers &middot; SG &middot; Fr</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="avg-cell">3.4</td>
+                <td class="range-cell">
+                  <div class="range-bar">
+                    <span class="range-bar__label">2</span>
+                    <div class="range-bar__track">
+                      <div class="range-bar__fill" style="left: 2%; width: 10%;"></div>
+                      <div class="range-bar__marker" style="left: 5%;"></div>
+                    </div>
+                    <span class="range-bar__label">5</span>
+                  </div>
+                </td>
+                <td class="sources-cell">
+                  7/7
+                  <div class="sources-cell__dots">
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                  </div>
+                </td>
+                <td style="text-align: center;"><span class="status-badge status-badge--rising">Rising</span></td>
+              </tr>
+              <!-- 4 -->
+              <tr>
+                <td class="rank-cell">4</td>
+                <td class="delta-cell delta-down">&#9660; 1</td>
+                <td>
+                  <div class="player-cell">
+                    <div class="player-cell__avatar">VE</div>
+                    <div class="player-cell__info">
+                      <div class="player-cell__name">VJ Edgecombe</div>
+                      <div class="player-cell__meta">Baylor &middot; SG &middot; Fr</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="avg-cell">4.7</td>
+                <td class="range-cell">
+                  <div class="range-bar">
+                    <span class="range-bar__label">3</span>
+                    <div class="range-bar__track">
+                      <div class="range-bar__fill" style="left: 5%; width: 15%;"></div>
+                      <div class="range-bar__marker" style="left: 8%;"></div>
+                    </div>
+                    <span class="range-bar__label">7</span>
+                  </div>
+                </td>
+                <td class="sources-cell">
+                  7/7
+                  <div class="sources-cell__dots">
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                  </div>
+                </td>
+                <td style="text-align: center;"><span class="status-badge status-badge--polarizing">Polarizing</span></td>
+              </tr>
+              <!-- 5 -->
+              <tr>
+                <td class="rank-cell">5</td>
+                <td class="delta-cell delta-up">&#9650; 3</td>
+                <td>
+                  <div class="player-cell">
+                    <div class="player-cell__avatar">KK</div>
+                    <div class="player-cell__info">
+                      <div class="player-cell__name">Kon Knueppel</div>
+                      <div class="player-cell__meta">Duke &middot; SG &middot; Fr</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="avg-cell">5.9</td>
+                <td class="range-cell">
+                  <div class="range-bar">
+                    <span class="range-bar__label">3</span>
+                    <div class="range-bar__track">
+                      <div class="range-bar__fill" style="left: 5%; width: 20%;"></div>
+                      <div class="range-bar__marker" style="left: 12%;"></div>
+                    </div>
+                    <span class="range-bar__label">9</span>
+                  </div>
+                </td>
+                <td class="sources-cell">
+                  6/7
+                  <div class="sources-cell__dots">
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot"></span>
+                  </div>
+                </td>
+                <td style="text-align: center;"><span class="status-badge status-badge--rising">Rising</span></td>
+              </tr>
+              <!-- 6 -->
+              <tr>
+                <td class="rank-cell">6</td>
+                <td class="delta-cell delta-down">&#9660; 2</td>
+                <td>
+                  <div class="player-cell">
+                    <div class="player-cell__avatar">JO</div>
+                    <div class="player-cell__info">
+                      <div class="player-cell__name">Jeremiah Omoruyi</div>
+                      <div class="player-cell__meta">Alabama &middot; C &middot; Fr</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="avg-cell">6.1</td>
+                <td class="range-cell">
+                  <div class="range-bar">
+                    <span class="range-bar__label">4</span>
+                    <div class="range-bar__track">
+                      <div class="range-bar__fill" style="left: 7%; width: 18%;"></div>
+                      <div class="range-bar__marker" style="left: 13%;"></div>
+                    </div>
+                    <span class="range-bar__label">9</span>
+                  </div>
+                </td>
+                <td class="sources-cell">
+                  7/7
+                  <div class="sources-cell__dots">
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                  </div>
+                </td>
+                <td style="text-align: center;"><span class="status-badge status-badge--falling">Falling</span></td>
+              </tr>
+              <!-- 7 -->
+              <tr>
+                <td class="rank-cell">7</td>
+                <td class="delta-cell delta-flat">--</td>
+                <td>
+                  <div class="player-cell">
+                    <div class="player-cell__avatar">NO</div>
+                    <div class="player-cell__info">
+                      <div class="player-cell__name">Nolan Ogbonna</div>
+                      <div class="player-cell__meta">Kentucky &middot; PF &middot; Fr</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="avg-cell">7.0</td>
+                <td class="range-cell">
+                  <div class="range-bar">
+                    <span class="range-bar__label">5</span>
+                    <div class="range-bar__track">
+                      <div class="range-bar__fill" style="left: 10%; width: 20%;"></div>
+                      <div class="range-bar__marker" style="left: 15%;"></div>
+                    </div>
+                    <span class="range-bar__label">11</span>
+                  </div>
+                </td>
+                <td class="sources-cell">
+                  6/7
+                  <div class="sources-cell__dots">
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot"></span>
+                  </div>
+                </td>
+                <td style="text-align: center;"><span class="status-badge status-badge--locked">Locked</span></td>
+              </tr>
+              <!-- 8 -->
+              <tr>
+                <td class="rank-cell">8</td>
+                <td class="delta-cell delta-up">&#9650; 5</td>
+                <td>
+                  <div class="player-cell">
+                    <div class="player-cell__avatar">TA</div>
+                    <div class="player-cell__info">
+                      <div class="player-cell__name">Tre Acuff</div>
+                      <div class="player-cell__meta">Louisville &middot; PG &middot; Jr</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="avg-cell">9.1</td>
+                <td class="range-cell">
+                  <div class="range-bar">
+                    <span class="range-bar__label">5</span>
+                    <div class="range-bar__track">
+                      <div class="range-bar__fill" style="left: 10%; width: 30%;"></div>
+                      <div class="range-bar__marker" style="left: 20%;"></div>
+                    </div>
+                    <span class="range-bar__label">14</span>
+                  </div>
+                </td>
+                <td class="sources-cell">
+                  7/7
+                  <div class="sources-cell__dots">
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                  </div>
+                </td>
+                <td style="text-align: center;"><span class="status-badge status-badge--rising">Rising</span></td>
+              </tr>
+              <!-- 9 -->
+              <tr>
+                <td class="rank-cell">9</td>
+                <td class="delta-cell delta-down">&#9660; 1</td>
+                <td>
+                  <div class="player-cell">
+                    <div class="player-cell__avatar">KG</div>
+                    <div class="player-cell__info">
+                      <div class="player-cell__name">Kasparas Garliauskas</div>
+                      <div class="player-cell__meta">Rytas &middot; SF &middot; Int'l</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="avg-cell">9.3</td>
+                <td class="range-cell">
+                  <div class="range-bar">
+                    <span class="range-bar__label">6</span>
+                    <div class="range-bar__track">
+                      <div class="range-bar__fill" style="left: 12%; width: 28%;"></div>
+                      <div class="range-bar__marker" style="left: 21%;"></div>
+                    </div>
+                    <span class="range-bar__label">15</span>
+                  </div>
+                </td>
+                <td class="sources-cell">
+                  5/7
+                  <div class="sources-cell__dots">
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot"></span>
+                    <span class="sources-cell__dot"></span>
+                  </div>
+                </td>
+                <td style="text-align: center;"><span class="status-badge status-badge--polarizing">Polarizing</span></td>
+              </tr>
+              <!-- 10 -->
+              <tr>
+                <td class="rank-cell">10</td>
+                <td class="delta-cell delta-new">NEW</td>
+                <td>
+                  <div class="player-cell">
+                    <div class="player-cell__avatar">BF</div>
+                    <div class="player-cell__info">
+                      <div class="player-cell__name">Benjamin Falloon</div>
+                      <div class="player-cell__meta">NBL &middot; C &middot; Int'l</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="avg-cell">10.8</td>
+                <td class="range-cell">
+                  <div class="range-bar">
+                    <span class="range-bar__label">7</span>
+                    <div class="range-bar__track">
+                      <div class="range-bar__fill" style="left: 15%; width: 25%;"></div>
+                      <div class="range-bar__marker" style="left: 25%;"></div>
+                    </div>
+                    <span class="range-bar__label">16</span>
+                  </div>
+                </td>
+                <td class="sources-cell">
+                  4/7
+                  <div class="sources-cell__dots">
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot sources-cell__dot--active"></span>
+                    <span class="sources-cell__dot"></span>
+                    <span class="sources-cell__dot"></span>
+                    <span class="sources-cell__dot"></span>
+                  </div>
+                </td>
+                <td style="text-align: center;"><span class="status-badge status-badge--new">New</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- ---- SIDEBAR ---- -->
+        <div class="sidebar-stack">
+
+          <!-- Biggest Movers -->
+          <div class="sidebar-panel">
+            <div class="sidebar-panel__header">
+              <svg class="sidebar-panel__icon" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-emerald)" stroke-width="2">
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                <polyline points="17 6 23 6 23 12"></polyline>
+              </svg>
+              <span class="sidebar-panel__title">Biggest Movers</span>
+            </div>
+            <div class="sidebar-panel__body">
+              <div class="movers-section-label">Risers</div>
+              <div class="mover-row">
+                <div class="mover-row__player">
+                  <span class="mover-row__rank">#8</span>
+                  <span class="mover-row__name">Tre Acuff</span>
+                </div>
+                <span class="mover-row__delta mover-row__delta--up">&#9650; 5</span>
+              </div>
+              <div class="mover-row">
+                <div class="mover-row__player">
+                  <span class="mover-row__rank">#5</span>
+                  <span class="mover-row__name">Kon Knueppel</span>
+                </div>
+                <span class="mover-row__delta mover-row__delta--up">&#9650; 3</span>
+              </div>
+              <div class="mover-row">
+                <div class="mover-row__player">
+                  <span class="mover-row__rank">#14</span>
+                  <span class="mover-row__name">Egor Demin</span>
+                </div>
+                <span class="mover-row__delta mover-row__delta--up">&#9650; 3</span>
+              </div>
+
+              <div class="movers-section-label">Fallers</div>
+              <div class="mover-row">
+                <div class="mover-row__player">
+                  <span class="mover-row__rank">#6</span>
+                  <span class="mover-row__name">Jeremiah Omoruyi</span>
+                </div>
+                <span class="mover-row__delta mover-row__delta--down">&#9660; 2</span>
+              </div>
+              <div class="mover-row">
+                <div class="mover-row__player">
+                  <span class="mover-row__rank">#12</span>
+                  <span class="mover-row__name">Jase Richardson</span>
+                </div>
+                <span class="mover-row__delta mover-row__delta--down">&#9660; 2</span>
+              </div>
+              <div class="mover-row">
+                <div class="mover-row__player">
+                  <span class="mover-row__rank">#9</span>
+                  <span class="mover-row__name">Kasparas Garliauskas</span>
+                </div>
+                <span class="mover-row__delta mover-row__delta--down">&#9660; 1</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Source Spotlight -->
+          <div class="sidebar-panel">
+            <div class="sidebar-panel__header">
+              <svg class="sidebar-panel__icon" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-amber)" stroke-width="2">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+              </svg>
+              <span class="sidebar-panel__title">Source Spotlight</span>
+            </div>
+            <div class="sidebar-panel__body">
+              <div class="source-spotlight">
+                <div class="source-spotlight__item source-spotlight__item--contrarian">
+                  <div class="source-spotlight__label">Most Contrarian</div>
+                  <div class="source-spotlight__name">No Ceilings</div>
+                  <div class="source-spotlight__detail">Avg deviation: 4.2 spots</div>
+                  <div class="source-spotlight__outlier">Biggest outlier: <strong>Tre Acuff</strong> at #5 (consensus #8)</div>
+                </div>
+                <div class="source-spotlight__item source-spotlight__item--aligned">
+                  <div class="source-spotlight__label">Most Aligned</div>
+                  <div class="source-spotlight__name">NBA Big Board</div>
+                  <div class="source-spotlight__detail">Avg deviation: 1.1 spots</div>
+                  <div class="source-spotlight__outlier">Closest to consensus on 8 of 10 players</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Most Polarizing Prospects -->
+          <div class="sidebar-panel">
+            <div class="sidebar-panel__header">
+              <svg class="sidebar-panel__icon" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-fuchsia)" stroke-width="2">
+                <path d="M12 20V10"></path>
+                <path d="M18 20V4"></path>
+                <path d="M6 20v-4"></path>
+              </svg>
+              <span class="sidebar-panel__title">Most Polarizing</span>
+            </div>
+            <div class="sidebar-panel__body">
+              <div class="volatility-row">
+                <span class="volatility-row__player">Tre Acuff</span>
+                <div class="volatility-row__bar">
+                  <div class="volatility-row__track">
+                    <div class="volatility-row__fill volatility-row__fill--high" style="width: 85%;"></div>
+                  </div>
+                  <span class="volatility-row__value">3.8</span>
+                </div>
+              </div>
+              <div class="volatility-row">
+                <span class="volatility-row__player">K. Garliauskas</span>
+                <div class="volatility-row__bar">
+                  <div class="volatility-row__track">
+                    <div class="volatility-row__fill volatility-row__fill--high" style="width: 75%;"></div>
+                  </div>
+                  <span class="volatility-row__value">3.4</span>
+                </div>
+              </div>
+              <div class="volatility-row">
+                <span class="volatility-row__player">VJ Edgecombe</span>
+                <div class="volatility-row__bar">
+                  <div class="volatility-row__track">
+                    <div class="volatility-row__fill volatility-row__fill--mid" style="width: 55%;"></div>
+                  </div>
+                  <span class="volatility-row__value">2.1</span>
+                </div>
+              </div>
+              <div class="volatility-row">
+                <span class="volatility-row__player">B. Falloon</span>
+                <div class="volatility-row__bar">
+                  <div class="volatility-row__track">
+                    <div class="volatility-row__fill volatility-row__fill--mid" style="width: 50%;"></div>
+                  </div>
+                  <span class="volatility-row__value">1.9</span>
+                </div>
+              </div>
+              <div class="volatility-row">
+                <span class="volatility-row__player">Kon Knueppel</span>
+                <div class="volatility-row__bar">
+                  <div class="volatility-row__track">
+                    <div class="volatility-row__fill volatility-row__fill--low" style="width: 30%;"></div>
+                  </div>
+                  <span class="volatility-row__value">1.2</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Source-by-Source: Top 5 -->
+          <div class="sidebar-panel">
+            <div class="sidebar-panel__header">
+              <svg class="sidebar-panel__icon" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-cyan)" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="21" x2="9" y2="9"></line>
+              </svg>
+              <span class="sidebar-panel__title">Source Breakdown — Top 5</span>
+            </div>
+            <div class="sidebar-panel__body" style="padding: 0.5rem;">
+              <table class="source-rankings-table">
+                <thead>
+                  <tr>
+                    <th>Player</th>
+                    <th title="Floor and Ceiling">F&C</th>
+                    <th title="No Ceilings">NC</th>
+                    <th title="NBA Big Board">NBB</th>
+                    <th title="Draft Stack">DS</th>
+                    <th title="The Box And One">B&1</th>
+                    <th title="Ersin Demir">ED</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Flagg</td>
+                    <td>1</td>
+                    <td>1</td>
+                    <td>1</td>
+                    <td>1</td>
+                    <td>1</td>
+                    <td>1</td>
+                  </tr>
+                  <tr>
+                    <td>Bailey</td>
+                    <td>2</td>
+                    <td>3</td>
+                    <td>2</td>
+                    <td>2</td>
+                    <td class="rank-outlier-low">4</td>
+                    <td>2</td>
+                  </tr>
+                  <tr>
+                    <td>Harper</td>
+                    <td>3</td>
+                    <td>4</td>
+                    <td>3</td>
+                    <td>3</td>
+                    <td class="rank-outlier-high">2</td>
+                    <td>5</td>
+                  </tr>
+                  <tr>
+                    <td>Edgecombe</td>
+                    <td>5</td>
+                    <td class="rank-outlier-high">2</td>
+                    <td>4</td>
+                    <td>5</td>
+                    <td>5</td>
+                    <td class="rank-outlier-low">7</td>
+                  </tr>
+                  <tr>
+                    <td>Knueppel</td>
+                    <td>4</td>
+                    <td>6</td>
+                    <td>5</td>
+                    <td class="rank-outlier-high">3</td>
+                    <td>7</td>
+                    <td class="rank-outlier-low">9</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <div class="container">
+    <div class="section-divider"></div>
+  </div>
+
+  <!-- ====================================================================
+       MOCKUP 2: SOURCE ANALYTICS TABLE
+       ==================================================================== -->
+  <div class="mockup-divider">
+    <span class="mockup-divider__label">Mockup 2 — Source Analytics Table</span>
+    <span class="mockup-divider__note">Lives below the consensus board. Shows how each source deviates from consensus.</span>
+  </div>
+
+  <div class="container">
+    <div class="source-deviation-card">
+      <div class="source-deviation-card__header">
+        <span class="source-deviation-card__title">Source Analytics</span>
+        <span class="source-deviation-card__subtitle">How each source compares to the consensus</span>
+      </div>
+      <table class="source-deviation-table">
+        <thead>
+          <tr>
+            <th>Source</th>
+            <th>Boards</th>
+            <th>Last Updated</th>
+            <th>Avg Deviation</th>
+            <th>Biggest Outlier</th>
+            <th>Tendency</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="source-name">No Ceilings</td>
+            <td class="mono-val">3</td>
+            <td style="font-size: 0.8125rem; color: var(--color-slate-500);">Mar 29</td>
+            <td>
+              <div class="deviation-bar">
+                <div class="deviation-bar__track">
+                  <div class="deviation-bar__fill deviation-bar__fill--high" style="width: 84%;"></div>
+                </div>
+                <span class="mono-val">4.2</span>
+              </div>
+            </td>
+            <td>
+              <span class="outlier-tag">
+                <span class="outlier-tag__player">Edgecombe</span>
+                <span class="outlier-tag__delta outlier-tag__delta--high">+2 higher</span>
+              </span>
+            </td>
+            <td style="font-size: 0.75rem; color: var(--color-slate-600);">High on guards</td>
+          </tr>
+          <tr>
+            <td class="source-name">Ersin Demir</td>
+            <td class="mono-val">2</td>
+            <td style="font-size: 0.8125rem; color: var(--color-slate-500);">Mar 27</td>
+            <td>
+              <div class="deviation-bar">
+                <div class="deviation-bar__track">
+                  <div class="deviation-bar__fill deviation-bar__fill--mid" style="width: 60%;"></div>
+                </div>
+                <span class="mono-val">3.0</span>
+              </div>
+            </td>
+            <td>
+              <span class="outlier-tag">
+                <span class="outlier-tag__player">Knueppel</span>
+                <span class="outlier-tag__delta outlier-tag__delta--low">-4 lower</span>
+              </span>
+            </td>
+            <td style="font-size: 0.75rem; color: var(--color-slate-600);">Low on shooters</td>
+          </tr>
+          <tr>
+            <td class="source-name">The Box And One</td>
+            <td class="mono-val">2</td>
+            <td style="font-size: 0.8125rem; color: var(--color-slate-500);">Mar 31</td>
+            <td>
+              <div class="deviation-bar">
+                <div class="deviation-bar__track">
+                  <div class="deviation-bar__fill deviation-bar__fill--mid" style="width: 50%;"></div>
+                </div>
+                <span class="mono-val">2.5</span>
+              </div>
+            </td>
+            <td>
+              <span class="outlier-tag">
+                <span class="outlier-tag__player">Harper</span>
+                <span class="outlier-tag__delta outlier-tag__delta--high">+1 higher</span>
+              </span>
+            </td>
+            <td style="font-size: 0.75rem; color: var(--color-slate-600);">Neutral</td>
+          </tr>
+          <tr>
+            <td class="source-name">Draft Stack</td>
+            <td class="mono-val">1</td>
+            <td style="font-size: 0.8125rem; color: var(--color-slate-500);">Mar 25</td>
+            <td>
+              <div class="deviation-bar">
+                <div class="deviation-bar__track">
+                  <div class="deviation-bar__fill deviation-bar__fill--mid" style="width: 44%;"></div>
+                </div>
+                <span class="mono-val">2.2</span>
+              </div>
+            </td>
+            <td>
+              <span class="outlier-tag">
+                <span class="outlier-tag__player">Knueppel</span>
+                <span class="outlier-tag__delta outlier-tag__delta--high">+2 higher</span>
+              </span>
+            </td>
+            <td style="font-size: 0.75rem; color: var(--color-slate-600);">High on Duke</td>
+          </tr>
+          <tr>
+            <td class="source-name">Floor and Ceiling</td>
+            <td class="mono-val">2</td>
+            <td style="font-size: 0.8125rem; color: var(--color-slate-500);">Apr 1</td>
+            <td>
+              <div class="deviation-bar">
+                <div class="deviation-bar__track">
+                  <div class="deviation-bar__fill deviation-bar__fill--low" style="width: 30%;"></div>
+                </div>
+                <span class="mono-val">1.5</span>
+              </div>
+            </td>
+            <td>
+              <span class="outlier-tag">
+                <span class="outlier-tag__player">Edgecombe</span>
+                <span class="outlier-tag__delta outlier-tag__delta--low">-1 lower</span>
+              </span>
+            </td>
+            <td style="font-size: 0.75rem; color: var(--color-slate-600);">Neutral</td>
+          </tr>
+          <tr>
+            <td class="source-name">NBA Big Board</td>
+            <td class="mono-val">3</td>
+            <td style="font-size: 0.8125rem; color: var(--color-slate-500);">Mar 30</td>
+            <td>
+              <div class="deviation-bar">
+                <div class="deviation-bar__track">
+                  <div class="deviation-bar__fill deviation-bar__fill--low" style="width: 22%;"></div>
+                </div>
+                <span class="mono-val">1.1</span>
+              </div>
+            </td>
+            <td>
+              <span class="outlier-tag">
+                <span class="outlier-tag__player">Ogbonna</span>
+                <span class="outlier-tag__delta outlier-tag__delta--high">+1 higher</span>
+              </span>
+            </td>
+            <td style="font-size: 0.75rem; color: var(--color-slate-600);">Consensus-aligned</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       FOOTER
+       ==================================================================== -->
+  <footer class="footer">
+    <div class="footer-content">
+      DraftGuru &copy; 2026 &mdash; NBA Draft Analytics
+    </div>
+  </footer>
+
+</body>
+</html>
