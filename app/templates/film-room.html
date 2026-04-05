@@ -79,7 +79,13 @@
         <div class="film-player__info">
           <h3 class="film-player__video-title" id="filmRoomTitle">{{ first_video.title }}</h3>
           <div class="film-player__meta">
+            {% if first_video.channel_url %}
+            <a class="film-player__channel film-player__channel-link" id="filmRoomChannel" href="{{ first_video.channel_url }}" target="_blank" rel="noopener noreferrer" title="Visit {{ first_video.channel_name }} on YouTube">{{ first_video.channel_name }}
+              <svg class="film-player__channel-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.9 31.9 0 0 0 0 12a31.9 31.9 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1c.4-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.5V8.5l6.3 3.5-6.3 3.5z"/></svg>
+            </a>
+            {% else %}
             <span class="film-player__channel" id="filmRoomChannel">{{ first_video.channel_name }}</span>
+            {% endif %}
             <span class="meta-dot"></span>
             <span id="filmRoomTime">{{ first_video.time }}</span>
             <span class="meta-dot"></span>
@@ -109,6 +115,7 @@
             data-embed-id="{{ video.youtube_embed_id }}"
             data-title="{{ video.title }}"
             data-channel="{{ video.channel_name }}"
+            data-channel-url="{{ video.channel_url or '' }}"
             data-time="{{ video.time }}"
             data-duration="{{ video.duration }}"
             data-views="{{ video.view_count_display }}"
@@ -199,7 +206,15 @@
             </div>
             <div class="film-card__body">
               <div class="film-card__title">{{ video.title }}</div>
-              <div class="film-card__channel">{{ video.channel_name }}</div>
+              <div class="film-card__channel">
+                {% if video.channel_url %}
+                <a href="{{ video.channel_url }}" target="_blank" rel="noopener noreferrer" class="film-card__channel-link" title="Visit {{ video.channel_name }} on YouTube">{{ video.channel_name }}
+                  <svg class="film-card__channel-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.9 31.9 0 0 0 0 12a31.9 31.9 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1c.4-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.5V8.5l6.3 3.5-6.3 3.5z"/></svg>
+                </a>
+                {% else %}
+                {{ video.channel_name }}
+                {% endif %}
+              </div>
               <div class="film-card__meta">
                 <span>{{ video.time }}</span>
                 <span class="meta-dot"></span>
@@ -235,14 +250,21 @@
               <span>All Channels</span>
             </a>
             {% for channel in channels %}
-            <a class="film-room-sidebar__item {{ 'film-room-sidebar__item--active' if active_channel == channel.id else '' }}" href="{{ film_room_url(new_channel=channel.id) }}">
-              {% if channel.thumbnail_url %}
-              <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" loading="lazy" />
-              {% else %}
-              <span class="film-room-sidebar__thumb">DG</span>
+            <div class="film-room-sidebar__row">
+              <a class="film-room-sidebar__item {{ 'film-room-sidebar__item--active' if active_channel == channel.id else '' }}" href="{{ film_room_url(new_channel=channel.id) }}">
+                {% if channel.thumbnail_url %}
+                <img src="{{ channel.thumbnail_url }}" alt="{{ channel.name }}" loading="lazy" />
+                {% else %}
+                <span class="film-room-sidebar__thumb">DG</span>
+                {% endif %}
+                <span>{{ channel.name }}</span>
+              </a>
+              {% if channel.channel_url %}
+              <a class="film-room-sidebar__yt-link" href="{{ channel.channel_url }}" target="_blank" rel="noopener noreferrer" title="Visit {{ channel.name }} on YouTube">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.9 31.9 0 0 0 0 12a31.9 31.9 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1c.4-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.5V8.5l6.3 3.5-6.3 3.5z"/></svg>
+              </a>
               {% endif %}
-              <span>{{ channel.name }}</span>
-            </a>
+            </div>
             {% endfor %}
           </div>
         </div>

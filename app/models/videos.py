@@ -12,6 +12,7 @@ class YouTubeVideoRead(SQLModel):
 
     id: int
     channel_name: str
+    channel_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
     title: str
     summary: str

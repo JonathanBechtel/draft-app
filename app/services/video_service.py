@@ -43,6 +43,7 @@ _VIDEO_FEED_COLUMNS = [
     YouTubeVideo.view_count,
     YouTubeVideo.published_at,
     YouTubeChannel.display_name.label("channel_name"),  # type: ignore[attr-defined]
+    YouTubeChannel.channel_url.label("channel_url"),  # type: ignore[union-attr]
 ]
 
 
@@ -188,6 +189,7 @@ def _row_to_video_read(
     return YouTubeVideoRead(
         id=video_id,
         channel_name=channel_name,
+        channel_url=row["channel_url"],
         thumbnail_url=row["thumbnail_url"],
         title=row["title"],
         summary=row["summary"] or "",

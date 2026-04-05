@@ -216,7 +216,27 @@ const FilmRoomPageModule = {
         }
 
         if (titleEl) titleEl.textContent = thumb.dataset.title || '';
-        if (channelEl) channelEl.textContent = thumb.dataset.channel || '';
+        if (channelEl) {
+          const channelUrl = thumb.dataset.channelUrl || '';
+          const channelName = thumb.dataset.channel || '';
+          if (channelUrl && channelEl.tagName === 'A') {
+            channelEl.href = channelUrl;
+            channelEl.textContent = '';
+            channelEl.insertAdjacentText('afterbegin', channelName);
+            if (!channelEl.querySelector('.film-player__channel-icon')) {
+              const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+              svg.classList.add('film-player__channel-icon');
+              svg.setAttribute('viewBox', '0 0 24 24');
+              svg.setAttribute('fill', 'currentColor');
+              svg.setAttribute('aria-hidden', 'true');
+              svg.innerHTML = '<path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.9 31.9 0 0 0 0 12a31.9 31.9 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1c.4-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.6 15.5V8.5l6.3 3.5-6.3 3.5z"/>';
+              channelEl.appendChild(svg);
+            }
+            channelEl.title = `Visit ${channelName} on YouTube`;
+          } else {
+            channelEl.textContent = channelName;
+          }
+        }
         if (timeEl) timeEl.textContent = thumb.dataset.time || '';
         if (durationEl) durationEl.textContent = thumb.dataset.duration || '';
         if (viewsEl) viewsEl.textContent = thumb.dataset.views || '';

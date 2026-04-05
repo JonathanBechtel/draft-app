@@ -425,6 +425,7 @@ async def film_room_page(
         {
             "id": item.id,
             "channel_name": item.channel_name,
+            "channel_url": item.channel_url,
             "thumbnail_url": item.thumbnail_url,
             "title": item.title,
             "summary": item.summary,
@@ -451,6 +452,7 @@ async def film_room_page(
         {
             "id": c.id,
             "name": c.display_name,
+            "channel_url": c.channel_url,
             "thumbnail_url": c.thumbnail_url,
         }
         for c in channels
