@@ -6,7 +6,7 @@ Handles fetching and formatting news items for display.
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import re
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 from sqlalchemy import Float, cast, func, literal, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -226,14 +226,16 @@ def _normalized_trending_name(display_name: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", display_name.lower())).strip()
 
 
-def _is_high_quality_trending_candidate(row: dict) -> bool:
+def _is_high_quality_trending_candidate(row: Mapping[str, Any]) -> bool:
     """Return whether a player row is good enough to show in homepage trending."""
     if not row.get("is_stub"):
         return True
     return bool(row.get("last_name"))
 
 
-def _trending_row_preference(row: dict) -> tuple[int, int, int, float, int]:
+def _trending_row_preference(
+    row: Mapping[str, Any],
+) -> tuple[int, int, int, float, int]:
     """Rank duplicate trending candidates by record quality, then score."""
     return (
         int(not bool(row.get("is_stub"))),
@@ -318,7 +320,7 @@ async def get_trending_players(
         )
 
     result = await db.execute(stmt)
-    rows = result.mappings().all()
+    rows: list[dict[str, Any]] = [dict(row) for row in result.mappings().all()]
 
     if not rows:
         return []
@@ -327,7 +329,7 @@ async def get_trending_players(
     if not filtered_rows:
         return []
 
-    deduped_rows_by_name: dict[str, dict] = {}
+    deduped_rows_by_name: dict[str, dict[str, Any]] = {}
     for row in filtered_rows:
         normalized_name = _normalized_trending_name(row["display_name"] or "")
         if not normalized_name:
