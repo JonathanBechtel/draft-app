@@ -108,7 +108,8 @@ async def test_create_stub_for_unknown_name(db_session: AsyncSession) -> None:
     row = (await db_session.execute(stmt)).scalar_one()
     assert row.is_stub is True
     assert row.first_name == "Totally"
-    assert row.last_name == "New Player"
+    assert row.middle_name == "New"
+    assert row.last_name == "Player"
 
     alias_stmt = select(PlayerAlias).where(PlayerAlias.player_id == row.id)
     alias = (await db_session.execute(alias_stmt)).scalar_one()
@@ -264,6 +265,19 @@ async def test_no_stub_when_disabled(db_session: AsyncSession) -> None:
         db_session, ["Unknown Player X"], create_stubs=False
     )
     assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_single_token_unknown_name_does_not_create_stub(
+    db_session: AsyncSession,
+) -> None:
+    """Single-token mentions should be skipped instead of creating junk stubs."""
+    results = await resolve_player_names(db_session, ["Lendeborg"], create_stubs=True)
+    assert results == []
+
+    count_stmt = select(func.count()).select_from(PlayerMaster)
+    total_players = (await db_session.execute(count_stmt)).scalar_one()
+    assert total_players == 0
 
 
 @pytest.mark.asyncio

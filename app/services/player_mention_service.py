@@ -110,6 +110,25 @@ def _normalized_token(token: str) -> str:
     return re.sub(r"[^a-z0-9]", "", _ascii_fold(token).lower())
 
 
+def _can_create_stub_player(full_name: str) -> bool:
+    """Return whether a mention is specific enough to become a stub player.
+
+    Single-token mentions like "Wagler" are too ambiguous and tend to create
+    low-quality duplicate placeholder players from article prose.
+    """
+    collapsed = _collapse_whitespace(full_name)
+    if not collapsed:
+        return False
+
+    raw_tokens = collapsed.split()
+    if raw_tokens and _canonical_suffix(raw_tokens[-1]) is not None:
+        raw_tokens = raw_tokens[:-1]
+
+    normalized_tokens = [_normalized_token(token) for token in raw_tokens]
+    normalized_tokens = [token for token in normalized_tokens if token]
+    return len(normalized_tokens) >= 2
+
+
 def parse_player_name(full_name: str) -> ParsedPlayerName:
     """Parse a full name into first/middle/last/suffix fields."""
     parts = _collapse_whitespace(full_name).split()
@@ -356,6 +375,13 @@ async def _resolve_iter(
             )
             continue
         if match is None and create_stubs:
+            if not _can_create_stub_player(name):
+                logger.info(
+                    "Skipping low-specificity player mention without stub creation: %s",
+                    name,
+                )
+                continue
+
             match = await _create_stub_player(db, name, draft_year=draft_year)
             if match is not None:
                 alias_display_name = match.display_name
