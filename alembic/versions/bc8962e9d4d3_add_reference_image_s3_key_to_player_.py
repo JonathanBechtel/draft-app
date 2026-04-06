@@ -7,6 +7,7 @@ Create Date: 2026-03-28 22:30:11.804683
 from alembic import op  # type: ignore[attr-defined]
 import sqlmodel.sql.sqltypes
 import sqlalchemy as sa
+from sqlalchemy import text
 
 revision = 'bc8962e9d4d3'
 down_revision = 'bc9443ccd2b6'
@@ -15,6 +16,17 @@ depends_on = None
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    result = conn.execute(
+        text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'players_master' "
+            "AND column_name = 'reference_image_s3_key'"
+        )
+    )
+    if result.fetchone():
+        return
+
     op.add_column(
         'players_master',
         sa.Column('reference_image_s3_key', sqlmodel.sql.sqltypes.AutoString(), nullable=True),

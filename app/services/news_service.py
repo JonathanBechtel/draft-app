@@ -5,7 +5,8 @@ Handles fetching and formatting news items for display.
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+import re
+from typing import Any, Mapping, Optional
 
 from sqlalchemy import Float, cast, func, literal, select, union
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -163,7 +164,7 @@ async def get_source_counts(db: AsyncSession) -> list[tuple[int, str, int]]:
         List of (source_id, display_name, article_count) tuples
     """
     stmt = (
-        select(  # type: ignore[call-overload]
+        select(  # type: ignore[call-overload,misc]
             NewsSource.id,
             NewsSource.display_name,
             func.count(NewsItem.id).label("cnt"),  # type: ignore[arg-type]
@@ -220,6 +221,43 @@ class TrendingPlayer:
     latest_mention_at: Optional[datetime] = None
 
 
+def _normalized_trending_name(display_name: str) -> str:
+    """Normalize a display name for duplicate detection in trending results."""
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", display_name.lower())).strip()
+
+
+def _is_high_quality_trending_candidate(row: Mapping[str, Any]) -> bool:
+    """Return whether a player row is good enough to show in homepage trending."""
+    if not row.get("is_stub"):
+        return True
+    return bool(row.get("last_name"))
+
+
+def _trending_row_preference(
+    row: Mapping[str, Any],
+) -> tuple[int, int, int, float, int]:
+    """Rank duplicate trending candidates by record quality, then score."""
+    return (
+        int(not bool(row.get("is_stub"))),
+        int(bool(row.get("school"))),
+        int(bool(row.get("draft_year"))),
+        float(row.get("trending_score") or 0.0),
+        int(row.get("mention_count") or 0),
+    )
+
+
+def _merge_daily_counts(
+    left: list[int],
+    right: list[int],
+    *,
+    days: int,
+) -> list[int]:
+    """Combine two daily-count series, padding defensively when needed."""
+    padded_left = (left + [0] * days)[:days]
+    padded_right = (right + [0] * days)[:days]
+    return [a + b for a, b in zip(padded_left, padded_right)]
+
+
 async def get_trending_players(
     db: AsyncSession,
     days: int = 7,
@@ -256,11 +294,14 @@ async def get_trending_players(
     weight = func.greatest(1.0 - age_days / days, 0.0)
 
     stmt = (
-        select(
+        select(  # type: ignore[call-overload,misc]
             PlayerContentMention.player_id,
             PlayerMaster.display_name,
             PlayerMaster.slug,
             PlayerMaster.school,
+            PlayerMaster.last_name,
+            PlayerMaster.draft_year,
+            PlayerMaster.is_stub,
             func.count().label("mention_count"),  # type: ignore[call-overload]
             cast(func.sum(weight), Float).label("trending_score"),
             func.max(PlayerContentMention.published_at).label("latest_mention_at"),  # type: ignore[call-overload]
@@ -275,12 +316,14 @@ async def get_trending_players(
             PlayerMaster.display_name,
             PlayerMaster.slug,
             PlayerMaster.school,
+            PlayerMaster.last_name,
+            PlayerMaster.draft_year,
+            PlayerMaster.is_stub,
         )
         .order_by(
             cast(func.sum(weight), Float).desc(),
             func.count().desc(),  # type: ignore[call-overload]
         )
-        .limit(limit)
     )
 
     if content_type is not None:
@@ -289,13 +332,70 @@ async def get_trending_players(
         )
 
     result = await db.execute(stmt)
-    rows = result.mappings().all()
+    rows: list[dict[str, Any]] = [dict(row) for row in result.mappings().all()]
 
     if not rows:
         return []
 
-    player_ids = [row["player_id"] for row in rows]
-    daily_map = await _get_daily_mention_counts(db, player_ids, days, content_type)
+    filtered_rows = [row for row in rows if _is_high_quality_trending_candidate(row)]
+    if not filtered_rows:
+        return []
+
+    all_player_ids = [int(row["player_id"]) for row in filtered_rows]
+    daily_map = await _get_daily_mention_counts(db, all_player_ids, days, content_type)
+
+    deduped_rows_by_name: dict[str, dict[str, Any]] = {}
+    for row in filtered_rows:
+        normalized_name = _normalized_trending_name(row["display_name"] or "")
+        if not normalized_name:
+            continue
+
+        existing = deduped_rows_by_name.get(normalized_name)
+        row_daily_counts = daily_map.get(int(row["player_id"]), [0] * days)
+        if existing is None:
+            merged_row = dict(row)
+            merged_row["daily_counts"] = list(row_daily_counts)
+            deduped_rows_by_name[normalized_name] = merged_row
+            continue
+
+        preferred_row = row
+        if _trending_row_preference(existing) > _trending_row_preference(row):
+            preferred_row = existing
+
+        merged_row = dict(preferred_row)
+        merged_row["mention_count"] = int(existing["mention_count"] or 0) + int(
+            row["mention_count"] or 0
+        )
+        merged_row["trending_score"] = float(existing["trending_score"] or 0.0) + float(
+            row["trending_score"] or 0.0
+        )
+
+        existing_latest = existing["latest_mention_at"]
+        row_latest = row["latest_mention_at"]
+        if existing_latest is None:
+            merged_row["latest_mention_at"] = row_latest
+        elif row_latest is None:
+            merged_row["latest_mention_at"] = existing_latest
+        else:
+            merged_row["latest_mention_at"] = max(existing_latest, row_latest)
+
+        merged_row["daily_counts"] = _merge_daily_counts(
+            existing.get("daily_counts", [0] * days),
+            row_daily_counts,
+            days=days,
+        )
+        deduped_rows_by_name[normalized_name] = merged_row
+
+    deduped_rows = sorted(
+        deduped_rows_by_name.values(),
+        key=lambda row: (
+            -float(row["trending_score"] or 0.0),
+            -int(row["mention_count"] or 0),
+            (row["display_name"] or "").lower(),
+        ),
+    )[:limit]
+    if not deduped_rows:
+        return []
 
     return [
         TrendingPlayer(
@@ -305,10 +405,10 @@ async def get_trending_players(
             school=row["school"],
             mention_count=row["mention_count"],
             trending_score=round(float(row["trending_score"] or 0), 3),
-            daily_counts=daily_map.get(row["player_id"], [0] * days),
+            daily_counts=row.get("daily_counts", [0] * days),
             latest_mention_at=row["latest_mention_at"],
         )
-        for row in rows
+        for row in deduped_rows
     ]
 
 
