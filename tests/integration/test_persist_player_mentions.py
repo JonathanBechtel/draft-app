@@ -84,6 +84,26 @@ class TestPersistPlayerMentions:
         stub = (await db_session.execute(stmt)).scalar_one()
         assert stub.is_stub is True
 
+    async def test_skips_single_token_unknown_mentions(
+        self,
+        db_session: AsyncSession,
+        news_source: NewsSource,
+    ) -> None:
+        """Single-token unknown mentions should not create stub players."""
+        article = make_article(news_source.id, "ext-single-token")  # type: ignore[arg-type]
+        db_session.add(article)
+        await db_session.commit()
+
+        inserted = await _persist_player_mentions(
+            db_session,
+            source_id=news_source.id,  # type: ignore[arg-type]
+            mention_map={"ext-single-token": ["Lendeborg"]},
+        )
+        assert inserted == 0
+
+        stmt = select(PlayerMaster).where(PlayerMaster.display_name == "Lendeborg")
+        assert (await db_session.execute(stmt)).scalar_one_or_none() is None
+
     async def test_multiple_players_per_article(
         self,
         db_session: AsyncSession,

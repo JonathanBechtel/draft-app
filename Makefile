@@ -2,7 +2,7 @@ HOST ?= 0.0.0.0
 PORT ?= 8000
 
 .PHONY: dev run mig.revision mig.up mig.down mig.history mig.current scrape ingest metrics bio.scrape bio.ingest
-.PHONY: news-seed
+.PHONY: news-seed nba-seed nba-logos
 
 # Start FastAPI with auto-reload (development)
 dev:
@@ -37,6 +37,19 @@ ingest:
 # Seed curated RSS news sources into the database
 news-seed:
 	$(PYTHON) scripts/seed_news_sources.py
+
+# Seed NBA teams into database
+nba-seed:
+	$(PYTHON) scripts/seed_nba_teams.py
+
+# Download and upload NBA team logos
+# Usage:
+#   make nba-logos                # all teams
+#   make nba-logos TEAM=LAL       # single team
+#   make nba-logos DRY=1          # dry-run (download + process only)
+TEAM ?=
+nba-logos:
+	$(PYTHON) scripts/collect_nba_logos.py $(if $(DRY),--dry-run,) $(if $(TEAM),--team $(TEAM),)
 
 # Derived metrics computation
 COHORT ?= current_draft
