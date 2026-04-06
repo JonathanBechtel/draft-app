@@ -37,7 +37,9 @@ def upgrade() -> None:
             sa.Column("updated_at", sa.DateTime, nullable=False),
         )
         op.create_index("ix_nba_teams_name", "nba_teams", ["name"])
-        op.create_index("ix_nba_teams_abbreviation", "nba_teams", ["abbreviation"], unique=True)
+        op.create_index(
+            "ix_nba_teams_abbreviation", "nba_teams", ["abbreviation"], unique=True
+        )
         op.create_index("ix_nba_teams_slug", "nba_teams", ["slug"], unique=True)
 
     if "college_schools" not in existing:
@@ -53,9 +55,15 @@ def upgrade() -> None:
             sa.Column("created_at", sa.DateTime, nullable=False),
             sa.Column("updated_at", sa.DateTime, nullable=False),
         )
-        op.create_index("ix_college_schools_name", "college_schools", ["name"], unique=True)
-        op.create_index("ix_college_schools_slug", "college_schools", ["slug"], unique=True)
-        op.create_index("ix_college_schools_conference", "college_schools", ["conference"])
+        op.create_index(
+            "ix_college_schools_name", "college_schools", ["name"], unique=True
+        )
+        op.create_index(
+            "ix_college_schools_slug", "college_schools", ["slug"], unique=True
+        )
+        op.create_index(
+            "ix_college_schools_conference", "college_schools", ["conference"]
+        )
 
 
 def downgrade() -> None:

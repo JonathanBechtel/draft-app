@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from enum import Enum
+from typing import TypeVar
 
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, or_, select
@@ -24,10 +26,20 @@ from app.schemas.player_aliases import PlayerAlias
 from app.schemas.player_bio_snapshots import PlayerBioSnapshot
 from app.schemas.player_content_mentions import PlayerContentMention
 from app.schemas.player_external_ids import PlayerExternalId
+from app.schemas.player_lifecycle import (
+    AffiliationType,
+    CommitmentStatus,
+    CompetitionContext,
+    DraftStatus,
+    PlayerLifecycle,
+    PlayerLifecycleStage,
+)
 from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.podcast_episodes import PodcastEpisode
 from app.schemas.positions import Position
+
+EnumT = TypeVar("EnumT", bound=Enum)
 
 
 @dataclass
@@ -524,6 +536,11 @@ async def delete_player(db: AsyncSession, player: PlayerMaster) -> None:
         )
     )
     await db.execute(
+        sa_delete(PlayerLifecycle).where(
+            PlayerLifecycle.player_id == pid  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
         sa_delete(PlayerStatus).where(
             PlayerStatus.player_id == pid  # type: ignore[arg-type]
         )
@@ -567,6 +584,18 @@ async def get_player_status_by_player_id(
     return result.scalar_one_or_none()
 
 
+async def get_player_lifecycle_by_player_id(
+    db: AsyncSession, player_id: int
+) -> PlayerLifecycle | None:
+    """Fetch a player's lifecycle record by player ID."""
+    result = await db.execute(
+        select(PlayerLifecycle).where(
+            PlayerLifecycle.player_id == player_id  # type: ignore[arg-type]
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 @dataclass
 class PlayerStatusFormData:
     """Raw form data for player status fields."""
@@ -577,6 +606,21 @@ class PlayerStatusFormData:
     raw_position: str | None = None
     height_in: str | None = None  # needs int parsing
     weight_lb: str | None = None  # needs int parsing
+
+
+@dataclass
+class PlayerLifecycleFormData:
+    """Raw form data for player lifecycle fields."""
+
+    lifecycle_stage: str | None = None
+    competition_context: str | None = None
+    draft_status: str | None = None
+    expected_draft_year: str | None = None
+    current_affiliation_name: str | None = None
+    current_affiliation_type: str | None = None
+    commitment_school: str | None = None
+    commitment_status: str | None = None
+    is_draft_prospect: str | None = None
 
 
 def _parse_bool_field(val: str | None) -> bool | None:
@@ -599,6 +643,17 @@ def _parse_int_field(val: str | None) -> int | None:
         return int(val.strip())
     except ValueError:
         return None
+
+
+def _parse_enum_field(val: str | None, enum_cls: type[EnumT]) -> EnumT:
+    """Parse a raw form value into an enum, defaulting to UNKNOWN when possible."""
+    cleaned = _clean_str(val)
+    if cleaned is None:
+        return enum_cls("unknown")
+    try:
+        return enum_cls(cleaned)
+    except ValueError:
+        return enum_cls("unknown")
 
 
 async def _resolve_position_id(db: AsyncSession, raw_position: str) -> int | None:
@@ -670,3 +725,37 @@ async def update_player_status(
     status.updated_at = datetime.now(UTC).replace(tzinfo=None)
     await db.flush()
     return status
+
+
+async def update_player_lifecycle(
+    db: AsyncSession,
+    player_id: int,
+    data: PlayerLifecycleFormData,
+) -> PlayerLifecycle:
+    """Create or update lifecycle state for a player."""
+    lifecycle = await get_player_lifecycle_by_player_id(db, player_id)
+    if lifecycle is None:
+        lifecycle = PlayerLifecycle(player_id=player_id)
+        db.add(lifecycle)
+
+    lifecycle.lifecycle_stage = _parse_enum_field(
+        data.lifecycle_stage, PlayerLifecycleStage
+    )
+    lifecycle.competition_context = _parse_enum_field(
+        data.competition_context, CompetitionContext
+    )
+    lifecycle.draft_status = _parse_enum_field(data.draft_status, DraftStatus)
+    lifecycle.expected_draft_year = _parse_int_field(data.expected_draft_year)
+    lifecycle.current_affiliation_name = _clean_str(data.current_affiliation_name)
+    lifecycle.current_affiliation_type = _parse_enum_field(
+        data.current_affiliation_type, AffiliationType
+    )
+    lifecycle.commitment_school = _clean_str(data.commitment_school)
+    lifecycle.commitment_status = _parse_enum_field(
+        data.commitment_status, CommitmentStatus
+    )
+    lifecycle.is_draft_prospect = _parse_bool_field(data.is_draft_prospect)
+    lifecycle.source = "manual"
+    lifecycle.updated_at = datetime.now(UTC).replace(tzinfo=None)
+    await db.flush()
+    return lifecycle
