@@ -137,6 +137,20 @@ def get_available_styles(player_id: int, slug: str) -> list[str]:
     return available
 
 
+def get_logo_url(entity_type: str, slug: str) -> str:
+    """Build a canonical URL for a team or school logo.
+
+    Args:
+        entity_type: 'nba' or 'college'.
+        slug: Team or school slug (e.g. 'lakers', 'duke').
+
+    Returns:
+        URL like '{base}/logos/nba/{slug}.png'.
+    """
+    base = get_s3_image_base_url()
+    return f"{base}/logos/{entity_type}/{slug}.png"
+
+
 def get_placeholder_url(
     display_name: Optional[str] = None,
     *,
