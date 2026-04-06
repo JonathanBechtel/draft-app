@@ -174,7 +174,16 @@ def upgrade() -> None:
             (
                 CASE
                     WHEN ps.is_active_nba IS TRUE THEN 'NBA_ACTIVE'
-                    WHEN pm.draft_year IS NOT NULL THEN 'DRAFTED_NOT_IN_NBA'
+                    WHEN pm.draft_year IS NOT NULL
+                         AND NOT (
+                             pm.is_stub IS TRUE
+                             AND pm.draft_round IS NULL
+                             AND pm.draft_pick IS NULL
+                             AND pm.draft_team IS NULL
+                             AND pm.nba_debut_date IS NULL
+                             AND pm.nba_debut_season IS NULL
+                         )
+                    THEN 'DRAFTED_NOT_IN_NBA'
                     WHEN pm.school IS NOT NULL THEN 'COLLEGE'
                     WHEN pm.high_school IS NOT NULL THEN 'HIGH_SCHOOL'
                     ELSE 'UNKNOWN'
@@ -191,8 +200,22 @@ def upgrade() -> None:
             )::competition_context_enum,
             (
                 CASE
-                    WHEN pm.draft_year IS NOT NULL THEN 'DRAFTED'
-                    WHEN pm.school IS NOT NULL OR pm.high_school IS NOT NULL THEN 'ELIGIBLE'
+                    WHEN pm.draft_year IS NOT NULL
+                         AND NOT (
+                             pm.is_stub IS TRUE
+                             AND pm.draft_round IS NULL
+                             AND pm.draft_pick IS NULL
+                             AND pm.draft_team IS NULL
+                             AND pm.nba_debut_date IS NULL
+                             AND pm.nba_debut_season IS NULL
+                         )
+                    THEN 'DRAFTED'
+                    WHEN pm.draft_year IS NULL
+                         AND pm.nba_debut_date IS NULL
+                         AND pm.nba_debut_season IS NULL
+                         AND COALESCE(ps.is_active_nba, FALSE) IS FALSE
+                         AND (pm.school IS NOT NULL OR pm.high_school IS NOT NULL)
+                    THEN 'ELIGIBLE'
                     ELSE 'UNKNOWN'
                 END
             )::draft_status_enum,
@@ -230,7 +253,12 @@ def upgrade() -> None:
                      AND pm.draft_pick IS NULL
                      AND pm.draft_team IS NULL
                 THEN TRUE
-                WHEN pm.school IS NOT NULL OR pm.high_school IS NOT NULL THEN TRUE
+                WHEN pm.draft_year IS NULL
+                     AND pm.nba_debut_date IS NULL
+                     AND pm.nba_debut_season IS NULL
+                     AND COALESCE(ps.is_active_nba, FALSE) IS FALSE
+                     AND (pm.school IS NOT NULL OR pm.high_school IS NOT NULL)
+                THEN TRUE
                 ELSE NULL
             END,
             'migration_backfill',
