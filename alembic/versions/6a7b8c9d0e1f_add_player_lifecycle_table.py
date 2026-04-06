@@ -8,6 +8,7 @@ Create Date: 2026-04-05
 from alembic import op  # type: ignore[attr-defined]
 import sqlalchemy as sa
 import sqlmodel
+from sqlalchemy.dialects import postgresql
 
 
 revision = "6a7b8c9d0e1f"
@@ -18,57 +19,94 @@ depends_on = None
 
 def upgrade() -> None:
     """Create lifecycle table and conservatively backfill current state."""
+    bind = op.get_bind()
+
+    lifecycle_stage_enum = postgresql.ENUM(
+        "RECRUIT",
+        "HIGH_SCHOOL",
+        "COLLEGE",
+        "INTERNATIONAL_AMATEUR",
+        "DRAFT_DECLARED",
+        "DRAFT_WITHDREW",
+        "DRAFTED_NOT_IN_NBA",
+        "NBA_ACTIVE",
+        "PRO_NON_NBA",
+        "INACTIVE_FORMER",
+        "UNKNOWN",
+        name="player_lifecycle_stage_enum",
+        create_type=False,
+    )
+    competition_context_enum = postgresql.ENUM(
+        "HIGH_SCHOOL",
+        "NCAA",
+        "INTERNATIONAL",
+        "NBA",
+        "G_LEAGUE",
+        "OVERSEAS_PRO",
+        "INACTIVE",
+        "UNKNOWN",
+        name="competition_context_enum",
+        create_type=False,
+    )
+    draft_status_enum = postgresql.ENUM(
+        "NOT_ELIGIBLE",
+        "ELIGIBLE",
+        "DECLARED",
+        "WITHDREW",
+        "DRAFTED",
+        "UNDRAFTED",
+        "UNKNOWN",
+        name="draft_status_enum",
+        create_type=False,
+    )
+    affiliation_type_enum = postgresql.ENUM(
+        "HIGH_SCHOOL",
+        "COLLEGE_TEAM",
+        "COMMITTED_SCHOOL",
+        "NBA_TEAM",
+        "G_LEAGUE_TEAM",
+        "OVERSEAS_CLUB",
+        "INDEPENDENT",
+        "UNKNOWN",
+        name="affiliation_type_enum",
+        create_type=False,
+    )
+    commitment_status_enum = postgresql.ENUM(
+        "COMMITTED",
+        "SIGNED",
+        "ENROLLED",
+        "DECOMMITTED",
+        "NONE",
+        "UNKNOWN",
+        name="commitment_status_enum",
+        create_type=False,
+    )
+
+    lifecycle_stage_enum.create(bind, checkfirst=True)
+    competition_context_enum.create(bind, checkfirst=True)
+    draft_status_enum.create(bind, checkfirst=True)
+    affiliation_type_enum.create(bind, checkfirst=True)
+    commitment_status_enum.create(bind, checkfirst=True)
+
     op.create_table(
         "player_lifecycle",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("player_id", sa.Integer(), nullable=False),
         sa.Column(
             "lifecycle_stage",
-            sa.Enum(
-                "RECRUIT",
-                "HIGH_SCHOOL",
-                "COLLEGE",
-                "INTERNATIONAL_AMATEUR",
-                "DRAFT_DECLARED",
-                "DRAFT_WITHDREW",
-                "DRAFTED_NOT_IN_NBA",
-                "NBA_ACTIVE",
-                "PRO_NON_NBA",
-                "INACTIVE_FORMER",
-                "UNKNOWN",
-                name="player_lifecycle_stage_enum",
-            ),
+            lifecycle_stage_enum,
             nullable=False,
             server_default="UNKNOWN",
         ),
         sa.Column(
             "competition_context",
-            sa.Enum(
-                "HIGH_SCHOOL",
-                "NCAA",
-                "INTERNATIONAL",
-                "NBA",
-                "G_LEAGUE",
-                "OVERSEAS_PRO",
-                "INACTIVE",
-                "UNKNOWN",
-                name="competition_context_enum",
-            ),
+            competition_context_enum,
             nullable=False,
             server_default="UNKNOWN",
         ),
         sa.Column(
             "draft_status",
-            sa.Enum(
-                "NOT_ELIGIBLE",
-                "ELIGIBLE",
-                "DECLARED",
-                "WITHDREW",
-                "DRAFTED",
-                "UNDRAFTED",
-                "UNKNOWN",
-                name="draft_status_enum",
-            ),
+            draft_status_enum,
             nullable=False,
             server_default="UNKNOWN",
         ),
@@ -80,17 +118,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "current_affiliation_type",
-            sa.Enum(
-                "HIGH_SCHOOL",
-                "COLLEGE_TEAM",
-                "COMMITTED_SCHOOL",
-                "NBA_TEAM",
-                "G_LEAGUE_TEAM",
-                "OVERSEAS_CLUB",
-                "INDEPENDENT",
-                "UNKNOWN",
-                name="affiliation_type_enum",
-            ),
+            affiliation_type_enum,
             nullable=False,
             server_default="UNKNOWN",
         ),
@@ -101,15 +129,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "commitment_status",
-            sa.Enum(
-                "COMMITTED",
-                "SIGNED",
-                "ENROLLED",
-                "DECOMMITTED",
-                "NONE",
-                "UNKNOWN",
-                name="commitment_status_enum",
-            ),
+            commitment_status_enum,
             nullable=False,
             server_default="UNKNOWN",
         ),
@@ -289,8 +309,8 @@ def downgrade() -> None:
     op.drop_table("player_lifecycle")
 
     bind = op.get_bind()
-    sa.Enum(name="commitment_status_enum").drop(bind, checkfirst=True)
-    sa.Enum(name="affiliation_type_enum").drop(bind, checkfirst=True)
-    sa.Enum(name="draft_status_enum").drop(bind, checkfirst=True)
-    sa.Enum(name="competition_context_enum").drop(bind, checkfirst=True)
-    sa.Enum(name="player_lifecycle_stage_enum").drop(bind, checkfirst=True)
+    postgresql.ENUM(name="commitment_status_enum").drop(bind, checkfirst=True)
+    postgresql.ENUM(name="affiliation_type_enum").drop(bind, checkfirst=True)
+    postgresql.ENUM(name="draft_status_enum").drop(bind, checkfirst=True)
+    postgresql.ENUM(name="competition_context_enum").drop(bind, checkfirst=True)
+    postgresql.ENUM(name="player_lifecycle_stage_enum").drop(bind, checkfirst=True)
