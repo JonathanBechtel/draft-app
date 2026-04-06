@@ -246,6 +246,18 @@ def _trending_row_preference(
     )
 
 
+def _merge_daily_counts(
+    left: list[int],
+    right: list[int],
+    *,
+    days: int,
+) -> list[int]:
+    """Combine two daily-count series, padding defensively when needed."""
+    padded_left = (left + [0] * days)[:days]
+    padded_right = (right + [0] * days)[:days]
+    return [a + b for a, b in zip(padded_left, padded_right)]
+
+
 async def get_trending_players(
     db: AsyncSession,
     days: int = 7,
@@ -329,6 +341,9 @@ async def get_trending_players(
     if not filtered_rows:
         return []
 
+    all_player_ids = [int(row["player_id"]) for row in filtered_rows]
+    daily_map = await _get_daily_mention_counts(db, all_player_ids, days, content_type)
+
     deduped_rows_by_name: dict[str, dict[str, Any]] = {}
     for row in filtered_rows:
         normalized_name = _normalized_trending_name(row["display_name"] or "")
@@ -336,10 +351,40 @@ async def get_trending_players(
             continue
 
         existing = deduped_rows_by_name.get(normalized_name)
-        if existing is None or _trending_row_preference(row) > _trending_row_preference(
-            existing
-        ):
-            deduped_rows_by_name[normalized_name] = row
+        row_daily_counts = daily_map.get(int(row["player_id"]), [0] * days)
+        if existing is None:
+            merged_row = dict(row)
+            merged_row["daily_counts"] = list(row_daily_counts)
+            deduped_rows_by_name[normalized_name] = merged_row
+            continue
+
+        preferred_row = row
+        if _trending_row_preference(existing) > _trending_row_preference(row):
+            preferred_row = existing
+
+        merged_row = dict(preferred_row)
+        merged_row["mention_count"] = int(existing["mention_count"] or 0) + int(
+            row["mention_count"] or 0
+        )
+        merged_row["trending_score"] = float(existing["trending_score"] or 0.0) + float(
+            row["trending_score"] or 0.0
+        )
+
+        existing_latest = existing["latest_mention_at"]
+        row_latest = row["latest_mention_at"]
+        if existing_latest is None:
+            merged_row["latest_mention_at"] = row_latest
+        elif row_latest is None:
+            merged_row["latest_mention_at"] = existing_latest
+        else:
+            merged_row["latest_mention_at"] = max(existing_latest, row_latest)
+
+        merged_row["daily_counts"] = _merge_daily_counts(
+            existing.get("daily_counts", [0] * days),
+            row_daily_counts,
+            days=days,
+        )
+        deduped_rows_by_name[normalized_name] = merged_row
 
     deduped_rows = sorted(
         deduped_rows_by_name.values(),
@@ -352,9 +397,6 @@ async def get_trending_players(
     if not deduped_rows:
         return []
 
-    player_ids = [row["player_id"] for row in deduped_rows]
-    daily_map = await _get_daily_mention_counts(db, player_ids, days, content_type)
-
     return [
         TrendingPlayer(
             player_id=row["player_id"],
@@ -363,7 +405,7 @@ async def get_trending_players(
             school=row["school"],
             mention_count=row["mention_count"],
             trending_score=round(float(row["trending_score"] or 0), 3),
-            daily_counts=daily_map.get(row["player_id"], [0] * days),
+            daily_counts=row.get("daily_counts", [0] * days),
             latest_mention_at=row["latest_mention_at"],
         )
         for row in deduped_rows

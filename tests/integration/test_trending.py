@@ -267,7 +267,7 @@ class TestGetTrendingPlayers:
     async def test_deduplicates_duplicate_display_names_preferring_richer_player(
         self, db_session: AsyncSession, news_source: NewsSource
     ) -> None:
-        """Duplicate-name rows should collapse to the richer canonical player."""
+        """Duplicate-name rows should merge metrics onto the richer canonical player."""
         canonical = make_player("Cameron", "Boozer", school="Duke University")
         duplicate_stub = PlayerMaster(
             slug="cameron-boozer-2",
@@ -280,9 +280,14 @@ class TestGetTrendingPlayers:
         db_session.add_all([canonical, duplicate_stub])
         await db_session.flush()
 
-        article_one = make_article(news_source.id, "boozer-1", hours_ago=0)  # type: ignore[arg-type]
-        article_two = make_article(news_source.id, "boozer-2", hours_ago=0)  # type: ignore[arg-type]
-        db_session.add_all([article_one, article_two])
+        other_player = make_player("Other", "Prospect", school="Rutgers")
+        db_session.add(other_player)
+        await db_session.flush()
+
+        article_one = make_article(news_source.id, "boozer-1", hours_ago=6)  # type: ignore[arg-type]
+        article_two = make_article(news_source.id, "boozer-2", hours_ago=1)  # type: ignore[arg-type]
+        article_three = make_article(news_source.id, "other-1", hours_ago=0)  # type: ignore[arg-type]
+        db_session.add_all([article_one, article_two, article_three])
         await db_session.flush()
 
         now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -292,7 +297,7 @@ class TestGetTrendingPlayers:
                     content_type=ContentType.NEWS,
                     content_id=article_one.id,  # type: ignore[arg-type]
                     player_id=canonical.id,  # type: ignore[arg-type]
-                    published_at=now,
+                    published_at=now - timedelta(hours=6),
                     source=MentionSource.AI,
                     created_at=now,
                 ),
@@ -300,6 +305,14 @@ class TestGetTrendingPlayers:
                     content_type=ContentType.NEWS,
                     content_id=article_two.id,  # type: ignore[arg-type]
                     player_id=duplicate_stub.id,  # type: ignore[arg-type]
+                    published_at=now - timedelta(hours=1),
+                    source=MentionSource.AI,
+                    created_at=now,
+                ),
+                PlayerContentMention(
+                    content_type=ContentType.NEWS,
+                    content_id=article_three.id,  # type: ignore[arg-type]
+                    player_id=other_player.id,  # type: ignore[arg-type]
                     published_at=now,
                     source=MentionSource.AI,
                     created_at=now,
@@ -309,10 +322,13 @@ class TestGetTrendingPlayers:
         await db_session.commit()
 
         result = await get_trending_players(db_session, days=7, limit=10)
-        assert len(result) == 1
+        assert len(result) == 2
         assert result[0].player_id == canonical.id
         assert result[0].display_name == "Cameron Boozer"
         assert result[0].school == "Duke University"
+        assert result[0].mention_count == 2
+        assert sum(result[0].daily_counts) == 2
+        assert result[0].trending_score > result[1].trending_score
 
     async def test_excludes_low_quality_single_token_stubs(
         self, db_session: AsyncSession, news_source: NewsSource
