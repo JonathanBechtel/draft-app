@@ -6,11 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_aliases import PlayerAlias
+from app.schemas.player_lifecycle import DraftStatus, PlayerLifecycle
 from app.schemas.players_master import PlayerMaster
-from app.services.player_mention_service import (
-    PlayerMatch,
-    resolve_player_names,
-)
+from app.services.player_mention_service import resolve_player_names
 
 
 @pytest_asyncio.fixture()
@@ -102,9 +100,7 @@ async def test_create_stub_for_unknown_name(db_session: AsyncSession) -> None:
     assert results[0].display_name == "Totally New Player"
 
     # Verify the stub was created in the database
-    stmt = select(PlayerMaster).where(
-        PlayerMaster.id == results[0].player_id
-    )
+    stmt = select(PlayerMaster).where(PlayerMaster.id == results[0].player_id)
     row = (await db_session.execute(stmt)).scalar_one()
     assert row.is_stub is True
     assert row.first_name == "Totally"
@@ -115,6 +111,11 @@ async def test_create_stub_for_unknown_name(db_session: AsyncSession) -> None:
     alias = (await db_session.execute(alias_stmt)).scalar_one()
     assert alias.full_name == "Totally New Player"
     assert alias.context == "mention_resolution"
+
+    lifecycle_stmt = select(PlayerLifecycle).where(PlayerLifecycle.player_id == row.id)
+    lifecycle = (await db_session.execute(lifecycle_stmt)).scalar_one()
+    assert lifecycle.draft_status == DraftStatus.UNKNOWN
+    assert lifecycle.expected_draft_year is None
 
 
 @pytest.mark.asyncio
@@ -141,12 +142,30 @@ async def test_stub_gets_slug(db_session: AsyncSession) -> None:
     )
     assert len(results) == 1
 
-    stmt = select(PlayerMaster).where(
-        PlayerMaster.id == results[0].player_id
-    )
+    stmt = select(PlayerMaster).where(PlayerMaster.id == results[0].player_id)
     row = (await db_session.execute(stmt)).scalar_one()
     assert row.slug is not None
     assert "brand-new-prospect" in row.slug
+
+
+@pytest.mark.asyncio
+async def test_stub_uses_expected_draft_year_in_lifecycle_not_master(
+    db_session: AsyncSession,
+) -> None:
+    """Projected stub class should live in lifecycle, not factual draft fields."""
+    results = await resolve_player_names(
+        db_session, ["Future Prospect"], draft_year=2027, create_stubs=True
+    )
+    assert len(results) == 1
+
+    stmt = select(PlayerMaster).where(PlayerMaster.id == results[0].player_id)
+    row = (await db_session.execute(stmt)).scalar_one()
+    assert row.draft_year is None
+
+    lifecycle_stmt = select(PlayerLifecycle).where(PlayerLifecycle.player_id == row.id)
+    lifecycle = (await db_session.execute(lifecycle_stmt)).scalar_one()
+    assert lifecycle.expected_draft_year == 2027
+    assert lifecycle.is_draft_prospect is True
 
 
 @pytest.mark.asyncio
@@ -179,7 +198,9 @@ async def test_resolve_relaxed_suffix_variant(
     db_session.add(player)
     await db_session.flush()
 
-    results = await resolve_player_names(db_session, ["Darius Acuff"], create_stubs=True)
+    results = await resolve_player_names(
+        db_session, ["Darius Acuff"], create_stubs=True
+    )
     assert len(results) == 1
     assert results[0].player_id == player.id
     assert results[0].matched_via == "display_name"
