@@ -1,4 +1,4 @@
-"""add nba_teams and college_schools tables
+"""add nba_teams and college_schools tables.
 
 Revision ID: b9705695210a
 Revises: bc8962e9d4d3

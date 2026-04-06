@@ -1,16 +1,14 @@
-"""add shooting pct columns to combine_shooting_results
+"""add shooting pct columns to combine_shooting_results.
 
 Revision ID: 8ede11b10150
-Revises: c9705695210b
+Revises: 327ae506058d
 Create Date: 2026-03-23 08:03:27.273563
 """
 
 from alembic import op  # type: ignore[attr-defined]
 import sqlalchemy as sa
-from sqlalchemy import text
-
 revision = "8ede11b10150"
-down_revision = "c9705695210b"
+down_revision = "327ae506058d"
 branch_labels = None
 depends_on = None
 
@@ -37,20 +35,7 @@ DRILL_PAIRS = {
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
-
     for col in PCT_COLUMNS:
-        result = conn.execute(
-            text(
-                "SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = 'combine_shooting_results' "
-                "AND column_name = :column_name"
-            ),
-            {"column_name": col},
-        )
-        if result.fetchone():
-            continue
-
         op.add_column(
             "combine_shooting_results",
             sa.Column(col, sa.Float(), nullable=True),
