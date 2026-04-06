@@ -7,7 +7,6 @@ Create Date: 2026-03-23 08:03:27.273563
 
 from alembic import op  # type: ignore[attr-defined]
 import sqlalchemy as sa
-
 revision = "8ede11b10150"
 down_revision = "327ae506058d"
 branch_labels = None
