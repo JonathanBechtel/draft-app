@@ -3,6 +3,7 @@ PORT ?= 8000
 
 .PHONY: dev run mig.revision mig.up mig.down mig.history mig.current scrape ingest metrics bio.scrape bio.ingest
 .PHONY: news-seed nba-seed nba-logos
+.PHONY: college-mapping college-seed-data college-seed college-backfill college-logos
 
 # Start FastAPI with auto-reload (development)
 dev:
@@ -50,6 +51,23 @@ nba-seed:
 TEAM ?=
 nba-logos:
 	$(PYTHON) scripts/collect_nba_logos.py $(if $(DRY),--dry-run,) $(if $(TEAM),--team $(TEAM),)
+
+# College school deduplication, seeding, and logo collection
+college-mapping:
+	$(PYTHON) scripts/generate_school_mapping.py
+
+college-seed-data:
+	$(PYTHON) scripts/generate_school_seed_data.py
+
+college-seed:
+	$(PYTHON) scripts/seed_college_schools.py
+
+SCHOOL ?=
+college-backfill:
+	$(PYTHON) scripts/backfill_school_names.py $(if $(DRY),--dry-run,)
+
+college-logos:
+	$(PYTHON) scripts/collect_college_logos.py $(if $(DRY),--dry-run,) $(if $(SCHOOL),--school $(SCHOOL),)
 
 # Derived metrics computation
 COHORT ?= current_draft
