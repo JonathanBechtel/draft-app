@@ -1,7 +1,7 @@
 """add school_raw to players_master and espn_id to college_schools
 
 Revision ID: 35d4c25324b3
-Revises: b9705695210a
+Revises: d1e2f3a4b5c6
 Create Date: 2026-04-06
 """
 
@@ -9,7 +9,7 @@ from alembic import op  # type: ignore[attr-defined]
 import sqlalchemy as sa
 
 revision = "35d4c25324b3"
-down_revision = "b9705695210a"
+down_revision = "d1e2f3a4b5c6"
 branch_labels = None
 depends_on = None
 
