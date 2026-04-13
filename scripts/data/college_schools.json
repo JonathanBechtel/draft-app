@@ -1,0 +1,3730 @@
+[
+  {
+    "name": "Acadia",
+    "slug": "acadia",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Akron",
+    "slug": "akron",
+    "conference": "MAC",
+    "espn_id": 2006,
+    "primary_color": "#041e42",
+    "secondary_color": "#c5b783"
+  },
+  {
+    "name": "Alabama",
+    "slug": "alabama",
+    "conference": "SEC",
+    "espn_id": 333,
+    "primary_color": "#9e1b32",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Alabama A&M",
+    "slug": "alabama-am",
+    "conference": "SWAC",
+    "espn_id": 2010,
+    "primary_color": "#790000",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Alabama State",
+    "slug": "alabama-state",
+    "conference": "SWAC",
+    "espn_id": 2011,
+    "primary_color": "#e9a900",
+    "secondary_color": "#0a0a0a"
+  },
+  {
+    "name": "Alabama-Huntsville",
+    "slug": "alabama-huntsville",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Albany State",
+    "slug": "albany-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Alcorn State",
+    "slug": "alcorn-state",
+    "conference": "SWAC",
+    "espn_id": 2016,
+    "primary_color": "#4b0058",
+    "secondary_color": "#46166a"
+  },
+  {
+    "name": "Alliance College",
+    "slug": "alliance-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "American",
+    "slug": "american",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "American International College",
+    "slug": "american-international-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Appalachian State",
+    "slug": "appalachian-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Arizona",
+    "slug": "arizona",
+    "conference": "Big 12",
+    "espn_id": 12,
+    "primary_color": "#cc0033",
+    "secondary_color": "#003366"
+  },
+  {
+    "name": "Arizona State",
+    "slug": "arizona-state",
+    "conference": "Big 12",
+    "espn_id": 9,
+    "primary_color": "#ffc627",
+    "secondary_color": "#8c1d40"
+  },
+  {
+    "name": "Arkansas",
+    "slug": "arkansas",
+    "conference": "SEC",
+    "espn_id": 8,
+    "primary_color": "#a32136",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Arkansas State",
+    "slug": "arkansas-state",
+    "conference": "Sun Belt",
+    "espn_id": 2032,
+    "primary_color": "#cc092f",
+    "secondary_color": null
+  },
+  {
+    "name": "Arkansas-Pine Bluff",
+    "slug": "arkansas-pine-bluff",
+    "conference": "SWAC",
+    "espn_id": 2029,
+    "primary_color": "#e0aa0f",
+    "secondary_color": "#eaaa00"
+  },
+  {
+    "name": "Ashland",
+    "slug": "ashland",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Assumption",
+    "slug": "assumption",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Auburn",
+    "slug": "auburn",
+    "conference": "SEC",
+    "espn_id": 2,
+    "primary_color": "#002b5c",
+    "secondary_color": "#f26522"
+  },
+  {
+    "name": "Augsburg College",
+    "slug": "augsburg-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Augusta State",
+    "slug": "augusta-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Augustana College (SD)",
+    "slug": "augustana-college-sd",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Austin Peay State",
+    "slug": "austin-peay-state",
+    "conference": "ASUN",
+    "espn_id": 2046,
+    "primary_color": "#8e0b0b",
+    "secondary_color": null
+  },
+  {
+    "name": "Azusa Pacific",
+    "slug": "azusa-pacific",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "BYU",
+    "slug": "byu",
+    "conference": "Big 12",
+    "espn_id": 252,
+    "primary_color": "#0047ba",
+    "secondary_color": "#002e5d"
+  },
+  {
+    "name": "BYU-Hawaii",
+    "slug": "byu-hawaii",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Ball State",
+    "slug": "ball-state",
+    "conference": "MAC",
+    "espn_id": 2050,
+    "primary_color": "#ba0c2f",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Baltimore",
+    "slug": "baltimore",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Barton County Community College",
+    "slug": "barton-county-community-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Baylor",
+    "slug": "baylor",
+    "conference": "Big 12",
+    "espn_id": 239,
+    "primary_color": "#154734",
+    "secondary_color": "#ffb81c"
+  },
+  {
+    "name": "Belmont",
+    "slug": "belmont",
+    "conference": "MVC",
+    "espn_id": 2057,
+    "primary_color": "#182142",
+    "secondary_color": "#c9262d"
+  },
+  {
+    "name": "Belmont Abbey College",
+    "slug": "belmont-abbey-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Beloit College",
+    "slug": "beloit-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Bemidji State",
+    "slug": "bemidji-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Benedict College",
+    "slug": "benedict-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Bethel College",
+    "slug": "bethel-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Bethune-Cookman College",
+    "slug": "bethune-cookman-college",
+    "conference": "SWAC",
+    "espn_id": 2065,
+    "primary_color": "#7b1831",
+    "secondary_color": "#e9aa12"
+  },
+  {
+    "name": "Blinn College",
+    "slug": "blinn-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Bloomsburg University of Pennsylvania",
+    "slug": "bloomsburg-university-of-pennsylvania",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Boise State",
+    "slug": "boise-state",
+    "conference": "Mountain West",
+    "espn_id": 68,
+    "primary_color": "#0033a0",
+    "secondary_color": "#d64309"
+  },
+  {
+    "name": "Boston College",
+    "slug": "boston-college",
+    "conference": "ACC",
+    "espn_id": 103,
+    "primary_color": "#8c2232",
+    "secondary_color": "#dbcca6"
+  },
+  {
+    "name": "Boston University",
+    "slug": "boston-university",
+    "conference": "Patriot",
+    "espn_id": 104,
+    "primary_color": "#cc0000",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Bowling Green",
+    "slug": "bowling-green",
+    "conference": "MAC",
+    "espn_id": 189,
+    "primary_color": "#fd5000",
+    "secondary_color": "#4f2c1d"
+  },
+  {
+    "name": "Bradley",
+    "slug": "bradley",
+    "conference": "MVC",
+    "espn_id": 71,
+    "primary_color": "#b70002",
+    "secondary_color": "#c0c0c0"
+  },
+  {
+    "name": "Bridgeport",
+    "slug": "bridgeport",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Brooklyn College",
+    "slug": "brooklyn-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Brown",
+    "slug": "brown",
+    "conference": "Ivy",
+    "espn_id": 225,
+    "primary_color": "#411e09",
+    "secondary_color": "#949300"
+  },
+  {
+    "name": "Bucknell",
+    "slug": "bucknell",
+    "conference": "Patriot",
+    "espn_id": 2083,
+    "primary_color": "#000060",
+    "secondary_color": "#00316e"
+  },
+  {
+    "name": "Buffalo",
+    "slug": "buffalo",
+    "conference": "MAC",
+    "espn_id": 2084,
+    "primary_color": "#005bbb",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Buffalo State",
+    "slug": "buffalo-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Butler",
+    "slug": "butler",
+    "conference": "Big East",
+    "espn_id": 2086,
+    "primary_color": "#0d1361",
+    "secondary_color": "#00a3e0"
+  },
+  {
+    "name": "Cal Poly",
+    "slug": "cal-poly",
+    "conference": "Big West",
+    "espn_id": 13,
+    "primary_color": "#1E4D2B",
+    "secondary_color": "#eed897"
+  },
+  {
+    "name": "Cal Poly Pomona",
+    "slug": "cal-poly-pomona",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Cal State Fullerton",
+    "slug": "cal-state-fullerton",
+    "conference": "Big West",
+    "espn_id": 2239,
+    "primary_color": "#003767",
+    "secondary_color": "#ff8300"
+  },
+  {
+    "name": "Cal State LA",
+    "slug": "cal-state-la",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Cal State Long Beach",
+    "slug": "cal-state-long-beach",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Cal State Northridge",
+    "slug": "cal-state-northridge",
+    "conference": "Big West",
+    "espn_id": 2463,
+    "primary_color": "#b50000",
+    "secondary_color": null
+  },
+  {
+    "name": "Cal U of PA",
+    "slug": "cal-u-of-pa",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Cal Western",
+    "slug": "cal-western",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "California",
+    "slug": "california",
+    "conference": "ACC",
+    "espn_id": 25,
+    "primary_color": "#041e42",
+    "secondary_color": "#ffc72c"
+  },
+  {
+    "name": "California Baptist",
+    "slug": "california-baptist",
+    "conference": "WAC",
+    "espn_id": 2856,
+    "primary_color": "#000080",
+    "secondary_color": null
+  },
+  {
+    "name": "Campbell",
+    "slug": "campbell",
+    "conference": "CAA",
+    "espn_id": 2097,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Canisius",
+    "slug": "canisius",
+    "conference": "MAAC",
+    "espn_id": 2099,
+    "primary_color": "#004a81",
+    "secondary_color": "#dda50f"
+  },
+  {
+    "name": "Case Western Reserve",
+    "slug": "case-western-reserve",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Catholic University of America",
+    "slug": "catholic-university-of-america",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Centenary (LA)",
+    "slug": "centenary-la",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Central Arkansas",
+    "slug": "central-arkansas",
+    "conference": "ASUN",
+    "espn_id": 2110,
+    "primary_color": "#a7a9ac",
+    "secondary_color": "#8e959a"
+  },
+  {
+    "name": "Central Connecticut State",
+    "slug": "central-connecticut-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Central Michigan",
+    "slug": "central-michigan",
+    "conference": "MAC",
+    "espn_id": 2117,
+    "primary_color": "#4c0027",
+    "secondary_color": "#fbab18"
+  },
+  {
+    "name": "Central Oklahoma",
+    "slug": "central-oklahoma",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Central State",
+    "slug": "central-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Charleston",
+    "slug": "charleston",
+    "conference": "CAA",
+    "espn_id": 232,
+    "primary_color": "#7a2531",
+    "secondary_color": "#9e8959"
+  },
+  {
+    "name": "Chattanooga",
+    "slug": "chattanooga",
+    "conference": "SoCon",
+    "espn_id": 236,
+    "primary_color": "#00386b",
+    "secondary_color": "#dca71d"
+  },
+  {
+    "name": "Cheyney (PA)",
+    "slug": "cheyney-pa",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Chicago State",
+    "slug": "chicago-state",
+    "conference": "NEC",
+    "espn_id": 2130,
+    "primary_color": "#006700",
+    "secondary_color": null
+  },
+  {
+    "name": "Christopher Newport",
+    "slug": "christopher-newport",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Cincinnati",
+    "slug": "cincinnati",
+    "conference": "Big 12",
+    "espn_id": 2132,
+    "primary_color": null,
+    "secondary_color": "#e00122"
+  },
+  {
+    "name": "City College of New York",
+    "slug": "city-college-of-new-york",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "City College of San Francisco",
+    "slug": "city-college-of-san-francisco",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Clark Atlanta",
+    "slug": "clark-atlanta",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Clemson",
+    "slug": "clemson",
+    "conference": "ACC",
+    "espn_id": 228,
+    "primary_color": "#f56600",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Cleveland State",
+    "slug": "cleveland-state",
+    "conference": "Horizon",
+    "espn_id": 325,
+    "primary_color": "#006633",
+    "secondary_color": "#231f20"
+  },
+  {
+    "name": "Colgate",
+    "slug": "colgate",
+    "conference": "Patriot",
+    "espn_id": 2142,
+    "primary_color": "#821019",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "College of Saint Rose",
+    "slug": "college-of-saint-rose",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "College of Wooster",
+    "slug": "college-of-wooster",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Colorado",
+    "slug": "colorado",
+    "conference": "Big 12",
+    "espn_id": 38,
+    "primary_color": "#cfb87c",
+    "secondary_color": null
+  },
+  {
+    "name": "Colorado State",
+    "slug": "colorado-state",
+    "conference": "Mountain West",
+    "espn_id": 36,
+    "primary_color": "#004c23",
+    "secondary_color": "#c8c372"
+  },
+  {
+    "name": "Columbia",
+    "slug": "columbia",
+    "conference": "Ivy",
+    "espn_id": 171,
+    "primary_color": "#7ba4db",
+    "secondary_color": "#183863"
+  },
+  {
+    "name": "Coppin State",
+    "slug": "coppin-state",
+    "conference": "MEAC",
+    "espn_id": 2154,
+    "primary_color": "#2e3192",
+    "secondary_color": "#ffd204"
+  },
+  {
+    "name": "Cornell",
+    "slug": "cornell",
+    "conference": "Ivy",
+    "espn_id": 172,
+    "primary_color": "#b31b1b",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Creighton",
+    "slug": "creighton",
+    "conference": "Big East",
+    "espn_id": 156,
+    "primary_color": "#005ca9",
+    "secondary_color": "#6cadde"
+  },
+  {
+    "name": "Culver-Stockton College",
+    "slug": "culver-stockton-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Dakota Wesleyan",
+    "slug": "dakota-wesleyan",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Dartmouth College",
+    "slug": "dartmouth-college",
+    "conference": "Ivy",
+    "espn_id": 159,
+    "primary_color": "#005730",
+    "secondary_color": null
+  },
+  {
+    "name": "Davidson",
+    "slug": "davidson",
+    "conference": "A-10",
+    "espn_id": 2166,
+    "primary_color": null,
+    "secondary_color": "#e51837"
+  },
+  {
+    "name": "Dayton",
+    "slug": "dayton",
+    "conference": "A-10",
+    "espn_id": 2168,
+    "primary_color": "#004B8D",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "DePaul",
+    "slug": "depaul",
+    "conference": "Big East",
+    "espn_id": 305,
+    "primary_color": "#2d649c",
+    "secondary_color": "#ce1125"
+  },
+  {
+    "name": "DePauw",
+    "slug": "depauw",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Delaware",
+    "slug": "delaware",
+    "conference": "CUSA",
+    "espn_id": 48,
+    "primary_color": "#00539f",
+    "secondary_color": "#ffd200"
+  },
+  {
+    "name": "Delta State",
+    "slug": "delta-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Denver",
+    "slug": "denver",
+    "conference": "Summit",
+    "espn_id": 2172,
+    "primary_color": "#98002e",
+    "secondary_color": "#a8996e"
+  },
+  {
+    "name": "Detroit Mercy",
+    "slug": "detroit-mercy",
+    "conference": "Horizon",
+    "espn_id": 2174,
+    "primary_color": "#165b9e",
+    "secondary_color": "#d31733"
+  },
+  {
+    "name": "Dillard",
+    "slug": "dillard",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "District of Columbia",
+    "slug": "district-of-columbia",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Drake",
+    "slug": "drake",
+    "conference": "MVC",
+    "espn_id": 2181,
+    "primary_color": "#005596",
+    "secondary_color": "#bec0c2"
+  },
+  {
+    "name": "Drexel",
+    "slug": "drexel",
+    "conference": "CAA",
+    "espn_id": 2182,
+    "primary_color": "#020260",
+    "secondary_color": "#ffd65a"
+  },
+  {
+    "name": "Duke",
+    "slug": "duke",
+    "conference": "ACC",
+    "espn_id": 150,
+    "primary_color": "#00539b",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Duquesne",
+    "slug": "duquesne",
+    "conference": "A-10",
+    "espn_id": 2184,
+    "primary_color": "#002D62",
+    "secondary_color": "#b90b2e"
+  },
+  {
+    "name": "East Carolina",
+    "slug": "east-carolina",
+    "conference": "American",
+    "espn_id": 151,
+    "primary_color": "#582c83",
+    "secondary_color": "#ffc72c"
+  },
+  {
+    "name": "East Central",
+    "slug": "east-central",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "East Tennessee State",
+    "slug": "east-tennessee-state",
+    "conference": "SoCon",
+    "espn_id": 2193,
+    "primary_color": "#002d61",
+    "secondary_color": "#ffc423"
+  },
+  {
+    "name": "East Texas A&M",
+    "slug": "east-texas-am",
+    "conference": "Southland",
+    "espn_id": 2837,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Eastern Illinois",
+    "slug": "eastern-illinois",
+    "conference": "OVC",
+    "espn_id": 2197,
+    "primary_color": null,
+    "secondary_color": "#bebab9"
+  },
+  {
+    "name": "Eastern Kentucky",
+    "slug": "eastern-kentucky",
+    "conference": "ASUN",
+    "espn_id": 2198,
+    "primary_color": "#660819",
+    "secondary_color": "#f0f0f0"
+  },
+  {
+    "name": "Eastern Michigan",
+    "slug": "eastern-michigan",
+    "conference": "MAC",
+    "espn_id": 2199,
+    "primary_color": "#006938",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Eastern New Mexico",
+    "slug": "eastern-new-mexico",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Eastern Washington",
+    "slug": "eastern-washington",
+    "conference": "Big Sky",
+    "espn_id": 331,
+    "primary_color": "#a10022",
+    "secondary_color": "#abb4bc"
+  },
+  {
+    "name": "Elizabeth City State",
+    "slug": "elizabeth-city-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Elon",
+    "slug": "elon",
+    "conference": "CAA",
+    "espn_id": 2210,
+    "primary_color": "#020303",
+    "secondary_color": "#b59a57"
+  },
+  {
+    "name": "Emmanuel",
+    "slug": "emmanuel",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Evansville",
+    "slug": "evansville",
+    "conference": "MVC",
+    "espn_id": 339,
+    "primary_color": "#663399",
+    "secondary_color": "#ef6f00"
+  },
+  {
+    "name": "Fairfield",
+    "slug": "fairfield",
+    "conference": "MAAC",
+    "espn_id": 2217,
+    "primary_color": null,
+    "secondary_color": "#ebebeb"
+  },
+  {
+    "name": "Fayetteville State",
+    "slug": "fayetteville-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Florida",
+    "slug": "florida",
+    "conference": "SEC",
+    "espn_id": 57,
+    "primary_color": "#0021a5",
+    "secondary_color": "#fa4616"
+  },
+  {
+    "name": "Florida A&M",
+    "slug": "florida-am",
+    "conference": "SWAC",
+    "espn_id": 50,
+    "primary_color": "#F89728",
+    "secondary_color": "#00843d"
+  },
+  {
+    "name": "Florida Atlantic",
+    "slug": "florida-atlantic",
+    "conference": "American",
+    "espn_id": 2226,
+    "primary_color": "#003366",
+    "secondary_color": "#cc0000"
+  },
+  {
+    "name": "Florida International",
+    "slug": "florida-international",
+    "conference": "CUSA",
+    "espn_id": 2229,
+    "primary_color": "#091f3f",
+    "secondary_color": "#c3993f"
+  },
+  {
+    "name": "Florida State",
+    "slug": "florida-state",
+    "conference": "ACC",
+    "espn_id": 52,
+    "primary_color": "#782f40",
+    "secondary_color": "#ceb888"
+  },
+  {
+    "name": "Fordham",
+    "slug": "fordham",
+    "conference": "A-10",
+    "espn_id": 2230,
+    "primary_color": "#830032",
+    "secondary_color": "#909090"
+  },
+  {
+    "name": "Fort Valley State",
+    "slug": "fort-valley-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Franklin College",
+    "slug": "franklin-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Fresno State",
+    "slug": "fresno-state",
+    "conference": "Mountain West",
+    "espn_id": 278,
+    "primary_color": "#b1102b",
+    "secondary_color": "#13284c"
+  },
+  {
+    "name": "Friendship Junior College",
+    "slug": "friendship-junior-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Furman",
+    "slug": "furman",
+    "conference": "SoCon",
+    "espn_id": 231,
+    "primary_color": "#582c83",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Gannon",
+    "slug": "gannon",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Gardner-Webb",
+    "slug": "gardner-webb",
+    "conference": "Big South",
+    "espn_id": 2241,
+    "primary_color": "#c12535",
+    "secondary_color": "#909090"
+  },
+  {
+    "name": "George Mason",
+    "slug": "george-mason",
+    "conference": "A-10",
+    "espn_id": 2244,
+    "primary_color": "#016600",
+    "secondary_color": "#ecb010"
+  },
+  {
+    "name": "George Washington",
+    "slug": "george-washington",
+    "conference": "A-10",
+    "espn_id": 45,
+    "primary_color": "#002843",
+    "secondary_color": "#e8d2a1"
+  },
+  {
+    "name": "Georgetown",
+    "slug": "georgetown",
+    "conference": "Big East",
+    "espn_id": 46,
+    "primary_color": "#110E42",
+    "secondary_color": "#001c58"
+  },
+  {
+    "name": "Georgia",
+    "slug": "georgia",
+    "conference": "SEC",
+    "espn_id": 61,
+    "primary_color": "#ba0c2f",
+    "secondary_color": "#2c2a29"
+  },
+  {
+    "name": "Georgia Southern",
+    "slug": "georgia-southern",
+    "conference": "Sun Belt",
+    "espn_id": 290,
+    "primary_color": "#041e42",
+    "secondary_color": "#a3aaae"
+  },
+  {
+    "name": "Georgia State",
+    "slug": "georgia-state",
+    "conference": "Sun Belt",
+    "espn_id": 2247,
+    "primary_color": "#0039a6",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Georgia Tech",
+    "slug": "georgia-tech",
+    "conference": "ACC",
+    "espn_id": 59,
+    "primary_color": "#b3a369",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Gonzaga",
+    "slug": "gonzaga",
+    "conference": "WCC",
+    "espn_id": 2250,
+    "primary_color": "#041e42",
+    "secondary_color": "#c8102e"
+  },
+  {
+    "name": "Grambling State",
+    "slug": "grambling-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Grand Canyon",
+    "slug": "grand-canyon",
+    "conference": "Mountain West",
+    "espn_id": 2253,
+    "primary_color": "#522398",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Green Bay",
+    "slug": "green-bay",
+    "conference": "Horizon",
+    "espn_id": 2739,
+    "primary_color": "#006633",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Guilford College",
+    "slug": "guilford-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Hamline",
+    "slug": "hamline",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Hampton",
+    "slug": "hampton",
+    "conference": "CAA",
+    "espn_id": 2261,
+    "primary_color": "#0067AC",
+    "secondary_color": null
+  },
+  {
+    "name": "Hanover College",
+    "slug": "hanover-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Harbor College",
+    "slug": "harbor-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Hardin-Simmons",
+    "slug": "hardin-simmons",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Hartford",
+    "slug": "hartford",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Harvard",
+    "slug": "harvard",
+    "conference": "Ivy",
+    "espn_id": 108,
+    "primary_color": "#990000",
+    "secondary_color": "#dbdbdb"
+  },
+  {
+    "name": "Hawaii",
+    "slug": "hawaii",
+    "conference": "Big West",
+    "espn_id": 62,
+    "primary_color": "#005737",
+    "secondary_color": null
+  },
+  {
+    "name": "High Point",
+    "slug": "high-point",
+    "conference": "Big South",
+    "espn_id": 2272,
+    "primary_color": "#330072",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Hillsdale College",
+    "slug": "hillsdale-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Hiram College",
+    "slug": "hiram-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Hofstra",
+    "slug": "hofstra",
+    "conference": "CAA",
+    "espn_id": 2275,
+    "primary_color": "#003594",
+    "secondary_color": "#ffc72c"
+  },
+  {
+    "name": "Holy Cross",
+    "slug": "holy-cross",
+    "conference": "Patriot",
+    "espn_id": 107,
+    "primary_color": "#582c83",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Houston",
+    "slug": "houston",
+    "conference": "Big 12",
+    "espn_id": 248,
+    "primary_color": "#c8102e",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Houston Baptist",
+    "slug": "houston-baptist",
+    "conference": "Southland",
+    "espn_id": 2277,
+    "primary_color": "#00539c",
+    "secondary_color": null
+  },
+  {
+    "name": "Howard",
+    "slug": "howard",
+    "conference": "MEAC",
+    "espn_id": 47,
+    "primary_color": "#003a63",
+    "secondary_color": "#e51937"
+  },
+  {
+    "name": "Humboldt State",
+    "slug": "humboldt-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Huntington",
+    "slug": "huntington",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Idaho",
+    "slug": "idaho",
+    "conference": "Big Sky",
+    "espn_id": 70,
+    "primary_color": null,
+    "secondary_color": "#8c6e4a"
+  },
+  {
+    "name": "Idaho State",
+    "slug": "idaho-state",
+    "conference": "Big Sky",
+    "espn_id": 304,
+    "primary_color": "#ef8c00",
+    "secondary_color": "#e9a126"
+  },
+  {
+    "name": "Illinois",
+    "slug": "illinois",
+    "conference": "Big Ten",
+    "espn_id": 356,
+    "primary_color": "#ff5f05",
+    "secondary_color": "#13294b"
+  },
+  {
+    "name": "Illinois State",
+    "slug": "illinois-state",
+    "conference": "MVC",
+    "espn_id": 2287,
+    "primary_color": "#CE1126",
+    "secondary_color": "#ffe716"
+  },
+  {
+    "name": "Illinois Wesleyan",
+    "slug": "illinois-wesleyan",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Indian Hills Community College",
+    "slug": "indian-hills-community-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Indiana",
+    "slug": "indiana",
+    "conference": "Big Ten",
+    "espn_id": 84,
+    "primary_color": "#970310",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Indiana State",
+    "slug": "indiana-state",
+    "conference": "MVC",
+    "espn_id": 282,
+    "primary_color": "#00669a",
+    "secondary_color": "#f0f0f0"
+  },
+  {
+    "name": "Iona College",
+    "slug": "iona-college",
+    "conference": "MAAC",
+    "espn_id": 314,
+    "primary_color": "#6f2c3e",
+    "secondary_color": "#f0ab00"
+  },
+  {
+    "name": "Iowa",
+    "slug": "iowa",
+    "conference": "Big Ten",
+    "espn_id": 2294,
+    "primary_color": "#231f20",
+    "secondary_color": "#fcd116"
+  },
+  {
+    "name": "Iowa State",
+    "slug": "iowa-state",
+    "conference": "Big 12",
+    "espn_id": 66,
+    "primary_color": "#ae192d",
+    "secondary_color": "#ffc72a"
+  },
+  {
+    "name": "Jackson State",
+    "slug": "jackson-state",
+    "conference": "SWAC",
+    "espn_id": 2296,
+    "primary_color": "#123297",
+    "secondary_color": "#b5b7ba"
+  },
+  {
+    "name": "Jacksonville",
+    "slug": "jacksonville",
+    "conference": "ASUN",
+    "espn_id": 294,
+    "primary_color": "#00523e",
+    "secondary_color": null
+  },
+  {
+    "name": "Jacksonville State",
+    "slug": "jacksonville-state",
+    "conference": "CUSA",
+    "espn_id": 55,
+    "primary_color": "#cc0000",
+    "secondary_color": null
+  },
+  {
+    "name": "James Madison",
+    "slug": "james-madison",
+    "conference": "Sun Belt",
+    "espn_id": 256,
+    "primary_color": "#450084",
+    "secondary_color": "#cbb677"
+  },
+  {
+    "name": "John A. Logan College",
+    "slug": "john-a-logan-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Johnson C. Smith",
+    "slug": "johnson-c-smith",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Kansas",
+    "slug": "kansas",
+    "conference": "Big 12",
+    "espn_id": 2305,
+    "primary_color": "#0051ba",
+    "secondary_color": "#e8000d"
+  },
+  {
+    "name": "Kansas State",
+    "slug": "kansas-state",
+    "conference": "Big 12",
+    "espn_id": 2306,
+    "primary_color": "#330a57",
+    "secondary_color": "#e2e3e4"
+  },
+  {
+    "name": "Kent State",
+    "slug": "kent-state",
+    "conference": "MAC",
+    "espn_id": 2309,
+    "primary_color": "#002664",
+    "secondary_color": "#eaab00"
+  },
+  {
+    "name": "Kentucky",
+    "slug": "kentucky",
+    "conference": "SEC",
+    "espn_id": 96,
+    "primary_color": "#0033a0",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Kentucky State",
+    "slug": "kentucky-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Kentucky Wesleyan College",
+    "slug": "kentucky-wesleyan-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Kenyon College",
+    "slug": "kenyon-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "King's College",
+    "slug": "king-s-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "LSU",
+    "slug": "lsu",
+    "conference": "SEC",
+    "espn_id": 99,
+    "primary_color": "#461d76",
+    "secondary_color": "#fdd023"
+  },
+  {
+    "name": "La Salle",
+    "slug": "la-salle",
+    "conference": "A-10",
+    "espn_id": 2325,
+    "primary_color": "#003356",
+    "secondary_color": "#ffce00"
+  },
+  {
+    "name": "Lamar",
+    "slug": "lamar",
+    "conference": "Southland",
+    "espn_id": 2320,
+    "primary_color": null,
+    "secondary_color": "#ebebeb"
+  },
+  {
+    "name": "Lawrence Technological",
+    "slug": "lawrence-technological",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "LeMoyne College",
+    "slug": "lemoyne-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "LeMoyne-Owen College",
+    "slug": "lemoyne-owen-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Lebanon Valley College",
+    "slug": "lebanon-valley-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Lehigh",
+    "slug": "lehigh",
+    "conference": "Patriot",
+    "espn_id": 2329,
+    "primary_color": "#6c2b2a",
+    "secondary_color": "#b69e70"
+  },
+  {
+    "name": "Liberty",
+    "slug": "liberty",
+    "conference": "CUSA",
+    "espn_id": 2335,
+    "primary_color": "#0a254e",
+    "secondary_color": "#b72025"
+  },
+  {
+    "name": "Lincoln Memorial",
+    "slug": "lincoln-memorial",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Lincoln University of Missouri",
+    "slug": "lincoln-university-of-missouri",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Lipscomb",
+    "slug": "lipscomb",
+    "conference": "ASUN",
+    "espn_id": 288,
+    "primary_color": "#20366C",
+    "secondary_color": "#f6b734"
+  },
+  {
+    "name": "Little Rock",
+    "slug": "little-rock",
+    "conference": "OVC",
+    "espn_id": 2031,
+    "primary_color": "#AD0000",
+    "secondary_color": "#898d8f"
+  },
+  {
+    "name": "Long Island",
+    "slug": "long-island",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Longwood",
+    "slug": "longwood",
+    "conference": "Big South",
+    "espn_id": 2344,
+    "primary_color": "#003273",
+    "secondary_color": "#9ea2a3"
+  },
+  {
+    "name": "Louisiana",
+    "slug": "louisiana",
+    "conference": "Sun Belt",
+    "espn_id": 309,
+    "primary_color": "#ce181e",
+    "secondary_color": null
+  },
+  {
+    "name": "Louisiana Tech",
+    "slug": "louisiana-tech",
+    "conference": "CUSA",
+    "espn_id": 2348,
+    "primary_color": "#003087",
+    "secondary_color": "#cb333b"
+  },
+  {
+    "name": "Louisiana-Monroe",
+    "slug": "louisiana-monroe",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Louisville",
+    "slug": "louisville",
+    "conference": "ACC",
+    "espn_id": 97,
+    "primary_color": "#c9001f",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Loyola (MD)",
+    "slug": "loyola-md",
+    "conference": "Patriot",
+    "espn_id": 2352,
+    "primary_color": "#76a7a0",
+    "secondary_color": "#c9cbca"
+  },
+  {
+    "name": "Loyola Chicago",
+    "slug": "loyola-chicago",
+    "conference": "A-10",
+    "espn_id": 2350,
+    "primary_color": "#9d1244",
+    "secondary_color": null
+  },
+  {
+    "name": "Loyola Marymount",
+    "slug": "loyola-marymount",
+    "conference": "WCC",
+    "espn_id": 2351,
+    "primary_color": "#880029",
+    "secondary_color": "#00345b"
+  },
+  {
+    "name": "Loyola University Chicago",
+    "slug": "loyola-university-chicago",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Maine",
+    "slug": "maine",
+    "conference": "Am. East",
+    "espn_id": 311,
+    "primary_color": "#127dbe",
+    "secondary_color": null
+  },
+  {
+    "name": "Manhattan",
+    "slug": "manhattan",
+    "conference": "MAAC",
+    "espn_id": 2363,
+    "primary_color": "#4f8537",
+    "secondary_color": "#b5b7ba"
+  },
+  {
+    "name": "Marist College",
+    "slug": "marist-college",
+    "conference": "MAAC",
+    "espn_id": 2368,
+    "primary_color": "#e53730",
+    "secondary_color": "#f0f0f0"
+  },
+  {
+    "name": "Marquette",
+    "slug": "marquette",
+    "conference": "Big East",
+    "espn_id": 269,
+    "primary_color": "#003366",
+    "secondary_color": "#ffcc00"
+  },
+  {
+    "name": "Marshall",
+    "slug": "marshall",
+    "conference": "Sun Belt",
+    "espn_id": 276,
+    "primary_color": "#00b140",
+    "secondary_color": null
+  },
+  {
+    "name": "Maryland",
+    "slug": "maryland",
+    "conference": "Big Ten",
+    "espn_id": 120,
+    "primary_color": "#ce1126",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Maryland Eastern Shore",
+    "slug": "maryland-eastern-shore",
+    "conference": "MEAC",
+    "espn_id": 2379,
+    "primary_color": "#5c2301",
+    "secondary_color": "#b5b7ba"
+  },
+  {
+    "name": "Master's College",
+    "slug": "master-s-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "McNeese State",
+    "slug": "mcneese-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Memphis",
+    "slug": "memphis",
+    "conference": "American",
+    "espn_id": 235,
+    "primary_color": "#004991",
+    "secondary_color": "#8e908f"
+  },
+  {
+    "name": "Mercer",
+    "slug": "mercer",
+    "conference": "SoCon",
+    "espn_id": 2382,
+    "primary_color": "#ff7f29",
+    "secondary_color": "#080808"
+  },
+  {
+    "name": "Meridian Community College",
+    "slug": "meridian-community-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Miami (FL)",
+    "slug": "miami-fl",
+    "conference": "ACC",
+    "espn_id": 2390,
+    "primary_color": "#f47423",
+    "secondary_color": "#035131"
+  },
+  {
+    "name": "Miami (OH)",
+    "slug": "miami-oh",
+    "conference": "MAC",
+    "espn_id": 193,
+    "primary_color": "#c41230",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Michigan",
+    "slug": "michigan",
+    "conference": "Big Ten",
+    "espn_id": 130,
+    "primary_color": "#00274c",
+    "secondary_color": "#ffcb05"
+  },
+  {
+    "name": "Michigan State",
+    "slug": "michigan-state",
+    "conference": "Big Ten",
+    "espn_id": 127,
+    "primary_color": "#173f35",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Middle Tennessee",
+    "slug": "middle-tennessee",
+    "conference": "CUSA",
+    "espn_id": 2393,
+    "primary_color": "#036eb7",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Midland College",
+    "slug": "midland-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Midwestern State",
+    "slug": "midwestern-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Miles College",
+    "slug": "miles-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Millersville",
+    "slug": "millersville",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Milwaukee",
+    "slug": "milwaukee",
+    "conference": "Horizon",
+    "espn_id": 270,
+    "primary_color": null,
+    "secondary_color": "#ffc20e"
+  },
+  {
+    "name": "Minnesota",
+    "slug": "minnesota",
+    "conference": "Big Ten",
+    "espn_id": 135,
+    "primary_color": "#5e0a2f",
+    "secondary_color": "#fab41c"
+  },
+  {
+    "name": "Minnesota Duluth",
+    "slug": "minnesota-duluth",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Mississippi State",
+    "slug": "mississippi-state",
+    "conference": "SEC",
+    "espn_id": 344,
+    "primary_color": "#5d1725",
+    "secondary_color": "#c1c6c8"
+  },
+  {
+    "name": "Missouri",
+    "slug": "missouri",
+    "conference": "SEC",
+    "espn_id": 142,
+    "primary_color": "#f1b82d",
+    "secondary_color": null
+  },
+  {
+    "name": "Missouri State",
+    "slug": "missouri-state",
+    "conference": "CUSA",
+    "espn_id": 2623,
+    "primary_color": "#5e0009",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Missouri-Kansas City",
+    "slug": "missouri-kansas-city",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Molloy",
+    "slug": "molloy",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Monmouth",
+    "slug": "monmouth",
+    "conference": "CAA",
+    "espn_id": 2405,
+    "primary_color": "#051844",
+    "secondary_color": null
+  },
+  {
+    "name": "Montana",
+    "slug": "montana",
+    "conference": "Big Sky",
+    "espn_id": 149,
+    "primary_color": "#751D4A",
+    "secondary_color": "#666666"
+  },
+  {
+    "name": "Montana State",
+    "slug": "montana-state",
+    "conference": "Big Sky",
+    "espn_id": 147,
+    "primary_color": "#00205c",
+    "secondary_color": "#bc955c"
+  },
+  {
+    "name": "Montana State University, Billings",
+    "slug": "montana-state-university-billings",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Montevallo",
+    "slug": "montevallo",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Morehead State",
+    "slug": "morehead-state",
+    "conference": "OVC",
+    "espn_id": 2413,
+    "primary_color": "#094FA3",
+    "secondary_color": "#fed91a"
+  },
+  {
+    "name": "Morehouse College",
+    "slug": "morehouse-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Morgan State",
+    "slug": "morgan-state",
+    "conference": "MEAC",
+    "espn_id": 2415,
+    "primary_color": "#014786",
+    "secondary_color": "#f47937"
+  },
+  {
+    "name": "Mount San Antonio College",
+    "slug": "mount-san-antonio-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Mount St. Mary's",
+    "slug": "mount-st-mary-s",
+    "conference": "MAAC",
+    "espn_id": 116,
+    "primary_color": "#005596",
+    "secondary_color": "#ebebeb"
+  },
+  {
+    "name": "Mount Union College",
+    "slug": "mount-union-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Muhlenberg College",
+    "slug": "muhlenberg-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Murray State",
+    "slug": "murray-state",
+    "conference": "MVC",
+    "espn_id": 93,
+    "primary_color": "#002148",
+    "secondary_color": "#000e00"
+  },
+  {
+    "name": "NC Central",
+    "slug": "nc-central",
+    "conference": "MEAC",
+    "espn_id": 2428,
+    "primary_color": "#880023",
+    "secondary_color": "#c2c3c0"
+  },
+  {
+    "name": "NC State",
+    "slug": "nc-state",
+    "conference": "ACC",
+    "espn_id": 152,
+    "primary_color": "#cc0000",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "NYU",
+    "slug": "nyu",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Nebraska",
+    "slug": "nebraska",
+    "conference": "Big Ten",
+    "espn_id": 158,
+    "primary_color": "#e31937",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Nebraska-Kearney",
+    "slug": "nebraska-kearney",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Nevada",
+    "slug": "nevada",
+    "conference": "Mountain West",
+    "espn_id": 2440,
+    "primary_color": "#041e42",
+    "secondary_color": "#8a8d8f"
+  },
+  {
+    "name": "New Mexico",
+    "slug": "new-mexico",
+    "conference": "Mountain West",
+    "espn_id": 167,
+    "primary_color": "#ba0c2f",
+    "secondary_color": "#a7a8aa"
+  },
+  {
+    "name": "New Mexico Highlands",
+    "slug": "new-mexico-highlands",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "New Mexico State",
+    "slug": "new-mexico-state",
+    "conference": "CUSA",
+    "espn_id": 166,
+    "primary_color": "#7e141b",
+    "secondary_color": "#231f20"
+  },
+  {
+    "name": "New Orleans",
+    "slug": "new-orleans",
+    "conference": "Southland",
+    "espn_id": 2443,
+    "primary_color": "#005da6",
+    "secondary_color": "#a2a9ae"
+  },
+  {
+    "name": "Niagara",
+    "slug": "niagara",
+    "conference": "MAAC",
+    "espn_id": 315,
+    "primary_color": "#69207E",
+    "secondary_color": "#f0f0f0"
+  },
+  {
+    "name": "Norfolk State",
+    "slug": "norfolk-state",
+    "conference": "MEAC",
+    "espn_id": 2450,
+    "primary_color": "#0c8968",
+    "secondary_color": "#fdb813"
+  },
+  {
+    "name": "North Carolina A&T",
+    "slug": "north-carolina-at",
+    "conference": "CAA",
+    "espn_id": 2448,
+    "primary_color": "#0505aa",
+    "secondary_color": "#004684"
+  },
+  {
+    "name": "North Dakota",
+    "slug": "north-dakota",
+    "conference": "Summit",
+    "espn_id": 155,
+    "primary_color": "#00A26B",
+    "secondary_color": "#c2c3c0"
+  },
+  {
+    "name": "North Dakota State",
+    "slug": "north-dakota-state",
+    "conference": "Summit",
+    "espn_id": 2449,
+    "primary_color": "#01402A",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "North Park",
+    "slug": "north-park",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "North Texas",
+    "slug": "north-texas",
+    "conference": "American",
+    "espn_id": 249,
+    "primary_color": "#068f33",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Northeast Mississippi Community College",
+    "slug": "northeast-mississippi-community-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Northeastern",
+    "slug": "northeastern",
+    "conference": "CAA",
+    "espn_id": 111,
+    "primary_color": "#CC0001",
+    "secondary_color": "#c2c3c0"
+  },
+  {
+    "name": "Northeastern State",
+    "slug": "northeastern-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Northern Arizona",
+    "slug": "northern-arizona",
+    "conference": "Big Sky",
+    "espn_id": 2464,
+    "primary_color": "#003976",
+    "secondary_color": "#1b3069"
+  },
+  {
+    "name": "Northern Colorado",
+    "slug": "northern-colorado",
+    "conference": "Big Sky",
+    "espn_id": 2458,
+    "primary_color": "#13558D",
+    "secondary_color": "#ffc533"
+  },
+  {
+    "name": "Northern Illinois",
+    "slug": "northern-illinois",
+    "conference": "MAC",
+    "espn_id": 2459,
+    "primary_color": "#c8102e",
+    "secondary_color": null
+  },
+  {
+    "name": "Northern Iowa",
+    "slug": "northern-iowa",
+    "conference": "MVC",
+    "espn_id": 2460,
+    "primary_color": "#473282",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Northwest Missouri State",
+    "slug": "northwest-missouri-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Northwestern",
+    "slug": "northwestern",
+    "conference": "Big Ten",
+    "espn_id": 77,
+    "primary_color": "#492f92",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Northwestern State",
+    "slug": "northwestern-state",
+    "conference": "Southland",
+    "espn_id": 2466,
+    "primary_color": "#492F91",
+    "secondary_color": "#ed6118"
+  },
+  {
+    "name": "Northwood",
+    "slug": "northwood",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Notre Dame",
+    "slug": "notre-dame",
+    "conference": "ACC",
+    "espn_id": 87,
+    "primary_color": "#062340",
+    "secondary_color": "#c99700"
+  },
+  {
+    "name": "Oakland",
+    "slug": "oakland",
+    "conference": "Horizon",
+    "espn_id": 2473,
+    "primary_color": "#04091c",
+    "secondary_color": "#bc955c"
+  },
+  {
+    "name": "Ohio",
+    "slug": "ohio",
+    "conference": "MAC",
+    "espn_id": 195,
+    "primary_color": "#154734",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Ohio State",
+    "slug": "ohio-state",
+    "conference": "Big Ten",
+    "espn_id": 194,
+    "primary_color": "#ba0c2f",
+    "secondary_color": "#a8adb4"
+  },
+  {
+    "name": "Ohio Wesleyan",
+    "slug": "ohio-wesleyan",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Okaloosa-Walton Community College",
+    "slug": "okaloosa-walton-community-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Oklahoma",
+    "slug": "oklahoma",
+    "conference": "SEC",
+    "espn_id": 201,
+    "primary_color": "#990000",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Oklahoma Baptist",
+    "slug": "oklahoma-baptist",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Oklahoma City",
+    "slug": "oklahoma-city",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Oklahoma State",
+    "slug": "oklahoma-state",
+    "conference": "Big 12",
+    "espn_id": 197,
+    "primary_color": "#fe5c00",
+    "secondary_color": null
+  },
+  {
+    "name": "Old Dominion",
+    "slug": "old-dominion",
+    "conference": "Sun Belt",
+    "espn_id": 295,
+    "primary_color": "#003768",
+    "secondary_color": "#a1d2f1"
+  },
+  {
+    "name": "Ole Miss",
+    "slug": "ole-miss",
+    "conference": "SEC",
+    "espn_id": 145,
+    "primary_color": "#13294b",
+    "secondary_color": "#cf142b"
+  },
+  {
+    "name": "Omaha",
+    "slug": "omaha",
+    "conference": "Summit",
+    "espn_id": 2437,
+    "primary_color": "#e3193e",
+    "secondary_color": "#474648"
+  },
+  {
+    "name": "Oral Roberts",
+    "slug": "oral-roberts",
+    "conference": "Summit",
+    "espn_id": 198,
+    "primary_color": "#002462",
+    "secondary_color": "#dac792"
+  },
+  {
+    "name": "Oregon",
+    "slug": "oregon",
+    "conference": "Big Ten",
+    "espn_id": 2483,
+    "primary_color": "#00934b",
+    "secondary_color": "#fff41b"
+  },
+  {
+    "name": "Oregon State",
+    "slug": "oregon-state",
+    "conference": "WCC",
+    "espn_id": 204,
+    "primary_color": "#dc4405",
+    "secondary_color": null
+  },
+  {
+    "name": "Otterbein College",
+    "slug": "otterbein-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Ouachita Baptist",
+    "slug": "ouachita-baptist",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Pacific",
+    "slug": "pacific",
+    "conference": "WCC",
+    "espn_id": 279,
+    "primary_color": "#F47820",
+    "secondary_color": "#c2c3c0"
+  },
+  {
+    "name": "Penn",
+    "slug": "penn",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Penn State",
+    "slug": "penn-state",
+    "conference": "Big Ten",
+    "espn_id": 213,
+    "primary_color": "#061440",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Pepperdine",
+    "slug": "pepperdine",
+    "conference": "WCC",
+    "espn_id": 2492,
+    "primary_color": "#003A72",
+    "secondary_color": "#dc762f"
+  },
+  {
+    "name": "Pikeville College",
+    "slug": "pikeville-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Pitt",
+    "slug": "pitt",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Portland",
+    "slug": "portland",
+    "conference": "WCC",
+    "espn_id": 2501,
+    "primary_color": "#330072",
+    "secondary_color": "#a8b3ba"
+  },
+  {
+    "name": "Prairie View A&M",
+    "slug": "prairie-view-am",
+    "conference": "SWAC",
+    "espn_id": 2504,
+    "primary_color": "#582c83",
+    "secondary_color": "#eaaa00"
+  },
+  {
+    "name": "Princeton",
+    "slug": "princeton",
+    "conference": "Ivy",
+    "espn_id": 163,
+    "primary_color": null,
+    "secondary_color": "#ff6000"
+  },
+  {
+    "name": "Providence",
+    "slug": "providence",
+    "conference": "Big East",
+    "espn_id": 2507,
+    "primary_color": null,
+    "secondary_color": "#a3a19e"
+  },
+  {
+    "name": "Puget Sound",
+    "slug": "puget-sound",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Purdue",
+    "slug": "purdue",
+    "conference": "Big Ten",
+    "espn_id": 2509,
+    "primary_color": "#ceb888",
+    "secondary_color": null
+  },
+  {
+    "name": "Purdue-Fort Wayne",
+    "slug": "purdue-fort-wayne",
+    "conference": "Horizon",
+    "espn_id": 2870,
+    "primary_color": "#cfb991",
+    "secondary_color": null
+  },
+  {
+    "name": "Queens College",
+    "slug": "queens-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Quinnipiac",
+    "slug": "quinnipiac",
+    "conference": "MAAC",
+    "espn_id": 2514,
+    "primary_color": "#041B43",
+    "secondary_color": null
+  },
+  {
+    "name": "Radford",
+    "slug": "radford",
+    "conference": "Big South",
+    "espn_id": 2515,
+    "primary_color": "#BC1515",
+    "secondary_color": "#c2c3c0"
+  },
+  {
+    "name": "Rhode Island",
+    "slug": "rhode-island",
+    "conference": "A-10",
+    "espn_id": 227,
+    "primary_color": "#091f3f",
+    "secondary_color": "#5ab3e8"
+  },
+  {
+    "name": "Rice",
+    "slug": "rice",
+    "conference": "American",
+    "espn_id": 242,
+    "primary_color": "#00205b",
+    "secondary_color": "#c1c6c8"
+  },
+  {
+    "name": "Richmond",
+    "slug": "richmond",
+    "conference": "A-10",
+    "espn_id": 257,
+    "primary_color": "#9e0712",
+    "secondary_color": "#b90b2e"
+  },
+  {
+    "name": "Rider",
+    "slug": "rider",
+    "conference": "MAAC",
+    "espn_id": 2520,
+    "primary_color": "#a80532",
+    "secondary_color": "#ebebeb"
+  },
+  {
+    "name": "Rochester",
+    "slug": "rochester",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Rockhurst",
+    "slug": "rockhurst",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Rutgers",
+    "slug": "rutgers",
+    "conference": "Big Ten",
+    "espn_id": 164,
+    "primary_color": "#ce0e2d",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "SE Missouri State",
+    "slug": "se-missouri-state",
+    "conference": "OVC",
+    "espn_id": 2546,
+    "primary_color": "#c8102e",
+    "secondary_color": null
+  },
+  {
+    "name": "SMU",
+    "slug": "smu",
+    "conference": "ACC",
+    "espn_id": 2567,
+    "primary_color": "#a80000",
+    "secondary_color": "#0033a1"
+  },
+  {
+    "name": "Saint Francis",
+    "slug": "saint-francis",
+    "conference": "NEC",
+    "espn_id": 2598,
+    "primary_color": "#a20012",
+    "secondary_color": null
+  },
+  {
+    "name": "Saint Joseph's",
+    "slug": "saint-joseph-s",
+    "conference": "A-10",
+    "espn_id": 2603,
+    "primary_color": "#9e1b32",
+    "secondary_color": "#6c6f70"
+  },
+  {
+    "name": "Saint Louis",
+    "slug": "saint-louis",
+    "conference": "A-10",
+    "espn_id": 139,
+    "primary_color": "#00539C",
+    "secondary_color": "#ebebeb"
+  },
+  {
+    "name": "Saint Mary of the Plains College",
+    "slug": "saint-mary-of-the-plains-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Saint Mary's",
+    "slug": "saint-mary-s",
+    "conference": "WCC",
+    "espn_id": 2608,
+    "primary_color": "#d80024",
+    "secondary_color": "#003057"
+  },
+  {
+    "name": "Saint Mary's University of Minnesota",
+    "slug": "saint-mary-s-university-of-minnesota",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Saint Peter's College",
+    "slug": "saint-peter-s-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Salem",
+    "slug": "salem",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Sam Houston State",
+    "slug": "sam-houston-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "San Diego",
+    "slug": "san-diego",
+    "conference": "WCC",
+    "espn_id": 301,
+    "primary_color": "#2f99d4",
+    "secondary_color": "#2f99d4"
+  },
+  {
+    "name": "San Diego State",
+    "slug": "san-diego-state",
+    "conference": "Mountain West",
+    "espn_id": 21,
+    "primary_color": "#a6192e",
+    "secondary_color": null
+  },
+  {
+    "name": "San Francisco",
+    "slug": "san-francisco",
+    "conference": "WCC",
+    "espn_id": 2539,
+    "primary_color": "#005a36",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "San Jose State",
+    "slug": "san-jose-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Santa Clara",
+    "slug": "santa-clara",
+    "conference": "WCC",
+    "espn_id": 2541,
+    "primary_color": "#690b0b",
+    "secondary_color": "#101010"
+  },
+  {
+    "name": "Savannah State",
+    "slug": "savannah-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Seattle",
+    "slug": "seattle",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Seton Hall",
+    "slug": "seton-hall",
+    "conference": "Big East",
+    "espn_id": 2550,
+    "primary_color": "#0857B1",
+    "secondary_color": "#8a8d8f"
+  },
+  {
+    "name": "Shawnee State",
+    "slug": "shawnee-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Siena College",
+    "slug": "siena-college",
+    "conference": "MAAC",
+    "espn_id": 2561,
+    "primary_color": "#037961",
+    "secondary_color": "#eea60f"
+  },
+  {
+    "name": "Slippery Rock University of Pennsylvania",
+    "slug": "slippery-rock-university-of-pennsylvania",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "South Alabama",
+    "slug": "south-alabama",
+    "conference": "Sun Belt",
+    "espn_id": 6,
+    "primary_color": "#00205b",
+    "secondary_color": "#bf0d3e"
+  },
+  {
+    "name": "South Carolina",
+    "slug": "south-carolina",
+    "conference": "SEC",
+    "espn_id": 2579,
+    "primary_color": "#73000a",
+    "secondary_color": null
+  },
+  {
+    "name": "South Carolina State",
+    "slug": "south-carolina-state",
+    "conference": "MEAC",
+    "espn_id": 2569,
+    "primary_color": "#7d1315",
+    "secondary_color": "#104897"
+  },
+  {
+    "name": "South Dakota State",
+    "slug": "south-dakota-state",
+    "conference": "Summit",
+    "espn_id": 2571,
+    "primary_color": "#0033a0",
+    "secondary_color": "#ffd100"
+  },
+  {
+    "name": "South Florida",
+    "slug": "south-florida",
+    "conference": "American",
+    "espn_id": 58,
+    "primary_color": "#006747",
+    "secondary_color": "#cfc493"
+  },
+  {
+    "name": "Southern Colorado",
+    "slug": "southern-colorado",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Southern Illinois",
+    "slug": "southern-illinois",
+    "conference": "MVC",
+    "espn_id": 79,
+    "primary_color": "#85283D",
+    "secondary_color": "#c2c3c0"
+  },
+  {
+    "name": "Southern Miss",
+    "slug": "southern-miss",
+    "conference": "Sun Belt",
+    "espn_id": 2572,
+    "primary_color": "#ffc72c",
+    "secondary_color": "#231f20"
+  },
+  {
+    "name": "Southern University and A&M College",
+    "slug": "southern-university-and-am-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Springfield College",
+    "slug": "springfield-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "St. Bonaventure",
+    "slug": "st-bonaventure",
+    "conference": "A-10",
+    "espn_id": 179,
+    "primary_color": "#70261D",
+    "secondary_color": null
+  },
+  {
+    "name": "St. Francis College",
+    "slug": "st-francis-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "St. John's",
+    "slug": "st-john-s",
+    "conference": "Big East",
+    "espn_id": 2599,
+    "primary_color": "#d10000",
+    "secondary_color": "#101010"
+  },
+  {
+    "name": "St. Thomas",
+    "slug": "st-thomas",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Stanford",
+    "slug": "stanford",
+    "conference": "ACC",
+    "espn_id": 24,
+    "primary_color": "#8c1515",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "State University of New York at Potsdam",
+    "slug": "state-university-of-new-york-at-potsdam",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Stephen F. Austin",
+    "slug": "stephen-f-austin",
+    "conference": "Southland",
+    "espn_id": 2617,
+    "primary_color": "#393996",
+    "secondary_color": "#bec0c2"
+  },
+  {
+    "name": "Stetson",
+    "slug": "stetson",
+    "conference": "ASUN",
+    "espn_id": 56,
+    "primary_color": "#0a5640",
+    "secondary_color": "#56854e"
+  },
+  {
+    "name": "Stony Brook",
+    "slug": "stony-brook",
+    "conference": "CAA",
+    "espn_id": 2619,
+    "primary_color": "#990000",
+    "secondary_color": null
+  },
+  {
+    "name": "Syracuse",
+    "slug": "syracuse",
+    "conference": "ACC",
+    "espn_id": 183,
+    "primary_color": "#000e54",
+    "secondary_color": "#ff431b"
+  },
+  {
+    "name": "TCU",
+    "slug": "tcu",
+    "conference": "Big 12",
+    "espn_id": 2628,
+    "primary_color": "#4d1979",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Tampa",
+    "slug": "tampa",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Tarleton State",
+    "slug": "tarleton-state",
+    "conference": "WAC",
+    "espn_id": 2627,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Temple",
+    "slug": "temple",
+    "conference": "American",
+    "espn_id": 218,
+    "primary_color": "#a41e35",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Tennessee",
+    "slug": "tennessee",
+    "conference": "SEC",
+    "espn_id": 2633,
+    "primary_color": "#ff8200",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Tennessee State",
+    "slug": "tennessee-state",
+    "conference": "OVC",
+    "espn_id": 2634,
+    "primary_color": "#171796",
+    "secondary_color": "#f0f0f0"
+  },
+  {
+    "name": "Tennessee Technological",
+    "slug": "tennessee-technological",
+    "conference": "OVC",
+    "espn_id": 2635,
+    "primary_color": "#5A4099",
+    "secondary_color": "#ffde00"
+  },
+  {
+    "name": "Texas",
+    "slug": "texas",
+    "conference": "SEC",
+    "espn_id": 251,
+    "primary_color": "#af5c37",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Texas A&M",
+    "slug": "texas-am",
+    "conference": "SEC",
+    "espn_id": 245,
+    "primary_color": "#500000",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Texas A&M University-Commerce",
+    "slug": "texas-am-university-commerce",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Texas Southern",
+    "slug": "texas-southern",
+    "conference": "SWAC",
+    "espn_id": 2640,
+    "primary_color": "#860038",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Texas State",
+    "slug": "texas-state",
+    "conference": "Sun Belt",
+    "espn_id": 326,
+    "primary_color": "#501214",
+    "secondary_color": "#6a5638"
+  },
+  {
+    "name": "Texas Tech",
+    "slug": "texas-tech",
+    "conference": "Big 12",
+    "espn_id": 2641,
+    "primary_color": "#da291c",
+    "secondary_color": null
+  },
+  {
+    "name": "Texas Wesleyan",
+    "slug": "texas-wesleyan",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Texas-El Paso",
+    "slug": "texas-el-paso",
+    "conference": "CUSA",
+    "espn_id": 2638,
+    "primary_color": "#ff8200",
+    "secondary_color": "#041e42"
+  },
+  {
+    "name": "Texas-San Antonio",
+    "slug": "texas-san-antonio",
+    "conference": "American",
+    "espn_id": 2636,
+    "primary_color": "#0c2340",
+    "secondary_color": "#f15a22"
+  },
+  {
+    "name": "Thomas More College",
+    "slug": "thomas-more-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Toledo",
+    "slug": "toledo",
+    "conference": "MAC",
+    "espn_id": 2649,
+    "primary_color": "#0b2240",
+    "secondary_color": "#ffcd00"
+  },
+  {
+    "name": "Triton College",
+    "slug": "triton-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Truman State",
+    "slug": "truman-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Tulane",
+    "slug": "tulane",
+    "conference": "American",
+    "espn_id": 2655,
+    "primary_color": "#006747",
+    "secondary_color": "#418fde"
+  },
+  {
+    "name": "Tulsa",
+    "slug": "tulsa",
+    "conference": "American",
+    "espn_id": 202,
+    "primary_color": "#003595",
+    "secondary_color": "#d0b787"
+  },
+  {
+    "name": "Tuskegee",
+    "slug": "tuskegee",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "UAB",
+    "slug": "uab",
+    "conference": "American",
+    "espn_id": 5,
+    "primary_color": "#1a5632",
+    "secondary_color": "#fdb913"
+  },
+  {
+    "name": "UC Irvine",
+    "slug": "uc-irvine",
+    "conference": "Big West",
+    "espn_id": 300,
+    "primary_color": "#002B5C",
+    "secondary_color": "#fec52e"
+  },
+  {
+    "name": "UC Santa Barbara",
+    "slug": "uc-santa-barbara",
+    "conference": "Big West",
+    "espn_id": 2540,
+    "primary_color": "#1e1840",
+    "secondary_color": "#febc11"
+  },
+  {
+    "name": "UCF",
+    "slug": "ucf",
+    "conference": "Big 12",
+    "espn_id": 2116,
+    "primary_color": null,
+    "secondary_color": "#b4a169"
+  },
+  {
+    "name": "UCLA",
+    "slug": "ucla",
+    "conference": "Big Ten",
+    "espn_id": 26,
+    "primary_color": "#2774ae",
+    "secondary_color": "#f2a900"
+  },
+  {
+    "name": "UConn",
+    "slug": "uconn",
+    "conference": "Big East",
+    "espn_id": 41,
+    "primary_color": "#0c2340",
+    "secondary_color": "#a2aaad"
+  },
+  {
+    "name": "UMass",
+    "slug": "umass",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "UMass Lowell",
+    "slug": "umass-lowell",
+    "conference": "Am. East",
+    "espn_id": 2349,
+    "primary_color": "#00529C",
+    "secondary_color": "#cf1f2f"
+  },
+  {
+    "name": "UNC",
+    "slug": "unc",
+    "conference": "ACC",
+    "espn_id": 153,
+    "primary_color": "#7bafd4",
+    "secondary_color": "#13294b"
+  },
+  {
+    "name": "UNC Asheville",
+    "slug": "unc-asheville",
+    "conference": "Big South",
+    "espn_id": 2427,
+    "primary_color": "#003da5",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "UNC Charlotte",
+    "slug": "unc-charlotte",
+    "conference": "American",
+    "espn_id": 2429,
+    "primary_color": "#005035",
+    "secondary_color": "#a49665"
+  },
+  {
+    "name": "UNC Wilmington",
+    "slug": "unc-wilmington",
+    "conference": "CAA",
+    "espn_id": 350,
+    "primary_color": "#00665e",
+    "secondary_color": "#ffda00"
+  },
+  {
+    "name": "UNLV",
+    "slug": "unlv",
+    "conference": "Mountain West",
+    "espn_id": 2439,
+    "primary_color": "#cf0a2c",
+    "secondary_color": "#cac8c8"
+  },
+  {
+    "name": "USC",
+    "slug": "usc",
+    "conference": "Big Ten",
+    "espn_id": 30,
+    "primary_color": "#9d2235",
+    "secondary_color": "#ffc72c"
+  },
+  {
+    "name": "USC Upstate",
+    "slug": "usc-upstate",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "UT Arlington",
+    "slug": "ut-arlington",
+    "conference": "WAC",
+    "espn_id": 250,
+    "primary_color": "#004b7c",
+    "secondary_color": "#f58024"
+  },
+  {
+    "name": "UT Martin",
+    "slug": "ut-martin",
+    "conference": "OVC",
+    "espn_id": 2630,
+    "primary_color": "#FF6700",
+    "secondary_color": "#102a5c"
+  },
+  {
+    "name": "UT Rio Grande Valley",
+    "slug": "ut-rio-grande-valley",
+    "conference": "Southland",
+    "espn_id": 292,
+    "primary_color": "#dc6000",
+    "secondary_color": "#e1732d"
+  },
+  {
+    "name": "United States Military Academy",
+    "slug": "united-states-military-academy",
+    "conference": "Patriot",
+    "espn_id": 349,
+    "primary_color": null,
+    "secondary_color": "#d3bc8d"
+  },
+  {
+    "name": "United States Naval Academy",
+    "slug": "united-states-naval-academy",
+    "conference": "Patriot",
+    "espn_id": 2426,
+    "primary_color": "#00225b",
+    "secondary_color": "#b5a67c"
+  },
+  {
+    "name": "Utah",
+    "slug": "utah",
+    "conference": "Big 12",
+    "espn_id": 254,
+    "primary_color": "#be0000",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Utah State",
+    "slug": "utah-state",
+    "conference": "Mountain West",
+    "espn_id": 328,
+    "primary_color": "#0f2439",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Utah Valley",
+    "slug": "utah-valley",
+    "conference": "WAC",
+    "espn_id": 3084,
+    "primary_color": "#004812",
+    "secondary_color": "#e1c736"
+  },
+  {
+    "name": "VCU",
+    "slug": "vcu",
+    "conference": "A-10",
+    "espn_id": 2670,
+    "primary_color": "#ffaf00",
+    "secondary_color": null
+  },
+  {
+    "name": "Valdosta State",
+    "slug": "valdosta-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Valparaiso",
+    "slug": "valparaiso",
+    "conference": "MVC",
+    "espn_id": 2674,
+    "primary_color": "#794500",
+    "secondary_color": null
+  },
+  {
+    "name": "Vanderbilt",
+    "slug": "vanderbilt",
+    "conference": "SEC",
+    "espn_id": 238,
+    "primary_color": null,
+    "secondary_color": "#cfae70"
+  },
+  {
+    "name": "Vanier College",
+    "slug": "vanier-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Vermont",
+    "slug": "vermont",
+    "conference": "Am. East",
+    "espn_id": 261,
+    "primary_color": "#154734",
+    "secondary_color": "#ffc72c"
+  },
+  {
+    "name": "Villanova",
+    "slug": "villanova",
+    "conference": "Big East",
+    "espn_id": 222,
+    "primary_color": "#00205b",
+    "secondary_color": "#13b5ea"
+  },
+  {
+    "name": "Virginia",
+    "slug": "virginia",
+    "conference": "ACC",
+    "espn_id": 258,
+    "primary_color": "#f84c1e",
+    "secondary_color": "#232d4b"
+  },
+  {
+    "name": "Virginia Military Institute",
+    "slug": "virginia-military-institute",
+    "conference": "SoCon",
+    "espn_id": 2678,
+    "primary_color": "#ae122a",
+    "secondary_color": "#ffd619"
+  },
+  {
+    "name": "Virginia Tech",
+    "slug": "virginia-tech",
+    "conference": "ACC",
+    "espn_id": 259,
+    "primary_color": "#6a2c3e",
+    "secondary_color": "#cf4520"
+  },
+  {
+    "name": "Virginia Union",
+    "slug": "virginia-union",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Voorhees College",
+    "slug": "voorhees-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Wake Forest",
+    "slug": "wake-forest",
+    "conference": "ACC",
+    "espn_id": 154,
+    "primary_color": "#ceb888",
+    "secondary_color": "#2c2a29"
+  },
+  {
+    "name": "Washington",
+    "slug": "washington",
+    "conference": "Big Ten",
+    "espn_id": 264,
+    "primary_color": "#33006f",
+    "secondary_color": "#e8d3a2"
+  },
+  {
+    "name": "Washington & Jefferson College",
+    "slug": "washington-jefferson-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Washington State",
+    "slug": "washington-state",
+    "conference": "WCC",
+    "espn_id": 265,
+    "primary_color": "#a60f2d",
+    "secondary_color": "#4d4d4d"
+  },
+  {
+    "name": "Wayne State",
+    "slug": "wayne-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Weber State",
+    "slug": "weber-state",
+    "conference": "Big Sky",
+    "espn_id": 2692,
+    "primary_color": "#18005a",
+    "secondary_color": "#ebebeb"
+  },
+  {
+    "name": "West Texas A&M",
+    "slug": "west-texas-am",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "West Virginia",
+    "slug": "west-virginia",
+    "conference": "Big 12",
+    "espn_id": 277,
+    "primary_color": "#eaaa00",
+    "secondary_color": "#002855"
+  },
+  {
+    "name": "West Virginia State",
+    "slug": "west-virginia-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "West Virginia Tech",
+    "slug": "west-virginia-tech",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "West Virginia Wesleyan College",
+    "slug": "west-virginia-wesleyan-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Westchester CC",
+    "slug": "westchester-cc",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Western Carolina",
+    "slug": "western-carolina",
+    "conference": "SoCon",
+    "espn_id": 2717,
+    "primary_color": "#492F91",
+    "secondary_color": "#bf9e70"
+  },
+  {
+    "name": "Western Illinois",
+    "slug": "western-illinois",
+    "conference": "OVC",
+    "espn_id": 2710,
+    "primary_color": "#4e1e8a",
+    "secondary_color": "#ffc90a"
+  },
+  {
+    "name": "Western Kentucky",
+    "slug": "western-kentucky",
+    "conference": "CUSA",
+    "espn_id": 98,
+    "primary_color": "#e13a3e",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Western Michigan",
+    "slug": "western-michigan",
+    "conference": "MAC",
+    "espn_id": 2711,
+    "primary_color": "#532e1f",
+    "secondary_color": "#f1c500"
+  },
+  {
+    "name": "Westminster College of Pennsylvania",
+    "slug": "westminster-college-of-pennsylvania",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Wheaton College",
+    "slug": "wheaton-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Wheeling",
+    "slug": "wheeling",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Whitworth",
+    "slug": "whitworth",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Wichita State",
+    "slug": "wichita-state",
+    "conference": "American",
+    "espn_id": 2724,
+    "primary_color": "#ffcd00",
+    "secondary_color": "#27251f"
+  },
+  {
+    "name": "William & Mary",
+    "slug": "william-mary",
+    "conference": "CAA",
+    "espn_id": 2729,
+    "primary_color": "#115740",
+    "secondary_color": "#f0b323"
+  },
+  {
+    "name": "William Paterson",
+    "slug": "william-paterson",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Wingate",
+    "slug": "wingate",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Winston-Salem State",
+    "slug": "winston-salem-state",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Winthrop",
+    "slug": "winthrop",
+    "conference": "Big South",
+    "espn_id": 2737,
+    "primary_color": "#9e0b0e",
+    "secondary_color": "#fdb41e"
+  },
+  {
+    "name": "Wisconsin",
+    "slug": "wisconsin",
+    "conference": "Big Ten",
+    "espn_id": 275,
+    "primary_color": "#a00000",
+    "secondary_color": "#ffffff"
+  },
+  {
+    "name": "Wisconsin-Eau Claire",
+    "slug": "wisconsin-eau-claire",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Wisconsin-Parkside",
+    "slug": "wisconsin-parkside",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Wisconsin-River Falls",
+    "slug": "wisconsin-river-falls",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Wisconsin-Stevens Point",
+    "slug": "wisconsin-stevens-point",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Wofford",
+    "slug": "wofford",
+    "conference": "SoCon",
+    "espn_id": 2747,
+    "primary_color": "#533B22",
+    "secondary_color": "#f0f0f0"
+  },
+  {
+    "name": "Wright State",
+    "slug": "wright-state",
+    "conference": "Horizon",
+    "espn_id": 2750,
+    "primary_color": "#cba052",
+    "secondary_color": "#cba052"
+  },
+  {
+    "name": "Wyoming",
+    "slug": "wyoming",
+    "conference": "Mountain West",
+    "espn_id": 2751,
+    "primary_color": "#492f24",
+    "secondary_color": "#ffc425"
+  },
+  {
+    "name": "Xavier",
+    "slug": "xavier",
+    "conference": "Big East",
+    "espn_id": 2752,
+    "primary_color": "#21304e",
+    "secondary_color": "#a5a7a8"
+  },
+  {
+    "name": "Xavier University of Louisiana",
+    "slug": "xavier-university-of-louisiana",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Yakima Valley Community College",
+    "slug": "yakima-valley-community-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Yale",
+    "slug": "yale",
+    "conference": "Ivy",
+    "espn_id": 43,
+    "primary_color": "#004a81",
+    "secondary_color": "#286dc0"
+  },
+  {
+    "name": "Yankton College",
+    "slug": "yankton-college",
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
+  },
+  {
+    "name": "Youngstown State",
+    "slug": "youngstown-state",
+    "conference": "Horizon",
+    "espn_id": 2754,
+    "primary_color": "#E51935",
+    "secondary_color": "#690717"
+  }
+]

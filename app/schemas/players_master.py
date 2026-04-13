@@ -27,6 +27,10 @@ class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
     birth_country: Optional[str] = Field(default=None, index=True)
 
     school: Optional[str] = Field(default=None, description="College/School")
+    school_raw: Optional[str] = Field(
+        default=None,
+        description="Original school value before canonicalization",
+    )
     high_school: Optional[str] = Field(default=None)
     shoots: Optional[str] = Field(default=None, description="Shooting hand")
 
