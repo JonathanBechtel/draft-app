@@ -247,7 +247,9 @@ class TestPlayersCreate:
 
         # Verify in database
         result = await db_session.execute(
-            text("SELECT display_name FROM players_master WHERE display_name = 'New Player'")
+            text(
+                "SELECT display_name FROM players_master WHERE display_name = 'New Player'"
+            )
         )
         assert result.scalar_one() == "New Player"
 
@@ -394,6 +396,63 @@ class TestPlayersEdit:
         assert row[1] == "Updated University"
         assert row[2] == 2025
 
+    async def test_update_persists_lifecycle_fields(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_user_id: int,
+        sample_player_id: int,
+    ):
+        """Lifecycle edits should persist separately from master facts."""
+        _ = admin_user_id
+        await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
+
+        response = await app_client.post(
+            f"/admin/players/{sample_player_id}",
+            data={
+                "display_name": "Test Player",
+                "first_name": "Test",
+                "last_name": "Player",
+                "school": "Test University",
+                "draft_year": "2024",
+                "lifecycle_stage": "high_school",
+                "competition_context": "high_school",
+                "draft_status": "not_eligible",
+                "expected_draft_year": "2027",
+                "current_affiliation_name": "Montverde Academy",
+                "current_affiliation_type": "high_school",
+                "commitment_school": "USC",
+                "commitment_status": "committed",
+                "is_draft_prospect": "true",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code in {302, 303}
+
+        result = await db_session.execute(
+            text(
+                """
+                SELECT lifecycle_stage, competition_context, draft_status,
+                       expected_draft_year, current_affiliation_name,
+                       current_affiliation_type, commitment_school,
+                       commitment_status, is_draft_prospect
+                FROM player_lifecycle
+                WHERE player_id = :id
+                """
+            ),
+            {"id": sample_player_id},
+        )
+        row = result.one()
+        assert row[0] == "HIGH_SCHOOL"
+        assert row[1] == "HIGH_SCHOOL"
+        assert row[2] == "NOT_ELIGIBLE"
+        assert row[3] == 2027
+        assert row[4] == "Montverde Academy"
+        assert row[5] == "HIGH_SCHOOL"
+        assert row[6] == "USC"
+        assert row[7] == "COMMITTED"
+        assert row[8] is True
+
     async def test_update_missing_required_field_error(
         self,
         app_client: AsyncClient,
@@ -482,9 +541,7 @@ class TestPlayersDelete:
         db_session.add(news_item)
         await db_session.commit()
 
-        response = await app_client.post(
-            f"/admin/players/{sample_player_id}/delete"
-        )
+        response = await app_client.post(f"/admin/players/{sample_player_id}/delete")
         assert response.status_code == 200
         assert "Cannot delete" in response.text
         assert "1 linked news item" in response.text

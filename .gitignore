@@ -216,3 +216,7 @@ __marimo__/
 
 # .DS_Store folders from apple computers
 .DS_Store
+
+# Creator outreach (private)
+docs/creator_outreach_contacts.csv
+docs/outreach_templates.md

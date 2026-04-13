@@ -29,6 +29,7 @@ from app.routes.admin.helpers import (
     require_dataset_access,
 )
 from app.schemas.auth import AuthUser
+from app.schemas.player_lifecycle import PlayerLifecycle
 from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.utils.images import (
@@ -48,16 +49,19 @@ from app.services.admin_combine_service import (
 )
 from app.services.admin_player_service import (
     PlayerFormData,
+    PlayerLifecycleFormData,
     PlayerListResult,
     PlayerStatusFormData,
     can_delete_player,
     create_player as svc_create_player,
     delete_player as svc_delete_player,
     get_player_by_id,
+    get_player_lifecycle_by_player_id,
     get_player_status_by_player_id,
     list_players as svc_list_players,
     parse_player_form,
     update_player as svc_update_player,
+    update_player_lifecycle as svc_update_player_lifecycle,
     update_player_status as svc_update_player_status,
     validate_player_form,
 )
@@ -93,6 +97,7 @@ async def _render_form_error(
     player: PlayerMaster | None,
     error: str,
     player_status: PlayerStatus | None = None,
+    player_lifecycle: PlayerLifecycle | None = None,
 ) -> Response:
     """Render create/edit form with an error message."""
     template = "admin/players/detail.html" if player else "admin/players/form.html"
@@ -104,6 +109,7 @@ async def _render_form_error(
             user,
             player=player,
             player_status=player_status,
+            player_lifecycle=player_lifecycle,
             error=error,
             active_nav="players",
         ),
@@ -450,6 +456,7 @@ async def edit_player(
 
     # Fetch player status data
     player_status = await get_player_status_by_player_id(db, player_id)
+    player_lifecycle = await get_player_lifecycle_by_player_id(db, player_id)
 
     # Fetch combine data context
     combine_context = await get_player_combine_context(db, player_id, season_id)
@@ -479,6 +486,7 @@ async def edit_player(
             user,
             player=player,
             player_status=player_status,
+            player_lifecycle=player_lifecycle,
             combine_context=combine_context,
             expected_image_url=expected_image_url,
             placeholder_url=placeholder_url,
@@ -521,6 +529,15 @@ async def update_player(
     raw_position: str | None = Form(default=None),
     height_in: str | None = Form(default=None),
     weight_lb: str | None = Form(default=None),
+    lifecycle_stage: str | None = Form(default=None),
+    competition_context: str | None = Form(default=None),
+    draft_status: str | None = Form(default=None),
+    expected_draft_year: str | None = Form(default=None),
+    current_affiliation_name: str | None = Form(default=None),
+    current_affiliation_type: str | None = Form(default=None),
+    commitment_school: str | None = Form(default=None),
+    commitment_status: str | None = Form(default=None),
+    is_draft_prospect: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """Update a player."""
@@ -541,8 +558,15 @@ async def update_player(
             if player is None:
                 raise HTTPException(status_code=404, detail="Player not found")
             player_status = await get_player_status_by_player_id(db, player_id)
+            player_lifecycle = await get_player_lifecycle_by_player_id(db, player_id)
             return await _render_form_error(
-                request, db, user, player, upload_err, player_status
+                request,
+                db,
+                user,
+                player,
+                upload_err,
+                player_status,
+                player_lifecycle,
             )
 
     async with db.begin():
@@ -552,6 +576,7 @@ async def update_player(
 
         # Fetch player status for error re-renders
         player_status = await get_player_status_by_player_id(db, player_id)
+        player_lifecycle = await get_player_lifecycle_by_player_id(db, player_id)
 
         # Determine what the s3 key and URL *will* be, but don't mutate
         # S3 yet — validate form fields first to avoid irreversible side
@@ -595,14 +620,26 @@ async def update_player(
         # Validate required fields
         if error := validate_player_form(form_data):
             return await _render_form_error(
-                request, db, user, player, error, player_status
+                request,
+                db,
+                user,
+                player,
+                error,
+                player_status,
+                player_lifecycle,
             )
 
         # Parse form data to typed values
         parsed = parse_player_form(form_data)
         if isinstance(parsed, str):
             return await _render_form_error(
-                request, db, user, player, parsed, player_status
+                request,
+                db,
+                user,
+                player,
+                parsed,
+                player_status,
+                player_lifecycle,
             )
 
         # Validation passed — now perform S3 mutations safely
@@ -624,6 +661,19 @@ async def update_player(
             weight_lb=weight_lb,
         )
         await svc_update_player_status(db, player_id, status_data)
+
+        lifecycle_data = PlayerLifecycleFormData(
+            lifecycle_stage=lifecycle_stage,
+            competition_context=competition_context,
+            draft_status=draft_status,
+            expected_draft_year=expected_draft_year,
+            current_affiliation_name=current_affiliation_name,
+            current_affiliation_type=current_affiliation_type,
+            commitment_school=commitment_school,
+            commitment_status=commitment_status,
+            is_draft_prospect=is_draft_prospect,
+        )
+        await svc_update_player_lifecycle(db, player_id, lifecycle_data)
     return RedirectResponse(url="/admin/players?success=updated", status_code=303)
 
 

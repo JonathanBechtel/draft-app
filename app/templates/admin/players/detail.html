@@ -283,6 +283,145 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
       </div>
 
+      <div class="admin-form__section">
+        <h3 class="admin-form__section-title">Lifecycle</h3>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="lifecycle_stage">Lifecycle Stage</label>
+            <select class="admin-form__select" id="lifecycle_stage" name="lifecycle_stage">
+              {% set lifecycle_stage_value = player_lifecycle.lifecycle_stage.value if player_lifecycle else 'unknown' %}
+              <option value="unknown" {% if lifecycle_stage_value == 'unknown' %}selected{% endif %}>Unknown</option>
+              <option value="recruit" {% if lifecycle_stage_value == 'recruit' %}selected{% endif %}>Recruit</option>
+              <option value="high_school" {% if lifecycle_stage_value == 'high_school' %}selected{% endif %}>High School</option>
+              <option value="college" {% if lifecycle_stage_value == 'college' %}selected{% endif %}>College</option>
+              <option value="international_amateur" {% if lifecycle_stage_value == 'international_amateur' %}selected{% endif %}>International Amateur</option>
+              <option value="draft_declared" {% if lifecycle_stage_value == 'draft_declared' %}selected{% endif %}>Draft Declared</option>
+              <option value="draft_withdrew" {% if lifecycle_stage_value == 'draft_withdrew' %}selected{% endif %}>Draft Withdrew</option>
+              <option value="drafted_not_in_nba" {% if lifecycle_stage_value == 'drafted_not_in_nba' %}selected{% endif %}>Drafted, Not in NBA</option>
+              <option value="nba_active" {% if lifecycle_stage_value == 'nba_active' %}selected{% endif %}>NBA Active</option>
+              <option value="pro_non_nba" {% if lifecycle_stage_value == 'pro_non_nba' %}selected{% endif %}>Pro, Non-NBA</option>
+              <option value="inactive_former" {% if lifecycle_stage_value == 'inactive_former' %}selected{% endif %}>Inactive Former</option>
+            </select>
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="competition_context">Competition Context</label>
+            <select class="admin-form__select" id="competition_context" name="competition_context">
+              {% set competition_context_value = player_lifecycle.competition_context.value if player_lifecycle else 'unknown' %}
+              <option value="unknown" {% if competition_context_value == 'unknown' %}selected{% endif %}>Unknown</option>
+              <option value="high_school" {% if competition_context_value == 'high_school' %}selected{% endif %}>High School</option>
+              <option value="ncaa" {% if competition_context_value == 'ncaa' %}selected{% endif %}>NCAA</option>
+              <option value="international" {% if competition_context_value == 'international' %}selected{% endif %}>International</option>
+              <option value="nba" {% if competition_context_value == 'nba' %}selected{% endif %}>NBA</option>
+              <option value="g_league" {% if competition_context_value == 'g_league' %}selected{% endif %}>G League</option>
+              <option value="overseas_pro" {% if competition_context_value == 'overseas_pro' %}selected{% endif %}>Overseas Pro</option>
+              <option value="inactive" {% if competition_context_value == 'inactive' %}selected{% endif %}>Inactive</option>
+            </select>
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="draft_status">Draft Status</label>
+            <select class="admin-form__select" id="draft_status" name="draft_status">
+              {% set draft_status_value = player_lifecycle.draft_status.value if player_lifecycle else 'unknown' %}
+              <option value="unknown" {% if draft_status_value == 'unknown' %}selected{% endif %}>Unknown</option>
+              <option value="not_eligible" {% if draft_status_value == 'not_eligible' %}selected{% endif %}>Not Eligible</option>
+              <option value="eligible" {% if draft_status_value == 'eligible' %}selected{% endif %}>Eligible</option>
+              <option value="declared" {% if draft_status_value == 'declared' %}selected{% endif %}>Declared</option>
+              <option value="withdrew" {% if draft_status_value == 'withdrew' %}selected{% endif %}>Withdrew</option>
+              <option value="drafted" {% if draft_status_value == 'drafted' %}selected{% endif %}>Drafted</option>
+              <option value="undrafted" {% if draft_status_value == 'undrafted' %}selected{% endif %}>Undrafted</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="expected_draft_year">Expected Draft Year</label>
+            <input
+              class="admin-form__input"
+              id="expected_draft_year"
+              name="expected_draft_year"
+              type="number"
+              min="1947"
+              max="2035"
+              value="{{ player_lifecycle.expected_draft_year if player_lifecycle and player_lifecycle.expected_draft_year is not none else '' }}"
+            />
+            <span class="admin-form__help">Projection only. Keep actual draft facts above.</span>
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="is_draft_prospect">Draft Prospect</label>
+            <select class="admin-form__select" id="is_draft_prospect" name="is_draft_prospect">
+              <option value="" {% if player_lifecycle is none or player_lifecycle.is_draft_prospect is none %}selected{% endif %}>Unknown</option>
+              <option value="true" {% if player_lifecycle and player_lifecycle.is_draft_prospect is true %}selected{% endif %}>Yes</option>
+              <option value="false" {% if player_lifecycle and player_lifecycle.is_draft_prospect is false %}selected{% endif %}>No</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="current_affiliation_name">Current Affiliation</label>
+            <input
+              class="admin-form__input"
+              id="current_affiliation_name"
+              name="current_affiliation_name"
+              type="text"
+              value="{{ player_lifecycle.current_affiliation_name or '' if player_lifecycle else '' }}"
+              placeholder="e.g., Duke, Montverde Academy, Lakers"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="current_affiliation_type">Affiliation Type</label>
+            <select class="admin-form__select" id="current_affiliation_type" name="current_affiliation_type">
+              {% set affiliation_type_value = player_lifecycle.current_affiliation_type.value if player_lifecycle else 'unknown' %}
+              <option value="unknown" {% if affiliation_type_value == 'unknown' %}selected{% endif %}>Unknown</option>
+              <option value="high_school" {% if affiliation_type_value == 'high_school' %}selected{% endif %}>High School</option>
+              <option value="college_team" {% if affiliation_type_value == 'college_team' %}selected{% endif %}>College Team</option>
+              <option value="committed_school" {% if affiliation_type_value == 'committed_school' %}selected{% endif %}>Committed School</option>
+              <option value="nba_team" {% if affiliation_type_value == 'nba_team' %}selected{% endif %}>NBA Team</option>
+              <option value="g_league_team" {% if affiliation_type_value == 'g_league_team' %}selected{% endif %}>G League Team</option>
+              <option value="overseas_club" {% if affiliation_type_value == 'overseas_club' %}selected{% endif %}>Overseas Club</option>
+              <option value="independent" {% if affiliation_type_value == 'independent' %}selected{% endif %}>Independent</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="admin-form__row">
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="commitment_school">Commitment School</label>
+            <input
+              class="admin-form__input"
+              id="commitment_school"
+              name="commitment_school"
+              type="text"
+              value="{{ player_lifecycle.commitment_school or '' if player_lifecycle else '' }}"
+              placeholder="e.g., USC"
+            />
+          </div>
+
+          <div class="admin-form__field">
+            <label class="admin-form__label" for="commitment_status">Commitment Status</label>
+            <select class="admin-form__select" id="commitment_status" name="commitment_status">
+              {% set commitment_status_value = player_lifecycle.commitment_status.value if player_lifecycle else 'unknown' %}
+              <option value="unknown" {% if commitment_status_value == 'unknown' %}selected{% endif %}>Unknown</option>
+              <option value="none" {% if commitment_status_value == 'none' %}selected{% endif %}>None</option>
+              <option value="committed" {% if commitment_status_value == 'committed' %}selected{% endif %}>Committed</option>
+              <option value="signed" {% if commitment_status_value == 'signed' %}selected{% endif %}>Signed</option>
+              <option value="enrolled" {% if commitment_status_value == 'enrolled' %}selected{% endif %}>Enrolled</option>
+              <option value="decommitted" {% if commitment_status_value == 'decommitted' %}selected{% endif %}>Decommitted</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="admin-form__static-field" style="margin-top: 0.5rem;">
+          <span class="admin-form__label">Lifecycle Source</span>
+          <span class="admin-form__static-value">{{ player_lifecycle.source or 'manual' if player_lifecycle else 'manual' }}</span>
+        </div>
+      </div>
+
       <!-- NBA Career Section -->
       <div class="admin-form__section">
         <h3 class="admin-form__section-title">NBA Career</h3>

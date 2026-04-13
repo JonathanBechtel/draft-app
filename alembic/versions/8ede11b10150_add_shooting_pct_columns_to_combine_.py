@@ -1,4 +1,4 @@
-"""add shooting pct columns to combine_shooting_results
+"""add shooting pct columns to combine_shooting_results.
 
 Revision ID: 8ede11b10150
 Revises: 327ae506058d
@@ -7,7 +7,6 @@ Create Date: 2026-03-23 08:03:27.273563
 
 from alembic import op  # type: ignore[attr-defined]
 import sqlalchemy as sa
-
 revision = "8ede11b10150"
 down_revision = "327ae506058d"
 branch_labels = None

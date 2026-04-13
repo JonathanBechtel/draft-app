@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_aliases import PlayerAlias
+from app.schemas.player_lifecycle import DraftStatus, PlayerLifecycle
 from app.schemas.players_master import PlayerMaster
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,25 @@ def _canonical_suffix(token: str) -> Optional[str]:
 def _normalized_token(token: str) -> str:
     """Normalize a token for exact string comparison."""
     return re.sub(r"[^a-z0-9]", "", _ascii_fold(token).lower())
+
+
+def _can_create_stub_player(full_name: str) -> bool:
+    """Return whether a mention is specific enough to become a stub player.
+
+    Single-token mentions like "Wagler" are too ambiguous and tend to create
+    low-quality duplicate placeholder players from article prose.
+    """
+    collapsed = _collapse_whitespace(full_name)
+    if not collapsed:
+        return False
+
+    raw_tokens = collapsed.split()
+    if raw_tokens and _canonical_suffix(raw_tokens[-1]) is not None:
+        raw_tokens = raw_tokens[:-1]
+
+    normalized_tokens = [_normalized_token(token) for token in raw_tokens]
+    normalized_tokens = [token for token in normalized_tokens if token]
+    return len(normalized_tokens) >= 2
 
 
 def parse_player_name(full_name: str) -> ParsedPlayerName:
@@ -328,6 +348,30 @@ async def _insert_stub_alias(
     )
 
 
+async def _upsert_stub_lifecycle(
+    db: AsyncSession,
+    player_id: int,
+    draft_year: Optional[int],
+) -> None:
+    """Ensure stub players get a lifecycle row without writing speculative facts."""
+    result = await db.execute(
+        select(PlayerLifecycle).where(
+            PlayerLifecycle.player_id == player_id  # type: ignore[arg-type]
+        )
+    )
+    lifecycle = result.scalar_one_or_none()
+    if lifecycle is None:
+        lifecycle = PlayerLifecycle(
+            player_id=player_id,
+            source="mention_resolution",
+        )
+        db.add(lifecycle)
+
+    lifecycle.expected_draft_year = draft_year
+    lifecycle.draft_status = DraftStatus.UNKNOWN
+    lifecycle.is_draft_prospect = True if draft_year is not None else None
+
+
 async def _resolve_iter(
     db: AsyncSession,
     names: list[str],
@@ -356,6 +400,13 @@ async def _resolve_iter(
             )
             continue
         if match is None and create_stubs:
+            if not _can_create_stub_player(name):
+                logger.info(
+                    "Skipping low-specificity player mention without stub creation: %s",
+                    name,
+                )
+                continue
+
             match = await _create_stub_player(db, name, draft_year=draft_year)
             if match is not None:
                 alias_display_name = match.display_name
@@ -489,12 +540,12 @@ async def _create_stub_player(
         last_name=parsed.last_name,
         suffix=parsed.suffix,
         display_name=display_name,
-        draft_year=draft_year,
         is_stub=True,
     )
     db.add(player)
     await db.flush()
     await _insert_stub_alias(db, player.id, display_name)  # type: ignore[arg-type]
+    await _upsert_stub_lifecycle(db, player.id, draft_year)  # type: ignore[arg-type]
     logger.info(f"Created stub player: {display_name} (id={player.id})")
     return PlayerMatch(
         player_id=player.id,  # type: ignore[arg-type]
