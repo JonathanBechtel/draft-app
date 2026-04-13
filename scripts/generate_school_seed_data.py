@@ -57,7 +57,9 @@ def normalize_for_match(name: str) -> str:
     ]:
         s = s.replace(suffix, "")
     s = re.sub(r"[^a-z0-9 ]", "", s)
-    return s.strip()
+    # Canonicalize "st" ↔ "saint" so "St. Mary's" and "Saint Mary's" collide.
+    s = re.sub(r"\bsaint\b", "st", s)
+    return re.sub(r"\s+", " ", s).strip()
 
 
 def load_espn_teams_bulk() -> list[dict]:
@@ -129,7 +131,8 @@ SEARCH_OVERRIDES: dict[str, str] = {
     "College of Charleston": "Charleston",
     "Dartmouth College": "Dartmouth",
     "Davidson College": "Davidson",
-    "Iona College": "Iona",
+    "Iona College": "Iona Gaels",
+    "Saint Mary's": "Saint Mary's Gaels",
     "Marist College": "Marist",
     "Providence College": "Providence",
     "Siena College": "Siena",
@@ -147,19 +150,60 @@ SEARCH_OVERRIDES: dict[str, str] = {
 }
 
 
+# Hard pins for ambiguous/unreliable ESPN search results. When set, the script
+# fetches the team directly by id from the /teams/{id} endpoint and skips
+# search entirely. Add an entry here when ESPN's search returns a wrong team
+# first and no override query fixes it.
+ESPN_ID_OVERRIDES: dict[str, int] = {
+    "Iona College": 314,  # Iona Gaels (MAAC)
+    "Saint Mary's": 2608,  # Saint Mary's Gaels (WCC, California)
+}
+
+
+def _fetch_team_by_id(espn_id: int) -> dict | None:
+    """Fetch a single team directly by ESPN id."""
+    resp = httpx.get(f"{ESPN_TEAMS_URL}/{espn_id}", timeout=15.0)
+    if resp.status_code != 200:
+        return None
+    return resp.json().get("team")
+
+
+def _matches_query(item: dict, query_norm: str) -> bool:
+    """Strict equality (post-normalization) on an ESPN item.
+
+    Prior versions used substring containment, which silently matched
+    "St. Mary's" against "Mount St. Mary's". Equality is safer — if a case
+    genuinely needs a shorter display name, add a SEARCH_OVERRIDES entry
+    that steers ESPN to the right team.
+    """
+    match_location = normalize_for_match(item.get("location", ""))
+    match_display = normalize_for_match(item.get("displayName", ""))
+    return query_norm in (match_location, match_display)
+
+
 def search_espn_team(name: str) -> dict | None:
     """Search ESPN for a specific team by name.
 
-    Returns the first match or None.
+    Resolution order:
+      1. If ``name`` is in ESPN_ID_OVERRIDES, fetch that team directly.
+      2. Otherwise issue a search (using SEARCH_OVERRIDES query if present)
+         and accept the first result whose normalized location or
+         displayName equals the normalized query. Returns None if no
+         exact match is found in the top results.
     """
-    # Use override query if available
-    query = SEARCH_OVERRIDES.get(name, name)
+    # Hard pin — bypass search entirely.
+    if name in ESPN_ID_OVERRIDES:
+        team = _fetch_team_by_id(ESPN_ID_OVERRIDES[name])
+        if team is None:
+            print(f"  WARN: ESPN_ID_OVERRIDES miss for {name!r}")
+        return team
 
+    query = SEARCH_OVERRIDES.get(name, name)
     resp = httpx.get(
         ESPN_SEARCH_URL,
         params={
             "query": query,
-            "limit": 3,
+            "limit": 5,
             "type": "team",
             "sport": "basketball",
             "league": "mens-college-basketball",
@@ -173,23 +217,21 @@ def search_espn_team(name: str) -> dict | None:
     if not items:
         return None
 
-    # If we used a SEARCH_OVERRIDE, trust the result
-    if name in SEARCH_OVERRIDES:
-        return items[0]
+    # Require an exact (normalized) match on location or displayName,
+    # scanning all returned items — not just items[0]. ESPN's search
+    # ranking is unstable; the right team is sometimes items[1] or [2].
+    query_norm = normalize_for_match(query)
+    for item in items:
+        if _matches_query(item, query_norm):
+            return item
 
-    # Otherwise check that the match is reasonable
-    item = items[0]
-    match_location = normalize_for_match(item.get("location", ""))
-    match_display = normalize_for_match(item.get("displayName", ""))
-    query_norm = normalize_for_match(name)
-
-    # Accept if the query appears in the location or displayName
-    if (
-        query_norm in match_location
-        or query_norm in match_display
-        or match_location in query_norm
-    ):
-        return item
+    # Fall back to the canonical name if the override query didn't match
+    # anything (rare, but covers override typos).
+    if query != name:
+        canonical_norm = normalize_for_match(name)
+        for item in items:
+            if _matches_query(item, canonical_norm):
+                return item
 
     return None
 
@@ -337,6 +379,28 @@ def generate_seed_data() -> None:
 
         if (i + 1) % 50 == 0:
             print(f"  Processed {i + 1}/{len(matched_entries)} team details...")
+
+    # Validate: a non-null espn_id must appear on exactly one row. Duplicates
+    # mean two different canonical schools got pointed at the same ESPN team,
+    # which would ship wrong logos/colors/conferences to users.
+    by_id: dict[int, list[str]] = {}
+    for entry in seed_data:
+        espn_id = entry["espn_id"]
+        if espn_id is None:
+            continue
+        by_id.setdefault(espn_id, []).append(entry["name"])
+
+    duplicates = {eid: names for eid, names in by_id.items() if len(names) > 1}
+    if duplicates:
+        print(f"\n=== DUPLICATE ESPN IDS ({len(duplicates)}) ===")
+        for eid, names in sorted(duplicates.items()):
+            print(f"  {eid}: {names}")
+        raise SystemExit(
+            f"Refusing to write seed file: {len(duplicates)} espn_id "
+            "collision(s). Either (a) add ESPN_ID_OVERRIDES entries to "
+            "disambiguate, or (b) merge the duplicate canonical names in "
+            "school_mapping.json."
+        )
 
     # Write output
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

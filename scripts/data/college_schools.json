@@ -74,10 +74,10 @@
   {
     "name": "American",
     "slug": "american",
-    "conference": "Patriot",
-    "espn_id": 44,
-    "primary_color": "#c41130",
-    "secondary_color": "#c8102e"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "American International College",
@@ -90,10 +90,10 @@
   {
     "name": "Appalachian State",
     "slug": "appalachian-state",
-    "conference": "Sun Belt",
-    "espn_id": 2026,
+    "conference": null,
+    "espn_id": null,
     "primary_color": null,
-    "secondary_color": "#ffcd00"
+    "secondary_color": null
   },
   {
     "name": "Arizona",
@@ -546,18 +546,10 @@
   {
     "name": "Central Connecticut State",
     "slug": "central-connecticut-state",
-    "conference": "NEC",
-    "espn_id": 2115,
-    "primary_color": "#1B49A2",
-    "secondary_color": "#d1d5d8"
-  },
-  {
-    "name": "Central Florida",
-    "slug": "central-florida",
-    "conference": "Big 12",
-    "espn_id": 2116,
+    "conference": null,
+    "espn_id": null,
     "primary_color": null,
-    "secondary_color": "#b4a169"
+    "secondary_color": null
   },
   {
     "name": "Central Michigan",
@@ -680,14 +672,6 @@
     "secondary_color": "#ffffff"
   },
   {
-    "name": "College of Charleston",
-    "slug": "college-of-charleston",
-    "conference": "CAA",
-    "espn_id": 232,
-    "primary_color": "#7a2531",
-    "secondary_color": "#9e8959"
-  },
-  {
     "name": "College of Saint Rose",
     "slug": "college-of-saint-rose",
     "conference": null,
@@ -778,14 +762,6 @@
   {
     "name": "Davidson",
     "slug": "davidson",
-    "conference": "A-10",
-    "espn_id": 2166,
-    "primary_color": null,
-    "secondary_color": "#e51837"
-  },
-  {
-    "name": "Davidson College",
-    "slug": "davidson-college",
     "conference": "A-10",
     "espn_id": 2166,
     "primary_color": null,
@@ -1186,10 +1162,10 @@
   {
     "name": "Grambling State",
     "slug": "grambling-state",
-    "conference": "SWAC",
-    "espn_id": 2755,
-    "primary_color": "#ee8601",
-    "secondary_color": "#ffd10a"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "Grand Canyon",
@@ -1426,10 +1402,10 @@
   {
     "name": "Iona College",
     "slug": "iona-college",
-    "conference": "CUSA",
-    "espn_id": 2229,
-    "primary_color": "#091f3f",
-    "secondary_color": "#c3993f"
+    "conference": "MAAC",
+    "espn_id": 314,
+    "primary_color": "#6f2c3e",
+    "secondary_color": "#f0ab00"
   },
   {
     "name": "Iowa",
@@ -1698,10 +1674,10 @@
   {
     "name": "Louisiana-Monroe",
     "slug": "louisiana-monroe",
-    "conference": "Sun Belt",
-    "espn_id": 2433,
-    "primary_color": "#840029",
-    "secondary_color": "#fdb913"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "Louisville",
@@ -1810,10 +1786,10 @@
   {
     "name": "McNeese State",
     "slug": "mcneese-state",
-    "conference": "Southland",
-    "espn_id": 2377,
-    "primary_color": "#00529C",
-    "secondary_color": "#ffd204"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "Memphis",
@@ -1962,10 +1938,10 @@
   {
     "name": "Missouri-Kansas City",
     "slug": "missouri-kansas-city",
-    "conference": "Summit",
-    "espn_id": 140,
-    "primary_color": "#004b87",
-    "secondary_color": "#ffc72c"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "Molloy",
@@ -2458,10 +2434,10 @@
   {
     "name": "Penn",
     "slug": "penn",
-    "conference": "Ivy",
-    "espn_id": 219,
-    "primary_color": "#082A74",
-    "secondary_color": "#a6163d"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "Penn State",
@@ -2490,10 +2466,10 @@
   {
     "name": "Pitt",
     "slug": "pitt",
-    "conference": "ACC",
-    "espn_id": 221,
-    "primary_color": "#003594",
-    "secondary_color": "#ffb81c"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "Portland",
@@ -2522,14 +2498,6 @@
   {
     "name": "Providence",
     "slug": "providence",
-    "conference": "Big East",
-    "espn_id": 2507,
-    "primary_color": null,
-    "secondary_color": "#a3a19e"
-  },
-  {
-    "name": "Providence College",
-    "slug": "providence-college",
     "conference": "Big East",
     "espn_id": 2507,
     "primary_color": null,
@@ -2722,10 +2690,10 @@
   {
     "name": "Sam Houston State",
     "slug": "sam-houston-state",
-    "conference": "CUSA",
-    "espn_id": 2534,
-    "primary_color": "#f56423",
-    "secondary_color": "#ffffff"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "San Diego",
@@ -2754,10 +2722,10 @@
   {
     "name": "San Jose State",
     "slug": "san-jose-state",
-    "conference": "Mountain West",
-    "espn_id": 23,
-    "primary_color": "#0038a8",
-    "secondary_color": "#ffb81a"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "Santa Clara",
@@ -2778,10 +2746,10 @@
   {
     "name": "Seattle",
     "slug": "seattle",
-    "conference": "WCC",
-    "espn_id": 2547,
-    "primary_color": "#BF2E1A",
-    "secondary_color": "#c2c3c0"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "Seton Hall",
@@ -2920,18 +2888,10 @@
     "secondary_color": "#101010"
   },
   {
-    "name": "St. Mary's",
-    "slug": "st-mary-s",
-    "conference": "MAAC",
-    "espn_id": 116,
-    "primary_color": "#005596",
-    "secondary_color": "#ebebeb"
-  },
-  {
     "name": "St. Thomas",
     "slug": "st-thomas",
-    "conference": "Summit",
-    "espn_id": 2900,
+    "conference": null,
+    "espn_id": null,
     "primary_color": null,
     "secondary_color": null
   },
@@ -3218,10 +3178,10 @@
   {
     "name": "UMass",
     "slug": "umass",
-    "conference": "MAC",
-    "espn_id": 113,
-    "primary_color": "#881c1c",
-    "secondary_color": "#ffffff"
+    "conference": null,
+    "espn_id": null,
+    "primary_color": null,
+    "secondary_color": null
   },
   {
     "name": "UMass Lowell",
@@ -3310,14 +3270,6 @@
     "espn_id": 292,
     "primary_color": "#dc6000",
     "secondary_color": "#e1732d"
-  },
-  {
-    "name": "UW-Milwaukee",
-    "slug": "uw-milwaukee",
-    "conference": "Horizon",
-    "espn_id": 270,
-    "primary_color": null,
-    "secondary_color": "#ffc20e"
   },
   {
     "name": "United States Military Academy",
@@ -3422,14 +3374,6 @@
     "espn_id": 258,
     "primary_color": "#f84c1e",
     "secondary_color": "#232d4b"
-  },
-  {
-    "name": "Virginia Commonwealth",
-    "slug": "virginia-commonwealth",
-    "conference": "A-10",
-    "espn_id": 2670,
-    "primary_color": "#ffaf00",
-    "secondary_color": null
   },
   {
     "name": "Virginia Military Institute",
@@ -3714,14 +3658,6 @@
   {
     "name": "Wofford",
     "slug": "wofford",
-    "conference": "SoCon",
-    "espn_id": 2747,
-    "primary_color": "#533B22",
-    "secondary_color": "#f0f0f0"
-  },
-  {
-    "name": "Wofford College",
-    "slug": "wofford-college",
     "conference": "SoCon",
     "espn_id": 2747,
     "primary_color": "#533B22",
