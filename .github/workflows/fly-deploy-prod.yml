@@ -51,10 +51,12 @@ jobs:
       - name: Ensure prod secrets exist
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          PROD_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PROD_SECRET_KEY: ${{ secrets.SECRET_KEY }}
         run: |
           flyctl secrets set \
-            DATABASE_URL='${{ secrets.DATABASE_URL }}' \
-            SECRET_KEY='${{ secrets.SECRET_KEY }}' \
+            DATABASE_URL="${PROD_DATABASE_URL}" \
+            SECRET_KEY="${PROD_SECRET_KEY}" \
             ENV=prod \
             LOG_LEVEL=INFO \
             ACCESS_LOG=false \

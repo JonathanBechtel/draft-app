@@ -36,6 +36,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install . alembic
 
+      - name: Ensure stage secrets exist
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          STAGE_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STAGE_SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          flyctl secrets set \
+            DATABASE_URL="${STAGE_DATABASE_URL}" \
+            SECRET_KEY="${STAGE_SECRET_KEY}" \
+            ENV=stage \
+            LOG_LEVEL=INFO \
+            ACCESS_LOG=false \
+            --app draft-app
+
       - name: Run Alembic migrations (stage)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -47,18 +61,6 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           flyctl deploy --remote-only
-
-      - name: Ensure stage secrets exist
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          flyctl secrets set \
-            DATABASE_URL='${{ secrets.DATABASE_URL }}' \
-            SECRET_KEY='${{ secrets.SECRET_KEY }}' \
-            ENV=stage \
-            LOG_LEVEL=INFO \
-            ACCESS_LOG=false \
-            --app draft-app
 
       - name: Update cron machine (if exists)
         env:
