@@ -14,12 +14,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
-import json
 import os
-import re
 import ssl
 import sys
-import unicodedata
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -27,6 +24,17 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from app.services.canonical_resolution_service import (  # noqa: E402
+    load_college_school_names,
+    load_school_mapping,
+    normalize_player_name,
+    resolve_affiliation,
+)
 
 
 SOURCE_NAME = "The Athletic 2026 NBA Draft Top 100 via NBA.com"
@@ -39,8 +47,6 @@ SECONDARY_SOURCES = (
     "prospect has an available BBRef player page."
 )
 OUTPUT_DIR = Path("scraper/output")
-SCHOOL_MAPPING_PATH = Path("scripts/data/school_mapping.json")
-COLLEGE_SCHOOLS_PATH = Path("scripts/data/college_schools.json")
 
 
 @dataclass(frozen=True)
@@ -159,79 +165,6 @@ TOP100_ROWS: tuple[SourceRow, ...] = (
 )
 
 
-def normalize_name(name: str) -> str:
-    """Return a comparison key that handles punctuation and suffix variants."""
-    normalized = unicodedata.normalize("NFKD", name)
-    ascii_name = normalized.encode("ascii", "ignore").decode("ascii")
-    ascii_name = ascii_name.replace("’", "'").replace(".", " ")
-    tokens = re.findall(r"[a-z0-9]+", ascii_name.lower())
-    suffixes = {"jr", "sr", "ii", "iii", "iv", "v"}
-    return " ".join(token for token in tokens if token not in suffixes)
-
-
-def _load_json(path: Path) -> object:
-    with path.open(encoding="utf-8") as file:
-        return json.load(file)
-
-
-def load_school_mapping() -> dict[str, str | None]:
-    """Load the reviewed school/club mapping."""
-    mapping = _load_json(SCHOOL_MAPPING_PATH)
-    if not isinstance(mapping, dict):
-        raise TypeError(f"{SCHOOL_MAPPING_PATH} must contain a JSON object")
-    return {
-        str(raw): None if canonical is None else str(canonical)
-        for raw, canonical in mapping.items()
-    }
-
-
-def load_college_school_names() -> set[str]:
-    """Load canonical college school names."""
-    rows = _load_json(COLLEGE_SCHOOLS_PATH)
-    if not isinstance(rows, list):
-        raise TypeError(f"{COLLEGE_SCHOOLS_PATH} must contain a JSON array")
-    return {str(row["name"]) for row in rows if isinstance(row, dict) and "name" in row}
-
-
-def resolve_affiliation(
-    raw_affiliation: str,
-    mapping: dict[str, str | None],
-    college_school_names: set[str],
-) -> tuple[str, str, str, str]:
-    """Resolve a raw source affiliation into review fields."""
-    normalized_raw = raw_affiliation.replace("’", "'")
-    if raw_affiliation in mapping:
-        canonical = mapping[raw_affiliation]
-        if canonical is None:
-            return (
-                "",
-                "professional_or_international",
-                "mapped_intentional_non_college",
-                "",
-            )
-        return canonical, "college", "mapped", ""
-    if normalized_raw in mapping:
-        canonical = mapping[normalized_raw]
-        if canonical is None:
-            return (
-                "",
-                "professional_or_international",
-                "mapped_intentional_non_college",
-                "",
-            )
-        return canonical, "college", "mapped_punctuation_normalized", ""
-    if raw_affiliation in college_school_names:
-        return raw_affiliation, "college", "canonical_school_name", ""
-    if normalized_raw in college_school_names:
-        return (
-            normalized_raw,
-            "college",
-            "canonical_school_name_punctuation_normalized",
-            "",
-        )
-    return "", "unknown", "needs_review", "Add raw affiliation to school_mapping.json"
-
-
 def write_source_snapshot(output_date: date) -> Path:
     """Write the immutable source snapshot CSV."""
     path = OUTPUT_DIR / f"top100_source_snapshot_{output_date.isoformat()}.csv"
@@ -286,7 +219,7 @@ def write_school_review(output_date: date) -> Path:
         writer = csv.DictWriter(file, fieldnames=fields)
         writer.writeheader()
         for row in TOP100_ROWS:
-            canonical, affiliation_type, status, note = resolve_affiliation(
+            resolution = resolve_affiliation(
                 row.source_affiliation, mapping, college_school_names
             )
             writer.writerow(
@@ -294,10 +227,10 @@ def write_school_review(output_date: date) -> Path:
                     "source_rank": row.source_rank,
                     "source_name": row.source_name,
                     "raw_affiliation": row.source_affiliation,
-                    "canonical_affiliation": canonical,
-                    "affiliation_type": affiliation_type,
-                    "resolution_status": status,
-                    "review_note": note,
+                    "canonical_affiliation": resolution.canonical_affiliation,
+                    "affiliation_type": resolution.affiliation_type,
+                    "resolution_status": resolution.resolution_status,
+                    "review_note": resolution.review_note,
                 }
             )
     return path
@@ -383,7 +316,7 @@ async def fetch_player_candidates(
                     "is_stub": row["is_stub"],
                     "matched_name": row["alias_name"] or row["display_name"],
                 }
-                key = normalize_name(str(candidate["matched_name"] or ""))
+                key = normalize_player_name(str(candidate["matched_name"] or ""))
                 candidates.setdefault(key, []).append(candidate)
     except Exception as exc:
         return {}, f"Database candidate lookup failed: {exc}"
@@ -414,10 +347,11 @@ async def write_player_plan(output_date: date, database_url: str | None) -> Path
         writer = csv.DictWriter(file, fieldnames=fields)
         writer.writeheader()
         for row in TOP100_ROWS:
-            canonical, _, affiliation_status, _ = resolve_affiliation(
+            affiliation_resolution = resolve_affiliation(
                 row.source_affiliation, mapping, college_school_names
             )
-            normalized_name = normalize_name(row.source_name)
+            canonical = affiliation_resolution.canonical_affiliation
+            normalized_name = normalize_player_name(row.source_name)
             candidates = candidates_by_name.get(normalized_name, [])
             unique_candidates = {
                 player_id: candidate
@@ -448,7 +382,7 @@ async def write_player_plan(output_date: date, database_url: str | None) -> Path
                 reason = (
                     "Multiple normalized-name candidates; review duplicate/alias merge"
                 )
-            elif affiliation_status == "needs_review":
+            elif affiliation_resolution.resolution_status == "needs_review":
                 action = "needs_manual_review"
                 confidence = "low"
                 player_id = ""

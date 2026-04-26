@@ -1,5 +1,7 @@
 """Tests for the Top 100 refresh artifact generator."""
 
+from app.services.canonical_resolution_service import normalize_player_name
+from scripts import top100_merge_players
 from scripts import top100_refresh
 
 
@@ -12,9 +14,9 @@ def test_top100_source_data_contains_exactly_100_rows() -> None:
 
 def test_name_normalization_handles_suffix_and_punctuation_variants() -> None:
     """Suffix and apostrophe variants should share a player-resolution key."""
-    assert top100_refresh.normalize_name("Darius Acuff Jr.") == "darius acuff"
-    assert top100_refresh.normalize_name("Darius Acuff") == "darius acuff"
-    assert top100_refresh.normalize_name("Ja’Kobi Gillespie") == "jakobi gillespie"
+    assert normalize_player_name("Darius Acuff Jr.") == "darius acuff"
+    assert normalize_player_name("Darius Acuff") == "darius acuff"
+    assert normalize_player_name("Ja’Kobi Gillespie") == "jakobi gillespie"
 
 
 def test_affiliation_resolution_handles_known_variants() -> None:
@@ -26,11 +28,38 @@ def test_affiliation_resolution_handles_known_variants() -> None:
     uconn = top100_refresh.resolve_affiliation("Connecticut", mapping, schools)
     breakers = top100_refresh.resolve_affiliation("NZ Breakers", mapping, schools)
 
-    assert unc == ("UNC", "college", "mapped", "")
-    assert uconn == ("UConn", "college", "mapped", "")
-    assert breakers == (
-        "",
-        "professional_or_international",
-        "mapped_intentional_non_college",
-        "",
+    assert unc.canonical_affiliation == "UNC"
+    assert unc.affiliation_type == "college"
+    assert unc.resolution_status == "mapped"
+    assert uconn.canonical_affiliation == "UConn"
+    assert uconn.affiliation_type == "college"
+    assert uconn.resolution_status == "mapped"
+    assert breakers.canonical_affiliation == ""
+    assert breakers.affiliation_type == "professional_or_international"
+    assert breakers.resolution_status == "mapped_intentional_non_college"
+
+
+def test_affiliation_resolution_flags_unknown_raw_school() -> None:
+    """Unmapped school strings should be review output, not silent canonical values."""
+    mapping = top100_refresh.load_school_mapping()
+    schools = top100_refresh.load_college_school_names()
+
+    result = top100_refresh.resolve_affiliation(
+        "Totally Unknown Academy", mapping, schools
     )
+
+    assert result.canonical_affiliation == ""
+    assert result.affiliation_type == "unknown"
+    assert result.resolution_status == "needs_review"
+
+
+def test_top100_merge_plan_covers_duplicate_groups_once() -> None:
+    """Reviewed merge plan should cover every Session 1 duplicate group."""
+    plans = top100_merge_players.MERGE_PLANS
+    assert len(plans) == 9
+    keep_ids = {plan.keep_id for plan in plans}
+    discard_ids = {discard_id for plan in plans for discard_id in plan.discard_ids}
+
+    assert 5384 in keep_ids  # Darius Acuff Jr. canonical row
+    assert {5681, 6027}.issubset(discard_ids)
+    assert keep_ids.isdisjoint(discard_ids)

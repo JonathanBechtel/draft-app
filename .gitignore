@@ -209,6 +209,10 @@ scraper/output/*
 !scraper/output/school_resolution_review_*.csv
 !scraper/output/player_resolution_plan_*.csv
 !scraper/output/top100_refresh_run_note_*.md
+!scraper/output/top100_dev_merge_plan_*.csv
+!scraper/output/top100_dev_merge_dry_run_*.log
+!scraper/output/top100_dev_merge_execute_*.log
+!scraper/output/top100_dev_merge_log_*.md
 scraper/cache/
 .cursorignore
 .cursorindexingignore
