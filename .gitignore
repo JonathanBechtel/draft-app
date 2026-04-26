@@ -204,7 +204,11 @@ cython_debug/
 
 # Scraper outputs
 scrapers/nba_draft_combine/output
-scraper/output/
+scraper/output/*
+!scraper/output/top100_source_snapshot_*.csv
+!scraper/output/school_resolution_review_*.csv
+!scraper/output/player_resolution_plan_*.csv
+!scraper/output/top100_refresh_run_note_*.md
 scraper/cache/
 .cursorignore
 .cursorindexingignore
