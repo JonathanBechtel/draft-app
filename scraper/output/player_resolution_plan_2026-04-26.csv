@@ -1,0 +1,101 @@
+source_rank,source_name,normalized_source_name,raw_affiliation,canonical_affiliation,resolution_action,confidence,canonical_player_id,candidate_player_ids,reason
+1,AJ Dybantsa,aj dybantsa,BYU,BYU,matched,high,5390,5390,Normalized name matched one draft-year player with matching canonical affiliation
+2,Darryn Peterson,darryn peterson,Kansas,Kansas,matched,high,5466,5466,Normalized name matched one draft-year player with matching canonical affiliation
+3,Cameron Boozer,cameron boozer,Duke,Duke,matched,high,5653,5653,Normalized name matched one draft-year player with matching canonical affiliation
+4,Caleb Wilson,caleb wilson,North Carolina,UNC,matched,high,5469,5469,Normalized name matched one draft-year player with matching canonical affiliation
+5,Kingston Flemings,kingston flemings,Houston,Houston,matched,high,5708,5708,Normalized name matched one draft-year player with matching canonical affiliation
+6,Jayden Quaintance,jayden quaintance,Kentucky,Kentucky,matched,medium,5478,5478,Normalized name matched one draft-year player
+7,Koa Peat,koa peat,Arizona,Arizona,matched,high,5513,5513,Normalized name matched one draft-year player with matching canonical affiliation
+8,Yaxel Lendeborg,yaxel lendeborg,Michigan,Michigan,matched,high,1691,1691,Normalized name matched one draft-year player with matching canonical affiliation
+9,Hannes Steinbach,hannes steinbach,Washington,Washington,matched,high,5456,5456,Normalized name matched one draft-year player with matching canonical affiliation
+10,Mikel Brown Jr.,mikel brown,Louisville,Louisville,merge_required,medium,,5389|5710,Multiple normalized-name candidates; review duplicate/alias merge
+11,Keaton Wagler,keaton wagler,Illinois,Illinois,matched,high,5690,5690,Normalized name matched one draft-year player with matching canonical affiliation
+12,Thomas Haugh,thomas haugh,Florida,Florida,matched,high,5379,5379,Normalized name matched one draft-year player with matching canonical affiliation
+13,Labaron Philon,labaron philon,Alabama,Alabama,merge_required,medium,,1709|5572,Multiple normalized-name candidates; review duplicate/alias merge
+14,Patrick Ngongba II,patrick ngongba,Duke,Duke,matched,high,5502,5502,Normalized name matched one draft-year player with matching canonical affiliation
+15,Cameron Carr,cameron carr,Baylor,Baylor,matched,high,5519,5519,Normalized name matched one draft-year player with matching canonical affiliation
+16,Darius Acuff Jr.,darius acuff,Arkansas,Arkansas,merge_required,medium,,5384|5681|6027,Multiple normalized-name candidates; review duplicate/alias merge
+17,Braylon Mullins,braylon mullins,Connecticut,UConn,matched,high,5457,5457,Normalized name matched one draft-year player with matching canonical affiliation
+18,Nate Ament,nate ament,Tennessee,Tennessee,matched,high,5561,5561,Normalized name matched one draft-year player with matching canonical affiliation
+19,Joshua Jefferson,joshua jefferson,Iowa State,Iowa State,matched,high,5388,5388,Normalized name matched one draft-year player with matching canonical affiliation
+20,Christian Anderson,christian anderson,Texas Tech,Texas Tech,matched,high,5382,5382,Normalized name matched one draft-year player with matching canonical affiliation
+21,Benett Stirtz,benett stirtz,Iowa,Iowa,matched,high,5578,5578,Normalized name matched one draft-year player with matching canonical affiliation
+22,Amari Allen,amari allen,Alabama,Alabama,matched,high,5383,5383,Normalized name matched one draft-year player with matching canonical affiliation
+23,Chris Cenac Jr.,chris cenac,Houston,Houston,merge_required,medium,,5387|5791,Multiple normalized-name candidates; review duplicate/alias merge
+24,Neoklis Avdalas,neoklis avdalas,Virginia Tech,Virginia Tech,matched,high,1660,1660,Normalized name matched one draft-year player with matching canonical affiliation
+25,Tounde Yessoufou,tounde yessoufou,Baylor,Baylor,matched,high,5537,5537,Normalized name matched one draft-year player with matching canonical affiliation
+26,Karim Lopez,karim lopez,NZ Breakers,,matched,high,5605,5605,Normalized name matched one draft-year player
+27,Tyler Tanner,tyler tanner,Vanderbilt,Vanderbilt,matched,high,5679,5679,Normalized name matched one draft-year player with matching canonical affiliation
+28,Henri Veesaar,henri veesaar,North Carolina,UNC,matched,high,5609,5609,Normalized name matched one draft-year player with matching canonical affiliation
+29,Dash Daniels,dash daniels,Melbourne United,,matched,high,5639,5639,Normalized name matched one draft-year player
+30,Killyan Toure,killyan toure,Iowa State,Iowa State,matched,high,6063,6063,Normalized name matched one draft-year player with matching canonical affiliation
+31,Dailyn Swain,dailyn swain,Texas,Texas,matched,high,5465,5465,Normalized name matched one draft-year player with matching canonical affiliation
+32,Aday Mara,aday mara,Michigan,Michigan,matched,high,5577,5577,Normalized name matched one draft-year player with matching canonical affiliation
+33,Brayden Burries,brayden burries,Arizona,Arizona,matched,high,5597,5597,Normalized name matched one draft-year player with matching canonical affiliation
+34,Alex Karaban,alex karaban,Connecticut,UConn,matched,medium,1627,1627,Normalized name matched one draft-year player
+35,Richie Saunders,richie saunders,BYU,BYU,matched,high,5385,5385,Normalized name matched one draft-year player with matching canonical affiliation
+36,Isaiah Evans,isaiah evans,Duke,Duke,matched,high,5509,5509,Normalized name matched one draft-year player with matching canonical affiliation
+37,Meleek Thomas,meleek thomas,Arkansas,Arkansas,matched,high,5647,5647,Normalized name matched one draft-year player with matching canonical affiliation
+38,Braden Smith,braden smith,Purdue,Purdue,matched,high,5652,5652,Normalized name matched one draft-year player with matching canonical affiliation
+39,Ryan Conwell,ryan conwell,Louisville,Louisville,matched,high,5517,5517,Normalized name matched one draft-year player with matching canonical affiliation
+40,JoJo Tugler,jojo tugler,Houston,Houston,matched,high,6026,6026,Normalized name matched one draft-year player with matching canonical affiliation
+41,Sergio De Larrea,sergio de larrea,Valencia,,matched,high,5416,5416,Normalized name matched one draft-year player
+42,Dame Sarr,dame sarr,Duke,Duke,matched,high,5584,5584,Normalized name matched one draft-year player with matching canonical affiliation
+43,Tarris Reed Jr.,tarris reed,Connecticut,UConn,merge_required,medium,,5483|5542|6037,Multiple normalized-name candidates; review duplicate/alias merge
+44,Alex Condon,alex condon,Florida,Florida,matched,high,1669,1669,Normalized name matched one draft-year player with matching canonical affiliation
+45,Tamin Lipsey,tamin lipsey,Iowa State,Iowa State,matched,high,5493,5493,Normalized name matched one draft-year player with matching canonical affiliation
+46,Milan Momcilovic,milan momcilovic,Iowa State,Iowa State,matched,high,5380,5380,Normalized name matched one draft-year player with matching canonical affiliation
+47,Milos Uzan,milos uzan,Houston,Houston,matched,high,1726,1726,Normalized name matched one draft-year player with matching canonical affiliation
+48,Johann Grunloh,johann grunloh,Virginia,Virginia,matched,high,5479,5479,Normalized name matched one draft-year player with matching canonical affiliation
+49,Nate Bittle,nate bittle,Oregon,Oregon,matched,high,5461,5461,Normalized name matched one draft-year player with matching canonical affiliation
+50,Flory Bidunga,flory bidunga,Kansas,Kansas,matched,high,5625,5625,Normalized name matched one draft-year player with matching canonical affiliation
+51,Braden Huff,braden huff,Gonzaga,Gonzaga,matched,high,6064,6064,Normalized name matched one draft-year player with matching canonical affiliation
+52,Morez Johnson Jr.,morez johnson,Michigan,Michigan,merge_required,medium,,5529|5706|6038,Multiple normalized-name candidates; review duplicate/alias merge
+53,Bruce Thornton,bruce thornton,Ohio State,Ohio State,matched,high,5496,5496,Normalized name matched one draft-year player with matching canonical affiliation
+54,Juke Harris,juke harris,Wake Forest,Wake Forest,matched,high,5386,5386,Normalized name matched one draft-year player with matching canonical affiliation
+55,Jaden Bradley,jaden bradley,Arizona,Arizona,matched,high,5381,5381,Normalized name matched one draft-year player with matching canonical affiliation
+56,Zuby Ejiofor,zuby ejiofor,St. John’s,St. John's,matched,high,5528,5528,Normalized name matched one draft-year player with matching canonical affiliation
+57,Silas DeMary Jr.,silas demary,Connecticut,UConn,matched,high,5474,5474,Normalized name matched one draft-year player with matching canonical affiliation
+58,MoMo Faye,momo faye,Paris Basketball,,matched,high,6065,6065,Normalized name matched one draft-year player
+59,Adam Atamna,adam atamna,ASVEL,,matched,high,6066,6066,Normalized name matched one draft-year player
+60,Tomislav Ivisic,tomislav ivisic,Illinois,Illinois,matched,high,5648,5648,Normalized name matched one draft-year player with matching canonical affiliation
+61,Kwame Evans Jr.,kwame evans,Oregon,Oregon,merge_required,medium,,5452|5640,Multiple normalized-name candidates; review duplicate/alias merge
+62,Paul McNeil,paul mcneil,NC State,NC State,matched,high,5488,5488,Normalized name matched one draft-year player with matching canonical affiliation
+63,Pryce Sandfort,pryce sandfort,Nebraska,Nebraska,matched,high,5782,5782,Normalized name matched one draft-year player with matching canonical affiliation
+64,Nolan Winter,nolan winter,Wisconsin,Wisconsin,matched,high,6067,6067,Normalized name matched one draft-year player with matching canonical affiliation
+65,JT Toppin,jt toppin,Texas Tech,Texas Tech,matched,high,1653,1653,Normalized name matched one draft-year player with matching canonical affiliation
+66,D’Shayne Montgomery,dshayne montgomery,Dayton,Dayton,create_stub,medium,,,No existing draft-year player or alias candidate found
+67,Blue Cain,blue cain,Georgia,Georgia,matched,high,6069,6069,Normalized name matched one draft-year player with matching canonical affiliation
+68,Andrej Stojakovic,andrej stojakovic,Illinois,Illinois,matched,medium,5632,5632,Normalized name matched one draft-year player
+69,Tahaad Pettiford,tahaad pettiford,Auburn,Auburn,matched,high,1708,1708,Normalized name matched one draft-year player with matching canonical affiliation
+70,K.J. Lewis,k j lewis,Georgetown,Georgetown,matched,high,6070,6070,Normalized name matched one draft-year player with matching canonical affiliation
+71,Baba Miller,baba miller,Cincinnati,Cincinnati,matched,high,5400,5400,Normalized name matched one draft-year player with matching canonical affiliation
+72,Ja’Kobi Gillespie,jakobi gillespie,Tennessee,Tennessee,matched,high,6033,6033,Normalized name matched one draft-year player with matching canonical affiliation
+73,Motiejus Krivas,motiejus krivas,Arizona,Arizona,matched,high,5974,5974,Normalized name matched one draft-year player with matching canonical affiliation
+74,Tyler Bilodeau,tyler bilodeau,UCLA,UCLA,matched,high,5468,5468,Normalized name matched one draft-year player with matching canonical affiliation
+75,Darrion Williams,darrion williams,NC State,NC State,matched,high,1728,1728,Normalized name matched one draft-year player with matching canonical affiliation
+76,Nick Martinelli,nick martinelli,Northwestern,Northwestern,matched,high,5475,5475,Normalized name matched one draft-year player with matching canonical affiliation
+77,Cade Tyson,cade tyson,Minnesota,Minnesota,matched,high,5518,5518,Normalized name matched one draft-year player with matching canonical affiliation
+78,William Kyle,william kyle,Syracuse,Syracuse,merge_required,medium,,5798|5826,Multiple normalized-name candidates; review duplicate/alias merge
+79,Keyshawn Hall,keyshawn hall,Auburn,Auburn,matched,high,5421,5421,Normalized name matched one draft-year player with matching canonical affiliation
+80,Emanuel Sharp,emanuel sharp,Houston,Houston,matched,high,5500,5500,Normalized name matched one draft-year player with matching canonical affiliation
+81,Nick Boyd,nick boyd,Wisconsin,Wisconsin,matched,high,6071,6071,Normalized name matched one draft-year player with matching canonical affiliation
+82,Donovan Dent,donovan dent,UCLA,UCLA,matched,high,5699,5699,Normalized name matched one draft-year player with matching canonical affiliation
+83,Maliq Brown,maliq brown,Duke,Duke,matched,high,6058,6058,Normalized name matched one draft-year player with matching canonical affiliation
+84,Trey Kaufman-Renn,trey kaufman renn,Purdue,Purdue,matched,high,6072,6072,Normalized name matched one draft-year player with matching canonical affiliation
+85,Tucker DeVries,tucker devries,Indiana,Indiana,matched,medium,5396,5396,Normalized name matched one draft-year player
+86,Joshua Dix,joshua dix,Creighton,Creighton,matched,high,6073,6073,Normalized name matched one draft-year player with matching canonical affiliation
+87,John Blackwell,john blackwell,Wisconsin,Wisconsin,matched,high,5618,5618,Normalized name matched one draft-year player with matching canonical affiliation
+88,Otega Oweh,otega oweh,Kentucky,Kentucky,matched,high,1704,1704,Normalized name matched one draft-year player with matching canonical affiliation
+89,Elijah Mahi,elijah mahi,Santa Clara,Santa Clara,matched,high,6074,6074,Normalized name matched one draft-year player with matching canonical affiliation
+90,Lamar Wilkerson,lamar wilkerson,Indiana,Indiana,matched,high,6075,6075,Normalized name matched one draft-year player with matching canonical affiliation
+91,Kylan Boswell,kylan boswell,Illinois,Illinois,matched,high,5804,5804,Normalized name matched one draft-year player with matching canonical affiliation
+92,Dillon Mitchell,dillon mitchell,St. John’s,St. John's,matched,high,1562,1562,Normalized name matched one draft-year player with matching canonical affiliation
+93,Ben Henshall,ben henshall,Perth Wildcats,,matched,high,1683,1683,Normalized name matched one draft-year player
+94,Trevon Brazile,trevon brazile,Arkansas,Arkansas,matched,high,1593,1593,Normalized name matched one draft-year player with matching canonical affiliation
+95,Michael Ruzic,michael ruzic,Joventut,,matched,high,1716,1716,Normalized name matched one draft-year player
+96,Michael Ajayi,michael ajayi,Butler,Butler,matched,high,1590,1590,Normalized name matched one draft-year player with matching canonical affiliation
+97,Oscar Cluff,oscar cluff,Purdue,Purdue,matched,high,5715,5715,Normalized name matched one draft-year player with matching canonical affiliation
+98,Jordan Burks,jordan burks,UCF,UCF,matched,high,6076,6076,Normalized name matched one draft-year player with matching canonical affiliation
+99,Fletcher Loyer,fletcher loyer,Purdue,Purdue,matched,high,6077,6077,Normalized name matched one draft-year player with matching canonical affiliation
+100,Bryce Hopkins,bryce hopkins,St. John’s,St. John's,matched,high,5619,5619,Normalized name matched one draft-year player with matching canonical affiliation
