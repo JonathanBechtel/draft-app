@@ -1079,6 +1079,37 @@
   max-height: 540px;
 }
 
+/* --- Summary stats --- */
+.film-room-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.film-room-stat {
+  padding: 0.875rem 1rem;
+  background: var(--film-surface);
+  border: 1px solid var(--film-border);
+  border-radius: 0.5rem;
+}
+
+.film-room-stat__value {
+  color: var(--film-accent-strong);
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.film-room-stat__label {
+  margin-top: 0.35rem;
+  color: var(--film-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
 /* --- Search + filter controls --- */
 .film-page__controls {
   display: flex;
@@ -1537,6 +1568,10 @@
 @media (max-width: 768px) {
   .film-page .film-page__header {
     align-items: flex-start;
+  }
+
+  .film-room-stats {
+    grid-template-columns: 1fr;
   }
 
   .film-page__controls {
