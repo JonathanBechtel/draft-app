@@ -213,6 +213,9 @@ scraper/output/*
 !scraper/output/top100_dev_merge_dry_run_*.log
 !scraper/output/top100_dev_merge_execute_*.log
 !scraper/output/top100_dev_merge_log_*.md
+!scraper/output/top100_dev_audit_*.csv
+!scraper/output/top100_stats_review_*.csv
+!scraper/output/top100_cbb_enrichment_*.csv
 scraper/cache/
 .cursorignore
 .cursorindexingignore
