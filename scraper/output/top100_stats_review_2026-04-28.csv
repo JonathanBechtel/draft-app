@@ -1,0 +1,101 @@
+source_rank,source_name,raw_affiliation,affiliation_type,match_status,player_id,db_display_name,db_school,external_ids,has_bbr_id,stats_count,authoritative_stats_count,ai_stats_count,stats_sources,latest_stats_season,latest_stats_source,latest_games,latest_ppg,latest_rpg,latest_apg,stats_missing_reason
+1,AJ Dybantsa,BYU,college,matched,5390,AJ Dybantsa,BYU,sports_reference_cbb:aj-dybantsa-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,35,25.5,6.8,3.7,
+2,Darryn Peterson,Kansas,college,matched,5432,Darryn Peterson,Kansas,sports_reference_cbb:darryn-peterson-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,24,20.2,4.2,1.6,
+3,Cameron Boozer,Duke,college,matched,5409,Cameron Boozer,Duke,sports_reference_cbb:cameron-boozer-3,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,38,22.5,10.2,4.1,
+4,Caleb Wilson,North Carolina,college,matched,5426,Caleb Wilson,UNC,sports_reference_cbb:caleb-wilson-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,24,19.8,9.4,2.7,
+5,Kingston Flemings,Houston,college,matched,5401,Kingston Flemings,Houston,sports_reference_cbb:kingston-flemings-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,37,16.1,4.1,5.2,
+6,Jayden Quaintance,Kentucky,college,matched,5422,Jayden Quaintance,Kentucky,sports_reference_cbb:jayden-quaintance-1,False,2,1,1,ai_generated|sports_reference_cbb,2025-26,sports_reference_cbb,4,5.0,5.0,0.5,
+7,Koa Peat,Arizona,college,matched,5406,Koa Peat,Arizona,sports_reference_cbb:koa-peat-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,36,14.1,5.6,2.6,
+8,Yaxel Lendeborg,Michigan,college,matched,1691,Yaxel Lendeborg,Michigan,sports_reference_cbb:yaxel-lendeborg-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,40,15.1,6.8,3.2,
+9,Hannes Steinbach,Washington,college,matched,5421,Hannes Steinbach,Washington,sports_reference_cbb:hannes-steinbach-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,30,18.5,11.8,1.6,
+10,Mikel Brown Jr.,Louisville,college,matched,5389,Mikel Brown Jr.,Louisville,sports_reference_cbb:mikel-brown-jr-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,21,18.2,3.3,4.7,
+11,Keaton Wagler,Illinois,college,matched,5402,Keaton Wagler,Illinois,sports_reference_cbb:keaton-wagler-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,37,17.9,5.1,4.2,
+12,Thomas Haugh,Florida,college,matched,5379,Thomas Haugh,Florida,sports_reference_cbb:thomas-haugh-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,34,17.1,6.1,2.1,
+13,Labaron Philon,Alabama,college,matched,1709,Labaron Philon,Alabama,sports_reference_cbb:labaron-philon-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,33,22.0,3.5,5.0,
+14,Patrick Ngongba II,Duke,college,matched,5423,Patrick Ngongba II,Duke,sports_reference_cbb:patrick-ngongba-2,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,32,10.1,5.8,2.0,
+15,Cameron Carr,Baylor,college,matched,5439,Cameron Carr,Baylor,sports_reference_cbb:cameron-carr-2,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,34,18.9,5.8,2.6,
+16,Darius Acuff Jr.,Arkansas,college,matched,5384,Darius Acuff Jr.,Arkansas,sports_reference_cbb:darius-acuff-jr-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,36,23.5,3.1,6.4,
+17,Braylon Mullins,Connecticut,college,matched,5424,Braylon Mullins,UConn,sports_reference_cbb:braylon-mullins-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,33,12.0,3.5,1.4,
+18,Nate Ament,Tennessee,college,matched,5396,Nate Ament,Tennessee,sports_reference_cbb:nate-ament-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,35,16.7,6.3,2.3,
+19,Joshua Jefferson,Iowa State,college,matched,5388,Joshua Jefferson,Iowa State,sports_reference_cbb:joshua-jefferson-1,False,2,1,1,ai_generated|sports_reference_cbb,2025-26,sports_reference_cbb,35,16.4,7.4,4.8,
+20,Christian Anderson,Texas Tech,college,matched,5382,Christian Anderson,Texas Tech,sports_reference_cbb:christian-anderson-2,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,33,18.5,3.6,7.4,
+21,Benett Stirtz,Iowa,college,matched,6394,Benett Stirtz,Iowa,,False,0,0,0,,,,,,,,missing_bbr_external_id
+22,Amari Allen,Alabama,college,matched,5383,Amari Allen,Alabama,sports_reference_cbb:amari-allen-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,32,11.4,6.9,3.1,
+23,Chris Cenac Jr.,Houston,college,matched,5387,Chris Cenac Jr.,Houston,sports_reference_cbb:chris-cenac-jr-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,37,9.5,7.9,0.7,
+24,Neoklis Avdalas,Virginia Tech,college,matched,1660,Neoklis Avdalas,Virginia Tech,sports_reference_cbb:neoklis-avdalas-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,31,12.1,3.1,4.6,
+25,Tounde Yessoufou,Baylor,college,matched,5414,Tounde Yessoufou,Baylor,sports_reference_cbb:tounde-yessoufou-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,34,17.8,5.9,1.6,
+26,Karim Lopez,NZ Breakers,professional_or_international,matched,5443,Karim Lopez,,,False,0,0,0,,,,,,,,needs_pro_or_international_source
+27,Tyler Tanner,Vanderbilt,college,matched,5399,Tyler Tanner,Vanderbilt,sports_reference_cbb:tyler-tanner-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,36,19.5,3.6,5.1,
+28,Henri Veesaar,North Carolina,college,matched,6349,Henri Veesaar,UNC,sports_reference_cbb:henri-veesaar-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,31,17.0,8.7,2.1,
+29,Dash Daniels,Melbourne United,professional_or_international,matched,6187,Dash Daniels,Melbourne United (NBL),,False,1,0,1,ai_generated,2025-26,ai_generated,37,4.2,2.3,0.8,authoritative_stats_needed
+30,Killyan Toure,Iowa State,college,matched,6348,Killyan Toure,Iowa State,sports_reference_cbb:killyan-toure-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,37,8.6,3.5,2.3,
+31,Dailyn Swain,Texas,college,matched,5391,Dailyn Swain,Texas,sports_reference_cbb:dailyn-swain-2,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,36,17.3,7.5,3.6,
+32,Aday Mara,Michigan,college,matched,5394,Aday Mara,Michigan,sports_reference_cbb:aday-mara-2,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,40,12.1,6.8,2.4,
+33,Brayden Burries,Arizona,college,matched,5393,Brayden Burries,Arizona,sports_reference_cbb:brayden-burries-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,39,16.1,4.9,2.4,
+34,Alex Karaban,Connecticut,college,matched,1627,Alex Karaban,UConn,sports_reference_cbb:alex-karaban-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,40,13.2,5.3,2.4,
+35,Richie Saunders,BYU,college,matched,5385,Richie Saunders,BYU,sports_reference_cbb:richie-saunders-1,False,2,1,1,ai_generated|sports_reference_cbb,2025-26,sports_reference_cbb,25,18.0,5.8,2.1,
+36,Isaiah Evans,Duke,college,matched,5440,Isaiah Evans,Duke,sports_reference_cbb:isaiah-evans-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,38,15.0,3.2,1.3,
+37,Meleek Thomas,Arkansas,college,matched,5434,Meleek Thomas,Arkansas,sports_reference_cbb:meleek-thomas-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,37,15.6,3.8,2.5,
+38,Braden Smith,Purdue,college,matched,5419,Braden Smith,Purdue,sports_reference_cbb:braden-smith-1,False,2,1,1,ai_generated|sports_reference_cbb,2025-26,sports_reference_cbb,39,14.3,3.5,8.8,
+39,Ryan Conwell,Louisville,college,matched,5407,Ryan Conwell,Louisville,sports_reference_cbb:ryan-conwell-1,False,2,1,1,ai_generated|sports_reference_cbb,2025-26,sports_reference_cbb,34,18.8,4.8,2.7,
+40,JoJo Tugler,Houston,college,matched,6338,Joseph Tugler,Houston,,False,1,0,1,ai_generated,2025-26,ai_generated,36,8.5,5.3,1.2,authoritative_stats_needed
+41,Sergio De Larrea,Valencia,professional_or_international,matched,6350,Sergio de Larrea,Valencia Basket,,False,1,0,1,ai_generated,2025-26,ai_generated,24,3.5,1.2,2.2,authoritative_stats_needed
+42,Dame Sarr,Duke,college,matched,5425,Dame Sarr,Duke,sports_reference_cbb:dame-sarr-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,38,6.4,3.8,1.1,
+43,Tarris Reed Jr.,Connecticut,college,matched,6337,Tarris Reed Jr.,UConn,sports_reference_cbb:tarris-reed-jr-1,False,2,1,1,ai_generated|sports_reference_cbb,2025-26,sports_reference_cbb,35,14.7,9.0,2.3,
+44,Alex Condon,Florida,college,matched,1669,Alex Condon,Florida,sports_reference_cbb:alex-condon-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,34,15.1,7.5,3.6,
+45,Tamin Lipsey,Iowa State,college,matched,6149,Tamin Lipsey,Iowa State,sports_reference_cbb:tamin-lipsey-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,34,13.5,3.9,5.1,
+46,Milan Momcilovic,Iowa State,college,matched,5380,Milan Momcilovic,Iowa State,sports_reference_cbb:milan-momcilovic-2,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,37,16.9,3.1,1.0,
+47,Milos Uzan,Houston,college,matched,1726,Milos Uzan,Houston,sports_reference_cbb:milos-uzan-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,37,11.1,2.7,4.0,
+48,Johann Grunloh,Virginia,college,matched,6327,Johann Grünloh,Virginia,sports_reference_cbb:johann-gruenloh-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,36,7.1,5.2,0.6,
+49,Nate Bittle,Oregon,college,matched,6395,Nate Bittle,Oregon,,False,0,0,0,,,,,,,,missing_bbr_external_id
+50,Flory Bidunga,Kansas,college,matched,5430,Flory Bidunga,Kansas,sports_reference_cbb:flory-bidunga-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,35,13.3,9.0,1.5,
+51,Braden Huff,Gonzaga,college,matched,6396,Braden Huff,Gonzaga,sports_reference_cbb:braden-huff-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,18,17.8,5.6,1.5,
+52,Morez Johnson Jr.,Michigan,college,matched,5428,Morez Johnson Jr.,Michigan,sports_reference_cbb:morez-johnson-jr-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,40,13.1,7.3,1.2,
+53,Bruce Thornton,Ohio State,college,matched,6335,Bruce Thornton,Ohio State,sports_reference_cbb:bruce-thornton-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,34,19.9,5.1,3.9,
+54,Juke Harris,Wake Forest,college,matched,5386,Juke Harris,Wake Forest,sports_reference_cbb:juke-harris-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,35,21.4,6.5,1.9,
+55,Jaden Bradley,Arizona,college,matched,5381,Jaden Bradley,Arizona,sports_reference_cbb:jaden-bradley-1,False,2,1,1,ai_generated|sports_reference_cbb,2025-26,sports_reference_cbb,39,13.3,3.4,4.4,
+56,Zuby Ejiofor,St. John’s,college,matched,6115,Zuby Ejiofor,St. John's,sports_reference_cbb:zuby-ejiofor-1,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,37,16.3,7.3,3.5,
+57,Silas DeMary Jr.,Connecticut,college,matched,6397,Silas DeMary Jr.,UConn,sports_reference_cbb:silas-demary-jr-2,False,1,1,0,sports_reference_cbb,2025-26,sports_reference_cbb,39,10.1,4.5,5.9,
+58,MoMo Faye,Paris Basketball,professional_or_international,matched,6398,MoMo Faye,,,False,0,0,0,,,,,,,,needs_pro_or_international_source
+59,Adam Atamna,ASVEL,professional_or_international,matched,6399,Adam Atamna,,,False,0,0,0,,,,,,,,needs_pro_or_international_source
+60,Tomislav Ivisic,Illinois,college,matched,5433,Tomislav Ivisic,Illinois,,False,1,0,1,ai_generated,2025-26,ai_generated,29,10.0,5.5,1.6,authoritative_stats_needed
+61,Kwame Evans Jr.,Oregon,college,matched,6145,Kwame Evans Jr.,Oregon,,False,1,0,1,ai_generated,2024-25,ai_generated,35,6.1,4.6,0.7,authoritative_stats_needed
+62,Paul McNeil,NC State,college,matched,6130,Paul McNeil,NC State,,False,1,0,1,ai_generated,2025-26,ai_generated,18,13.9,3.6,0.8,authoritative_stats_needed
+63,Pryce Sandfort,Nebraska,college,matched,6173,Pryce Sandfort,Nebraska,,False,1,0,1,ai_generated,2025-26,ai_generated,32,17.8,4.8,2.0,authoritative_stats_needed
+64,Nolan Winter,Wisconsin,college,matched,6400,Nolan Winter,Wisconsin,,False,0,0,0,,,,,,,,missing_bbr_external_id
+65,JT Toppin,Texas Tech,college,matched,1653,JT Toppin,Texas Tech,bbr:toppija01|instagram:jtoppin_0,True,0,0,0,,,,,,,,needs_sports_reference_scrape
+66,D’Shayne Montgomery,Dayton,college,matched,6401,D’Shayne Montgomery,Dayton,,False,0,0,0,,,,,,,,missing_bbr_external_id
+67,Blue Cain,Georgia,college,matched,6402,Blue Cain,Georgia,,False,0,0,0,,,,,,,,missing_bbr_external_id
+68,Andrej Stojakovic,Illinois,college,matched,6386,Andrej Stojakovic,Illinois,,False,1,0,1,ai_generated,2024-25,ai_generated,29,17.9,4.7,1.8,authoritative_stats_needed
+69,Tahaad Pettiford,Auburn,college,matched,1708,Tahaad Pettiford,Auburn,,False,0,0,0,,,,,,,,missing_bbr_external_id
+70,K.J. Lewis,Georgetown,college,matched,6403,K.J. Lewis,Georgetown,,False,0,0,0,,,,,,,,missing_bbr_external_id
+71,Baba Miller,Cincinnati,college,matched,5412,Baba Miller,Cincinnati,,False,1,0,1,ai_generated,2025-26,ai_generated,29,13.4,10.1,3.6,authoritative_stats_needed
+72,Ja’Kobi Gillespie,Tennessee,college,matched,5427,Ja'Kobi Gillespie,Tennessee,,False,1,0,1,ai_generated,2024-25,ai_generated,36,14.7,2.8,4.8,authoritative_stats_needed
+73,Motiejus Krivas,Arizona,college,matched,5403,Motiejus Krivas,Arizona,,False,1,0,1,ai_generated,2025-26,ai_generated,34,10.5,8.1,1.0,authoritative_stats_needed
+74,Tyler Bilodeau,UCLA,college,matched,5420,Tyler Bilodeau,UCLA,,False,1,0,1,ai_generated,2025-26,ai_generated,31,17.6,5.6,1.1,authoritative_stats_needed
+75,Darrion Williams,NC State,college,matched,1728,Darrion Williams,NC State,,False,0,0,0,,,,,,,,missing_bbr_external_id
+76,Nick Martinelli,Northwestern,college,matched,6393,Nick Martinelli,Northwestern,,False,1,0,1,ai_generated,2025-26,ai_generated,33,23.0,6.2,2.0,authoritative_stats_needed
+77,Cade Tyson,Minnesota,college,matched,6378,Cade Tyson,Minnesota,,False,1,0,1,ai_generated,2025-26,ai_generated,32,19.6,5.4,2.1,authoritative_stats_needed
+78,William Kyle,Syracuse,college,matched,6192,William Kyle III,Syracuse,,False,1,0,1,ai_generated,2025-26,ai_generated,32,8.4,7.1,0.9,authoritative_stats_needed
+79,Keyshawn Hall,Auburn,college,matched,5410,Keyshawn Hall,Auburn,,False,1,0,1,ai_generated,2024-25,ai_generated,33,18.8,7.1,2.4,authoritative_stats_needed
+80,Emanuel Sharp,Houston,college,matched,6380,Emanuel Sharp,Houston,,False,1,0,1,ai_generated,2025-26,ai_generated,37,15.5,3.0,1.7,authoritative_stats_needed
+81,Nick Boyd,Wisconsin,college,matched,6404,Nick Boyd,Wisconsin,,False,0,0,0,,,,,,,,missing_bbr_external_id
+82,Donovan Dent,UCLA,college,matched,5429,Donovan Dent,UCLA,,False,1,0,1,ai_generated,2025-26,ai_generated,33,13.5,2.9,7.6,authoritative_stats_needed
+83,Maliq Brown,Duke,college,matched,6385,Maliq Brown,Duke,,False,1,0,1,ai_generated,2023-24,ai_generated,32,9.5,7.2,1.8,authoritative_stats_needed
+84,Trey Kaufman-Renn,Purdue,college,matched,6405,Trey Kaufman-Renn,Purdue,,False,0,0,0,,,,,,,,missing_bbr_external_id
+85,Tucker DeVries,Indiana,college,matched,6165,Tucker DeVries,Indiana,,False,1,0,1,ai_generated,2025-26,ai_generated,32,13.7,5.3,3.3,authoritative_stats_needed
+86,Joshua Dix,Creighton,college,matched,6406,Joshua Dix,Creighton,,False,0,0,0,,,,,,,,missing_bbr_external_id
+87,John Blackwell,Wisconsin,college,matched,6407,John Blackwell,Wisconsin,,False,0,0,0,,,,,,,,missing_bbr_external_id
+88,Otega Oweh,Kentucky,college,matched,1704,Otega Oweh,Kentucky,,False,0,0,0,,,,,,,,missing_bbr_external_id
+89,Elijah Mahi,Santa Clara,college,matched,6408,Elijah Mahi,Santa Clara,,False,0,0,0,,,,,,,,missing_bbr_external_id
+90,Lamar Wilkerson,Indiana,college,matched,6409,Lamar Wilkerson,Indiana,,False,0,0,0,,,,,,,,missing_bbr_external_id
+91,Kylan Boswell,Illinois,college,matched,6197,Kylan Boswell,Illinois,,False,1,0,1,ai_generated,2025-26,ai_generated,25,13.2,4.0,3.3,authoritative_stats_needed
+92,Dillon Mitchell,St. John’s,college,matched,1562,Dillon Mitchell,St. John's,,False,0,0,0,,,,,,,,missing_bbr_external_id
+93,Ben Henshall,Perth Wildcats,professional_or_international,matched,1683,Ben Henshall,,,False,0,0,0,,,,,,,,needs_pro_or_international_source
+94,Trevon Brazile,Arkansas,college,matched,1593,Trevon Brazile,Arkansas,,False,0,0,0,,,,,,,,missing_bbr_external_id
+95,Michael Ruzic,Joventut,professional_or_international,matched,1716,Michael Ruzic,,,False,0,0,0,,,,,,,,needs_pro_or_international_source
+96,Michael Ajayi,Butler,college,matched,1590,Michael Ajayi,Butler,,False,0,0,0,,,,,,,,missing_bbr_external_id
+97,Oscar Cluff,Purdue,college,matched,6410,Oscar Cluff,Purdue,,False,0,0,0,,,,,,,,missing_bbr_external_id
+98,Jordan Burks,UCF,college,matched,6411,Jordan Burks,UCF,,False,0,0,0,,,,,,,,missing_bbr_external_id
+99,Fletcher Loyer,Purdue,college,matched,6412,Fletcher Loyer,Purdue,,False,0,0,0,,,,,,,,missing_bbr_external_id
+100,Bryce Hopkins,St. John’s,college,matched,6413,Bryce Hopkins,St. John's,,False,0,0,0,,,,,,,,missing_bbr_external_id
