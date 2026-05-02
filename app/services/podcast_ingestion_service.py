@@ -75,6 +75,7 @@ class PodcastShowSnapshot:
     id: int
     name: str
     feed_url: str
+    website_url: str | None
     is_draft_focused: bool
     last_fetched_at: datetime | None
 
@@ -100,6 +101,7 @@ async def run_ingestion_cycle(db: AsyncSession) -> PodcastIngestionResult:
                     id=s.id,
                     name=s.name,
                     feed_url=s.feed_url,
+                    website_url=s.website_url,
                     is_draft_focused=s.is_draft_focused,
                     last_fetched_at=s.last_fetched_at,
                 )
@@ -245,6 +247,13 @@ async def ingest_podcast_show(
             episodes_skipped += 1
             continue
 
+        raw_episode_url = entry.get("episode_url")
+        episode_url = (
+            None
+            if is_show_landing_url(raw_episode_url, show.website_url)
+            else raw_episode_url
+        )
+
         rows.append(
             {
                 "show_id": show.id,
@@ -253,7 +262,7 @@ async def ingest_podcast_show(
                 "description": description or None,
                 "audio_url": audio_url,
                 "duration_seconds": entry.get("duration_seconds"),
-                "episode_url": entry.get("episode_url"),
+                "episode_url": episode_url,
                 "artwork_url": entry.get("artwork_url"),
                 "season": entry.get("season"),
                 "episode_number": entry.get("episode_number"),
@@ -295,6 +304,25 @@ async def ingest_podcast_show(
         f"{episodes_filtered} filtered, {mentions_added} mentions"
     )
     return episodes_added, episodes_skipped, episodes_filtered, mentions_added
+
+
+def _normalize_url(url: str | None) -> str:
+    """Lower-case and strip trailing slashes/whitespace for URL equality checks."""
+    if not url:
+        return ""
+    return url.strip().rstrip("/").lower()
+
+
+def is_show_landing_url(episode_url: str | None, show_website_url: str | None) -> bool:
+    """Return True if the per-episode link is just the show's landing page.
+
+    Some feeds (e.g. Locked On) populate every <item><link> with the same
+    show-level URL instead of a real per-episode page. Storing that as
+    episode_url means every episode links to the same (often stale) page.
+    """
+    if not episode_url or not show_website_url:
+        return False
+    return _normalize_url(episode_url) == _normalize_url(show_website_url)
 
 
 def check_keyword_relevance(title: str, description: str) -> bool:
