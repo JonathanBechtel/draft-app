@@ -1,0 +1,101 @@
+source_rank,source_name,player_id,raw_affiliation,canonical_affiliation,status,source_url,cbb_slug,db_action,reason,season,games,ppg,rpg,apg,position,height_in,weight_lb,high_school,rsci_rank
+1,AJ Dybantsa,5390,BYU,BYU,resolved,https://www.sports-reference.com/cbb/players/aj-dybantsa-1.html,aj-dybantsa-1,updated,single candidate; school not confirmed,2025-26,35,25.5,6.8,3.7,Forward,81,210,Saint Sebastian's (MA); Prolific Prep (CA); Utah Prep (UT),1
+2,Darryn Peterson,5432,Kansas,Kansas,resolved,https://www.sports-reference.com/cbb/players/darryn-peterson-1.html,darryn-peterson-1,updated,,2025-26,24,20.2,4.2,1.6,Guard,77,205,Cuyahoga Valley Christian (OH); Huntington Prep (WV); Napa Christian (CA),2
+3,Cameron Boozer,5409,Duke,Duke,resolved,https://www.sports-reference.com/cbb/players/cameron-boozer-3.html,cameron-boozer-3,updated,,2025-26,38,22.5,10.2,4.1,Forward,81,250,Columbus (FL),3
+4,Caleb Wilson,5426,North Carolina,UNC,resolved,https://www.sports-reference.com/cbb/players/caleb-wilson-1.html,caleb-wilson-1,updated,single candidate; school not confirmed,2025-26,24,19.8,9.4,2.7,Forward,82,215,Holy Innocents Episcopal School (GA),5
+5,Kingston Flemings,5401,Houston,Houston,resolved,https://www.sports-reference.com/cbb/players/kingston-flemings-1.html,kingston-flemings-1,updated,,2025-26,37,16.1,4.1,5.2,Guard,76,190,Brennan (TX),15
+6,Jayden Quaintance,5422,Kentucky,Kentucky,resolved,https://www.sports-reference.com/cbb/players/jayden-quaintance-1.html,jayden-quaintance-1,updated,single candidate; school not confirmed,2025-26,4,5.0,5.0,0.5,Forward,81,225,Word Of God Christian (NC),8
+7,Koa Peat,5406,Arizona,Arizona,resolved,https://www.sports-reference.com/cbb/players/koa-peat-1.html,koa-peat-1,updated,,2025-26,36,14.1,5.6,2.6,Forward,80,235,Gilbert Perry (AZ),8
+8,Yaxel Lendeborg,1691,Michigan,Michigan,resolved,https://www.sports-reference.com/cbb/players/yaxel-lendeborg-1.html,yaxel-lendeborg-1,updated,single candidate; school not confirmed,2025-26,40,15.1,6.8,3.2,Forward,81,230,,
+9,Hannes Steinbach,5421,Washington,Washington,resolved,https://www.sports-reference.com/cbb/players/hannes-steinbach-1.html,hannes-steinbach-1,updated,,2025-26,30,18.5,11.8,1.6,Forward,83,220,Würzburg Baskets (Germany),
+10,Mikel Brown Jr.,5389,Louisville,Louisville,resolved,https://www.sports-reference.com/cbb/players/mikel-brown-jr-1.html,mikel-brown-jr-1,updated,,2025-26,21,18.2,3.3,4.7,Guard,77,190,Overtime Elite (GA); DME Academy (FL),7
+11,Keaton Wagler,5402,Illinois,Illinois,resolved,https://www.sports-reference.com/cbb/players/keaton-wagler-1.html,keaton-wagler-1,updated,,2025-26,37,17.9,5.1,4.2,Guard,78,185,Shawnee Mission Northwest (KS),
+12,Thomas Haugh,5379,Florida,Florida,resolved,https://www.sports-reference.com/cbb/players/thomas-haugh-1.html,thomas-haugh-1,updated,,2025-26,34,17.1,6.1,2.1,Forward,81,210,Perkiomen School (PA),
+13,Labaron Philon,1709,Alabama,Alabama,resolved,https://www.sports-reference.com/cbb/players/labaron-philon-1.html,labaron-philon-1,updated,,2025-26,33,22.0,3.5,5.0,Guard,76,177,Baker (AL); Link Academy (MO),32
+14,Patrick Ngongba II,5423,Duke,Duke,resolved,https://www.sports-reference.com/cbb/players/patrick-ngongba-2.html,patrick-ngongba-2,updated,,2025-26,32,10.1,5.8,2.0,Center,83,250,St. Paul VI (VA),24
+15,Cameron Carr,5439,Baylor,Baylor,resolved,https://www.sports-reference.com/cbb/players/cameron-carr-2.html,cameron-carr-2,updated,single candidate; school not confirmed,2025-26,34,18.9,5.8,2.6,Guard,77,175,Manhattan (KS); Link Academy (MO),55
+16,Darius Acuff Jr.,5384,Arkansas,Arkansas,resolved,https://www.sports-reference.com/cbb/players/darius-acuff-jr-1.html,darius-acuff-jr-1,updated,,2025-26,36,23.5,3.1,6.4,Guard,75,190,Cass Technical (MI); IMG Academy (FL),10
+17,Braylon Mullins,5424,Connecticut,UConn,resolved,https://www.sports-reference.com/cbb/players/braylon-mullins-1.html,braylon-mullins-1,updated,single candidate; school not confirmed,2025-26,33,12.0,3.5,1.4,Guard,78,196,Greenfield-Central (IN),14
+18,Nate Ament,5396,Tennessee,Tennessee,resolved,https://www.sports-reference.com/cbb/players/nate-ament-1.html,nate-ament-1,updated,,2025-26,35,16.7,6.3,2.3,Forward,82,207,Highland School (VA),4
+19,Joshua Jefferson,5388,Iowa State,Iowa State,resolved,https://www.sports-reference.com/cbb/players/joshua-jefferson-1.html,joshua-jefferson-1,updated,single candidate; school not confirmed,2025-26,35,16.4,7.4,4.8,Forward,80,220,,
+20,Christian Anderson,5382,Texas Tech,Texas Tech,resolved,https://www.sports-reference.com/cbb/players/christian-anderson-2.html,christian-anderson-2,updated,,2025-26,33,18.5,3.6,7.4,Guard,74,165,The Lovett School (GA); Oak Hill Academy (VA),
+21,Benett Stirtz,6394,Iowa,Iowa,needs_review,,,,no CBB index candidate,,,,,,,,,,
+22,Amari Allen,5383,Alabama,Alabama,resolved,https://www.sports-reference.com/cbb/players/amari-allen-1.html,amari-allen-1,updated,,2025-26,32,11.4,6.9,3.1,Forward,79,205,IMG Academy (FL); Ashwaunenon (WI),69
+23,Chris Cenac Jr.,5387,Houston,Houston,resolved,https://www.sports-reference.com/cbb/players/chris-cenac-jr-1.html,chris-cenac-jr-1,updated,,2025-26,37,9.5,7.9,0.7,Center,83,240,Newman (LA); Link Academy (MO),6
+24,Neoklis Avdalas,1660,Virginia Tech,Virginia Tech,resolved,https://www.sports-reference.com/cbb/players/neoklis-avdalas-1.html,neoklis-avdalas-1,updated,,2025-26,31,12.1,3.1,4.6,Guard,81,215,AS Karditsas (Greece); Peristeri BC (Greece),
+25,Tounde Yessoufou,5414,Baylor,Baylor,resolved,https://www.sports-reference.com/cbb/players/tounde-yessoufou-1.html,tounde-yessoufou-1,updated,,2025-26,34,17.8,5.9,1.6,Guard,77,215,"St. Joseph (Santa Maria, CA)",11
+26,Karim Lopez,5443,NZ Breakers,,skipped,,,,non-college affiliation; requires separate official/pro source,,,,,,,,,,
+27,Tyler Tanner,5399,Vanderbilt,Vanderbilt,resolved,https://www.sports-reference.com/cbb/players/tyler-tanner-1.html,tyler-tanner-1,updated,,2025-26,36,19.5,3.6,5.1,Guard,72,170,Brentwood Academy (TN),
+28,Henri Veesaar,6349,North Carolina,UNC,resolved,https://www.sports-reference.com/cbb/players/henri-veesaar-1.html,henri-veesaar-1,updated,single candidate; school not confirmed,2025-26,31,17.0,8.7,2.1,Forward,84,200,Real Madrid (Spain),93
+29,Dash Daniels,6187,Melbourne United,,skipped,,,,non-college affiliation; requires separate official/pro source,,,,,,,,,,
+30,Killyan Toure,6348,Iowa State,Iowa State,resolved,https://www.sports-reference.com/cbb/players/killyan-toure-1.html,killyan-toure-1,updated,,2025-26,37,8.6,3.5,2.3,Guard,75,205,ASVEL Basket (France); Brewster Academy (NH),
+31,Dailyn Swain,5391,Texas,Texas,resolved,https://www.sports-reference.com/cbb/players/dailyn-swain-2.html,dailyn-swain-2,updated,single candidate; school not confirmed,2025-26,36,17.3,7.5,3.6,Forward,79,200,Columbus Africentric Early College (OH),94
+32,Aday Mara,5394,Michigan,Michigan,resolved,https://www.sports-reference.com/cbb/players/aday-mara-2.html,aday-mara-2,updated,single candidate; school not confirmed,2025-26,40,12.1,6.8,2.4,Center,87,240,IES El Picarral (Spain),81
+33,Brayden Burries,5393,Arizona,Arizona,resolved,https://www.sports-reference.com/cbb/players/brayden-burries-1.html,brayden-burries-1,updated,,2025-26,39,16.1,4.9,2.4,Guard,76,205,Eleanor Roosevelt (CA),9
+34,Alex Karaban,1627,Connecticut,UConn,resolved,https://www.sports-reference.com/cbb/players/alex-karaban-1.html,alex-karaban-1,updated,single candidate; school not confirmed,2025-26,40,13.2,5.3,2.4,Forward,80,210,Algonquin Regional (MA); New Hampton (NH); IMG Academy (FL),
+35,Richie Saunders,5385,BYU,BYU,resolved,https://www.sports-reference.com/cbb/players/richie-saunders-1.html,richie-saunders-1,updated,single candidate; school not confirmed,2025-26,25,18.0,5.8,2.1,Guard,77,200,Riverton (UT); Wasatch Academy (UT),
+36,Isaiah Evans,5440,Duke,Duke,resolved,https://www.sports-reference.com/cbb/players/isaiah-evans-1.html,isaiah-evans-1,updated,,2025-26,38,15.0,3.2,1.3,Guard,78,175,North Mecklenburg (NC),16
+37,Meleek Thomas,5434,Arkansas,Arkansas,resolved,https://www.sports-reference.com/cbb/players/meleek-thomas-1.html,meleek-thomas-1,updated,,2025-26,37,15.6,3.8,2.5,Guard,77,185,Lincoln Park Performing Arts (PA),12
+38,Braden Smith,5419,Purdue,Purdue,resolved,https://www.sports-reference.com/cbb/players/braden-smith-1.html,braden-smith-1,updated,,2025-26,39,14.3,3.5,8.8,Guard,72,180,Westfield (IN),
+39,Ryan Conwell,5407,Louisville,Louisville,resolved,https://www.sports-reference.com/cbb/players/ryan-conwell-1.html,ryan-conwell-1,updated,single candidate; school not confirmed,2025-26,34,18.8,4.8,2.7,Guard,76,195,,
+40,JoJo Tugler,6338,Houston,Houston,needs_review,,,,no CBB index candidate,,,,,,,,,,
+41,Sergio De Larrea,6350,Valencia,,skipped,,,,non-college affiliation; requires separate official/pro source,,,,,,,,,,
+42,Dame Sarr,5425,Duke,Duke,resolved,https://www.sports-reference.com/cbb/players/dame-sarr-1.html,dame-sarr-1,updated,,2025-26,38,6.4,3.8,1.1,Guard,80,190,Orange1 Basket Bassano (Italy); FC Barcelona (Spain),81
+43,Tarris Reed Jr.,6337,Connecticut,UConn,resolved,https://www.sports-reference.com/cbb/players/tarris-reed-jr-1.html,tarris-reed-jr-1,updated,single candidate; school not confirmed,2025-26,35,14.7,9.0,2.3,Forward,82,260,Chaminade Prep (MO); Link Year Prep (MO),31
+44,Alex Condon,1669,Florida,Florida,resolved,https://www.sports-reference.com/cbb/players/alex-condon-1.html,alex-condon-1,updated,,2025-26,34,15.1,7.5,3.6,Forward,83,230,Centre of Excellence (Australia),
+45,Tamin Lipsey,6149,Iowa State,Iowa State,resolved,https://www.sports-reference.com/cbb/players/tamin-lipsey-1.html,tamin-lipsey-1,updated,,2025-26,34,13.5,3.9,5.1,Guard,73,200,Ames (IA),
+46,Milan Momcilovic,5380,Iowa State,Iowa State,resolved,https://www.sports-reference.com/cbb/players/milan-momcilovic-2.html,milan-momcilovic-2,updated,,2025-26,37,16.9,3.1,1.0,Forward,80,220,Pewaukee (WI),37
+47,Milos Uzan,1726,Houston,Houston,resolved,https://www.sports-reference.com/cbb/players/milos-uzan-1.html,milos-uzan-1,updated,single candidate; school not confirmed,2025-26,37,11.1,2.7,4.0,Guard,76,183,Desert Pines (NV); Dream City Christian (AZ); Prolific Prep (CA),70
+48,Johann Grunloh,6327,Virginia,Virginia,resolved,https://www.sports-reference.com/cbb/players/johann-gruenloh-1.html,johann-gruenloh-1,updated,,2025-26,36,7.1,5.2,0.6,Center,84,238,Gymnasium Antonianum Vechta (Germany),
+49,Nate Bittle,6395,Oregon,Oregon,needs_review,,,,no CBB index candidate,,,,,,,,,,
+50,Flory Bidunga,5430,Kansas,Kansas,resolved,https://www.sports-reference.com/cbb/players/flory-bidunga-1.html,flory-bidunga-1,updated,,2025-26,35,13.3,9.0,1.5,Forward,81,220,Kokomo (IN),18
+51,Braden Huff,6396,Gonzaga,Gonzaga,resolved,https://www.sports-reference.com/cbb/players/braden-huff-1.html,braden-huff-1,updated,,2025-26,18,17.8,5.6,1.5,Forward,82,235,Glenbard West (IL),
+52,Morez Johnson Jr.,5428,Michigan,Michigan,resolved,https://www.sports-reference.com/cbb/players/morez-johnson-jr-1.html,morez-johnson-jr-1,updated,single candidate; school not confirmed,2025-26,40,13.1,7.3,1.2,Forward,81,255,Thornton Township (IL),26
+53,Bruce Thornton,6335,Ohio State,Ohio State,resolved,https://www.sports-reference.com/cbb/players/bruce-thornton-1.html,bruce-thornton-1,updated,,2025-26,34,19.9,5.1,3.9,Guard,74,215,Milton (GA),47
+54,Juke Harris,5386,Wake Forest,Wake Forest,resolved,https://www.sports-reference.com/cbb/players/juke-harris-1.html,juke-harris-1,updated,,2025-26,35,21.4,6.5,1.9,Guard-Forward,79,200,Salisbury (NC),88
+55,Jaden Bradley,5381,Arizona,Arizona,resolved,https://www.sports-reference.com/cbb/players/jaden-bradley-1.html,jaden-bradley-1,updated,single candidate; school not confirmed,2025-26,39,13.3,3.4,4.4,Guard,75,185,Cannon School (NC); IMG Academy (FL),24
+56,Zuby Ejiofor,6115,St. John’s,St. John's,resolved,https://www.sports-reference.com/cbb/players/zuby-ejiofor-1.html,zuby-ejiofor-1,updated,single candidate; school not confirmed,2025-26,37,16.3,7.3,3.5,Forward,81,240,Garland (TX),50
+57,Silas DeMary Jr.,6397,Connecticut,UConn,resolved,https://www.sports-reference.com/cbb/players/silas-demary-jr-2.html,silas-demary-jr-2,updated,single candidate; school not confirmed,2025-26,39,10.1,4.5,5.9,Guard,77,180,Millbrook (NC); Liberty Heights (NC); Combine Academy (NC),61
+58,MoMo Faye,6398,Paris Basketball,,skipped,,,,non-college affiliation; requires separate official/pro source,,,,,,,,,,
+59,Adam Atamna,6399,ASVEL,,skipped,,,,non-college affiliation; requires separate official/pro source,,,,,,,,,,
+60,Tomislav Ivisic,5433,Illinois,Illinois,needs_review,,,,failed to fetch index https://www.sports-reference.com/cbb/players/i-index.html,,,,,,,,,,
+61,Kwame Evans Jr.,6145,Oregon,Oregon,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+62,Paul McNeil,6130,NC State,NC State,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+63,Pryce Sandfort,6173,Nebraska,Nebraska,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+64,Nolan Winter,6400,Wisconsin,Wisconsin,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+65,JT Toppin,1653,Texas Tech,Texas Tech,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+66,D’Shayne Montgomery,6401,Dayton,Dayton,needs_review,,,,no CBB index candidate,,,,,,,,,,
+67,Blue Cain,6402,Georgia,Georgia,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+68,Andrej Stojakovic,6386,Illinois,Illinois,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+69,Tahaad Pettiford,1708,Auburn,Auburn,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+70,K.J. Lewis,6403,Georgetown,Georgetown,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+71,Baba Miller,5412,Cincinnati,Cincinnati,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+72,Ja’Kobi Gillespie,5427,Tennessee,Tennessee,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+73,Motiejus Krivas,5403,Arizona,Arizona,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+74,Tyler Bilodeau,5420,UCLA,UCLA,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+75,Darrion Williams,1728,NC State,NC State,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+76,Nick Martinelli,6393,Northwestern,Northwestern,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+77,Cade Tyson,6378,Minnesota,Minnesota,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+78,William Kyle,6192,Syracuse,Syracuse,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+79,Keyshawn Hall,5410,Auburn,Auburn,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+80,Emanuel Sharp,6380,Houston,Houston,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+81,Nick Boyd,6404,Wisconsin,Wisconsin,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+82,Donovan Dent,5429,UCLA,UCLA,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+83,Maliq Brown,6385,Duke,Duke,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+84,Trey Kaufman-Renn,6405,Purdue,Purdue,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+85,Tucker DeVries,6165,Indiana,Indiana,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+86,Joshua Dix,6406,Creighton,Creighton,needs_review,,,,no CBB index candidate,,,,,,,,,,
+87,John Blackwell,6407,Wisconsin,Wisconsin,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+88,Otega Oweh,1704,Kentucky,Kentucky,needs_review,,,,failed to fetch index https://www.sports-reference.com/cbb/players/o-index.html,,,,,,,,,,
+89,Elijah Mahi,6408,Santa Clara,Santa Clara,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+90,Lamar Wilkerson,6409,Indiana,Indiana,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+91,Kylan Boswell,6197,Illinois,Illinois,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+92,Dillon Mitchell,1562,St. John’s,St. John's,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+93,Ben Henshall,1683,Perth Wildcats,,skipped,,,,non-college affiliation; requires separate official/pro source,,,,,,,,,,
+94,Trevon Brazile,1593,Arkansas,Arkansas,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+95,Michael Ruzic,1716,Joventut,,skipped,,,,non-college affiliation; requires separate official/pro source,,,,,,,,,,
+96,Michael Ajayi,1590,Butler,Butler,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+97,Oscar Cluff,6410,Purdue,Purdue,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+98,Jordan Burks,6411,UCF,UCF,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+99,Fletcher Loyer,6412,Purdue,Purdue,needs_review,,,,candidate pages did not parse,,,,,,,,,,
+100,Bryce Hopkins,6413,St. John’s,St. John's,needs_review,,,,candidate pages did not parse,,,,,,,,,,

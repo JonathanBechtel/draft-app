@@ -340,6 +340,7 @@ async def upsert_college_stats(
         await db.execute(stmt)
         count += 1
 
+    db.expire_all()
     return count
 
 

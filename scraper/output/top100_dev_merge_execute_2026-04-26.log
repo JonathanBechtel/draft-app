@@ -1,0 +1,48 @@
+Merge plan artifact: scraper/output/top100_dev_merge_plan_2026-04-26.csv
+Mode: EXECUTE
+
+Mikel Brown Jr.: keep 5389 (Mikel Brown Jr.) <- discard (5710,)
+  reason: Keep suffix-canonical row with more mentions and source-matching school.
+  discard 5710: already absent, skipping
+
+Labaron Philon: keep 1709 (Labaron Philon) <- discard (5572,)
+  reason: Keep non-stub row with combine, metrics, similarity, and status data.
+  discard 5572: already absent, skipping
+
+Darius Acuff Jr.: keep 5384 (Darius Acuff Jr.) <- discard (5681, 6027)
+  reason: Keep suffix-canonical row with reference image and most mentions.
+  discard 5681: already absent, skipping
+  discard 6027: already absent, skipping
+
+Chris Cenac Jr.: keep 5387 (Chris Cenac Jr.) <- discard (5791,)
+  reason: Keep suffix-canonical row with more mentions; correct draft year to 2026.
+  discard 5791: already absent, skipping
+
+Tarris Reed Jr.: keep 5483 (Tarris Reed Jr.) <- discard (5542, 6037)
+  reason: Keep suffix-canonical UConn row with most mentions.
+  discard 5542: already absent, skipping
+  discard 6037: already absent, skipping
+
+Morez Johnson Jr.: keep 5529 (Morez Johnson Jr.) <- discard (5706, 6038)
+  reason: Keep suffix-canonical row with most mentions and existing image data.
+  discard 5706: already absent, skipping
+  discard 6038: already absent, skipping
+
+Kwame Evans Jr.: keep 5640 (Kwame Evans Jr.) <- discard (5452,)
+  reason: Keep suffix-canonical row and move richer no-suffix child records into it.
+  discard 5452: already absent, skipping
+
+Ja’Kobi Gillespie: keep 5467 (Ja'Kobi Gillespie) <- discard (6033,)
+  reason: Keep richer Tennessee row and preserve curly-apostrophe variant as canonical.
+  discard 6033 (Ja’Kobi Gillespie)
+    player_content_mentions.player_id: affected=1, delete_conflicts=0, reassign=1
+    player_college_stats.player_id: affected=1, delete_conflicts=1, reassign=0
+    player_image_assets.player_id: affected=1, delete_conflicts=0, reassign=1
+    player_lifecycle.player_id: affected=1, delete_conflicts=1, reassign=0
+    deleted player 6033
+
+William Kyle: keep 5798 (William Kyle) <- discard (5826,)
+  reason: Keep source-name row with existing image data; preserve suffix variant as alias.
+  discard 5826: already absent, skipping
+
+Merge execution committed.
