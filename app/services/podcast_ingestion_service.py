@@ -75,7 +75,6 @@ class PodcastShowSnapshot:
     id: int
     name: str
     feed_url: str
-    website_url: str | None
     is_draft_focused: bool
     last_fetched_at: datetime | None
 
@@ -101,7 +100,6 @@ async def run_ingestion_cycle(db: AsyncSession) -> PodcastIngestionResult:
                     id=s.id,
                     name=s.name,
                     feed_url=s.feed_url,
-                    website_url=s.website_url,
                     is_draft_focused=s.is_draft_focused,
                     last_fetched_at=s.last_fetched_at,
                 )
@@ -247,13 +245,6 @@ async def ingest_podcast_show(
             episodes_skipped += 1
             continue
 
-        raw_episode_url = entry.get("episode_url")
-        episode_url = (
-            None
-            if is_show_landing_url(raw_episode_url, show.website_url)
-            else raw_episode_url
-        )
-
         rows.append(
             {
                 "show_id": show.id,
@@ -262,7 +253,7 @@ async def ingest_podcast_show(
                 "description": description or None,
                 "audio_url": audio_url,
                 "duration_seconds": entry.get("duration_seconds"),
-                "episode_url": episode_url,
+                "episode_url": entry.get("episode_url"),
                 "artwork_url": entry.get("artwork_url"),
                 "season": entry.get("season"),
                 "episode_number": entry.get("episode_number"),
@@ -313,16 +304,18 @@ def _normalize_url(url: str | None) -> str:
     return url.strip().rstrip("/").lower()
 
 
-def is_show_landing_url(episode_url: str | None, show_website_url: str | None) -> bool:
-    """Return True if the per-episode link is just the show's landing page.
+def is_channel_landing_url(episode_url: str | None, channel_url: str | None) -> bool:
+    """Return True if the per-episode link matches the feed's channel link.
 
     Some feeds (e.g. Locked On) populate every <item><link> with the same
-    show-level URL instead of a real per-episode page. Storing that as
-    episode_url means every episode links to the same (often stale) page.
+    show-level URL instead of a real per-episode page. The signal must be
+    feed-derived (the channel <link>), not curated DB metadata, so the guard
+    keeps working even after an admin manually corrects the show's
+    website_url.
     """
-    if not episode_url or not show_website_url:
+    if not episode_url or not channel_url:
         return False
-    return _normalize_url(episode_url) == _normalize_url(show_website_url)
+    return _normalize_url(episode_url) == _normalize_url(channel_url)
 
 
 def check_keyword_relevance(title: str, description: str) -> bool:
@@ -384,12 +377,23 @@ async def fetch_podcast_rss_feed(url: str) -> list[dict[str, Any]]:
     if feed.bozo:
         logger.warning(f"Feed parse warning for {url}: {feed.bozo_exception}")
 
+    channel_link = feed.feed.get("link", "") if hasattr(feed, "feed") else ""
+
     entries: list[dict[str, Any]] = []
     for entry in feed.entries:
         audio_url = _extract_audio_url(entry)
         artwork_url = _extract_podcast_artwork(entry)
         published_at = _parse_published_date(entry)
         duration_seconds = _parse_itunes_duration(entry)
+        entry_link = entry.get("link", "")
+
+        # Some feeds set <item><link> to the show's channel <link> instead of a
+        # per-episode page. Treat that as no per-episode URL so we don't
+        # persist the same generic (and often stale) link on every episode.
+        if is_channel_landing_url(entry_link, channel_link):
+            episode_url: str | None = None
+        else:
+            episode_url = entry_link or None
 
         entries.append(
             {
@@ -397,9 +401,9 @@ async def fetch_podcast_rss_feed(url: str) -> list[dict[str, Any]]:
                 "description": _clean_description(
                     entry.get("summary", entry.get("description", ""))
                 ),
-                "guid": entry.get("id", entry.get("link", "")),
+                "guid": entry.get("id", entry_link),
                 "audio_url": audio_url,
-                "episode_url": entry.get("link", ""),
+                "episode_url": episode_url,
                 "artwork_url": artwork_url,
                 "duration_seconds": duration_seconds,
                 "season": _parse_int_field(entry, "itunes_season"),
