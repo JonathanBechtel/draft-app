@@ -297,6 +297,27 @@ async def ingest_podcast_show(
     return episodes_added, episodes_skipped, episodes_filtered, mentions_added
 
 
+def _normalize_url(url: str | None) -> str:
+    """Lower-case and strip trailing slashes/whitespace for URL equality checks."""
+    if not url:
+        return ""
+    return url.strip().rstrip("/").lower()
+
+
+def is_channel_landing_url(episode_url: str | None, channel_url: str | None) -> bool:
+    """Return True if the per-episode link matches the feed's channel link.
+
+    Some feeds (e.g. Locked On) populate every <item><link> with the same
+    show-level URL instead of a real per-episode page. The signal must be
+    feed-derived (the channel <link>), not curated DB metadata, so the guard
+    keeps working even after an admin manually corrects the show's
+    website_url.
+    """
+    if not episode_url or not channel_url:
+        return False
+    return _normalize_url(episode_url) == _normalize_url(channel_url)
+
+
 def check_keyword_relevance(title: str, description: str) -> bool:
     """Check if episode title or description contains draft-related keywords.
 
@@ -356,12 +377,23 @@ async def fetch_podcast_rss_feed(url: str) -> list[dict[str, Any]]:
     if feed.bozo:
         logger.warning(f"Feed parse warning for {url}: {feed.bozo_exception}")
 
+    channel_link = feed.feed.get("link", "") if hasattr(feed, "feed") else ""
+
     entries: list[dict[str, Any]] = []
     for entry in feed.entries:
         audio_url = _extract_audio_url(entry)
         artwork_url = _extract_podcast_artwork(entry)
         published_at = _parse_published_date(entry)
         duration_seconds = _parse_itunes_duration(entry)
+        entry_link = entry.get("link", "")
+
+        # Some feeds set <item><link> to the show's channel <link> instead of a
+        # per-episode page. Treat that as no per-episode URL so we don't
+        # persist the same generic (and often stale) link on every episode.
+        if is_channel_landing_url(entry_link, channel_link):
+            episode_url: str | None = None
+        else:
+            episode_url = entry_link or None
 
         entries.append(
             {
@@ -369,9 +401,9 @@ async def fetch_podcast_rss_feed(url: str) -> list[dict[str, Any]]:
                 "description": _clean_description(
                     entry.get("summary", entry.get("description", ""))
                 ),
-                "guid": entry.get("id", entry.get("link", "")),
+                "guid": entry.get("id", entry_link),
                 "audio_url": audio_url,
-                "episode_url": entry.get("link", ""),
+                "episode_url": episode_url,
                 "artwork_url": artwork_url,
                 "duration_seconds": duration_seconds,
                 "season": _parse_int_field(entry, "itunes_season"),

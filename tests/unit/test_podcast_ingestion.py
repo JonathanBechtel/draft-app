@@ -5,6 +5,7 @@ import pytest
 from app.services.podcast_ingestion_service import (
     _parse_itunes_duration,
     check_keyword_relevance,
+    is_channel_landing_url,
 )
 
 
@@ -83,3 +84,57 @@ class TestParseItunesDuration:
     def test_invalid_format(self) -> None:
         """Invalid format returns None."""
         assert _parse_itunes_duration({"itunes_duration": "not-a-time"}) is None
+
+
+class TestIsChannelLandingUrl:
+    """Tests for the is_channel_landing_url guard used during ingestion."""
+
+    def test_exact_match(self) -> None:
+        """Item link identical to feed channel link is detected as landing URL."""
+        assert (
+            is_channel_landing_url(
+                "https://lockedonpodcasts.com/podcasts/nba-big-board/",
+                "https://lockedonpodcasts.com/podcasts/nba-big-board/",
+            )
+            is True
+        )
+
+    def test_trailing_slash_difference(self) -> None:
+        """Trailing slash differences are normalized."""
+        assert (
+            is_channel_landing_url(
+                "https://example.com/show",
+                "https://example.com/show/",
+            )
+            is True
+        )
+
+    def test_case_difference(self) -> None:
+        """Case differences in scheme/host are normalized."""
+        assert (
+            is_channel_landing_url(
+                "HTTPS://Example.com/Show/",
+                "https://example.com/show",
+            )
+            is True
+        )
+
+    def test_distinct_per_episode_url(self) -> None:
+        """A real per-episode URL is not flagged as a landing URL."""
+        assert (
+            is_channel_landing_url(
+                "https://example.com/episodes/123-prospect-deep-dive",
+                "https://example.com/show",
+            )
+            is False
+        )
+
+    def test_missing_item_url(self) -> None:
+        """Missing item URL returns False (nothing to drop)."""
+        assert is_channel_landing_url(None, "https://example.com/show") is False
+        assert is_channel_landing_url("", "https://example.com/show") is False
+
+    def test_missing_channel_url(self) -> None:
+        """Missing channel URL returns False (no comparison possible)."""
+        assert is_channel_landing_url("https://example.com/show", None) is False
+        assert is_channel_landing_url("https://example.com/show", "") is False
