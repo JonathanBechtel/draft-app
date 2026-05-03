@@ -17,12 +17,25 @@ separate.
 5. Dev QA and fixes: run full QA gates and fix any dev-only issues.
 6. Production promotion: run reviewed scripts against prod after a prod dry run.
 
+## Script Layout
+
+Top 100 workflow scripts live under `scripts/top100/` so they are isolated from
+general maintenance scripts:
+
+- `refresh.py`, `audit.py`, `merge_players.py`, `cbb_enrich.py`, and
+  `image_candidates.py` cover source capture, dev review, and enrichment.
+- `prospect_integrity_audit.py` and `prospect_lifecycle_cleanup_plan.py` cover
+  global prospect QA.
+- `prod_cleanup_plan.py`, `prod_duplicate_player_cleanup.py`,
+  `prod_bad_image_url_cleanup.py`, `prod_lifecycle_expected_year_cleanup.py`,
+  and `prod_promote.py` cover reviewed production cleanup and promotion.
+
 ## Source Snapshot
 
 Run:
 
 ```bash
-conda run -n draftguru python scripts/top100_refresh.py --date YYYY-MM-DD
+conda run -n draftguru python scripts/top100/refresh.py --date YYYY-MM-DD
 ```
 
 Expected Session 1 artifacts:
@@ -70,7 +83,7 @@ Run the artifact generator with `DATABASE_URL` set when a dev database is
 available:
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://... conda run -n draftguru python scripts/top100_refresh.py --date YYYY-MM-DD
+DATABASE_URL=postgresql+asyncpg://... conda run -n draftguru python scripts/top100/refresh.py --date YYYY-MM-DD
 ```
 
 The player resolution plan must assign every row one of:
@@ -145,9 +158,9 @@ Production promotion is a separate session.
 
 1. Confirm reviewed artifacts and dev QA logs are attached or committed.
 2. Take a backup or confirm provider point-in-time recovery coverage.
-3. Run the production data migration in dry-run mode.
+3. Run `scripts/top100/prod_promote.py --dry-run`.
 4. Compare expected affected row counts with dev.
-5. Run the production migration and save logs.
+5. Run `scripts/top100/prod_promote.py --execute` and save logs.
 6. Run production verification queries and spot-check public pages.
 7. Record rollback instructions and the exact artifact versions used.
 

@@ -4,7 +4,7 @@ This script is read-only. It resolves the frozen Top 100 source rows against
 the current database and writes review CSVs for Session 3 enrichment work.
 
 Usage:
-    conda run -n draftguru python scripts/top100_audit.py --date 2026-04-27
+    conda run -n draftguru python scripts/top100/audit.py --date 2026-04-27
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -33,7 +33,7 @@ from app.services.canonical_resolution_service import (  # noqa: E402
     normalize_player_name,
     resolve_affiliation,
 )
-from scripts.top100_refresh import (  # noqa: E402
+from scripts.top100.refresh import (  # noqa: E402
     OUTPUT_DIR,
     TOP100_ROWS,
     _prepare_connection,

@@ -6,8 +6,8 @@ identity/status fields with clear provenance. It skips professional and
 international affiliations for separate review.
 
 Usage:
-    conda run -n draftguru python scripts/top100_cbb_enrich.py --dry-run
-    conda run -n draftguru python scripts/top100_cbb_enrich.py --execute
+    conda run -n draftguru python scripts/top100/cbb_enrich.py --dry-run
+    conda run -n draftguru python scripts/top100/cbb_enrich.py --execute
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -42,8 +42,8 @@ from app.services.canonical_resolution_service import (  # noqa: E402
     resolve_affiliation,
 )
 from app.services.player_mention_service import parse_player_name  # noqa: E402
-from scripts.top100_audit import resolve_rows  # noqa: E402
-from scripts.top100_refresh import OUTPUT_DIR, TOP100_ROWS, _prepare_connection  # noqa: E402
+from scripts.top100.audit import resolve_rows  # noqa: E402
+from scripts.top100.refresh import OUTPUT_DIR, TOP100_ROWS, _prepare_connection  # noqa: E402
 
 
 CBB_BASE_URL = "https://www.sports-reference.com"

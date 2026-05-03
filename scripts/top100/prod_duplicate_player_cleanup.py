@@ -6,8 +6,8 @@ child rows that would conflict with an equivalent keep-player row, and then
 deletes the duplicate player record.
 
 Usage:
-    conda run -n draftguru python scripts/prod_duplicate_player_cleanup.py --dry-run
-    conda run -n draftguru python scripts/prod_duplicate_player_cleanup.py --execute
+    conda run -n draftguru python scripts/top100/prod_duplicate_player_cleanup.py --dry-run
+    conda run -n draftguru python scripts/top100/prod_duplicate_player_cleanup.py --execute
 """
 
 from __future__ import annotations
@@ -26,12 +26,12 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.services.player_mention_service import parse_player_name  # noqa: E402
-from scripts.top100_merge_players import (  # noqa: E402
+from scripts.top100.merge_players import (  # noqa: E402
     CHILD_TABLES,
     SIMILARITY_TABLES,
     _delete_similarity_self_links,
@@ -39,7 +39,7 @@ from scripts.top100_merge_players import (  # noqa: E402
     _fetch_display_name,
     _merge_child_table,
 )
-from scripts.top100_refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
+from scripts.top100.refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
 
 
 @dataclass(frozen=True, slots=True)

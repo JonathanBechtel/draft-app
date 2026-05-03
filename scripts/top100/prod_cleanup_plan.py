@@ -5,7 +5,7 @@ identity, bad image URL, lifecycle, and affiliation findings into one
 row-oriented CSV for review before any production write script is considered.
 
 Usage:
-    conda run -n draftguru python scripts/prod_top100_cleanup_plan.py \
+    conda run -n draftguru python scripts/top100/prod_cleanup_plan.py \
         --date 2026-04-27 --database-url "$DATABASE_URL"
 """
 
@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -36,11 +36,11 @@ from app.services.canonical_resolution_service import (  # noqa: E402
     normalize_player_name,
     resolve_affiliation,
 )
-from scripts.prospect_integrity_audit import _bad_url_reason  # noqa: E402
-from scripts.prospect_lifecycle_cleanup_plan import (  # noqa: E402
+from scripts.top100.prospect_integrity_audit import _bad_url_reason  # noqa: E402
+from scripts.top100.prospect_lifecycle_cleanup_plan import (  # noqa: E402
     generate_cleanup_plan,
 )
-from scripts.top100_refresh import OUTPUT_DIR, TOP100_ROWS, _prepare_connection  # noqa: E402
+from scripts.top100.refresh import OUTPUT_DIR, TOP100_ROWS, _prepare_connection  # noqa: E402
 
 
 PROSPECT_START_YEAR = 2025

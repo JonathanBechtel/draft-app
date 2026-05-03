@@ -4,7 +4,7 @@ The output classifies production lifecycle rows whose `is_draft_prospect` and
 `expected_draft_year` values need cleanup before prospect filters can be trusted.
 
 Usage:
-    conda run -n draftguru python scripts/prospect_lifecycle_cleanup_plan.py \
+    conda run -n draftguru python scripts/top100/prospect_lifecycle_cleanup_plan.py \
         --date 2026-04-27 --environment prod --database-url "$DATABASE_URL"
 """
 
@@ -24,12 +24,12 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.services.canonical_resolution_service import normalize_player_name  # noqa: E402
-from scripts.top100_refresh import (  # noqa: E402
+from scripts.top100.refresh import (  # noqa: E402
     OUTPUT_DIR,
     TOP100_ROWS,
     _prepare_connection,

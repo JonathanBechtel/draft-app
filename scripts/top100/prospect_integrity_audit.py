@@ -5,7 +5,7 @@ dev, stage, or prod and writes reviewable CSV/Markdown artifacts without
 mutating data.
 
 Usage:
-    conda run -n draftguru python scripts/prospect_integrity_audit.py \
+    conda run -n draftguru python scripts/top100/prospect_integrity_audit.py \
         --date 2026-04-27 --environment prod --database-url "$DATABASE_URL"
 """
 
@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -36,7 +36,7 @@ from app.services.canonical_resolution_service import (  # noqa: E402
     normalize_player_name,
     resolve_affiliation,
 )
-from scripts.top100_refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
+from scripts.top100.refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
 
 
 PROSPECT_START_YEAR = 2025

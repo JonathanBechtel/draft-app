@@ -5,8 +5,8 @@ to the current draft lifecycle scope. It writes a dry-run/execute manifest and
 does not merge or delete existing players.
 
 Usage:
-    conda run -n draftguru python scripts/prod_top100_promote.py --dry-run
-    conda run -n draftguru python scripts/prod_top100_promote.py --execute
+    conda run -n draftguru python scripts/top100/prod_promote.py --dry-run
+    conda run -n draftguru python scripts/top100/prod_promote.py --execute
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
@@ -36,8 +36,8 @@ from app.services.canonical_resolution_service import (  # noqa: E402
 )
 from app.services.player_mention_service import parse_player_name  # noqa: E402
 from app.utils.slug import generate_slug_sync  # noqa: E402
-from scripts.top100_audit import resolve_rows  # noqa: E402
-from scripts.top100_refresh import OUTPUT_DIR, TOP100_ROWS, _prepare_connection  # noqa: E402
+from scripts.top100.audit import resolve_rows  # noqa: E402
+from scripts.top100.refresh import OUTPUT_DIR, TOP100_ROWS, _prepare_connection  # noqa: E402
 
 
 CURRENT_DRAFT_YEAR = 2026

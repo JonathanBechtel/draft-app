@@ -4,8 +4,8 @@ The default mode is a dry run. Use --execute only after reviewing the emitted
 plan and affected child-row counts.
 
 Usage:
-    conda run -n draftguru python scripts/top100_merge_players.py
-    conda run -n draftguru python scripts/top100_merge_players.py --execute
+    conda run -n draftguru python scripts/merge_players.py
+    conda run -n draftguru python scripts/merge_players.py --execute
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 

@@ -5,8 +5,8 @@ or clearly identified Wikimedia Commons files. The default mode writes the
 review CSV only. Use ``--execute`` after reviewing the artifact.
 
 Usage:
-    conda run -n draftguru python scripts/top100_image_candidates.py --date 2026-04-27
-    conda run -n draftguru python scripts/top100_image_candidates.py --execute --date 2026-04-27
+    conda run -n draftguru python scripts/top100/image_candidates.py --date 2026-04-27
+    conda run -n draftguru python scripts/top100/image_candidates.py --execute --date 2026-04-27
 """
 
 from __future__ import annotations
@@ -24,11 +24,11 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.top100_refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
+from scripts.top100.refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
 
 
 @dataclass(frozen=True, slots=True)

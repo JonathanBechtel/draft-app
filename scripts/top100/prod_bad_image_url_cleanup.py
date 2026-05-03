@@ -7,8 +7,8 @@ that retain bad reference provenance are marked for human quality review by the
 generated manifest.
 
 Usage:
-    conda run -n draftguru python scripts/prod_bad_image_url_cleanup.py --dry-run
-    conda run -n draftguru python scripts/prod_bad_image_url_cleanup.py --execute
+    conda run -n draftguru python scripts/top100/prod_bad_image_url_cleanup.py --dry-run
+    conda run -n draftguru python scripts/top100/prod_bad_image_url_cleanup.py --execute
 """
 
 from __future__ import annotations
@@ -27,12 +27,12 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.prospect_integrity_audit import _bad_url_reason  # noqa: E402
-from scripts.top100_refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
+from scripts.top100.prospect_integrity_audit import _bad_url_reason  # noqa: E402
+from scripts.top100.refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
 
 
 @dataclass(frozen=True, slots=True)

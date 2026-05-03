@@ -5,8 +5,8 @@ marked as draft prospects by the original migration backfill but lack an
 expected draft year. It writes a manifest in dry-run and execute modes.
 
 Usage:
-    conda run -n draftguru python scripts/prod_lifecycle_expected_year_cleanup.py --dry-run
-    conda run -n draftguru python scripts/prod_lifecycle_expected_year_cleanup.py --execute
+    conda run -n draftguru python scripts/top100/prod_lifecycle_expected_year_cleanup.py --dry-run
+    conda run -n draftguru python scripts/top100/prod_lifecycle_expected_year_cleanup.py --execute
 """
 
 from __future__ import annotations
@@ -25,11 +25,11 @@ from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.top100_refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
+from scripts.top100.refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
 
 
 CURRENT_DRAFT_YEAR = 2026

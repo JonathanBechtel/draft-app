@@ -5,8 +5,8 @@ selected source board, canonicalizes affiliations for review, and optionally
 checks a configured database for existing player records.
 
 Usage:
-    conda run -n draftguru python scripts/top100_refresh.py
-    conda run -n draftguru python scripts/top100_refresh.py --date 2026-04-26
+    conda run -n draftguru python scripts/refresh.py
+    conda run -n draftguru python scripts/refresh.py --date 2026-04-26
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
