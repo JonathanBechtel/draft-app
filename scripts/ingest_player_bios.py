@@ -3,6 +3,7 @@ import asyncio
 import csv
 import json
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,14 +15,23 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.schemas.player_aliases import PlayerAlias
-from app.schemas.player_external_ids import PlayerExternalId
-from app.schemas.player_bio_snapshots import PlayerBioSnapshot
-from app.schemas.player_status import PlayerStatus
-from app.schemas.players_master import PlayerMaster
-from app.schemas.positions import Position
-from app.models.position_taxonomy import derive_position_tags, get_parents_for_fine
-from app.utils.db_async import SessionLocal
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from app.schemas.player_aliases import PlayerAlias  # noqa: E402
+from app.schemas.player_external_ids import PlayerExternalId  # noqa: E402
+from app.schemas.player_bio_snapshots import PlayerBioSnapshot  # noqa: E402
+from app.schemas.player_status import PlayerStatus  # noqa: E402
+from app.schemas.players_master import PlayerMaster  # noqa: E402
+from app.schemas.positions import Position  # noqa: E402
+from app.services.canonical_resolution_service import (  # noqa: E402
+    load_college_school_names,
+    load_school_mapping,
+    resolve_affiliation,
+)
+from app.models.position_taxonomy import derive_position_tags, get_parents_for_fine  # noqa: E402
+from app.utils.db_async import SessionLocal  # noqa: E402
 
 
 SYSTEM_BBR = "bbr"
@@ -270,7 +280,15 @@ async def _update_master(
     set_if_null("birth_state_province", row.birth_state_province)
     set_if_null("birth_country", row.birth_country)
     set_if_null("shoots", row.shoots)
-    set_if_null("school", row.school)
+    if row.school:
+        school_resolution = resolve_affiliation(
+            row.school,
+            load_school_mapping(),
+            load_college_school_names(),
+        )
+        if school_resolution.affiliation_type == "college":
+            set_if_null("school", school_resolution.canonical_affiliation)
+            set_if_null("school_raw", row.school)
     set_if_null("high_school", row.high_school)
     set_if_null("draft_year", row.draft_year)
     set_if_null("draft_round", row.draft_round)
@@ -299,7 +317,9 @@ async def _upsert_status(db: AsyncSession, player_id: int, row: BioRow) -> None:
         fine, _ = derive_position_tags(row.position)
         if fine:
             # Find or create position
-            pos_res = await db.execute(select(Position).where(Position.code == fine))
+            pos_res = await db.execute(
+                select(Position).where(cast(ColumnElement[bool], Position.code == fine))
+            )
             pos = pos_res.scalar_one_or_none()
             if not pos:
                 parents = get_parents_for_fine(fine)

@@ -145,6 +145,21 @@
   </section>
   {% endif %}
 
+  <div class="film-room-stats film-room-page-stats">
+    <div class="film-room-stat">
+      <div class="film-room-stat__value">{{ total }}</div>
+      <div class="film-room-stat__label">Videos</div>
+    </div>
+    <div class="film-room-stat">
+      <div class="film-room-stat__value">{{ channel_total }}</div>
+      <div class="film-room-stat__label">Channels</div>
+    </div>
+    <div class="film-room-stat">
+      <div class="film-room-stat__value">{{ trending_total }}</div>
+      <div class="film-room-stat__label">Trending</div>
+    </div>
+  </div>
+
   <div class="film-page__controls">
     <div class="film-search">
       <svg class="film-search__icon" viewBox="0 0 24 24" fill="none"
