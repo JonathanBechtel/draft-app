@@ -3,12 +3,13 @@
 from contextlib import asynccontextmanager
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.exc import DBAPIError
+from starlette.responses import Response
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.routes import admin, export, news, players, podcasts, share, stats, ui, videos
@@ -27,6 +28,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 setup_logging(level=settings.log_level, access_log=settings.access_log)
+
+access_logger = logging.getLogger("app.access")
 
 
 @asynccontextmanager
@@ -64,6 +67,37 @@ async def lifespan(app: FastAPI):
 # load in app details
 app = FastAPI(title="Mini Draft Guru", lifespan=lifespan)
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])  # type: ignore[arg-type]
+
+
+if settings.log_requests:
+
+    @app.middleware("http")
+    async def log_request_metadata(request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
+        # Skip noisy paths so the bot signal isn't drowned out.
+        path = request.url.path
+        if path == "/health" or path.startswith("/static/"):
+            return await call_next(request)
+
+        # Fly populates Fly-Client-IP with the real client; X-Forwarded-For is
+        # the fallback if anything else fronts the app later.
+        client_ip = (
+            request.headers.get("fly-client-ip")
+            or (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+            or (request.client.host if request.client else "-")
+        )
+        ua = request.headers.get("user-agent", "-")
+        response = await call_next(request)
+        access_logger.info(
+            '%s "%s %s" %d ua="%s"',
+            client_ip,
+            request.method,
+            path,
+            response.status_code,
+            ua,
+        )
+        return response
+
+
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.state.templates = Jinja2Templates(directory="app/templates")
 app.include_router(export.router)

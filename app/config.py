@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
     access_log: bool = True
+    log_requests: bool = False
     sql_echo: bool = True
     auto_init_db: bool = True
 
