@@ -6,15 +6,21 @@ These tests exercise the eligibility gates and tier-split logic that
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.fields import CohortType
+from app.models.fields import (
+    CohortType,
+    MetricCategory,
+    MetricSource,
+    MetricStatistic,
+)
 from app.schemas.image_snapshots import PlayerImageAsset, PlayerImageSnapshot
+from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
 from app.schemas.news_items import NewsItemTag
 from app.schemas.news_sources import NewsSource
 from app.schemas.player_college_stats import PlayerCollegeStats
@@ -26,6 +32,7 @@ from app.schemas.player_content_mentions import (
 from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.positions import Position
+from app.schemas.seasons import Season
 from app.services.expanded_trending_service import (
     FEATURED_TARGET,
     MIN_FEATURED_MENTIONS,
@@ -89,10 +96,12 @@ async def _seed_player(
     mention_count: int = MIN_FEATURED_MENTIONS + 1,
     has_photo: bool = True,
     article_tag: NewsItemTag = NewsItemTag.MOCK_DRAFT,
+    draft_year: Optional[int] = 2025,
 ) -> PlayerMaster:
     """Seed a player with knobs to break individual eligibility gates."""
     player = make_player(first_name, last_name, school=school)
     player.is_stub = is_stub
+    player.draft_year = draft_year
     db.add(player)
     await db.flush()
     pid = player.id
@@ -153,6 +162,71 @@ async def _seed_player(
 
     await db.flush()
     return player
+
+
+async def _seed_combine_overall_definition(db: AsyncSession) -> MetricDefinition:
+    existing = await db.execute(
+        select(MetricDefinition).where(
+            MetricDefinition.metric_key == "combine_score_overall"  # type: ignore[arg-type]
+        )
+    )
+    defn = existing.scalars().first()
+    if defn is not None:
+        return defn
+    defn = MetricDefinition(
+        metric_key="combine_score_overall",
+        display_name="Combine Score (Overall)",
+        source=MetricSource.combine_score,
+        statistic=MetricStatistic.percentile,
+        category=MetricCategory.combine_overall,
+    )
+    db.add(defn)
+    await db.flush()
+    return defn
+
+
+async def _seed_season_and_snapshot(
+    db: AsyncSession, *, start_year: int, end_year: int
+) -> tuple[Season, MetricSnapshot]:
+    season = Season(
+        code=f"{start_year}-{str(end_year)[-2:]}",
+        start_year=start_year,
+        end_year=end_year,
+    )
+    db.add(season)
+    await db.flush()
+
+    snapshot = MetricSnapshot(
+        run_key=f"combine_test_{start_year}",
+        cohort=CohortType.current_draft,
+        season_id=season.id,
+        source=MetricSource.combine_score,
+        population_size=10,
+        version=1,
+        is_current=True,
+    )
+    db.add(snapshot)
+    await db.flush()
+    return season, snapshot
+
+
+async def _seed_pmv(
+    db: AsyncSession,
+    *,
+    player_id: int,
+    snapshot_id: int,
+    metric_definition_id: int,
+    percentile: float,
+) -> None:
+    db.add(
+        PlayerMetricValue(
+            player_id=player_id,
+            snapshot_id=snapshot_id,
+            metric_definition_id=metric_definition_id,
+            percentile=percentile,
+        )
+    )
+    await db.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -418,3 +492,108 @@ class TestGetExpandedTrendingPlayers:
         assert featured_ranks == [1, 3]
         compact_ranks = sorted(p.rank for p in result.compact)
         assert compact_ranks == [2]
+
+    async def test_combine_grade_is_scoped_to_player_draft_year_snapshot(
+        self, db_session: AsyncSession, news_source: NewsSource
+    ) -> None:
+        """Each player's combine grade must come from *their* draft-year snapshot.
+
+        Regression test for a bug where ``_load_combine_grades`` queried
+        ``PlayerMetricValue`` with ``snapshot_id IN (all_snapshots)`` and
+        ``player_id IN (all_players)`` without enforcing the (player, snapshot)
+        pairing — so a stale row from the wrong season could leak into a
+        player's grade, and a player without a draft year could pick up a
+        grade from any snapshot they had a row in.
+        """
+        # Two seasons with their own current combine snapshots.
+        _, snap_2024 = await _seed_season_and_snapshot(
+            db_session, start_year=2024, end_year=2025
+        )
+        _, snap_2025 = await _seed_season_and_snapshot(
+            db_session, start_year=2025, end_year=2026
+        )
+        defn = await _seed_combine_overall_definition(db_session)
+
+        # Player A drafts in 2024 → should get the 2024 grade only.
+        player_a = await _seed_player(
+            db_session,
+            news_source,
+            first_name="DraftA",
+            last_name="Player",
+            draft_year=2024,
+        )
+        # Player B drafts in 2025 → should get the 2025 grade only.
+        player_b = await _seed_player(
+            db_session,
+            news_source,
+            first_name="DraftB",
+            last_name="Player",
+            draft_year=2025,
+        )
+        # Player C has no draft year → must NOT get a grade even if a stale
+        # PMV row exists in some snapshot.
+        player_c = await _seed_player(
+            db_session,
+            news_source,
+            first_name="NoYear",
+            last_name="Player",
+            draft_year=None,
+        )
+
+        assert player_a.id is not None
+        assert player_b.id is not None
+        assert player_c.id is not None
+        assert snap_2024.id is not None
+        assert snap_2025.id is not None
+        assert defn.id is not None
+
+        # Player A: correct row in 2024 (percentile 92 → A) AND a stale row
+        # in 2025 (percentile 30 → C). The stale row must not be picked up.
+        await _seed_pmv(
+            db_session,
+            player_id=player_a.id,
+            snapshot_id=snap_2024.id,
+            metric_definition_id=defn.id,
+            percentile=92.0,
+        )
+        await _seed_pmv(
+            db_session,
+            player_id=player_a.id,
+            snapshot_id=snap_2025.id,
+            metric_definition_id=defn.id,
+            percentile=30.0,
+        )
+        # Player B: only their correct 2025 row.
+        await _seed_pmv(
+            db_session,
+            player_id=player_b.id,
+            snapshot_id=snap_2025.id,
+            metric_definition_id=defn.id,
+            percentile=55.0,
+        )
+        # Player C: a stale row in 2024 — must be ignored since C has no draft year.
+        await _seed_pmv(
+            db_session,
+            player_id=player_c.id,
+            snapshot_id=snap_2024.id,
+            metric_definition_id=defn.id,
+            percentile=99.0,
+        )
+        await db_session.commit()
+
+        result = await get_expanded_trending_players(db_session)
+        by_name = {p.display_name: p for p in result.featured}
+        assert "DraftA Player" in by_name, "Player A should be featured"
+        assert "DraftB Player" in by_name, "Player B should be featured"
+        assert "NoYear Player" in by_name, "Player C should still be featured"
+
+        # 92.0 → "A" (>= 85), 55.0 → "B" (>= 50). See grade_letter().
+        # The 30.0 stale row for Player A in the 2025 snapshot would map to
+        # "B-" (>= 35) — its absence here proves the fix is working.
+        assert by_name["DraftA Player"].combine_grade == "A"
+        assert by_name["DraftB Player"].combine_grade == "B"
+
+        # Player C is featured (other gates pass) but must not pick up a grade
+        # since they have no draft year, even though a stale PMV row exists
+        # for them in the 2024 snapshot. Combine grade is optional, not a gate.
+        assert by_name["NoYear Player"].combine_grade is None

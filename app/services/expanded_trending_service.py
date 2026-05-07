@@ -448,32 +448,50 @@ async def _load_combine_grades(
         cast(Any, Season.start_year).in_(sorted(draft_years_set))
     )
     season_rows = await db.execute(season_stmt)
-    season_by_year: dict[int, int] = {
+    season_id_by_year: dict[int, int] = {
         int(row["start_year"]): int(row["id"])
         for row in season_rows.mappings().all()
         if row["id"] is not None and row["start_year"] is not None
     }
-    if not season_by_year:
+    if not season_id_by_year:
         return {}
-
-    season_ids = list(set(season_by_year.values()))
 
     snap_stmt = select(MetricSnapshot.id, MetricSnapshot.season_id).where(  # type: ignore[call-overload]
         cast(Any, MetricSnapshot.source) == MetricSource.combine_score,
         cast(Any, MetricSnapshot.cohort) == CohortType.current_draft,
         cast(Any, MetricSnapshot.is_current).is_(True),
-        cast(Any, MetricSnapshot.season_id).in_(season_ids),
+        cast(Any, MetricSnapshot.season_id).in_(list(season_id_by_year.values())),
         cast(Any, MetricSnapshot.position_scope_parent).is_(None),
         cast(Any, MetricSnapshot.position_scope_fine).is_(None),
     )
     snap_rows = await db.execute(snap_stmt)
-    snapshot_ids: list[int] = []
+    snapshot_id_by_season: dict[int, int] = {}
     for row in snap_rows.mappings().all():
         sid = row["season_id"]
         if sid is None:
             continue
-        snapshot_ids.append(int(row["id"]))
-    if not snapshot_ids:
+        snapshot_id_by_season[int(sid)] = int(row["id"])
+    if not snapshot_id_by_season:
+        return {}
+
+    # Pin each player to *their* draft-year snapshot. Players without a
+    # draft_year (or whose draft_year has no current snapshot) drop out
+    # here and will not receive a grade — this is intentional. The pairing
+    # is also enforced post-query so a stale PMV row in a different season's
+    # snapshot can't leak into the wrong player's grade.
+    snapshot_for_player: dict[int, int] = {}
+    for pid, master in masters.items():
+        dy = master.get("draft_year")
+        if dy is None:
+            continue
+        season_id = season_id_by_year.get(int(dy))
+        if season_id is None:
+            continue
+        snapshot_id = snapshot_id_by_season.get(season_id)
+        if snapshot_id is None:
+            continue
+        snapshot_for_player[pid] = snapshot_id
+    if not snapshot_for_player:
         return {}
 
     defn_stmt = select(MetricDefinition.id).where(  # type: ignore[call-overload]
@@ -489,16 +507,25 @@ async def _load_combine_grades(
         PlayerMetricValue.snapshot_id,
         PlayerMetricValue.percentile,
     ).where(
-        cast(Any, PlayerMetricValue.player_id).in_(player_ids),
-        cast(Any, PlayerMetricValue.snapshot_id).in_(snapshot_ids),
+        cast(Any, PlayerMetricValue.player_id).in_(list(snapshot_for_player.keys())),
+        cast(Any, PlayerMetricValue.snapshot_id).in_(
+            list(set(snapshot_for_player.values()))
+        ),
         cast(Any, PlayerMetricValue.metric_definition_id) == overall_def_id,
     )
     pmv_rows = await db.execute(pmv_stmt)
 
     out: dict[int, str] = {}
     for row in pmv_rows.mappings().all():
-        pid = int(row["player_id"]) if row["player_id"] is not None else None
-        if pid is None:
+        raw_pid = row["player_id"]
+        raw_sid = row["snapshot_id"]
+        if raw_pid is None or raw_sid is None:
+            continue
+        pid = int(raw_pid)
+        sid = int(raw_sid)
+        # Enforce the pairing: this PMV row must come from the player's own
+        # draft-year snapshot, not just *any* snapshot in scope.
+        if snapshot_for_player.get(pid) != sid:
             continue
         pct = row["percentile"]
         letter = grade_letter(float(pct) if pct is not None else None)
