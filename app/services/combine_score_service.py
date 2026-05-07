@@ -129,6 +129,31 @@ def grade_label(percentile: Optional[float]) -> str:
     return "Poor"
 
 
+def grade_letter(percentile: Optional[float]) -> Optional[str]:
+    """Map a percentile to a compact letter grade for UI pills (e.g. 'A-', 'B+').
+
+    Returns None when no percentile is available so the caller can hide the
+    pill rather than render a placeholder.
+    """
+    if percentile is None:
+        return None
+    if percentile >= 95:
+        return "A+"
+    if percentile >= 85:
+        return "A"
+    if percentile >= 75:
+        return "A-"
+    if percentile >= 65:
+        return "B+"
+    if percentile >= 50:
+        return "B"
+    if percentile >= 35:
+        return "B-"
+    if percentile >= 20:
+        return "C"
+    return "D"
+
+
 # ---------------------------------------------------------------------------
 # Public query functions
 # ---------------------------------------------------------------------------

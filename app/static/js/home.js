@@ -5,147 +5,6 @@
  * ============================================================================
  */
 
-/**
- * ============================================================================
- * IMAGE UTILS
- * Utility functions for generating player image URLs with style support
- * Uses S3 URLs with format: {base}/players/{id}_{slug}_{style}.png
- * ============================================================================
- */
-const ImageUtils = {
-  /**
-   * Generate player photo URL based on player ID, slug, and current style.
-   * Uses S3 URLs when S3_IMAGE_BASE_URL is configured.
-   * @param {number} playerId - Player database ID
-   * @param {string} displayName - Player display name (for placeholder)
-   * @param {string} [slug] - Player URL slug (optional, will lookup from ID_TO_SLUG_MAP)
-   * @returns {string} Image URL
-   */
-  getPhotoUrl(playerId, displayName, slug) {
-    const style = window.IMAGE_STYLE || 'default';
-    const s3Base = window.S3_IMAGE_BASE_URL;
-
-    if (playerId) {
-      // Resolve slug from map if not provided
-      const playerSlug = slug || (window.ID_TO_SLUG_MAP ? window.ID_TO_SLUG_MAP[playerId] : null);
-
-      if (s3Base && playerSlug) {
-        // Use S3 URL format: {base}/players/{id}_{slug}_{style}.png
-        return `${s3Base}/players/${playerId}_${playerSlug}_${style}.png`;
-      }
-
-      // Fallback to local static path - use consistent format with slug when available
-      if (playerSlug) {
-        return `/static/img/players/${playerId}_${playerSlug}_${style}.png`;
-      }
-
-      // Legacy fallback only when slug is unavailable
-      return `/static/img/players/${playerId}_${style}.jpg`;
-    }
-
-    // Fallback to placeholder
-    const name = displayName || 'Player';
-    return `https://placehold.co/200x200/edf2f7/1f2937?text=${encodeURIComponent(name)}`;
-  },
-
-  /**
-   * Get player ID from slug using the server-provided map
-   * @param {string} slug - Player slug
-   * @returns {number|null} Player ID or null if not found
-   */
-  getPlayerIdFromSlug(slug) {
-    return window.PLAYER_ID_MAP ? window.PLAYER_ID_MAP[slug] : null;
-  },
-
-  /**
-   * Get player slug from ID using the server-provided map
-   * @param {number} playerId - Player database ID
-   * @returns {string|null} Player slug or null if not found
-   */
-  getSlugFromPlayerId(playerId) {
-    return window.ID_TO_SLUG_MAP ? window.ID_TO_SLUG_MAP[playerId] : null;
-  }
-};
-
-/**
- * ============================================================================
- * PROSPECTS GRID MODULE
- * Renders the grid of top prospect cards
- * ============================================================================
- */
-const ProspectsModule = {
-  /**
-   * Initialize the prospects grid
-   */
-  init() {
-    const grid = document.getElementById('prospectsGrid');
-    if (!grid || !window.PLAYERS) return;
-
-    grid.innerHTML = this.renderProspects();
-  },
-
-  /**
-   * Render all prospect cards
-   * @returns {string} HTML string
-   */
-  renderProspects() {
-    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
-    return window.PLAYERS.map((player) => {
-      const badge = player.change !== 0
-        ? this.renderBadge(player.change)
-        : '';
-
-	      return `
-	        <a href="/players/${esc(player.slug)}" class="prospect-card" style="text-decoration: none; color: inherit;">
-	          <div class="prospect-image-wrapper">
-	            <img
-	              src="${esc(player.img)}"
-	              alt="${esc(player.name)}"
-	              class="prospect-image"
-	              onerror="if(!this.dataset.dgFallback){this.dataset.dgFallback='1';this.src='${esc(player.img_default)}';}else{this.onerror=null;this.src='${esc(player.img_placeholder)}';}"
-	            />
-	            ${badge}
-	          </div>
-	          <div class="prospect-info">
-	            <h4 class="prospect-name">${esc(player.name)}</h4>
-            <p class="prospect-meta">${esc(player.position)} • ${esc(player.college)}</p>
-            <div class="prospect-stats">
-              ${this.renderStatPill('HT', `${player.measurables.ht}"`)}
-              ${this.renderStatPill('WS', `${player.measurables.ws}"`)}
-              ${this.renderStatPill('VRT', `${player.measurables.vert}"`)}
-            </div>
-          </div>
-        </a>
-      `;
-    }).join('');
-  },
-
-  /**
-   * Render riser/faller badge
-   * @param {number} change - Position change value
-   * @returns {string} HTML string
-   */
-  renderBadge(change) {
-    const badgeClass = change > 0 ? 'riser' : 'faller';
-    const badgeText = change > 0 ? 'Riser' : 'Faller';
-    return `<span class="prospect-badge ${badgeClass}">${badgeText}</span>`;
-  },
-
-  /**
-   * Render a single stat pill
-   * @param {string} label - Stat label
-   * @param {string} value - Stat value
-   * @returns {string} HTML string
-   */
-  renderStatPill(label, value) {
-    return `
-      <div class="stat-pill">
-        <span class="label">${label}</span>
-        <span class="value">${value}</span>
-      </div>
-    `;
-  }
-};
 
 /**
  * ============================================================================
@@ -834,98 +693,245 @@ const NewsGridModule = {
 
 /**
  * ============================================================================
- * TRENDING MODULE
- * Renders the trending players section based on recent mention volume
+ * TRENDING MODULE (v2)
+ * Renders the two-tier trending section: featured 2x2 cards + compact tail.
+ * Backed by window.FEATURED_TRENDING and window.COMPACT_TRENDING server-side
+ * payloads built by app/services/expanded_trending_service.py.
  * ============================================================================
  */
 const TrendingModule = {
-  /**
-   * Initialize the trending players section
-   */
+  TAG_CLASS_BY_VALUE: {
+    'Mock Draft': 'tcard__tag--mock',
+    'Big Board': 'tcard__tag--bigboard',
+    'Tier Update': 'tcard__tag--bigboard',
+    'Film Study': 'tcard__tag--film',
+    'Skill Theme': 'tcard__tag--film',
+    'Scouting Report': 'tcard__tag--scout',
+    'Game Recap': 'tcard__tag--scout',
+    'Draft Intel': 'tcard__tag--intel',
+    'Team Fit': 'tcard__tag--intel',
+    'Statistical Analysis': 'tcard__tag--bigboard',
+  },
+
   init() {
-    const data = window.TRENDING_PLAYERS;
-    if (!data || data.length === 0) return;
+    const featured = Array.isArray(window.FEATURED_TRENDING) ? window.FEATURED_TRENDING : [];
+    const compact = Array.isArray(window.COMPACT_TRENDING) ? window.COMPACT_TRENDING : [];
+    if (featured.length === 0 && compact.length === 0) return;
 
     const section = document.getElementById('trendingSection');
     const divider = document.getElementById('trendingDivider');
-    const grid = document.getElementById('trendingGrid');
-    if (!section || !grid) return;
+    const featuredGrid = document.getElementById('featuredTrendingGrid');
+    const compactGrid = document.getElementById('compactTrendingGrid');
+    if (!section || !featuredGrid || !compactGrid) return;
 
     section.style.display = '';
     if (divider) divider.style.display = '';
 
-    grid.innerHTML = data.map(player => this.renderCard(player)).join('');
+    if (featured.length > 0) {
+      featuredGrid.innerHTML = featured.map((p) => this.renderFeatured(p)).join('');
+      featuredGrid.style.display = '';
+    }
+    if (compact.length > 0) {
+      compactGrid.innerHTML = compact.map((p) => this.renderCompact(p)).join('');
+      compactGrid.style.display = '';
+    }
   },
 
-  /**
-   * Render a single trending player card
-   * @param {Object} player - Trending player data
-   * @returns {string} HTML string
-   */
-  renderCard(player) {
+  renderFeatured(p) {
     const esc = DraftGuru.escapeHtml.bind(DraftGuru);
-    const school = player.school
-      ? `<span class="trending-card__school">${esc(player.school)}</span>`
-      : '';
-    const thumbnail = this.renderThumbnail(player);
-    const sparkline = this.renderSparkline(player.daily_counts || []);
-
     return `
-      <a href="/players/${esc(player.slug)}" class="trending-card">
-        ${thumbnail}
-        <div class="trending-card__info">
-          <span class="trending-card__name">${esc(player.display_name)}</span>
-          ${school}
+      <a href="/players/${esc(p.slug)}" class="tcard">
+        ${this.renderSpike(p.spike_state)}
+        <span class="tcard__rank">#${p.rank}</span>
+
+        <div class="tcard__left">
+          ${this.renderPhoto(p, 96)}
+          ${this.renderCombinePill(p.combine_grade)}
         </div>
-        <div class="trending-card__visual">
-          ${sparkline}
-          <span class="trending-card__count">${player.mention_count}</span>
+
+        <div class="tcard__body">
+          <div class="tcard__name">${esc(p.display_name)}</div>
+          <div class="tcard__meta">${this.renderMeta(p)}</div>
+
+          ${this.renderStatStrip(p.latest_stats)}
+
+          <div class="tcard__buzz">
+            <div class="tcard__buzzCount">
+              <span class="num">${p.mention_count}</span>
+              <span class="lbl">mentions</span>
+            </div>
+            ${this.renderSparkline(p.daily_counts || [], 160, 28)}
+            ${this.renderMixBar(p.content_mix)}
+          </div>
+
+          <div class="tcard__tagRow">
+            ${this.renderTag(p.dominant_news_tag)}
+            ${p.latest_mention_time ? `<span class="tcard__lastSeen">last seen ${esc(p.latest_mention_time)} ago</span>` : ''}
+          </div>
+
+          ${this.renderMentions(p.recent_mentions || [])}
         </div>
       </a>
     `;
   },
 
-  /**
-   * Render a small circular player thumbnail
-   * @param {Object} player - Trending player data
-   * @returns {string} HTML string
-   */
-  renderThumbnail(player) {
+  renderCompact(p) {
     const esc = DraftGuru.escapeHtml.bind(DraftGuru);
-    const imgUrl = ImageUtils.getPhotoUrl(player.player_id, player.display_name, player.slug);
-    const initial = (player.display_name || '?').charAt(0).toUpperCase();
+    const meta = [p.position, p.school, p.draft_year]
+      .filter((part) => part !== null && part !== undefined && String(part).length > 0)
+      .map((part) => esc(String(part)))
+      .join('<span class="dot"></span>');
+
     return `
-      <img
-        src="${esc(imgUrl)}"
-        alt="${esc(player.display_name)}"
-        class="trending-card__thumb"
-        onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('span'),{className:'trending-card__thumb trending-card__thumb--placeholder',textContent:'${initial}'}))"
-      />
+      <a href="/players/${esc(p.slug)}" class="tcard tcard--compact">
+        <span class="tcard__rank">#${p.rank}</span>
+        <div class="tcard__left">
+          ${this.renderPhoto(p, 64)}
+        </div>
+        <div class="tcard__body">
+          <div class="tcard__name">${esc(p.display_name)}</div>
+          <div class="tcard__meta">${meta}</div>
+          <div class="tcard__buzz">
+            <div class="tcard__buzzCount"><span class="num">${p.mention_count}</span><span class="lbl">mentions</span></div>
+            ${this.renderSparkline(p.daily_counts || [], 100, 22)}
+          </div>
+          ${p.dominant_news_tag ? `<div class="tcard__tagRow">${this.renderTag(p.dominant_news_tag)}</div>` : ''}
+        </div>
+      </a>
     `;
   },
 
-  /**
-   * Render an inline SVG sparkline from daily mention counts
-   * @param {number[]} counts - Array of daily counts (oldest-first)
-   * @returns {string} SVG HTML string
-   */
-  renderSparkline(counts) {
-    if (!counts || counts.length === 0) return '';
+  renderPhoto(p, size) {
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    const initial = (p.display_name || '?').charAt(0).toUpperCase();
+    if (p.photo_url) {
+      return `
+        <img
+          src="${esc(p.photo_url)}"
+          alt="${esc(p.display_name)}"
+          class="tcard__photo"
+          onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('span'),{className:'tcard__photo tcard__photo--placeholder',textContent:'${initial}'}))"
+        />
+      `;
+    }
+    return `<span class="tcard__photo tcard__photo--placeholder">${initial}</span>`;
+  },
 
-    const width = 64;
-    const height = 24;
+  renderCombinePill(grade) {
+    if (!grade) return '';
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    return `<div class="tcard__combine">Combine&nbsp;<strong>${esc(grade)}</strong></div>`;
+  },
+
+  renderMeta(p) {
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    const parts = [p.position, p.school, p.draft_year]
+      .filter((part) => part !== null && part !== undefined && String(part).length > 0)
+      .map((part) => esc(String(part)));
+    return parts.join('<span class="dot"></span>');
+  },
+
+  renderStatStrip(stats) {
+    if (!stats) return '';
+    const pills = [];
+    if (stats.ppg !== null && stats.ppg !== undefined) {
+      pills.push(this.renderStatPill('PPG', stats.ppg.toFixed(1)));
+    }
+    if (stats.rpg !== null && stats.rpg !== undefined) {
+      pills.push(this.renderStatPill('RPG', stats.rpg.toFixed(1)));
+    }
+    if (stats.apg !== null && stats.apg !== undefined) {
+      pills.push(this.renderStatPill('APG', stats.apg.toFixed(1)));
+    }
+    if (stats.three_p_pct !== null && stats.three_p_pct !== undefined) {
+      pills.push(this.renderStatPill('3P%', stats.three_p_pct.toFixed(1)));
+    }
+    if (pills.length === 0) return '';
+    return `<div class="tcard__stats">${pills.join('')}</div>`;
+  },
+
+  renderStatPill(label, value) {
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    return `<span class="tcard__stat"><span class="label">${esc(label)}</span><span class="value">${esc(value)}</span></span>`;
+  },
+
+  renderMixBar(mix) {
+    if (!mix) return '';
+    const news = mix.news || 0;
+    const podcast = mix.podcast || 0;
+    const video = mix.video || 0;
+    const total = news + podcast + video;
+    if (total === 0) return '';
+    const pct = (n) => ((n / total) * 100).toFixed(1);
+    return `
+      <div class="tcard__mix">
+        <div class="tcard__mixBar" title="News ${news} · Podcasts ${podcast} · Video ${video}">
+          ${news > 0 ? `<span class="seg-news" style="width: ${pct(news)}%"></span>` : ''}
+          ${podcast > 0 ? `<span class="seg-pod" style="width: ${pct(podcast)}%"></span>` : ''}
+          ${video > 0 ? `<span class="seg-vid" style="width: ${pct(video)}%"></span>` : ''}
+        </div>
+        <div class="tcard__mixLegend">
+          <span class="lg"><span class="sw sw--news"></span>${news}</span>
+          <span class="lg"><span class="sw sw--pod"></span>${podcast}</span>
+          <span class="lg"><span class="sw sw--vid"></span>${video}</span>
+        </div>
+      </div>
+    `;
+  },
+
+  renderTag(tagValue) {
+    if (!tagValue) return '';
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    const cls = this.TAG_CLASS_BY_VALUE[tagValue] || '';
+    const label = `Mostly ${tagValue}`;
+    return `<span class="tcard__tag ${cls}">${esc(label)}</span>`;
+  },
+
+  renderSpike(state) {
+    if (state === 'hot') {
+      return '<span class="tcard__spike tcard__spike--hot">▲ HOT</span>';
+    }
+    if (state === 'cooling') {
+      return '<span class="tcard__spike tcard__spike--cooling">▼ Cooling</span>';
+    }
+    return '';
+  },
+
+  renderMentions(mentions) {
+    if (!mentions || mentions.length === 0) return '';
+    const esc = DraftGuru.escapeHtml.bind(DraftGuru);
+    const iconMap = { news: 'N', podcast: 'P', video: 'V' };
+    const iconClassMap = {
+      news: 'tmention__icon--news',
+      podcast: 'tmention__icon--pod',
+      video: 'tmention__icon--vid',
+    };
+    const rows = mentions.map((m) => {
+      const icon = iconMap[m.content_type] || '·';
+      const iconClass = iconClassMap[m.content_type] || '';
+      return `
+        <div class="tmention">
+          <span class="tmention__icon ${iconClass}">${icon}</span>
+          <span class="tmention__title"><b>${esc(m.source_name || '')}</b> — ${esc(m.title || '')}</span>
+          <span class="tmention__when">${esc(m.time || '')}</span>
+        </div>
+      `;
+    }).join('');
+    return `<div class="tcard__mentions">${rows}</div>`;
+  },
+
+  renderSparkline(counts, width, height) {
+    if (!counts || counts.length === 0) return '';
     const padding = 2;
     const maxVal = Math.max(...counts, 1);
     const step = (width - padding * 2) / Math.max(counts.length - 1, 1);
-
     const points = counts.map((v, i) => {
       const x = padding + i * step;
       const y = height - padding - ((v / maxVal) * (height - padding * 2));
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     }).join(' ');
-
     return `
-      <svg class="trending-card__sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+      <svg class="tcard__sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
         <polyline
           points="${points}"
           fill="none"
@@ -937,7 +943,6 @@ const TrendingModule = {
       </svg>
     `;
   },
-
 };
 
 /**
@@ -1096,8 +1101,6 @@ function shareVSArenaTweet() {
  * ============================================================================
  */
 document.addEventListener('DOMContentLoaded', () => {
-  ProspectsModule.init();
-
   // Initialize shared H2H module for VS Arena
   H2HComparison.init({
     playerAFixed: false,

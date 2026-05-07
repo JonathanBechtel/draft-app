@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DraftGuru — Trending Players (Expanded Card)</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.5;
+      padding: 2.5rem 1rem 4rem;
+    }
+
+    .home-container {
+      max-width: 1280px;
+      margin-inline: auto;
+    }
+
+    .mockup-banner {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      border: 1px dashed var(--color-slate-300);
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      margin-bottom: 2rem;
+      background: var(--color-white);
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    .section-header-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .section-header {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 1.125rem;
+      padding-left: 0.5rem;
+      border-left: 4px solid var(--color-accent-emerald);
+    }
+
+    .section-subtitle {
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+    }
+
+    /* ============================================================================
+       TRENDING GRID (expanded)
+       ============================================================================ */
+    .trending-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+    }
+
+    @media (max-width: 860px) {
+      .trending-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ============================================================================
+       TRENDING CARD
+       ============================================================================ */
+    .tcard {
+      position: relative;
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 1rem;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-white);
+      text-decoration: none;
+      color: inherit;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+      transition: transform var(--transition-speed), box-shadow var(--transition-speed), border-color var(--transition-speed);
+      overflow: hidden;
+    }
+
+    .tcard:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
+      border-color: var(--color-accent-emerald);
+    }
+
+    /* Subtle scanline overlay to match the retro aesthetic */
+    .tcard::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(15, 23, 42, 0.0) 0px,
+        rgba(15, 23, 42, 0.0) 2px,
+        rgba(15, 23, 42, 0.015) 3px
+      );
+      opacity: 0;
+      transition: opacity var(--transition-speed);
+    }
+    .tcard:hover::after { opacity: 1; }
+
+    /* Rank pill (top-right) */
+    .tcard__rank {
+      position: absolute;
+      top: 0.625rem;
+      right: 0.75rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.6875rem;
+      letter-spacing: 0.04em;
+      color: var(--color-slate-600);
+      background: var(--color-slate-100);
+      border: 1px solid var(--color-slate-200);
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+    }
+
+    /* Spike badge — overlays rank pill area when applicable */
+    .tcard__spike {
+      position: absolute;
+      top: 0.625rem;
+      left: 0.75rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 0.6875rem;
+      letter-spacing: 0.04em;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .tcard__spike--hot {
+      color: #9f1239;
+      background: #ffe4e6;
+      border: 1px solid #fecdd3;
+    }
+    .tcard__spike--cooling {
+      color: var(--color-slate-600);
+      background: var(--color-slate-100);
+      border: 1px solid var(--color-slate-200);
+    }
+
+    /* ----- Left column: identity ------------------------------------------------ */
+    .tcard__left {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tcard__photo {
+      width: 96px;
+      height: 96px;
+      border-radius: 0.5rem;
+      object-fit: cover;
+      object-position: 50% 20%;
+      background: var(--color-slate-100);
+      border: 1px solid var(--color-slate-200);
+    }
+
+    .tcard__photo--placeholder {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-heading);
+      font-size: 2rem;
+      color: var(--color-slate-400);
+    }
+
+    .tcard__combine {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0.125rem 0.4rem;
+      border-radius: 0.25rem;
+      color: var(--color-slate-600);
+      background: var(--color-slate-100);
+      border: 1px solid var(--color-slate-200);
+      text-align: center;
+    }
+    .tcard__combine strong {
+      font-weight: 700;
+      color: var(--color-accent-emerald);
+    }
+
+    /* ----- Right column: content ------------------------------------------------ */
+    .tcard__body {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      padding-right: 3rem; /* leave room for rank pill */
+    }
+
+    .tcard__name {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      letter-spacing: 0.01em;
+      line-height: 1.15;
+      color: var(--color-slate-900);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tcard__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      letter-spacing: 0.04em;
+      margin-top: 0.125rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tcard__meta .dot {
+      display: inline-block;
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: var(--color-slate-300);
+      vertical-align: middle;
+      margin: 0 0.4rem;
+    }
+
+    /* Stat line: latest college season */
+    .tcard__stats {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.625rem;
+      flex-wrap: wrap;
+    }
+
+    .tcard__stat {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      letter-spacing: 0.03em;
+      padding: 0.2rem 0.45rem;
+      border-radius: 0.25rem;
+      background: var(--color-slate-50);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-700);
+      white-space: nowrap;
+    }
+    .tcard__stat .label {
+      color: var(--color-slate-500);
+      margin-right: 0.3rem;
+      font-size: 0.625rem;
+    }
+    .tcard__stat .value {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Buzz row: sparkline + total + content-type mix */
+    .tcard__buzz {
+      margin-top: 0.875rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.625rem 0.875rem;
+      align-items: center;
+    }
+
+    .tcard__buzzCount {
+      display: flex;
+      align-items: baseline;
+      gap: 0.375rem;
+      font-family: var(--font-mono);
+    }
+    .tcard__buzzCount .num {
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--color-accent-emerald);
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .tcard__buzzCount .lbl {
+      font-size: 0.625rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--color-slate-500);
+    }
+
+    .tcard__sparkline {
+      width: 100%;
+      max-width: 160px;
+      height: 28px;
+      display: block;
+    }
+
+    .tcard__mix {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tcard__mixBar {
+      flex: 1;
+      display: flex;
+      height: 6px;
+      border-radius: 9999px;
+      overflow: hidden;
+      background: var(--color-slate-100);
+      border: 1px solid var(--color-slate-200);
+    }
+    .tcard__mixBar > span { display: block; height: 100%; }
+    .tcard__mixBar .seg-news { background: var(--color-accent-cyan); }
+    .tcard__mixBar .seg-pod  { background: var(--color-accent-fuchsia); }
+    .tcard__mixBar .seg-vid  { background: var(--color-accent-amber); }
+
+    .tcard__mixLegend {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      letter-spacing: 0.04em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.625rem;
+      white-space: nowrap;
+    }
+    .tcard__mixLegend .lg { display: inline-flex; align-items: center; gap: 0.25rem; }
+    .tcard__mixLegend .sw {
+      width: 8px; height: 8px; border-radius: 2px; display: inline-block;
+    }
+    .tcard__mixLegend .sw--news { background: var(--color-accent-cyan); }
+    .tcard__mixLegend .sw--pod  { background: var(--color-accent-fuchsia); }
+    .tcard__mixLegend .sw--vid  { background: var(--color-accent-amber); }
+
+    /* Tag chip ("Mostly Mock Draft" etc.) */
+    .tcard__tagRow {
+      margin-top: 0.625rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .tcard__tag {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.5rem;
+      border-radius: 9999px;
+      color: var(--color-slate-700);
+      background: var(--color-slate-100);
+      border: 1px solid var(--color-slate-200);
+    }
+    .tcard__tag--mock { color: #1d4ed8; background: #dbeafe; border-color: #bfdbfe; }
+    .tcard__tag--bigboard { color: #6d28d9; background: #ede9fe; border-color: #ddd6fe; }
+    .tcard__tag--film { color: #b45309; background: #fef3c7; border-color: #fde68a; }
+    .tcard__tag--scout { color: #047857; background: #d1fae5; border-color: #a7f3d0; }
+    .tcard__tag--intel { color: #be185d; background: #fce7f3; border-color: #fbcfe8; }
+
+    .tcard__lastSeen {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      letter-spacing: 0.04em;
+      color: var(--color-slate-500);
+    }
+
+    /* Recent mention list */
+    .tcard__mentions {
+      margin-top: 0.75rem;
+      padding-top: 0.75rem;
+      border-top: 1px dashed var(--color-slate-200);
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .tmention {
+      display: grid;
+      grid-template-columns: 1.25rem 1fr auto;
+      gap: 0.5rem;
+      align-items: baseline;
+      font-size: 0.8125rem;
+      line-height: 1.3;
+    }
+
+    .tmention__icon {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 700;
+      text-align: center;
+      padding-top: 0.125rem;
+      color: var(--color-slate-400);
+    }
+    .tmention__icon--news { color: var(--color-accent-cyan); }
+    .tmention__icon--pod  { color: var(--color-accent-fuchsia); }
+    .tmention__icon--vid  { color: var(--color-accent-amber); }
+
+    .tmention__title {
+      color: var(--color-slate-700);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tmention__title b {
+      color: var(--color-slate-900);
+      font-weight: 600;
+    }
+
+    .tmention__when {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      letter-spacing: 0.04em;
+      color: var(--color-slate-400);
+      white-space: nowrap;
+    }
+
+    /* Compact card variant for ranks 5-10 (no mention list, smaller photo) */
+    .trending-grid--compact {
+      margin-top: 1rem;
+      grid-template-columns: repeat(3, 1fr);
+    }
+    @media (max-width: 860px) {
+      .trending-grid--compact { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 540px) {
+      .trending-grid--compact { grid-template-columns: 1fr; }
+    }
+    .tcard--compact { grid-template-columns: 64px 1fr; padding: 0.75rem; }
+    .tcard--compact .tcard__photo { width: 64px; height: 64px; }
+    .tcard--compact .tcard__name { font-size: 0.9375rem; }
+    .tcard--compact .tcard__body { padding-right: 2.5rem; }
+    .tcard--compact .tcard__mentions { display: none; }
+    .tcard--compact .tcard__stats { display: none; }
+    .tcard--compact .tcard__combine { display: none; }
+    .tcard--compact .tcard__buzz { margin-top: 0.5rem; }
+    .tcard--compact .tcard__sparkline { max-width: 100px; height: 22px; }
+    .tcard--compact .tcard__buzzCount .num { font-size: 1.125rem; }
+  </style>
+</head>
+<body>
+  <main class="home-container">
+    <div class="mockup-banner">
+      Mockup · Trending Players v2 · replaces "Popular Prospects".
+      Featured (top 4, 2×2 grid) requires: non-stub · real photo · position · school · latest college PPG · ≥ 5 mentions.
+      Combine grade, class, RPG/APG/3P%, and Hot/Cooling badge are optional — rendered when present, hidden silently when not.
+      Note #4 (VJ Edgecombe) is demoted to the compact tail because no real photo is on file yet; #5 (Khaman Maluach) gets promoted into the featured slot in his place.
+    </div>
+
+    <!-- ==========================================================================
+         TRENDING PLAYERS — featured (ranks 1-4)
+         ========================================================================== -->
+    <section class="section">
+      <div class="section-header-row">
+        <h3 class="section-header">Trending Players</h3>
+        <span class="section-subtitle">Last 7 days · weighted by recency</span>
+      </div>
+
+      <div class="trending-grid">
+
+        <!-- ===== Card 1 ========================================================= -->
+        <a href="#" class="tcard">
+          <span class="tcard__spike tcard__spike--hot">▲ HOT</span>
+          <span class="tcard__rank">#1</span>
+
+          <div class="tcard__left">
+            <img class="tcard__photo" src="https://placehold.co/96x96/e2e8f0/64748b?text=AJ" alt="Cooper Flagg">
+            <div class="tcard__combine">Combine&nbsp;<strong>A−</strong></div>
+          </div>
+
+          <div class="tcard__body">
+            <div class="tcard__name">Cooper Flagg</div>
+            <div class="tcard__meta">PF · Duke<span class="dot"></span>2026</div>
+
+            <div class="tcard__stats">
+              <span class="tcard__stat"><span class="label">PPG</span><span class="value">19.2</span></span>
+              <span class="tcard__stat"><span class="label">RPG</span><span class="value">7.8</span></span>
+              <span class="tcard__stat"><span class="label">APG</span><span class="value">4.1</span></span>
+              <span class="tcard__stat"><span class="label">3P%</span><span class="value">38.4</span></span>
+            </div>
+
+            <div class="tcard__buzz">
+              <div class="tcard__buzzCount">
+                <span class="num">42</span>
+                <span class="lbl">mentions</span>
+              </div>
+              <svg class="tcard__sparkline" viewBox="0 0 160 28" preserveAspectRatio="none">
+                <polyline points="2,22 28,18 54,20 80,12 106,14 132,6 158,2"
+                          fill="none" stroke="var(--color-accent-emerald)" stroke-width="1.75"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+
+              <div class="tcard__mix">
+                <div class="tcard__mixBar" title="News 26 · Podcasts 11 · Video 5">
+                  <span class="seg-news" style="width: 62%"></span>
+                  <span class="seg-pod"  style="width: 26%"></span>
+                  <span class="seg-vid"  style="width: 12%"></span>
+                </div>
+                <div class="tcard__mixLegend">
+                  <span class="lg"><span class="sw sw--news"></span>26</span>
+                  <span class="lg"><span class="sw sw--pod"></span>11</span>
+                  <span class="lg"><span class="sw sw--vid"></span>5</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="tcard__tagRow">
+              <span class="tcard__tag tcard__tag--mock">Mostly Mock Draft</span>
+              <span class="tcard__lastSeen">last seen 2h ago</span>
+            </div>
+
+            <div class="tcard__mentions">
+              <div class="tmention">
+                <span class="tmention__icon tmention__icon--news">N</span>
+                <span class="tmention__title"><b>The Athletic</b> — Cooper Flagg locks down the No. 1 slot in latest mock</span>
+                <span class="tmention__when">2h</span>
+              </div>
+              <div class="tmention">
+                <span class="tmention__icon tmention__icon--pod">P</span>
+                <span class="tmention__title"><b>No Ceilings Pod</b> — Flagg's defensive ceiling, revisited</span>
+                <span class="tmention__when">1d</span>
+              </div>
+            </div>
+          </div>
+        </a>
+
+        <!-- ===== Card 2 ========================================================= -->
+        <a href="#" class="tcard">
+          <span class="tcard__spike tcard__spike--hot">▲ HOT</span>
+          <span class="tcard__rank">#2</span>
+
+          <div class="tcard__left">
+            <img class="tcard__photo" src="https://placehold.co/96x96/e2e8f0/64748b?text=AJ" alt="Ace Bailey">
+            <div class="tcard__combine">Combine&nbsp;<strong>B+</strong></div>
+          </div>
+
+          <div class="tcard__body">
+            <div class="tcard__name">Ace Bailey</div>
+            <div class="tcard__meta">SF · Rutgers<span class="dot"></span>2026</div>
+
+            <div class="tcard__stats">
+              <span class="tcard__stat"><span class="label">PPG</span><span class="value">17.4</span></span>
+              <span class="tcard__stat"><span class="label">RPG</span><span class="value">5.9</span></span>
+              <span class="tcard__stat"><span class="label">FG%</span><span class="value">46.1</span></span>
+              <span class="tcard__stat"><span class="label">3PA</span><span class="value">5.2</span></span>
+            </div>
+
+            <div class="tcard__buzz">
+              <div class="tcard__buzzCount">
+                <span class="num">31</span>
+                <span class="lbl">mentions</span>
+              </div>
+              <svg class="tcard__sparkline" viewBox="0 0 160 28" preserveAspectRatio="none">
+                <polyline points="2,18 28,20 54,12 80,14 106,8 132,10 158,4"
+                          fill="none" stroke="var(--color-accent-emerald)" stroke-width="1.75"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+
+              <div class="tcard__mix">
+                <div class="tcard__mixBar" title="News 12 · Podcasts 9 · Video 10">
+                  <span class="seg-news" style="width: 39%"></span>
+                  <span class="seg-pod"  style="width: 29%"></span>
+                  <span class="seg-vid"  style="width: 32%"></span>
+                </div>
+                <div class="tcard__mixLegend">
+                  <span class="lg"><span class="sw sw--news"></span>12</span>
+                  <span class="lg"><span class="sw sw--pod"></span>9</span>
+                  <span class="lg"><span class="sw sw--vid"></span>10</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="tcard__tagRow">
+              <span class="tcard__tag tcard__tag--film">Mostly Film Study</span>
+              <span class="tcard__lastSeen">last seen 5h ago</span>
+            </div>
+
+            <div class="tcard__mentions">
+              <div class="tmention">
+                <span class="tmention__icon tmention__icon--vid">V</span>
+                <span class="tmention__title"><b>Swish Theory</b> — Ace Bailey shot diet breakdown</span>
+                <span class="tmention__when">5h</span>
+              </div>
+              <div class="tmention">
+                <span class="tmention__icon tmention__icon--news">N</span>
+                <span class="tmention__title"><b>ESPN</b> — What the Bailey 41-pt outburst means for his stock</span>
+                <span class="tmention__when">2d</span>
+              </div>
+            </div>
+          </div>
+        </a>
+
+        <!-- ===== Card 3 ========================================================= -->
+        <a href="#" class="tcard">
+          <span class="tcard__rank">#3</span>
+
+          <div class="tcard__left">
+            <img class="tcard__photo" src="https://placehold.co/96x96/e2e8f0/64748b?text=DH" alt="Dylan Harper">
+            <div class="tcard__combine">Combine&nbsp;<strong>A</strong></div>
+          </div>
+
+          <div class="tcard__body">
+            <div class="tcard__name">Dylan Harper</div>
+            <div class="tcard__meta">PG · Rutgers<span class="dot"></span>2026</div>
+
+            <div class="tcard__stats">
+              <span class="tcard__stat"><span class="label">PPG</span><span class="value">21.6</span></span>
+              <span class="tcard__stat"><span class="label">APG</span><span class="value">6.2</span></span>
+              <span class="tcard__stat"><span class="label">FG%</span><span class="value">49.0</span></span>
+              <span class="tcard__stat"><span class="label">FT%</span><span class="value">81.4</span></span>
+            </div>
+
+            <div class="tcard__buzz">
+              <div class="tcard__buzzCount">
+                <span class="num">24</span>
+                <span class="lbl">mentions</span>
+              </div>
+              <svg class="tcard__sparkline" viewBox="0 0 160 28" preserveAspectRatio="none">
+                <polyline points="2,8 28,10 54,14 80,16 106,18 132,20 158,22"
+                          fill="none" stroke="var(--color-slate-400)" stroke-width="1.75"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+
+              <div class="tcard__mix">
+                <div class="tcard__mixBar" title="News 11 · Podcasts 10 · Video 3">
+                  <span class="seg-news" style="width: 46%"></span>
+                  <span class="seg-pod"  style="width: 41%"></span>
+                  <span class="seg-vid"  style="width: 13%"></span>
+                </div>
+                <div class="tcard__mixLegend">
+                  <span class="lg"><span class="sw sw--news"></span>11</span>
+                  <span class="lg"><span class="sw sw--pod"></span>10</span>
+                  <span class="lg"><span class="sw sw--vid"></span>3</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="tcard__tagRow">
+              <span class="tcard__tag tcard__tag--bigboard">Mostly Big Board</span>
+              <span class="tcard__lastSeen">last seen 12h ago</span>
+            </div>
+
+            <div class="tcard__mentions">
+              <div class="tmention">
+                <span class="tmention__icon tmention__icon--pod">P</span>
+                <span class="tmention__title"><b>The Stepien</b> — Top of the board: Harper vs. Flagg</span>
+                <span class="tmention__when">12h</span>
+              </div>
+              <div class="tmention">
+                <span class="tmention__icon tmention__icon--news">N</span>
+                <span class="tmention__title"><b>Yahoo</b> — Updated Top 60: Harper holds at 3</span>
+                <span class="tmention__when">3d</span>
+              </div>
+            </div>
+          </div>
+        </a>
+
+        <!-- ===== Card 4 (rank #5 — promoted past demoted #4) =================== -->
+        <a href="#" class="tcard">
+          <span class="tcard__rank">#5</span>
+
+          <div class="tcard__left">
+            <img class="tcard__photo" src="https://placehold.co/96x96/e2e8f0/64748b?text=KM" alt="Khaman Maluach">
+            <div class="tcard__combine">Combine&nbsp;<strong>A</strong></div>
+          </div>
+
+          <div class="tcard__body">
+            <div class="tcard__name">Khaman Maluach</div>
+            <div class="tcard__meta">C · Duke<span class="dot"></span>2026</div>
+
+            <div class="tcard__stats">
+              <span class="tcard__stat"><span class="label">PPG</span><span class="value">9.6</span></span>
+              <span class="tcard__stat"><span class="label">RPG</span><span class="value">6.4</span></span>
+              <span class="tcard__stat"><span class="label">BPG</span><span class="value">1.6</span></span>
+              <span class="tcard__stat"><span class="label">FG%</span><span class="value">71.2</span></span>
+            </div>
+
+            <div class="tcard__buzz">
+              <div class="tcard__buzzCount">
+                <span class="num">15</span>
+                <span class="lbl">mentions</span>
+              </div>
+              <svg class="tcard__sparkline" viewBox="0 0 160 28" preserveAspectRatio="none">
+                <polyline points="2,20 28,18 54,16 80,14 106,12 132,10 158,4"
+                          fill="none" stroke="var(--color-accent-emerald)" stroke-width="1.75"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+
+              <div class="tcard__mix">
+                <div class="tcard__mixBar" title="News 6 · Podcasts 3 · Video 6">
+                  <span class="seg-news" style="width: 40%"></span>
+                  <span class="seg-pod"  style="width: 20%"></span>
+                  <span class="seg-vid"  style="width: 40%"></span>
+                </div>
+                <div class="tcard__mixLegend">
+                  <span class="lg"><span class="sw sw--news"></span>6</span>
+                  <span class="lg"><span class="sw sw--pod"></span>3</span>
+                  <span class="lg"><span class="sw sw--vid"></span>6</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="tcard__tagRow">
+              <span class="tcard__tag tcard__tag--intel">Mostly Draft Intel</span>
+              <span class="tcard__lastSeen">last seen 6h ago</span>
+            </div>
+
+            <div class="tcard__mentions">
+              <div class="tmention">
+                <span class="tmention__icon tmention__icon--news">N</span>
+                <span class="tmention__title"><b>HoopsHype</b> — Maluach measurements draw scout intrigue</span>
+                <span class="tmention__when">6h</span>
+              </div>
+              <div class="tmention">
+                <span class="tmention__icon tmention__icon--vid">V</span>
+                <span class="tmention__title"><b>Swish Theory</b> — Pick-and-roll finishing read deep dive</span>
+                <span class="tmention__when">2d</span>
+              </div>
+            </div>
+          </div>
+        </a>
+
+      </div>
+
+      <!-- ==========================================================================
+           TRENDING PLAYERS — compact tail (ranks 5-10)
+           ========================================================================== -->
+      <div class="trending-grid trending-grid--compact">
+
+        <!-- Demoted from featured: missing latest college stats row -->
+        <a href="#" class="tcard tcard--compact">
+          <span class="tcard__rank">#4</span>
+          <div class="tcard__left">
+            <span class="tcard__photo tcard__photo--placeholder">VE</span>
+          </div>
+          <div class="tcard__body">
+            <div class="tcard__name">VJ Edgecombe</div>
+            <div class="tcard__meta">SG · Baylor<span class="dot"></span>2026</div>
+            <div class="tcard__buzz">
+              <div class="tcard__buzzCount"><span class="num">18</span><span class="lbl">mentions</span></div>
+              <svg class="tcard__sparkline" viewBox="0 0 100 22" preserveAspectRatio="none">
+                <polyline points="2,4 18,8 34,10 50,14 66,16 82,18 98,20"
+                          fill="none" stroke="var(--color-accent-rose)" stroke-width="1.5"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="tcard__tagRow">
+              <span class="tcard__tag tcard__tag--scout">Mostly Scouting</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="#" class="tcard tcard--compact">
+          <span class="tcard__rank">#6</span>
+          <div class="tcard__left">
+            <img class="tcard__photo" src="https://placehold.co/64x64/e2e8f0/64748b?text=TJ" alt="Tre Johnson">
+          </div>
+          <div class="tcard__body">
+            <div class="tcard__name">Tre Johnson</div>
+            <div class="tcard__meta">SG · Texas<span class="dot"></span>2026</div>
+            <div class="tcard__buzz">
+              <div class="tcard__buzzCount"><span class="num">13</span><span class="lbl">mentions</span></div>
+              <svg class="tcard__sparkline" viewBox="0 0 100 22" preserveAspectRatio="none">
+                <polyline points="2,12 18,14 34,10 50,8 66,12 82,6 98,8"
+                          fill="none" stroke="var(--color-accent-emerald)" stroke-width="1.5"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="tcard__tagRow">
+              <span class="tcard__tag tcard__tag--mock">Mostly Mock Draft</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="#" class="tcard tcard--compact">
+          <span class="tcard__rank">#7</span>
+          <div class="tcard__left">
+            <img class="tcard__photo" src="https://placehold.co/64x64/e2e8f0/64748b?text=LK" alt="Liam McNeeley">
+          </div>
+          <div class="tcard__body">
+            <div class="tcard__name">Liam McNeeley</div>
+            <div class="tcard__meta">SF · UConn<span class="dot"></span>2026</div>
+            <div class="tcard__buzz">
+              <div class="tcard__buzzCount"><span class="num">11</span><span class="lbl">mentions</span></div>
+              <svg class="tcard__sparkline" viewBox="0 0 100 22" preserveAspectRatio="none">
+                <polyline points="2,8 18,10 34,12 50,14 66,12 82,16 98,18"
+                          fill="none" stroke="var(--color-slate-400)" stroke-width="1.5"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="tcard__tagRow">
+              <span class="tcard__tag tcard__tag--scout">Mostly Scouting</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="#" class="tcard tcard--compact">
+          <span class="tcard__rank">#8</span>
+          <div class="tcard__left">
+            <img class="tcard__photo" src="https://placehold.co/64x64/e2e8f0/64748b?text=BB" alt="Boogie Fland">
+          </div>
+          <div class="tcard__body">
+            <div class="tcard__name">Boogie Fland</div>
+            <div class="tcard__meta">PG · Arkansas<span class="dot"></span>2026</div>
+            <div class="tcard__buzz">
+              <div class="tcard__buzzCount"><span class="num">9</span><span class="lbl">mentions</span></div>
+              <svg class="tcard__sparkline" viewBox="0 0 100 22" preserveAspectRatio="none">
+                <polyline points="2,18 18,16 34,18 50,14 66,10 82,8 98,6"
+                          fill="none" stroke="var(--color-accent-emerald)" stroke-width="1.5"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="tcard__tagRow">
+              <span class="tcard__tag tcard__tag--film">Mostly Film Study</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="#" class="tcard tcard--compact">
+          <span class="tcard__rank">#9</span>
+          <div class="tcard__left">
+            <img class="tcard__photo" src="https://placehold.co/64x64/e2e8f0/64748b?text=KH" alt="Kasparas Jakucionis">
+          </div>
+          <div class="tcard__body">
+            <div class="tcard__name">Kasparas Jakucionis</div>
+            <div class="tcard__meta">PG · Illinois<span class="dot"></span>2026</div>
+            <div class="tcard__buzz">
+              <div class="tcard__buzzCount"><span class="num">8</span><span class="lbl">mentions</span></div>
+              <svg class="tcard__sparkline" viewBox="0 0 100 22" preserveAspectRatio="none">
+                <polyline points="2,12 18,12 34,14 50,10 66,12 82,10 98,8"
+                          fill="none" stroke="var(--color-slate-400)" stroke-width="1.5"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="tcard__tagRow">
+              <span class="tcard__tag tcard__tag--bigboard">Mostly Big Board</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="#" class="tcard tcard--compact">
+          <span class="tcard__rank">#10</span>
+          <div class="tcard__left">
+            <img class="tcard__photo" src="https://placehold.co/64x64/e2e8f0/64748b?text=DR" alt="Derik Queen">
+          </div>
+          <div class="tcard__body">
+            <div class="tcard__name">Derik Queen</div>
+            <div class="tcard__meta">C · Maryland<span class="dot"></span>2026</div>
+            <div class="tcard__buzz">
+              <div class="tcard__buzzCount"><span class="num">7</span><span class="lbl">mentions</span></div>
+              <svg class="tcard__sparkline" viewBox="0 0 100 22" preserveAspectRatio="none">
+                <polyline points="2,14 18,12 34,16 50,12 66,14 82,12 98,10"
+                          fill="none" stroke="var(--color-slate-400)" stroke-width="1.5"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <div class="tcard__tagRow">
+              <span class="tcard__tag tcard__tag--mock">Mostly Mock Draft</span>
+            </div>
+          </div>
+        </a>
+
+      </div>
+    </section>
+  </main>
+</body>
+</html>
