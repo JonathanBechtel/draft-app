@@ -12,7 +12,18 @@ from sqlalchemy.exc import DBAPIError
 from starlette.responses import Response
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from app.routes import admin, export, news, players, podcasts, share, stats, ui, videos
+from app.routes import (
+    admin,
+    export,
+    news,
+    players,
+    podcasts,
+    seo,
+    share,
+    stats,
+    ui,
+    videos,
+)
 from app.utils.db_async import (
     init_db,
     dispose_engine,
@@ -107,6 +118,7 @@ app.include_router(videos.router)
 app.include_router(players.router)
 app.include_router(share.router)
 app.include_router(stats.router)
+app.include_router(seo.router)
 app.include_router(ui.router)
 app.include_router(admin.router)
 
