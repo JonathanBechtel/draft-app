@@ -131,32 +131,22 @@
 
   <!-- ==========================================================================
        TRENDING PLAYERS
-       Players with the most recent article mentions
+       Featured cards (rich 2x2) plus compact tail leaderboard, replacing the
+       static "Top Prospects" grid. Populated by TrendingModule in home.js.
        ========================================================================== -->
   <section class="section" id="trendingSection" style="display: none;">
-    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
-      Trending Players
-    </h3>
+    <div class="section-header-row">
+      <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-emerald);">
+        Trending Players
+      </h3>
+      <span class="section-subtitle">Last 7 days · weighted by recency</span>
+    </div>
 
-    <div id="trendingGrid" class="trending-grid"></div>
+    <div id="featuredTrendingGrid" class="trending-grid trending-grid--featured" style="display: none;"></div>
+    <div id="compactTrendingGrid" class="trending-grid trending-grid--compact" style="display: none;"></div>
   </section>
 
   <div class="section-divider" id="trendingDivider" style="display: none;"></div>
-
-  <!-- ==========================================================================
-       TOP PROSPECTS
-       Grid of top prospect player cards with stats
-       ========================================================================== -->
-  <section class="section">
-    <h3 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-indigo);">
-      Top Prospects
-    </h3>
-
-    <!-- Prospects grid - populated by JavaScript -->
-    <div id="prospectsGrid" class="prospects-grid"></div>
-  </section>
-
-  <div class="section-divider"></div>
 
   <!-- ==========================================================================
        VS ARENA (PLAYER COMPARISON)
@@ -274,19 +264,14 @@
 {% block extra_js %}
 <script>
   // Server-side data injection
-  window.PLAYERS = {{ players | tojson | safe }};
-  window.TRENDING_PLAYERS = {{ trending_players | tojson | safe }};
+  window.FEATURED_TRENDING = {{ featured_trending | tojson | safe }};
+  window.COMPACT_TRENDING = {{ compact_trending | tojson | safe }};
   window.FEED_ITEMS = {{ feed_items | tojson | safe }};
   // Hero article and sidebar data for news section
   window.HERO_ARTICLE = {{ hero_article | tojson | safe }};
   window.SOURCE_COUNTS = {{ source_counts | tojson | safe }};
   window.AUTHOR_COUNTS = {{ author_counts | tojson | safe }};
   window.SIDEBAR_LIMIT = {{ sidebar_limit | tojson | safe }};
-  // Image style and player ID mapping for dynamic image URL generation
-  window.IMAGE_STYLE = {{ image_style | tojson | safe }};
-  window.PLAYER_ID_MAP = {{ player_id_map | tojson | safe }};
-  window.ID_TO_SLUG_MAP = {{ id_to_slug_map | tojson | safe }};
-  window.S3_IMAGE_BASE_URL = {{ s3_image_base_url | tojson | safe }};
   // Podcast episodes for homepage section
   window.PODCAST_EPISODES = {{ podcast_episodes | tojson | safe }};
   window.FILM_ROOM_VIDEOS = {{ film_room_videos | tojson | safe }};

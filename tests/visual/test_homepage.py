@@ -29,8 +29,10 @@ class TestHomepageStructure:
         """Verify homepage loads and key sections are visible."""
         goto("/")
 
-        # Verify Top Prospects section exists
-        expect(page.locator("#prospectsGrid")).to_be_visible()
+        # Trending Players replaces the old Top Prospects grid. The section
+        # is hidden by default (display: none) and only revealed by
+        # TrendingModule when at least one player is in the payload.
+        expect(page.locator("#trendingSection")).to_be_attached()
 
         # Verify VS Arena section exists
         expect(page.locator(".h2h-card")).to_be_visible()

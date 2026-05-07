@@ -8,7 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.expanded_trending_service import get_expanded_trending_players
 from app.services.news_service import (
+    format_relative_time,
     get_author_counts,
     get_filtered_news_feed,
     get_hero_article,
@@ -61,15 +63,6 @@ FOOTER_LINKS = [
 ]
 
 
-# Curated list of top prospects to feature on homepage
-TOP_PROSPECT_SLUGS = [
-    "cooper-flagg",
-    "ace-bailey",
-    "dylan-harper",
-    "vj-edgecombe",
-    "kon-knueppel",
-]
-
 # Homepage news/feed constants
 HOME_NEWS_FEED_LIMIT = 100
 HOME_NEWS_SIDEBAR_LIMIT = 8
@@ -79,89 +72,71 @@ HOME_FILM_ROOM_LIMIT = 24
 @router.get("/", response_class=HTMLResponse)
 async def home(
     request: Request,
-    style: Optional[str] = Query(
-        None,
-        description="Preferred image style (falls back to default, then placeholder)",
-    ),
     db: AsyncSession = Depends(get_session),
 ):
-    """Render the Homepage with prospects, VS arena, and news feed."""
-    from sqlalchemy import select
-
-    from app.schemas.players_master import PlayerMaster
-
-    # Fetch curated top prospects from database by slug
-    result = await db.execute(
-        select(PlayerMaster).where(
-            PlayerMaster.slug.in_(TOP_PROSPECT_SLUGS)  # type: ignore[union-attr]
-        )
-    )
-    db_players_unordered = {p.slug: p for p in result.scalars().all()}
-    # Preserve the curated order
-    db_players = [
-        db_players_unordered[slug]
-        for slug in TOP_PROSPECT_SLUGS
-        if slug in db_players_unordered
-    ]
-
-    # Build player ID map for image URL generation and JS
-    player_id_map = {p.slug: (p.id, p.display_name) for p in db_players}
-
-    requested_style = style or settings.default_image_style
-
-    players = []
-    for p in db_players:
-        if p.id is None or not p.slug:
-            continue
-        img_url = get_player_image_url(
-            player_id=p.id,
-            slug=p.slug,
-            style=requested_style,
-        )
-        img_default_url = get_player_image_url(
-            player_id=p.id,
-            slug=p.slug,
-            style="default",
-        )
-        img_placeholder_url = get_placeholder_url(
-            p.display_name or "Player",
-            player_id=p.id,
-            width=320,
-            height=420,
-        )
-
-        players.append(
-            {
-                "id": p.id,
-                "name": p.display_name or "",
-                "slug": p.slug or "",
-                "position": "",  # Position data requires PlayerStatus join - to be added
-                "college": p.school or "",
-                "img": img_url,
-                "img_default": img_default_url,
-                "img_placeholder": img_placeholder_url,
-                "change": 0,  # No change data without consensus rankings
-                "measurables": {
-                    "ht": 80,  # Placeholder - will be populated from real data later
-                    "ws": 84,
-                    "vert": 36,
-                },
-            }
-        )
-
-    # Fetch trending players based on recent mentions
-    trending_raw = await get_trending_players(db, days=7, limit=10)
-    trending_players = [
+    """Render the Homepage with expanded trending players, VS arena, and news feed."""
+    # Fetch expanded trending payload (featured cards + compact tail).
+    expanded = await get_expanded_trending_players(db)
+    featured_trending = [
         {
-            "player_id": tp.player_id,
-            "display_name": tp.display_name,
-            "slug": tp.slug,
-            "school": tp.school or "",
-            "mention_count": tp.mention_count,
-            "trending_score": tp.trending_score,
-            "daily_counts": tp.daily_counts,
+            "player_id": fp.player_id,
+            "rank": fp.rank,
+            "display_name": fp.display_name,
+            "slug": fp.slug,
+            "photo_url": fp.photo_url,
+            "school": fp.school,
+            "position": fp.position,
+            "draft_year": fp.draft_year,
+            "mention_count": fp.mention_count,
+            "daily_counts": fp.daily_counts,
+            "spike_state": fp.spike_state,
+            "content_mix": fp.content_mix,
+            "dominant_news_tag": fp.dominant_news_tag,
+            "combine_grade": fp.combine_grade,
+            "latest_stats": {
+                "season": fp.latest_stats.season,
+                "ppg": fp.latest_stats.ppg,
+                "rpg": fp.latest_stats.rpg,
+                "apg": fp.latest_stats.apg,
+                "spg": fp.latest_stats.spg,
+                "bpg": fp.latest_stats.bpg,
+                "fg_pct": fp.latest_stats.fg_pct,
+                "three_p_pct": fp.latest_stats.three_p_pct,
+                "ft_pct": fp.latest_stats.ft_pct,
+            },
+            "recent_mentions": [
+                {
+                    "title": m.title,
+                    "url": m.url,
+                    "source_name": m.source_name,
+                    "content_type": m.content_type,
+                    "time": format_relative_time(m.published_at),
+                }
+                for m in fp.recent_mentions
+            ],
+            "latest_mention_time": (
+                format_relative_time(fp.latest_mention_at)
+                if fp.latest_mention_at is not None
+                else None
+            ),
         }
-        for tp in trending_raw
+        for fp in expanded.featured
+    ]
+    compact_trending = [
+        {
+            "player_id": cp.player_id,
+            "rank": cp.rank,
+            "display_name": cp.display_name,
+            "slug": cp.slug,
+            "photo_url": cp.photo_url,
+            "school": cp.school,
+            "position": cp.position,
+            "draft_year": cp.draft_year,
+            "mention_count": cp.mention_count,
+            "daily_counts": cp.daily_counts,
+            "dominant_news_tag": cp.dominant_news_tag,
+        }
+        for cp in expanded.compact
     ]
 
     # Fetch news feed from database (falls back to empty if no items yet)
@@ -283,16 +258,12 @@ async def home(
         for item in film_room_raw
     ]
 
-    # Build mappings for JS image URL generation
-    slug_to_id = {slug: player_id for slug, (player_id, _) in player_id_map.items()}
-    id_to_slug = {player_id: slug for slug, (player_id, _) in player_id_map.items()}
-
     return request.app.state.templates.TemplateResponse(
         "home.html",
         {
             "request": request,
-            "players": players,
-            "trending_players": trending_players,
+            "featured_trending": featured_trending,
+            "compact_trending": compact_trending,
             "feed_items": feed_items,
             "hero_article": hero_article_dict,
             "source_counts": source_counts,
@@ -303,10 +274,6 @@ async def home(
             "film_room_video_counts": film_room_video_counts,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
-            "image_style": requested_style,  # Current image style for JS
-            "player_id_map": slug_to_id,  # slug -> player_id for JS image URLs
-            "id_to_slug_map": id_to_slug,  # player_id -> slug for JS image URLs
-            "s3_image_base_url": get_s3_image_base_url(),  # S3 base URL for images
         },
     )
 
