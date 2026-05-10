@@ -84,7 +84,19 @@ class TestParseRelevanceResponse:
         text = '```json\n{"is_draft_relevant": true}\n```'
         assert _parse_relevance_response(text) is True
 
-    def test_truthy_non_bool(self) -> None:
-        """Truthy non-bool values are coerced via bool()."""
-        assert _parse_relevance_response('{"is_draft_relevant": 1}') is True
+    def test_quoted_string_true_admits(self) -> None:
+        """Models sometimes emit a quoted "true"; treat it as relevant."""
+        assert _parse_relevance_response('{"is_draft_relevant": "true"}') is True
+        assert _parse_relevance_response('{"is_draft_relevant": "TRUE"}') is True
+        assert _parse_relevance_response('{"is_draft_relevant": " True "}') is True
+
+    def test_quoted_string_false_fails_closed(self) -> None:
+        """Quoted "false" is the bug guard — Python truthy bool() would admit it."""
+        assert _parse_relevance_response('{"is_draft_relevant": "false"}') is False
+        assert _parse_relevance_response('{"is_draft_relevant": "no"}') is False
+
+    def test_non_true_values_fail_closed(self) -> None:
+        """Numeric or other non-bool values are not affirmative."""
+        assert _parse_relevance_response('{"is_draft_relevant": 1}') is False
         assert _parse_relevance_response('{"is_draft_relevant": 0}') is False
+        assert _parse_relevance_response('{"is_draft_relevant": null}') is False

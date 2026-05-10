@@ -265,12 +265,17 @@ class NewsSummarizationService:
 def _parse_relevance_response(response_text: str) -> bool:
     """Parse a Gemini relevance response into a boolean.
 
+    Strict — only the boolean ``True`` (or the case-insensitive string
+    ``"true"`` that models occasionally emit) admits an article. Quoted
+    ``"false"`` and other truthy non-True values fall back to False so
+    the gate fails closed instead of admitting irrelevant items.
+
     Args:
         response_text: Raw text response from Gemini.
 
     Returns:
-        True when the JSON payload sets ``is_draft_relevant`` to a truthy
-        value, False otherwise (including unparsable input).
+        True only for an explicit affirmative; False otherwise (including
+        on parse error).
     """
     text = response_text.strip()
     if text.startswith("```json"):
@@ -287,7 +292,12 @@ def _parse_relevance_response(response_text: str) -> bool:
         logger.warning(f"Failed to parse relevance JSON: {text[:100]}")
         return False
 
-    return bool(data.get("is_draft_relevant", False))
+    raw = data.get("is_draft_relevant")
+    if raw is True:
+        return True
+    if isinstance(raw, str) and raw.strip().lower() == "true":
+        return True
+    return False
 
 
 # Singleton instance for convenience

@@ -1,7 +1,7 @@
 """Add is_draft_focused flag to news_sources.
 
 Revision ID: m2n3o4p5q6r7
-Revises: l1m2n3o4p5q6
+Revises: 35d4c25324b3
 Create Date: 2026-05-09
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op  # type: ignore[attr-defined]
 
 revision: str = "m2n3o4p5q6r7"
-down_revision: Union[str, None] = "l1m2n3o4p5q6"
+down_revision: Union[str, None] = "35d4c25324b3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
