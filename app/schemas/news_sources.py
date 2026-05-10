@@ -28,6 +28,11 @@ class NewsSource(SQLModel, table=True):  # type: ignore[call-arg]
     display_name: str  # e.g., "Floor and Ceiling"
     feed_type: FeedType = Field(default=FeedType.RSS)
     feed_url: str = Field(unique=True)  # RSS URL or API endpoint
+    is_draft_focused: bool = Field(
+        default=True,
+        sa_column_kwargs={"server_default": "true"},
+        description="When True, all items ingested without relevance checks",
+    )
     is_active: bool = Field(default=True, index=True)
     fetch_interval_minutes: int = Field(default=30)
     last_fetched_at: Optional[datetime] = Field(default=None)

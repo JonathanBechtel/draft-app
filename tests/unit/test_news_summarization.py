@@ -1,7 +1,10 @@
 """Unit tests for the news summarization service parse logic."""
 
 from app.schemas.news_items import NewsItemTag
-from app.services.news_summarization_service import NewsSummarizationService
+from app.services.news_summarization_service import (
+    NewsSummarizationService,
+    _parse_relevance_response,
+)
 
 
 class TestParseResponse:
@@ -55,3 +58,33 @@ class TestParseResponse:
         response = '```json\n{"summary": "Test.", "tag": "Big Board", "mentioned_players": ["Cooper Flagg"]}\n```'
         result = self.service._parse_response(response)
         assert result.mentioned_players == ["Cooper Flagg"]
+
+
+class TestParseRelevanceResponse:
+    """Tests for _parse_relevance_response (Gemini relevance gate parser)."""
+
+    def test_true(self) -> None:
+        """Draft-relevant payload returns True."""
+        assert _parse_relevance_response('{"is_draft_relevant": true}') is True
+
+    def test_false(self) -> None:
+        """Non-relevant payload returns False."""
+        assert _parse_relevance_response('{"is_draft_relevant": false}') is False
+
+    def test_missing_key(self) -> None:
+        """Missing key defaults to False."""
+        assert _parse_relevance_response('{"other_key": true}') is False
+
+    def test_invalid_json(self) -> None:
+        """Invalid JSON returns False rather than raising."""
+        assert _parse_relevance_response("not json") is False
+
+    def test_markdown_code_block(self) -> None:
+        """Response wrapped in markdown fences is parsed correctly."""
+        text = '```json\n{"is_draft_relevant": true}\n```'
+        assert _parse_relevance_response(text) is True
+
+    def test_truthy_non_bool(self) -> None:
+        """Truthy non-bool values are coerced via bool()."""
+        assert _parse_relevance_response('{"is_draft_relevant": 1}') is True
+        assert _parse_relevance_response('{"is_draft_relevant": 0}') is False

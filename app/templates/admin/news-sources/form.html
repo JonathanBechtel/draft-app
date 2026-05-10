@@ -90,6 +90,19 @@
     <div class="admin-form__checkbox-field">
       <input
         class="admin-form__checkbox"
+        id="is_draft_focused"
+        name="is_draft_focused"
+        type="checkbox"
+        value="1"
+        {% if not source or source.is_draft_focused %}checked{% endif %}
+      />
+      <label class="admin-form__checkbox-label" for="is_draft_focused">Draft Focused</label>
+      <span class="admin-form__help">When checked, all items are ingested without relevance filtering. Uncheck for mixed-topic feeds (e.g., Silver Bulletin) so non-draft articles are dropped.</span>
+    </div>
+
+    <div class="admin-form__checkbox-field">
+      <input
+        class="admin-form__checkbox"
         id="is_active"
         name="is_active"
         type="checkbox"

@@ -4,6 +4,7 @@ Uses Gemini to generate compelling summaries and classify articles
 into tags (Riser, Faller, Analysis, Highlight).
 """
 
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -17,6 +18,8 @@ from app.schemas.news_items import NewsItemTag
 
 logger = logging.getLogger(__name__)
 
+_GEMINI_TIMEOUT_SECONDS = 30
+
 
 class ArticleAnalysis(BaseModel):
     """Structured output from AI article analysis."""
@@ -24,6 +27,16 @@ class ArticleAnalysis(BaseModel):
     summary: str  # 1-2 sentence compelling byline
     tag: NewsItemTag  # Classification tag for the article type
     mentioned_players: list[str] = []  # Names of NBA draft prospects mentioned
+
+
+RELEVANCE_CHECK_PROMPT = """You are a sports content filter for DraftGuru, an NBA Draft analytics site.
+
+Determine whether this article is about or substantially discusses the NBA Draft, draft prospects, or college basketball players projected for the draft.
+
+Answer with valid JSON only:
+{"is_draft_relevant": true}
+or
+{"is_draft_relevant": false}"""
 
 
 # System prompt for article analysis
@@ -84,6 +97,46 @@ class NewsSummarizationService:
                 )
             self._client = genai.Client(api_key=api_key)
         return self._client
+
+    async def check_draft_relevance(self, title: str, description: str) -> bool:
+        """Check whether an article is relevant to the NBA Draft.
+
+        Lightweight Gemini call used for non-draft-focused sources after the
+        keyword pre-filter has already declined to short-circuit.
+
+        Args:
+            title: Article title.
+            description: Article description/excerpt.
+
+        Returns:
+            True when draft-relevant, False otherwise (including on error).
+        """
+        user_prompt = f"Title: {title}\n\nDescription: {description}"
+
+        try:
+            response = await asyncio.wait_for(
+                self.client.aio.models.generate_content(
+                    model="gemini-3-flash-preview",
+                    contents=types.Content(
+                        role="user",
+                        parts=[types.Part.from_text(text=user_prompt)],
+                    ),
+                    config=types.GenerateContentConfig(
+                        system_instruction=[
+                            types.Part.from_text(text=RELEVANCE_CHECK_PROMPT)
+                        ],
+                        temperature=0.1,
+                    ),
+                ),
+                timeout=_GEMINI_TIMEOUT_SECONDS,
+            )
+
+            response_text = response.text if response.text else ""
+            return _parse_relevance_response(response_text)
+
+        except Exception as e:
+            logger.error(f"Relevance check failed for '{title[:50]}': {e}")
+            return False
 
     async def analyze_article(
         self,
@@ -207,6 +260,34 @@ class NewsSummarizationService:
         return ArticleAnalysis(
             summary=summary, tag=tag, mentioned_players=mentioned_players
         )
+
+
+def _parse_relevance_response(response_text: str) -> bool:
+    """Parse a Gemini relevance response into a boolean.
+
+    Args:
+        response_text: Raw text response from Gemini.
+
+    Returns:
+        True when the JSON payload sets ``is_draft_relevant`` to a truthy
+        value, False otherwise (including unparsable input).
+    """
+    text = response_text.strip()
+    if text.startswith("```json"):
+        text = text[7:]
+    if text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    text = text.strip()
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        logger.warning(f"Failed to parse relevance JSON: {text[:100]}")
+        return False
+
+    return bool(data.get("is_draft_relevant", False))
 
 
 # Singleton instance for convenience

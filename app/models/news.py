@@ -41,6 +41,7 @@ class NewsSourceRead(SQLModel):
     display_name: str
     feed_type: str
     feed_url: str
+    is_draft_focused: bool = True
     is_active: bool
     fetch_interval_minutes: int
     last_fetched_at: Optional[str] = None  # ISO format string
@@ -53,6 +54,7 @@ class NewsSourceCreate(SQLModel):
     display_name: str
     feed_url: str
     feed_type: str = "rss"
+    is_draft_focused: bool = True
     fetch_interval_minutes: int = 30
 
 
@@ -62,5 +64,6 @@ class IngestionResult(SQLModel):
     sources_processed: int
     items_added: int
     items_skipped: int
+    items_filtered: int = 0
     mentions_added: int = 0
     errors: list[str]
