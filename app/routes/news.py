@@ -78,6 +78,7 @@ async def list_sources(
             display_name=source.display_name,
             feed_type=source.feed_type.value,
             feed_url=source.feed_url,
+            is_draft_focused=source.is_draft_focused,
             is_active=source.is_active,
             fetch_interval_minutes=source.fetch_interval_minutes,
             last_fetched_at=(
@@ -129,6 +130,7 @@ async def create_source(
             feed_type=feed_type,
             feed_url=source_data.feed_url,
             fetch_interval_minutes=source_data.fetch_interval_minutes,
+            is_draft_focused=source_data.is_draft_focused,
             is_active=True,
             created_at=datetime.now(UTC).replace(tzinfo=None),
             updated_at=datetime.now(UTC).replace(tzinfo=None),
@@ -142,6 +144,7 @@ async def create_source(
         display_name=source.display_name,
         feed_type=source.feed_type.value,
         feed_url=source.feed_url,
+        is_draft_focused=source.is_draft_focused,
         is_active=source.is_active,
         fetch_interval_minutes=source.fetch_interval_minutes,
         last_fetched_at=None,

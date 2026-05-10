@@ -192,6 +192,68 @@ class TestNewsSourcesCreate:
         )
         assert result.scalar_one() == "new-source"
 
+    async def test_create_with_is_draft_focused_unchecked(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_user_id: int,
+    ):
+        """Unchecked is_draft_focused persists False (mixed-topic feed)."""
+        _ = admin_user_id
+        await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
+
+        response = await app_client.post(
+            "/admin/news-sources",
+            data={
+                "name": "silver-bulletin",
+                "display_name": "Silver Bulletin",
+                "feed_type": "rss",
+                "feed_url": "https://example.com/silver.xml",
+                "is_active": "1",
+                "fetch_interval_minutes": "60",
+                # is_draft_focused intentionally omitted (unchecked checkbox)
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code in {302, 303}
+
+        result = await db_session.execute(
+            text(
+                "SELECT is_draft_focused FROM news_sources WHERE name = 'silver-bulletin'"
+            )
+        )
+        assert result.scalar_one() is False
+
+    async def test_create_with_is_draft_focused_checked(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_user_id: int,
+    ):
+        """Checked is_draft_focused persists True (default for draft-only feeds)."""
+        _ = admin_user_id
+        await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
+
+        response = await app_client.post(
+            "/admin/news-sources",
+            data={
+                "name": "draft-only",
+                "display_name": "Draft Only",
+                "feed_type": "rss",
+                "feed_url": "https://example.com/draft-only.xml",
+                "is_active": "1",
+                "is_draft_focused": "1",
+                "fetch_interval_minutes": "60",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code in {302, 303}
+
+        result = await db_session.execute(
+            text("SELECT is_draft_focused FROM news_sources WHERE name = 'draft-only'")
+        )
+        assert result.scalar_one() is True
+
     async def test_create_duplicate_url_error(
         self,
         app_client: AsyncClient,
@@ -285,6 +347,38 @@ class TestNewsSourcesEdit:
         row = result.one()
         assert row[0] == "updated-source"
         assert row[1] == 45
+
+    async def test_update_toggles_is_draft_focused_off(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_user_id: int,
+        sample_source_id: int,
+    ):
+        """Submitting without is_draft_focused flips an existing source to False."""
+        _ = admin_user_id
+        await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
+
+        response = await app_client.post(
+            f"/admin/news-sources/{sample_source_id}",
+            data={
+                "name": "test-source",
+                "display_name": "Test Source",
+                "feed_type": "rss",
+                "feed_url": "https://example.com/test-feed.xml",
+                "is_active": "1",
+                "fetch_interval_minutes": "30",
+                # is_draft_focused intentionally omitted
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code in {302, 303}
+
+        result = await db_session.execute(
+            text("SELECT is_draft_focused FROM news_sources WHERE id = :id"),
+            {"id": sample_source_id},
+        )
+        assert result.scalar_one() is False
 
 
 @pytest.mark.asyncio

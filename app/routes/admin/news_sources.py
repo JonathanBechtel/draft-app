@@ -56,11 +56,14 @@ async def list_news_sources(
         parts: list[str] = []
         added = request.query_params.get("added")
         sources_count = request.query_params.get("sources")
+        filtered = request.query_params.get("filtered")
         mentions = request.query_params.get("mentions")
         if sources_count:
             parts.append(f"{sources_count} source(s)")
         if added:
             parts.append(f"{added} item(s) added")
+        if filtered:
+            parts.append(f"{filtered} filtered")
         if mentions:
             parts.append(f"{mentions} mention(s)")
         if parts:
@@ -102,6 +105,7 @@ async def ingest_news(
                 f"/admin/news-sources?success=ingested"
                 f"&added={result.items_added}"
                 f"&sources={result.sources_processed}"
+                f"&filtered={result.items_filtered}"
                 f"&mentions={result.mentions_added}"
             ),
             status_code=303,
@@ -148,6 +152,7 @@ async def create_news_source(
     feed_type: str = Form(...),
     feed_url: str = Form(...),
     is_active: str | None = Form(default=None),
+    is_draft_focused: str | None = Form(default=None),
     fetch_interval_minutes: int = Form(default=30),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
@@ -202,6 +207,8 @@ async def create_news_source(
             feed_url=feed_url,
             is_active=is_active is not None
             and is_active not in {"0", "", "false", "False"},
+            is_draft_focused=is_draft_focused is not None
+            and is_draft_focused not in {"0", "", "false", "False"},
             fetch_interval_minutes=fetch_interval_minutes,
         )
         db.add(source)
@@ -256,6 +263,7 @@ async def update_news_source(
     feed_type: str = Form(...),
     feed_url: str = Form(...),
     is_active: str | None = Form(default=None),
+    is_draft_focused: str | None = Form(default=None),
     fetch_interval_minutes: int = Form(default=30),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
@@ -327,6 +335,16 @@ async def update_news_source(
             "false",
             "False",
         }
+        source.is_draft_focused = (
+            is_draft_focused is not None
+            and is_draft_focused
+            not in {
+                "0",
+                "",
+                "false",
+                "False",
+            }
+        )
         source.fetch_interval_minutes = fetch_interval_minutes
         source.updated_at = datetime.now(UTC).replace(tzinfo=None)
 

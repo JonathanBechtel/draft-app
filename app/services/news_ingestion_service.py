@@ -31,6 +31,7 @@ from app.schemas.players_master import PlayerMaster  # noqa: F401 - needed for F
 from app.services.news_service import get_active_sources
 from app.services.news_summarization_service import news_summarization_service
 from app.services.player_mention_service import resolve_player_names_as_map
+from app.utils.draft_relevance import check_keyword_relevance
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class NewsSourceSnapshot:
     name: str
     feed_type: FeedType
     feed_url: str
+    is_draft_focused: bool
 
 
 async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
@@ -82,6 +84,7 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
                     name=active_source.name,
                     feed_type=active_source.feed_type,
                     feed_url=active_source.feed_url,
+                    is_draft_focused=active_source.is_draft_focused,
                 )
             )
 
@@ -90,15 +93,17 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
 
     total_added = 0
     total_skipped = 0
+    total_filtered = 0
     total_mentions = 0
     errors: list[str] = []
 
     for source in sources:
         try:
             if source.feed_type == FeedType.RSS:
-                added, skipped, mentions = await ingest_rss_source(db, source)
+                added, skipped, filtered, mentions = await ingest_rss_source(db, source)
                 total_added += added
                 total_skipped += skipped
+                total_filtered += filtered
                 total_mentions += mentions
             # Future: elif source.feed_type == FeedType.API: ...
             else:
@@ -113,13 +118,15 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
 
     logger.info(
         f"Ingestion complete: {total_added} added, {total_skipped} skipped, "
-        f"{total_mentions} mentions, {len(errors)} error(s)"
+        f"{total_filtered} filtered, {total_mentions} mentions, "
+        f"{len(errors)} error(s)"
     )
 
     return IngestionResult(
         sources_processed=len(sources),
         items_added=total_added,
         items_skipped=total_skipped,
+        items_filtered=total_filtered,
         mentions_added=total_mentions,
         errors=errors,
     )
@@ -128,18 +135,20 @@ async def run_ingestion_cycle(db: AsyncSession) -> IngestionResult:
 async def ingest_rss_source(
     db: AsyncSession,
     source: NewsSourceSnapshot,
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, int]:
     """Fetch and process an RSS feed source.
 
     Parses the RSS feed, generates AI summaries, and inserts new items
-    with deduplication based on external_id.
+    with deduplication based on external_id.  Mixed-topic feeds (those
+    with ``is_draft_focused=False``) pass through a two-tier relevance
+    gate (keyword match → Gemini fallback) before AI analysis.
 
     Args:
         db: Async database session
         source: NewsSource record to ingest
 
     Returns:
-        Tuple of (items_added, items_skipped, mentions_added)
+        Tuple of (items_added, items_skipped, items_filtered, mentions_added)
     """
     logger.info(f"→ {source.name}")
 
@@ -148,6 +157,7 @@ async def ingest_rss_source(
 
     items_added = 0
     items_skipped = 0
+    items_filtered = 0
 
     seen_ids: set[str] = set()
     candidates: list[dict] = []
@@ -197,6 +207,17 @@ async def ingest_rss_source(
         image_url = entry.get("image_url")
         author = entry.get("author")
         published_at = entry.get("published_at", datetime.now(UTC).replace(tzinfo=None))
+
+        # Relevance gate for mixed-topic feeds: keyword pre-filter → Gemini fallback
+        if not source.is_draft_focused:
+            if not check_keyword_relevance(title, description):
+                is_relevant = await news_summarization_service.check_draft_relevance(
+                    title, description
+                )
+                if not is_relevant:
+                    items_filtered += 1
+                    logger.debug(f"  Filtered (not relevant): {title[:60]}")
+                    continue
 
         # Generate AI summary, tag, and player mentions
         mentioned_players: list[str] = []
@@ -257,9 +278,9 @@ async def ingest_rss_source(
 
     logger.info(
         f"  ✓ {source.name}: {items_added} added, {items_skipped} skipped, "
-        f"{mentions_added} mentions"
+        f"{items_filtered} filtered, {mentions_added} mentions"
     )
-    return items_added, items_skipped, mentions_added
+    return items_added, items_skipped, items_filtered, mentions_added
 
 
 async def _persist_player_mentions(

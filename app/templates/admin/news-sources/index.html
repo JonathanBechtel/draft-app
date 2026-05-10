@@ -31,6 +31,7 @@
         <th>Name</th>
         <th>Type</th>
         <th>Status</th>
+        <th>Filtering</th>
         <th>Interval</th>
         <th>Last Fetched</th>
         <th>Actions</th>
@@ -51,6 +52,13 @@
           <span class="admin-badge admin-badge--active">Active</span>
           {% else %}
           <span class="admin-badge admin-badge--inactive">Inactive</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if source.is_draft_focused %}
+          <span class="admin-badge admin-badge--inactive">All-In</span>
+          {% else %}
+          <span class="admin-badge admin-badge--active">Filtered</span>
           {% endif %}
         </td>
         <td>{{ source.fetch_interval_minutes }} min</td>
