@@ -151,6 +151,46 @@ class TestPlayersList:
         assert response.status_code == 200
         assert "Test Player" in response.text
 
+    async def test_list_filters_by_career_and_draft_status(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_user_id: int,
+        sample_player_id: int,
+    ):
+        """Career and draft status filters narrow the admin player list."""
+        _ = admin_user_id
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO player_lifecycle (
+                    player_id, lifecycle_stage, competition_context,
+                    draft_status, career_status, current_affiliation_type,
+                    commitment_status, updated_at
+                )
+                VALUES (
+                    :id, 'COLLEGE', 'NCAA', 'DECLARED', 'PROSPECT',
+                    'COLLEGE_TEAM', 'UNKNOWN', CURRENT_TIMESTAMP
+                )
+                """
+            ),
+            {"id": sample_player_id},
+        )
+        await db_session.commit()
+        await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
+
+        response = await app_client.get(
+            "/admin/players?career_status=prospect&draft_status=declared"
+        )
+        assert response.status_code == 200
+        assert "Test Player" in response.text
+        assert "Draft Prospect" in response.text
+        assert "Declared" in response.text
+
+        response = await app_client.get("/admin/players?career_status=retired")
+        assert response.status_code == 200
+        assert "Test Player" not in response.text
+
     async def test_list_shows_success_message(
         self,
         app_client: AsyncClient,
@@ -252,6 +292,21 @@ class TestPlayersCreate:
             )
         )
         assert result.scalar_one() == "New Player"
+
+        result = await db_session.execute(
+            text(
+                """
+                SELECT career_status, draft_status, is_draft_prospect
+                FROM player_lifecycle pl
+                JOIN players_master pm ON pm.id = pl.player_id
+                WHERE pm.display_name = 'New Player'
+                """
+            )
+        )
+        lifecycle = result.one()
+        assert lifecycle[0] == "PROSPECT"
+        assert lifecycle[1] == "UNKNOWN"
+        assert lifecycle[2] is True
 
     async def test_create_missing_display_name_error(
         self,
@@ -415,6 +470,7 @@ class TestPlayersEdit:
                 "last_name": "Player",
                 "school": "Test University",
                 "draft_year": "2024",
+                "career_status": "prospect",
                 "lifecycle_stage": "high_school",
                 "competition_context": "high_school",
                 "draft_status": "not_eligible",
@@ -432,7 +488,7 @@ class TestPlayersEdit:
         result = await db_session.execute(
             text(
                 """
-                SELECT lifecycle_stage, competition_context, draft_status,
+                SELECT career_status, lifecycle_stage, competition_context, draft_status,
                        expected_draft_year, current_affiliation_name,
                        current_affiliation_type, commitment_school,
                        commitment_status, is_draft_prospect
@@ -443,15 +499,59 @@ class TestPlayersEdit:
             {"id": sample_player_id},
         )
         row = result.one()
-        assert row[0] == "HIGH_SCHOOL"
+        assert row[0] == "PROSPECT"
         assert row[1] == "HIGH_SCHOOL"
-        assert row[2] == "NOT_ELIGIBLE"
-        assert row[3] == 2027
-        assert row[4] == "Montverde Academy"
-        assert row[5] == "HIGH_SCHOOL"
-        assert row[6] == "USC"
-        assert row[7] == "COMMITTED"
-        assert row[8] is True
+        assert row[2] == "HIGH_SCHOOL"
+        assert row[3] == "NOT_ELIGIBLE"
+        assert row[4] == 2027
+        assert row[5] == "Montverde Academy"
+        assert row[6] == "HIGH_SCHOOL"
+        assert row[7] == "USC"
+        assert row[8] == "COMMITTED"
+        assert row[9] is True
+
+    async def test_update_derives_legacy_active_flag_from_career_status(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_user_id: int,
+        sample_player_id: int,
+    ):
+        """Career status is the source for the old is_active_nba flag."""
+        _ = admin_user_id
+        await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
+
+        response = await app_client.post(
+            f"/admin/players/{sample_player_id}",
+            data={
+                "display_name": "Test Player",
+                "first_name": "Test",
+                "last_name": "Player",
+                "school": "Test University",
+                "draft_year": "2024",
+                "career_status": "retired",
+                "draft_status": "drafted",
+                "current_team": "",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code in {302, 303}
+
+        result = await db_session.execute(
+            text(
+                """
+                SELECT pl.career_status, pl.draft_status, ps.is_active_nba
+                FROM player_lifecycle pl
+                JOIN player_status ps ON ps.player_id = pl.player_id
+                WHERE pl.player_id = :id
+                """
+            ),
+            {"id": sample_player_id},
+        )
+        row = result.one()
+        assert row[0] == "RETIRED"
+        assert row[1] == "DRAFTED"
+        assert row[2] is False
 
     async def test_update_missing_required_field_error(
         self,
