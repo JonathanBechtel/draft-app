@@ -31,6 +31,7 @@ from app.schemas.players_master import PlayerMaster  # noqa: F401 - needed for F
 from app.services.news_service import get_active_sources
 from app.services.news_summarization_service import news_summarization_service
 from app.services.player_mention_service import resolve_player_names_as_map
+from app.services.publisher_filters import apply_publisher_filters
 from app.utils.draft_relevance import check_keyword_relevance
 
 logger = logging.getLogger(__name__)
@@ -186,6 +187,14 @@ async def ingest_rss_source(
         entry for entry in candidates if entry.get("guid", "") not in existing_ids
     ]
     items_skipped += len(candidates) - len(new_entries)
+
+    # Publisher-specific exclusions (e.g., Silver Bulletin honors a no-methodology
+    # / no-models-and-forecasts editorial restriction). Runs before the relevance
+    # gate so we never spend Gemini calls on excluded posts.
+    new_entries, publisher_filtered = await apply_publisher_filters(
+        source.feed_url, new_entries
+    )
+    items_filtered += publisher_filtered
 
     # Phase 1: network/AI work (no DB connections/transactions held).
     fetched_at = datetime.now(UTC).replace(tzinfo=None)
