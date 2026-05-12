@@ -191,6 +191,23 @@ class TestPlayersList:
         assert response.status_code == 200
         assert "Test Player" not in response.text
 
+    async def test_unknown_status_filters_include_missing_lifecycle_rows(
+        self,
+        app_client: AsyncClient,
+        admin_user_id: int,
+        sample_player_id: int,
+    ):
+        """Unknown taxonomy filters should include players with no lifecycle row."""
+        _ = admin_user_id
+        _ = sample_player_id
+        await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
+
+        response = await app_client.get(
+            "/admin/players?career_status=unknown&draft_status=unknown"
+        )
+        assert response.status_code == 200
+        assert "Test Player" in response.text
+
     async def test_list_shows_success_message(
         self,
         app_client: AsyncClient,
@@ -552,6 +569,50 @@ class TestPlayersEdit:
         assert row[0] == "RETIRED"
         assert row[1] == "DRAFTED"
         assert row[2] is False
+
+    async def test_update_preserves_legacy_active_flag_when_career_unknown(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_user_id: int,
+        sample_player_id: int,
+    ):
+        """Saving unknown career status should not clear existing NBA active data."""
+        _ = admin_user_id
+        await db_session.execute(
+            text(
+                """
+                INSERT INTO player_status (
+                    player_id, is_active_nba, source, updated_at
+                )
+                VALUES (:id, true, 'test', CURRENT_TIMESTAMP)
+                """
+            ),
+            {"id": sample_player_id},
+        )
+        await db_session.commit()
+        await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
+
+        response = await app_client.post(
+            f"/admin/players/{sample_player_id}",
+            data={
+                "display_name": "Test Player",
+                "first_name": "Test",
+                "last_name": "Player",
+                "school": "Test University",
+                "draft_year": "2024",
+                "career_status": "unknown",
+                "draft_status": "unknown",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code in {302, 303}
+
+        result = await db_session.execute(
+            text("SELECT is_active_nba FROM player_status WHERE player_id = :id"),
+            {"id": sample_player_id},
+        )
+        assert result.scalar_one() is True
 
     async def test_update_missing_required_field_error(
         self,

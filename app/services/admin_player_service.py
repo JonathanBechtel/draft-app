@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from enum import Enum
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, or_, select
@@ -283,24 +283,32 @@ async def list_players(
         career_val = career_status.strip().lower()
         if career_val in {item.value for item in CareerStatus}:
             parsed_career = CareerStatus(career_val)
-            query = query.where(
-                PlayerLifecycle.career_status == parsed_career  # type: ignore[arg-type]
-            )
-            count_query = count_query.where(
-                PlayerLifecycle.career_status == parsed_career  # type: ignore[arg-type]
-            )
+            career_filter: Any
+            if parsed_career == CareerStatus.UNKNOWN:
+                career_filter = or_(
+                    PlayerLifecycle.id.is_(None),  # type: ignore[union-attr]
+                    PlayerLifecycle.career_status == parsed_career,  # type: ignore[arg-type]
+                )
+            else:
+                career_filter = PlayerLifecycle.career_status == parsed_career  # type: ignore[arg-type]
+            query = query.where(career_filter)
+            count_query = count_query.where(career_filter)
 
     # Apply draft status filter
     if draft_status and draft_status.strip():
         draft_val = draft_status.strip().lower()
         if draft_val in {item.value for item in DraftStatus}:
             parsed_draft = DraftStatus(draft_val)
-            query = query.where(
-                PlayerLifecycle.draft_status == parsed_draft  # type: ignore[arg-type]
-            )
-            count_query = count_query.where(
-                PlayerLifecycle.draft_status == parsed_draft  # type: ignore[arg-type]
-            )
+            draft_filter: Any
+            if parsed_draft == DraftStatus.UNKNOWN:
+                draft_filter = or_(
+                    PlayerLifecycle.id.is_(None),  # type: ignore[union-attr]
+                    PlayerLifecycle.draft_status == parsed_draft,  # type: ignore[arg-type]
+                )
+            else:
+                draft_filter = PlayerLifecycle.draft_status == parsed_draft  # type: ignore[arg-type]
+            query = query.where(draft_filter)
+            count_query = count_query.where(draft_filter)
 
     # Get total count
     total = await db.scalar(count_query)
@@ -817,11 +825,11 @@ async def update_player_status(
     # Parse and set fields. career_status is the source of truth; fall back to
     # the old form field only for older callers that have not been updated.
     derived_active = derive_is_active_nba(career_status)
-    status.is_active_nba = (
-        derived_active
-        if career_status != CareerStatus.UNKNOWN
-        else _parse_bool_field(data.is_active_nba)
-    )
+    parsed_active = _parse_bool_field(data.is_active_nba)
+    if career_status != CareerStatus.UNKNOWN:
+        status.is_active_nba = derived_active
+    elif parsed_active is not None:
+        status.is_active_nba = parsed_active
     status.current_team = _clean_str(data.current_team)
     status.nba_last_season = _clean_str(data.nba_last_season)
     status.raw_position = _clean_str(data.raw_position)
