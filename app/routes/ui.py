@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.expanded_trending_service import get_expanded_trending_players
+from app.models.news import NewsItemRead
 from app.services.news_service import (
     format_relative_time,
     get_author_counts,
@@ -17,6 +18,7 @@ from app.services.news_service import (
     get_news_feed,
     get_player_news_feed,
     get_source_counts,
+    get_sticky_news_item,
     get_trending_players,
 )
 from app.schemas.player_content_mentions import ContentType
@@ -67,6 +69,23 @@ FOOTER_LINKS = [
 HOME_NEWS_FEED_LIMIT = 100
 HOME_NEWS_SIDEBAR_LIMIT = 8
 HOME_FILM_ROOM_LIMIT = 24
+
+
+def _news_item_to_dict(item: NewsItemRead, *, is_sticky: bool = False) -> dict:
+    """Render a NewsItemRead as the dict shape feed templates expect."""
+    return {
+        "id": item.id,
+        "source": item.source_name.strip(),
+        "title": item.title,
+        "summary": item.summary,
+        "url": item.url,
+        "image_url": item.image_url,
+        "author": (item.author or "").strip() or None,
+        "time": item.time,
+        "tag": item.tag,
+        "read_more_text": item.read_more_text,
+        "is_sticky": is_sticky,
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -142,10 +161,17 @@ async def home(
     # Fetch news feed from database (falls back to empty if no items yet)
     # Fetch more items to enable pagination (6 per page in new grid layout)
     news_feed = await get_news_feed(db, limit=HOME_NEWS_FEED_LIMIT)
+    sticky_item = await get_sticky_news_item(db)
     source_counter: Counter[str] = Counter()
     author_counter: Counter[str] = Counter()
     feed_items: list[dict] = []
+    if sticky_item is not None:
+        feed_items.append(_news_item_to_dict(sticky_item, is_sticky=True))
+    sticky_id = sticky_item.id if sticky_item is not None else None
     for item in news_feed.items:
+        if item.id == sticky_id:
+            # Already prepended via the sticky lookup; skip the duplicate.
+            continue
         source = item.source_name.strip()
         author = (item.author or "").strip() or None
 
@@ -165,6 +191,7 @@ async def home(
                 "time": item.time,
                 "tag": item.tag,
                 "read_more_text": item.read_more_text,
+                "is_sticky": False,
             }
         )
 
@@ -496,8 +523,22 @@ async def news_page(
         period=period,
     )
 
+    # Sticky pins to the top of the default /news view only: first page and
+    # zero active filters. Once the user narrows the feed, the pin steps aside.
+    has_filters = any(
+        v is not None and v != "" for v in (tag, source, author, player, period)
+    )
+    sticky_item: NewsItemRead | None = None
+    if offset == 0 and not has_filters:
+        sticky_item = await get_sticky_news_item(db)
+
     feed_items: list[dict] = []
+    sticky_id = sticky_item.id if sticky_item is not None else None
+    if sticky_item is not None:
+        feed_items.append(_news_item_to_dict(sticky_item, is_sticky=True))
     for item in feed.items:
+        if item.id == sticky_id:
+            continue
         item_source = item.source_name.strip()
         item_author = (item.author or "").strip() or None
         feed_items.append(
@@ -512,6 +553,7 @@ async def news_page(
                 "time": item.time,
                 "tag": item.tag,
                 "read_more_text": item.read_more_text,
+                "is_sticky": False,
             }
         )
 

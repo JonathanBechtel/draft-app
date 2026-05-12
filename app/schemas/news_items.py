@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
+import sqlalchemy as sa
 from sqlalchemy import Column, Enum as SAEnum, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
@@ -86,3 +87,16 @@ class NewsItem(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Future: player association
     player_id: Optional[int] = Field(default=None, foreign_key="players_master.id")
+
+    # Pinned/sticky: when true, this item is rendered at the top of the homepage
+    # and /news feeds. At most one row should have is_sticky=True at a time;
+    # the service layer enforces this invariant on writes.
+    is_sticky: bool = Field(
+        default=False,
+        sa_column=Column(
+            "is_sticky",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
+        ),
+    )

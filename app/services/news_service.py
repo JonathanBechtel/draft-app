@@ -28,6 +28,7 @@ _NEWS_FEED_COLUMNS = [
     NewsItem.author,
     NewsItem.tag,
     NewsItem.published_at,
+    NewsItem.is_sticky,
     NewsSource.display_name.label("source_name"),  # type: ignore[attr-defined]
 ]
 
@@ -745,4 +746,52 @@ def _row_to_news_item_read(row: dict, is_player_specific: bool = False) -> NewsI
         tag=_resolve_tag(row["tag"]),
         read_more_text=build_read_more_text(source_name),
         is_player_specific=is_player_specific,
+        is_sticky=bool(row.get("is_sticky", False)),
+    )
+
+
+async def get_sticky_news_item(db: AsyncSession) -> Optional[NewsItemRead]:
+    """Return the currently pinned news item, if any.
+
+    Uses the partial index on `is_sticky = true` for an O(1) lookup. The
+    service layer enforces a single sticky row, so `.limit(1)` is defensive.
+    """
+    stmt = (
+        select(*_NEWS_FEED_COLUMNS)  # type: ignore[call-overload]
+        .select_from(NewsItem)
+        .join(NewsSource, NewsSource.id == NewsItem.source_id)  # type: ignore[arg-type]
+        .where(NewsItem.is_sticky.is_(True))  # type: ignore[attr-defined]
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    row = result.mappings().first()
+    if not row:
+        return None
+    return _row_to_news_item_read(row)  # type: ignore[arg-type]
+
+
+async def set_sticky_news_item(db: AsyncSession, item_id: int | None) -> None:
+    """Pin `item_id` and unpin every other row, atomically.
+
+    Passing `item_id=None` clears the sticky entirely. Callers manage the
+    surrounding transaction (e.g., admin route wraps its updates in
+    `async with db.begin()`); we only emit the UPDATEs here.
+    """
+    from sqlalchemy import update
+
+    # Always unpin every currently-sticky row first. Cheap given the partial
+    # index, and keeps the invariant: at most one sticky row.
+    await db.execute(
+        update(NewsItem)
+        .where(NewsItem.is_sticky.is_(True))  # type: ignore[attr-defined]
+        .values(is_sticky=False)
+    )
+
+    if item_id is None:
+        return
+
+    await db.execute(
+        update(NewsItem)
+        .where(NewsItem.id == item_id)  # type: ignore[arg-type]
+        .values(is_sticky=True)
     )

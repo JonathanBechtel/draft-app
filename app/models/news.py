@@ -22,6 +22,7 @@ class NewsItemRead(SQLModel):
     tag: str  # "Riser", "Faller", etc.
     read_more_text: str  # "Read at Floor and Ceiling"
     is_player_specific: bool = False  # True when article mentions this player
+    is_sticky: bool = False  # True when this item is pinned to the top of feeds
 
 
 class NewsFeedResponse(SQLModel):

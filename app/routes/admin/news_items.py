@@ -21,6 +21,7 @@ from app.routes.admin.helpers import (
 from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
+from app.services.news_service import set_sticky_news_item
 from app.utils.db_async import get_session
 
 router = APIRouter(prefix="/news-items", tags=["admin-news-items"])
@@ -218,6 +219,7 @@ async def update_news_item(
     tag: str = Form(...),
     player_id: str | None = Form(default=None),
     summary: str | None = Form(default=None),
+    is_sticky: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """Update a news item."""
@@ -294,6 +296,18 @@ async def update_news_item(
         item.tag = tag_enum
         item.player_id = parsed_player_id
         item.summary = summary.strip() if summary and summary.strip() else None
+
+        # Sticky toggle: HTML form posts the field only when checked.
+        # set_sticky_news_item enforces the single-sticky invariant.
+        wants_sticky = is_sticky is not None and is_sticky.lower() in (
+            "on",
+            "true",
+            "1",
+        )
+        if wants_sticky:
+            await set_sticky_news_item(db, item_id)
+        elif item.is_sticky:
+            await set_sticky_news_item(db, None)
 
     return RedirectResponse(url="/admin/news-items?success=updated", status_code=303)
 
