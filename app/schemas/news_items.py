@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Optional
 
 import sqlalchemy as sa
-from sqlalchemy import Column, Enum as SAEnum, UniqueConstraint
+from sqlalchemy import Column, Enum as SAEnum, Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -54,6 +54,16 @@ class NewsItem(SQLModel, table=True):  # type: ignore[call-arg]
     __table_args__ = (
         UniqueConstraint(
             "source_id", "external_id", name="uq_news_items_source_external"
+        ),
+        # Unique partial index enforces the "at most one sticky row" invariant
+        # at the DB level. Mirrors the migration in
+        # alembic/versions/o4p5q6r7s8t9_add_news_items_is_sticky.py so test
+        # schemas built via SQLModel.metadata.create_all also pick it up.
+        Index(
+            "ix_news_items_is_sticky",
+            "is_sticky",
+            unique=True,
+            postgresql_where=sa.text("is_sticky = true"),
         ),
     )
 

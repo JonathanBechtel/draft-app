@@ -30,13 +30,17 @@ def upgrade() -> None:
             server_default=sa.text("false"),
         ),
     )
-    # Partial index makes the "fetch the sticky item" lookup O(1) without
-    # adding cost to inserts of non-sticky rows (which is ~all of them).
+    # Unique partial index enforces the "at most one sticky row" invariant
+    # at the DB level, so a concurrent admin write that tries to pin a
+    # second article hits a constraint violation rather than silently
+    # leaving two rows with is_sticky=true. The partial WHERE also keeps
+    # the index O(1) for the "fetch the sticky item" lookup and adds no
+    # cost to inserts of non-sticky rows (which is ~all of them).
     op.create_index(
         "ix_news_items_is_sticky",
         "news_items",
         ["is_sticky"],
-        unique=False,
+        unique=True,
         postgresql_where=sa.text("is_sticky = true"),
     )
 

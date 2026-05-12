@@ -219,6 +219,125 @@ class TestStickyOnPublicPages:
         assert response.status_code == 200
         assert '"is_sticky": true' not in response.text
 
+    async def test_news_page_pagination_no_duplicates_and_no_gaps(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        source: NewsSource,
+    ):
+        """An older sticky should not duplicate on the page it would naturally land on,
+        and the union of pages should cover every article exactly once.
+
+        Regression for the Codex P2 review: previously the route fetched
+        ``NEWS_PAGE_LIMIT`` items and unconditionally prepended the sticky,
+        yielding 13 cards on page 1 and a duplicate sticky at its natural
+        position on a later page.
+        """
+        # Build 15 natural articles + 1 older sticky so 2 pages are needed.
+        now = datetime.now(UTC).replace(tzinfo=None)
+        natural: list[NewsItem] = []
+        for i in range(15):
+            row = NewsItem(
+                source_id=source.id,  # type: ignore[arg-type]
+                external_id=f"pag-natural-{i}",
+                title=f"Natural Article {i:02d}",
+                url=f"https://example.com/natural-{i}",
+                tag=NewsItemTag.SCOUTING_REPORT,
+                published_at=now - timedelta(hours=i + 1),
+                created_at=now,
+            )
+            natural.append(row)
+            db_session.add(row)
+        sticky_row = NewsItem(
+            source_id=source.id,  # type: ignore[arg-type]
+            external_id="pag-sticky",
+            title="Sticky Article Old",
+            url="https://example.com/pag-sticky",
+            tag=NewsItemTag.SCOUTING_REPORT,
+            # Older than every natural item so its natural position is last.
+            published_at=now - timedelta(days=30),
+            created_at=now,
+        )
+        db_session.add(sticky_row)
+        await db_session.commit()
+        for row in [*natural, sticky_row]:
+            await db_session.refresh(row)
+
+        await set_sticky_news_item(db_session, sticky_row.id)
+        await db_session.commit()
+
+        # Page 1: sticky pinned + first 11 natural articles = 12 cards.
+        r1 = await app_client.get("/news")
+        assert r1.status_code == 200
+        body1 = r1.text
+        # The sticky title shows up on page 1, marked is_sticky=true.
+        assert "Sticky Article Old" in body1
+        assert '"is_sticky": true' in body1
+        # Page 1 should render Natural Article 00 through 10.
+        for i in range(11):
+            assert f"Natural Article {i:02d}" in body1, (
+                f"Natural Article {i:02d} missing from page 1"
+            )
+        # Page 1 should NOT yet show Natural Article 11..14.
+        for i in range(11, 15):
+            assert f"Natural Article {i:02d}" not in body1, (
+                f"Natural Article {i:02d} leaked onto page 1"
+            )
+
+        # Page 2: items 11..14 only. No sticky.
+        r2 = await app_client.get("/news?offset=12")
+        assert r2.status_code == 200
+        body2 = r2.text
+        assert "Sticky Article Old" not in body2, (
+            "Sticky appeared at its natural position on page 2 -- "
+            "exclude_id should have removed it from the feed query."
+        )
+        assert '"is_sticky": true' not in body2
+        for i in range(11, 15):
+            assert f"Natural Article {i:02d}" in body2, (
+                f"Natural Article {i:02d} missing from page 2"
+            )
+        # Verify page 1's articles did not bleed onto page 2.
+        for i in range(11):
+            assert f"Natural Article {i:02d}" not in body2, (
+                f"Natural Article {i:02d} duplicated onto page 2"
+            )
+
+
+@pytest.mark.asyncio
+class TestStickyDatabaseInvariant:
+    """The unique partial index must prevent a second sticky row at the DB layer."""
+
+    async def test_duplicate_sticky_insert_violates_constraint(
+        self,
+        db_session: AsyncSession,
+        items: list[NewsItem],
+    ):
+        """A raw UPDATE that ignores the service layer must still fail to
+        pin a second row -- this protects against concurrent admin writes
+        bypassing set_sticky_news_item's clear-then-set sequence.
+
+        Regression for the Codex P1 review.
+        """
+        from sqlalchemy.exc import IntegrityError
+        from sqlalchemy import text
+
+        # Pin the first item via the service helper, commit cleanly.
+        await set_sticky_news_item(db_session, items[0].id)
+        await db_session.commit()
+
+        # Now try to pin a second item with a raw UPDATE (mirrors what a
+        # second concurrent transaction would do once its row lock unblocks).
+        with pytest.raises(IntegrityError):
+            await db_session.execute(
+                text(
+                    "UPDATE news_items SET is_sticky = true WHERE id = :id"
+                ),
+                {"id": items[1].id},
+            )
+            await db_session.commit()
+        await db_session.rollback()
+
 
 @pytest.mark.asyncio
 class TestStickyAdminToggle:

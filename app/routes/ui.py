@@ -511,34 +511,41 @@ async def news_page(
     db: AsyncSession = Depends(get_session),
 ):
     """Render the dedicated News page with filterable article feed."""
-    # Fetch filtered news feed
+    # Sticky pins to the top of the default /news view only: zero active
+    # filters. Once the user narrows the feed, the pin steps aside.
+    has_filters = any(
+        v is not None and v != "" for v in (tag, source, author, player, period)
+    )
+    sticky_item: NewsItemRead | None = None
+    if not has_filters:
+        sticky_item = await get_sticky_news_item(db)
+    sticky_id = sticky_item.id if sticky_item is not None else None
+
+    # When a sticky is in play, page 1 surrenders one slot to it (limit-1
+    # natural results + sticky card = NEWS_PAGE_LIMIT cards) and pages 2+
+    # shift their offset back by 1 to backfill the slot that page 1 did
+    # not consume. The query also drops the sticky id outright so it
+    # cannot reappear at its natural position on a later page.
+    sticky_consumed_a_slot = 1 if sticky_id is not None else 0
+    feed_limit = NEWS_PAGE_LIMIT - (sticky_consumed_a_slot if offset == 0 else 0)
+    feed_offset = offset - sticky_consumed_a_slot if offset > 0 else 0
+
     feed = await get_filtered_news_feed(
         db,
-        limit=NEWS_PAGE_LIMIT,
-        offset=offset,
+        limit=feed_limit,
+        offset=feed_offset,
         tag=tag,
         source_id=source,
         author=author,
         player_id=player,
         period=period,
+        exclude_id=sticky_id,
     )
-
-    # Sticky pins to the top of the default /news view only: first page and
-    # zero active filters. Once the user narrows the feed, the pin steps aside.
-    has_filters = any(
-        v is not None and v != "" for v in (tag, source, author, player, period)
-    )
-    sticky_item: NewsItemRead | None = None
-    if offset == 0 and not has_filters:
-        sticky_item = await get_sticky_news_item(db)
 
     feed_items: list[dict] = []
-    sticky_id = sticky_item.id if sticky_item is not None else None
-    if sticky_item is not None:
+    if sticky_item is not None and offset == 0:
         feed_items.append(_news_item_to_dict(sticky_item, is_sticky=True))
     for item in feed.items:
-        if item.id == sticky_id:
-            continue
         item_source = item.source_name.strip()
         item_author = (item.author or "").strip() or None
         feed_items.append(
@@ -556,6 +563,11 @@ async def news_page(
                 "is_sticky": False,
             }
         )
+
+    # Pagination math runs on the full feed including the sticky card, so
+    # the page links land on the right offsets and "X-Y of Z" matches the
+    # number of cards a user actually scrolls past.
+    total = feed.total + sticky_consumed_a_slot
 
     # Hero article: first page of any filter view
     hero_article_dict = None
@@ -628,7 +640,7 @@ async def news_page(
             "sources": sources_data,
             "authors": authors_list,
             "trending_players": trending_players,
-            "total": feed.total,
+            "total": total,
             "limit": NEWS_PAGE_LIMIT,
             "offset": offset,
             "active_tag": tag,

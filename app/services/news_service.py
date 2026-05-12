@@ -493,6 +493,7 @@ async def get_filtered_news_feed(
     author: str | None = None,
     player_id: int | None = None,
     period: str | None = None,
+    exclude_id: int | None = None,
 ) -> NewsFeedResponse:
     """Fetch paginated news feed with optional multi-dimensional filters.
 
@@ -507,6 +508,9 @@ async def get_filtered_news_feed(
         author: Filter by author name (case-insensitive)
         player_id: Filter to articles mentioning this player
         period: Time window filter ("today", "week", "month", or None for all)
+        exclude_id: Drop a specific news_item id from both items and total
+            (used to keep the sticky item from appearing twice when it is
+            rendered as a pinned card outside the normal pagination flow).
 
     Returns:
         NewsFeedResponse with filtered items and accurate total
@@ -518,6 +522,10 @@ async def get_filtered_news_feed(
     )
 
     count_base = select(func.count()).select_from(NewsItem)
+
+    if exclude_id is not None:
+        base_query = base_query.where(NewsItem.id != exclude_id)  # type: ignore[arg-type]
+        count_base = count_base.where(NewsItem.id != exclude_id)  # type: ignore[arg-type]
 
     # Apply filters to both queries
     if tag:
