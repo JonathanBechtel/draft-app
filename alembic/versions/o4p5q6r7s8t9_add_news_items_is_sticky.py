@@ -4,8 +4,8 @@ Allows pinning a single news item to the top of the homepage and /news
 feeds. The single-sticky invariant is enforced at the service layer
 (setting is_sticky=True on one row unsets it on all others).
 
-Revision ID: n3o4p5q6r7s8
-Revises: m2n3o4p5q6r7
+Revision ID: o4p5q6r7s8t9
+Revises: n3o4p5q6r7s8
 Create Date: 2026-05-12
 """
 
@@ -14,8 +14,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op  # type: ignore[attr-defined]
 
-revision: str = "n3o4p5q6r7s8"
-down_revision: Union[str, None] = "m2n3o4p5q6r7"
+revision: str = "o4p5q6r7s8t9"
+down_revision: Union[str, None] = "n3o4p5q6r7s8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
