@@ -218,6 +218,96 @@
       </div>
     </div>
 
+    <div class="admin-form__section">
+      <h3 class="admin-form__section-title">Career & Draft Status</h3>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="career_status">Career Status</label>
+          <select class="admin-form__select" id="career_status" name="career_status">
+            <option value="unknown">Unknown</option>
+            <option value="active">Active NBA</option>
+            <option value="free_agent">Free Agent</option>
+            <option value="prospect" selected>Draft Prospect</option>
+            <option value="g_league">G League</option>
+            <option value="overseas">Overseas</option>
+            <option value="retired">Retired</option>
+            <option value="undrafted">Undrafted</option>
+          </select>
+          <span class="admin-form__help">This drives the legacy active NBA flag.</span>
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="draft_status">Draft Status</label>
+          <select class="admin-form__select" id="draft_status" name="draft_status">
+            <option value="unknown">Unknown</option>
+            <option value="not_eligible">Future Eligible</option>
+            <option value="eligible">Eligible</option>
+            <option value="declared">Declared</option>
+            <option value="withdrew">Withdrew</option>
+            <option value="drafted">Drafted</option>
+            <option value="undrafted">Undrafted</option>
+          </select>
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="lifecycle_stage">Lifecycle Detail</label>
+          <select class="admin-form__select" id="lifecycle_stage" name="lifecycle_stage">
+            <option value="unknown" selected>Auto</option>
+            <option value="recruit">Recruit</option>
+            <option value="high_school">High School</option>
+            <option value="college">College</option>
+            <option value="international_amateur">International Amateur</option>
+            <option value="draft_declared">Draft Declared</option>
+            <option value="draft_withdrew">Draft Withdrew</option>
+            <option value="drafted_not_in_nba">Drafted, Not in NBA</option>
+            <option value="nba_active">NBA Active</option>
+            <option value="pro_non_nba">Pro, Non-NBA</option>
+            <option value="inactive_former">Inactive Former</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="admin-form__row">
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="expected_draft_year">Expected Draft Year</label>
+          <input
+            class="admin-form__input"
+            id="expected_draft_year"
+            name="expected_draft_year"
+            type="number"
+            min="1947"
+            max="2035"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="current_affiliation_name">Current Affiliation</label>
+          <input
+            class="admin-form__input"
+            id="current_affiliation_name"
+            name="current_affiliation_name"
+            type="text"
+            placeholder="e.g., Duke, Montverde Academy, Lakers"
+          />
+        </div>
+
+        <div class="admin-form__field">
+          <label class="admin-form__label" for="current_affiliation_type">Affiliation Type</label>
+          <select class="admin-form__select" id="current_affiliation_type" name="current_affiliation_type">
+            <option value="unknown" selected>Unknown</option>
+            <option value="high_school">High School</option>
+            <option value="college_team">College Team</option>
+            <option value="committed_school">Committed School</option>
+            <option value="nba_team">NBA Team</option>
+            <option value="g_league_team">G League Team</option>
+            <option value="overseas_club">Overseas Club</option>
+            <option value="independent">Independent</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
     <!-- NBA Career Section -->
     <div class="admin-form__section">
       <h3 class="admin-form__section-title">NBA Career</h3>

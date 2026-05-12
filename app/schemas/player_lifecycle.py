@@ -49,6 +49,19 @@ class DraftStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
+class CareerStatus(str, Enum):
+    """Current career status for a player."""
+
+    ACTIVE = "active"
+    FREE_AGENT = "free_agent"
+    PROSPECT = "prospect"
+    G_LEAGUE = "g_league"
+    OVERSEAS = "overseas"
+    RETIRED = "retired"
+    UNDRAFTED = "undrafted"
+    UNKNOWN = "unknown"
+
+
 class AffiliationType(str, Enum):
     """Type of current player affiliation."""
 
@@ -113,6 +126,17 @@ class PlayerLifecycle(SQLModel, table=True):  # type: ignore[call-arg]
             ),
             nullable=False,
             server_default=DraftStatus.UNKNOWN.name,
+        ),
+    )
+    career_status: CareerStatus = Field(
+        default=CareerStatus.UNKNOWN,
+        sa_column=Column(
+            SAEnum(
+                CareerStatus,
+                name="career_status_enum",
+            ),
+            nullable=False,
+            server_default=CareerStatus.UNKNOWN.name,
         ),
     )
 

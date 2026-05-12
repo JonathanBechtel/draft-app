@@ -39,12 +39,31 @@
       </div>
 
       <div class="admin-filters__field">
-        <label class="admin-filters__label" for="nba_status">NBA Status</label>
-        <select class="admin-form__select" id="nba_status" name="nba_status">
+        <label class="admin-filters__label" for="career_status">Career Status</label>
+        <select class="admin-form__select" id="career_status" name="career_status">
           <option value="">All</option>
-          <option value="active" {% if nba_status == 'active' %}selected{% endif %}>NBA Active</option>
-          <option value="inactive" {% if nba_status == 'inactive' %}selected{% endif %}>Not Active</option>
-          <option value="unknown" {% if nba_status == 'unknown' %}selected{% endif %}>Unknown</option>
+          <option value="active" {% if career_status == 'active' %}selected{% endif %}>Active NBA</option>
+          <option value="free_agent" {% if career_status == 'free_agent' %}selected{% endif %}>Free Agent</option>
+          <option value="prospect" {% if career_status == 'prospect' %}selected{% endif %}>Draft Prospect</option>
+          <option value="g_league" {% if career_status == 'g_league' %}selected{% endif %}>G League</option>
+          <option value="overseas" {% if career_status == 'overseas' %}selected{% endif %}>Overseas</option>
+          <option value="retired" {% if career_status == 'retired' %}selected{% endif %}>Retired</option>
+          <option value="undrafted" {% if career_status == 'undrafted' %}selected{% endif %}>Undrafted</option>
+          <option value="unknown" {% if career_status == 'unknown' %}selected{% endif %}>Unknown</option>
+        </select>
+      </div>
+
+      <div class="admin-filters__field">
+        <label class="admin-filters__label" for="draft_status">Draft Status</label>
+        <select class="admin-form__select" id="draft_status" name="draft_status">
+          <option value="">All</option>
+          <option value="not_eligible" {% if draft_status == 'not_eligible' %}selected{% endif %}>Future Eligible</option>
+          <option value="eligible" {% if draft_status == 'eligible' %}selected{% endif %}>Eligible</option>
+          <option value="declared" {% if draft_status == 'declared' %}selected{% endif %}>Declared</option>
+          <option value="withdrew" {% if draft_status == 'withdrew' %}selected{% endif %}>Withdrew</option>
+          <option value="drafted" {% if draft_status == 'drafted' %}selected{% endif %}>Drafted</option>
+          <option value="undrafted" {% if draft_status == 'undrafted' %}selected{% endif %}>Undrafted</option>
+          <option value="unknown" {% if draft_status == 'unknown' %}selected{% endif %}>Unknown</option>
         </select>
       </div>
 
@@ -62,7 +81,8 @@
         <th>Name</th>
         <th>School</th>
         <th>Draft</th>
-        <th>Status</th>
+        <th>Career</th>
+        <th>Draft Status</th>
         <th>Actions</th>
       </tr>
     </thead>
@@ -92,10 +112,17 @@
           {% endif %}
         </td>
         <td>
-          {% if p.is_active_nba is true %}
-          <span class="admin-badge admin-badge--active">NBA</span>
-          {% elif p.is_active_nba is false %}
-          <span class="admin-badge admin-badge--inactive">Not Active</span>
+          {% if p.career_status and p.career_status.value == 'active' %}
+          <span class="admin-badge admin-badge--active">{{ p.career_status_label }}</span>
+          {% elif p.career_status and p.career_status.value != 'unknown' %}
+          <span class="admin-badge admin-badge--inactive">{{ p.career_status_label }}</span>
+          {% else %}
+          <span class="admin-badge admin-badge--unknown">Unknown</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if p.draft_status and p.draft_status.value != 'unknown' %}
+          <span class="admin-badge admin-badge--unknown">{{ p.draft_status_label }}</span>
           {% else %}
           <span class="admin-badge admin-badge--unknown">Unknown</span>
           {% endif %}
@@ -121,7 +148,7 @@
     </div>
     <div class="admin-pagination__controls">
       {% if current_page > 1 %}
-      <a href="/admin/players?limit={{ limit }}&offset={{ (current_page - 2) * limit }}{% if q %}&q={{ q }}{% endif %}{% if draft_year %}&draft_year={{ draft_year }}{% endif %}{% if position %}&position={{ position }}{% endif %}{% if nba_status %}&nba_status={{ nba_status }}{% endif %}"
+      <a href="/admin/players?limit={{ limit }}&offset={{ (current_page - 2) * limit }}{% if q %}&q={{ q }}{% endif %}{% if draft_year %}&draft_year={{ draft_year }}{% endif %}{% if position %}&position={{ position }}{% endif %}{% if career_status %}&career_status={{ career_status }}{% endif %}{% if draft_status %}&draft_status={{ draft_status }}{% endif %}"
          class="admin-btn admin-btn--secondary admin-btn--small">Previous</a>
       {% endif %}
 
@@ -130,7 +157,7 @@
       </span>
 
       {% if current_page < pages %}
-      <a href="/admin/players?limit={{ limit }}&offset={{ current_page * limit }}{% if q %}&q={{ q }}{% endif %}{% if draft_year %}&draft_year={{ draft_year }}{% endif %}{% if position %}&position={{ position }}{% endif %}{% if nba_status %}&nba_status={{ nba_status }}{% endif %}"
+      <a href="/admin/players?limit={{ limit }}&offset={{ current_page * limit }}{% if q %}&q={{ q }}{% endif %}{% if draft_year %}&draft_year={{ draft_year }}{% endif %}{% if position %}&position={{ position }}{% endif %}{% if career_status %}&career_status={{ career_status }}{% endif %}{% if draft_status %}&draft_status={{ draft_status }}{% endif %}"
          class="admin-btn admin-btn--secondary admin-btn--small">Next</a>
       {% endif %}
     </div>
@@ -142,13 +169,13 @@
     <div class="admin-empty__icon">&#127936;</div>
     <h3 class="admin-empty__title">No Players</h3>
     <p class="admin-empty__text">
-      {% if q or draft_year or position or nba_status %}
+      {% if q or draft_year or position or career_status or draft_status %}
       No players match your filters. Try adjusting the criteria.
       {% else %}
       No player records exist yet. Add a player to get started.
       {% endif %}
     </p>
-    {% if q or draft_year or position or nba_status %}
+    {% if q or draft_year or position or career_status or draft_status %}
     <a href="/admin/players" class="admin-btn admin-btn--secondary">Clear Filters</a>
     {% else %}
     <a href="/admin/players/new" class="admin-btn admin-btn--primary">Add Player</a>

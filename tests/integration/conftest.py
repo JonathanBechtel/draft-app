@@ -113,6 +113,7 @@ async def async_engine(
     # Ensure SQLModel metadata is populated before creating tables.
     from app.schemas import positions  # noqa: F401
     from app.schemas import player_status  # noqa: F401
+    from app.schemas import player_lifecycle  # noqa: F401
     from app.schemas import combine_anthro  # noqa: F401
     from app.schemas import combine_agility  # noqa: F401
     from app.schemas import combine_shooting  # noqa: F401

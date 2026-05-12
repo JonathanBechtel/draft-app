@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_aliases import PlayerAlias
-from app.schemas.player_lifecycle import DraftStatus, PlayerLifecycle
+from app.schemas.player_lifecycle import CareerStatus, DraftStatus, PlayerLifecycle
 from app.schemas.players_master import PlayerMaster
 from app.services.player_mention_service import resolve_player_names
 
@@ -114,8 +114,10 @@ async def test_create_stub_for_unknown_name(db_session: AsyncSession) -> None:
 
     lifecycle_stmt = select(PlayerLifecycle).where(PlayerLifecycle.player_id == row.id)
     lifecycle = (await db_session.execute(lifecycle_stmt)).scalar_one()
+    assert lifecycle.career_status == CareerStatus.PROSPECT
     assert lifecycle.draft_status == DraftStatus.UNKNOWN
     assert lifecycle.expected_draft_year is None
+    assert lifecycle.is_draft_prospect is True
 
 
 @pytest.mark.asyncio

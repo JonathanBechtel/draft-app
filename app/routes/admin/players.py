@@ -144,6 +144,8 @@ async def _render_list_error(
             q=None,
             draft_year=None,
             position=None,
+            career_status=None,
+            draft_status=None,
             draft_years=list_result.draft_years,
             error=error,
             success=None,
@@ -274,7 +276,8 @@ async def list_players(
     q: str | None = Query(default=None),
     draft_year: str | None = Query(default=None),
     position: str | None = Query(default=None),
-    nba_status: str | None = Query(default=None),
+    career_status: str | None = Query(default=None),
+    draft_status: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """List all players with pagination and filters."""
@@ -294,7 +297,7 @@ async def list_players(
             draft_year_int = None
 
     result = await svc_list_players(
-        db, q, draft_year_int, position, nba_status, limit, offset
+        db, q, draft_year_int, position, career_status, draft_status, limit, offset
     )
 
     # Calculate pagination info
@@ -316,7 +319,8 @@ async def list_players(
             q=q,
             draft_year=draft_year_int,
             position=position,
-            nba_status=nba_status,
+            career_status=career_status,
+            draft_status=draft_status,
             draft_years=result.draft_years,
             success=SUCCESS_MESSAGES.get(success) if success else None,
             active_nav="players",
@@ -374,6 +378,13 @@ async def create_player(
     nba_debut_season: str | None = Form(default=None),
     reference_image_url: str | None = Form(default=None),
     reference_image_file: UploadFile | None = File(default=None),
+    career_status: str | None = Form(default="prospect"),
+    draft_status: str | None = Form(default=None),
+    lifecycle_stage: str | None = Form(default=None),
+    expected_draft_year: str | None = Form(default=None),
+    current_affiliation_name: str | None = Form(default=None),
+    current_affiliation_type: str | None = Form(default=None),
+    is_draft_prospect: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """Create a new player."""
@@ -426,6 +437,25 @@ async def create_player(
 
     async with db.begin():
         player = await svc_create_player(db, parsed)
+        assert player.id is not None
+        await svc_update_player_lifecycle(
+            db,
+            player.id,
+            PlayerLifecycleFormData(
+                career_status=career_status,
+                lifecycle_stage=lifecycle_stage,
+                draft_status=draft_status,
+                expected_draft_year=expected_draft_year,
+                current_affiliation_name=current_affiliation_name,
+                current_affiliation_type=current_affiliation_type,
+                is_draft_prospect=is_draft_prospect,
+            ),
+        )
+        await svc_update_player_status(
+            db,
+            player.id,
+            PlayerStatusFormData(career_status=career_status),
+        )
         # Upload reference image now that we have a player ID
         if upload_bytes and upload_ct:
             s3_key = _upload_reference_image(player, upload_bytes, upload_ct)
@@ -524,6 +554,7 @@ async def update_player(
     remove_reference_upload: str | None = Form(default=None),
     # Player status fields
     is_active_nba: str | None = Form(default=None),
+    career_status: str | None = Form(default=None),
     current_team: str | None = Form(default=None),
     nba_last_season: str | None = Form(default=None),
     raw_position: str | None = Form(default=None),
@@ -654,6 +685,7 @@ async def update_player(
         # Update player status
         status_data = PlayerStatusFormData(
             is_active_nba=is_active_nba,
+            career_status=career_status,
             current_team=current_team,
             nba_last_season=nba_last_season,
             raw_position=raw_position,
@@ -663,6 +695,7 @@ async def update_player(
         await svc_update_player_status(db, player_id, status_data)
 
         lifecycle_data = PlayerLifecycleFormData(
+            career_status=career_status,
             lifecycle_stage=lifecycle_stage,
             competition_context=competition_context,
             draft_status=draft_status,
@@ -701,7 +734,7 @@ async def delete_player(
         if not can_delete:
             # Re-fetch list data for rendering
             list_result = await svc_list_players(
-                db, None, None, None, None, DEFAULT_LIMIT, 0
+                db, None, None, None, None, None, DEFAULT_LIMIT, 0
             )
             return await _render_list_error(
                 request,
