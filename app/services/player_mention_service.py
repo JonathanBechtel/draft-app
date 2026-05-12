@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_aliases import PlayerAlias
-from app.schemas.player_lifecycle import DraftStatus, PlayerLifecycle
+from app.schemas.player_lifecycle import CareerStatus, DraftStatus, PlayerLifecycle
 from app.schemas.players_master import PlayerMaster
 
 logger = logging.getLogger(__name__)
@@ -368,8 +368,9 @@ async def _upsert_stub_lifecycle(
         db.add(lifecycle)
 
     lifecycle.expected_draft_year = draft_year
+    lifecycle.career_status = CareerStatus.PROSPECT
     lifecycle.draft_status = DraftStatus.UNKNOWN
-    lifecycle.is_draft_prospect = True if draft_year is not None else None
+    lifecycle.is_draft_prospect = True
 
 
 async def _resolve_iter(

@@ -1,13 +1,12 @@
 """Integration tests for _persist_player_mentions in news_ingestion_service."""
 
-from datetime import datetime, timezone
-
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
 from app.schemas.news_sources import NewsSource
+from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
+from app.schemas.player_lifecycle import CareerStatus, PlayerLifecycle
 from app.schemas.players_master import PlayerMaster
 from app.services.news_ingestion_service import _persist_player_mentions
 from tests.integration.conftest import make_article, make_player
@@ -83,6 +82,14 @@ class TestPersistPlayerMentions:
         )
         stub = (await db_session.execute(stmt)).scalar_one()
         assert stub.is_stub is True
+
+        lifecycle = (
+            await db_session.execute(
+                select(PlayerLifecycle).where(PlayerLifecycle.player_id == stub.id)
+            )
+        ).scalar_one()
+        assert lifecycle.career_status == CareerStatus.PROSPECT
+        assert lifecycle.is_draft_prospect is True
 
     async def test_skips_single_token_unknown_mentions(
         self,

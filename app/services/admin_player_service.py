@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from enum import Enum
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, or_, select
@@ -28,6 +28,7 @@ from app.schemas.player_content_mentions import PlayerContentMention
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.player_lifecycle import (
     AffiliationType,
+    CareerStatus,
     CommitmentStatus,
     CompetitionContext,
     DraftStatus,
@@ -49,6 +50,18 @@ class PlayerWithStatus:
     player: PlayerMaster
     is_active_nba: bool | None = None
     current_team: str | None = None
+    career_status: CareerStatus | None = None
+    draft_status: DraftStatus | None = None
+
+    @property
+    def career_status_label(self) -> str:
+        """Human-readable career status for admin list display."""
+        return _career_status_label(self.career_status)
+
+    @property
+    def draft_status_label(self) -> str:
+        """Human-readable draft status for admin list display."""
+        return _draft_status_label(self.draft_status)
 
 
 @dataclass
@@ -121,12 +134,75 @@ def _clean_str(val: str | None) -> str | None:
     return None
 
 
+def _career_status_label(status: CareerStatus | None) -> str:
+    """Return display text for career status values."""
+    labels = {
+        CareerStatus.ACTIVE: "Active NBA",
+        CareerStatus.FREE_AGENT: "Free Agent",
+        CareerStatus.PROSPECT: "Draft Prospect",
+        CareerStatus.G_LEAGUE: "G League",
+        CareerStatus.OVERSEAS: "Overseas",
+        CareerStatus.RETIRED: "Retired",
+        CareerStatus.UNDRAFTED: "Undrafted",
+        CareerStatus.UNKNOWN: "Unknown",
+    }
+    return labels.get(status or CareerStatus.UNKNOWN, "Unknown")
+
+
+def _draft_status_label(status: DraftStatus | None) -> str:
+    """Return display text for draft status values."""
+    labels = {
+        DraftStatus.NOT_ELIGIBLE: "Future Eligible",
+        DraftStatus.ELIGIBLE: "Eligible",
+        DraftStatus.DECLARED: "Declared",
+        DraftStatus.WITHDREW: "Withdrew",
+        DraftStatus.DRAFTED: "Drafted",
+        DraftStatus.UNDRAFTED: "Undrafted",
+        DraftStatus.UNKNOWN: "Unknown",
+    }
+    return labels.get(status or DraftStatus.UNKNOWN, "Unknown")
+
+
+def derive_is_active_nba(career_status: CareerStatus | None) -> bool | None:
+    """Derive legacy NBA active flag from explicit career status."""
+    if career_status is None or career_status == CareerStatus.UNKNOWN:
+        return None
+    return career_status == CareerStatus.ACTIVE
+
+
+def derive_is_draft_prospect(
+    career_status: CareerStatus,
+    draft_status: DraftStatus,
+) -> bool | None:
+    """Infer prospect flag from career and draft status when not edited directly."""
+    if career_status == CareerStatus.PROSPECT:
+        return True
+    if draft_status in {
+        DraftStatus.NOT_ELIGIBLE,
+        DraftStatus.ELIGIBLE,
+        DraftStatus.DECLARED,
+        DraftStatus.WITHDREW,
+    }:
+        return True
+    if career_status in {
+        CareerStatus.ACTIVE,
+        CareerStatus.FREE_AGENT,
+        CareerStatus.G_LEAGUE,
+        CareerStatus.OVERSEAS,
+        CareerStatus.RETIRED,
+        CareerStatus.UNDRAFTED,
+    }:
+        return False
+    return None
+
+
 async def list_players(
     db: AsyncSession,
     q: str | None,
     draft_year: int | None,
     position: str | None,
-    nba_status: str | None,
+    career_status: str | None,
+    draft_status: str | None,
     limit: int,
     offset: int,
 ) -> PlayerListResult:
@@ -137,7 +213,8 @@ async def list_players(
         q: Search query (matches display_name, first_name, last_name, school)
         draft_year: Filter by draft year
         position: Filter by position (stored in shoots field)
-        nba_status: Filter by NBA status ("active", "inactive", "unknown")
+        career_status: Filter by explicit career status
+        draft_status: Filter by explicit draft status
         limit: Maximum results to return
         offset: Number of results to skip
 
@@ -150,8 +227,11 @@ async def list_players(
             PlayerMaster,
             PlayerStatus.is_active_nba,
             PlayerStatus.current_team,
+            PlayerLifecycle.career_status,
+            PlayerLifecycle.draft_status,
         )
         .outerjoin(PlayerStatus, PlayerStatus.player_id == PlayerMaster.id)
+        .outerjoin(PlayerLifecycle, PlayerLifecycle.player_id == PlayerMaster.id)
         .order_by(PlayerMaster.display_name)  # type: ignore[arg-type]
     )
     # Count query also needs the join for status filtering
@@ -161,6 +241,10 @@ async def list_players(
         .outerjoin(
             PlayerStatus,
             PlayerStatus.player_id == PlayerMaster.id,  # type: ignore[arg-type]
+        )
+        .outerjoin(
+            PlayerLifecycle,
+            PlayerLifecycle.player_id == PlayerMaster.id,  # type: ignore[arg-type]
         )
     )
 
@@ -194,37 +278,37 @@ async def list_players(
             PlayerMaster.shoots == position  # type: ignore[arg-type]
         )
 
-    # Apply NBA status filter
-    if nba_status and nba_status.strip():
-        status_val = nba_status.strip().lower()
-        if status_val == "active":
-            query = query.where(
-                PlayerStatus.is_active_nba.is_(True)  # type: ignore[union-attr]
-            )
-            count_query = count_query.where(
-                PlayerStatus.is_active_nba.is_(True)  # type: ignore[union-attr]
-            )
-        elif status_val == "inactive":
-            query = query.where(
-                PlayerStatus.is_active_nba.is_(False)  # type: ignore[union-attr]
-            )
-            count_query = count_query.where(
-                PlayerStatus.is_active_nba.is_(False)  # type: ignore[union-attr]
-            )
-        elif status_val == "unknown":
-            # Unknown = no status record OR is_active_nba is NULL
-            query = query.where(
-                or_(
-                    PlayerStatus.id.is_(None),  # type: ignore[union-attr]
-                    PlayerStatus.is_active_nba.is_(None),  # type: ignore[union-attr]
+    # Apply career status filter
+    if career_status and career_status.strip():
+        career_val = career_status.strip().lower()
+        if career_val in {item.value for item in CareerStatus}:
+            parsed_career = CareerStatus(career_val)
+            career_filter: Any
+            if parsed_career == CareerStatus.UNKNOWN:
+                career_filter = or_(
+                    PlayerLifecycle.id.is_(None),  # type: ignore[union-attr]
+                    PlayerLifecycle.career_status == parsed_career,  # type: ignore[arg-type]
                 )
-            )
-            count_query = count_query.where(
-                or_(
-                    PlayerStatus.id.is_(None),  # type: ignore[union-attr]
-                    PlayerStatus.is_active_nba.is_(None),  # type: ignore[union-attr]
+            else:
+                career_filter = PlayerLifecycle.career_status == parsed_career  # type: ignore[arg-type]
+            query = query.where(career_filter)
+            count_query = count_query.where(career_filter)
+
+    # Apply draft status filter
+    if draft_status and draft_status.strip():
+        draft_val = draft_status.strip().lower()
+        if draft_val in {item.value for item in DraftStatus}:
+            parsed_draft = DraftStatus(draft_val)
+            draft_filter: Any
+            if parsed_draft == DraftStatus.UNKNOWN:
+                draft_filter = or_(
+                    PlayerLifecycle.id.is_(None),  # type: ignore[union-attr]
+                    PlayerLifecycle.draft_status == parsed_draft,  # type: ignore[arg-type]
                 )
-            )
+            else:
+                draft_filter = PlayerLifecycle.draft_status == parsed_draft  # type: ignore[arg-type]
+            query = query.where(draft_filter)
+            count_query = count_query.where(draft_filter)
 
     # Get total count
     total = await db.scalar(count_query)
@@ -242,6 +326,8 @@ async def list_players(
             player=row[0],
             is_active_nba=row[1],
             current_team=row[2],
+            career_status=row[3],
+            draft_status=row[4],
         )
         for row in rows
     ]
@@ -601,6 +687,7 @@ class PlayerStatusFormData:
     """Raw form data for player status fields."""
 
     is_active_nba: str | None = None  # "true", "false", "" (unknown)
+    career_status: str | None = None
     current_team: str | None = None
     nba_last_season: str | None = None
     raw_position: str | None = None
@@ -612,6 +699,7 @@ class PlayerStatusFormData:
 class PlayerLifecycleFormData:
     """Raw form data for player lifecycle fields."""
 
+    career_status: str | None = None
     lifecycle_stage: str | None = None
     competition_context: str | None = None
     draft_status: str | None = None
@@ -654,6 +742,32 @@ def _parse_enum_field(val: str | None, enum_cls: type[EnumT]) -> EnumT:
         return enum_cls(cleaned)
     except ValueError:
         return enum_cls("unknown")
+
+
+def _derive_lifecycle_stage(
+    career_status: CareerStatus,
+    draft_status: DraftStatus,
+    raw_lifecycle_stage: str | None,
+) -> PlayerLifecycleStage:
+    """Derive lifecycle detail when admin only chooses top-level taxonomies."""
+    lifecycle_stage = _parse_enum_field(raw_lifecycle_stage, PlayerLifecycleStage)
+    if lifecycle_stage != PlayerLifecycleStage.UNKNOWN:
+        return lifecycle_stage
+    if career_status == CareerStatus.ACTIVE:
+        return PlayerLifecycleStage.NBA_ACTIVE
+    if career_status in {CareerStatus.G_LEAGUE, CareerStatus.OVERSEAS}:
+        return PlayerLifecycleStage.PRO_NON_NBA
+    if career_status == CareerStatus.RETIRED:
+        return PlayerLifecycleStage.INACTIVE_FORMER
+    if draft_status == DraftStatus.DECLARED:
+        return PlayerLifecycleStage.DRAFT_DECLARED
+    if draft_status == DraftStatus.WITHDREW:
+        return PlayerLifecycleStage.DRAFT_WITHDREW
+    if draft_status == DraftStatus.DRAFTED:
+        return PlayerLifecycleStage.DRAFTED_NOT_IN_NBA
+    if career_status == CareerStatus.PROSPECT:
+        return PlayerLifecycleStage.COLLEGE
+    return PlayerLifecycleStage.UNKNOWN
 
 
 async def _resolve_position_id(db: AsyncSession, raw_position: str) -> int | None:
@@ -706,8 +820,16 @@ async def update_player_status(
         status = PlayerStatus(player_id=player_id)
         db.add(status)
 
-    # Parse and set fields
-    status.is_active_nba = _parse_bool_field(data.is_active_nba)
+    career_status = _parse_enum_field(data.career_status, CareerStatus)
+
+    # Parse and set fields. career_status is the source of truth; fall back to
+    # the old form field only for older callers that have not been updated.
+    derived_active = derive_is_active_nba(career_status)
+    parsed_active = _parse_bool_field(data.is_active_nba)
+    if career_status != CareerStatus.UNKNOWN:
+        status.is_active_nba = derived_active
+    elif parsed_active is not None:
+        status.is_active_nba = parsed_active
     status.current_team = _clean_str(data.current_team)
     status.nba_last_season = _clean_str(data.nba_last_season)
     status.raw_position = _clean_str(data.raw_position)
@@ -738,13 +860,18 @@ async def update_player_lifecycle(
         lifecycle = PlayerLifecycle(player_id=player_id)
         db.add(lifecycle)
 
-    lifecycle.lifecycle_stage = _parse_enum_field(
-        data.lifecycle_stage, PlayerLifecycleStage
+    career_status = _parse_enum_field(data.career_status, CareerStatus)
+    draft_status = _parse_enum_field(data.draft_status, DraftStatus)
+    lifecycle.career_status = career_status
+    lifecycle.lifecycle_stage = _derive_lifecycle_stage(
+        career_status,
+        draft_status,
+        data.lifecycle_stage,
     )
     lifecycle.competition_context = _parse_enum_field(
         data.competition_context, CompetitionContext
     )
-    lifecycle.draft_status = _parse_enum_field(data.draft_status, DraftStatus)
+    lifecycle.draft_status = draft_status
     lifecycle.expected_draft_year = _parse_int_field(data.expected_draft_year)
     lifecycle.current_affiliation_name = _clean_str(data.current_affiliation_name)
     lifecycle.current_affiliation_type = _parse_enum_field(
@@ -754,7 +881,12 @@ async def update_player_lifecycle(
     lifecycle.commitment_status = _parse_enum_field(
         data.commitment_status, CommitmentStatus
     )
-    lifecycle.is_draft_prospect = _parse_bool_field(data.is_draft_prospect)
+    parsed_is_prospect = _parse_bool_field(data.is_draft_prospect)
+    lifecycle.is_draft_prospect = (
+        parsed_is_prospect
+        if parsed_is_prospect is not None
+        else derive_is_draft_prospect(career_status, draft_status)
+    )
     lifecycle.source = "manual"
     lifecycle.updated_at = datetime.now(UTC).replace(tzinfo=None)
     await db.flush()
