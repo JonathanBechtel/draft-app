@@ -4,7 +4,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column, Enum as SAEnum, UniqueConstraint
+import sqlalchemy as sa
+from sqlalchemy import Column, Enum as SAEnum, Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -54,6 +55,16 @@ class NewsItem(SQLModel, table=True):  # type: ignore[call-arg]
         UniqueConstraint(
             "source_id", "external_id", name="uq_news_items_source_external"
         ),
+        # Unique partial index enforces the "at most one sticky row" invariant
+        # at the DB level. Mirrors the migration in
+        # alembic/versions/o4p5q6r7s8t9_add_news_items_is_sticky.py so test
+        # schemas built via SQLModel.metadata.create_all also pick it up.
+        Index(
+            "ix_news_items_is_sticky",
+            "is_sticky",
+            unique=True,
+            postgresql_where=sa.text("is_sticky = true"),
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -86,3 +97,16 @@ class NewsItem(SQLModel, table=True):  # type: ignore[call-arg]
 
     # Future: player association
     player_id: Optional[int] = Field(default=None, foreign_key="players_master.id")
+
+    # Pinned/sticky: when true, this item is rendered at the top of the homepage
+    # and /news feeds. At most one row should have is_sticky=True at a time;
+    # the service layer enforces this invariant on writes.
+    is_sticky: bool = Field(
+        default=False,
+        sa_column=Column(
+            "is_sticky",
+            sa.Boolean(),
+            nullable=False,
+            server_default=sa.text("false"),
+        ),
+    )

@@ -78,6 +78,7 @@
       {% for item in items %}
       <tr>
         <td>
+          {% if item.is_sticky %}<span class="admin-badge admin-badge--sticky" title="Pinned to top of feeds">Sticky</span>{% endif %}
           <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer" class="admin-link">
             {{ item.title | truncate(60) }}
           </a>

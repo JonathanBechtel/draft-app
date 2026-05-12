@@ -101,6 +101,24 @@
       <span class="admin-form__help">A concise summary for display in feeds</span>
     </div>
 
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="is_sticky">
+        <input
+          type="checkbox"
+          id="is_sticky"
+          name="is_sticky"
+          value="on"
+          {% if item.is_sticky %}checked{% endif %}
+        >
+        Pin to top of feeds
+      </label>
+      <span class="admin-form__help">
+        Renders this article at the top of the homepage and /news feeds.
+        Only one item can be pinned at a time — checking this auto-unpins
+        any other sticky article.
+      </span>
+    </div>
+
     <div class="admin-form__actions">
       <button type="submit" class="admin-btn admin-btn--primary">Save Changes</button>
       <a href="/admin/news-items" class="admin-btn admin-btn--secondary">Cancel</a>

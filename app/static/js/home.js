@@ -540,9 +540,13 @@ const NewsGridModule = {
   renderArticleCard(item) {
     const tagClass = DraftGuru.getTagClass(item.tag);
     const hasImage = item.image_url && item.image_url.trim() !== '';
+    const stickyClass = item.is_sticky ? ' article-card--sticky' : '';
+    const stickyLabel = item.is_sticky
+      ? '<span class="article-card__pinned" aria-label="Pinned post">Pinned</span>'
+      : '';
 
     return `
-      <article class="article-card" onclick="window.open('${DraftGuru.escapeHtml(item.url)}', '_blank')">
+      <article class="article-card${stickyClass}" onclick="window.open('${DraftGuru.escapeHtml(item.url)}', '_blank')">
         <div class="article-card__image-wrapper">
           ${hasImage
             ? `<img src="${DraftGuru.escapeHtml(item.image_url)}" class="article-card__image" alt="" loading="lazy" />`
@@ -555,7 +559,10 @@ const NewsGridModule = {
           ${item.summary ? `<p class="article-card__summary">${DraftGuru.escapeHtml(item.summary)}</p>` : ''}
           <div class="article-card__meta">
             <span class="article-card__source">${DraftGuru.escapeHtml(item.source)}</span>
-            <span class="article-card__time">${DraftGuru.escapeHtml(item.time)}</span>
+            <span class="article-card__meta-right">
+              ${stickyLabel}
+              <span class="article-card__time">${DraftGuru.escapeHtml(item.time)}</span>
+            </span>
           </div>
         </div>
       </article>

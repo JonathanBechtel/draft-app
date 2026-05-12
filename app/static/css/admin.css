@@ -412,6 +412,14 @@
   color: var(--color-slate-900);
 }
 
+.admin-badge--sticky {
+  background: var(--color-accent-amber, #f5b800);
+  color: var(--color-slate-900);
+  margin-right: 0.4rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 /* === Empty States === */
 .admin-empty {
   text-align: center;
