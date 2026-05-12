@@ -33,6 +33,19 @@ from app.schemas.players_master import PlayerMaster  # noqa: F401 - needed for F
 from app.services.player_mention_service import resolve_player_names_as_map
 from app.services.podcast_service import get_active_shows
 from app.services.podcast_summarization_service import podcast_summarization_service
+from app.utils.draft_relevance import (
+    DRAFT_RELEVANCE_KEYWORDS,
+    check_keyword_relevance,
+)
+
+__all__ = [
+    "DRAFT_RELEVANCE_KEYWORDS",
+    "check_keyword_relevance",
+    "ingest_podcast_show",
+    "run_ingestion_cycle",
+    "fetch_podcast_rss_feed",
+    "is_channel_landing_url",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -47,25 +60,6 @@ _TRANSIENT_DB_ERROR_MARKERS = (
     "connection was closed",
     "closed in the middle of operation",
 )
-
-DRAFT_RELEVANCE_KEYWORDS = [
-    "nba draft",
-    "mock draft",
-    "draft prospect",
-    "draft board",
-    "draft pick",
-    "draft lottery",
-    "draft combine",
-    "combine",
-    "prospect",
-    "big board",
-    "draft class",
-    "draft night",
-    "lottery pick",
-    "top pick",
-    "draft stock",
-    "draft order",
-]
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,23 +310,6 @@ def is_channel_landing_url(episode_url: str | None, channel_url: str | None) -> 
     if not episode_url or not channel_url:
         return False
     return _normalize_url(episode_url) == _normalize_url(channel_url)
-
-
-def check_keyword_relevance(title: str, description: str) -> bool:
-    """Check if episode title or description contains draft-related keywords.
-
-    Pure function — no API calls. Used as the first-pass relevance filter
-    before the Gemini relevance check.
-
-    Args:
-        title: Episode title
-        description: Episode description
-
-    Returns:
-        True if any draft keyword is found in title or description
-    """
-    text = f"{title} {description}".lower()
-    return any(keyword in text for keyword in DRAFT_RELEVANCE_KEYWORDS)
 
 
 async def fetch_podcast_rss_feed(url: str) -> list[dict[str, Any]]:

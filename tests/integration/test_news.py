@@ -245,6 +245,7 @@ class TestListSources:
         assert source["feed_url"] == "https://example.com/feed"
         assert source["is_active"] is True
         assert source["fetch_interval_minutes"] == 30
+        assert source["is_draft_focused"] is True
 
 
 @pytest.mark.asyncio
@@ -286,7 +287,25 @@ class TestCreateSource:
         assert data["feed_type"] == "rss"
         assert data["is_active"] is True
         assert data["fetch_interval_minutes"] == 60
+        assert data["is_draft_focused"] is True  # default
         assert "id" in data
+
+    async def test_creates_mixed_topic_source(self, admin_client: AsyncClient):
+        """POST /api/news/sources persists is_draft_focused=False for mixed feeds."""
+        response = await admin_client.post(
+            "/api/news/sources",
+            json={
+                "name": "Silver Bulletin",
+                "display_name": "Silver Bulletin",
+                "feed_url": "https://silver.example.com/feed",
+                "feed_type": "rss",
+                "is_draft_focused": False,
+                "fetch_interval_minutes": 60,
+            },
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["is_draft_focused"] is False
 
     async def test_rejects_duplicate_feed_url(
         self,
