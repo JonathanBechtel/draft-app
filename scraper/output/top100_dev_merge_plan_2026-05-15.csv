@@ -1,0 +1,16 @@
+source_rank,source_name,keep_id,discard_ids,canonical_display_name,canonical_school,source_school_raw,draft_year,reason
+10,Mikel Brown Jr.,5389,5710,Mikel Brown Jr.,Louisville,Louisville,2026,Keep suffix-canonical row with more mentions and source-matching school.
+13,Labaron Philon,1709,5572,Labaron Philon,Alabama,Alabama,2026,"Keep non-stub row with combine, metrics, similarity, and status data."
+16,Darius Acuff Jr.,5384,5681|6027,Darius Acuff Jr.,Arkansas,Arkansas,2026,Keep suffix-canonical row with reference image and most mentions.
+23,Chris Cenac Jr.,5387,5791,Chris Cenac Jr.,Houston,Houston,2026,Keep suffix-canonical row with more mentions; correct draft year to 2026.
+43,Tarris Reed Jr.,5483,5542|6037,Tarris Reed Jr.,UConn,Connecticut,2026,Keep suffix-canonical UConn row with most mentions.
+52,Morez Johnson Jr.,5529,5706|6038,Morez Johnson Jr.,Michigan,Michigan,2026,Keep suffix-canonical row with most mentions and existing image data.
+61,Kwame Evans Jr.,5640,5452,Kwame Evans Jr.,Oregon,Oregon,2026,Keep suffix-canonical row and move richer no-suffix child records into it.
+72,Ja’Kobi Gillespie,5467,6033,Ja’Kobi Gillespie,Tennessee,Tennessee,2026,Keep richer Tennessee row and preserve curly-apostrophe variant as canonical.
+78,William Kyle,5798,5826,William Kyle,Syracuse,Syracuse,2026,Keep source-name row with existing image data; preserve suffix variant as alias.
+3,Cameron Boozer,5653,5623,Cameron Boozer,Duke,Duke,2026,Merge 'Cam Boozer' nickname stub into canonical Cameron Boozer row (Cayden Boozer/5801 is his twin — untouched).
+6,Keaton Wagler,5690,6039,Keaton Wagler,Illinois,Illinois,2026,"Merge surname-only stub 'Wagler' (Illinois, 2026) into canonical Keaton Wagler row."
+9,Nate Ament,5561,6143,Nate Ament,Tennessee,Tennessee,2026,"Merge 'Nathaniel Ament' (no school, 2026) into canonical Nate Ament row; preserve 'Nathaniel Ament' as alias."
+13,Yaxel Lendeborg,1691,6040,Yaxel Lendeborg,Michigan,Michigan,2026,"Merge surname-only stub 'Lendeborg' (Michigan, 2026) into Yaxel Lendeborg; update draft_year 2025 -> 2026 (withdrew from 2025 draft, projected 2026)."
+15,Chris Cenac Jr.,5387,6147,Chris Cenac Jr.,Houston,Houston,2026,"Merge 'Christopher Cenac Jr.' (no school, 2026) into canonical Chris Cenac Jr. row; preserve as alias. (Shelton Cenac/5662 is a different person — untouched.)"
+27,Koa Peat,5513,6042,Koa Peat,Arizona,Arizona,2026,"Merge surname-only stub 'Peat' (Arizona, 2026) into canonical Koa Peat row."
