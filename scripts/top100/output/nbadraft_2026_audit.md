@@ -9,33 +9,33 @@ Database: Neon dev branch (from `.env`)
 |---:|---|---:|:---:|:---:|:---:|:---:|
 | 1 | AJ Dybantsa | 1 | ✅ | ✅ | ✅ | — |
 | 2 | Darryn Peterson | 1 | ✅ | ✅ | ✅ | — |
-| 3 | Cameron Boozer | 1 | ✅ | ✅ | ✅ | ⚠️ 2 |
+| 3 | Cameron Boozer | 1 | ✅ | ✅ | ✅ | ⚠️ 1 |
 | 4 | Caleb Wilson | 1 | ✅ | ✅ | ✅ | — |
 | 5 | Darius Acuff | 1 | ✅ | ✅ | ✅ | — |
-| 6 | Keaton Wagler | 1 | ✅ | ✅ | ✅ | ⚠️ 1 |
-| 7 | Kingston Flemings | 1 | ❌ | ✅ | ✅ | — |
-| 8 | Mikel Brown | 1 | ❌ | ✅ | ❌ | ⚠️ 5 |
-| 9 | Nate Ament | 1 | ✅ | ✅ | ❌ | ⚠️ 1 |
-| 10 | Hannes Steinbach | 1 | ❌ | ✅ | ✅ | — |
+| 6 | Keaton Wagler | 1 | ✅ | ✅ | ✅ | — |
+| 7 | Kingston Flemings | 1 | ✅ | ✅ | ✅ | — |
+| 8 | Mikel Brown | 1 | ✅ | ✅ | ❌ | ⚠️ 5 |
+| 9 | Nate Ament | 1 | ✅ | ✅ | ✅ | — |
+| 10 | Hannes Steinbach | 1 | ✅ | ✅ | ✅ | — |
 | 11 | Brayden Burries | 1 | ✅ | ✅ | ✅ | — |
-| 12 | Labaron Philon | 1 | ❌ | ✅ | ✅ | — |
-| 13 | Yaxel Lendeborg | 1 | ✅ | ✅ | ✅ | ⚠️ 1 |
+| 12 | Labaron Philon | 1 | ✅ | ✅ | ✅ | — |
+| 13 | Yaxel Lendeborg | 1 | ✅ | ✅ | ✅ | — |
 | 14 | Cameron Carr | 1 | ✅ | ✅ | ✅ | ⚠️ 1 |
-| 15 | Chris Cenac | 1 | ❌ | ✅ | ❌ | ⚠️ 2 |
-| 16 | Karim Lopez | 1 | ❌ | ✅ | ✅ | — |
-| 17 | Isaiah Evans | 1 | ❌ | ✅ | ✅ | ⚠️ 1 |
-| 18 | Meleek Thomas | 1 | ❌ | ✅ | ✅ | ⚠️ 4 |
+| 15 | Chris Cenac | 1 | ✅ | ✅ | ✅ | ⚠️ 1 |
+| 16 | Karim Lopez | 1 | ✅ | ✅ | ✅ | — |
+| 17 | Isaiah Evans | 1 | ✅ | ✅ | ✅ | ⚠️ 1 |
+| 18 | Meleek Thomas | 1 | ✅ | ✅ | ✅ | ⚠️ 4 |
 | 19 | Allen Graves | 1 | ✅ | ✅ | ✅ | — |
-| 20 | Bennett Stirtz | 1 | ❌ | ✅ | ✅ | — |
+| 20 | Bennett Stirtz | 1 | ✅ | ✅ | ✅ | — |
 | 21 | Morez Johnson | 1 | ✅ | ✅ | ✅ | ⚠️ 8 |
-| 22 | Joshua Jefferson | 1 | ❌ | ✅ | ✅ | — |
+| 22 | Joshua Jefferson | 1 | ✅ | ✅ | ✅ | — |
 | 23 | Christian Anderson | 1 | ✅ | ✅ | ✅ | ⚠️ 2 |
-| 24 | Jayden Quaintance | 1 | ❌ | ✅ | ✅ | — |
+| 24 | Jayden Quaintance | 1 | ✅ | ✅ | ✅ | — |
 | 25 | Aday Mara | 1 | ✅ | ✅ | ✅ | — |
-| 26 | Dailyn Swain | 1 | ❌ | ✅ | ✅ | — |
-| 27 | Koa Peat | 1 | ✅ | ✅ | ✅ | ⚠️ 1 |
+| 26 | Dailyn Swain | 1 | ✅ | ✅ | ✅ | — |
+| 27 | Koa Peat | 1 | ✅ | ✅ | ✅ | — |
 | 28 | Milan Momcilovic | 1 | ✅ | ✅ | ✅ | — |
-| 29 | Ebuka Okorie | 1 | ❌ | ✅ | ✅ | — |
+| 29 | Ebuka Okorie | 1 | ✅ | ✅ | ✅ | — |
 | 30 | Tyler Tanner | 1 | ✅ | ✅ | ✅ | — |
 
 ## Per-prospect detail
@@ -59,13 +59,12 @@ Database: Neon dev branch (from `.env`)
 ### 3. Cameron Boozer — Duke (PF, Fr.) → Memphis
 
 - **player_id=5653** `cameron-boozer` — display: `Cameron Boozer` (draft_year=2026)
-    - aliases: Cameron Boozer
+    - aliases: Cam Boozer || Cameron Boozer
     - reference image: ✅  (url:https://upload.wikimedia.org/wikipedia/commons/0/0d/Boozer_%E2%80%93_Clemson_%E2%80%93_February_14_2026_%28cropped%29.png)
-    - stylized images: ✅ (1 asset(s), styles: default)
+    - stylized images: ✅ (2 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
   ⚠️ **Potential duplicate row(s) in DB** — review for merge:
-    - player_id=5623 `cam-boozer` — `Cam Boozer` draft_year=2026 school='Duke' (stub)
     - player_id=5801 `cayden-boozer` — `Cayden Boozer` draft_year=2026 school='Duke' (stub)
 
 ### 4. Caleb Wilson — North Carolina (PF/C, Fr.) → Chicago
@@ -87,19 +86,16 @@ Database: Neon dev branch (from `.env`)
 ### 6. Keaton Wagler — Illinois (PG/SG, Fr.) → Brooklyn
 
 - **player_id=5690** `keaton-wagler` — display: `Keaton Wagler` (draft_year=2026)
-    - aliases: Keaton Wagler
+    - aliases: Keaton Wagler || Wagler
     - reference image: ✅ (s3:reference-images/5690_keaton-wagler.png)
-    - stylized images: ✅ (1 asset(s), styles: default)
+    - stylized images: ✅ (2 asset(s), styles: default)
     - combine: anthro=1, agility=1
-
-  ⚠️ **Potential duplicate row(s) in DB** — review for merge:
-    - player_id=6039 `wagler` — `Wagler` draft_year=2026 school='Illinois' (stub)
 
 ### 7. Kingston Flemings — Houston (PG, Fr.) → Sacramento
 
 - **player_id=5708** `kingston-flemings` — display: `Kingston Flemings` (draft_year=2026)
     - aliases: Kingston Flemings
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/uhcougars.com/images/2025/8/30/Flemings_Kingston_UfWq4.jpg)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
@@ -107,7 +103,7 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=5389** `mikel-brown-jr` — display: `Mikel Brown Jr.` (draft_year=2026)
     - aliases: Mikel Brown || Mikel Brown Jr.
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/gocards.com/images/2025/9/22/Mikel_Brown_Jr._-_Cropped.png)
     - stylized images: ✅ (2 asset(s), styles: default)
     - combine: ❌ none
 
@@ -121,19 +117,16 @@ Database: Neon dev branch (from `.env`)
 ### 9. Nate Ament — Tennessee (SF/PF, Fr.) → Dallas
 
 - **player_id=5561** `nate-ament` — display: `Nate Ament` (draft_year=2026)
-    - aliases: Nate Ament
+    - aliases: Nate Ament || Nathaniel Ament
     - reference image: ✅ (s3:reference-images/5561_nate-ament.png)
     - stylized images: ✅ (1 asset(s), styles: default)
-    - combine: ❌ none
-
-  ⚠️ **Potential duplicate row(s) in DB** — review for merge:
-    - player_id=6143 `nathaniel-ament` — `Nathaniel Ament` draft_year=2026 school=None
+    - combine: anthro=1, agility=1
 
 ### 10. Hannes Steinbach — Washington (PF/C, Fr.) → Milwaukee
 
 - **player_id=5456** `hannes-steinbach` — display: `Hannes Steinbach` (draft_year=2026)
     - aliases: Hannes Steinbach
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/washington.sidearmsports.com/images/2025/9/29/6_Hannes_Steinbach.png)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
@@ -149,20 +142,17 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=1709** `labaron-philon` — display: `Labaron Philon` (draft_year=2026)
     - aliases: Labaron Philon || Labaron Philon Jr.
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/rolltide.com/images/2025/8/27/Philon_Labaron_2025_web.JPG)
     - stylized images: ✅ (2 asset(s), styles: default)
     - combine: anthro=2, agility=2, shooting=1
 
 ### 13. Yaxel Lendeborg — Michigan (PF, Sr.) → Miami
 
-- **player_id=1691** `yaxel-lendeborg` — display: `Yaxel Lendeborg` (draft_year=2025)
-    - aliases: Yaxel Lendeborg
+- **player_id=1691** `yaxel-lendeborg` — display: `Yaxel Lendeborg` (draft_year=2026)
+    - aliases: Lendeborg || Yaxel Lendeborg
     - reference image: ✅  (url:https://upload.wikimedia.org/wikipedia/commons/8/8e/20260211_Yaxel_Lendeborg_05.jpg)
-    - stylized images: ✅ (1 asset(s), styles: default)
+    - stylized images: ✅ (2 asset(s), styles: default)
     - combine: anthro=2, agility=2, shooting=1
-
-  ⚠️ **Potential duplicate row(s) in DB** — review for merge:
-    - player_id=6040 `lendeborg` — `Lendeborg` draft_year=2026 school='Michigan' (stub)
 
 ### 14. Cameron Carr — Baylor (SG, Jr.) → Charlotte
 
@@ -178,20 +168,19 @@ Database: Neon dev branch (from `.env`)
 ### 15. Chris Cenac — Houston (PF/C, Fr.) → Chicago
 
 - **player_id=5387** `chris-cenac-jr` — display: `Chris Cenac Jr.` (draft_year=2026)
-    - aliases: Chris Cenac || Chris Cenac Jr.
-    - reference image: ❌ 
+    - aliases: Chris Cenac || Chris Cenac Jr. || Christopher Cenac Jr.
+    - reference image: ✅  (url:https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/uhcougars.com/images/2025/8/30/Cenac_Jr_eXMJO.jpg)
     - stylized images: ✅ (2 asset(s), styles: default)
-    - combine: ❌ none
+    - combine: anthro=1, agility=1
 
   ⚠️ **Potential duplicate row(s) in DB** — review for merge:
-    - player_id=6147 `christopher-cenac-jr` — `Christopher Cenac Jr.` draft_year=2026 school=None
     - player_id=5662 `shelton-cenac` — `Shelton Cenac` draft_year=2026 school='Houston' (stub)
 
 ### 16. Karim Lopez — Mexico (SF/PF, Intl.) → Memphis
 
 - **player_id=5605** `karim-lopez` — display: `Karim Lopez` (draft_year=2026)  🔸stub  ⚠️ school mismatch (DB: `NZ Breakers`)
     - aliases: Karim Lopez
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://cdn.prod.website-files.com/64a50350adad23f0f1ef8f43/696872eeee30b97ee613b050_118cfd2424224238b8224373d4f789a8.webp)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
@@ -199,7 +188,7 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=5509** `isaiah-evans` — display: `Isaiah Evans` (draft_year=2026)  🔸stub
     - aliases: Isaiah Evans
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/goduke.com/images/2025/9/15/Headshots_4x6_Evans__Isaiah_xGUD0.jpg)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
@@ -210,7 +199,7 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=5647** `meleek-thomas` — display: `Meleek Thomas` (draft_year=2026)  🔸stub
     - aliases: Meleek Thomas
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://arkansasrazorbacks.com/wp-content/uploads/2025/09/Meleek-Thomas-Mug-MBB-2025-26-5743.jpg)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
@@ -224,7 +213,7 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=5563** `allen-graves` — display: `Allen Graves` (draft_year=2026)  🔸stub
     - aliases: Allen Graves
-    - reference image: ✅  (url:https://upload.wikimedia.org/wikipedia/commons/c/cd/The_New_York_Evangelist_1839-10-12-_Vol_10_Iss_41_%28IA_sim_evangelist-and-religious-review_1839-10-12_10_41%29.pdf)
+    - reference image: ✅  (url:https://dbukjj6eu5tsf.cloudfront.net/sidearm.sites/santaclara.sidearmsports.com/images/2025/9/25/gravesDJR13641.JPG)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
@@ -232,7 +221,7 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=5578** `bennett-stirtz` — display: `Bennett Stirtz` (draft_year=2026)  🔸stub
     - aliases: Benett Stirtz || Bennett Stirtz
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://hawkeyesports.com/imgproxy/Z1BM2jqCO3a84iaefrkiV7pRrzfA3VTUDkXt3dE6XEM/rs:fit:1980:0:0:0/g:ce:0:0/q:90/aHR0cHM6Ly9zdG9yYWdlLmdvb2dsZWFwaXMuY29tL2hhd2tleWVzcG9ydHMtcHJvZC8yMDI1LzEwLzE3L21iejQxczRJNmZFUmc5Z3VjMndoeGVuRWVCOHRnSDBXc3oyUDI5c2suanBn.jpg)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
@@ -258,7 +247,7 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=5388** `joshua-jefferson` — display: `Joshua Jefferson` (draft_year=2026)  ⚠️ school mismatch (DB: `Iowa State`)
     - aliases: Joshua Jefferson
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/isuni.sidearmsports.com/images/2025/7/10/Joshua_Jefferson_2025-26_Headshot.jpg)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
@@ -278,7 +267,7 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=5478** `jayden-quaintance` — display: `Jayden Quaintance` (draft_year=2026)
     - aliases: Jayden Quaintance
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://storage.googleapis.com/ukathletics-com/2025/07/56d32984-2025_jayden_quaintance_02cb-scaled-e1757688171569.jpg)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
@@ -294,20 +283,17 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=5465** `dailyn-swain` — display: `Dailyn Swain` (draft_year=2026)  🔸stub
     - aliases: Dailyn Swain
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/texassports_com/images/2025/9/28/Dailyn_Swain_2025.jpg)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
 ### 27. Koa Peat — Arizona (PF, Fr.) → Boston
 
 - **player_id=5513** `koa-peat` — display: `Koa Peat` (draft_year=2026)
-    - aliases: Koa Peat
+    - aliases: Koa Peat || Peat
     - reference image: ✅  (url:https://upload.wikimedia.org/wikipedia/commons/b/bc/Koa_Peat.jpg)
-    - stylized images: ✅ (1 asset(s), styles: default)
+    - stylized images: ✅ (2 asset(s), styles: default)
     - combine: anthro=1, agility=1
-
-  ⚠️ **Potential duplicate row(s) in DB** — review for merge:
-    - player_id=6042 `peat` — `Peat` draft_year=2026 school='Arizona' (stub)
 
 ### 28. Milan Momcilovic — Iowa St. (SF/PF, Jr.) → Minnesota
 
@@ -321,7 +307,7 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=5674** `ebuka-okorie` — display: `Ebuka Okorie` (draft_year=2026)  🔸stub
     - aliases: Ebuka Okorie
-    - reference image: ❌ 
+    - reference image: ✅  (url:https://gostanford.com/imgproxy/rCJ-6hSWHGbHMc5Y3AKTm1QmLE4VVQy58uEn42Kior0/rs:fit:1980:0:0:0/g:ce:0:0/q:90/aHR0cHM6Ly9zdG9yYWdlLmdvb2dsZWFwaXMuY29tL3N0YW5mb3JkLXByb2QvMjAyNS8wOS8xOC9MZmhucVV1Y09DRWFYMEdmSDZqQ1BmZ0kzRGwxcWd6UVdJb0hxSEFLLmpwZw.jpg)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
@@ -329,7 +315,7 @@ Database: Neon dev branch (from `.env`)
 
 - **player_id=5679** `tyler-tanner` — display: `Tyler Tanner` (draft_year=2026)  🔸stub
     - aliases: Tyler Tanner
-    - reference image: ✅  (url:https://upload.wikimedia.org/wikipedia/commons/a/a7/Tyler_Tanner_Evergreen_2018.jpg)
+    - reference image: ✅  (url:https://vucommodores.com/wp-content/uploads/2025/07/3_Tanner_Tyler-420x640.jpg)
     - stylized images: ✅ (1 asset(s), styles: default)
     - combine: anthro=1, agility=1
 
