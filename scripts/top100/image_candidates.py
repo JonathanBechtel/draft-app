@@ -28,15 +28,39 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from app.services.canonical_resolution_service import normalize_player_name  # noqa: E402
 from scripts.top100.refresh import OUTPUT_DIR, _prepare_connection  # noqa: E402
 
 
 @dataclass(frozen=True, slots=True)
 class ImageCandidate:
-    """Reviewed reference-image candidate for one Top 100 prospect."""
+    """Reviewed reference-image candidate for one Top 100 prospect.
+
+    The player_id field is environment-specific (dev). For prod use
+    ProdImageCandidate, which resolves the player_id by name at runtime.
+    """
 
     source_rank: int
     player_id: int
+    source_name: str
+    source_page_url: str
+    image_url: str
+    source_type: str
+    confidence: str
+    review_status: str
+    review_note: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProdImageCandidate:
+    """Prod reference-image candidate keyed by name, not player_id.
+
+    Resolves to a prod player_id at runtime by matching ``source_name`` against
+    ``players_master.display_name`` and ``player_aliases.full_name``. The
+    candidate is skipped if zero or more than one prod row matches.
+    """
+
+    source_rank: int
     source_name: str
     source_page_url: str
     image_url: str
@@ -426,15 +450,209 @@ IMAGE_CANDIDATES: tuple[ImageCandidate, ...] = (
 )
 
 
-def write_candidates(output_date: date) -> Path:
+# Prod candidates: keyed by source_name (dev/prod player_id sequences differ).
+# Each entry will be applied only if exactly one prod row resolves by name.
+# Discovered by running nbadraft_first_round_audit.py against prod after the
+# dev pass; URLs mirror what we already curated for dev where possible.
+PROD_IMAGE_CANDIDATES: tuple[ProdImageCandidate, ...] = (
+    ProdImageCandidate(
+        5,
+        "Darius Acuff Jr.",
+        "https://arkansasrazorbacks.com/roster/darius-acuff-jr/",
+        "https://arkansasrazorbacks.com/wp-content/uploads/2025/09/Darius-Acuff-Jr.-Mug-MBB-2025-26-5820-e1758565443835.jpg",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Arkansas 2025-26 roster mug.",
+    ),
+    ProdImageCandidate(
+        7,
+        "Kingston Flemings",
+        "https://uhcougars.com/sports/mens-basketball/roster/kingston-flemings/9545",
+        "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/uhcougars.com/images/2025/8/30/Flemings_Kingston_UfWq4.jpg",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Houston 2025-26 roster headshot (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        8,
+        "Mikel Brown Jr.",
+        "https://gocards.com/sports/mens-basketball/roster/mikel-brown-jr/16178",
+        "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/gocards.com/images/2025/9/22/Mikel_Brown_Jr._-_Cropped.png",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Louisville 2025-26 cropped portrait (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        10,
+        "Hannes Steinbach",
+        "https://gohuskies.com/sports/mens-basketball/roster/hannes-steinbach/17110",
+        "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/washington.sidearmsports.com/images/2025/9/29/6_Hannes_Steinbach.png",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Washington 2025-26 roster image (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        12,
+        "Labaron Philon",
+        "https://rolltide.com/sports/mens-basketball/roster/labaron-philon-jr-/15265",
+        "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/rolltide.com/images/2025/8/27/Philon_Labaron_2025_web.JPG",
+        "official_roster_image",
+        "high",
+        "accepted",
+        "Alabama 2025-26 posed portrait (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        13,
+        "Yaxel Lendeborg",
+        "https://commons.wikimedia.org/wiki/File:20260211_Yaxel_Lendeborg_05.jpg",
+        "https://upload.wikimedia.org/wikipedia/commons/8/8e/20260211_Yaxel_Lendeborg_05.jpg",
+        "wikimedia_commons",
+        "high",
+        "accepted",
+        "Wikimedia Commons 2026 photo (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        14,
+        "Cameron Carr",
+        "https://baylorbears.com/sports/mens-basketball/roster/cameron-carr/14165",
+        "https://images.sidearmdev.com/crop?url=https%3A%2F%2Fdxbhsrqyrr690.cloudfront.net%2Fsidearm.nextgen.sites%2Fbaylorbears.com%2Fimages%2F2025%2F10%2F14%2FCarr_Cameron.png&width=180&height=270&type=webp",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Baylor 2025-26 roster headshot (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        15,
+        "Chris Cenac Jr.",
+        "https://uhcougars.com/sports/mens-basketball/roster/chris-cenac-jr/9544",
+        "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/uhcougars.com/images/2025/8/30/Cenac_Jr_eXMJO.jpg",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Houston 2025-26 roster headshot (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        16,
+        "Karim Lopez",
+        "https://www.nbl.com.au/players/karim-lopez",
+        "https://cdn.prod.website-files.com/64a50350adad23f0f1ef8f43/696872eeee30b97ee613b050_118cfd2424224238b8224373d4f789a8.webp",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "NBL official player page portrait (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        17,
+        "Isaiah Evans",
+        "https://goduke.com/sports/mens-basketball/roster/isaiah-evans/23104",
+        "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/goduke.com/images/2025/9/15/Headshots_4x6_Evans__Isaiah_xGUD0.jpg",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Duke 2025-26 4x6 headshot (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        18,
+        "Meleek Thomas",
+        "https://arkansasrazorbacks.com/roster/meleek-thomas/",
+        "https://arkansasrazorbacks.com/wp-content/uploads/2025/09/Meleek-Thomas-Mug-MBB-2025-26-5743.jpg",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Arkansas 2025-26 roster mug (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        19,
+        "Allen Graves",
+        "https://santaclarabroncos.com/sports/mens-basketball/roster/allen--graves/9118",
+        "https://dbukjj6eu5tsf.cloudfront.net/sidearm.sites/santaclara.sidearmsports.com/images/2025/9/25/gravesDJR13641.JPG",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Santa Clara 2025-26 roster headshot (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        20,
+        "Bennett Stirtz",
+        "https://hawkeyesports.com/sports/mbball/roster/player/bennett-stirtz",
+        "https://hawkeyesports.com/imgproxy/Z1BM2jqCO3a84iaefrkiV7pRrzfA3VTUDkXt3dE6XEM/rs:fit:1980:0:0:0/g:ce:0:0/q:90/aHR0cHM6Ly9zdG9yYWdlLmdvb2dsZWFwaXMuY29tL2hhd2tleWVzcG9ydHMtcHJvZC8yMDI1LzEwLzE3L21iejQxczRJNmZFUmc5Z3VjMndoeGVuRWVCOHRnSDBXc3oyUDI5c2suanBn.jpg",
+        "official_roster_image",
+        "medium",
+        "accepted",
+        "Iowa 2025-26 roster og:image (medium confidence; visual sanity-check recommended).",
+    ),
+    ProdImageCandidate(
+        22,
+        "Joshua Jefferson",
+        "https://cyclones.com/sports/mens-basketball/roster/joshua-jefferson/13859",
+        "https://dxbhsrqyrr690.cloudfront.net/sidearm.nextgen.sites/isuni.sidearmsports.com/images/2025/7/10/Joshua_Jefferson_2025-26_Headshot.jpg",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Iowa State 2025-26 explicit headshot (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        23,
+        "Christian Anderson",
+        "https://commons.wikimedia.org/wiki/File:Christian_Anderson_Jr._March_Madness.jpg",
+        "https://upload.wikimedia.org/wikipedia/commons/6/63/Christian_Anderson_Jr._March_Madness.jpg",
+        "wikimedia_commons",
+        "high",
+        "accepted",
+        "Wikimedia Commons March Madness photo (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        24,
+        "Jayden Quaintance",
+        "https://ukathletics.com/sports/mbball/roster/player/jayden-quaintance/",
+        "https://storage.googleapis.com/ukathletics-com/2025/07/56d32984-2025_jayden_quaintance_02cb-scaled-e1757688171569.jpg",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Kentucky 2025-26 posed portrait (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        27,
+        "Koa Peat",
+        "https://commons.wikimedia.org/wiki/File:Koa_Peat.jpg",
+        "https://upload.wikimedia.org/wikipedia/commons/b/bc/Koa_Peat.jpg",
+        "wikimedia_commons",
+        "high",
+        "accepted",
+        "Wikimedia Commons (mirrors dev).",
+    ),
+    ProdImageCandidate(
+        29,
+        "Ebuka Okorie",
+        "https://gostanford.com/sports/mens-basketball/roster/player/ebuka-okorie",
+        "https://gostanford.com/imgproxy/rCJ-6hSWHGbHMc5Y3AKTm1QmLE4VVQy58uEn42Kior0/rs:fit:1980:0:0:0/g:ce:0:0/q:90/aHR0cHM6Ly9zdG9yYWdlLmdvb2dsZWFwaXMuY29tL3N0YW5mb3JkLXByb2QvMjAyNS8wOS8xOC9MZmhucVV1Y09DRWFYMEdmSDZqQ1BmZ0kzRGwxcWd6UVdJb0hxSEFLLmpwZw.jpg",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Stanford 2025-26 roster portrait (mirrors dev).",
+    ),
+)
+
+
+def write_candidates(output_date: date, target: str) -> Path:
     """Write reviewed image candidates to CSV."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    path = OUTPUT_DIR / f"image_candidates_{output_date.isoformat()}.csv"
+    path = OUTPUT_DIR / f"image_candidates_{target}_{output_date.isoformat()}.csv"
+    if target == "prod":
+        rows = [asdict(c) for c in PROD_IMAGE_CANDIDATES]
+        fields = list(asdict(PROD_IMAGE_CANDIDATES[0]))
+    else:
+        rows = [asdict(c) for c in IMAGE_CANDIDATES]
+        fields = list(asdict(IMAGE_CANDIDATES[0]))
     with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=list(asdict(IMAGE_CANDIDATES[0])))
+        writer = csv.DictWriter(file, fieldnames=fields)
         writer.writeheader()
-        for candidate in IMAGE_CANDIDATES:
-            writer.writerow(asdict(candidate))
+        for row in rows:
+            writer.writerow(row)
     return path
 
 
@@ -472,6 +690,101 @@ async def apply_candidates(database_url: str) -> None:
         await engine.dispose()
 
 
+async def _resolve_prod_player_id(conn, source_name: str) -> int | None:
+    """Resolve a prod player_id by display_name or alias.
+
+    Returns the unique player_id when exactly one row matches; None when zero
+    or more than one row matches (caller should log and skip).
+    """
+    key = normalize_player_name(source_name)
+    res = await conn.execute(
+        text(
+            """
+            SELECT DISTINCT pm.id
+            FROM players_master pm
+            LEFT JOIN player_aliases pa ON pa.player_id = pm.id
+            WHERE regexp_replace(lower(pm.display_name), '[^a-z0-9 ]', '', 'g') = :key
+               OR regexp_replace(lower(coalesce(pa.full_name, '')), '[^a-z0-9 ]', '', 'g') = :key
+            """
+        ),
+        {"key": key},
+    )
+    ids = [row[0] for row in res.all()]
+    if len(ids) == 1:
+        return int(ids[0])
+    return None
+
+
+async def apply_prod_candidates(database_url: str, *, dry_run: bool = False) -> None:
+    """Apply PROD_IMAGE_CANDIDATES with name-resolved player_id lookup.
+
+    Each candidate is resolved against ``players_master.display_name`` and
+    ``player_aliases.full_name``. Candidates that resolve to zero or to
+    multiple rows are skipped with a warning, never silently misapplied.
+    """
+    cleaned_url, connect_args = _prepare_connection(database_url)
+    engine = create_async_engine(cleaned_url, echo=False, connect_args=connect_args)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    mode = "DRY RUN" if dry_run else "EXECUTE"
+    applied = 0
+    skipped: list[tuple[int, str, str]] = []
+    try:
+        async with engine.begin() as conn:
+            for candidate in PROD_IMAGE_CANDIDATES:
+                if candidate.review_status != "accepted":
+                    continue
+                resolved = await _resolve_prod_player_id(conn, candidate.source_name)
+                if resolved is None:
+                    skipped.append(
+                        (
+                            candidate.source_rank,
+                            candidate.source_name,
+                            "name not uniquely resolved",
+                        )
+                    )
+                    print(
+                        f"[{mode}] SKIP rank {candidate.source_rank} '{candidate.source_name}': "
+                        f"name not uniquely resolved on target DB"
+                    )
+                    continue
+                print(
+                    f"[{mode}] rank {candidate.source_rank} '{candidate.source_name}' "
+                    f"-> prod player_id={resolved} (image: {candidate.image_url[:80]}...)"
+                )
+                if dry_run:
+                    continue
+                result = await conn.execute(
+                    text(
+                        """
+                        UPDATE players_master
+                        SET reference_image_url = :reference_image_url,
+                            updated_at = :updated_at
+                        WHERE id = :player_id
+                        """
+                    ),
+                    {
+                        "player_id": resolved,
+                        "reference_image_url": candidate.image_url,
+                        "updated_at": now,
+                    },
+                )
+                if result.rowcount != 1:
+                    raise RuntimeError(
+                        f"Expected to update one row for player_id={resolved}, "
+                        f"updated {result.rowcount}"
+                    )
+                applied += 1
+            if dry_run:
+                await conn.rollback()
+                print("\nDry run complete; transaction rolled back.")
+            else:
+                print(f"\nApplied {applied} update(s) to prod.")
+            if skipped:
+                print(f"Skipped {len(skipped)}: {skipped}")
+    finally:
+        await engine.dispose()
+
+
 def parse_args() -> argparse.Namespace:
     """Parse CLI args."""
     parser = argparse.ArgumentParser(
@@ -479,6 +792,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--execute", action="store_true", help="Apply accepted candidates"
+    )
+    parser.add_argument(
+        "--target",
+        choices=("dev", "prod"),
+        default="dev",
+        help=(
+            "Which candidate list to apply: 'dev' (IMAGE_CANDIDATES, "
+            "id-based) or 'prod' (PROD_IMAGE_CANDIDATES, name-resolved). "
+            "Player_id sequences differ across environments."
+        ),
     )
     parser.add_argument("--date", type=date.fromisoformat, default=date.today())
     parser.add_argument("--database-url", default=os.getenv("DATABASE_URL"))
@@ -489,8 +812,14 @@ def main() -> None:
     """CLI entrypoint."""
     load_dotenv()
     args = parse_args()
-    path = write_candidates(args.date)
-    if args.execute:
+    path = write_candidates(args.date, args.target)
+    if args.target == "prod":
+        database_url = args.database_url or os.getenv("DATABASE_URL")
+        if not database_url:
+            print("ERROR: DATABASE_URL not set", file=sys.stderr)
+            sys.exit(1)
+        asyncio.run(apply_prod_candidates(database_url, dry_run=not args.execute))
+    elif args.execute:
         database_url = args.database_url or os.getenv("DATABASE_URL")
         if not database_url:
             print("ERROR: DATABASE_URL not set", file=sys.stderr)
