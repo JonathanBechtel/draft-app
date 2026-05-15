@@ -256,6 +256,29 @@ IMAGE_CANDIDATES: tuple[ImageCandidate, ...] = (
         "accepted",
         "Purdue roster image for Fletcher Loyer.",
     ),
+    # --- 2026-05-15 nbadraft.net first-round audit: replace incorrect refs ---
+    ImageCandidate(
+        19,
+        5563,
+        "Allen Graves",
+        "https://santaclarabroncos.com/sports/mens-basketball/roster/allen--graves/9118",
+        "https://dbukjj6eu5tsf.cloudfront.net/sidearm.sites/santaclara.sidearmsports.com/images/2025/9/25/gravesDJR13641.JPG",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Replaces unrelated 1839 Wikimedia evangelist PDF with Santa Clara 2025-26 roster headshot.",
+    ),
+    ImageCandidate(
+        30,
+        5679,
+        "Tyler Tanner",
+        "https://vucommodores.com/roster/tyler-tanner/",
+        "https://vucommodores.com/wp-content/uploads/2025/07/3_Tanner_Tyler-420x640.jpg",
+        "official_roster_headshot",
+        "high",
+        "accepted",
+        "Replaces wrong-person Wikimedia 2018 'Evergreen' photo with Vanderbilt 2025-26 roster headshot (jersey #3).",
+    ),
 )
 
 
