@@ -1,0 +1,5 @@
+source_rank,source_name,keep_id,discard_ids,canonical_display_name,canonical_school,source_school_raw,draft_year,reason
+9,Nate Ament,5396,6427,Nate Ament,Tennessee,Tennessee,2026,"PROD: merge 'Nathaniel Ament' (no school, 2026) into canonical Nate Ament row; preserve as alias. Moves 210 metrics + 51,832 similarity rows."
+14,Cameron Carr,5439,6383,Cameron Carr,Baylor,Baylor,2026,"PROD: merge 'Cam Carr' (Baylor stub, 2026) into canonical Cameron Carr row. (Coen Carr/6334 is a different person — untouched.)"
+15,Chris Cenac Jr.,5387,6431,Chris Cenac Jr.,Houston,Houston,2026,"PROD: merge 'Christopher Cenac Jr.' (no school, 2026) into canonical Chris Cenac Jr. row. Moves 210 metrics + 51,832 similarity rows."
+20,Bennett Stirtz,5408,6394,Bennett Stirtz,Iowa,Iowa,2026,PROD: merge typo-variant 'Benett Stirtz' (Iowa stub) into canonical Bennett Stirtz. Also normalizes school 'Iowa Hawkeyes' -> 'Iowa'.

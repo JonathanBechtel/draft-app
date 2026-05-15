@@ -230,6 +230,58 @@ MERGE_PLANS: tuple[MergePlan, ...] = (
 )
 
 
+# Prod has its own player_id sequence; dev IDs do NOT translate. Each prod
+# merge below was discovered by re-running the audit against the prod Neon
+# branch after the dev pass. The script picks this tuple when invoked with
+# --target prod and otherwise uses MERGE_PLANS.
+PROD_MERGE_PLANS: tuple[MergePlan, ...] = (
+    MergePlan(
+        source_rank=9,
+        source_name="Nate Ament",
+        keep_id=5396,
+        discard_ids=(6427,),
+        canonical_display_name="Nate Ament",
+        canonical_school="Tennessee",
+        source_school_raw="Tennessee",
+        draft_year=2026,
+        reason="PROD: merge 'Nathaniel Ament' (no school, 2026) into canonical Nate Ament row; preserve as alias. Moves 210 metrics + 51,832 similarity rows.",
+    ),
+    MergePlan(
+        source_rank=14,
+        source_name="Cameron Carr",
+        keep_id=5439,
+        discard_ids=(6383,),
+        canonical_display_name="Cameron Carr",
+        canonical_school="Baylor",
+        source_school_raw="Baylor",
+        draft_year=2026,
+        reason="PROD: merge 'Cam Carr' (Baylor stub, 2026) into canonical Cameron Carr row. (Coen Carr/6334 is a different person — untouched.)",
+    ),
+    MergePlan(
+        source_rank=15,
+        source_name="Chris Cenac Jr.",
+        keep_id=5387,
+        discard_ids=(6431,),
+        canonical_display_name="Chris Cenac Jr.",
+        canonical_school="Houston",
+        source_school_raw="Houston",
+        draft_year=2026,
+        reason="PROD: merge 'Christopher Cenac Jr.' (no school, 2026) into canonical Chris Cenac Jr. row. Moves 210 metrics + 51,832 similarity rows.",
+    ),
+    MergePlan(
+        source_rank=20,
+        source_name="Bennett Stirtz",
+        keep_id=5408,
+        discard_ids=(6394,),
+        canonical_display_name="Bennett Stirtz",
+        canonical_school="Iowa",
+        source_school_raw="Iowa",
+        draft_year=2026,
+        reason="PROD: merge typo-variant 'Benett Stirtz' (Iowa stub) into canonical Bennett Stirtz. Also normalizes school 'Iowa Hawkeyes' -> 'Iowa'.",
+    ),
+)
+
+
 CHILD_TABLES: tuple[ChildTable, ...] = (
     ChildTable("player_content_mentions", "player_id", ("content_type", "content_id")),
     ChildTable("player_college_stats", "player_id", ("season",)),
@@ -294,10 +346,14 @@ def _prepare_connection(url: str) -> tuple[str, dict[str, ssl.SSLContext]]:
     return cleaned, connect_args
 
 
-def write_plan_csv(output_date: date) -> Path:
+def write_plan_csv(
+    output_date: date,
+    plans: tuple[MergePlan, ...],
+    target: str,
+) -> Path:
     """Write the reviewed merge plan as a CSV artifact."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    path = OUTPUT_DIR / f"top100_dev_merge_plan_{output_date.isoformat()}.csv"
+    path = OUTPUT_DIR / f"top100_{target}_merge_plan_{output_date.isoformat()}.csv"
     fields = [
         "source_rank",
         "source_name",
@@ -312,7 +368,7 @@ def write_plan_csv(output_date: date) -> Path:
     with path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=fields)
         writer.writeheader()
-        for plan in MERGE_PLANS:
+        for plan in plans:
             writer.writerow(
                 {
                     "source_rank": plan.source_rank,
@@ -596,22 +652,24 @@ async def merge_plan(conn: Any, plan: MergePlan, dry_run: bool) -> None:
     await _update_keep_player(conn, plan, dry_run)
 
 
-async def run(dry_run: bool, output_date: date) -> None:
-    """Run the reviewed Top 100 dev merge plan."""
+async def run(dry_run: bool, output_date: date, target: str) -> None:
+    """Run the reviewed merge plan for the given target environment."""
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         print("ERROR: DATABASE_URL not set", file=sys.stderr)
         sys.exit(1)
 
-    plan_path = write_plan_csv(output_date)
+    plans = PROD_MERGE_PLANS if target == "prod" else MERGE_PLANS
+    plan_path = write_plan_csv(output_date, plans, target)
     print(f"Merge plan artifact: {plan_path}")
+    print(f"Target: {target}  ({len(plans)} plan(s))")
     print(f"Mode: {'DRY RUN' if dry_run else 'EXECUTE'}")
 
     cleaned_url, connect_args = _prepare_connection(database_url)
     engine = create_async_engine(cleaned_url, echo=False, connect_args=connect_args)
 
     async with engine.begin() as conn:
-        for plan in MERGE_PLANS:
+        for plan in plans:
             await merge_plan(conn, plan, dry_run=dry_run)
 
         if dry_run:
@@ -628,6 +686,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Apply reviewed Top 100 player merges")
     parser.add_argument("--execute", action="store_true", help="Apply changes")
     parser.add_argument(
+        "--target",
+        choices=("dev", "prod"),
+        default="dev",
+        help=(
+            "Which plan list to run: 'dev' (default, applies MERGE_PLANS) "
+            "or 'prod' (applies PROD_MERGE_PLANS). Plans are NOT "
+            "interchangeable across targets because player_id sequences differ."
+        ),
+    )
+    parser.add_argument(
         "--date",
         type=date.fromisoformat,
         default=date.today(),
@@ -639,7 +707,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """CLI entrypoint."""
     args = parse_args()
-    asyncio.run(run(dry_run=not args.execute, output_date=args.date))
+    asyncio.run(
+        run(dry_run=not args.execute, output_date=args.date, target=args.target)
+    )
 
 
 if __name__ == "__main__":
