@@ -1,0 +1,31 @@
+pick,team,team_protected_or_traded,player_name,height,weight,position,school,class
+1,Washington,0,AJ Dybantsa,6-9,210,SF,BYU,Fr.
+2,Utah,0,Darryn Peterson,6-5,195,SG,Kansas,Fr.
+3,Memphis,0,Cameron Boozer,6-10,250,PF,Duke,Fr.
+4,Chicago,0,Caleb Wilson,6-10,215,PF/C,North Carolina,Fr.
+5,LA Clippers,1,Darius Acuff,6-2,190,PG,Arkansas,Fr.
+6,Brooklyn,0,Keaton Wagler,6-6,185,PG/SG,Illinois,Fr.
+7,Sacramento,0,Kingston Flemings,6-4,185,PG,Houston,Fr.
+8,Atlanta,1,Mikel Brown,6-5,180,PG,Louisville,Fr.
+9,Dallas,0,Nate Ament,6-9,205,SF/PF,Tennessee,Fr.
+10,Milwaukee,0,Hannes Steinbach,6-10,225,PF/C,Washington,Fr.
+11,Golden St.,0,Brayden Burries,6-4,205,PG/SG,Arizona,Fr.
+12,Oklahoma Cty,1,Labaron Philon,6-4,185,PG,Alabama,So.
+13,Miami,0,Yaxel Lendeborg,6-10,240,PF,Michigan,Sr.
+14,Charlotte,0,Cameron Carr,6-5,190,SG,Baylor,Jr.
+15,Chicago,1,Chris Cenac,6-11,230,PF/C,Houston,Fr.
+16,Memphis,1,Karim Lopez,6-8,210,SF/PF,Mexico,Intl.
+17,Oklahoma Cty,1,Isaiah Evans,6-6,180,SG/SF,Duke,So.
+18,Charlotte,1,Meleek Thomas,6-5,185,PG/SG,Arkansas,Fr.
+19,Toronto,0,Allen Graves,6-9,225,PF,Santa Clara,Fr.
+20,San Antonio,1,Bennett Stirtz,6-4,190,PG,Iowa,Sr.
+21,Detroit,1,Morez Johnson,6-9,250,PF/C,Michigan,So.
+22,Philadelphia,1,Joshua Jefferson,6-9,240,SF,Iowa St.,Sr.
+23,Atlanta,1,Christian Anderson,6-0,165,PG,Texas Tech,So.
+24,New York,0,Jayden Quaintance,6-10,255,PF/C,Kentucky,So.
+25,LA Lakers,0,Aday Mara,7-3,255,C,Michigan,Jr.
+26,Denver,0,Dailyn Swain,6-7,220,SF,Texas,Jr.
+27,Boston,0,Koa Peat,6-8,235,PF,Arizona,Fr.
+28,Minnesota,1,Milan Momcilovic,6-8,220,SF/PF,Iowa St.,Jr.
+29,Cleveland,1,Ebuka Okorie,6-2,185,PG,Stanford,Fr.
+30,Dallas,1,Tyler Tanner,6-1,175,PG,Vanderbilt,So.
