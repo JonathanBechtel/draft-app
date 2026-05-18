@@ -275,6 +275,9 @@
   // Podcast episodes for homepage section
   window.PODCAST_EPISODES = {{ podcast_episodes | tojson | safe }};
   window.FILM_ROOM_VIDEOS = {{ film_room_videos | tojson | safe }};
+  // Image style and S3 base URL for dynamic image URLs (used by VS Arena)
+  window.IMAGE_STYLE = {{ image_style | tojson | safe }};
+  window.S3_IMAGE_BASE_URL = {{ s3_image_base_url | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/home.js') }}"></script>
 <script src="{{ url_for('static', path='js/film-room.js') }}"></script>
