@@ -90,16 +90,37 @@ const ScoreboardModule = {
       playerPhoto.alt = player.name;
     }
 
-    // Update primary meta
+    // Update primary meta — keep the inline school logo when present
     const playerPrimaryMeta = document.getElementById('playerPrimaryMeta');
     if (playerPrimaryMeta) {
-      const parts = [
+      const items = [
         clean(player.position),
-        clean(player.college),
+        { logoUrl: clean(player.school_logo_url), text: clean(player.college) },
         clean(player.height),
         clean(player.weight),
-      ].filter(Boolean);
-      playerPrimaryMeta.textContent = parts.length ? parts.join(' • ') : 'Bio information unavailable';
+      ].filter((item) => (typeof item === 'object' ? item.text : item));
+
+      playerPrimaryMeta.replaceChildren();
+      if (items.length === 0) {
+        playerPrimaryMeta.textContent = 'Bio information unavailable';
+      } else {
+        items.forEach((item, i) => {
+          if (i > 0) playerPrimaryMeta.append(document.createTextNode(' • '));
+          if (typeof item === 'object') {
+            if (item.logoUrl) {
+              const img = document.createElement('img');
+              img.className = 'school-logo';
+              img.src = item.logoUrl;
+              img.alt = item.text;
+              img.loading = 'lazy';
+              playerPrimaryMeta.append(img);
+            }
+            playerPrimaryMeta.append(document.createTextNode(item.text));
+          } else {
+            playerPrimaryMeta.append(document.createTextNode(item));
+          }
+        });
+      }
     }
 
     // Update secondary meta

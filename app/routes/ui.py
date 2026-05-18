@@ -48,6 +48,7 @@ from app.services.player_service import (
     get_college_stats_by_player_id,
     get_player_profile_by_slug,
 )
+from app.services.school_logo_service import get_logo_url_for_school
 from app.utils.db_async import get_session
 from app.utils.images import (
     get_placeholder_url,
@@ -717,12 +718,16 @@ async def player_detail(
         height=533,
     )
 
+    school_name = clean_null(player_profile.school)
+    school_logo_url = await get_logo_url_for_school(db, school_name)
+
     player = {
         "id": player_profile.id,
         "slug": player_profile.slug,
         "name": player_name,
         "position": player_profile.position,
-        "college": clean_null(player_profile.school),
+        "college": school_name,
+        "school_logo_url": school_logo_url,
         "high_school": clean_null(player_profile.high_school),
         "shoots": clean_null(player_profile.shoots),
         "height": player_profile.height_formatted,
@@ -791,6 +796,7 @@ async def player_detail(
         {
             "season": row.season,
             "school": player.get("college") if single_season else None,
+            "school_logo_url": school_logo_url if single_season else None,
             "games": row.games,
             "games_started": row.games_started,
             "mpg": row.mpg,
