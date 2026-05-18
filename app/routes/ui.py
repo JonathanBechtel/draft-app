@@ -301,6 +301,8 @@ async def home(
             "film_room_video_counts": film_room_video_counts,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
+            "image_style": settings.default_image_style,
+            "s3_image_base_url": get_s3_image_base_url(),
         },
     )
 
