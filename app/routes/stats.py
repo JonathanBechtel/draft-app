@@ -29,6 +29,10 @@ from app.services.combine_stats_service import (
     get_metric_info,
     get_metrics_grouped,
 )
+from app.services.school_logo_service import (
+    get_logo_url_for_school,
+    get_logo_urls_for_schools,
+)
 from app.utils.db_async import get_session
 from app.utils.images import get_placeholder_url, get_player_image_url
 
@@ -279,12 +283,13 @@ async def draft_year_page(
                 )
         return result
 
-    def _player_row_to_dict(pr: PlayerMetricRow) -> dict:
+    def _player_row_to_dict(pr: PlayerMetricRow, logo_url: str | None = None) -> dict:
         d = {
             "player_id": pr.player_id,
             "display_name": pr.display_name,
             "slug": pr.slug,
             "school": pr.school,
+            "school_logo_url": logo_url,
             "position": pr.position,
             "metrics": pr.metrics,
             "formatted": pr.formatted_metrics,
@@ -292,6 +297,17 @@ async def draft_year_page(
         }
         d.update(_player_photo_urls(pr.player_id, pr.slug, pr.display_name))
         return d
+
+    # Pre-resolve school logos for every player surfaced on this page.
+    # The service caches the full school table in-process, so this is one
+    # query the first time and a dict lookup thereafter.
+    all_schools: list[str | None] = []
+    for cat in (data.anthro, data.athletic, data.shooting):
+        for pr in cat.players:
+            all_schools.append(pr.school)
+        for pr in cat.leaders.values():
+            all_schools.append(pr.school)
+    logo_map = await get_logo_urls_for_schools(db, all_schools)
 
     def _category_to_dict(cat: CategoryYearData) -> dict:
         return {
@@ -314,8 +330,14 @@ async def draft_year_page(
                 }
                 for rs in cat.range_stats
             ],
-            "leaders": {mk: _player_row_to_dict(pr) for mk, pr in cat.leaders.items()},
-            "players": [_player_row_to_dict(pr) for pr in cat.players],
+            "leaders": {
+                mk: _player_row_to_dict(pr, logo_map.get(pr.school or ""))
+                for mk, pr in cat.leaders.items()
+            },
+            "players": [
+                _player_row_to_dict(pr, logo_map.get(pr.school or ""))
+                for pr in cat.players
+            ],
             "metric_keys": cat.metric_keys,
             "metrics": _build_metrics_list(cat.metric_keys),
         }
@@ -353,6 +375,7 @@ async def draft_year_page(
                     "player_slug": pcs.player_slug,
                     "position": position_map.get(pcs.player_id),
                     "school": pcs.school,
+                    "school_logo_url": await get_logo_url_for_school(db, pcs.school),
                     "overall_percentile": overall_pctl,
                     "overall_rank": rank_idx,
                     "overall_grade": grade_label(overall_pctl),
@@ -472,6 +495,18 @@ async def metric_leaderboard(
     best = _entry_to_dict(result.best) if result.best else None
     worst = _entry_to_dict(result.worst) if result.worst else None
     typical = _entry_to_dict(result.typical) if result.typical else None
+
+    # Resolve school logos in one batch lookup
+    schools = [e["school"] for e in entries]
+    for card in (best, worst, typical):
+        if card is not None:
+            schools.append(card["school"])
+    logo_map = await get_logo_urls_for_schools(db, schools)
+    for e in entries:
+        e["school_logo_url"] = logo_map.get(e["school"])
+    for card in (best, worst, typical):
+        if card is not None:
+            card["school_logo_url"] = logo_map.get(card["school"])
 
     # Formatted median for card header
     median_formatted = result.typical.formatted_value if result.typical else None

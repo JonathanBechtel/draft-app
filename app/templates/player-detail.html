@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partials/macros.html" as macros %}
 
 {% block title %}{{ player.name }} — Player Profile | DraftGuru{% endblock %}
 
@@ -44,10 +45,15 @@
           <div id="playerPrimaryMeta" class="player-primary-meta">
             {% set meta_parts = [] %}
             {% if player.position %}{% set _ = meta_parts.append(player.position) %}{% endif %}
-            {% if player.college %}{% set _ = meta_parts.append(player.college) %}{% endif %}
+            {% if player.college %}
+              {%- set college_part -%}
+                {{ macros.school_logo(player.school_logo_url, player.college) }}{{ player.college }}
+              {%- endset -%}
+              {% set _ = meta_parts.append(college_part) %}
+            {% endif %}
             {% if player.height %}{% set _ = meta_parts.append(player.height) %}{% endif %}
             {% if player.weight %}{% set _ = meta_parts.append(player.weight) %}{% endif %}
-            {{ meta_parts | join(' • ') if meta_parts else 'Bio information unavailable' }}
+            {{ meta_parts | join(' • ') | safe if meta_parts else 'Bio information unavailable' }}
           </div>
 
           <div class="player-secondary-meta">
@@ -199,7 +205,7 @@
               {% if s.school %}
               <div class="context-item">
                 <span class="context-label">School</span>
-                <span class="context-value">{{ s.school }}</span>
+                <span class="context-value">{{ macros.school_logo(s.school_logo_url, s.school) }}{{ s.school }}</span>
               </div>
               {% endif %}
             </div>

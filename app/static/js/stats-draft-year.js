@@ -310,7 +310,7 @@
         '</div>' +
         '<div class="dy-winner-info">' +
           '<div class="dy-winner-name">' + escHtml(leader.display_name) + '</div>' +
-          '<div class="dy-winner-meta">' + escHtml(leader.school || '') + ' &middot; ' + escHtml(leader.position || '') + '</div>' +
+          '<div class="dy-winner-meta">' + schoolLogo(leader.school_logo_url, leader.school, 'school-logo--sm') + escHtml(leader.school || '') + ' &middot; ' + escHtml(leader.position || '') + '</div>' +
         '</div>' +
       '</a>';
     });
@@ -469,7 +469,7 @@
         '<img src="' + escAttr(photoUrl) + '" alt="' + escAttr(p.display_name) + '"' +
         ' onerror="this.onerror=null;this.src=\'' + escAttr(placeholderUrl) + '\';">' +
         '<div><div class="name"><a href="/players/' + escAttr(p.slug) + '">' + escHtml(p.display_name) + '</a></div>' +
-        '<div class="school">' + escHtml(p.school || '') + '</div></div>' +
+        '<div class="school">' + schoolLogo(p.school_logo_url, p.school, 'school-logo--sm') + escHtml(p.school || '') + '</div></div>' +
         '</div></td>';
       bodyHtml += '<td>' + escHtml(p.position || '') + '</td>';
 
@@ -673,7 +673,7 @@
       html += '<td>' + (p.overall_rank || '&mdash;') + '</td>';
       html += '<td><div class="dy-player-cell">' +
         '<div><div class="name"><a href="/players/' + escAttr(p.player_slug) + '">' + escHtml(p.player_name) + '</a></div>' +
-        '<div class="school">' + escHtml((p.position || '') + (p.position && p.school ? ' \u00B7 ' : '') + (p.school || '')) + '</div></div>' +
+        '<div class="school">' + escHtml(p.position || '') + (p.position && p.school ? ' \u00B7 ' : '') + schoolLogo(p.school_logo_url, p.school, 'school-logo--sm') + escHtml(p.school || '') + '</div></div>' +
         '</div></td>';
       html += '<td class="text-center">' + pctlPill(p.overall_percentile) + '</td>';
       html += '<td class="text-center">' + pctlPill(p.anthro_percentile) + '</td>';
@@ -703,6 +703,15 @@
   function escAttr(s) {
     if (!s) return '';
     return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // Inline school logo (mirrors partials/macros.html::school_logo).
+  // Returns empty string when no logo URL is provided.
+  function schoolLogo(logoUrl, schoolName, modifier) {
+    if (!logoUrl) return '';
+    var cls = 'school-logo' + (modifier ? ' ' + modifier : '');
+    return '<img class="' + cls + '" src="' + escAttr(logoUrl) +
+      '" alt="' + escAttr(schoolName || '') + '" loading="lazy">';
   }
 
   // ═══════════════════════════════════════════════════════════════

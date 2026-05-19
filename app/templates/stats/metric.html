@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partials/macros.html" as macros %}
 
 {% block title %}{{ metric.display_name }} — NBA Draft Combine | DraftGuru{% endblock %}
 
@@ -72,7 +73,7 @@
           <div class="stat-summary-card__info">
             <div class="stat-summary-card__value">{{ best.formatted_value }}</div>
             <div class="stat-summary-card__player">{{ best.display_name }}</div>
-            <div class="stat-summary-card__meta">{{ best.school or "" }}{% if best.position %} &middot; {{ best.position }}{% endif %}{% if best.draft_year %} &middot; {{ best.draft_year }}{% endif %}</div>
+            <div class="stat-summary-card__meta">{{ macros.school_logo(best.school_logo_url, best.school) }}{{ best.school or "" }}{% if best.position %} &middot; {{ best.position }}{% endif %}{% if best.draft_year %} &middot; {{ best.draft_year }}{% endif %}</div>
           </div>
         </div>
         {% endif %}
@@ -91,7 +92,7 @@
           <div class="stat-summary-card__info">
             <div class="stat-summary-card__value">{{ worst.formatted_value }}</div>
             <div class="stat-summary-card__player">{{ worst.display_name }}</div>
-            <div class="stat-summary-card__meta">{{ worst.school or "" }}{% if worst.position %} &middot; {{ worst.position }}{% endif %}{% if worst.draft_year %} &middot; {{ worst.draft_year }}{% endif %}</div>
+            <div class="stat-summary-card__meta">{{ macros.school_logo(worst.school_logo_url, worst.school) }}{{ worst.school or "" }}{% if worst.position %} &middot; {{ worst.position }}{% endif %}{% if worst.draft_year %} &middot; {{ worst.draft_year }}{% endif %}</div>
           </div>
         </div>
         {% endif %}
@@ -110,7 +111,7 @@
           <div class="stat-summary-card__info">
             <div class="stat-summary-card__value">{{ typical.formatted_value }}</div>
             <div class="stat-summary-card__player">{{ typical.display_name }}</div>
-            <div class="stat-summary-card__meta">{{ typical.school or "" }}{% if typical.position %} &middot; {{ typical.position }}{% endif %}{% if typical.draft_year %} &middot; {{ typical.draft_year }}{% endif %}</div>
+            <div class="stat-summary-card__meta">{{ macros.school_logo(typical.school_logo_url, typical.school) }}{{ typical.school or "" }}{% if typical.position %} &middot; {{ typical.position }}{% endif %}{% if typical.draft_year %} &middot; {{ typical.draft_year }}{% endif %}</div>
           </div>
         </div>
         {% endif %}
@@ -239,7 +240,7 @@
                   >
                   <div class="cell-player__info">
                     <span class="cell-player__name">{{ entry.display_name }}</span>
-                    <span class="cell-player__school">{{ entry.school or "" }}</span>
+                    <span class="cell-player__school">{{ macros.school_logo(entry.school_logo_url, entry.school, modifier='school-logo--sm') }}{{ entry.school or "" }}</span>
                   </div>
                 </a>
               </td>

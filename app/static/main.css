@@ -970,3 +970,25 @@ body {
     font-size: 1.25rem;
   }
 }
+
+/* ==========================================================================
+   School Logo
+   Inline image used across player pages, stat leaderboards, and the
+   draft-year grid to identify a player's college team.
+   ========================================================================== */
+.school-logo {
+  display: inline-block;
+  vertical-align: middle;
+  width: 20px;
+  height: 20px;
+  margin-right: 0.35rem;
+  border-radius: 3px;
+  object-fit: contain;
+  background: var(--color-slate-50);
+  flex-shrink: 0;
+}
+
+.school-logo--sm { width: 16px; height: 16px; }
+.school-logo--lg { width: 28px; height: 28px; }
+.school-logo--xl { width: 40px; height: 40px; }
+

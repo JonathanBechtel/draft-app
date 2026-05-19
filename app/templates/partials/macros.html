@@ -1,0 +1,24 @@
+{# Reusable Jinja macros for DraftGuru templates. #}
+
+{#-
+  Render an inline college school logo.
+
+  Params:
+    logo_url: Public URL of the logo (typically resolved via
+              school_logo_service). When empty/None, nothing is rendered
+              so callers can safely emit `{{ school_logo(...) }}{{ name }}`
+              and get a clean fallback to text-only.
+    school:   School display name; used for the alt attribute.
+    modifier: Optional BEM modifier class (e.g. 'school-logo--sm',
+              'school-logo--lg'). Default size lives in main.css.
+-#}
+{% macro school_logo(logo_url, school='', modifier='') -%}
+  {%- if logo_url -%}
+    <img
+      class="school-logo{% if modifier %} {{ modifier }}{% endif %}"
+      src="{{ logo_url }}"
+      alt="{{ school }}"
+      loading="lazy"
+    >
+  {%- endif -%}
+{%- endmacro %}
