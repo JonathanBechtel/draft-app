@@ -4,7 +4,14 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column, Enum as SAEnum, Index, UniqueConstraint
+from sqlalchemy import (
+    Column,
+    Enum as SAEnum,
+    ForeignKey,
+    Index,
+    Integer,
+    UniqueConstraint,
+)
 from sqlmodel import Field, SQLModel
 
 
@@ -73,7 +80,14 @@ class BigBoardEntry(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    board_id: int = Field(foreign_key="big_boards.id", index=True)
+    board_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("big_boards.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        )
+    )
     player_id: int = Field(foreign_key="players_master.id")
     rank: int = Field(description="Analyst's talent-ranking position (1-based).")
     tier: Optional[int] = Field(
