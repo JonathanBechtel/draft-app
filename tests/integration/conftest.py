@@ -133,6 +133,7 @@ async def async_engine(
     from app.schemas import youtube_channels  # noqa: F401
     from app.schemas import youtube_videos  # noqa: F401
     from app.schemas import auth  # noqa: F401
+    from app.schemas import big_boards  # noqa: F401
 
     connect_args = {
         # Disable prepared statement caching to avoid type OID/cache issues after DDL.
