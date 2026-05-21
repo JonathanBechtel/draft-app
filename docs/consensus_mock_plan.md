@@ -160,6 +160,40 @@ An analyst's prediction of what will actually happen on draft night.
 - Low volume (~5–10 new boards per week across all sources) makes this feasible
 - Approval UI can show extracted board side-by-side with original article for quick verification
 
+### Extraction Strategy — Single Extractor with Per-Source Hints
+
+Different substacks format big boards differently — numbered lists, tier
+headers, tables, prose with embedded rankings. The question is whether to
+have one generic extractor or a dedicated parser per source.
+
+**Decision: one shared LLM extractor that pulls per-source hints from
+`NewsSource` at call time.** Add an `extraction_hints` JSON column to
+`NewsSource` with format metadata, e.g.:
+
+```json
+{
+  "format": "tier_list",
+  "tier_labels": "Tier 1..Tier 5",
+  "rank_within_tier_is_implicit": true
+}
+```
+
+The shared prompt injects those hints so the model gets source-specific
+context without per-source code. New sources are added by writing hints,
+not code; the admin approval queue catches errors before any extracted
+board affects consensus, so the cost of an occasional bad parse is admin
+time, not bad data.
+
+**When this won't be enough** (defer until we hit the first failing case):
+
+- Image-only boards (e.g., a substack that posts a ranking screenshot)
+- Mock drafts — pick/team/trade triples are significantly harder than
+  ordered lists, and source-specific handling may be justified there
+- Sources that change format frequently mid-season
+
+The fallback for any extraction failure is the manual admin entry path
+(`app/routes/admin/big_boards.py`).
+
 ---
 
 ## Player Analytics (derived from consensus)

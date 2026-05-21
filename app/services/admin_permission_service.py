@@ -21,6 +21,7 @@ KNOWN_DATASETS = [
     "youtube_channels",
     "youtube_videos",
     "youtube_ingestion",
+    "big_boards",
 ]
 
 
