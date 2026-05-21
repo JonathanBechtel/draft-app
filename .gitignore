@@ -233,6 +233,9 @@ __marimo__/
 docs/creator_outreach_contacts.csv
 docs/outreach_templates.md
 
+# X thread drafts (skill output, not for committing)
+scripts/x_threads/drafts/
+
 # Local agent / MCP state
 .claude/scheduled_tasks.lock
 .playwright-mcp/

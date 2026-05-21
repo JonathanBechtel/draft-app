@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 1260" width="2400" height="1260">
+  <defs>
+    <style type="text/css">
+      .title { font-family: 'Russo One', sans-serif; font-size: 92px; fill: #0f172a; text-transform: uppercase; }
+      .subtitle { font-family: 'Azeret Mono', monospace; font-size: 36px; fill: #64748b; letter-spacing: 0.05em; }
+      .school { font-family: 'Azeret Mono', monospace; font-size: 32px; fill: #475569; }
+      .stat-label { font-family: 'Azeret Mono', monospace; font-size: 38px; fill: #334155; letter-spacing: 0.04em; text-transform: uppercase; }
+      .stat-value { font-family: 'Russo One', sans-serif; font-size: 96px; fill: #0f172a; }
+      .stat-context { font-family: 'Azeret Mono', monospace; font-size: 30px; fill: #64748b; }
+      .pill-text { font-family: 'Russo One', sans-serif; font-size: 36px; fill: #ffffff; letter-spacing: 0.05em; }
+      .support { font-family: 'Azeret Mono', monospace; font-size: 32px; fill: #334155; }
+      .watermark { font-family: 'Russo One', sans-serif; font-size: 32px; fill: #0f172a; letter-spacing: 0.12em; }
+    </style>
+    <pattern id="dotmatrix" patternUnits="userSpaceOnUse" width="24" height="24">
+      <circle cx="12" cy="12" r="1" fill="#64748b" opacity="0.1"/>
+    </pattern>
+    <pattern id="scanlines" patternUnits="userSpaceOnUse" width="4" height="4">
+      <line x1="0" y1="0" x2="4" y2="0" stroke="#0f172a" stroke-width="1" opacity="0.03"/>
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="2400" height="1260" fill="#f8fafc"/>
+  <rect width="2400" height="1260" fill="url(#dotmatrix)"/>
+  <rect width="2400" height="1260" fill="url(#scanlines)"/>
+
+  <!-- Top accent bar -->
+  <rect x="0" y="0" width="2400" height="14" fill="#d946ef"/>
+
+  <!-- Outlier pill -->
+  <g transform="translate(96, 80)">
+    <rect x="0" y="0" width="280" height="56" rx="28" fill="#0f172a"/>
+    <text x="140" y="38" text-anchor="middle" class="pill-text">OUTLIER</text>
+  </g>
+
+  <!-- Player name + school -->
+  <g transform="translate(96, 200)">
+    <text x="0" y="0" class="title">{{ player_name | escape_xml }}</text>
+    {% if player_school %}
+    <text x="0" y="70" class="school">{{ player_school | escape_xml }}</text>
+    {% endif %}
+  </g>
+
+  <!-- Subtype tag -->
+  <g transform="translate(96, 340)">
+    <text x="0" y="0" class="subtitle">// {{ subtype | replace('_', ' ') | upper | escape_xml }}</text>
+  </g>
+
+  <!-- Stat blocks (up to 3) -->
+  <g transform="translate(96, 420)">
+    {% for stat in stats[:3] %}
+    {% set x_offset = loop.index0 * 740 %}
+    <g transform="translate({{ x_offset }}, 0)">
+      <!-- Pixel-corner card -->
+      <rect x="0" y="0" width="680" height="380" rx="18" fill="#ffffff" stroke="#cbd5e1" stroke-width="3"/>
+      <rect x="0" y="0" width="680" height="14" fill="#d946ef"/>
+
+      <text x="40" y="80" class="stat-label">{{ stat.label | escape_xml }}</text>
+      <text x="40" y="200" class="stat-value">{{ stat.value | escape_xml }}</text>
+
+      {% if stat.percentile is not none %}
+      <text x="40" y="260" class="stat-context">{{ stat.percentile | round(0) | int }}th percentile</text>
+      {% endif %}
+      {% if stat.rank is not none and stat.population_size is not none %}
+      <text x="40" y="305" class="stat-context">#{{ stat.rank }} of {{ stat.population_size }}</text>
+      {% elif stat.rank is not none %}
+      <text x="40" y="305" class="stat-context">rank #{{ stat.rank }}</text>
+      {% endif %}
+      {% if stat.context %}
+      <text x="40" y="350" class="stat-context">{{ stat.context | escape_xml }}</text>
+      {% endif %}
+    </g>
+    {% endfor %}
+  </g>
+
+  <!-- Support text -->
+  <g transform="translate(96, 860)">
+    <foreignObject x="0" y="0" width="2208" height="220">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: 'Azeret Mono', monospace; font-size: 32px; color: #334155; line-height: 1.4;">
+        {{ support_text | escape_xml }}
+      </div>
+    </foreignObject>
+  </g>
+
+  <!-- Watermark -->
+  <g transform="translate(96, 1180)">
+    <text x="0" y="0" class="watermark">DRAFTGURU</text>
+  </g>
+  <g transform="translate(2304, 1180)">
+    <text x="0" y="0" text-anchor="end" class="watermark">@DRAFTGURU</text>
+  </g>
+</svg>
