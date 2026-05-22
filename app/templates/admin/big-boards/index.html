@@ -1,0 +1,82 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Big Boards" %}
+{% set active_nav = "big-boards" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Big Boards</h1>
+  <p class="admin-main__subtitle">
+    Per-source talent rankings. Approved boards feed the consensus.
+  </p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">All Boards</h2>
+    <div style="display: flex; gap: 0.5rem; align-items: center;">
+      <form method="get" action="/admin/big-boards" class="admin-form--inline">
+        <select class="admin-form__select" name="status" onchange="this.form.submit()">
+          <option value="">All statuses</option>
+          {% for s in statuses %}
+          <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <a href="/admin/big-boards/new" class="admin-btn admin-btn--primary admin-btn--small">
+        New Board
+      </a>
+    </div>
+  </div>
+
+  {% if boards %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>Source</th>
+        <th>Year</th>
+        <th>Published</th>
+        <th>Size</th>
+        <th>Status</th>
+        <th>Approved</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for board in boards %}
+      <tr>
+        <td>
+          {% set src = sources_by_id.get(board.news_source_id) %}
+          <strong>{{ src.display_name if src else board.news_source_id }}</strong>
+        </td>
+        <td>{{ board.draft_year }}</td>
+        <td>{{ board.published_at.strftime('%Y-%m-%d') }}</td>
+        <td>{{ board.board_size }}</td>
+        <td>
+          {% if board.status.value == 'APPROVED' %}
+          <span class="admin-badge admin-badge--active">{{ board.status.value }}</span>
+          {% elif board.status.value == 'REJECTED' %}
+          <span class="admin-badge admin-badge--inactive">{{ board.status.value }}</span>
+          {% else %}
+          <span class="admin-badge">{{ board.status.value }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if board.approved_at %}
+          {{ board.approved_at.strftime('%Y-%m-%d') }}
+          {% else %}
+          &mdash;
+          {% endif %}
+        </td>
+        <td>
+          <a href="/admin/big-boards/{{ board.id }}" class="admin-btn admin-btn--small">View</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="admin-text--muted">No big boards yet. Create one to get started.</p>
+  {% endif %}
+</div>
+{% endblock %}

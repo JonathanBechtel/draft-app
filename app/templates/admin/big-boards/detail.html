@@ -1,0 +1,140 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Big Board" %}
+{% set active_nav = "big-boards" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">
+    {{ source.display_name if source else board.news_source_id }}
+    <span class="admin-text--muted">&middot; {{ board.draft_year }}</span>
+  </h1>
+  <p class="admin-main__subtitle">
+    Published {{ board.published_at.strftime('%Y-%m-%d') }} &middot;
+    Status:
+    {% if board.status.value == 'APPROVED' %}
+    <span class="admin-badge admin-badge--active">{{ board.status.value }}</span>
+    {% elif board.status.value == 'REJECTED' %}
+    <span class="admin-badge admin-badge--inactive">{{ board.status.value }}</span>
+    {% else %}
+    <span class="admin-badge">{{ board.status.value }}</span>
+    {% endif %}
+    &middot; {{ board.board_size }} player{{ '' if board.board_size == 1 else 's' }}
+  </p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Entries</h2>
+    {% if is_pending %}
+    <div style="display: flex; gap: 0.5rem;">
+      <form method="post" action="/admin/big-boards/{{ board.id }}/approve" class="admin-form--inline">
+        <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Approve</button>
+      </form>
+      <form method="post" action="/admin/big-boards/{{ board.id }}/reject" class="admin-form--inline"
+            onsubmit="return confirm('Reject this board? It will be locked but kept for audit.');">
+        <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small">Reject</button>
+      </form>
+      <form method="post" action="/admin/big-boards/{{ board.id }}/delete" class="admin-form--inline"
+            onsubmit="return confirm('Permanently delete this board and all entries? No audit record will be kept.');">
+        <button type="submit" class="admin-btn admin-btn--small">Delete</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if entries %}
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th style="width: 4rem;">Rank</th>
+        <th>Player</th>
+        <th>School</th>
+        <th style="width: 5rem;">Tier</th>
+        {% if is_pending %}
+        <th style="width: 14rem;">Actions</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in entries %}
+      {% set player = players_by_id.get(entry.player_id) %}
+      <tr>
+        <td><strong>{{ entry.rank }}</strong></td>
+        <td>{{ player.display_name if player else '(unknown player)' }}</td>
+        <td>{{ player.school if player else '' }}</td>
+        <td>{{ entry.tier if entry.tier is not none else '—' }}</td>
+        {% if is_pending %}
+        <td>
+          <form method="post"
+                action="/admin/big-boards/{{ board.id }}/entries/{{ entry.id }}/update"
+                class="admin-form--inline"
+                style="display: flex; gap: 0.25rem;">
+            <input class="admin-form__input" type="number" name="rank" value="{{ entry.rank }}"
+                   min="1" required style="width: 4.5rem;" />
+            <input class="admin-form__input" type="number" name="tier"
+                   value="{{ entry.tier if entry.tier is not none else '' }}"
+                   placeholder="tier" style="width: 4.5rem;" />
+            <button type="submit" class="admin-btn admin-btn--small">Save</button>
+          </form>
+          <form method="post"
+                action="/admin/big-boards/{{ board.id }}/entries/{{ entry.id }}/delete"
+                class="admin-form--inline"
+                onsubmit="return confirm('Delete this entry?');">
+            <button type="submit" class="admin-btn admin-btn--small">Remove</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="admin-text--muted">No entries yet.</p>
+  {% endif %}
+
+  {% if is_pending %}
+  <div class="admin-card__header" style="margin-top: 1.5rem;">
+    <h3 class="admin-card__title">Add Entry</h3>
+  </div>
+  <form
+    id="big-board-add-entry"
+    class="admin-form"
+    method="post"
+    action="/admin/big-boards/{{ board.id }}/entries"
+    style="display: grid; grid-template-columns: 5rem 1fr 5rem auto; gap: 0.75rem; align-items: end;"
+  >
+    <div class="admin-form__field" style="margin: 0;">
+      <label class="admin-form__label" for="rank">Rank</label>
+      <input class="admin-form__input" id="rank" name="rank" type="number" min="1" required />
+    </div>
+    <div class="admin-form__field" style="margin: 0; position: relative;">
+      <label class="admin-form__label" for="player-search">Player</label>
+      <input
+        class="admin-form__input"
+        id="player-search"
+        type="text"
+        placeholder="Type a player name..."
+        autocomplete="off"
+        required
+      />
+      <input type="hidden" id="player_id" name="player_id" required />
+      <ul id="player-autocomplete" class="admin-autocomplete" hidden></ul>
+    </div>
+    <div class="admin-form__field" style="margin: 0;">
+      <label class="admin-form__label" for="tier">Tier</label>
+      <input class="admin-form__input" id="tier" name="tier" type="number" placeholder="optional" />
+    </div>
+    <div class="admin-form__field" style="margin: 0;">
+      <button type="submit" class="admin-btn admin-btn--primary">Add</button>
+    </div>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block admin_js %}
+{% if is_pending %}
+<script src="/static/big-boards-detail.js"></script>
+{% endif %}
+{% endblock %}

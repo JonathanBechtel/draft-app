@@ -1,0 +1,59 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "New Big Board" %}
+{% set active_nav = "big-boards" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">New Big Board</h1>
+  <p class="admin-main__subtitle">
+    Create the board shell first; you'll add the ranked players on the next screen.
+  </p>
+</header>
+
+<div class="admin-card admin-card--medium">
+  <form class="admin-form" method="post" action="/admin/big-boards">
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="news_source_id">Source</label>
+      <select class="admin-form__select" id="news_source_id" name="news_source_id" required>
+        <option value="">-- Pick a source --</option>
+        {% for source in sources %}
+        <option value="{{ source.id }}">{{ source.display_name }}</option>
+        {% endfor %}
+      </select>
+      <span class="admin-form__help">Active news sources only.</span>
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="draft_year">Draft Year</label>
+      <input
+        class="admin-form__input"
+        id="draft_year"
+        name="draft_year"
+        type="number"
+        min="2024"
+        max="2035"
+        value="{{ default_draft_year }}"
+        required
+      />
+    </div>
+
+    <div class="admin-form__field">
+      <label class="admin-form__label" for="published_at">Published</label>
+      <input
+        class="admin-form__input"
+        id="published_at"
+        name="published_at"
+        type="date"
+        required
+      />
+      <span class="admin-form__help">When the analyst published the board.</span>
+    </div>
+
+    <div class="admin-form__actions">
+      <button type="submit" class="admin-btn admin-btn--primary">Create Board</button>
+      <a href="/admin/big-boards" class="admin-btn admin-btn--secondary">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
