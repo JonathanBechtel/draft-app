@@ -265,6 +265,34 @@ async def reject_board(db: AsyncSession, *, board_id: int) -> BigBoard:
     return board
 
 
+async def update_board_metadata(
+    db: AsyncSession,
+    *,
+    board_id: int,
+    news_source_id: Optional[int] = None,
+    draft_year: Optional[int] = None,
+    published_at: Optional[datetime] = None,
+) -> BigBoard:
+    """Patch source / draft year / published_at on a PENDING board.
+
+    Pass ``None`` to leave a field unchanged. Only PENDING boards may
+    be edited; APPROVED and REJECTED stay locked so their attribution
+    can't drift after the fact.
+    """
+    board = await get_board(db, board_id)
+    _require_pending(board)
+
+    if news_source_id is not None:
+        board.news_source_id = news_source_id
+    if draft_year is not None:
+        board.draft_year = draft_year
+    if published_at is not None:
+        board.published_at = published_at
+    board.updated_at = datetime.utcnow()
+    await db.flush()
+    return board
+
+
 async def reopen_board(db: AsyncSession, *, board_id: int) -> BigBoard:
     """Unlock an APPROVED board back to PENDING so it can be edited.
 

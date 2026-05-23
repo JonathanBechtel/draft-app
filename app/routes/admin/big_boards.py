@@ -43,6 +43,7 @@ _SUCCESS_MESSAGES: dict[str, str] = {
     "deleted": "Board deleted.",
     "reopened": "Board reopened for editing.",
     "cloned": "Board cloned. Edit the new copy below.",
+    "meta_updated": "Board details updated.",
 }
 
 
@@ -220,6 +221,28 @@ async def big_board_detail(
         (max((e.rank for e in entries), default=0) + 1) if entries else 1
     )
 
+    editable_sources: list[NewsSource] = []
+    if is_pending:
+        active_rows = list(
+            (
+                await db.execute(
+                    select(NewsSource)
+                    .where(NewsSource.is_active)  # type: ignore[arg-type]
+                    .order_by(NewsSource.display_name)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        # Always include the board's current source in the dropdown, even
+        # if it was deactivated after the board was created. Otherwise a
+        # year/date-only edit would silently reassign attribution to
+        # whichever active source the required <select> defaulted to.
+        if source is not None and not any(s.id == source.id for s in active_rows):
+            active_rows.append(source)
+            active_rows.sort(key=lambda s: (s.display_name or "").lower())
+        editable_sources = active_rows
+
     return request.app.state.templates.TemplateResponse(
         "admin/big-boards/detail.html",
         await base_context_with_permissions(
@@ -233,6 +256,7 @@ async def big_board_detail(
             is_pending=is_pending,
             default_tier=default_tier,
             default_next_rank=default_next_rank,
+            editable_sources=editable_sources,
             success=_SUCCESS_MESSAGES.get(success) if success else None,
             error=error,
         ),
@@ -424,6 +448,54 @@ async def delete_big_board(
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(url="/admin/big-boards?success=deleted", status_code=303)
+
+
+@router.post("/{board_id}/update-meta", response_class=HTMLResponse)
+async def update_board_meta(
+    request: Request,
+    board_id: int,
+    news_source_id: int = Form(...),
+    draft_year: int = Form(...),
+    published_at: str = Form(...),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Patch source / draft year / published_at on a PENDING board."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "big_boards",
+        need_edit=True,
+        next_path=f"/admin/big-boards/{board_id}",
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    try:
+        parsed = datetime.fromisoformat(published_at)
+    except ValueError:
+        return _redirect_with_error(
+            board_id,
+            "Published-at must be an ISO date/time (e.g., 2026-05-23).",
+        )
+    published_dt = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+
+    try:
+        async with db.begin():
+            await svc.update_board_metadata(
+                db,
+                board_id=board_id,
+                news_source_id=news_source_id,
+                draft_year=draft_year,
+                published_at=published_dt,
+            )
+    except svc.BigBoardError as exc:
+        return _redirect_with_error(board_id, str(exc))
+
+    return RedirectResponse(
+        url=f"/admin/big-boards/{board_id}?success=meta_updated",
+        status_code=303,
+    )
 
 
 @router.post("/{board_id}/reopen", response_class=HTMLResponse)

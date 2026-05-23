@@ -268,6 +268,77 @@ async def test_delete_pending_board_cascades_entries(
 
 
 @pytest.mark.asyncio
+async def test_update_board_metadata_changes_source_year_published_at(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    players: list[PlayerMaster],
+) -> None:
+    """update_board_metadata patches the editable fields on a PENDING board."""
+    assert news_source.id is not None
+    other_source = NewsSource(
+        name="alt-source",
+        display_name="Alt Source",
+        feed_url="https://example.com/alt-feed",
+    )
+    db_session.add(other_source)
+    await db_session.flush()
+    assert other_source.id is not None
+
+    board = await svc.create_board(
+        db_session,
+        news_source_id=news_source.id,
+        draft_year=2026,
+        published_at=_published_at(),
+        entries=[svc.EntryInput(player_id=players[0].id, rank=1)],  # type: ignore[arg-type]
+    )
+    await db_session.commit()
+
+    new_published = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
+        days=5
+    )
+    updated = await svc.update_board_metadata(
+        db_session,
+        board_id=board.id,  # type: ignore[arg-type]
+        news_source_id=other_source.id,
+        draft_year=2027,
+        published_at=new_published,
+    )
+    await db_session.commit()
+
+    assert updated.news_source_id == other_source.id
+    assert updated.draft_year == 2027
+    assert updated.published_at == new_published
+    assert updated.status is BoardStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_update_board_metadata_rejects_non_pending_board(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    players: list[PlayerMaster],
+) -> None:
+    """Approved and rejected boards refuse metadata edits."""
+    assert news_source.id is not None
+    board = await svc.create_board(
+        db_session,
+        news_source_id=news_source.id,
+        draft_year=2026,
+        published_at=_published_at(),
+        entries=[svc.EntryInput(player_id=players[0].id, rank=1)],  # type: ignore[arg-type]
+    )
+    await db_session.commit()
+    await svc.approve_board(db_session, board_id=board.id)  # type: ignore[arg-type]
+    await db_session.commit()
+
+    with pytest.raises(svc.BoardNotEditableError):
+        await svc.update_board_metadata(
+            db_session,
+            board_id=board.id,  # type: ignore[arg-type]
+            draft_year=2027,
+        )
+
+
+@pytest.mark.asyncio
 async def test_reopen_board_flips_approved_to_pending(
     db_session: AsyncSession,
     news_source: NewsSource,

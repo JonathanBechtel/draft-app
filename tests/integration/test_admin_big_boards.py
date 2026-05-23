@@ -260,6 +260,176 @@ class TestBigBoardLifecycle:
         assert approve_again.status_code == 303
         assert "error=" in approve_again.headers["location"]
 
+    async def test_detail_page_includes_current_source_when_deactivated(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+    ):
+        """If the board's source was deactivated, the edit dropdown still lists it.
+
+        Otherwise a year/date-only edit on a PENDING board would silently
+        reassign attribution to whichever active source the required
+        <select> defaulted to.
+        """
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        create_resp = await app_client.post(
+            "/admin/big-boards",
+            data={
+                "news_source_id": str(big_board_source.id),
+                "draft_year": "2026",
+                "published_at": "2026-05-01",
+            },
+            follow_redirects=False,
+        )
+        board_id = int(
+            create_resp.headers["location"].split("/")[-1].split("?")[0]
+        )
+
+        # Deactivate the source that the board was created against.
+        src_row = await db_session.get(
+            NewsSource, big_board_source.id, populate_existing=True
+        )
+        assert src_row is not None
+        src_row.is_active = False
+        await db_session.commit()
+
+        # Add an extra active source so the dropdown isn't empty otherwise.
+        other = NewsSource(
+            name="other-active",
+            display_name="Other Active Source",
+            feed_type=FeedType.RSS,
+            feed_url="https://example.com/other-active-feed.xml",
+            is_active=True,
+            fetch_interval_minutes=30,
+        )
+        db_session.add(other)
+        await db_session.commit()
+
+        detail = await app_client.get(f"/admin/big-boards/{board_id}")
+        assert detail.status_code == 200
+        # The deactivated current source is still rendered as an option,
+        # tagged "(inactive)" so the admin sees its status.
+        assert big_board_source.display_name in detail.text
+        assert "(inactive)" in detail.text
+        # And it's the selected option (the required select hasn't silently
+        # defaulted to the other active source).
+        assert (
+            f'value="{big_board_source.id}" selected'
+            in detail.text.replace("'", '"')
+        )
+
+    async def test_update_meta_changes_source_year_published_at(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+    ):
+        """POST /update-meta patches source/year/published_at on a PENDING board."""
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        other_source = NewsSource(
+            name="alt-meta-source",
+            display_name="Alt Meta Source",
+            feed_type=FeedType.RSS,
+            feed_url="https://example.com/alt-meta-feed.xml",
+            is_active=True,
+            fetch_interval_minutes=30,
+        )
+        db_session.add(other_source)
+        await db_session.commit()
+        await db_session.refresh(other_source)
+        assert other_source.id is not None
+
+        create_resp = await app_client.post(
+            "/admin/big-boards",
+            data={
+                "news_source_id": str(big_board_source.id),
+                "draft_year": "2026",
+                "published_at": "2026-05-01",
+            },
+            follow_redirects=False,
+        )
+        board_id = int(
+            create_resp.headers["location"].split("/")[-1].split("?")[0]
+        )
+
+        update_resp = await app_client.post(
+            f"/admin/big-boards/{board_id}/update-meta",
+            data={
+                "news_source_id": str(other_source.id),
+                "draft_year": "2027",
+                "published_at": "2026-05-10",
+            },
+            follow_redirects=False,
+        )
+        assert update_resp.status_code == 303
+        assert "success=meta_updated" in update_resp.headers["location"]
+
+        board_row = await db_session.get(
+            BigBoard, board_id, populate_existing=True
+        )
+        assert board_row is not None
+        assert board_row.news_source_id == other_source.id
+        assert board_row.draft_year == 2027
+        assert board_row.published_at.strftime("%Y-%m-%d") == "2026-05-10"
+
+    async def test_update_meta_rejected_on_approved_board(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+        sample_players: list[PlayerMaster],
+    ):
+        """Editing metadata on an APPROVED board redirects with an error."""
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        create_resp = await app_client.post(
+            "/admin/big-boards",
+            data={
+                "news_source_id": str(big_board_source.id),
+                "draft_year": "2026",
+                "published_at": "2026-05-01",
+            },
+            follow_redirects=False,
+        )
+        board_id = int(
+            create_resp.headers["location"].split("/")[-1].split("?")[0]
+        )
+        await app_client.post(
+            f"/admin/big-boards/{board_id}/entries",
+            data={"player_id": str(sample_players[0].id), "rank": "1"},
+            follow_redirects=False,
+        )
+        await app_client.post(
+            f"/admin/big-boards/{board_id}/approve", follow_redirects=False
+        )
+
+        update_resp = await app_client.post(
+            f"/admin/big-boards/{board_id}/update-meta",
+            data={
+                "news_source_id": str(big_board_source.id),
+                "draft_year": "2027",
+                "published_at": "2026-05-10",
+            },
+            follow_redirects=False,
+        )
+        assert update_resp.status_code == 303
+        assert "error=" in update_resp.headers["location"]
+
+        board_row = await db_session.get(
+            BigBoard, board_id, populate_existing=True
+        )
+        assert board_row is not None
+        assert board_row.draft_year == 2026  # unchanged
+
     async def test_reopen_flips_approved_back_to_pending(
         self,
         app_client: AsyncClient,
