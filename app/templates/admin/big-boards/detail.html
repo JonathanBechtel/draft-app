@@ -26,8 +26,8 @@
 <div class="admin-card">
   <div class="admin-card__header">
     <h2 class="admin-card__title">Entries</h2>
-    {% if is_pending %}
     <div style="display: flex; gap: 0.5rem;">
+      {% if is_pending %}
       <form method="post" action="/admin/big-boards/{{ board.id }}/approve" class="admin-form--inline">
         <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Approve</button>
       </form>
@@ -39,44 +39,75 @@
             onsubmit="return confirm('Permanently delete this board and all entries? No audit record will be kept.');">
         <button type="submit" class="admin-btn admin-btn--small">Delete</button>
       </form>
+      {% elif board.status.value == 'APPROVED' %}
+      <form method="post" action="/admin/big-boards/{{ board.id }}/reopen" class="admin-form--inline"
+            onsubmit="return confirm('Reopen this board for editing? Its approved_at timestamp will be cleared until you re-approve.');">
+        <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small">Reopen</button>
+      </form>
+      {% endif %}
+      <form method="post" action="/admin/big-boards/{{ board.id }}/clone" class="admin-form--inline">
+        <button type="submit" class="admin-btn admin-btn--small">Clone</button>
+      </form>
     </div>
-    {% endif %}
   </div>
 
   {% if entries %}
-  <table class="admin-table">
+  <table class="admin-table" id="big-board-entries">
     <thead>
       <tr>
-        <th style="width: 4rem;">Rank</th>
+        {% if is_pending %}<th style="width: 5rem;">Move</th>{% endif %}
+        <th style="width: 6rem;">Rank</th>
         <th>Player</th>
         <th>School</th>
-        <th style="width: 5rem;">Tier</th>
-        {% if is_pending %}
-        <th style="width: 14rem;">Actions</th>
-        {% endif %}
+        <th style="width: 6rem;">Tier</th>
+        {% if is_pending %}<th style="width: 6rem;">Remove</th>{% endif %}
       </tr>
     </thead>
     <tbody>
       {% for entry in entries %}
       {% set player = players_by_id.get(entry.player_id) %}
-      <tr>
-        <td><strong>{{ entry.rank }}</strong></td>
-        <td>{{ player.display_name if player else '(unknown player)' }}</td>
-        <td>{{ player.school if player else '' }}</td>
-        <td>{{ entry.tier if entry.tier is not none else '—' }}</td>
+      <tr data-entry-id="{{ entry.id }}" data-board-id="{{ board.id }}">
         {% if is_pending %}
         <td>
           <form method="post"
-                action="/admin/big-boards/{{ board.id }}/entries/{{ entry.id }}/update"
-                class="admin-form--inline"
-                style="display: flex; gap: 0.25rem;">
-            <input class="admin-form__input" type="number" name="rank" value="{{ entry.rank }}"
-                   min="1" required style="width: 4.5rem;" />
-            <input class="admin-form__input" type="number" name="tier"
-                   value="{{ entry.tier if entry.tier is not none else '' }}"
-                   placeholder="tier" style="width: 4.5rem;" />
-            <button type="submit" class="admin-btn admin-btn--small">Save</button>
+                action="/admin/big-boards/{{ board.id }}/entries/{{ entry.id }}/move-up"
+                class="admin-form--inline">
+            <button type="submit" class="admin-btn admin-btn--small"
+                    {% if loop.first %}disabled aria-disabled="true"{% endif %}
+                    title="Move up">&uarr;</button>
           </form>
+          <form method="post"
+                action="/admin/big-boards/{{ board.id }}/entries/{{ entry.id }}/move-down"
+                class="admin-form--inline">
+            <button type="submit" class="admin-btn admin-btn--small"
+                    {% if loop.last %}disabled aria-disabled="true"{% endif %}
+                    title="Move down">&darr;</button>
+          </form>
+        </td>
+        {% endif %}
+        <td>
+          {% if is_pending %}
+          <input class="admin-form__input bb-autosave" type="number" name="rank"
+                 data-field="rank" value="{{ entry.rank }}"
+                 min="1" required style="width: 4.5rem;" />
+          {% else %}
+          <strong>{{ entry.rank }}</strong>
+          {% endif %}
+        </td>
+        <td>{{ player.display_name if player else '(unknown player)' }}</td>
+        <td>{{ player.school if player else '' }}</td>
+        <td>
+          {% if is_pending %}
+          <input class="admin-form__input bb-autosave" type="number" name="tier"
+                 data-field="tier"
+                 value="{{ entry.tier if entry.tier is not none else '' }}"
+                 placeholder="tier" style="width: 4.5rem;" />
+          {% else %}
+          {{ entry.tier if entry.tier is not none else '—' }}
+          {% endif %}
+        </td>
+        {% if is_pending %}
+        <td>
           <form method="post"
                 action="/admin/big-boards/{{ board.id }}/entries/{{ entry.id }}/delete"
                 class="admin-form--inline"
@@ -89,6 +120,11 @@
       {% endfor %}
     </tbody>
   </table>
+  <p class="admin-text--muted admin-text--small" id="bb-autosave-hint"
+     {% if not is_pending %}hidden{% endif %}>
+    Rank and tier auto-save when you tab out of a field.
+    <span id="bb-autosave-status" aria-live="polite"></span>
+  </p>
   {% else %}
   <p class="admin-text--muted">No entries yet.</p>
   {% endif %}
@@ -106,7 +142,8 @@
   >
     <div class="admin-form__field" style="margin: 0;">
       <label class="admin-form__label" for="rank">Rank</label>
-      <input class="admin-form__input" id="rank" name="rank" type="number" min="1" required />
+      <input class="admin-form__input" id="rank" name="rank" type="number"
+             value="{{ default_next_rank }}" min="1" required />
     </div>
     <div class="admin-form__field" style="margin: 0; position: relative;">
       <label class="admin-form__label" for="player-search">Player</label>
@@ -123,7 +160,9 @@
     </div>
     <div class="admin-form__field" style="margin: 0;">
       <label class="admin-form__label" for="tier">Tier</label>
-      <input class="admin-form__input" id="tier" name="tier" type="number" placeholder="optional" />
+      <input class="admin-form__input" id="tier" name="tier" type="number"
+             value="{{ default_tier if default_tier is not none else '' }}"
+             placeholder="optional" />
     </div>
     <div class="admin-form__field" style="margin: 0;">
       <button type="submit" class="admin-btn admin-btn--primary">Add</button>
