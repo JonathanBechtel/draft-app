@@ -91,6 +91,10 @@
 
     const statusEl = document.getElementById("bb-autosave-status");
     let statusTimer = null;
+    // In-flight save promises. Flushed before any form on the page submits
+    // so Approve/Reject/Reopen/Clone/Move/Delete can't race past a pending
+    // autosave and overwrite or lose typed-but-not-yet-POSTed changes.
+    const inFlight = new Set();
 
     function setStatus(text, isError) {
       if (!statusEl) return;
@@ -162,10 +166,26 @@
       }
     }
 
+    function trackedSave(el) {
+      const p = save(el).finally(() => inFlight.delete(p));
+      inFlight.add(p);
+      return p;
+    }
+
+    async function flushPending() {
+      const dirty = [];
+      document.querySelectorAll(".bb-autosave").forEach((el) => {
+        if (el.value !== el.dataset.originalValue) dirty.push(el);
+      });
+      dirty.forEach((el) => trackedSave(el));
+      if (inFlight.size === 0) return;
+      await Promise.allSettled(Array.from(inFlight));
+    }
+
     inputs.forEach((el) => {
       el.addEventListener("blur", function () {
         if (el.value === el.dataset.originalValue) return;
-        save(el);
+        trackedSave(el);
       });
       // Tabbing through fields is faster if Enter also commits.
       el.addEventListener("keydown", function (ev) {
@@ -175,6 +195,37 @@
         }
       });
     });
+
+    // Intercept every POST form on the page (Approve, Reject, Delete,
+    // Reopen, Clone, Move up/down, Remove entry, Add entry) and flush
+    // any pending autosaves before allowing the navigation. This closes
+    // a race where the in-flight tier/rank POST got cancelled by the
+    // browser when the action form submitted and navigated away.
+    function hasPendingWork() {
+      if (inFlight.size > 0) return true;
+      for (const el of document.querySelectorAll(".bb-autosave")) {
+        if (el.value !== el.dataset.originalValue) return true;
+      }
+      return false;
+    }
+
+    document.addEventListener(
+      "submit",
+      function (ev) {
+        const form = ev.target;
+        if (!(form instanceof HTMLFormElement)) return;
+        if (form.method.toLowerCase() !== "post") return;
+        if (form.dataset.bbFlushed === "1") return; // already flushed; let through
+        if (!hasPendingWork()) return; // nothing to flush; normal submit
+        ev.preventDefault();
+        setStatus("Saving changes…", false);
+        flushPending().then(() => {
+          form.dataset.bbFlushed = "1";
+          form.submit();
+        });
+      },
+      true
+    );
   }
 
   function init() {
