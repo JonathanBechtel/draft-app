@@ -23,6 +23,43 @@
   </p>
 </header>
 
+{% if is_pending %}
+<div class="admin-card admin-card--medium" style="margin-bottom: 1rem;">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Edit Details</h2>
+  </div>
+  <form class="admin-form" method="post"
+        action="/admin/big-boards/{{ board.id }}/update-meta"
+        style="display: grid; grid-template-columns: 2fr 6rem 1fr auto; gap: 0.75rem; align-items: end;">
+    <div class="admin-form__field" style="margin: 0;">
+      <label class="admin-form__label" for="meta-news-source">Source</label>
+      <select class="admin-form__select" id="meta-news-source" name="news_source_id" required>
+        {% for src in editable_sources %}
+        <option value="{{ src.id }}" {% if src.id == board.news_source_id %}selected{% endif %}>
+          {{ src.display_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="admin-form__field" style="margin: 0;">
+      <label class="admin-form__label" for="meta-draft-year">Year</label>
+      <input class="admin-form__input" id="meta-draft-year" name="draft_year"
+             type="number" min="2024" max="2035"
+             value="{{ board.draft_year }}" required />
+    </div>
+    <div class="admin-form__field" style="margin: 0;">
+      <label class="admin-form__label" for="meta-published-at">Published</label>
+      <input class="admin-form__input" id="meta-published-at" name="published_at"
+             type="date" required
+             value="{{ board.published_at.strftime('%Y-%m-%d') }}" />
+    </div>
+    <div class="admin-form__field" style="margin: 0;">
+      <button type="submit" class="admin-btn admin-btn--small">Save Details</button>
+    </div>
+  </form>
+</div>
+{% endif %}
+
 <div class="admin-card">
   <div class="admin-card__header">
     <h2 class="admin-card__title">Entries</h2>
