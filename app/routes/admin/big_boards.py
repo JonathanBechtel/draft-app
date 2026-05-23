@@ -223,7 +223,7 @@ async def big_board_detail(
 
     editable_sources: list[NewsSource] = []
     if is_pending:
-        editable_sources = list(
+        active_rows = list(
             (
                 await db.execute(
                     select(NewsSource)
@@ -234,6 +234,14 @@ async def big_board_detail(
             .scalars()
             .all()
         )
+        # Always include the board's current source in the dropdown, even
+        # if it was deactivated after the board was created. Otherwise a
+        # year/date-only edit would silently reassign attribution to
+        # whichever active source the required <select> defaulted to.
+        if source is not None and not any(s.id == source.id for s in active_rows):
+            active_rows.append(source)
+            active_rows.sort(key=lambda s: (s.display_name or "").lower())
+        editable_sources = active_rows
 
     return request.app.state.templates.TemplateResponse(
         "admin/big-boards/detail.html",

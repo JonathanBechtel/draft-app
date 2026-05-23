@@ -260,6 +260,68 @@ class TestBigBoardLifecycle:
         assert approve_again.status_code == 303
         assert "error=" in approve_again.headers["location"]
 
+    async def test_detail_page_includes_current_source_when_deactivated(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+    ):
+        """If the board's source was deactivated, the edit dropdown still lists it.
+
+        Otherwise a year/date-only edit on a PENDING board would silently
+        reassign attribution to whichever active source the required
+        <select> defaulted to.
+        """
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        create_resp = await app_client.post(
+            "/admin/big-boards",
+            data={
+                "news_source_id": str(big_board_source.id),
+                "draft_year": "2026",
+                "published_at": "2026-05-01",
+            },
+            follow_redirects=False,
+        )
+        board_id = int(
+            create_resp.headers["location"].split("/")[-1].split("?")[0]
+        )
+
+        # Deactivate the source that the board was created against.
+        src_row = await db_session.get(
+            NewsSource, big_board_source.id, populate_existing=True
+        )
+        assert src_row is not None
+        src_row.is_active = False
+        await db_session.commit()
+
+        # Add an extra active source so the dropdown isn't empty otherwise.
+        other = NewsSource(
+            name="other-active",
+            display_name="Other Active Source",
+            feed_type=FeedType.RSS,
+            feed_url="https://example.com/other-active-feed.xml",
+            is_active=True,
+            fetch_interval_minutes=30,
+        )
+        db_session.add(other)
+        await db_session.commit()
+
+        detail = await app_client.get(f"/admin/big-boards/{board_id}")
+        assert detail.status_code == 200
+        # The deactivated current source is still rendered as an option,
+        # tagged "(inactive)" so the admin sees its status.
+        assert big_board_source.display_name in detail.text
+        assert "(inactive)" in detail.text
+        # And it's the selected option (the required select hasn't silently
+        # defaulted to the other active source).
+        assert (
+            f'value="{big_board_source.id}" selected'
+            in detail.text.replace("'", '"')
+        )
+
     async def test_update_meta_changes_source_year_published_at(
         self,
         app_client: AsyncClient,

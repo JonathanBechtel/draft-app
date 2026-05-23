@@ -36,7 +36,7 @@
       <select class="admin-form__select" id="meta-news-source" name="news_source_id" required>
         {% for src in editable_sources %}
         <option value="{{ src.id }}" {% if src.id == board.news_source_id %}selected{% endif %}>
-          {{ src.display_name }}
+          {{ src.display_name }}{% if not src.is_active %} (inactive){% endif %}
         </option>
         {% endfor %}
       </select>
