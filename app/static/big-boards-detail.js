@@ -209,6 +209,29 @@
       return false;
     }
 
+    // Move inline `onsubmit="return confirm('...')"` to data-bb-confirm so
+    // confirmation runs once in the capture-phase submit listener. Without
+    // this, form.submit() (called after flushPending resolves) bypasses
+    // the inline onsubmit handler and a clicked-Cancel would still execute
+    // the destructive POST. The inline attribute stays as the JS-disabled
+    // fallback at template render time but is detached during init.
+    document
+      .querySelectorAll("form[onsubmit]")
+      .forEach(function (form) {
+        const raw = form.getAttribute("onsubmit") || "";
+        const match = raw.match(/confirm\(['"]([\s\S]*?)['"]\)/);
+        if (match) {
+          form.dataset.bbConfirm = match[1].replace(/\\'/g, "'");
+          form.removeAttribute("onsubmit");
+        }
+      });
+
+    function userConfirmed(form) {
+      const msg = form.dataset.bbConfirm;
+      if (!msg) return true;
+      return window.confirm(msg);
+    }
+
     document.addEventListener(
       "submit",
       function (ev) {
@@ -216,6 +239,15 @@
         if (!(form instanceof HTMLFormElement)) return;
         if (form.method.toLowerCase() !== "post") return;
         if (form.dataset.bbFlushed === "1") return; // already flushed; let through
+
+        // Run any confirmation gate FIRST so a clicked-Cancel cleanly
+        // cancels the navigation regardless of whether there's pending
+        // autosave work to flush.
+        if (!userConfirmed(form)) {
+          ev.preventDefault();
+          return;
+        }
+
         if (!hasPendingWork()) return; // nothing to flush; normal submit
         ev.preventDefault();
         setStatus("Saving changes…", false);
