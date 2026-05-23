@@ -1,9 +1,13 @@
-// Player autocomplete for the big-board add-entry form.
-// Calls the existing /players/search endpoint and writes the selected
-// player's id into the hidden #player_id input that the form posts.
+// Big-board detail page client-side helpers.
+//
+// Two responsibilities:
+//   1. Player autocomplete on the "Add Entry" form (calls /players/search).
+//   2. Per-row auto-save: when the admin tabs out of a rank or tier input
+//      whose value has changed, POST the new values to the existing
+//      /admin/big-boards/{board}/entries/{entry}/update route.
 
 (function () {
-  function init() {
+  function initAutocomplete() {
     const input = document.getElementById("player-search");
     const list = document.getElementById("player-autocomplete");
     const hidden = document.getElementById("player_id");
@@ -60,14 +64,12 @@
         show(results);
       } catch (err) {
         if (err && err.name !== "AbortError") {
-          // Network or parse error — silently hide rather than block the form.
           hide();
         }
       }
     }
 
     input.addEventListener("input", function () {
-      // Any keystroke invalidates a previously-selected id.
       hidden.value = "";
       const q = input.value.trim();
       clearTimeout(debounceTimer);
@@ -79,9 +81,105 @@
     });
 
     input.addEventListener("blur", function () {
-      // Hide after the click handler has had a chance to fire.
       setTimeout(hide, 120);
     });
+  }
+
+  function initAutosave() {
+    const inputs = document.querySelectorAll(".bb-autosave");
+    if (!inputs.length) return;
+
+    const statusEl = document.getElementById("bb-autosave-status");
+    let statusTimer = null;
+
+    function setStatus(text, isError) {
+      if (!statusEl) return;
+      statusEl.textContent = text;
+      statusEl.style.color = isError ? "var(--color-accent-rose, #f43f5e)" : "";
+      clearTimeout(statusTimer);
+      if (!isError) {
+        statusTimer = setTimeout(() => {
+          statusEl.textContent = "";
+        }, 1500);
+      }
+    }
+
+    // Capture starting values so we only POST on actual change.
+    inputs.forEach((el) => {
+      el.dataset.originalValue = el.value;
+    });
+
+    async function save(el) {
+      const row = el.closest("tr[data-entry-id]");
+      if (!row) return;
+      const entryId = row.dataset.entryId;
+      const boardId = row.dataset.boardId;
+      if (!entryId || !boardId) return;
+
+      const rankEl = row.querySelector('[data-field="rank"]');
+      const tierEl = row.querySelector('[data-field="tier"]');
+      const rankVal = rankEl ? rankEl.value.trim() : "";
+      const tierVal = tierEl ? tierEl.value.trim() : "";
+
+      if (rankVal === "") {
+        setStatus("Rank is required.", true);
+        if (rankEl) rankEl.focus();
+        return;
+      }
+
+      const body = new URLSearchParams();
+      body.append("rank", rankVal);
+      body.append("tier", tierVal);
+
+      setStatus("Saving…", false);
+      try {
+        const resp = await fetch(
+          "/admin/big-boards/" + boardId + "/entries/" + entryId + "/update",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: body.toString(),
+            redirect: "follow",
+            credentials: "same-origin",
+          }
+        );
+        if (resp.ok || resp.redirected) {
+          // FastAPI returns a 303 redirect which fetch follows; success
+          // = either 200/2xx after redirect, OR a redirected response.
+          setStatus("Saved", false);
+          el.dataset.originalValue = el.value;
+          // Surface server-side error encoded in the redirect URL.
+          if (resp.redirected && resp.url.includes("error=")) {
+            const url = new URL(resp.url);
+            const msg = url.searchParams.get("error");
+            if (msg) setStatus(decodeURIComponent(msg), true);
+          }
+        } else {
+          setStatus("Save failed (" + resp.status + ")", true);
+        }
+      } catch (err) {
+        setStatus("Save failed: " + err.message, true);
+      }
+    }
+
+    inputs.forEach((el) => {
+      el.addEventListener("blur", function () {
+        if (el.value === el.dataset.originalValue) return;
+        save(el);
+      });
+      // Tabbing through fields is faster if Enter also commits.
+      el.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter") {
+          ev.preventDefault();
+          el.blur();
+        }
+      });
+    });
+  }
+
+  function init() {
+    initAutocomplete();
+    initAutosave();
   }
 
   if (document.readyState === "loading") {

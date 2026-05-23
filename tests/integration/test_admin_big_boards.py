@@ -260,6 +260,187 @@ class TestBigBoardLifecycle:
         assert approve_again.status_code == 303
         assert "error=" in approve_again.headers["location"]
 
+    async def test_reopen_flips_approved_back_to_pending(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+        sample_players: list[PlayerMaster],
+    ):
+        """POST /reopen unlocks an APPROVED board for edits and clears approved_at."""
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        create_resp = await app_client.post(
+            "/admin/big-boards",
+            data={
+                "news_source_id": str(big_board_source.id),
+                "draft_year": "2026",
+                "published_at": "2026-05-01",
+            },
+            follow_redirects=False,
+        )
+        board_id = int(
+            create_resp.headers["location"].split("/")[-1].split("?")[0]
+        )
+        await app_client.post(
+            f"/admin/big-boards/{board_id}/entries",
+            data={"player_id": str(sample_players[0].id), "rank": "1"},
+            follow_redirects=False,
+        )
+        await app_client.post(
+            f"/admin/big-boards/{board_id}/approve", follow_redirects=False
+        )
+
+        reopen_resp = await app_client.post(
+            f"/admin/big-boards/{board_id}/reopen", follow_redirects=False
+        )
+        assert reopen_resp.status_code == 303
+        assert "success=reopened" in reopen_resp.headers["location"]
+
+        board_row = await db_session.get(
+            BigBoard, board_id, populate_existing=True
+        )
+        assert board_row is not None
+        assert board_row.status is BoardStatus.PENDING
+        assert board_row.approved_at is None
+
+        # Re-adding entries should now work
+        add_resp = await app_client.post(
+            f"/admin/big-boards/{board_id}/entries",
+            data={"player_id": str(sample_players[1].id), "rank": "2"},
+            follow_redirects=False,
+        )
+        assert add_resp.status_code == 303
+        assert "success=entry_added" in add_resp.headers["location"]
+
+    async def test_clone_creates_pending_copy_with_same_entries(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+        sample_players: list[PlayerMaster],
+    ):
+        """POST /clone creates a fresh PENDING board with the same entries."""
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        create_resp = await app_client.post(
+            "/admin/big-boards",
+            data={
+                "news_source_id": str(big_board_source.id),
+                "draft_year": "2026",
+                "published_at": "2026-05-01",
+            },
+            follow_redirects=False,
+        )
+        board_id = int(
+            create_resp.headers["location"].split("/")[-1].split("?")[0]
+        )
+        await app_client.post(
+            f"/admin/big-boards/{board_id}/entries",
+            data={
+                "player_id": str(sample_players[0].id),
+                "rank": "1",
+                "tier": "1",
+            },
+            follow_redirects=False,
+        )
+        await app_client.post(
+            f"/admin/big-boards/{board_id}/entries",
+            data={"player_id": str(sample_players[1].id), "rank": "2"},
+            follow_redirects=False,
+        )
+
+        clone_resp = await app_client.post(
+            f"/admin/big-boards/{board_id}/clone",
+            data={"published_at": "2026-05-20"},
+            follow_redirects=False,
+        )
+        assert clone_resp.status_code == 303
+        clone_id = int(
+            clone_resp.headers["location"].split("/")[-1].split("?")[0]
+        )
+        assert clone_id != board_id
+
+        clone_row = await db_session.get(BigBoard, clone_id)
+        assert clone_row is not None
+        assert clone_row.status is BoardStatus.PENDING
+        assert clone_row.board_size == 2
+
+        entries = (
+            await db_session.execute(
+                select(BigBoardEntry)  # type: ignore[call-overload]
+                .where(BigBoardEntry.board_id == clone_id)  # type: ignore[arg-type]
+                .order_by(BigBoardEntry.rank)  # type: ignore[arg-type]
+            )
+        ).scalars().all()
+        assert [(e.player_id, e.rank, e.tier) for e in entries] == [
+            (sample_players[0].id, 1, 1),
+            (sample_players[1].id, 2, None),
+        ]
+
+    async def test_move_up_and_down_swap_ranks(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+        sample_players: list[PlayerMaster],
+    ):
+        """POST /move-up swaps the entry with its higher-ranked neighbor."""
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        create_resp = await app_client.post(
+            "/admin/big-boards",
+            data={
+                "news_source_id": str(big_board_source.id),
+                "draft_year": "2026",
+                "published_at": "2026-05-01",
+            },
+            follow_redirects=False,
+        )
+        board_id = int(
+            create_resp.headers["location"].split("/")[-1].split("?")[0]
+        )
+        for i, player in enumerate(sample_players, start=1):
+            await app_client.post(
+                f"/admin/big-boards/{board_id}/entries",
+                data={"player_id": str(player.id), "rank": str(i)},
+                follow_redirects=False,
+            )
+
+        rows = (
+            await db_session.execute(
+                select(BigBoardEntry.id, BigBoardEntry.rank)  # type: ignore[call-overload]
+                .where(BigBoardEntry.board_id == board_id)  # type: ignore[arg-type]
+                .order_by(BigBoardEntry.rank)  # type: ignore[arg-type]
+            )
+        ).all()
+        # rows is [(id_at_rank_1, 1), (id_at_rank_2, 2), (id_at_rank_3, 3)]
+        rank2_entry_id = rows[1].id
+        rank1_entry_id = rows[0].id
+
+        # Move rank-2 up -> should become rank 1
+        up_resp = await app_client.post(
+            f"/admin/big-boards/{board_id}/entries/{rank2_entry_id}/move-up",
+            follow_redirects=False,
+        )
+        assert up_resp.status_code == 303
+
+        rows_after = (
+            await db_session.execute(
+                select(BigBoardEntry.id, BigBoardEntry.rank)  # type: ignore[call-overload]
+                .where(BigBoardEntry.board_id == board_id)  # type: ignore[arg-type]
+                .order_by(BigBoardEntry.rank)  # type: ignore[arg-type]
+            )
+        ).all()
+        assert rows_after[0].id == rank2_entry_id
+        assert rows_after[1].id == rank1_entry_id
+
     async def test_delete_pending_board_removes_row(
         self,
         app_client: AsyncClient,

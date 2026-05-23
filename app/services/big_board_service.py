@@ -265,6 +265,131 @@ async def reject_board(db: AsyncSession, *, board_id: int) -> BigBoard:
     return board
 
 
+async def reopen_board(db: AsyncSession, *, board_id: int) -> BigBoard:
+    """Unlock an APPROVED board back to PENDING so it can be edited.
+
+    Clears ``approved_at`` since the prior approval is no longer current.
+    Only APPROVED boards may be reopened; REJECTED boards stay locked.
+    """
+    board = await get_board(db, board_id)
+    if board.status is not BoardStatus.APPROVED:
+        raise BoardNotEditableError(
+            f"Board {board.id} is {board.status.value}; only APPROVED boards may be reopened."
+        )
+    board.status = BoardStatus.PENDING
+    board.approved_at = None
+    board.updated_at = datetime.utcnow()
+    await db.flush()
+    return board
+
+
+async def clone_board(
+    db: AsyncSession,
+    *,
+    board_id: int,
+    published_at: datetime,
+) -> BigBoard:
+    """Create a fresh PENDING board with the same entries as ``board_id``.
+
+    Useful when the next published board from a source is mostly the
+    same lineup as the previous one — clone, then tweak ranks/players.
+    The new board's source, draft_year, and entry list match the source
+    board; ``published_at`` is provided by the caller; status is PENDING.
+    """
+    source_board, entries = await get_board_with_entries(db, board_id)
+    clone = BigBoard(
+        news_source_id=source_board.news_source_id,
+        news_item_id=None,
+        draft_year=source_board.draft_year,
+        published_at=published_at,
+        board_size=len(entries),
+        status=BoardStatus.PENDING,
+    )
+    db.add(clone)
+    await db.flush()
+    assert clone.id is not None
+
+    for entry in entries:
+        db.add(
+            BigBoardEntry(
+                board_id=clone.id,
+                player_id=entry.player_id,
+                rank=entry.rank,
+                tier=entry.tier,
+            )
+        )
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        _translate_entry_integrity_error(exc)
+    return clone
+
+
+async def move_entry(
+    db: AsyncSession,
+    *,
+    entry_id: int,
+    direction: str,
+) -> BigBoardEntry:
+    """Swap an entry's rank with its neighbor above (``up``) or below (``down``).
+
+    No-op when the entry is already at the top (for ``up``) or bottom
+    (for ``down``) of the board. Uses a temporary negative rank between
+    the two updates so the unique ``(board_id, rank)`` constraint is
+    satisfied at every flush.
+    """
+    if direction not in {"up", "down"}:
+        raise BigBoardError(f"Invalid direction: {direction!r}")
+
+    entry = await db.get(BigBoardEntry, entry_id)
+    if entry is None:
+        raise EntryNotFoundError(f"No big board entry with id={entry_id}")
+
+    board = await get_board(db, entry.board_id)
+    _require_pending(board)
+
+    neighbor_rank = entry.rank - 1 if direction == "up" else entry.rank + 1
+    if neighbor_rank < 1:
+        return entry  # already at top
+
+    result = await db.execute(
+        select(BigBoardEntry)  # type: ignore[call-overload]
+        .where(BigBoardEntry.board_id == board.id)  # type: ignore[arg-type]
+        .where(BigBoardEntry.rank == neighbor_rank)  # type: ignore[arg-type]
+    )
+    neighbor = result.scalar_one_or_none()
+    if neighbor is None:
+        return entry  # no neighbor in that direction (entry is at bottom)
+
+    # Two-step swap so we never violate uq(board_id, rank).
+    original = entry.rank
+    entry.rank = -original  # sentinel; never collides with a real 1-based rank
+    await db.flush()
+    neighbor.rank = original
+    await db.flush()
+    entry.rank = neighbor_rank
+    board.updated_at = datetime.utcnow()
+    await db.flush()
+    return entry
+
+
+async def latest_entry_tier(db: AsyncSession, *, board_id: int) -> Optional[int]:
+    """Return the tier of the highest-rank (most-recently-added) entry, if any.
+
+    Used by the admin UI to pre-fill the add form's tier input so an
+    admin doesn't have to re-type ``tier=1`` for every player in a board
+    that is mostly tier 1.
+    """
+    result = await db.execute(
+        select(BigBoardEntry.tier)  # type: ignore[call-overload]
+        .where(BigBoardEntry.board_id == board_id)  # type: ignore[arg-type]
+        .order_by(BigBoardEntry.rank.desc())  # type: ignore[attr-defined]
+        .limit(1)
+    )
+    row = result.first()
+    return row[0] if row else None
+
+
 def _require_pending(board: BigBoard) -> None:
     if board.status is not BoardStatus.PENDING:
         raise BoardNotEditableError(

@@ -41,6 +41,8 @@ _SUCCESS_MESSAGES: dict[str, str] = {
     "approved": "Board approved.",
     "rejected": "Board rejected.",
     "deleted": "Board deleted.",
+    "reopened": "Board reopened for editing.",
+    "cloned": "Board cloned. Edit the new copy below.",
 }
 
 
@@ -210,6 +212,14 @@ async def big_board_detail(
         )
         players_by_id = {p.id: p for p in rows.scalars().all() if p.id is not None}
 
+    is_pending = board.status is BoardStatus.PENDING
+    default_tier = (
+        await svc.latest_entry_tier(db, board_id=board_id) if is_pending else None
+    )
+    default_next_rank = (
+        (max((e.rank for e in entries), default=0) + 1) if entries else 1
+    )
+
     return request.app.state.templates.TemplateResponse(
         "admin/big-boards/detail.html",
         await base_context_with_permissions(
@@ -220,7 +230,9 @@ async def big_board_detail(
             entries=entries,
             source=source,
             players_by_id=players_by_id,
-            is_pending=board.status is BoardStatus.PENDING,
+            is_pending=is_pending,
+            default_tier=default_tier,
+            default_next_rank=default_next_rank,
             success=_SUCCESS_MESSAGES.get(success) if success else None,
             error=error,
         ),
@@ -412,6 +424,131 @@ async def delete_big_board(
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(url="/admin/big-boards?success=deleted", status_code=303)
+
+
+@router.post("/{board_id}/reopen", response_class=HTMLResponse)
+async def reopen_big_board(
+    request: Request,
+    board_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Reopen an APPROVED board so it can be edited again."""
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "big_boards",
+        need_edit=True,
+        next_path=f"/admin/big-boards/{board_id}",
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    try:
+        async with db.begin():
+            await svc.reopen_board(db, board_id=board_id)
+    except svc.BigBoardError as exc:
+        return _redirect_with_error(board_id, str(exc))
+
+    return RedirectResponse(
+        url=f"/admin/big-boards/{board_id}?success=reopened", status_code=303
+    )
+
+
+@router.post("/{board_id}/clone", response_class=HTMLResponse)
+async def clone_big_board(
+    request: Request,
+    board_id: int,
+    published_at: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Clone a board into a new PENDING copy with the same entries.
+
+    The caller supplies a ``published_at`` so the clone records when the
+    cloned-from analyst published this iteration; defaults to today.
+    """
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "big_boards",
+        need_edit=True,
+        next_path=f"/admin/big-boards/{board_id}",
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    published_dt = datetime.utcnow()
+    if published_at:
+        try:
+            parsed = datetime.fromisoformat(published_at)
+        except ValueError:
+            return _redirect_with_error(
+                board_id,
+                "Published-at must be an ISO date/time (e.g., 2026-05-23).",
+            )
+        published_dt = parsed.replace(tzinfo=None) if parsed.tzinfo else parsed
+
+    try:
+        async with db.begin():
+            clone = await svc.clone_board(
+                db, board_id=board_id, published_at=published_dt
+            )
+    except svc.BigBoardError as exc:
+        return _redirect_with_error(board_id, str(exc))
+
+    return RedirectResponse(
+        url=f"/admin/big-boards/{clone.id}?success=cloned", status_code=303
+    )
+
+
+@router.post("/{board_id}/entries/{entry_id}/move-up", response_class=HTMLResponse)
+async def move_entry_up(
+    request: Request,
+    board_id: int,
+    entry_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Swap an entry with the one ranked immediately above it."""
+    return await _move_entry(request, db, board_id, entry_id, "up")
+
+
+@router.post("/{board_id}/entries/{entry_id}/move-down", response_class=HTMLResponse)
+async def move_entry_down(
+    request: Request,
+    board_id: int,
+    entry_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Swap an entry with the one ranked immediately below it."""
+    return await _move_entry(request, db, board_id, entry_id, "down")
+
+
+async def _move_entry(
+    request: Request,
+    db: AsyncSession,
+    board_id: int,
+    entry_id: int,
+    direction: str,
+) -> Response:
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "big_boards",
+        need_edit=True,
+        next_path=f"/admin/big-boards/{board_id}",
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    try:
+        async with db.begin():
+            await svc.move_entry(db, entry_id=entry_id, direction=direction)
+    except svc.BigBoardError as exc:
+        return _redirect_with_error(board_id, str(exc))
+
+    return RedirectResponse(url=f"/admin/big-boards/{board_id}", status_code=303)
 
 
 def _parse_optional_int(raw: str | None) -> int | None:
