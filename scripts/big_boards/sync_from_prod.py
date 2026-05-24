@@ -1,12 +1,19 @@
 """Sync APPROVED big boards from a prod snapshot into the dev database.
 
 Usage:
-    SNAP_URL=postgresql://... DEV_URL=postgresql://... python sync_big_boards_from_prod.py
+    SNAP_URL=postgresql://... DEV_URL=postgresql://... python sync_from_prod.py
 
 Maps FKs by stable keys (news_source.name, players_master.slug) so prod
-IDs never leak into dev. Copies any source row missing in dev. Skips any
-board that already exists in dev (matched by source name + draft_year +
-published_at), so re-runs are idempotent.
+IDs never leak into dev. Copies any source row missing in dev.
+
+Idempotency / rerun semantics:
+    Boards are identified by (news_source_id, draft_year, published_at).
+    On rerun, a matching dev board is treated as a backfill target:
+    entries already in dev (matched by player_id) are left alone;
+    entries that are in prod but not yet in dev are inserted. board_size
+    is always reconciled to the actual count of entries in dev after
+    the pass, so a partial sync (e.g., a player slug that wasn't yet in
+    dev) becomes self-healing the next run.
 """
 
 from __future__ import annotations
@@ -66,8 +73,17 @@ async def _sync_one_board(
     dev_source_id: int,
     player_id_map: dict[int, int],
 ) -> Optional[int]:
-    """Insert a prod board + its entries into dev. Returns dev board_id or None if skipped."""
-    existing = await dev.fetchval(
+    """Sync one prod board + its entries into dev. Returns dev board_id.
+
+    Idempotent: the (news_source_id, draft_year, published_at) tuple is
+    the identity key. If a dev board already exists for that key, this
+    backfills any missing entries (e.g., players that were absent in
+    dev on an earlier run but have since been added). ``board_size`` is
+    always reconciled to the actual entry count so re-running after
+    onboarding more players makes the imported board self-consistent
+    rather than locking in a stale count.
+    """
+    existing_dev_board_id = await dev.fetchval(
         """
         SELECT id FROM big_boards
         WHERE news_source_id = $1
@@ -78,32 +94,34 @@ async def _sync_one_board(
         prod_board["draft_year"],
         prod_board["published_at"],
     )
-    if existing is not None:
-        print(
-            f"  = skip {source_name} {prod_board['draft_year']} "
-            f"@{prod_board['published_at']} (already in dev as id={existing})"
-        )
-        return None
 
-    dev_board_id = await dev.fetchval(
-        """
-        INSERT INTO big_boards (
-            news_source_id, news_item_id, draft_year, published_at,
-            board_size, status, approved_at, created_at, updated_at
+    if existing_dev_board_id is None:
+        # Insert the board with board_size=0 so we never claim a count
+        # we haven't actually written. Reconciled to the real count at
+        # the end of this function.
+        dev_board_id = await dev.fetchval(
+            """
+            INSERT INTO big_boards (
+                news_source_id, news_item_id, draft_year, published_at,
+                board_size, status, approved_at, created_at, updated_at
+            )
+            VALUES ($1, NULL, $2, $3, 0, $4, $5, $6, $7)
+            RETURNING id
+            """,
+            dev_source_id,
+            prod_board["draft_year"],
+            prod_board["published_at"],
+            prod_board["status"],
+            prod_board["approved_at"],
+            prod_board["created_at"],
+            prod_board["updated_at"],
         )
-        VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8)
-        RETURNING id
-        """,
-        dev_source_id,
-        prod_board["draft_year"],
-        prod_board["published_at"],
-        prod_board["board_size"],
-        prod_board["status"],
-        prod_board["approved_at"],
-        prod_board["created_at"],
-        prod_board["updated_at"],
-    )
+    else:
+        dev_board_id = existing_dev_board_id
 
+    # Pull prod entries + existing dev entries so we only INSERT the
+    # ones that aren't already in dev. Matching by player_id (under
+    # the FK map) keeps reruns safe across player onboarding.
     prod_entries = await snap.fetch(
         """
         SELECT player_id, rank, tier
@@ -113,14 +131,28 @@ async def _sync_one_board(
         """,
         prod_board["id"],
     )
+    existing_dev_player_ids = {
+        r["player_id"]
+        for r in await dev.fetch(
+            "SELECT player_id FROM big_board_entries WHERE board_id = $1",
+            dev_board_id,
+        )
+    }
+
     inserted = 0
+    already_present = 0
+    missing_player = 0
     for e in prod_entries:
         dev_player_id = player_id_map.get(e["player_id"])
         if dev_player_id is None:
             print(
-                f"    ! WARN: player_id={e['player_id']} on rank={e['rank']} "
+                f"    ! WARN: prod player_id={e['player_id']} on rank={e['rank']} "
                 "has no dev mapping; skipping entry."
             )
+            missing_player += 1
+            continue
+        if dev_player_id in existing_dev_player_ids:
+            already_present += 1
             continue
         await dev.execute(
             """
@@ -133,10 +165,27 @@ async def _sync_one_board(
             e["tier"],
         )
         inserted += 1
+
+    # Reconcile board_size to the count we actually wrote (or that was
+    # already there). Bypasses the admin service's PENDING-only guard,
+    # which is intentional: this is an ops sync, not an analyst edit,
+    # and the count needs to track reality across reruns.
+    actual_count = await dev.fetchval(
+        "SELECT COUNT(*) FROM big_board_entries WHERE board_id = $1",
+        dev_board_id,
+    )
+    await dev.execute(
+        "UPDATE big_boards SET board_size = $1, updated_at = NOW() WHERE id = $2",
+        actual_count,
+        dev_board_id,
+    )
+
+    state = "new" if existing_dev_board_id is None else "backfill"
     print(
-        f"  + copied {source_name} {prod_board['draft_year']} "
-        f"@{prod_board['published_at'].date()} -> dev board id={dev_board_id}, "
-        f"{inserted}/{len(prod_entries)} entries"
+        f"  + [{state}] {source_name} {prod_board['draft_year']} "
+        f"@{prod_board['published_at'].date()} -> dev board id={dev_board_id}: "
+        f"inserted={inserted} already_present={already_present} "
+        f"missing_player={missing_player} board_size={actual_count}/{len(prod_entries)}"
     )
     return dev_board_id
 
@@ -195,7 +244,7 @@ async def main() -> int:
         }
         print(f"Player FK map size: {len(player_id_map)} / {len(prod_player_lookup)}")
 
-        copied = skipped = 0
+        synced = 0
         for prod_board in prod_boards:
             src_name = prod_board["source_name"]
             if src_name not in source_id_cache:
@@ -207,15 +256,12 @@ async def main() -> int:
                 source_id_cache[src_name] = await _ensure_source(dev, snap_src)
             dev_source_id = source_id_cache[src_name]
 
-            result = await _sync_one_board(
+            await _sync_one_board(
                 snap, dev, prod_board, src_name, dev_source_id, player_id_map
             )
-            if result is None:
-                skipped += 1
-            else:
-                copied += 1
+            synced += 1
 
-        print(f"\nDone. copied={copied} skipped={skipped}")
+        print(f"\nDone. boards synced={synced}")
         return 0
     finally:
         await snap.close()
