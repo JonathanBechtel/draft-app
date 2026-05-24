@@ -42,6 +42,9 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/draftguru_test
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/draftguru_test
       PYTEST_ALLOW_DB: "1"
+      # CI runs against an ephemeral service container, so DATABASE_URL and
+      # TEST_DATABASE_URL intentionally point at the same DB. Allow it.
+      PYTEST_ALLOW_TEST_DB_EQUALS_DATABASE_URL: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -125,6 +128,9 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/draftguru_test
       TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/draftguru_test
       PYTEST_ALLOW_DB: "1"
+      # CI runs against an ephemeral service container, so DATABASE_URL and
+      # TEST_DATABASE_URL intentionally point at the same DB. Allow it.
+      PYTEST_ALLOW_TEST_DB_EQUALS_DATABASE_URL: "1"
       # SECRET_KEY may be provided by the environment; default to test if missing
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
     steps:
