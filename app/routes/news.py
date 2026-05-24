@@ -154,6 +154,7 @@ async def create_source(
 @router.post(
     "/ingest",
     response_model=IngestionResult,
+    status_code=200,
     dependencies=[Depends(require_dataset_permission("news_ingestion", "edit"))],
 )
 async def trigger_ingestion(

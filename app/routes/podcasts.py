@@ -153,6 +153,7 @@ async def create_show(
 @router.post(
     "/ingest",
     response_model=PodcastIngestionResult,
+    status_code=200,
     dependencies=[Depends(require_dataset_permission("podcast_ingestion", "edit"))],
 )
 async def trigger_podcast_ingestion(

@@ -6,6 +6,7 @@ import re
 from urllib.parse import urljoin
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
 
 from app.services.s3_client import s3_client
 from app.services.share_cards.export_service import ComponentType
@@ -32,7 +33,7 @@ def _sanitize_next(next_path: str | None) -> str | None:
     return next_path
 
 
-@router.get("/share/{component}/{export_id}")
+@router.get("/share/{component}/{export_id}", response_class=HTMLResponse)
 async def share_card(
     request: Request,
     component: ComponentType,

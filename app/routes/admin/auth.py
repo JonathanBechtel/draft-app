@@ -84,7 +84,7 @@ async def admin_login(
     return response
 
 
-@router.post("/logout")
+@router.post("/logout", response_class=RedirectResponse, status_code=303)
 async def admin_logout(
     request: Request,
     db: AsyncSession = Depends(get_session),
