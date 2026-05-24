@@ -135,18 +135,34 @@ def upgrade() -> None:
     # so leaving the existing constraint names in place avoids guessing
     # which environment we're hitting.
 
-    # 10. Drop the kind column's server default so future inserts must
-    # specify kind explicitly (the default existed only to backfill
-    # existing rows).
-    op.alter_column("boards", "kind", server_default=None)
+    # Note: the kind column keeps its server_default = BIG_BOARD so
+    # existing Board(...) constructor calls (which don't pass kind=
+    # explicitly because big-board admin entry is the only kind that
+    # has a UI today) continue to insert successfully. When the
+    # mock-draft entry path lands and starts setting kind explicitly,
+    # we can revisit dropping the default in a follow-up.
+
+    # 11. Rename any existing auth_dataset_permission rows pointing at
+    # the old "big_boards" dataset name. KNOWN_DATASETS in the service
+    # layer was renamed to "boards", so without this step any worker
+    # user who had explicit big-board permissions would be silently
+    # locked out of /admin/boards after deploy.
+    op.execute(
+        "UPDATE auth_dataset_permission SET dataset = 'boards' "
+        "WHERE dataset = 'big_boards'"
+    )
 
 
 def downgrade() -> None:
     # Reverse the renames + drops in inverse order.
-    op.alter_column(
-        "boards",
-        "kind",
-        server_default=sa.text("'BIG_BOARD'::board_kind_enum"),
+    # (The kind column's server_default was kept on through upgrade, so
+    # nothing to restore here.)
+
+    # Restore the old "big_boards" dataset name on any permission rows
+    # so a downgrade leaves worker auth in the pre-rename state.
+    op.execute(
+        "UPDATE auth_dataset_permission SET dataset = 'big_boards' "
+        "WHERE dataset = 'boards'"
     )
 
     # FK constraint names were not renamed during upgrade (see comment

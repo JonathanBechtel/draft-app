@@ -124,10 +124,10 @@ async def _sync_one_board(
     # the FK map) keeps reruns safe across player onboarding.
     prod_entries = await snap.fetch(
         """
-        SELECT player_id, rank, tier
+        SELECT player_id, position, tier
         FROM board_entries
         WHERE board_id = $1
-        ORDER BY rank
+        ORDER BY position
         """,
         prod_board["id"],
     )
@@ -146,7 +146,7 @@ async def _sync_one_board(
         dev_player_id = player_id_map.get(e["player_id"])
         if dev_player_id is None:
             print(
-                f"    ! WARN: prod player_id={e['player_id']} on rank={e['rank']} "
+                f"    ! WARN: prod player_id={e['player_id']} on position={e['position']} "
                 "has no dev mapping; skipping entry."
             )
             missing_player += 1
@@ -156,12 +156,12 @@ async def _sync_one_board(
             continue
         await dev.execute(
             """
-            INSERT INTO board_entries (board_id, player_id, rank, tier)
+            INSERT INTO board_entries (board_id, player_id, position, tier)
             VALUES ($1, $2, $3, $4)
             """,
             dev_board_id,
             dev_player_id,
-            e["rank"],
+            e["position"],
             e["tier"],
         )
         inserted += 1
