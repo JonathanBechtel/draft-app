@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Riser/Faller card — reserved for the future consensus_shift angle. Renders a
+  player name, two consensus ranks (previous vs current), and a delta arrow.
+  Not wired up in v1 but kept here so the renderer can be exercised before the
+  feature lands.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 1260" width="2400" height="1260">
+  <defs>
+    <style type="text/css">
+      .title { font-family: 'Russo One', sans-serif; font-size: 92px; fill: #0f172a; text-transform: uppercase; }
+      .subtitle { font-family: 'Azeret Mono', monospace; font-size: 36px; fill: #64748b; letter-spacing: 0.05em; }
+      .rank-label { font-family: 'Azeret Mono', monospace; font-size: 30px; fill: #64748b; letter-spacing: 0.05em; text-transform: uppercase; }
+      .rank-value { font-family: 'Russo One', sans-serif; font-size: 200px; fill: #0f172a; }
+      .delta-positive { font-family: 'Russo One', sans-serif; font-size: 96px; fill: #10b981; }
+      .delta-negative { font-family: 'Russo One', sans-serif; font-size: 96px; fill: #f43f5e; }
+      .watermark { font-family: 'Russo One', sans-serif; font-size: 32px; fill: #0f172a; letter-spacing: 0.12em; }
+    </style>
+  </defs>
+
+  <rect width="2400" height="1260" fill="#f8fafc"/>
+  <rect x="0" y="0" width="2400" height="14" fill="{{ direction == 'up' and '#10b981' or '#f43f5e' }}"/>
+
+  <g transform="translate(96, 160)">
+    <text x="0" y="0" class="subtitle">// {{ direction == 'up' and 'RISER' or 'FALLER' }}</text>
+    <text x="0" y="120" class="title">{{ player_name | escape_xml }}</text>
+  </g>
+
+  <g transform="translate(96, 520)">
+    <text x="0" y="0" class="rank-label">Previous</text>
+    <text x="0" y="200" class="rank-value">#{{ previous_rank }}</text>
+  </g>
+
+  <g transform="translate(900, 660)">
+    <text x="0" y="0" class="{{ direction == 'up' and 'delta-positive' or 'delta-negative' }}">
+      {{ direction == 'up' and '↑' or '↓' }} {{ delta }}
+    </text>
+  </g>
+
+  <g transform="translate(1700, 520)">
+    <text x="0" y="0" class="rank-label">Current</text>
+    <text x="0" y="200" class="rank-value">#{{ current_rank }}</text>
+  </g>
+
+  <g transform="translate(96, 1180)">
+    <text x="0" y="0" class="watermark">DRAFTGURU</text>
+  </g>
+</svg>
