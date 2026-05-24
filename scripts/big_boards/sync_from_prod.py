@@ -10,7 +10,7 @@ Idempotency / rerun semantics:
     Boards are identified by (news_source_id, draft_year, published_at).
     On rerun, a matching dev board is treated as a backfill target:
     entries already in dev (matched by player_id) are left alone;
-    entries that are in prod but not yet in dev are inserted. board_size
+    entries that are in prod but not yet in dev are inserted. size
     is always reconciled to the actual count of entries in dev after
     the pass, so a partial sync (e.g., a player slug that wasn't yet in
     dev) becomes self-healing the next run.
@@ -78,14 +78,14 @@ async def _sync_one_board(
     Idempotent: the (news_source_id, draft_year, published_at) tuple is
     the identity key. If a dev board already exists for that key, this
     backfills any missing entries (e.g., players that were absent in
-    dev on an earlier run but have since been added). ``board_size`` is
+    dev on an earlier run but have since been added). ``size`` is
     always reconciled to the actual entry count so re-running after
     onboarding more players makes the imported board self-consistent
     rather than locking in a stale count.
     """
     existing_dev_board_id = await dev.fetchval(
         """
-        SELECT id FROM big_boards
+        SELECT id FROM boards
         WHERE news_source_id = $1
           AND draft_year = $2
           AND published_at = $3
@@ -96,14 +96,14 @@ async def _sync_one_board(
     )
 
     if existing_dev_board_id is None:
-        # Insert the board with board_size=0 so we never claim a count
+        # Insert the board with size=0 so we never claim a count
         # we haven't actually written. Reconciled to the real count at
         # the end of this function.
         dev_board_id = await dev.fetchval(
             """
-            INSERT INTO big_boards (
+            INSERT INTO boards (
                 news_source_id, news_item_id, draft_year, published_at,
-                board_size, status, approved_at, created_at, updated_at
+                size, status, approved_at, created_at, updated_at
             )
             VALUES ($1, NULL, $2, $3, 0, $4, $5, $6, $7)
             RETURNING id
@@ -124,17 +124,17 @@ async def _sync_one_board(
     # the FK map) keeps reruns safe across player onboarding.
     prod_entries = await snap.fetch(
         """
-        SELECT player_id, rank, tier
-        FROM big_board_entries
+        SELECT player_id, position, tier
+        FROM board_entries
         WHERE board_id = $1
-        ORDER BY rank
+        ORDER BY position
         """,
         prod_board["id"],
     )
     existing_dev_player_ids = {
         r["player_id"]
         for r in await dev.fetch(
-            "SELECT player_id FROM big_board_entries WHERE board_id = $1",
+            "SELECT player_id FROM board_entries WHERE board_id = $1",
             dev_board_id,
         )
     }
@@ -146,7 +146,7 @@ async def _sync_one_board(
         dev_player_id = player_id_map.get(e["player_id"])
         if dev_player_id is None:
             print(
-                f"    ! WARN: prod player_id={e['player_id']} on rank={e['rank']} "
+                f"    ! WARN: prod player_id={e['player_id']} on position={e['position']} "
                 "has no dev mapping; skipping entry."
             )
             missing_player += 1
@@ -156,26 +156,26 @@ async def _sync_one_board(
             continue
         await dev.execute(
             """
-            INSERT INTO big_board_entries (board_id, player_id, rank, tier)
+            INSERT INTO board_entries (board_id, player_id, position, tier)
             VALUES ($1, $2, $3, $4)
             """,
             dev_board_id,
             dev_player_id,
-            e["rank"],
+            e["position"],
             e["tier"],
         )
         inserted += 1
 
-    # Reconcile board_size to the count we actually wrote (or that was
+    # Reconcile size to the count we actually wrote (or that was
     # already there). Bypasses the admin service's PENDING-only guard,
     # which is intentional: this is an ops sync, not an analyst edit,
     # and the count needs to track reality across reruns.
     actual_count = await dev.fetchval(
-        "SELECT COUNT(*) FROM big_board_entries WHERE board_id = $1",
+        "SELECT COUNT(*) FROM board_entries WHERE board_id = $1",
         dev_board_id,
     )
     await dev.execute(
-        "UPDATE big_boards SET board_size = $1, updated_at = NOW() WHERE id = $2",
+        "UPDATE boards SET size = $1, updated_at = NOW() WHERE id = $2",
         actual_count,
         dev_board_id,
     )
@@ -185,7 +185,7 @@ async def _sync_one_board(
         f"  + [{state}] {source_name} {prod_board['draft_year']} "
         f"@{prod_board['published_at'].date()} -> dev board id={dev_board_id}: "
         f"inserted={inserted} already_present={already_present} "
-        f"missing_player={missing_player} board_size={actual_count}/{len(prod_entries)}"
+        f"missing_player={missing_player} size={actual_count}/{len(prod_entries)}"
     )
     return dev_board_id
 
@@ -204,7 +204,7 @@ async def main() -> int:
         prod_boards = await snap.fetch(
             """
             SELECT bb.*, ns.name AS source_name
-            FROM big_boards bb
+            FROM boards bb
             JOIN news_sources ns ON ns.id = bb.news_source_id
             WHERE bb.status = 'APPROVED'
             ORDER BY bb.id
@@ -219,7 +219,7 @@ async def main() -> int:
         prod_slugs = [
             r["slug"]
             for r in await snap.fetch(
-                "SELECT DISTINCT pm.slug FROM big_board_entries bbe "
+                "SELECT DISTINCT pm.slug FROM board_entries bbe "
                 "JOIN players_master pm ON pm.id = bbe.player_id"
             )
         ]

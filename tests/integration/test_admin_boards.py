@@ -10,7 +10,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.big_boards import BigBoard, BigBoardEntry, BoardStatus
+from app.schemas.boards import Board, BoardEntry, BoardStatus
 from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.players_master import PlayerMaster
 from tests.integration.auth_helpers import create_auth_user, login_staff
@@ -73,17 +73,17 @@ class TestBigBoardAccess:
     """Access control: unauthenticated users are redirected to login."""
 
     async def test_list_requires_login(self, app_client: AsyncClient):
-        """GET /admin/big-boards redirects when logged out."""
+        """GET /admin/boards redirects when logged out."""
         response = await app_client.get(
-            "/admin/big-boards", follow_redirects=False
+            "/admin/boards", follow_redirects=False
         )
         assert response.status_code in {302, 303}
         assert "/admin/login" in response.headers.get("location", "")
 
     async def test_create_requires_login(self, app_client: AsyncClient):
-        """POST /admin/big-boards redirects when logged out."""
+        """POST /admin/boards redirects when logged out."""
         response = await app_client.post(
-            "/admin/big-boards",
+            "/admin/boards",
             data={
                 "news_source_id": "1",
                 "draft_year": "2026",
@@ -113,7 +113,7 @@ class TestBigBoardLifecycle:
 
         # 1. Create board
         create_resp = await app_client.post(
-            "/admin/big-boards",
+            "/admin/boards",
             data={
                 "news_source_id": str(big_board_source.id),
                 "draft_year": "2026",
@@ -123,21 +123,21 @@ class TestBigBoardLifecycle:
         )
         assert create_resp.status_code == 303
         location = create_resp.headers["location"]
-        assert location.startswith("/admin/big-boards/")
+        assert location.startswith("/admin/boards/")
         board_id = int(location.split("/")[-1].split("?")[0])
 
-        board_row = await db_session.get(BigBoard, board_id)
+        board_row = await db_session.get(Board, board_id)
         assert board_row is not None
         assert board_row.status is BoardStatus.PENDING
-        assert board_row.board_size == 0
+        assert board_row.size == 0
 
         # 2. Add first entry
         first_player_id = sample_players[0].id
         add_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/entries",
+            f"/admin/boards/{board_id}/entries",
             data={
                 "player_id": str(first_player_id),
-                "rank": "1",
+                "position": "1",
                 "tier": "1",
             },
             follow_redirects=False,
@@ -147,47 +147,47 @@ class TestBigBoardLifecycle:
         # 3. Add second entry
         second_player_id = sample_players[1].id
         add_resp_2 = await app_client.post(
-            f"/admin/big-boards/{board_id}/entries",
+            f"/admin/boards/{board_id}/entries",
             data={
                 "player_id": str(second_player_id),
-                "rank": "2",
+                "position": "2",
             },
             follow_redirects=False,
         )
         assert add_resp_2.status_code == 303
 
-        # Verify board_size + entries
+        # Verify size + entries
         await db_session.refresh(board_row)
-        assert board_row.board_size == 2
+        assert board_row.size == 2
         entries = (
             await db_session.execute(
-                select(BigBoardEntry)  # type: ignore[call-overload]
-                .where(BigBoardEntry.board_id == board_id)  # type: ignore[arg-type]
-                .order_by(BigBoardEntry.rank)  # type: ignore[arg-type]
+                select(BoardEntry)  # type: ignore[call-overload]
+                .where(BoardEntry.board_id == board_id)  # type: ignore[arg-type]
+                .order_by(BoardEntry.position)  # type: ignore[arg-type]
             )
         ).scalars().all()
-        assert [(e.player_id, e.rank, e.tier) for e in entries] == [
+        assert [(e.player_id, e.position, e.tier) for e in entries] == [
             (first_player_id, 1, 1),
             (second_player_id, 2, None),
         ]
 
         # 4. Edit the second entry (set tier=2)
         edit_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/entries/{entries[1].id}/update",
-            data={"rank": "2", "tier": "2"},
+            f"/admin/boards/{board_id}/entries/{entries[1].id}/update",
+            data={"position": "2", "tier": "2"},
             follow_redirects=False,
         )
         assert edit_resp.status_code == 303
         edited_id = entries[1].id
         edited = await db_session.get(
-            BigBoardEntry, edited_id, populate_existing=True
+            BoardEntry, edited_id, populate_existing=True
         )
         assert edited is not None
         assert edited.tier == 2
 
         # 5. Approve
         approve_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/approve", follow_redirects=False
+            f"/admin/boards/{board_id}/approve", follow_redirects=False
         )
         assert approve_resp.status_code == 303
         await db_session.refresh(board_row)
@@ -196,17 +196,17 @@ class TestBigBoardLifecycle:
 
         # 6. Post-approval edits redirect with an error and do not mutate
         post_approve_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/entries",
+            f"/admin/boards/{board_id}/entries",
             data={
                 "player_id": str(sample_players[2].id),
-                "rank": "3",
+                "position": "3",
             },
             follow_redirects=False,
         )
         assert post_approve_resp.status_code == 303
         assert "error=" in post_approve_resp.headers["location"]
         await db_session.refresh(board_row)
-        assert board_row.board_size == 2
+        assert board_row.size == 2
 
     async def test_reject_flow_preserves_row_for_audit(
         self,
@@ -221,7 +221,7 @@ class TestBigBoardLifecycle:
         assert big_board_source.id is not None
 
         create_resp = await app_client.post(
-            "/admin/big-boards",
+            "/admin/boards",
             data={
                 "news_source_id": str(big_board_source.id),
                 "draft_year": "2026",
@@ -235,27 +235,27 @@ class TestBigBoardLifecycle:
 
         # Add one entry so reject is non-trivial
         await app_client.post(
-            f"/admin/big-boards/{board_id}/entries",
+            f"/admin/boards/{board_id}/entries",
             data={
                 "player_id": str(sample_players[0].id),
-                "rank": "1",
+                "position": "1",
             },
             follow_redirects=False,
         )
 
         reject_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/reject", follow_redirects=False
+            f"/admin/boards/{board_id}/reject", follow_redirects=False
         )
         assert reject_resp.status_code == 303
 
-        board_row = await db_session.get(BigBoard, board_id)
+        board_row = await db_session.get(Board, board_id)
         assert board_row is not None
         assert board_row.status is BoardStatus.REJECTED
         assert board_row.approved_at is None
 
         # Approve a rejected board should error
         approve_again = await app_client.post(
-            f"/admin/big-boards/{board_id}/approve", follow_redirects=False
+            f"/admin/boards/{board_id}/approve", follow_redirects=False
         )
         assert approve_again.status_code == 303
         assert "error=" in approve_again.headers["location"]
@@ -277,7 +277,7 @@ class TestBigBoardLifecycle:
         assert big_board_source.id is not None
 
         create_resp = await app_client.post(
-            "/admin/big-boards",
+            "/admin/boards",
             data={
                 "news_source_id": str(big_board_source.id),
                 "draft_year": "2026",
@@ -309,7 +309,7 @@ class TestBigBoardLifecycle:
         db_session.add(other)
         await db_session.commit()
 
-        detail = await app_client.get(f"/admin/big-boards/{board_id}")
+        detail = await app_client.get(f"/admin/boards/{board_id}")
         assert detail.status_code == 200
         # The deactivated current source is still rendered as an option,
         # tagged "(inactive)" so the admin sees its status.
@@ -347,7 +347,7 @@ class TestBigBoardLifecycle:
         assert other_source.id is not None
 
         create_resp = await app_client.post(
-            "/admin/big-boards",
+            "/admin/boards",
             data={
                 "news_source_id": str(big_board_source.id),
                 "draft_year": "2026",
@@ -360,7 +360,7 @@ class TestBigBoardLifecycle:
         )
 
         update_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/update-meta",
+            f"/admin/boards/{board_id}/update-meta",
             data={
                 "news_source_id": str(other_source.id),
                 "draft_year": "2027",
@@ -372,7 +372,7 @@ class TestBigBoardLifecycle:
         assert "success=meta_updated" in update_resp.headers["location"]
 
         board_row = await db_session.get(
-            BigBoard, board_id, populate_existing=True
+            Board, board_id, populate_existing=True
         )
         assert board_row is not None
         assert board_row.news_source_id == other_source.id
@@ -392,7 +392,7 @@ class TestBigBoardLifecycle:
         assert big_board_source.id is not None
 
         create_resp = await app_client.post(
-            "/admin/big-boards",
+            "/admin/boards",
             data={
                 "news_source_id": str(big_board_source.id),
                 "draft_year": "2026",
@@ -404,16 +404,16 @@ class TestBigBoardLifecycle:
             create_resp.headers["location"].split("/")[-1].split("?")[0]
         )
         await app_client.post(
-            f"/admin/big-boards/{board_id}/entries",
-            data={"player_id": str(sample_players[0].id), "rank": "1"},
+            f"/admin/boards/{board_id}/entries",
+            data={"player_id": str(sample_players[0].id), "position": "1"},
             follow_redirects=False,
         )
         await app_client.post(
-            f"/admin/big-boards/{board_id}/approve", follow_redirects=False
+            f"/admin/boards/{board_id}/approve", follow_redirects=False
         )
 
         update_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/update-meta",
+            f"/admin/boards/{board_id}/update-meta",
             data={
                 "news_source_id": str(big_board_source.id),
                 "draft_year": "2027",
@@ -425,7 +425,7 @@ class TestBigBoardLifecycle:
         assert "error=" in update_resp.headers["location"]
 
         board_row = await db_session.get(
-            BigBoard, board_id, populate_existing=True
+            Board, board_id, populate_existing=True
         )
         assert board_row is not None
         assert board_row.draft_year == 2026  # unchanged
@@ -443,7 +443,7 @@ class TestBigBoardLifecycle:
         assert big_board_source.id is not None
 
         create_resp = await app_client.post(
-            "/admin/big-boards",
+            "/admin/boards",
             data={
                 "news_source_id": str(big_board_source.id),
                 "draft_year": "2026",
@@ -455,22 +455,22 @@ class TestBigBoardLifecycle:
             create_resp.headers["location"].split("/")[-1].split("?")[0]
         )
         await app_client.post(
-            f"/admin/big-boards/{board_id}/entries",
-            data={"player_id": str(sample_players[0].id), "rank": "1"},
+            f"/admin/boards/{board_id}/entries",
+            data={"player_id": str(sample_players[0].id), "position": "1"},
             follow_redirects=False,
         )
         await app_client.post(
-            f"/admin/big-boards/{board_id}/approve", follow_redirects=False
+            f"/admin/boards/{board_id}/approve", follow_redirects=False
         )
 
         reopen_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/reopen", follow_redirects=False
+            f"/admin/boards/{board_id}/reopen", follow_redirects=False
         )
         assert reopen_resp.status_code == 303
         assert "success=reopened" in reopen_resp.headers["location"]
 
         board_row = await db_session.get(
-            BigBoard, board_id, populate_existing=True
+            Board, board_id, populate_existing=True
         )
         assert board_row is not None
         assert board_row.status is BoardStatus.PENDING
@@ -478,8 +478,8 @@ class TestBigBoardLifecycle:
 
         # Re-adding entries should now work
         add_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/entries",
-            data={"player_id": str(sample_players[1].id), "rank": "2"},
+            f"/admin/boards/{board_id}/entries",
+            data={"player_id": str(sample_players[1].id), "position": "2"},
             follow_redirects=False,
         )
         assert add_resp.status_code == 303
@@ -498,7 +498,7 @@ class TestBigBoardLifecycle:
         assert big_board_source.id is not None
 
         create_resp = await app_client.post(
-            "/admin/big-boards",
+            "/admin/boards",
             data={
                 "news_source_id": str(big_board_source.id),
                 "draft_year": "2026",
@@ -510,22 +510,22 @@ class TestBigBoardLifecycle:
             create_resp.headers["location"].split("/")[-1].split("?")[0]
         )
         await app_client.post(
-            f"/admin/big-boards/{board_id}/entries",
+            f"/admin/boards/{board_id}/entries",
             data={
                 "player_id": str(sample_players[0].id),
-                "rank": "1",
+                "position": "1",
                 "tier": "1",
             },
             follow_redirects=False,
         )
         await app_client.post(
-            f"/admin/big-boards/{board_id}/entries",
-            data={"player_id": str(sample_players[1].id), "rank": "2"},
+            f"/admin/boards/{board_id}/entries",
+            data={"player_id": str(sample_players[1].id), "position": "2"},
             follow_redirects=False,
         )
 
         clone_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/clone",
+            f"/admin/boards/{board_id}/clone",
             data={"published_at": "2026-05-20"},
             follow_redirects=False,
         )
@@ -535,19 +535,19 @@ class TestBigBoardLifecycle:
         )
         assert clone_id != board_id
 
-        clone_row = await db_session.get(BigBoard, clone_id)
+        clone_row = await db_session.get(Board, clone_id)
         assert clone_row is not None
         assert clone_row.status is BoardStatus.PENDING
-        assert clone_row.board_size == 2
+        assert clone_row.size == 2
 
         entries = (
             await db_session.execute(
-                select(BigBoardEntry)  # type: ignore[call-overload]
-                .where(BigBoardEntry.board_id == clone_id)  # type: ignore[arg-type]
-                .order_by(BigBoardEntry.rank)  # type: ignore[arg-type]
+                select(BoardEntry)  # type: ignore[call-overload]
+                .where(BoardEntry.board_id == clone_id)  # type: ignore[arg-type]
+                .order_by(BoardEntry.position)  # type: ignore[arg-type]
             )
         ).scalars().all()
-        assert [(e.player_id, e.rank, e.tier) for e in entries] == [
+        assert [(e.player_id, e.position, e.tier) for e in entries] == [
             (sample_players[0].id, 1, 1),
             (sample_players[1].id, 2, None),
         ]
@@ -565,7 +565,7 @@ class TestBigBoardLifecycle:
         assert big_board_source.id is not None
 
         create_resp = await app_client.post(
-            "/admin/big-boards",
+            "/admin/boards",
             data={
                 "news_source_id": str(big_board_source.id),
                 "draft_year": "2026",
@@ -578,16 +578,16 @@ class TestBigBoardLifecycle:
         )
         for i, player in enumerate(sample_players, start=1):
             await app_client.post(
-                f"/admin/big-boards/{board_id}/entries",
-                data={"player_id": str(player.id), "rank": str(i)},
+                f"/admin/boards/{board_id}/entries",
+                data={"player_id": str(player.id), "position": str(i)},
                 follow_redirects=False,
             )
 
         rows = (
             await db_session.execute(
-                select(BigBoardEntry.id, BigBoardEntry.rank)  # type: ignore[call-overload]
-                .where(BigBoardEntry.board_id == board_id)  # type: ignore[arg-type]
-                .order_by(BigBoardEntry.rank)  # type: ignore[arg-type]
+                select(BoardEntry.id, BoardEntry.position)  # type: ignore[call-overload]
+                .where(BoardEntry.board_id == board_id)  # type: ignore[arg-type]
+                .order_by(BoardEntry.position)  # type: ignore[arg-type]
             )
         ).all()
         # rows is [(id_at_rank_1, 1), (id_at_rank_2, 2), (id_at_rank_3, 3)]
@@ -596,16 +596,16 @@ class TestBigBoardLifecycle:
 
         # Move rank-2 up -> should become rank 1
         up_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/entries/{rank2_entry_id}/move-up",
+            f"/admin/boards/{board_id}/entries/{rank2_entry_id}/move-up",
             follow_redirects=False,
         )
         assert up_resp.status_code == 303
 
         rows_after = (
             await db_session.execute(
-                select(BigBoardEntry.id, BigBoardEntry.rank)  # type: ignore[call-overload]
-                .where(BigBoardEntry.board_id == board_id)  # type: ignore[arg-type]
-                .order_by(BigBoardEntry.rank)  # type: ignore[arg-type]
+                select(BoardEntry.id, BoardEntry.position)  # type: ignore[call-overload]
+                .where(BoardEntry.board_id == board_id)  # type: ignore[arg-type]
+                .order_by(BoardEntry.position)  # type: ignore[arg-type]
             )
         ).all()
         assert rows_after[0].id == rank2_entry_id
@@ -623,7 +623,7 @@ class TestBigBoardLifecycle:
         assert big_board_source.id is not None
 
         create_resp = await app_client.post(
-            "/admin/big-boards",
+            "/admin/boards",
             data={
                 "news_source_id": str(big_board_source.id),
                 "draft_year": "2026",
@@ -636,12 +636,12 @@ class TestBigBoardLifecycle:
         )
 
         del_resp = await app_client.post(
-            f"/admin/big-boards/{board_id}/delete", follow_redirects=False
+            f"/admin/boards/{board_id}/delete", follow_redirects=False
         )
         assert del_resp.status_code == 303
-        assert del_resp.headers["location"].startswith("/admin/big-boards")
+        assert del_resp.headers["location"].startswith("/admin/boards")
 
-        assert await db_session.get(BigBoard, board_id) is None
+        assert await db_session.get(Board, board_id) is None
 
 
 @pytest.mark.asyncio
@@ -664,28 +664,28 @@ class TestBigBoardListing:
         published = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(
             days=1
         )
-        board = BigBoard(
+        board = Board(
             news_source_id=big_board_source.id,
             draft_year=2026,
             published_at=published,
-            board_size=1,
+            size=1,
             status=BoardStatus.PENDING,
         )
         db_session.add(board)
         await db_session.flush()
         db_session.add(
-            BigBoardEntry(
+            BoardEntry(
                 board_id=board.id,
                 player_id=sample_players[0].id,
-                rank=1,
+                position=1,
             )
         )
         await db_session.commit()
 
-        all_resp = await app_client.get("/admin/big-boards")
+        all_resp = await app_client.get("/admin/boards")
         assert all_resp.status_code == 200
         assert "Big Board Test Source" in all_resp.text
 
-        pending_resp = await app_client.get("/admin/big-boards?status=PENDING")
+        pending_resp = await app_client.get("/admin/boards?status=PENDING")
         assert pending_resp.status_code == 200
         assert "Big Board Test Source" in pending_resp.text

@@ -185,7 +185,7 @@ class SourceAnalytics(SQLModel, table=True):  # type: ignore[call-arg]
     )
     news_source_id: int = Field(foreign_key="news_sources.id", index=True)
     latest_board_id: int = Field(
-        foreign_key="big_boards.id",
+        foreign_key="boards.id",
         description="Which board of this source was used in this snapshot.",
     )
 

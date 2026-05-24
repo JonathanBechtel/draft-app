@@ -4,7 +4,7 @@
 //   1. Player autocomplete on the "Add Entry" form (calls /players/search).
 //   2. Per-row auto-save: when the admin tabs out of a rank or tier input
 //      whose value has changed, POST the new values to the existing
-//      /admin/big-boards/{board}/entries/{entry}/update route.
+//      /admin/boards/{board}/entries/{entry}/update route.
 
 (function () {
   function initAutocomplete() {
@@ -120,25 +120,25 @@
       const boardId = row.dataset.boardId;
       if (!entryId || !boardId) return;
 
-      const rankEl = row.querySelector('[data-field="rank"]');
+      const positionEl = row.querySelector('[data-field="position"]');
       const tierEl = row.querySelector('[data-field="tier"]');
-      const rankVal = rankEl ? rankEl.value.trim() : "";
+      const positionVal = positionEl ? positionEl.value.trim() : "";
       const tierVal = tierEl ? tierEl.value.trim() : "";
 
-      if (rankVal === "") {
+      if (positionVal === "") {
         setStatus("Rank is required.", true);
-        if (rankEl) rankEl.focus();
+        if (positionEl) positionEl.focus();
         return;
       }
 
       const body = new URLSearchParams();
-      body.append("rank", rankVal);
+      body.append("position", positionVal);
       body.append("tier", tierVal);
 
       setStatus("Saving…", false);
       try {
         const resp = await fetch(
-          "/admin/big-boards/" + boardId + "/entries/" + entryId + "/update",
+          "/admin/boards/" + boardId + "/entries/" + entryId + "/update",
           {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },

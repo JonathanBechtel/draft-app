@@ -23,15 +23,15 @@ from app.routes.admin.helpers import (
     base_context_with_permissions,
     require_dataset_access,
 )
-from app.schemas.big_boards import BoardStatus
+from app.schemas.boards import BoardStatus
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
-from app.services import big_board_service as svc
+from app.services import board_service as svc
 from app.utils.db_async import get_session
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/big-boards", tags=["admin-big-boards"])
+router = APIRouter(prefix="/boards", tags=["admin-boards"])
 
 _SUCCESS_MESSAGES: dict[str, str] = {
     "created": "Big board created. Add entries below.",
@@ -56,7 +56,7 @@ async def list_big_boards(
 ) -> Response:
     """List big boards, optionally filtered by status."""
     redirect, user = await require_dataset_access(
-        request, db, "big_boards", need_edit=False, next_path="/admin/big-boards"
+        request, db, "boards", need_edit=False, next_path="/admin/boards"
     )
     if redirect:
         return redirect
@@ -80,7 +80,7 @@ async def list_big_boards(
         sources_by_id = {s.id: s for s in rows.scalars().all() if s.id is not None}
 
     return request.app.state.templates.TemplateResponse(
-        "admin/big-boards/index.html",
+        "admin/boards/index.html",
         await base_context_with_permissions(
             request,
             db,
@@ -103,9 +103,9 @@ async def new_big_board(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path="/admin/big-boards/new",
+        next_path="/admin/boards/new",
     )
     if redirect:
         return redirect
@@ -124,7 +124,7 @@ async def new_big_board(
     )
 
     return request.app.state.templates.TemplateResponse(
-        "admin/big-boards/new.html",
+        "admin/boards/new.html",
         await base_context_with_permissions(
             request,
             db,
@@ -146,7 +146,7 @@ async def create_big_board(
 ) -> Response:
     """Create an empty PENDING board and redirect to its detail page."""
     redirect, user = await require_dataset_access(
-        request, db, "big_boards", need_edit=True, next_path="/admin/big-boards"
+        request, db, "boards", need_edit=True, next_path="/admin/boards"
     )
     if redirect:
         return redirect
@@ -174,7 +174,7 @@ async def create_big_board(
         )
 
     return RedirectResponse(
-        url=f"/admin/big-boards/{board.id}?success=created", status_code=303
+        url=f"/admin/boards/{board.id}?success=created", status_code=303
     )
 
 
@@ -190,9 +190,9 @@ async def big_board_detail(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=False,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -201,7 +201,7 @@ async def big_board_detail(
     try:
         board, entries = await svc.get_board_with_entries(db, board_id)
     except svc.BoardNotFoundError:
-        return RedirectResponse(url="/admin/big-boards", status_code=303)
+        return RedirectResponse(url="/admin/boards", status_code=303)
 
     source = await db.get(NewsSource, board.news_source_id)
 
@@ -218,7 +218,7 @@ async def big_board_detail(
         await svc.latest_entry_tier(db, board_id=board_id) if is_pending else None
     )
     default_next_rank = (
-        (max((e.rank for e in entries), default=0) + 1) if entries else 1
+        (max((e.position for e in entries), default=0) + 1) if entries else 1
     )
 
     editable_sources: list[NewsSource] = []
@@ -244,7 +244,7 @@ async def big_board_detail(
         editable_sources = active_rows
 
     return request.app.state.templates.TemplateResponse(
-        "admin/big-boards/detail.html",
+        "admin/boards/detail.html",
         await base_context_with_permissions(
             request,
             db,
@@ -268,7 +268,7 @@ async def add_board_entry(
     request: Request,
     board_id: int,
     player_id: int = Form(...),
-    rank: int = Form(...),
+    position: int = Form(...),
     tier: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
@@ -276,9 +276,9 @@ async def add_board_entry(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -291,14 +291,14 @@ async def add_board_entry(
                 db,
                 board_id=board_id,
                 player_id=player_id,
-                rank=rank,
+                position=position,
                 tier=tier_int,
             )
-    except svc.BigBoardError as exc:
+    except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(
-        url=f"/admin/big-boards/{board_id}?success=entry_added", status_code=303
+        url=f"/admin/boards/{board_id}?success=entry_added", status_code=303
     )
 
 
@@ -307,7 +307,7 @@ async def update_board_entry(
     request: Request,
     board_id: int,
     entry_id: int,
-    rank: int = Form(...),
+    position: int = Form(...),
     tier: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
@@ -315,9 +315,9 @@ async def update_board_entry(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -326,12 +326,14 @@ async def update_board_entry(
     tier_int = _parse_optional_int(tier)
     try:
         async with db.begin():
-            await svc.update_entry(db, entry_id=entry_id, rank=rank, tier=tier_int)
-    except svc.BigBoardError as exc:
+            await svc.update_entry(
+                db, entry_id=entry_id, position=position, tier=tier_int
+            )
+    except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(
-        url=f"/admin/big-boards/{board_id}?success=entry_updated", status_code=303
+        url=f"/admin/boards/{board_id}?success=entry_updated", status_code=303
     )
 
 
@@ -346,9 +348,9 @@ async def delete_board_entry(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -357,11 +359,11 @@ async def delete_board_entry(
     try:
         async with db.begin():
             await svc.delete_entry(db, entry_id=entry_id)
-    except svc.BigBoardError as exc:
+    except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(
-        url=f"/admin/big-boards/{board_id}?success=entry_deleted", status_code=303
+        url=f"/admin/boards/{board_id}?success=entry_deleted", status_code=303
     )
 
 
@@ -375,9 +377,9 @@ async def approve_big_board(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -386,11 +388,11 @@ async def approve_big_board(
     try:
         async with db.begin():
             await svc.approve_board(db, board_id=board_id)
-    except svc.BigBoardError as exc:
+    except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(
-        url=f"/admin/big-boards/{board_id}?success=approved", status_code=303
+        url=f"/admin/boards/{board_id}?success=approved", status_code=303
     )
 
 
@@ -404,9 +406,9 @@ async def reject_big_board(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -415,11 +417,11 @@ async def reject_big_board(
     try:
         async with db.begin():
             await svc.reject_board(db, board_id=board_id)
-    except svc.BigBoardError as exc:
+    except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(
-        url=f"/admin/big-boards/{board_id}?success=rejected", status_code=303
+        url=f"/admin/boards/{board_id}?success=rejected", status_code=303
     )
 
 
@@ -433,9 +435,9 @@ async def delete_big_board(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -444,10 +446,10 @@ async def delete_big_board(
     try:
         async with db.begin():
             await svc.delete_board(db, board_id=board_id)
-    except svc.BigBoardError as exc:
+    except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
-    return RedirectResponse(url="/admin/big-boards?success=deleted", status_code=303)
+    return RedirectResponse(url="/admin/boards?success=deleted", status_code=303)
 
 
 @router.post("/{board_id}/update-meta", response_class=HTMLResponse)
@@ -463,9 +465,9 @@ async def update_board_meta(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -489,11 +491,11 @@ async def update_board_meta(
                 draft_year=draft_year,
                 published_at=published_dt,
             )
-    except svc.BigBoardError as exc:
+    except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(
-        url=f"/admin/big-boards/{board_id}?success=meta_updated",
+        url=f"/admin/boards/{board_id}?success=meta_updated",
         status_code=303,
     )
 
@@ -508,9 +510,9 @@ async def reopen_big_board(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -519,11 +521,11 @@ async def reopen_big_board(
     try:
         async with db.begin():
             await svc.reopen_board(db, board_id=board_id)
-    except svc.BigBoardError as exc:
+    except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(
-        url=f"/admin/big-boards/{board_id}?success=reopened", status_code=303
+        url=f"/admin/boards/{board_id}?success=reopened", status_code=303
     )
 
 
@@ -542,9 +544,9 @@ async def clone_big_board(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -566,11 +568,11 @@ async def clone_big_board(
             clone = await svc.clone_board(
                 db, board_id=board_id, published_at=published_dt
             )
-    except svc.BigBoardError as exc:
+    except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(
-        url=f"/admin/big-boards/{clone.id}?success=cloned", status_code=303
+        url=f"/admin/boards/{clone.id}?success=cloned", status_code=303
     )
 
 
@@ -606,9 +608,9 @@ async def _move_entry(
     redirect, user = await require_dataset_access(
         request,
         db,
-        "big_boards",
+        "boards",
         need_edit=True,
-        next_path=f"/admin/big-boards/{board_id}",
+        next_path=f"/admin/boards/{board_id}",
     )
     if redirect:
         return redirect
@@ -617,10 +619,10 @@ async def _move_entry(
     try:
         async with db.begin():
             await svc.move_entry(db, entry_id=entry_id, direction=direction)
-    except svc.BigBoardError as exc:
+    except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
-    return RedirectResponse(url=f"/admin/big-boards/{board_id}", status_code=303)
+    return RedirectResponse(url=f"/admin/boards/{board_id}", status_code=303)
 
 
 def _parse_optional_int(raw: str | None) -> int | None:
@@ -639,7 +641,7 @@ def _redirect_with_error(board_id: int, message: str) -> Response:
     from urllib.parse import quote
 
     return RedirectResponse(
-        url=f"/admin/big-boards/{board_id}?error={quote(message)}",
+        url=f"/admin/boards/{board_id}?error={quote(message)}",
         status_code=303,
     )
 
@@ -662,7 +664,7 @@ async def _render_new_with_error(
         .all()
     )
     return request.app.state.templates.TemplateResponse(
-        "admin/big-boards/new.html",
+        "admin/boards/new.html",
         await base_context_with_permissions(
             request,
             db,

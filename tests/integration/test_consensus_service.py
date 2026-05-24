@@ -20,7 +20,7 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.big_boards import BigBoard, BigBoardEntry, BoardStatus
+from app.schemas.boards import Board, BoardEntry, BoardStatus
 from app.schemas.consensus import (
     BigBoardConsensus,
     ConsensusSnapshot,
@@ -29,7 +29,7 @@ from app.schemas.consensus import (
 )
 from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.players_master import PlayerMaster
-from app.services import big_board_service as bb_svc
+from app.services import board_service as bb_svc
 from app.services import consensus_service as svc
 from tests.integration.conftest import make_player
 
@@ -61,17 +61,17 @@ async def _make_approved_board(
     draft_year: int,
     published_at: datetime,
     entries: list[tuple[PlayerMaster, int]],  # (player, rank)
-) -> BigBoard:
+) -> Board:
     """Insert a board straight into APPROVED state without running the
     full create→approve flow (which would trigger a consensus recompute
     and complicate test setup)."""
     assert source.id is not None
-    board = BigBoard(
+    board = Board(
         news_source_id=source.id,
         news_item_id=None,
         draft_year=draft_year,
         published_at=published_at,
-        board_size=len(entries),
+        size=len(entries),
         status=BoardStatus.APPROVED,
         approved_at=_now(),
     )
@@ -81,10 +81,10 @@ async def _make_approved_board(
     for player, rank in entries:
         assert player.id is not None
         db.add(
-            BigBoardEntry(
+            BoardEntry(
                 board_id=board.id,
                 player_id=player.id,
-                rank=rank,
+                position=rank,
             )
         )
     await db.flush()
@@ -511,19 +511,19 @@ async def test_approve_board_triggers_recompute_by_default(
         entries=[(p1, 1), (p2, 2)],
     )
 
-    pending = BigBoard(
+    pending = Board(
         news_source_id=s2.id,
         news_item_id=None,
         draft_year=2026,
         published_at=today,
-        board_size=2,
+        size=2,
         status=BoardStatus.PENDING,
     )
     db_session.add(pending)
     await db_session.flush()
     assert pending.id is not None
-    db_session.add(BigBoardEntry(board_id=pending.id, player_id=p1.id, rank=1))
-    db_session.add(BigBoardEntry(board_id=pending.id, player_id=p2.id, rank=2))
+    db_session.add(BoardEntry(board_id=pending.id, player_id=p1.id, position=1))
+    db_session.add(BoardEntry(board_id=pending.id, player_id=p2.id, position=2))
     await db_session.commit()
 
     snapshots_before = (
@@ -561,18 +561,18 @@ async def test_approve_board_can_skip_recompute(
     """approve_board(recompute_consensus=False) is the escape hatch for tests / batch ops."""
     p1, _p2, _p3, _p4 = players
     s1, _s2, _s3 = three_sources
-    pending = BigBoard(
+    pending = Board(
         news_source_id=s1.id,
         news_item_id=None,
         draft_year=2026,
         published_at=_now(),
-        board_size=1,
+        size=1,
         status=BoardStatus.PENDING,
     )
     db_session.add(pending)
     await db_session.flush()
     assert pending.id is not None
-    db_session.add(BigBoardEntry(board_id=pending.id, player_id=p1.id, rank=1))
+    db_session.add(BoardEntry(board_id=pending.id, player_id=p1.id, position=1))
     await db_session.commit()
 
     await bb_svc.approve_board(

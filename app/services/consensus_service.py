@@ -6,7 +6,7 @@ analytics. Append-only snapshots so rank trajectory falls out of a
 simple query in Phase 3.
 
 See ``docs/consensus_phase_2_design.md`` for the algorithm rationale.
-Tier values stored on big_board_entries are intentionally ignored in
+Tier values stored on board_entries are intentionally ignored in
 the aggregation — tier is admin-side transcription fidelity, not a
 consensus signal in v1.
 """
@@ -22,7 +22,7 @@ from typing import Optional
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.big_boards import BigBoard, BigBoardEntry, BoardStatus
+from app.schemas.boards import Board, BoardEntry, BoardStatus
 from app.schemas.consensus import (
     BigBoardConsensus,
     ConsensusSnapshot,
@@ -105,15 +105,15 @@ async def recompute_consensus(
     entry_rows = (
         await db.execute(
             select(  # type: ignore[call-overload]
-                BigBoardEntry.board_id, BigBoardEntry.player_id, BigBoardEntry.rank
-            ).where(BigBoardEntry.board_id.in_(board_ids))  # type: ignore[attr-defined]
+                BoardEntry.board_id, BoardEntry.player_id, BoardEntry.position
+            ).where(BoardEntry.board_id.in_(board_ids))  # type: ignore[attr-defined]
         )
     ).all()
 
     # ranks_by_player: player_id -> list of (board_id, rank)
     ranks_by_player: dict[int, list[tuple[int, int]]] = defaultdict(list)
     for row in entry_rows:
-        ranks_by_player[row.player_id].append((row.board_id, row.rank))
+        ranks_by_player[row.player_id].append((row.board_id, row.position))
 
     aggregates = _build_aggregates(ranks_by_player)
     included = [a for a in aggregates if a.num_sources >= MIN_SOURCES]
@@ -207,9 +207,7 @@ async def get_player_rank_history(
     return list(rows.scalars().all())
 
 
-async def _select_eligible_boards(
-    db: AsyncSession, *, draft_year: int
-) -> list[BigBoard]:
+async def _select_eligible_boards(db: AsyncSession, *, draft_year: int) -> list[Board]:
     """Return the most recent APPROVED board per source for the year.
 
     Tie-breakers on identical ``published_at`` are deterministic so a
@@ -221,15 +219,15 @@ async def _select_eligible_boards(
                                  approval timestamps from a batch import
     """
     stmt = (
-        select(BigBoard)  # type: ignore[call-overload]
-        .where(BigBoard.status == BoardStatus.APPROVED)  # type: ignore[arg-type]
-        .where(BigBoard.draft_year == draft_year)  # type: ignore[arg-type]
-        .distinct(BigBoard.news_source_id)  # type: ignore[arg-type]
+        select(Board)  # type: ignore[call-overload]
+        .where(Board.status == BoardStatus.APPROVED)  # type: ignore[arg-type]
+        .where(Board.draft_year == draft_year)  # type: ignore[arg-type]
+        .distinct(Board.news_source_id)  # type: ignore[arg-type]
         .order_by(
-            BigBoard.news_source_id,  # type: ignore[arg-type]
-            BigBoard.published_at.desc(),  # type: ignore[attr-defined]
-            BigBoard.approved_at.desc(),  # type: ignore[union-attr]
-            BigBoard.id.desc(),  # type: ignore[union-attr]
+            Board.news_source_id,  # type: ignore[arg-type]
+            Board.published_at.desc(),  # type: ignore[attr-defined]
+            Board.approved_at.desc(),  # type: ignore[union-attr]
+            Board.id.desc(),  # type: ignore[union-attr]
         )
     )
     rows = await db.execute(stmt)
@@ -299,7 +297,7 @@ async def _write_source_analytics(
     db: AsyncSession,
     *,
     snapshot_id: int,
-    eligible_boards: list[BigBoard],
+    eligible_boards: list[Board],
     ranks_by_player: dict[int, list[tuple[int, int]]],
     consensus_by_player: dict[int, int],
 ) -> None:

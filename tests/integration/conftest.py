@@ -133,7 +133,8 @@ async def async_engine(
     from app.schemas import youtube_channels  # noqa: F401
     from app.schemas import youtube_videos  # noqa: F401
     from app.schemas import auth  # noqa: F401
-    from app.schemas import big_boards  # noqa: F401
+    from app.schemas import nba_teams  # noqa: F401
+    from app.schemas import boards  # noqa: F401
     from app.schemas import consensus  # noqa: F401
     from app.schemas import x_post_history  # noqa: F401
 

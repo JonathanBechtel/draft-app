@@ -14,7 +14,7 @@ from starlette.responses import Response
 
 from app.routes.admin.account import router as account_router
 from app.routes.admin.auth import router as auth_router
-from app.routes.admin.big_boards import router as big_boards_router
+from app.routes.admin.boards import router as big_boards_router
 from app.routes.admin.helpers import base_context, get_current_user
 from app.routes.admin.images import router as images_router
 from app.routes.admin.news_items import router as news_items_router

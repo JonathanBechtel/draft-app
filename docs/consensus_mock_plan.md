@@ -2,10 +2,12 @@
 
 ## Overview
 
-Build a consensus ranking system that aggregates mock drafts and big boards from existing Substack sources in our news feed. This becomes the **main homepage feature** — the splash/hero section.
+Build a consensus ranking system that aggregates mock drafts and big boards
+from existing Substack sources in our news feed. This becomes the **main
+homepage feature** — the splash/hero section.
 
 The feature has two analytics dimensions:
-1. **Player analytics** — consensus rank, trend over time, range/volatility across sources
+1. **Player analytics** — consensus rank, trend over time, range / volatility across sources
 2. **Source/analyst analytics** — contrarian scores, deviation from consensus, who's early on risers
 
 ### Draft Calendar Behavior
@@ -13,132 +15,150 @@ The feature has two analytics dimensions:
 - **Pre-lottery:** Homepage shows **Big Board Consensus** (pure talent ranking)
 - **Post-lottery:** Homepage shows **Mock Draft Consensus** (pick-slot + team assignments)
 
-These are structurally different entities — not the same thing with different labels.
+Both views are powered by the same data plumbing; the homepage just renders a
+different partial based on the calendar phase (and lets the visitor toggle).
 
 ---
 
-## Big Board vs Mock Draft — Why They're Separate
+## Big Board and Mock Draft — One Unified Schema
+
+Earlier drafts of this plan treated Big Board and Mock Draft as fully separate
+entities. After building the Big Board path end-to-end and inspecting the
+overlap, we landed on a **single `Board` schema discriminated by `kind`** —
+the data shapes and lifecycle rules diverge less than the conceptual framing
+suggested.
 
 ### Big Board
 
-An analyst's talent/value ranking of prospects, independent of team context.
+An analyst's talent / value ranking of prospects, independent of team context.
 
-- Pure ordinal ranking: player + rank position
-- Optionally grouped into tiers
+- `kind = BIG_BOARD`
+- Pure ordinal ranking: `BoardEntry.position` is the rank
+- Optionally grouped into tiers (`BoardEntry.tier`) — stored for transcription
+  fidelity but **ignored by the consensus algorithm** (admin-side metadata,
+  not a consensus signal in v1)
 - Can be any length (top 30, top 60, top 100)
-- Published frequently, updated as the season progresses
+- Published frequently
 - Consensus question: **"Where does the average analyst rank this player by talent?"**
 
 ### Mock Draft
 
 An analyst's prediction of what will actually happen on draft night.
 
+- `kind = MOCK_DRAFT`
 - Pick-slot driven, not talent-ranking driven
-- Each entry is a **pick** assigned to a **team** and a **player**
+- `BoardEntry.position` is the overall pick number (1–60)
+- Additional per-pick fields: `round` (1 or 2), `team_id` (selecting team),
+  `original_team_id` (if traded), `trade_note`
 - Two rounds, up to 60 picks
-- Includes traded picks (selecting team ≠ original pick owner)
-- Can include trade scenario notes
 - Published less frequently, more labor-intensive
-- Consensus question: **"Where is this player most commonly mocked?"** AND **"Who does each team most commonly get?"**
+- Consensus questions:
+  - **"Where is this player most commonly mocked?"** (player view)
+  - **"Who does each team most commonly get?"** (team view — unique to mocks)
+
+### Why unified rather than parallel tables
+
+| Layer | Reused across both kinds |
+|---|---|
+| Schema | One `boards` table + one `board_entries` table with a few nullable mock-only columns |
+| Service | One `board_service` with kind-aware validation in a few spots |
+| Admin lifecycle | PENDING → APPROVED → REJECTED, autosave-on-blur, clone, reopen, edit metadata — identical |
+| Admin UX patterns | Add-rows form (with conditional team picker for mocks), move up/down, sticky inputs |
+| Tests | Lifecycle / immutability / autosave tests run once for both kinds |
+| Operational scripts | `sync_from_prod` works for both unchanged |
+
+What genuinely branches:
+
+- **Consensus computation** has a player view for both kinds plus a team view
+  for mocks only
+- **Homepage display** is fundamentally different (ranked list vs pick-by-pick draft board)
+- **A few validation rules** differ (mock requires `team_id`; big board allows `tier`)
+
+Forcing a shared abstraction in the cases above would leak. Keeping the
+**data model unified** and **branching only at the rendering and team-side
+analytics layers** is the sweet spot.
 
 ---
 
 ## Data Model
 
-### Raw Source Data
+### Source-of-truth tables
 
-#### `BigBoard`
+#### `Board`
 | Field | Type | Notes |
-|-------|------|-------|
+|---|---|---|
 | id | PK | |
-| news_source_id | FK → NewsSource | The source/analyst |
-| news_item_id | FK → NewsItem, nullable | Link to original article if applicable |
+| news_source_id | FK → NewsSource | The source / analyst |
+| news_item_id | FK → NewsItem, nullable | Link to original article when known |
 | draft_year | int | |
-| published_at | datetime | When the board was published |
-| board_size | int | Number of players ranked |
+| published_at | datetime | When the analyst published it |
+| size | int | Number of ranked players / picks |
 | status | enum | PENDING / APPROVED / REJECTED |
+| approved_at | datetime, nullable | Set on transition to APPROVED |
+| kind | enum | BIG_BOARD / MOCK_DRAFT |
+| num_rounds | int, nullable | MOCK_DRAFT only (1 or 2) |
 
-#### `BigBoardEntry`
+#### `BoardEntry`
 | Field | Type | Notes |
-|-------|------|-------|
+|---|---|---|
 | id | PK | |
-| board_id | FK → BigBoard | |
+| board_id | FK → Board | ON DELETE CASCADE |
 | player_id | FK → PlayerMaster | |
-| rank | int | Analyst's talent ranking position |
-| tier | int, nullable | Optional tier grouping |
+| position | int | Rank (big board) or pick number (mock draft) |
+| tier | int, nullable | BIG_BOARD only |
+| round | int, nullable | MOCK_DRAFT only |
+| team_id | FK → Team, nullable | MOCK_DRAFT only (selecting team) |
+| original_team_id | FK → Team, nullable | MOCK_DRAFT only (if traded) |
+| trade_note | str, nullable | MOCK_DRAFT only |
 
-#### `MockDraft`
-| Field | Type | Notes |
-|-------|------|-------|
-| id | PK | |
-| news_source_id | FK → NewsSource | The source/analyst |
-| news_item_id | FK → NewsItem, nullable | Link to original article if applicable |
-| draft_year | int | |
-| published_at | datetime | When the mock was published |
-| num_rounds | int | Number of rounds covered (1 or 2) |
-| status | enum | PENDING / APPROVED / REJECTED |
+A Postgres `CHECK` constraint enforces null/non-null rules:
+- `kind = BIG_BOARD` → `round`, `team_id`, `original_team_id`, `trade_note` MUST be NULL
+- `kind = MOCK_DRAFT` → `team_id` and `round` MUST NOT be NULL
 
-#### `MockDraftPick`
-| Field | Type | Notes |
-|-------|------|-------|
-| id | PK | |
-| mock_id | FK → MockDraft | |
-| player_id | FK → PlayerMaster | |
-| pick_number | int | Overall pick (1–60) |
-| round | int | 1 or 2 |
-| team_id | FK → Team | Team making the selection |
-| original_team_id | FK → Team, nullable | Original pick owner if traded |
-| trade_note | str, nullable | E.g., "via trade with PHX" |
+Uniqueness:
+- `UNIQUE (board_id, position)` — at most one player at each rank / pick
+- `UNIQUE (board_id, player_id)` — same player can't appear twice on one board
 
-### Computed / Consensus Data
+### Consensus tables
 
-#### `BigBoardConsensus`
-| Field | Type | Notes |
-|-------|------|-------|
-| id | PK | |
-| snapshot_date | date | When consensus was computed |
-| draft_year | int | |
-| player_id | FK → PlayerMaster | |
-| consensus_rank | int | Final consensus position |
-| avg_rank | float | Mean rank across sources |
-| median_rank | float | Median rank |
-| high_rank | int | Best (lowest number) rank from any source |
-| low_rank | int | Worst (highest number) rank from any source |
-| std_dev | float | Standard deviation — volatility measure |
-| num_sources | int | How many boards include this player |
-| prev_rank | int, nullable | Previous snapshot's consensus rank |
-| rank_delta | int, nullable | Change from previous snapshot |
+The append-only snapshot model is generic across both kinds — the same
+service produces a Big Board consensus snapshot for one draft_year and a
+Mock Draft consensus snapshot for another. Tables landed in #200; the
+service that fills them landed in #203.
 
-#### `MockDraftConsensus`
-| Field | Type | Notes |
-|-------|------|-------|
-| id | PK | |
-| snapshot_date | date | When consensus was computed |
-| draft_year | int | |
-| player_id | FK → PlayerMaster | |
-| consensus_pick | int | Final consensus pick slot |
-| avg_pick | float | Mean pick across sources |
-| median_pick | float | Median pick |
-| high_pick | int | Earliest (lowest number) pick from any source |
-| low_pick | int | Latest (highest number) pick from any source |
-| std_dev | float | |
-| most_common_team_id | FK → Team, nullable | Team most frequently linked |
-| team_frequency_pct | float, nullable | % of mocks linking player to that team |
-| num_sources | int | |
-| prev_pick | int, nullable | |
-| pick_delta | int, nullable | |
+#### `ConsensusSnapshot`
+Groups one recompute pass for a `(draft_year, kind)` pair. Stores
+`computed_at`, `num_boards`, the JSONB list of `board_ids`, and a `trigger`
+enum (`BOARD_APPROVED` / `MANUAL` / `SCHEDULED`).
+
+> **Future:** add a `kind` column to scope snapshots by kind so big-board
+> snapshots and mock-draft snapshots are queryable independently. Not yet
+> implemented — mock-draft consensus is a Slice 2c+ concern.
+
+#### `BigBoardConsensus` *(name retained for now)*
+Per-player row within a snapshot.
+- `consensus_rank` (1-based final position)
+- `avg_rank`, `median_rank`, `high_rank`, `low_rank`, `std_dev`, `num_sources`
+- `prev_rank`, `rank_delta` — populated from the previous snapshot for the same year
+
+For mock drafts, "rank" reads naturally as "pick" — the fields are
+semantically generic but the column names date from the big-board-only
+era. Renaming to `*_position` is a future low-risk refactor.
 
 #### `SourceAnalytics`
-| Field | Type | Notes |
-|-------|------|-------|
-| id | PK | |
-| news_source_id | FK → NewsSource | |
-| snapshot_date | date | |
-| board_type | enum | BIG_BOARD / MOCK_DRAFT |
-| avg_deviation | float | Mean distance from consensus across all players |
-| contrarian_score | float | Normalized contrarian metric |
-| biggest_outlier_player_id | FK → PlayerMaster | Player where this source deviates most |
-| outlier_delta | int | How far off consensus for that player |
+Per-source row within a snapshot.
+- `avg_deviation` (mean absolute distance from consensus across players
+  this source ranked)
+- `contrarian_score` (z-score of `avg_deviation` across sources in this snapshot)
+- `biggest_outlier_player_id`, `outlier_delta` (signed)
+
+One row per **eligible** source, even when MIN_SOURCES gates all that
+source's players out of consensus (avg_deviation = 0 in that case).
+
+#### *Future: `TeamConsensus`* (mock-draft only)
+- `consensus_pick` per team — "Atlanta most commonly gets Player X at #5"
+- `most_common_player_id`, `frequency_pct`
+- Not yet implemented; added when mock-draft consensus is built out.
 
 ---
 
@@ -146,29 +166,28 @@ An analyst's prediction of what will actually happen on draft night.
 
 ### Ingest → Extract → Approve → Compute
 
-1. **Ingest**: Existing news feed fetches articles tagged `MOCK_DRAFT` or `BIG_BOARD`
-2. **AI Extract**: Structured extraction parses rankings from article content
-   - Big board parser: looks for ordered lists of players → `[{player, rank, tier?}]`
-   - Mock draft parser: looks for pick-team-player triples → `[{pick, round, team, player, trade_note?}]`
-   - Different prompts, different validation for each type
-3. **Admin Approve**: Extracted board lands in a pending review queue; admin approves/edits/rejects
-4. **Recompute Consensus**: On approval, consensus snapshots recompute immediately from all approved boards
+1. **Ingest**: news feed fetches articles tagged `MOCK_DRAFT` or `BIG_BOARD`
+2. **Extract** (manual for v1, AI later): structured extraction parses
+   rankings from article content. Same `BoardEntry` shape regardless of
+   kind; mock-draft entries carry the additional team/trade fields.
+3. **Admin approve**: extracted board lands in a PENDING review queue; admin
+   approves / edits / rejects via `/admin/boards`.
+4. **Recompute consensus**: on approval, `consensus_service.recompute_consensus`
+   fires automatically (transaction-scoped — if recompute fails, approval
+   rolls back).
 
-### Why Admin Approval?
+### Why admin approval
 
-- Prevents misrepresenting an analyst's rankings if AI extraction is wrong
-- Low volume (~5–10 new boards per week across all sources) makes this feasible
-- Approval UI can show extracted board side-by-side with original article for quick verification
+- Prevents misrepresenting an analyst's rankings if extraction is wrong
+- Low volume (~5–10 new boards per week across all sources) makes it feasible
+- Approval UI shows extracted board side-by-side with original article
 
 ### Extraction Strategy — Single Extractor with Per-Source Hints
 
-Different substacks format big boards differently — numbered lists, tier
-headers, tables, prose with embedded rankings. The question is whether to
-have one generic extractor or a dedicated parser per source.
-
-**Decision: one shared LLM extractor that pulls per-source hints from
-`NewsSource` at call time.** Add an `extraction_hints` JSON column to
-`NewsSource` with format metadata, e.g.:
+Different substacks format boards differently — numbered lists, tier
+headers, tables, prose with embedded rankings. The decision: **one shared
+LLM extractor that pulls per-source hints from `NewsSource` at call time**
+(via an `extraction_hints` JSON column).
 
 ```json
 {
@@ -181,95 +200,125 @@ have one generic extractor or a dedicated parser per source.
 The shared prompt injects those hints so the model gets source-specific
 context without per-source code. New sources are added by writing hints,
 not code; the admin approval queue catches errors before any extracted
-board affects consensus, so the cost of an occasional bad parse is admin
-time, not bad data.
+board affects consensus.
 
-**When this won't be enough** (defer until we hit the first failing case):
+**Deferred to a later phase** — manual admin entry is what we have for v1.
 
-- Image-only boards (e.g., a substack that posts a ranking screenshot)
-- Mock drafts — pick/team/trade triples are significantly harder than
-  ordered lists, and source-specific handling may be justified there
-- Sources that change format frequently mid-season
+### Manual entry as the v1 primary path
 
-The fallback for any extraction failure is the manual admin entry path
-(`app/routes/admin/big_boards.py`).
+Until AI extraction lands, admins enter boards via `/admin/boards`:
+- Create empty PENDING board with source / draft year / published_at / kind
+- Add entries one at a time with player autocomplete (and team picker for mocks)
+- Move up/down arrows reorder ranks/picks
+- Tier values pre-fill from the prior entry (sticky)
+- Edit details (source/year/date) and individual entries while PENDING
+- Clone an APPROVED board into a fresh PENDING copy for the next iteration
+- Reopen an APPROVED board → PENDING if you misclicked Approve
+- Approve, Reject (audit-preserving), or Delete (PENDING only)
 
 ---
 
 ## Player Analytics (derived from consensus)
 
-- **Consensus rank + trend**: current position and trajectory over time (risers/fallers)
-- **Range / volatility**: high-low spread and std_dev — "how settled is this player?"
+- **Consensus rank + trend**: current position and rank_delta against previous snapshot
+- **Range / volatility**: high–low spread and std_dev — "how settled is this player?"
 - **Agreement zones**: "all 6 sources have Flagg top 2" vs "Bailey ranges from 2 to 8"
-- **Historical trajectory**: "Player X has risen from #18 to #7 over 6 weeks"
-- **Source breakdown per player**: show each source's rank for a given player
+- **Historical trajectory**: `get_player_rank_history` returns oldest-first snapshot rows
+- **Source breakdown per player**: each source's rank for a given player
 
-## Source/Analyst Analytics (the unique twist)
+## Source / Analyst Analytics
 
-- **Contrarian score**: average deviation from consensus — who's the most/least contrarian?
-- **Biggest outlier**: which player does this source diverge on most?
-- **Early mover detection**: which source had a riser ranked high before consensus caught up
+- **Contrarian score**: z-scored avg_deviation across this snapshot's sources
+- **Biggest outlier**: which player does this source diverge on most? Signed `outlier_delta`
+- **Early-mover detection**: which source had a riser ranked high before consensus caught up (future)
 - **Source-vs-source comparison**: for any player, see all sources side by side
-- **Archetype tendencies**: "this source tends to be high on international prospects" (future)
 - **Accuracy tracking**: compare to actual draft results post-draft (future)
 
 ---
 
 ## Homepage Design
 
-The consensus board becomes the **main hero/splash** of the homepage.
+The consensus board becomes the **main hero / splash** of the homepage.
 
-### Hero Section — "2026 Consensus Board" (or "2026 Mock Draft" post-lottery)
-
-- Full top-30+ consensus ranking table
-- Each row: rank, rank delta (arrow), player name + school, avg rank, range (high–low), # sources
+### Hero section
+- Full top-30+ consensus table for the current draft year
+- Each row: rank, rank_delta arrow, player name + school, avg rank, range (high–low), # sources
 - Click row → player detail page
 - Visual indicators: risers (green), fallers (red), new entries
-- Board type adapts automatically based on draft calendar phase
+- **Tab toggle** between Big Board and Mock Draft views; default determined by
+  draft calendar phase (pre-lottery → Big Board, post-lottery → Mock Draft).
+  Override via `?view=board` / `?view=mock` for direct linking.
 
-### Supporting Panels
+### Supporting panels
+- **Biggest movers**: top 3–5 risers and fallers with deltas
+- **Source spotlight**: "Most contrarian source this week: [Source] — avg deviation X.X"
+- **Board freshness**: "Based on N boards from M sources, last updated [date]"
+- Existing homepage content (news feed, trending, podcasts) shifts below the consensus hero
 
-- **Biggest Movers**: top 3–5 risers and fallers with deltas
-- **Source Spotlight**: "Most contrarian source this week: [Source] — avg deviation X.X"
-- **Board Freshness**: "Based on N boards from M sources, last updated [date]"
-- **Existing homepage content** (news feed, trending, podcasts) shifts below the consensus hero
-
-### Player Detail Integration
-
+### Player detail integration
 - "Consensus rank: #X" on player pages
 - Source-by-source breakdown for that player
-- Rank history chart over time
+- Rank-history line chart (uses `get_player_rank_history`)
 
-### Source/Analyst Page
-
+### Source / analyst page
 - Leaderboard of sources by contrarian score / consensus alignment
 - Per-source: their current board vs consensus overlay
-- Biggest outlier picks
+- Biggest outlier picks per source
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Schema & Data Entry Pipeline
-- Create `BigBoard`, `BigBoardEntry`, `MockDraft`, `MockDraftPick` tables + migrations
-- AI extraction prompts (separate for big board vs mock draft)
-- Admin approval queue UI (pending boards list, side-by-side review, approve/edit/reject)
+### Phase 1: Schema & Data Entry Pipeline ✅
+
+- ✅ Unified `Board` / `BoardEntry` schema with kind discriminator (this PR — was originally landed as separate `big_boards` tables in #192 and renamed here)
+- ✅ Admin manual entry UI for big boards (#194, #196, #197, #198)
+- ✅ Operational sync script (#199)
+- ⏳ Mock-draft mode for admin entry (kind=MOCK_DRAFT path through the same UI with team picker + trade fields exposed)
+- ⏳ AI extraction prompts + per-source hints
 
 ### Phase 2: Consensus Computation Engine
-- `BigBoardConsensus` and `MockDraftConsensus` tables + migrations
-- Consensus computation service (triggered on board approval)
-- `SourceAnalytics` table + computation
-- Historical snapshot tracking (prev_rank / rank_delta)
+
+- ✅ `ConsensusSnapshot` / `BigBoardConsensus` / `SourceAnalytics` schemas with uniqueness constraints (#200)
+- ✅ `recompute_consensus` service + `approve_board` trigger hook (#203)
+- ⏳ Slice 2c: Admin "Recompute now" button + `/admin/consensus` view page
+- ⏳ Slice 2d: Daily cron as safety-net trigger
+- ⏳ `TeamConsensus` table + per-team aggregation (mock-draft only)
+- ⏳ Add `kind` column to `ConsensusSnapshot` to scope by kind
 
 ### Phase 3: Homepage Redesign
-- Consensus hero section replacing current top-of-page layout
-- Biggest movers panel
-- Source spotlight widget
-- Draft calendar–aware board type toggle
+
+- Consensus hero section replacing the current splash
+- Big Board / Mock Draft tab toggle with phase-aware default
+- Biggest movers panel (uses `rank_delta`)
+- Source spotlight widget (uses `source_analytics.contrarian_score`)
 - Board freshness indicator
 
 ### Phase 4: Player Detail & Source Analytics Pages
+
 - Consensus rank + source breakdown on player detail page
-- Rank history visualization
-- Dedicated source/analyst analytics page
+- Rank-history visualization
+- Dedicated source / analyst analytics page
 - Source comparison tools
+
+---
+
+## Design Decision Log
+
+Major decisions made along the way, with the reasoning:
+
+- **Tier is admin-side only** (not aggregated): different sources use tier
+  inconsistently; aggregating tiers across sources is noise. Stored on
+  `BoardEntry` for transcription fidelity, ignored by `consensus_service`.
+- **Unified Board schema with kind discriminator** (this PR): see "Big Board
+  and Mock Draft — One Unified Schema" above. Decision reached after building
+  the Big Board path end-to-end and seeing the overlap was much larger than
+  the conceptual framing suggested.
+- **Append-only consensus snapshots**: free rank-trajectory chart, no race
+  conditions, ~11k rows per year per kind is negligible.
+- **`MIN_SOURCES = 2` floor**: module constant for now; revisit as a
+  per-snapshot column or majority-based rule once we have 5+ sources.
+- **Manual entry first, AI later**: validates data model with real entry
+  workflow before investing in extraction infrastructure.
+- **Source matched by name, players by slug** in the sync script: prod IDs
+  never leak into dev; missing sources are auto-created.

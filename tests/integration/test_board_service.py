@@ -11,10 +11,10 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.big_boards import BigBoard, BigBoardEntry, BoardStatus
+from app.schemas.boards import Board, BoardEntry, BoardStatus
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
-from app.services import big_board_service as svc
+from app.services import board_service as svc
 from tests.integration.conftest import make_player
 
 
@@ -43,7 +43,7 @@ async def test_create_board_persists_pending_board_and_entries(
     news_source: NewsSource,
     players: list[PlayerMaster],
 ) -> None:
-    """create_board writes PENDING board + ordered entries; board_size matches."""
+    """create_board writes PENDING board + ordered entries; size matches."""
     assert news_source.id is not None
     board = await svc.create_board(
         db_session,
@@ -51,19 +51,19 @@ async def test_create_board_persists_pending_board_and_entries(
         draft_year=2026,
         published_at=_published_at(),
         entries=[
-            svc.EntryInput(player_id=players[0].id, rank=1, tier=1),  # type: ignore[arg-type]
-            svc.EntryInput(player_id=players[1].id, rank=2, tier=1),  # type: ignore[arg-type]
-            svc.EntryInput(player_id=players[2].id, rank=3, tier=2),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[0].id, position=1, tier=1),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[1].id, position=2, tier=1),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[2].id, position=3, tier=2),  # type: ignore[arg-type]
         ],
     )
     await db_session.commit()
 
     assert board.status is BoardStatus.PENDING
     assert board.approved_at is None
-    assert board.board_size == 3
+    assert board.size == 3
 
     _, entries = await svc.get_board_with_entries(db_session, board.id)  # type: ignore[arg-type]
-    assert [(e.rank, e.player_id, e.tier) for e in entries] == [
+    assert [(e.position, e.player_id, e.tier) for e in entries] == [
         (1, players[0].id, 1),
         (2, players[1].id, 1),
         (3, players[2].id, 2),
@@ -76,17 +76,17 @@ async def test_create_board_rejects_duplicate_rank(
     news_source: NewsSource,
     players: list[PlayerMaster],
 ) -> None:
-    """Two entries at rank 1 on the same board raises DuplicateRankError."""
+    """Two entries at rank 1 on the same board raises DuplicatePositionError."""
     assert news_source.id is not None
-    with pytest.raises(svc.DuplicateRankError):
+    with pytest.raises(svc.DuplicatePositionError):
         await svc.create_board(
             db_session,
             news_source_id=news_source.id,
             draft_year=2026,
             published_at=_published_at(),
             entries=[
-                svc.EntryInput(player_id=players[0].id, rank=1),  # type: ignore[arg-type]
-                svc.EntryInput(player_id=players[1].id, rank=1),  # type: ignore[arg-type]
+                svc.EntryInput(player_id=players[0].id, position=1),  # type: ignore[arg-type]
+                svc.EntryInput(player_id=players[1].id, position=1),  # type: ignore[arg-type]
             ],
         )
 
@@ -106,8 +106,8 @@ async def test_create_board_rejects_duplicate_player(
             draft_year=2026,
             published_at=_published_at(),
             entries=[
-                svc.EntryInput(player_id=players[0].id, rank=1),  # type: ignore[arg-type]
-                svc.EntryInput(player_id=players[0].id, rank=2),  # type: ignore[arg-type]
+                svc.EntryInput(player_id=players[0].id, position=1),  # type: ignore[arg-type]
+                svc.EntryInput(player_id=players[0].id, position=2),  # type: ignore[arg-type]
             ],
         )
 
@@ -125,7 +125,7 @@ async def test_add_update_delete_entry_on_pending_board(
         news_source_id=news_source.id,
         draft_year=2026,
         published_at=_published_at(),
-        entries=[svc.EntryInput(player_id=players[0].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[0].id, position=1)],  # type: ignore[arg-type]
     )
     await db_session.commit()
 
@@ -133,26 +133,26 @@ async def test_add_update_delete_entry_on_pending_board(
         db_session,
         board_id=board.id,  # type: ignore[arg-type]
         player_id=players[1].id,  # type: ignore[arg-type]
-        rank=2,
+        position=2,
     )
     await db_session.commit()
-    assert board.board_size == 2
+    assert board.size == 2
 
     await svc.update_entry(
-        db_session, entry_id=added.id, rank=5, tier=3  # type: ignore[arg-type]
+        db_session, entry_id=added.id, position=5, tier=3  # type: ignore[arg-type]
     )
     await db_session.commit()
-    refreshed = await db_session.get(BigBoardEntry, added.id)
+    refreshed = await db_session.get(BoardEntry, added.id)
     assert refreshed is not None
-    assert refreshed.rank == 5
+    assert refreshed.position == 5
     assert refreshed.tier == 3
 
     await svc.delete_entry(db_session, entry_id=added.id)  # type: ignore[arg-type]
     await db_session.commit()
-    assert await db_session.get(BigBoardEntry, added.id) is None
-    refreshed_board = await db_session.get(BigBoard, board.id)
+    assert await db_session.get(BoardEntry, added.id) is None
+    refreshed_board = await db_session.get(Board, board.id)
     assert refreshed_board is not None
-    assert refreshed_board.board_size == 1
+    assert refreshed_board.size == 1
 
 
 @pytest.mark.asyncio
@@ -168,7 +168,7 @@ async def test_approved_board_is_immutable(
         news_source_id=news_source.id,
         draft_year=2026,
         published_at=_published_at(),
-        entries=[svc.EntryInput(player_id=players[0].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[0].id, position=1)],  # type: ignore[arg-type]
     )
     await db_session.commit()
 
@@ -179,8 +179,8 @@ async def test_approved_board_is_immutable(
 
     entry_id = (
         await db_session.execute(
-            select(BigBoardEntry.id).where(  # type: ignore[call-overload]
-                BigBoardEntry.board_id == board.id  # type: ignore[arg-type]
+            select(BoardEntry.id).where(  # type: ignore[call-overload]
+                BoardEntry.board_id == board.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -190,10 +190,10 @@ async def test_approved_board_is_immutable(
             db_session,
             board_id=board.id,  # type: ignore[arg-type]
             player_id=players[1].id,  # type: ignore[arg-type]
-            rank=2,
+            position=2,
         )
     with pytest.raises(svc.BoardNotEditableError):
-        await svc.update_entry(db_session, entry_id=entry_id, rank=99)
+        await svc.update_entry(db_session, entry_id=entry_id, position=99)
     with pytest.raises(svc.BoardNotEditableError):
         await svc.delete_entry(db_session, entry_id=entry_id)
     with pytest.raises(svc.BoardNotEditableError):
@@ -217,7 +217,7 @@ async def test_rejected_board_is_immutable(
         news_source_id=news_source.id,
         draft_year=2026,
         published_at=_published_at(),
-        entries=[svc.EntryInput(player_id=players[0].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[0].id, position=1)],  # type: ignore[arg-type]
     )
     await db_session.commit()
 
@@ -246,8 +246,8 @@ async def test_delete_pending_board_cascades_entries(
         draft_year=2026,
         published_at=_published_at(),
         entries=[
-            svc.EntryInput(player_id=players[0].id, rank=1),  # type: ignore[arg-type]
-            svc.EntryInput(player_id=players[1].id, rank=2),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[0].id, position=1),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[1].id, position=2),  # type: ignore[arg-type]
         ],
     )
     await db_session.commit()
@@ -256,11 +256,11 @@ async def test_delete_pending_board_cascades_entries(
     await svc.delete_board(db_session, board_id=board_id)  # type: ignore[arg-type]
     await db_session.commit()
 
-    assert await db_session.get(BigBoard, board_id) is None
+    assert await db_session.get(Board, board_id) is None
     remaining = (
         await db_session.execute(
-            select(BigBoardEntry).where(  # type: ignore[call-overload]
-                BigBoardEntry.board_id == board_id  # type: ignore[arg-type]
+            select(BoardEntry).where(  # type: ignore[call-overload]
+                BoardEntry.board_id == board_id  # type: ignore[arg-type]
             )
         )
     ).scalars().all()
@@ -289,7 +289,7 @@ async def test_update_board_metadata_changes_source_year_published_at(
         news_source_id=news_source.id,
         draft_year=2026,
         published_at=_published_at(),
-        entries=[svc.EntryInput(player_id=players[0].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[0].id, position=1)],  # type: ignore[arg-type]
     )
     await db_session.commit()
 
@@ -324,7 +324,7 @@ async def test_update_board_metadata_rejects_non_pending_board(
         news_source_id=news_source.id,
         draft_year=2026,
         published_at=_published_at(),
-        entries=[svc.EntryInput(player_id=players[0].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[0].id, position=1)],  # type: ignore[arg-type]
     )
     await db_session.commit()
     await svc.approve_board(db_session, board_id=board.id)  # type: ignore[arg-type]
@@ -351,7 +351,7 @@ async def test_reopen_board_flips_approved_to_pending(
         news_source_id=news_source.id,
         draft_year=2026,
         published_at=_published_at(),
-        entries=[svc.EntryInput(player_id=players[0].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[0].id, position=1)],  # type: ignore[arg-type]
     )
     await db_session.commit()
     await svc.approve_board(db_session, board_id=board.id)  # type: ignore[arg-type]
@@ -378,7 +378,7 @@ async def test_reopen_rejects_non_approved_board(
         news_source_id=news_source.id,
         draft_year=2026,
         published_at=_published_at(),
-        entries=[svc.EntryInput(player_id=players[0].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[0].id, position=1)],  # type: ignore[arg-type]
     )
     await db_session.commit()
     with pytest.raises(svc.BoardNotEditableError):
@@ -389,7 +389,7 @@ async def test_reopen_rejects_non_approved_board(
         news_source_id=news_source.id,
         draft_year=2026,
         published_at=_published_at() - timedelta(days=1),
-        entries=[svc.EntryInput(player_id=players[1].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[1].id, position=1)],  # type: ignore[arg-type]
     )
     await db_session.commit()
     await svc.reject_board(db_session, board_id=rejected.id)  # type: ignore[arg-type]
@@ -412,9 +412,9 @@ async def test_clone_board_copies_entries_into_new_pending_board(
         draft_year=2026,
         published_at=_published_at(),
         entries=[
-            svc.EntryInput(player_id=players[0].id, rank=1, tier=1),  # type: ignore[arg-type]
-            svc.EntryInput(player_id=players[1].id, rank=2, tier=1),  # type: ignore[arg-type]
-            svc.EntryInput(player_id=players[2].id, rank=3, tier=2),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[0].id, position=1, tier=1),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[1].id, position=2, tier=1),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[2].id, position=3, tier=2),  # type: ignore[arg-type]
         ],
     )
     await svc.approve_board(db_session, board_id=original.id)  # type: ignore[arg-type]
@@ -430,11 +430,11 @@ async def test_clone_board_copies_entries_into_new_pending_board(
     assert clone.status is BoardStatus.PENDING
     assert clone.news_source_id == original.news_source_id
     assert clone.draft_year == original.draft_year
-    assert clone.board_size == 3
+    assert clone.size == 3
     assert clone.published_at == new_published
 
     _, clone_entries = await svc.get_board_with_entries(db_session, clone.id)  # type: ignore[arg-type]
-    assert [(e.rank, e.player_id, e.tier) for e in clone_entries] == [
+    assert [(e.position, e.player_id, e.tier) for e in clone_entries] == [
         (1, players[0].id, 1),
         (2, players[1].id, 1),
         (3, players[2].id, 2),
@@ -446,11 +446,11 @@ async def _ranks_by_entry_id(
 ) -> list[tuple[int, int]]:
     """Re-fetch entries and return ``[(rank, entry_id), ...]`` in rank order."""
     rows = await db.execute(
-        select(BigBoardEntry.rank, BigBoardEntry.id)  # type: ignore[call-overload]
-        .where(BigBoardEntry.board_id == board_id)  # type: ignore[arg-type]
-        .order_by(BigBoardEntry.rank)  # type: ignore[arg-type]
+        select(BoardEntry.position, BoardEntry.id)  # type: ignore[call-overload]
+        .where(BoardEntry.board_id == board_id)  # type: ignore[arg-type]
+        .order_by(BoardEntry.position)  # type: ignore[arg-type]
     )
-    return [(r.rank, r.id) for r in rows.all()]
+    return [(r.position, r.id) for r in rows.all()]
 
 
 @pytest.mark.asyncio
@@ -467,9 +467,9 @@ async def test_move_entry_swaps_neighbor_ranks(
         draft_year=2026,
         published_at=_published_at(),
         entries=[
-            svc.EntryInput(player_id=players[0].id, rank=1),  # type: ignore[arg-type]
-            svc.EntryInput(player_id=players[1].id, rank=2),  # type: ignore[arg-type]
-            svc.EntryInput(player_id=players[2].id, rank=3),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[0].id, position=1),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[1].id, position=2),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[2].id, position=3),  # type: ignore[arg-type]
         ],
     )
     await db_session.commit()
@@ -517,8 +517,8 @@ async def test_move_entry_blocked_on_approved_board(
         draft_year=2026,
         published_at=_published_at(),
         entries=[
-            svc.EntryInput(player_id=players[0].id, rank=1),  # type: ignore[arg-type]
-            svc.EntryInput(player_id=players[1].id, rank=2),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[0].id, position=1),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[1].id, position=2),  # type: ignore[arg-type]
         ],
     )
     await svc.approve_board(db_session, board_id=board.id)  # type: ignore[arg-type]
@@ -543,8 +543,8 @@ async def test_latest_entry_tier_returns_tier_of_highest_rank(
         draft_year=2026,
         published_at=_published_at(),
         entries=[
-            svc.EntryInput(player_id=players[0].id, rank=1, tier=1),  # type: ignore[arg-type]
-            svc.EntryInput(player_id=players[1].id, rank=2, tier=2),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[0].id, position=1, tier=1),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[1].id, position=2, tier=2),  # type: ignore[arg-type]
         ],
     )
     await db_session.commit()
@@ -589,21 +589,21 @@ async def test_list_boards_filters_by_status_source_and_year(
         news_source_id=news_source.id,
         draft_year=2026,
         published_at=datetime.utcnow(),
-        entries=[svc.EntryInput(player_id=players[0].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[0].id, position=1)],  # type: ignore[arg-type]
     )
     pending_older = await svc.create_board(
         db_session,
         news_source_id=news_source.id,
         draft_year=2026,
         published_at=datetime.utcnow() - timedelta(days=2),
-        entries=[svc.EntryInput(player_id=players[1].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[1].id, position=1)],  # type: ignore[arg-type]
     )
     approved_other_year = await svc.create_board(
         db_session,
         news_source_id=news_source.id,
         draft_year=2025,
         published_at=datetime.utcnow() - timedelta(days=10),
-        entries=[svc.EntryInput(player_id=players[2].id, rank=1)],  # type: ignore[arg-type]
+        entries=[svc.EntryInput(player_id=players[2].id, position=1)],  # type: ignore[arg-type]
     )
     await svc.approve_board(db_session, board_id=approved_other_year.id)  # type: ignore[arg-type]
     other_source_board = await svc.create_board(
