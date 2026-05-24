@@ -120,7 +120,7 @@ bio.ingest:
 	$(PYTHON) scripts/ingest_player_bios.py --file $(BBIO) --cache-dir $(CACHE) $(if $(DRY),--dry-run,) $(if $(VERBOSE),--verbose,) $(if $(OVERWRITE_MASTER),--overwrite-master,) $(if $(CREATE_MISSING),--create-missing,) $(if $(FIX),--fix-ambiguities $(FIX),)
 
 # Lint & format
-.PHONY: fmt lint fix precommit test visual visual.headed
+.PHONY: fmt lint fix precommit test coverage visual visual.headed
 fmt:
 	ruff format .
 
@@ -136,6 +136,15 @@ precommit:
 # Run unit tests
 test:
 	pytest tests/unit -q
+
+# Run tests with coverage report (terminal + HTML)
+# Usage:
+#   make coverage              # unit + integration with terminal + HTML report
+#   make coverage TESTS=tests/unit  # narrower scope
+TESTS ?= tests/unit tests/integration
+coverage:
+	pytest $(TESTS) -q --cov=app --cov-report=term-missing --cov-report=html
+	@echo "HTML report: open htmlcov/index.html"
 
 # Run visual tests (requires server running on TEST_BASE_URL or localhost:8000)
 # Usage:

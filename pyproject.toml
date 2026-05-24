@@ -31,6 +31,7 @@ dependencies = [
 dev = [
     "pytest==8.4.2",
     "pytest-asyncio==1.2.0",
+    "pytest-cov==5.0.0",
     "httpx==0.28.1",
     "ruff==0.13.0",
     "mypy==1.18.1",
@@ -61,3 +62,22 @@ ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = [
+    "app/__init__.py",
+    "app/*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+show_missing = true
+skip_covered = false
+precision = 1

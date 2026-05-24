@@ -87,7 +87,15 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
-        run: pytest -q --ignore=tests/visual
+        run: pytest -q --ignore=tests/visual --cov=app --cov-report=xml --cov-report=term
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: tests-fork
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   tests-secrets:
     # Same-repo PRs: use environment secrets from draft-app-stage
@@ -170,4 +178,12 @@ jobs:
         run: alembic upgrade head
 
       - name: Run tests
-        run: pytest -q --ignore=tests/visual
+        run: pytest -q --ignore=tests/visual --cov=app --cov-report=xml --cov-report=term
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: tests-secrets
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}

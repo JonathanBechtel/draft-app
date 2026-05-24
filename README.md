@@ -1,5 +1,8 @@
 # Draft Guru
 
+[![PR Tests](https://github.com/JonathanBechtel/draft-app/actions/workflows/run-tests-on-pr.yml/badge.svg?branch=main)](https://github.com/JonathanBechtel/draft-app/actions/workflows/run-tests-on-pr.yml)
+[![codecov](https://codecov.io/gh/JonathanBechtel/draft-app/branch/main/graph/badge.svg)](https://codecov.io/gh/JonathanBechtel/draft-app)
+
 FastAPI + SQLModel skeleton for a draft analytics app. Async DB access, clean startup/shutdown, and simple Players endpoints and complete Ci/Cd workflow.
 
 ## Quick Start
