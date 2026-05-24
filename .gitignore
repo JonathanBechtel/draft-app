@@ -232,3 +232,10 @@ __marimo__/
 # Creator outreach (private)
 docs/creator_outreach_contacts.csv
 docs/outreach_templates.md
+
+# Local agent / MCP state
+.claude/scheduled_tasks.lock
+.playwright-mcp/
+
+# Scraper outputs (large HTML dumps, regenerated on demand)
+scripts/top100/output/
