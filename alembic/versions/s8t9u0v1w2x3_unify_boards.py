@@ -142,13 +142,13 @@ def upgrade() -> None:
     # mock-draft entry path lands and starts setting kind explicitly,
     # we can revisit dropping the default in a follow-up.
 
-    # 11. Rename any existing auth_dataset_permission rows pointing at
+    # 11. Rename any existing auth_dataset_permissions rows pointing at
     # the old "big_boards" dataset name. KNOWN_DATASETS in the service
     # layer was renamed to "boards", so without this step any worker
     # user who had explicit big-board permissions would be silently
     # locked out of /admin/boards after deploy.
     op.execute(
-        "UPDATE auth_dataset_permission SET dataset = 'boards' "
+        "UPDATE auth_dataset_permissions SET dataset = 'boards' "
         "WHERE dataset = 'big_boards'"
     )
 
@@ -161,7 +161,7 @@ def downgrade() -> None:
     # Restore the old "big_boards" dataset name on any permission rows
     # so a downgrade leaves worker auth in the pre-rename state.
     op.execute(
-        "UPDATE auth_dataset_permission SET dataset = 'big_boards' "
+        "UPDATE auth_dataset_permissions SET dataset = 'big_boards' "
         "WHERE dataset = 'boards'"
     )
 
