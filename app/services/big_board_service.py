@@ -239,8 +239,20 @@ async def delete_board(db: AsyncSession, *, board_id: int) -> None:
     await db.flush()
 
 
-async def approve_board(db: AsyncSession, *, board_id: int) -> BigBoard:
-    """Transition a PENDING board to APPROVED and stamp ``approved_at``."""
+async def approve_board(
+    db: AsyncSession,
+    *,
+    board_id: int,
+    recompute_consensus: bool = True,
+) -> BigBoard:
+    """Transition a PENDING board to APPROVED and stamp ``approved_at``.
+
+    When ``recompute_consensus`` is True (the default), this also kicks
+    off a fresh consensus snapshot for the board's ``draft_year`` so
+    the rest of the app sees up-to-date rankings. The recompute shares
+    the caller's transaction — if it fails, the approval rolls back.
+    Tests/admin paths that don't want this side-effect can pass False.
+    """
     board = await get_board(db, board_id)
     _require_pending(board)
     now = datetime.utcnow()
@@ -248,6 +260,20 @@ async def approve_board(db: AsyncSession, *, board_id: int) -> BigBoard:
     board.approved_at = now
     board.updated_at = now
     await db.flush()
+
+    if recompute_consensus:
+        # Local import to avoid a top-of-module dependency cycle between
+        # big_board_service and consensus_service (consensus_service
+        # already imports the BigBoard schema).
+        from app.services.consensus_service import (
+            ConsensusTrigger,
+            recompute_consensus as _recompute,
+        )
+
+        await _recompute(
+            db, draft_year=board.draft_year, trigger=ConsensusTrigger.BOARD_APPROVED
+        )
+
     return board
 
 
