@@ -332,6 +332,107 @@ async def test_source_analytics_computes_deviation_and_contrarian_score(
 
 
 @pytest.mark.asyncio
+async def test_single_source_still_gets_source_analytics_row(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """With only one approved board, no player clears MIN_SOURCES=2 — but
+    the eligible source still gets a SourceAnalytics row so the
+    per-source-per-snapshot invariant holds."""
+    p1, p2, _p3, _p4 = players
+    s1, _s2, _s3 = three_sources
+    await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=_now(),
+        entries=[(p1, 1), (p2, 2)],
+    )
+    await db_session.commit()
+
+    snap = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+    assert snap.num_boards == 1
+
+    # Consensus is empty (MIN_SOURCES=2 not met).
+    consensus = await svc.get_latest_consensus(db_session, draft_year=2026)
+    assert consensus == []
+
+    # But the SourceAnalytics row still exists.
+    rows = (
+        await db_session.execute(
+            select(SourceAnalytics).where(SourceAnalytics.snapshot_id == snap.id)  # type: ignore[arg-type]
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.news_source_id == s1.id
+    assert row.avg_deviation == 0.0
+    assert row.contrarian_score == 0.0
+    assert row.biggest_outlier_player_id is None
+
+
+@pytest.mark.asyncio
+async def test_eligible_board_selection_is_deterministic_with_id_tiebreak(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """When two boards from one source share published_at, the higher-id
+    (later-inserted) board wins reproducibly. Without the id tie-break a
+    re-run could pick either one and produce different consensus."""
+    p1, p2, _p3, _p4 = players
+    s1, s2, _s3 = three_sources
+    same_dt = _now()
+
+    older = await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=same_dt,
+        entries=[(p1, 1), (p2, 2)],
+    )
+    newer = await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=same_dt,
+        entries=[(p2, 1), (p1, 2)],  # flipped order
+    )
+    # Second source so MIN_SOURCES=2 lets the players appear on consensus.
+    await _make_approved_board(
+        db_session,
+        source=s2,
+        draft_year=2026,
+        published_at=same_dt,
+        entries=[(p1, 1), (p2, 2)],
+    )
+    await db_session.commit()
+    assert older.id is not None and newer.id is not None
+    assert newer.id > older.id
+
+    # Recompute twice; both should pick the higher-id board.
+    snap_a = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+    snap_b = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+    assert newer.id in snap_a.board_ids
+    assert older.id not in snap_a.board_ids
+    assert newer.id in snap_b.board_ids
+    assert older.id not in snap_b.board_ids
+    # Same eligible board set across runs.
+    assert sorted(snap_a.board_ids) == sorted(snap_b.board_ids)
+
+
+@pytest.mark.asyncio
 async def test_empty_year_writes_snapshot_with_zero_boards(
     db_session: AsyncSession,
 ) -> None:

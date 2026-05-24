@@ -210,15 +210,27 @@ async def get_player_rank_history(
 async def _select_eligible_boards(
     db: AsyncSession, *, draft_year: int
 ) -> list[BigBoard]:
-    """Return the most recent APPROVED board per source for the year."""
-    # Postgres DISTINCT ON (news_source_id) ORDER BY published_at DESC
-    # selects exactly one row per source — the most recent.
+    """Return the most recent APPROVED board per source for the year.
+
+    Tie-breakers on identical ``published_at`` are deterministic so a
+    re-run over unchanged data produces the same eligible-board set
+    (and therefore the same consensus output and rank deltas):
+        1. published_at DESC  -- the actual recency signal
+        2. approved_at DESC   -- which board got approved later wins
+        3. id DESC            -- final stable break, in case of identical
+                                 approval timestamps from a batch import
+    """
     stmt = (
         select(BigBoard)  # type: ignore[call-overload]
         .where(BigBoard.status == BoardStatus.APPROVED)  # type: ignore[arg-type]
         .where(BigBoard.draft_year == draft_year)  # type: ignore[arg-type]
         .distinct(BigBoard.news_source_id)  # type: ignore[arg-type]
-        .order_by(BigBoard.news_source_id, BigBoard.published_at.desc())  # type: ignore[arg-type,attr-defined]
+        .order_by(
+            BigBoard.news_source_id,  # type: ignore[arg-type]
+            BigBoard.published_at.desc(),  # type: ignore[attr-defined]
+            BigBoard.approved_at.desc(),  # type: ignore[union-attr]
+            BigBoard.id.desc(),  # type: ignore[union-attr]
+        )
     )
     rows = await db.execute(stmt)
     return list(rows.scalars().all())
@@ -293,29 +305,55 @@ async def _write_source_analytics(
 ) -> None:
     """Write one SourceAnalytics row per eligible board in the snapshot.
 
-    avg_deviation only counts players that cleared MIN_SOURCES (i.e.,
-    players that are on the consensus output). Sources that ranked a
-    bunch of fringe one-source players don't get punished for them.
+    Every eligible source gets a row, even when MIN_SOURCES gates all
+    of its players out of the consensus (e.g., early in the season
+    when only one board is approved). In that case ``avg_deviation``
+    is 0.0 and ``biggest_outlier_player_id`` is NULL — the row stands
+    as a "we saw this source but had nothing to compare against"
+    marker so the per-source-per-snapshot invariant holds.
+
+    ``avg_deviation`` only counts players that cleared MIN_SOURCES so
+    sources aren't penalized for ranking fringe one-board players.
     """
     board_lookup = {b.id: b for b in eligible_boards if b.id is not None}
 
+    # Pre-build the per-source skeleton from eligible_boards so every
+    # eligible source ends up with a row, even if it has no players
+    # in the consensus output.
+    source_to_board: dict[int, int] = {}
+    for board in eligible_boards:
+        if board.id is None or board.news_source_id is None:
+            continue
+        # eligible_boards is one row per source already (DISTINCT ON),
+        # so the first hit is the only hit.
+        source_to_board.setdefault(board.news_source_id, board.id)
+
+    if not source_to_board:
+        return
+
     # Per-source: list of (player_id, source_rank, consensus_rank).
+    # Only triples for players that cleared MIN_SOURCES contribute to
+    # avg_deviation / biggest_outlier; absent sources still get a row
+    # downstream with avg_deviation=0.
     per_source: dict[int, list[tuple[int, int, int]]] = defaultdict(list)
     for player_id, board_rank_pairs in ranks_by_player.items():
         consensus_rank = consensus_by_player.get(player_id)
         if consensus_rank is None:
             continue  # player didn't clear MIN_SOURCES
         for board_id, source_rank in board_rank_pairs:
-            board = board_lookup.get(board_id)
-            if board is None or board.news_source_id is None:
+            entry_board = board_lookup.get(board_id)
+            if entry_board is None or entry_board.news_source_id is None:
                 continue
-            per_source[board.news_source_id].append(
+            per_source[entry_board.news_source_id].append(
                 (player_id, source_rank, consensus_rank)
             )
 
     # First pass: compute avg_deviation + biggest_outlier per source.
+    # Iterate over source_to_board so every eligible source is included,
+    # not just those that contributed to consensus.
     raw_by_source: dict[int, tuple[float, int, Optional[int], int]] = {}
-    for source_id, triples in per_source.items():
+    for source_id, latest_board_id in source_to_board.items():
+        triples = per_source.get(source_id, [])
         deviations = [abs(src - cons) for _, src, cons in triples]
         avg_dev = statistics.mean(deviations) if deviations else 0.0
         # Biggest outlier: the player with the largest absolute distance.
@@ -330,16 +368,6 @@ async def _write_source_analytics(
             outlier_pid = outlier_player_id
             outlier_delta = outlier_cons - outlier_src
 
-        latest_board_id = next(
-            (
-                b.id
-                for b in eligible_boards
-                if b.news_source_id == source_id and b.id is not None
-            ),
-            None,
-        )
-        if latest_board_id is None:
-            continue
         raw_by_source[source_id] = (
             avg_dev,
             latest_board_id,
@@ -347,14 +375,12 @@ async def _write_source_analytics(
             outlier_delta,
         )
 
-    if not raw_by_source:
-        return
-
     # Second pass: normalize avg_deviation into a contrarian z-score
     # across the sources in this snapshot. Positive = more contrarian
-    # than the snapshot's average; zero when only one source is in play.
+    # than the snapshot's average; zero when only one source is in play
+    # or every source has the same (often zero) deviation.
     avgs = [tup[0] for tup in raw_by_source.values()]
-    mean_avg = statistics.mean(avgs)
+    mean_avg = statistics.mean(avgs) if avgs else 0.0
     stdev_avg = statistics.stdev(avgs) if len(avgs) > 1 else 0.0
 
     for source_id, (
