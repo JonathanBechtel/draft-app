@@ -1,0 +1,19 @@
+coverage:
+  status:
+    project: off
+    patch: off
+
+  precision: 1
+  round: nearest
+  range: "60...90"
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
+
+ignore:
+  - "tests/**"
+  - "alembic/**"
+  - "scripts/**"
+  - "app/**/__init__.py"
