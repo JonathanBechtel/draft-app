@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 
 {% set page_title = "New Big Board" %}
-{% set active_nav = "big-boards" %}
+{% set active_nav = "boards" %}
 
 {% block admin_content %}
 <header class="admin-main__header">
@@ -12,7 +12,7 @@
 </header>
 
 <div class="admin-card admin-card--medium">
-  <form class="admin-form" method="post" action="/admin/big-boards">
+  <form class="admin-form" method="post" action="/admin/boards">
     <div class="admin-form__field">
       <label class="admin-form__label" for="news_source_id">Source</label>
       <select class="admin-form__select" id="news_source_id" name="news_source_id" required>
@@ -52,7 +52,7 @@
 
     <div class="admin-form__actions">
       <button type="submit" class="admin-btn admin-btn--primary">Create Board</button>
-      <a href="/admin/big-boards" class="admin-btn admin-btn--secondary">Cancel</a>
+      <a href="/admin/boards" class="admin-btn admin-btn--secondary">Cancel</a>
     </div>
   </form>
 </div>

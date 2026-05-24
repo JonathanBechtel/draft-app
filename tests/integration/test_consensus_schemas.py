@@ -143,15 +143,15 @@ async def test_source_analytics_rejects_duplicate_source_per_snapshot(
     two_players: list[PlayerMaster],
 ) -> None:
     """uq_source_analytics_snapshot_source blocks double-counting a source."""
-    from app.schemas.big_boards import BigBoard, BoardStatus
+    from app.schemas.boards import Board, BoardStatus
 
     # Need a big_board row to satisfy the latest_board_id FK.
-    board = BigBoard(
+    board = Board(
         news_source_id=two_sources[0].id,
         news_item_id=None,
         draft_year=2026,
         published_at=_now(),
-        board_size=0,
+        size=0,
         status=BoardStatus.APPROVED,
     )
     db_session.add(board)

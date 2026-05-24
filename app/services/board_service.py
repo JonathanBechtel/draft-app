@@ -16,30 +16,30 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.big_boards import BigBoard, BigBoardEntry, BoardStatus
+from app.schemas.boards import Board, BoardEntry, BoardStatus
 
 
-class BigBoardError(Exception):
+class BoardError(Exception):
     """Business-rule violation raised by the big board service."""
 
 
-class BoardNotFoundError(BigBoardError):
+class BoardNotFoundError(BoardError):
     """Raised when a board id does not resolve to a row."""
 
 
-class EntryNotFoundError(BigBoardError):
+class EntryNotFoundError(BoardError):
     """Raised when an entry id does not resolve to a row on the given board."""
 
 
-class BoardNotEditableError(BigBoardError):
+class BoardNotEditableError(BoardError):
     """Raised when a mutation targets a board that is no longer PENDING."""
 
 
-class DuplicateRankError(BigBoardError):
+class DuplicatePositionError(BoardError):
     """Raised when a board already contains the requested rank."""
 
 
-class DuplicatePlayerError(BigBoardError):
+class DuplicatePlayerError(BoardError):
     """Raised when a board already contains the requested player."""
 
 
@@ -48,7 +48,7 @@ class EntryInput:
     """One ranked player passed in during board creation or row addition."""
 
     player_id: int
-    rank: int
+    position: int
     tier: Optional[int] = None
 
 
@@ -60,7 +60,7 @@ async def create_board(
     published_at: datetime,
     entries: Sequence[EntryInput],
     news_item_id: Optional[int] = None,
-) -> BigBoard:
+) -> Board:
     """Create a PENDING big board with its initial entries.
 
     Args:
@@ -73,18 +73,18 @@ async def create_board(
         news_item_id: Optional FK linking to the source article.
 
     Returns:
-        The persisted BigBoard (with ``id``, ``status`` defaulted to PENDING).
+        The persisted Board (with ``id``, ``status`` defaulted to PENDING).
 
     Raises:
-        DuplicateRankError / DuplicatePlayerError: If ``entries`` violates
+        DuplicatePositionError / DuplicatePlayerError: If ``entries`` violates
             the per-board uniqueness constraints.
     """
-    board = BigBoard(
+    board = Board(
         news_source_id=news_source_id,
         news_item_id=news_item_id,
         draft_year=draft_year,
         published_at=published_at,
-        board_size=len(entries),
+        size=len(entries),
         status=BoardStatus.PENDING,
     )
     db.add(board)
@@ -93,10 +93,10 @@ async def create_board(
 
     for entry in entries:
         db.add(
-            BigBoardEntry(
+            BoardEntry(
                 board_id=board.id,
                 player_id=entry.player_id,
-                rank=entry.rank,
+                position=entry.position,
                 tier=entry.tier,
             )
         )
@@ -108,9 +108,9 @@ async def create_board(
     return board
 
 
-async def get_board(db: AsyncSession, board_id: int) -> BigBoard:
+async def get_board(db: AsyncSession, board_id: int) -> Board:
     """Return the board or raise ``BoardNotFoundError``."""
-    board = await db.get(BigBoard, board_id)
+    board = await db.get(Board, board_id)
     if board is None:
         raise BoardNotFoundError(f"No big board with id={board_id}")
     return board
@@ -118,13 +118,13 @@ async def get_board(db: AsyncSession, board_id: int) -> BigBoard:
 
 async def get_board_with_entries(
     db: AsyncSession, board_id: int
-) -> tuple[BigBoard, list[BigBoardEntry]]:
+) -> tuple[Board, list[BoardEntry]]:
     """Return ``(board, entries)`` ordered by rank ascending."""
     board = await get_board(db, board_id)
     result = await db.execute(
-        select(BigBoardEntry)  # type: ignore[call-overload]
-        .where(BigBoardEntry.board_id == board_id)  # type: ignore[arg-type]
-        .order_by(BigBoardEntry.rank)  # type: ignore[arg-type]
+        select(BoardEntry)  # type: ignore[call-overload]
+        .where(BoardEntry.board_id == board_id)  # type: ignore[arg-type]
+        .order_by(BoardEntry.position)  # type: ignore[arg-type]
     )
     return board, list(result.scalars().all())
 
@@ -135,20 +135,20 @@ async def list_boards(
     status: Optional[BoardStatus] = None,
     news_source_id: Optional[int] = None,
     draft_year: Optional[int] = None,
-) -> list[BigBoard]:
+) -> list[Board]:
     """List boards filtered by any combination of status, source, year.
 
     Results ordered by ``published_at`` desc so the most recent boards
     appear first.
     """
-    stmt = select(BigBoard)  # type: ignore[call-overload]
+    stmt = select(Board)  # type: ignore[call-overload]
     if status is not None:
-        stmt = stmt.where(BigBoard.status == status)  # type: ignore[arg-type]
+        stmt = stmt.where(Board.status == status)  # type: ignore[arg-type]
     if news_source_id is not None:
-        stmt = stmt.where(BigBoard.news_source_id == news_source_id)  # type: ignore[arg-type]
+        stmt = stmt.where(Board.news_source_id == news_source_id)  # type: ignore[arg-type]
     if draft_year is not None:
-        stmt = stmt.where(BigBoard.draft_year == draft_year)  # type: ignore[arg-type]
-    stmt = stmt.order_by(BigBoard.published_at.desc())  # type: ignore[attr-defined]
+        stmt = stmt.where(Board.draft_year == draft_year)  # type: ignore[arg-type]
+    stmt = stmt.order_by(Board.published_at.desc())  # type: ignore[attr-defined]
     result = await db.execute(stmt)
     return list(result.scalars().all())
 
@@ -158,16 +158,18 @@ async def add_entry(
     *,
     board_id: int,
     player_id: int,
-    rank: int,
+    position: int,
     tier: Optional[int] = None,
-) -> BigBoardEntry:
-    """Append an entry to a PENDING board and bump ``board_size``."""
+) -> BoardEntry:
+    """Append an entry to a PENDING board and bump ``size``."""
     board = await get_board(db, board_id)
     _require_pending(board)
 
-    entry = BigBoardEntry(board_id=board_id, player_id=player_id, rank=rank, tier=tier)
+    entry = BoardEntry(
+        board_id=board_id, player_id=player_id, position=position, tier=tier
+    )
     db.add(entry)
-    board.board_size = board.board_size + 1
+    board.size = board.size + 1
     board.updated_at = datetime.utcnow()
     try:
         await db.flush()
@@ -181,26 +183,26 @@ async def update_entry(
     *,
     entry_id: int,
     player_id: Optional[int] = None,
-    rank: Optional[int] = None,
+    position: Optional[int] = None,
     tier: Optional[int] = None,
-) -> BigBoardEntry:
+) -> BoardEntry:
     """Patch a single entry on a PENDING board.
 
     Pass ``None`` to leave a field unchanged. ``tier`` is set verbatim,
     including to ``None`` if explicitly cleared via ``update_entry(...,
     tier=None)`` — callers that mean "don't touch tier" should omit it.
     """
-    entry = await db.get(BigBoardEntry, entry_id)
+    entry = await db.get(BoardEntry, entry_id)
     if entry is None:
-        raise EntryNotFoundError(f"No big board entry with id={entry_id}")
+        raise EntryNotFoundError(f"No board entry with id={entry_id}")
 
     board = await get_board(db, entry.board_id)
     _require_pending(board)
 
     if player_id is not None:
         entry.player_id = player_id
-    if rank is not None:
-        entry.rank = rank
+    if position is not None:
+        entry.position = position
     if tier is not None:
         entry.tier = tier
     board.updated_at = datetime.utcnow()
@@ -212,8 +214,8 @@ async def update_entry(
 
 
 async def delete_entry(db: AsyncSession, *, entry_id: int) -> None:
-    """Remove an entry from a PENDING board and decrement ``board_size``."""
-    entry = await db.get(BigBoardEntry, entry_id)
+    """Remove an entry from a PENDING board and decrement ``size``."""
+    entry = await db.get(BoardEntry, entry_id)
     if entry is None:
         raise EntryNotFoundError(f"No big board entry with id={entry_id}")
 
@@ -221,7 +223,7 @@ async def delete_entry(db: AsyncSession, *, entry_id: int) -> None:
     _require_pending(board)
 
     await db.delete(entry)
-    board.board_size = max(0, board.board_size - 1)
+    board.size = max(0, board.size - 1)
     board.updated_at = datetime.utcnow()
     await db.flush()
 
@@ -244,7 +246,7 @@ async def approve_board(
     *,
     board_id: int,
     recompute_consensus: bool = True,
-) -> BigBoard:
+) -> Board:
     """Transition a PENDING board to APPROVED and stamp ``approved_at``.
 
     When ``recompute_consensus`` is True (the default), this also kicks
@@ -263,8 +265,8 @@ async def approve_board(
 
     if recompute_consensus:
         # Local import to avoid a top-of-module dependency cycle between
-        # big_board_service and consensus_service (consensus_service
-        # already imports the BigBoard schema).
+        # board_service and consensus_service (consensus_service
+        # already imports the Board schema).
         from app.services.consensus_service import (
             ConsensusTrigger,
             recompute_consensus as _recompute,
@@ -277,7 +279,7 @@ async def approve_board(
     return board
 
 
-async def reject_board(db: AsyncSession, *, board_id: int) -> BigBoard:
+async def reject_board(db: AsyncSession, *, board_id: int) -> Board:
     """Transition a PENDING board to REJECTED.
 
     The row is preserved so the audit trail records that the analyst's
@@ -298,7 +300,7 @@ async def update_board_metadata(
     news_source_id: Optional[int] = None,
     draft_year: Optional[int] = None,
     published_at: Optional[datetime] = None,
-) -> BigBoard:
+) -> Board:
     """Patch source / draft year / published_at on a PENDING board.
 
     Pass ``None`` to leave a field unchanged. Only PENDING boards may
@@ -319,7 +321,7 @@ async def update_board_metadata(
     return board
 
 
-async def reopen_board(db: AsyncSession, *, board_id: int) -> BigBoard:
+async def reopen_board(db: AsyncSession, *, board_id: int) -> Board:
     """Unlock an APPROVED board back to PENDING so it can be edited.
 
     Clears ``approved_at`` since the prior approval is no longer current.
@@ -342,7 +344,7 @@ async def clone_board(
     *,
     board_id: int,
     published_at: datetime,
-) -> BigBoard:
+) -> Board:
     """Create a fresh PENDING board with the same entries as ``board_id``.
 
     Useful when the next published board from a source is mostly the
@@ -351,12 +353,12 @@ async def clone_board(
     board; ``published_at`` is provided by the caller; status is PENDING.
     """
     source_board, entries = await get_board_with_entries(db, board_id)
-    clone = BigBoard(
+    clone = Board(
         news_source_id=source_board.news_source_id,
         news_item_id=None,
         draft_year=source_board.draft_year,
         published_at=published_at,
-        board_size=len(entries),
+        size=len(entries),
         status=BoardStatus.PENDING,
     )
     db.add(clone)
@@ -365,10 +367,10 @@ async def clone_board(
 
     for entry in entries:
         db.add(
-            BigBoardEntry(
+            BoardEntry(
                 board_id=clone.id,
                 player_id=entry.player_id,
-                rank=entry.rank,
+                position=entry.position,
                 tier=entry.tier,
             )
         )
@@ -384,7 +386,7 @@ async def move_entry(
     *,
     entry_id: int,
     direction: str,
-) -> BigBoardEntry:
+) -> BoardEntry:
     """Swap an entry's rank with its neighbor above (``up``) or below (``down``).
 
     No-op when the entry is already at the top (for ``up``) or bottom
@@ -393,35 +395,35 @@ async def move_entry(
     satisfied at every flush.
     """
     if direction not in {"up", "down"}:
-        raise BigBoardError(f"Invalid direction: {direction!r}")
+        raise BoardError(f"Invalid direction: {direction!r}")
 
-    entry = await db.get(BigBoardEntry, entry_id)
+    entry = await db.get(BoardEntry, entry_id)
     if entry is None:
         raise EntryNotFoundError(f"No big board entry with id={entry_id}")
 
     board = await get_board(db, entry.board_id)
     _require_pending(board)
 
-    neighbor_rank = entry.rank - 1 if direction == "up" else entry.rank + 1
+    neighbor_rank = entry.position - 1 if direction == "up" else entry.position + 1
     if neighbor_rank < 1:
         return entry  # already at top
 
     result = await db.execute(
-        select(BigBoardEntry)  # type: ignore[call-overload]
-        .where(BigBoardEntry.board_id == board.id)  # type: ignore[arg-type]
-        .where(BigBoardEntry.rank == neighbor_rank)  # type: ignore[arg-type]
+        select(BoardEntry)  # type: ignore[call-overload]
+        .where(BoardEntry.board_id == board.id)  # type: ignore[arg-type]
+        .where(BoardEntry.position == neighbor_rank)  # type: ignore[arg-type]
     )
     neighbor = result.scalar_one_or_none()
     if neighbor is None:
         return entry  # no neighbor in that direction (entry is at bottom)
 
     # Two-step swap so we never violate uq(board_id, rank).
-    original = entry.rank
-    entry.rank = -original  # sentinel; never collides with a real 1-based rank
+    original = entry.position
+    entry.position = -original  # sentinel; never collides with a real 1-based rank
     await db.flush()
-    neighbor.rank = original
+    neighbor.position = original
     await db.flush()
-    entry.rank = neighbor_rank
+    entry.position = neighbor_rank
     board.updated_at = datetime.utcnow()
     await db.flush()
     return entry
@@ -435,16 +437,16 @@ async def latest_entry_tier(db: AsyncSession, *, board_id: int) -> Optional[int]
     that is mostly tier 1.
     """
     result = await db.execute(
-        select(BigBoardEntry.tier)  # type: ignore[call-overload]
-        .where(BigBoardEntry.board_id == board_id)  # type: ignore[arg-type]
-        .order_by(BigBoardEntry.rank.desc())  # type: ignore[attr-defined]
+        select(BoardEntry.tier)  # type: ignore[call-overload]
+        .where(BoardEntry.board_id == board_id)  # type: ignore[arg-type]
+        .order_by(BoardEntry.position.desc())  # type: ignore[attr-defined]
         .limit(1)
     )
     row = result.first()
     return row[0] if row else None
 
 
-def _require_pending(board: BigBoard) -> None:
+def _require_pending(board: Board) -> None:
     if board.status is not BoardStatus.PENDING:
         raise BoardNotEditableError(
             f"Board {board.id} is {board.status.value}; only PENDING boards may be modified."
@@ -454,10 +456,10 @@ def _require_pending(board: BigBoard) -> None:
 def _translate_entry_integrity_error(exc: IntegrityError) -> None:
     """Map DB unique-constraint violations to typed service errors."""
     message = str(exc.orig) if exc.orig else str(exc)
-    if "uq_big_board_entries_board_rank" in message:
-        raise DuplicateRankError(
+    if "uq_board_entries_board_position" in message:
+        raise DuplicatePositionError(
             "This board already has an entry at that rank."
         ) from exc
-    if "uq_big_board_entries_board_player" in message:
+    if "uq_board_entries_board_player" in message:
         raise DuplicatePlayerError("This board already includes that player.") from exc
-    raise BigBoardError(message) from exc
+    raise BoardError(message) from exc

@@ -1,7 +1,7 @@
 {% extends "admin/base.html" %}
 
 {% set page_title = "Big Board" %}
-{% set active_nav = "big-boards" %}
+{% set active_nav = "boards" %}
 
 {% block admin_content %}
 <header class="admin-main__header">
@@ -19,7 +19,7 @@
     {% else %}
     <span class="admin-badge">{{ board.status.value }}</span>
     {% endif %}
-    &middot; {{ board.board_size }} player{{ '' if board.board_size == 1 else 's' }}
+    &middot; {{ board.size }} player{{ '' if board.size == 1 else 's' }}
   </p>
 </header>
 
@@ -29,7 +29,7 @@
     <h2 class="admin-card__title">Edit Details</h2>
   </div>
   <form class="admin-form" method="post"
-        action="/admin/big-boards/{{ board.id }}/update-meta"
+        action="/admin/boards/{{ board.id }}/update-meta"
         style="display: grid; grid-template-columns: 2fr 6rem 1fr auto; gap: 0.75rem; align-items: end;">
     <div class="admin-form__field" style="margin: 0;">
       <label class="admin-form__label" for="meta-news-source">Source</label>
@@ -65,24 +65,24 @@
     <h2 class="admin-card__title">Entries</h2>
     <div style="display: flex; gap: 0.5rem;">
       {% if is_pending %}
-      <form method="post" action="/admin/big-boards/{{ board.id }}/approve" class="admin-form--inline">
+      <form method="post" action="/admin/boards/{{ board.id }}/approve" class="admin-form--inline">
         <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Approve</button>
       </form>
-      <form method="post" action="/admin/big-boards/{{ board.id }}/reject" class="admin-form--inline"
+      <form method="post" action="/admin/boards/{{ board.id }}/reject" class="admin-form--inline"
             onsubmit="return confirm('Reject this board? It will be locked but kept for audit.');">
         <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small">Reject</button>
       </form>
-      <form method="post" action="/admin/big-boards/{{ board.id }}/delete" class="admin-form--inline"
+      <form method="post" action="/admin/boards/{{ board.id }}/delete" class="admin-form--inline"
             onsubmit="return confirm('Permanently delete this board and all entries? No audit record will be kept.');">
         <button type="submit" class="admin-btn admin-btn--small">Delete</button>
       </form>
       {% elif board.status.value == 'APPROVED' %}
-      <form method="post" action="/admin/big-boards/{{ board.id }}/reopen" class="admin-form--inline"
+      <form method="post" action="/admin/boards/{{ board.id }}/reopen" class="admin-form--inline"
             onsubmit="return confirm('Reopen this board for editing? Its approved_at timestamp will be cleared until you re-approve.');">
         <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small">Reopen</button>
       </form>
       {% endif %}
-      <form method="post" action="/admin/big-boards/{{ board.id }}/clone" class="admin-form--inline">
+      <form method="post" action="/admin/boards/{{ board.id }}/clone" class="admin-form--inline">
         <button type="submit" class="admin-btn admin-btn--small">Clone</button>
       </form>
     </div>
@@ -107,14 +107,14 @@
         {% if is_pending %}
         <td>
           <form method="post"
-                action="/admin/big-boards/{{ board.id }}/entries/{{ entry.id }}/move-up"
+                action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/move-up"
                 class="admin-form--inline">
             <button type="submit" class="admin-btn admin-btn--small"
                     {% if loop.first %}disabled aria-disabled="true"{% endif %}
                     title="Move up">&uarr;</button>
           </form>
           <form method="post"
-                action="/admin/big-boards/{{ board.id }}/entries/{{ entry.id }}/move-down"
+                action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/move-down"
                 class="admin-form--inline">
             <button type="submit" class="admin-btn admin-btn--small"
                     {% if loop.last %}disabled aria-disabled="true"{% endif %}
@@ -124,11 +124,11 @@
         {% endif %}
         <td>
           {% if is_pending %}
-          <input class="admin-form__input bb-autosave" type="number" name="rank"
-                 data-field="rank" value="{{ entry.rank }}"
+          <input class="admin-form__input bb-autosave" type="number" name="position"
+                 data-field="position" value="{{ entry.position }}"
                  min="1" required style="width: 4.5rem;" />
           {% else %}
-          <strong>{{ entry.rank }}</strong>
+          <strong>{{ entry.position }}</strong>
           {% endif %}
         </td>
         <td>{{ player.display_name if player else '(unknown player)' }}</td>
@@ -146,7 +146,7 @@
         {% if is_pending %}
         <td>
           <form method="post"
-                action="/admin/big-boards/{{ board.id }}/entries/{{ entry.id }}/delete"
+                action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/delete"
                 class="admin-form--inline"
                 onsubmit="return confirm('Delete this entry?');">
             <button type="submit" class="admin-btn admin-btn--small">Remove</button>
@@ -174,12 +174,12 @@
     id="big-board-add-entry"
     class="admin-form"
     method="post"
-    action="/admin/big-boards/{{ board.id }}/entries"
+    action="/admin/boards/{{ board.id }}/entries"
     style="display: grid; grid-template-columns: 5rem 1fr 5rem auto; gap: 0.75rem; align-items: end;"
   >
     <div class="admin-form__field" style="margin: 0;">
-      <label class="admin-form__label" for="rank">Rank</label>
-      <input class="admin-form__input" id="rank" name="rank" type="number"
+      <label class="admin-form__label" for="position">Rank</label>
+      <input class="admin-form__input" id="position" name="position" type="number"
              value="{{ default_next_rank }}" min="1" required />
     </div>
     <div class="admin-form__field" style="margin: 0; position: relative;">
@@ -211,6 +211,6 @@
 
 {% block admin_js %}
 {% if is_pending %}
-<script src="/static/big-boards-detail.js"></script>
+<script src="/static/boards-detail.js"></script>
 {% endif %}
 {% endblock %}
