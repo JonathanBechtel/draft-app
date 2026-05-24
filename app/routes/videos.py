@@ -144,6 +144,7 @@ async def create_channel(
 @router.post(
     "/ingest",
     response_model=VideoIngestionResult,
+    status_code=200,
     dependencies=[Depends(require_dataset_permission("youtube_ingestion", "edit"))],
 )
 async def trigger_video_ingestion() -> VideoIngestionResult:
@@ -154,6 +155,7 @@ async def trigger_video_ingestion() -> VideoIngestionResult:
 @router.post(
     "/add",
     response_model=dict[str, int],
+    status_code=201,
     dependencies=[Depends(require_dataset_permission("youtube_videos", "edit"))],
 )
 async def manual_add_video(

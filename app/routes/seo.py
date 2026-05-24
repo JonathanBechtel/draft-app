@@ -29,7 +29,7 @@ def _site_base(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
-@router.get("/sitemap.xml", include_in_schema=False)
+@router.get("/sitemap.xml", include_in_schema=False, response_class=Response)
 async def sitemap_xml(
     request: Request,
     db: AsyncSession = Depends(get_session),
