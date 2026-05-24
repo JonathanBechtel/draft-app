@@ -18,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -88,6 +89,19 @@ class BigBoardConsensus(SQLModel, table=True):  # type: ignore[call-arg]
 
     __tablename__ = "big_board_consensus"
     __table_args__ = (
+        # Each player appears at most once per snapshot, and each
+        # consensus_rank slot is held by exactly one player (the
+        # algorithm resolves ties so the final ordering is strict).
+        UniqueConstraint(
+            "snapshot_id",
+            "player_id",
+            name="uq_big_board_consensus_snapshot_player",
+        ),
+        UniqueConstraint(
+            "snapshot_id",
+            "consensus_rank",
+            name="uq_big_board_consensus_snapshot_rank",
+        ),
         Index(
             "ix_big_board_consensus_snapshot_rank",
             "snapshot_id",
@@ -147,6 +161,14 @@ class SourceAnalytics(SQLModel, table=True):  # type: ignore[call-arg]
 
     __tablename__ = "source_analytics"
     __table_args__ = (
+        # Exactly one analytics row per (snapshot, source). Without this,
+        # a retried recompute could double-count a source in downstream
+        # contrarian/deviation reporting.
+        UniqueConstraint(
+            "snapshot_id",
+            "news_source_id",
+            name="uq_source_analytics_snapshot_source",
+        ),
         Index(
             "ix_source_analytics_snapshot",
             "snapshot_id",

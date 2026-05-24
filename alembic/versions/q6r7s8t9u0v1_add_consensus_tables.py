@@ -85,6 +85,16 @@ def upgrade() -> None:
             name="fk_big_board_consensus_player",
         ),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "snapshot_id",
+            "player_id",
+            name="uq_big_board_consensus_snapshot_player",
+        ),
+        sa.UniqueConstraint(
+            "snapshot_id",
+            "consensus_rank",
+            name="uq_big_board_consensus_snapshot_rank",
+        ),
     )
     op.create_index(
         "ix_big_board_consensus_draft_year",
@@ -144,6 +154,11 @@ def upgrade() -> None:
             name="fk_source_analytics_biggest_outlier_player",
         ),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "snapshot_id",
+            "news_source_id",
+            name="uq_source_analytics_snapshot_source",
+        ),
     )
     op.create_index(
         "ix_source_analytics_news_source_id",
