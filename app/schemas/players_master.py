@@ -170,18 +170,22 @@ def schedule_embedding_after_insert(
                 vector = await embed_text(embed_input)
 
                 engine = create_async_engine(_settings.database_url, echo=False)
-                factory = async_sessionmaker(
-                    bind=engine, expire_on_commit=False, class_=AsyncSession
-                )
-                async with factory() as db:
-                    async with db.begin():
-                        embedding_row = PlayerEmbedding(
-                            player_id=player_id,
-                            embedding=vector,
-                            model_name=_settings.gemini_embedding_model,
-                        )
-                        db.add(embedding_row)
-                await engine.dispose()
+                try:
+                    factory = async_sessionmaker(
+                        bind=engine, expire_on_commit=False, class_=AsyncSession
+                    )
+                    async with factory() as db:
+                        async with db.begin():
+                            embedding_row = PlayerEmbedding(
+                                player_id=player_id,
+                                embedding=vector,
+                                model_name=_settings.gemini_embedding_model,
+                            )
+                            db.add(embedding_row)
+                finally:
+                    # Always dispose, even if embed/insert raised, so per-insert
+                    # engines never leak pooled connections in long-running workers.
+                    await engine.dispose()
             except Exception:
                 logger.debug(
                     "Best-effort embedding skipped for player_id=%s",

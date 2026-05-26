@@ -134,22 +134,27 @@ async def find_similar_players(
     asyncpg_conn: Any = raw_conn.driver_connection  # native asyncpg Connection
 
     # Widen the search_path to include ``public`` (where the ``vector`` type
-    # and its operators live) if it is not already there.  We use a
-    # non-LOCAL SET because the connection is not inside an asyncpg-managed
-    # transaction at this point — Postgres silently ignores SET LOCAL outside
-    # a BEGIN/COMMIT block.  In production ``public`` is always in the default
-    # path, so this is a no-op.  In schema-isolated integration tests the next
-    # db_session fixture invocation restores the narrow path for subsequent
-    # tests, so the change is safely test-scoped.
+    # and its operators live) if it is not already there.  ``SET LOCAL`` is not
+    # usable because the connection is not inside an asyncpg-managed transaction
+    # here (Postgres ignores SET LOCAL outside a BEGIN/COMMIT block), and this
+    # connection is returned to the pool afterwards — so we must restore the
+    # original path in ``finally`` rather than leak the widened path to whoever
+    # reuses the connection next.  In production ``public`` is already in the
+    # default path, so the widen + restore is skipped entirely.
     path_record = await asyncpg_conn.fetchrow(
         "SELECT current_setting('search_path') AS sp"
     )
     current_path: str = path_record["sp"] if path_record else "public"
-    if "public" not in current_path:
+    widened = "public" not in current_path
+    if widened:
         await asyncpg_conn.execute(f"SET search_path TO {current_path}, public")
 
-    knn_sql = _build_knn_sql(vec_str, k)
-    rows = await asyncpg_conn.fetch(knn_sql)
+    try:
+        knn_sql = _build_knn_sql(vec_str, k)
+        rows = await asyncpg_conn.fetch(knn_sql)
+    finally:
+        if widened:
+            await asyncpg_conn.execute(f"SET search_path TO {current_path}")
     # -------------------------------------------------------------------------
 
     candidates: list[Candidate] = []
