@@ -45,7 +45,10 @@ _PAGE_FETCH_HEADERS = {
     "User-Agent": "DraftGuru/1.0 (+https://draftguru.dev; board-extraction)",
 }
 _GEMINI_TIMEOUT_SECONDS = 60
-_GEMINI_MODEL = "gemini-3-flash-preview"
+# Stable GA model. The earlier preview variant was both flaky on latency
+# and lax on instruction-following; gemini-3.5-flash with response_schema
+# is materially better at honoring the no-bare-surname constraint.
+_GEMINI_MODEL = "gemini-3.5-flash"
 
 # Cap input to Gemini at ~30k chars (~7.5k tokens). Substack articles
 # rarely exceed this; if they do, we lose tail entries gracefully rather
@@ -493,29 +496,99 @@ def _iter_json_ld_blobs(payload: object):
 
 _BIG_BOARD_EXTRACTION_PROMPT = """You are a structured-data extractor for DraftGuru, an NBA Draft analytics site.
 
-You will be given the cleaned body text of an NBA Draft analyst's "big board" article — a published, ordered ranking of college / international prospects.
-
-Your job is to extract the ranking into a structured JSON payload. Be careful: the article often contains commentary, headers, and unrelated player references. Only include players that appear in the analyst's RANKED LIST, in the order the analyst presents them.
-
-Output strict JSON matching this schema (do NOT wrap in markdown fences):
-
-{
-  "draft_year": <integer, e.g. 2026>,
-  "published_at": <ISO 8601 date string or null>,
-  "entries": [
-    {"player_name": "<full name as written>", "rank": <integer, 1-based>, "tier": <integer or null>}
-  ]
-}
+You will be given the cleaned body text of an NBA Draft analyst's "big board" article — a published, ordered ranking of college / international prospects. Extract the ranking into the structured response schema you have been given.
 
 Rules:
 - "rank" is the analyst's position in the ranking (1, 2, 3, ...), not the player's pick projection.
-- "tier" is only present when the analyst explicitly groups players into tiers (Tier 1, Tier 2, ...). Otherwise use null.
-- Use the player's full name exactly as it appears in the article (e.g., "Cooper Flagg", not "Flagg").
+- "tier" is only present when the analyst explicitly groups players into tiers (Tier 1, Tier 2, ...). Otherwise leave it null.
+- "player_name" MUST be the player's full first name AND last name (e.g., "Cooper Flagg", never just "Flagg"). Some analysts structure their boards as numbered headers using only a last name (e.g., "1. Mara", "2. Steinbach") and introduce the player by full name earlier in the article — usually in the same section or in a preceding "Tier" header. When you encounter a bare-surname ranking line, scan back through the article for that player's first full-name introduction and use that. If you genuinely cannot find any full-name reference anywhere in the article for that position, OMIT that entry entirely rather than emitting a partial name.
 - Skip honorable-mention sections, "watch list" addenda, NBA veterans referenced for comparison, and analyst self-references.
-- If you cannot identify a coherent ordered list of prospects, return entries: [].
+- Only include players from the analyst's RANKED LIST, in the order the analyst presents them. Do not include incidental player mentions from the surrounding commentary.
+- If you cannot identify a coherent ordered list of prospects, return an empty entries list.
 - "draft_year" is the draft year the article is ranking for. Infer it from headers, context, or default to the current calendar year if ambiguous.
 - "published_at" should be the article's publication date if discoverable; otherwise null.
 """
+
+
+def _build_extraction_schema() -> types.Schema:
+    """OpenAPI-ish schema sent to Gemini's structured-output decoder.
+
+    Built by hand rather than introspected from ``ExtractedBoard`` so we
+    can attach strong field ``description`` text — the description on
+    ``player_name`` is the single most important load-bearing piece of
+    instruction tuning for prose-heavy big boards, where analysts often
+    structure the ranking as bare-surname headers and rely on context
+    introduced earlier in the article to disambiguate.
+    """
+    return types.Schema(
+        type=types.Type.OBJECT,
+        required=["draft_year", "entries"],
+        properties={
+            "draft_year": types.Schema(
+                type=types.Type.INTEGER,
+                description=(
+                    "The draft year this board is ranking prospects for. "
+                    "Infer from headers/context; if ambiguous, use the "
+                    "current calendar year."
+                ),
+            ),
+            "published_at": types.Schema(
+                type=types.Type.STRING,
+                nullable=True,
+                description=(
+                    "ISO 8601 publication date of the article if "
+                    "discoverable from the text; null otherwise."
+                ),
+            ),
+            "entries": types.Schema(
+                type=types.Type.ARRAY,
+                description=(
+                    "The analyst's ranked list, in order, one entry per "
+                    "ranked position. Exclude honorable mentions, watch "
+                    "lists, and any player mentioned only as a comp."
+                ),
+                items=types.Schema(
+                    type=types.Type.OBJECT,
+                    required=["player_name", "rank"],
+                    properties={
+                        "player_name": types.Schema(
+                            type=types.Type.STRING,
+                            description=(
+                                "The player's full first AND last name "
+                                "(e.g., 'Cooper Flagg'). NEVER emit a "
+                                "bare surname even if the ranking line "
+                                "itself only shows a surname — scan the "
+                                "surrounding article text (preceding "
+                                "tier headers, intro paragraphs, prior "
+                                "sections) for that player's first "
+                                "full-name introduction and use that. "
+                                "If no full first+last name exists "
+                                "anywhere in the article for this "
+                                "position, omit the entry entirely "
+                                "rather than emitting a partial name."
+                            ),
+                        ),
+                        "rank": types.Schema(
+                            type=types.Type.INTEGER,
+                            description=(
+                                "The analyst's 1-based position in the "
+                                "ranking, not a pick projection."
+                            ),
+                        ),
+                        "tier": types.Schema(
+                            type=types.Type.INTEGER,
+                            nullable=True,
+                            description=(
+                                "Only set when the analyst explicitly "
+                                "groups players into tiers (Tier 1, "
+                                "Tier 2, ...). Never inferred."
+                            ),
+                        ),
+                    },
+                ),
+            ),
+        },
+    )
 
 
 async def _extract_via_gemini(
@@ -543,6 +616,7 @@ async def _extract_via_gemini(
                     ],
                     temperature=0.1,
                     response_mime_type="application/json",
+                    response_schema=_build_extraction_schema(),
                 ),
             ),
             timeout=_GEMINI_TIMEOUT_SECONDS,
