@@ -1,0 +1,2292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mavericks 92 – Wizards 87 · 2026 Summer League — DraftGuru</title>
+  <meta name="description" content="Box score, game flow, on/off, and lineup analytics for Mavericks vs. Wizards · Vegas SL · July 11, 2026.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      /* Game-specific team colors (placeholder) */
+      --team-home: #00538C;   /* Mavericks blue */
+      --team-away: #002B5C;   /* Wizards navy */
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    .section-header__title {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+      padding-left: 0.625rem;
+      border-left: 4px solid var(--color-accent-amber);
+    }
+
+    .section-header__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .section-header__cta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      color: #b45309;
+      padding-bottom: 1px;
+      border-bottom: 1px dotted rgba(180, 83, 9, 0.4);
+    }
+    .section-header__cta:hover { border-bottom-style: solid; }
+
+    .section-header__utility .section-header__title {
+      border-left-color: var(--color-slate-300);
+    }
+
+    /* ============================================================================
+       NAVBAR
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--color-accent-amber);
+    }
+    .search-input {
+      width: 240px; background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none;
+    }
+
+    /* ============================================================================
+       BREADCRUMBS + GAME PAGER
+       ========================================================================= */
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    .game-pager {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      padding: 0.5rem 0 1rem;
+    }
+
+    .game-pager__btn {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.375rem 0.625rem;
+      border-radius: 0.375rem;
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+      background: var(--color-white);
+      transition: all var(--transition-speed);
+    }
+    .game-pager__btn:hover { border-color: var(--color-slate-400); color: var(--color-slate-800); }
+    .game-pager__btn--secondary {
+      background: transparent;
+      border-color: transparent;
+      color: var(--color-slate-500);
+    }
+    .game-pager__btn--secondary:hover { color: var(--color-slate-700); background: var(--color-slate-50); }
+
+    /* ============================================================================
+       GAME HEADER (the matchup banner)
+       ========================================================================= */
+    .game-banner {
+      background: linear-gradient(135deg, #1e293b, #334155);
+      border-radius: var(--border-radius);
+      padding: 1.75rem 2rem;
+      color: var(--color-white);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+      margin-bottom: 1.5rem;
+    }
+
+    .game-banner::before {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent 0, transparent 3px,
+        rgba(255,255,255,0.025) 3px, rgba(255,255,255,0.025) 4px
+      );
+      pointer-events: none;
+    }
+
+    .game-banner__meta {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+      position: relative; z-index: 1;
+    }
+
+    .game-banner__chip {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.85);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    .game-banner__chip--final {
+      background: rgba(16, 185, 129, 0.15);
+      color: #6ee7b7;
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    .game-banner__chip--venue {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+
+    .game-banner__matchup {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 2rem;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .game-banner__team {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .game-banner__team--away { align-items: flex-end; }
+
+    .game-banner__team-tag {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.5);
+    }
+
+    .game-banner__team-name {
+      font-family: var(--font-heading);
+      font-size: 2rem;
+      letter-spacing: 0.02em;
+      line-height: 1;
+    }
+
+    .game-banner__team-name--won { color: var(--color-white); }
+    .game-banner__team-name--lost { color: rgba(255,255,255,0.55); }
+
+    .game-banner__record {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: rgba(255,255,255,0.55);
+    }
+
+    .game-banner__score-block {
+      text-align: center;
+    }
+
+    .game-banner__score {
+      font-family: var(--font-heading);
+      font-size: 4rem;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .game-banner__score--won { color: var(--color-white); }
+    .game-banner__score--lost { color: rgba(255,255,255,0.55); }
+
+    .game-banner__score-divider {
+      font-family: var(--font-mono);
+      font-size: 1.5rem;
+      color: rgba(255,255,255,0.3);
+      margin: 0 0.25rem;
+    }
+
+    /* ============================================================================
+       LINE SCORE
+       ========================================================================= */
+    .linescore-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      margin-bottom: 2rem;
+    }
+
+    table.linescore {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    table.linescore th {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.625rem 0.75rem;
+      text-align: center;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+    table.linescore th:first-child { text-align: left; padding-left: 1rem; }
+
+    table.linescore td {
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      font-weight: 600;
+      padding: 0.625rem 0.75rem;
+      text-align: center;
+      color: var(--color-slate-700);
+      font-variant-numeric: tabular-nums;
+      border-bottom: 1px solid var(--color-slate-100);
+    }
+    table.linescore td:first-child {
+      text-align: left;
+      padding-left: 1rem;
+      font-family: var(--font-body);
+      font-weight: 600;
+      color: var(--color-slate-900);
+    }
+
+    table.linescore td.total {
+      background: var(--color-slate-50);
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      color: var(--color-slate-900);
+    }
+
+    table.linescore td.quarter-high {
+      background: rgba(245, 158, 11, 0.08);
+      color: #b45309;
+    }
+
+    table.linescore tr:last-child td { border-bottom: none; }
+
+    /* ============================================================================
+       STORYLINES (from this game)
+       ========================================================================= */
+    .storylines-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 0.875rem;
+    }
+
+    .story-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-left: 4px solid;
+      border-radius: 0.5rem;
+      padding: 0.875rem 1rem;
+      transition: all var(--transition-speed);
+    }
+
+    .story-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+
+    .story-card--scoring { border-left-color: var(--color-accent-amber); }
+    .story-card--efficient { border-left-color: var(--color-accent-emerald); }
+    .story-card--triple-d { border-left-color: var(--color-accent-fuchsia); }
+    .story-card--clutch { border-left-color: var(--color-accent-rose); }
+    .story-card--defense { border-left-color: var(--color-accent-cyan); }
+    .story-card--pace { border-left-color: var(--color-accent-indigo); }
+
+    .story-card__type {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.375rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .story-card--scoring .story-card__type { color: #b45309; }
+    .story-card--efficient .story-card__type { color: #047857; }
+    .story-card--triple-d .story-card__type { color: #a21caf; }
+    .story-card--clutch .story-card__type { color: #be123c; }
+    .story-card--defense .story-card__type { color: #0e7490; }
+    .story-card--pace .story-card__type { color: #4338ca; }
+
+    .story-card__headline {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      line-height: 1.25;
+    }
+
+    .story-card__body {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      margin-top: 0.375rem;
+      line-height: 1.5;
+    }
+
+    .story-card__body strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       TOP PERFORMERS
+       ========================================================================= */
+    .performers-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+
+    .performer-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      transition: all var(--transition-speed);
+      cursor: pointer;
+    }
+
+    .performer-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+      border-color: var(--color-accent-amber);
+    }
+
+    .performer-card__top {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      gap: 0.75rem;
+      padding: 0.875rem 1rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      align-items: center;
+    }
+
+    .performer-card__photo {
+      width: 64px; height: 76px;
+      border-radius: 0.5rem;
+      background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-heading);
+      font-size: 0.625rem;
+      color: var(--color-white);
+      border: 2px solid rgba(245, 158, 11, 0.4);
+    }
+
+    .performer-card__name {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--color-slate-900);
+      line-height: 1.2;
+    }
+
+    .performer-card__meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      margin-top: 0.125rem;
+    }
+
+    .performer-card__line {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      line-height: 1.1;
+      color: var(--color-slate-900);
+      margin-top: 0.375rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .performer-card__line-unit {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      margin-left: 0.25rem;
+    }
+
+    .performer-card__rates {
+      padding: 0.625rem 1rem;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .performer-card__rate {
+      text-align: center;
+    }
+
+    .performer-card__rate-label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .performer-card__rate-value {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      margin-top: 0.125rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .performer-card__context {
+      padding: 0.75rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      line-height: 1.5;
+    }
+
+    .performer-card__context strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       GAME FLOW (SVG line chart)
+       ========================================================================= */
+    .game-flow {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1.25rem 1.5rem;
+    }
+
+    .game-flow__legend {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-600);
+    }
+
+    .game-flow__legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .game-flow__legend-dot {
+      width: 0.625rem;
+      height: 0.625rem;
+      border-radius: 9999px;
+    }
+
+    .game-flow__chart {
+      width: 100%;
+      height: 220px;
+      background: linear-gradient(to bottom, var(--color-slate-50), var(--color-white));
+      border: 1px solid var(--color-slate-100);
+      border-radius: 0.5rem;
+      overflow: hidden;
+    }
+
+    .game-flow__annotations {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--color-slate-100);
+    }
+
+    .game-flow__annotation {
+      display: grid;
+      grid-template-columns: 60px 1fr;
+      gap: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      align-items: baseline;
+    }
+
+    .game-flow__annotation-time {
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.625rem;
+      text-align: right;
+    }
+
+    .game-flow__annotation strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       TEAM BOX SCORES (side-by-side)
+       ========================================================================= */
+    .box-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .mode-toggle {
+      display: inline-flex; align-items: center; gap: 0;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      overflow: hidden;
+    }
+    .mode-toggle__btn {
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.4rem 0.75rem;
+      color: var(--color-slate-500);
+      background: transparent;
+      border: none;
+      border-right: 1px solid var(--color-slate-200);
+      cursor: pointer;
+    }
+    .mode-toggle__btn:last-child { border-right: none; }
+    .mode-toggle__btn:hover { background: var(--color-slate-50); color: var(--color-slate-800); }
+    .mode-toggle__btn--active { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+
+    .box-meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .box-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .box-team {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    .box-team__head {
+      padding: 0.75rem 1rem;
+      border-bottom: 2px solid;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .box-team__head--home {
+      background: linear-gradient(to right, rgba(0, 83, 140, 0.08), transparent);
+      border-bottom-color: var(--team-home);
+    }
+    .box-team__head--away {
+      background: linear-gradient(to right, rgba(0, 43, 92, 0.08), transparent);
+      border-bottom-color: var(--team-away);
+    }
+
+    .box-team__name {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+    }
+
+    .box-team__score-summary {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .box-table-wrapper { overflow-x: auto; }
+
+    table.box-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    table.box-table th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.5rem 0.4375rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+
+    table.box-table th:first-child { text-align: left; padding-left: 0.875rem; }
+    table.box-table td:first-child { padding-left: 0.875rem; }
+
+    table.box-table td {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.4375rem 0.4375rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+
+    table.box-table td:first-child {
+      text-align: left;
+      font-family: var(--font-body);
+      font-weight: 600;
+      color: var(--color-slate-900);
+      font-size: 0.8125rem;
+    }
+
+    table.box-table tr:hover td { background: var(--color-slate-50); }
+
+    table.box-table .pos-tag {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--color-slate-400);
+      margin-left: 0.25rem;
+    }
+
+    table.box-table .delta-up { color: #047857; font-weight: 600; }
+    table.box-table .delta-down { color: #be123c; font-weight: 600; }
+    table.box-table .delta-flat { color: var(--color-slate-400); }
+
+    table.box-table tr.starters-divider td {
+      border-bottom: 2px dashed var(--color-slate-200);
+    }
+
+    table.box-table tr.dnp td {
+      color: var(--color-slate-400);
+      font-style: italic;
+      background: var(--color-slate-50);
+    }
+
+    table.box-table tr.totals td {
+      background: var(--color-slate-50);
+      font-weight: 700;
+      color: var(--color-slate-900);
+      border-top: 2px solid var(--color-slate-300);
+    }
+
+    .box-team__footer {
+      padding: 0.625rem 1rem;
+      background: var(--color-slate-50);
+      border-top: 1px solid var(--color-slate-200);
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-600);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .box-team__footer strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       LINEUP COMBINATIONS
+       ========================================================================= */
+    .lineup-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    table.lineup-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    table.lineup-table th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.625rem 0.75rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+
+    table.lineup-table th:first-child { text-align: left; }
+
+    table.lineup-table td {
+      font-size: 0.8125rem;
+      padding: 0.625rem 0.75rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+
+    table.lineup-table td:first-child {
+      text-align: left;
+      color: var(--color-slate-800);
+    }
+
+    table.lineup-table .lineup-team {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      padding: 0.0625rem 0.375rem;
+      border-radius: 0.1875rem;
+      margin-right: 0.5rem;
+      vertical-align: middle;
+    }
+    .lineup-team--home { background: rgba(0, 83, 140, 0.12); color: var(--team-home); }
+    .lineup-team--away { background: rgba(0, 43, 92, 0.12); color: var(--team-away); }
+
+    .lineup-players { font-family: var(--font-body); font-weight: 500; }
+
+    .lineup-table tr.highlight td {
+      background: rgba(245, 158, 11, 0.06);
+    }
+    .lineup-table tr.highlight td:first-child::before {
+      content: '★';
+      color: var(--color-accent-amber);
+      margin-right: 0.375rem;
+    }
+
+    .plus { color: #047857; font-weight: 600; }
+    .minus { color: #be123c; font-weight: 600; }
+
+    /* ============================================================================
+       ON/OFF SPLITS
+       ========================================================================= */
+    .onoff-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .onoff-team {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    .onoff-team__head {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+      font-family: var(--font-heading);
+      font-size: 0.9375rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .onoff-team__head-meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .onoff-list {
+      list-style: none;
+    }
+
+    .onoff-row {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--color-slate-100);
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .onoff-row:last-child { border-bottom: none; }
+
+    .onoff-row__name {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+    }
+
+    .onoff-row__mins {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      margin-top: 0.125rem;
+    }
+
+    .onoff-row__bar {
+      width: 160px;
+      height: 32px;
+      position: relative;
+    }
+
+    .onoff-bar-track {
+      position: relative;
+      height: 14px;
+      background: var(--color-slate-100);
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+
+    .onoff-bar-track + .onoff-bar-track { margin-top: 4px; }
+
+    .onoff-bar-fill {
+      position: absolute;
+      top: 0; bottom: 0;
+      border-radius: 9999px;
+    }
+
+    .onoff-bar-fill--on { background: linear-gradient(to right, var(--color-accent-emerald), #34d399); }
+    .onoff-bar-fill--off { background: linear-gradient(to right, var(--color-slate-400), var(--color-slate-300)); }
+
+    .onoff-row__delta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      margin-top: 4px;
+      color: var(--color-slate-500);
+      text-align: right;
+    }
+
+    /* ============================================================================
+       SHOT CHART
+       ========================================================================= */
+    .shot-toggle {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .shot-toggle__label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-right: 0.25rem;
+    }
+
+    .shot-toggle__btn {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.375rem 0.625rem;
+      border-radius: 9999px;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .shot-toggle__btn:hover { border-color: var(--color-slate-400); }
+
+    .shot-toggle__btn--active {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #b45309;
+    }
+
+    .shot-chart-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .shot-court {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .shot-court__title {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+
+    .shot-court__title strong {
+      color: var(--color-slate-800);
+      font-weight: 600;
+    }
+
+    .shot-court__svg {
+      width: 100%;
+      max-width: 360px;
+      height: auto;
+    }
+
+    .shot-court__legend {
+      display: flex;
+      gap: 0.875rem;
+      margin-top: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .shot-court__legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .shot-court__legend-dot {
+      width: 0.625rem; height: 0.625rem;
+      border-radius: 9999px;
+    }
+
+    .shot-court__zones {
+      width: 100%;
+      max-width: 360px;
+      margin-top: 0.875rem;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.375rem;
+    }
+
+    .shot-zone {
+      padding: 0.4375rem 0.5rem;
+      background: var(--color-slate-50);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      text-align: center;
+    }
+
+    .shot-zone__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .shot-zone__pct {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      margin-top: 0.125rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .shot-zone__pct--hot { color: #047857; }
+    .shot-zone__pct--cold { color: #be123c; }
+
+    /* ============================================================================
+       UPDATED + FOOTER
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 2rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+    .updated-strip__dot {
+      width: 0.5rem; height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       METHODOLOGY-PLACEHOLDER UTILITY (consistent across SL mockups)
+       ========================================================================= */
+    .tbd-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      margin-left: 0.375rem;
+      vertical-align: middle;
+      cursor: help;
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 980px) {
+      .box-pair, .onoff-pair, .shot-chart-pair { grid-template-columns: 1fr; }
+      .performers-grid { grid-template-columns: 1fr; }
+      .game-banner__score { font-size: 3rem; }
+      .game-banner__team-name { font-size: 1.5rem; }
+    }
+    @media (max-width: 640px) {
+      .navbar-links { display: none; }
+      .game-banner__matchup { grid-template-columns: 1fr; gap: 1rem; text-align: center; }
+      .game-banner__team, .game-banner__team--away { align-items: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link active" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div><input class="search-input" type="search" placeholder="Search players…"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="/stats">Stats</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league">Summer League</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league/2026">2026</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league/2026/vegas">Vegas</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">Mavericks – Wizards · Jul 11</span>
+    </div>
+
+    <!-- Game pager (jump to adjacent games) -->
+    <div class="game-pager">
+      <a class="game-pager__btn" href="#">← Earlier game (Jul 10)</a>
+      <a class="game-pager__btn game-pager__btn--secondary" href="#">All Jul 11 games (8)</a>
+      <a class="game-pager__btn game-pager__btn--secondary" href="#">DAL season schedule</a>
+      <a class="game-pager__btn" href="#" style="margin-left: auto;">Next game (Jul 12 @ NOP) →</a>
+    </div>
+
+    <!-- ============================================================================
+         GAME HEADER
+         ========================================================================= -->
+    <header class="game-banner">
+      <div class="game-banner__meta">
+        <span class="game-banner__chip game-banner__chip--final">Final</span>
+        <span class="game-banner__chip">Jul 11, 2026</span>
+        <span class="game-banner__chip game-banner__chip--venue">Vegas · Thomas &amp; Mack</span>
+        <span class="game-banner__chip">Attendance: 4,892</span>
+        <span class="game-banner__chip">Pace: 98.2 (SL avg 92.4)</span>
+      </div>
+      <div class="game-banner__matchup">
+        <div class="game-banner__team">
+          <span class="game-banner__team-tag">Home</span>
+          <span class="game-banner__team-name game-banner__team-name--won">Mavericks</span>
+          <span class="game-banner__record">3–0 · Vegas SL</span>
+        </div>
+        <div class="game-banner__score-block">
+          <span class="game-banner__score game-banner__score--won">92</span>
+          <span class="game-banner__score-divider">–</span>
+          <span class="game-banner__score game-banner__score--lost">87</span>
+        </div>
+        <div class="game-banner__team game-banner__team--away">
+          <span class="game-banner__team-tag">Away</span>
+          <span class="game-banner__team-name game-banner__team-name--lost">Wizards</span>
+          <span class="game-banner__record">1–2 · Vegas SL</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Line score -->
+    <div class="linescore-wrapper">
+      <table class="linescore">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Q1</th>
+            <th>Q2</th>
+            <th>Q3</th>
+            <th>Q4</th>
+            <th>T</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Mavericks</td>
+            <td>21</td>
+            <td>18</td>
+            <td>22</td>
+            <td class="quarter-high">31</td>
+            <td class="total">92</td>
+          </tr>
+          <tr>
+            <td>Wizards</td>
+            <td class="quarter-high">25</td>
+            <td>22</td>
+            <td>18</td>
+            <td>22</td>
+            <td class="total">87</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ============================================================================
+         STORYLINES FROM THIS GAME
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">What This Game Showed</div>
+          <div class="section-header__meta">Three things to take from Mavericks–Wizards</div>
+        </div>
+      </div>
+
+      <div class="storylines-grid">
+
+        <div class="story-card story-card--scoring">
+          <div class="story-card__type">
+            #1-pick benchmark
+            <span>Since 2002</span>
+          </div>
+          <div class="story-card__headline">Flagg matched Banchero's 2022 SL peak on TS%</div>
+          <div class="story-card__body">
+            64.0 TS% on 18 FGA <strong>matches Banchero's high-water 2022 SL game</strong>. Among #1 picks since '02, only Wembanyama '23 (65.8) and Edwards '20 (64.3) cleared it at this stage of a Vegas run.
+          </div>
+        </div>
+
+        <div class="story-card story-card--clutch">
+          <div class="story-card__type">
+            Q4 swing
+            <span>Game-decisive run</span>
+          </div>
+          <div class="story-card__headline">DAL's 31-point Q4 was a 13-point net swing</div>
+          <div class="story-card__body">
+            Mavericks trailed by 3 entering Q4 and won by 5 — a <strong>+13 net swing in 12 minutes</strong>. Flagg scored 14 of the 31, including the dagger 3 with 1:18 left; the rest came on transition off live-ball steals.
+          </div>
+        </div>
+
+        <div class="story-card story-card--pace">
+          <div class="story-card__type">
+            Pace context
+            <span>SL avg 92.4</span>
+          </div>
+          <div class="story-card__headline">98.2 pace — fastest DAL SL game since 2019</div>
+          <div class="story-card__body">
+            6% above the 2026 SL average. <strong>Most-used Mavs lineup pushed 102.8</strong> with the second unit on. Read the rate stats below with this context — Flagg's per-100 numbers are inflated relative to a half-court SL game.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         TOP PERFORMERS
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Top Performers</div>
+          <div class="section-header__meta">Each with pre-draft → SL context</div>
+        </div>
+      </div>
+
+      <div class="performers-grid">
+
+        <a class="performer-card" href="#">
+          <div class="performer-card__top">
+            <div class="performer-card__photo">DAL #2</div>
+            <div>
+              <div class="performer-card__name">Cooper Flagg</div>
+              <div class="performer-card__meta">F · Mavericks · 2026 #1 pick</div>
+              <div class="performer-card__line">32<span class="performer-card__line-unit">PTS</span> / 9<span class="performer-card__line-unit">REB</span> / 6<span class="performer-card__line-unit">AST</span></div>
+            </div>
+          </div>
+          <div class="performer-card__rates">
+            <div class="performer-card__rate">
+              <div class="performer-card__rate-label">TS%</div>
+              <div class="performer-card__rate-value">64.0</div>
+            </div>
+            <div class="performer-card__rate">
+              <div class="performer-card__rate-label">USG%</div>
+              <div class="performer-card__rate-value">31.4</div>
+            </div>
+            <div class="performer-card__rate">
+              <div class="performer-card__rate-label">+/−</div>
+              <div class="performer-card__rate-value plus">+14</div>
+            </div>
+          </div>
+          <div class="performer-card__context">
+            Duke USG% was <strong>26.8</strong>; running point-forward for DAL it's climbed to <strong>31.4</strong>. TS% holding steady (College 60.3 → SL 64.0). Game-high in a 5-point win.
+          </div>
+        </a>
+
+        <a class="performer-card" href="#">
+          <div class="performer-card__top">
+            <div class="performer-card__photo">WAS #5</div>
+            <div>
+              <div class="performer-card__name">Tre Johnson</div>
+              <div class="performer-card__meta">G · Wizards · 2026 #5 pick</div>
+              <div class="performer-card__line">28<span class="performer-card__line-unit">PTS</span> / 3<span class="performer-card__line-unit">REB</span> / 4<span class="performer-card__line-unit">AST</span></div>
+            </div>
+          </div>
+          <div class="performer-card__rates">
+            <div class="performer-card__rate">
+              <div class="performer-card__rate-label">TS%</div>
+              <div class="performer-card__rate-value">54.7</div>
+            </div>
+            <div class="performer-card__rate">
+              <div class="performer-card__rate-label">USG%</div>
+              <div class="performer-card__rate-value">34.8</div>
+            </div>
+            <div class="performer-card__rate">
+              <div class="performer-card__rate-label">+/−</div>
+              <div class="performer-card__rate-value minus">−7</div>
+            </div>
+          </div>
+          <div class="performer-card__context">
+            Highest USG% of Johnson's SL run so far. Volume is there; <strong>3PA up to 11</strong> but conversion (3 of 11) trails his Texas college rate of 39%. Sample is still small — <strong>5 GP / 134 MIN</strong>.
+          </div>
+        </a>
+
+        <a class="performer-card" href="#">
+          <div class="performer-card__top">
+            <div class="performer-card__photo">DAL #88</div>
+            <div>
+              <div class="performer-card__name">Ryan Nembhard</div>
+              <div class="performer-card__meta">G · Mavericks · undrafted (2024)</div>
+              <div class="performer-card__line">18<span class="performer-card__line-unit">PTS</span> / 4<span class="performer-card__line-unit">REB</span> / 11<span class="performer-card__line-unit">AST</span></div>
+            </div>
+          </div>
+          <div class="performer-card__rates">
+            <div class="performer-card__rate">
+              <div class="performer-card__rate-label">TS%</div>
+              <div class="performer-card__rate-value">62.5</div>
+            </div>
+            <div class="performer-card__rate">
+              <div class="performer-card__rate-label">AST%</div>
+              <div class="performer-card__rate-value">41.2</div>
+            </div>
+            <div class="performer-card__rate">
+              <div class="performer-card__rate-label">+/−</div>
+              <div class="performer-card__rate-value plus">+18</div>
+            </div>
+          </div>
+          <div class="performer-card__context">
+            Undrafted out of Gonzaga in '24, now in his second SL. <strong>Best +/− on the floor</strong> for either team. AST% (41) is top-3 among all SL guards with ≥3 GP this year — a returning vet signal worth watching.
+          </div>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         GAME FLOW
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Game Flow</div>
+          <div class="section-header__meta">Score differential · DAL perspective · key moments annotated</div>
+        </div>
+      </div>
+
+      <div class="game-flow">
+        <div class="game-flow__legend">
+          <span class="game-flow__legend-item">
+            <span class="game-flow__legend-dot" style="background: var(--color-accent-amber);"></span>
+            DAL lead
+          </span>
+          <span class="game-flow__legend-item">
+            <span class="game-flow__legend-dot" style="background: var(--color-slate-400);"></span>
+            WAS lead
+          </span>
+          <span class="game-flow__legend-item" style="margin-left: auto;">
+            Largest lead: <strong style="color: var(--color-slate-900); margin-left: 0.25rem;">DAL +9</strong> (Q4 1:18)
+          </span>
+        </div>
+
+        <!-- SVG game flow (illustrative) -->
+        <svg class="game-flow__chart" viewBox="0 0 800 220" preserveAspectRatio="none" role="img" aria-label="Score differential by game minute">
+          <!-- Grid lines -->
+          <line x1="0" y1="110" x2="800" y2="110" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3 3" />
+          <line x1="200" y1="0" x2="200" y2="220" stroke="#e2e8f0" stroke-width="1" />
+          <line x1="400" y1="0" x2="400" y2="220" stroke="#e2e8f0" stroke-width="1" />
+          <line x1="600" y1="0" x2="600" y2="220" stroke="#e2e8f0" stroke-width="1" />
+
+          <!-- Quarter labels -->
+          <text x="100" y="14" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle" letter-spacing="1">Q1</text>
+          <text x="300" y="14" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle" letter-spacing="1">Q2</text>
+          <text x="500" y="14" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle" letter-spacing="1">Q3</text>
+          <text x="700" y="14" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle" letter-spacing="1">Q4</text>
+
+          <!-- Filled area (DAL perspective: above zero = DAL leads) -->
+          <path d="M 0,110 L 30,116 L 60,124 L 100,128 L 140,118 L 180,108
+                   L 220,114 L 260,118 L 300,112 L 340,118 L 380,124 L 420,118
+                   L 460,108 L 500,98 L 540,102 L 580,108 L 620,108 L 660,90
+                   L 700,76 L 740,68 L 780,80 L 800,82 L 800,110 L 0,110 Z"
+                fill="url(#flowGradient)" opacity="0.7" />
+
+          <!-- Line on top -->
+          <path d="M 0,110 L 30,116 L 60,124 L 100,128 L 140,118 L 180,108
+                   L 220,114 L 260,118 L 300,112 L 340,118 L 380,124 L 420,118
+                   L 460,108 L 500,98 L 540,102 L 580,108 L 620,108 L 660,90
+                   L 700,76 L 740,68 L 780,80 L 800,82"
+                fill="none" stroke="#f59e0b" stroke-width="2" />
+
+          <defs>
+            <linearGradient id="flowGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.4" />
+              <stop offset="100%" stop-color="#fef3c7" stop-opacity="0.1" />
+            </linearGradient>
+          </defs>
+
+          <!-- Key moment annotations -->
+          <circle cx="500" cy="98" r="4" fill="#f43f5e" />
+          <text x="500" y="86" font-family="ui-monospace" font-size="9" fill="#be123c" text-anchor="middle">Q3 lead change</text>
+
+          <circle cx="740" cy="68" r="4" fill="#10b981" />
+          <text x="740" y="56" font-family="ui-monospace" font-size="9" fill="#047857" text-anchor="middle">Flagg dagger 3</text>
+        </svg>
+
+        <div class="game-flow__annotations">
+          <div class="game-flow__annotation">
+            <span class="game-flow__annotation-time">Q1 0:00</span>
+            <span>WAS up <strong>+4</strong>. Johnson 12 PTS on three early threes; Flagg yet to attempt one.</span>
+          </div>
+          <div class="game-flow__annotation">
+            <span class="game-flow__annotation-time">Q3 5:42</span>
+            <span><strong>First DAL lead.</strong> Bench-heavy lineup of Nembhard / Williams / Lively / Marshall / Hardy goes on a 14-2 run vs. WAS starters resting Johnson.</span>
+          </div>
+          <div class="game-flow__annotation">
+            <span class="game-flow__annotation-time">Q4 1:18</span>
+            <span><strong>Flagg dagger 3</strong> from the wing pushes DAL to +9. Largest lead of the night, on the only Flagg / Nembhard / Lively closing lineup of the game.</span>
+          </div>
+          <div class="game-flow__annotation">
+            <span class="game-flow__annotation-time">Q4 0:00</span>
+            <span><strong>DAL +5 final.</strong> 13-point net swing in Q4 — WAS won three of four quarters but lost the fourth by 9.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         TEAM BOX SCORES
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Team Box Scores</div>
+          <div class="section-header__meta">Δ column = this game vs. each player's 2026 SL average</div>
+        </div>
+      </div>
+
+      <div class="box-controls">
+        <div class="mode-toggle" role="tablist" aria-label="Stat mode">
+          <button class="mode-toggle__btn mode-toggle__btn--active">Per Game</button>
+          <button class="mode-toggle__btn">Per 36</button>
+          <button class="mode-toggle__btn">Per 100</button>
+          <button class="mode-toggle__btn">Advanced</button>
+        </div>
+        <span class="box-meta">Game pace: 98.2 · per-100 inflated vs. SL avg</span>
+      </div>
+
+      <div class="box-pair">
+
+        <!-- Mavericks box -->
+        <div class="box-team">
+          <div class="box-team__head box-team__head--home">
+            <span class="box-team__name">Mavericks · 92</span>
+            <span class="box-team__score-summary">FG 35–74 · 3P 9–28 · FT 13–17</span>
+          </div>
+          <div class="box-table-wrapper">
+            <table class="box-table">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>MIN</th>
+                  <th>PTS</th>
+                  <th>REB</th>
+                  <th>AST</th>
+                  <th>STL</th>
+                  <th>BLK</th>
+                  <th>TS%</th>
+                  <th>+/−</th>
+                  <th>Δ PTS</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Cooper Flagg<span class="pos-tag">F</span></td>
+                  <td>31</td>
+                  <td>32</td>
+                  <td>9</td>
+                  <td>6</td>
+                  <td>4</td>
+                  <td>1</td>
+                  <td>64.0</td>
+                  <td class="plus">+14</td>
+                  <td class="delta-up">+5.6</td>
+                </tr>
+                <tr>
+                  <td>Ryan Nembhard<span class="pos-tag">G</span></td>
+                  <td>28</td>
+                  <td>18</td>
+                  <td>4</td>
+                  <td>11</td>
+                  <td>2</td>
+                  <td>0</td>
+                  <td>62.5</td>
+                  <td class="plus">+18</td>
+                  <td class="delta-up">+6.2</td>
+                </tr>
+                <tr>
+                  <td>Dereck Lively II<span class="pos-tag">C</span></td>
+                  <td>23</td>
+                  <td>10</td>
+                  <td>11</td>
+                  <td>1</td>
+                  <td>0</td>
+                  <td>3</td>
+                  <td>62.5</td>
+                  <td class="plus">+9</td>
+                  <td class="delta-up">+2.0</td>
+                </tr>
+                <tr class="starters-divider">
+                  <td>Naji Marshall<span class="pos-tag">F</span></td>
+                  <td>22</td>
+                  <td>11</td>
+                  <td>5</td>
+                  <td>3</td>
+                  <td>1</td>
+                  <td>0</td>
+                  <td>55.0</td>
+                  <td class="plus">+8</td>
+                  <td class="delta-up">+1.5</td>
+                </tr>
+                <tr>
+                  <td>Jaden Hardy<span class="pos-tag">G</span></td>
+                  <td>21</td>
+                  <td>9</td>
+                  <td>2</td>
+                  <td>4</td>
+                  <td>1</td>
+                  <td>0</td>
+                  <td>52.5</td>
+                  <td class="plus">+5</td>
+                  <td class="delta-flat">±0.0</td>
+                </tr>
+                <tr>
+                  <td>Olivier-Maxence Prosper<span class="pos-tag">F</span></td>
+                  <td>18</td>
+                  <td>6</td>
+                  <td>4</td>
+                  <td>1</td>
+                  <td>0</td>
+                  <td>1</td>
+                  <td>50.0</td>
+                  <td class="minus">−2</td>
+                  <td class="delta-down">−1.8</td>
+                </tr>
+                <tr>
+                  <td>Brandon Williams<span class="pos-tag">G</span></td>
+                  <td>14</td>
+                  <td>4</td>
+                  <td>1</td>
+                  <td>2</td>
+                  <td>0</td>
+                  <td>0</td>
+                  <td>40.0</td>
+                  <td class="minus">−3</td>
+                  <td class="delta-down">−3.4</td>
+                </tr>
+                <tr>
+                  <td>Melvin Ajinca<span class="pos-tag">F</span></td>
+                  <td>13</td>
+                  <td>2</td>
+                  <td>3</td>
+                  <td>0</td>
+                  <td>0</td>
+                  <td>1</td>
+                  <td>33.3</td>
+                  <td class="minus">−1</td>
+                  <td class="delta-down">−2.8</td>
+                </tr>
+                <tr class="dnp">
+                  <td>Greg Brown III</td>
+                  <td colspan="9">DNP — Coach's Decision</td>
+                </tr>
+                <tr class="totals">
+                  <td>Team Totals</td>
+                  <td>200</td>
+                  <td>92</td>
+                  <td>39</td>
+                  <td>28</td>
+                  <td>8</td>
+                  <td>6</td>
+                  <td>55.7</td>
+                  <td>+5</td>
+                  <td>—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="box-team__footer">
+            <span>ORtg: <strong>93.7</strong> · DRtg: <strong>88.6</strong></span>
+            <span>Pace: <strong>98.2</strong> · 2PT 26/46 · 3PT 9/28 · AST/TO 28/10</span>
+          </div>
+        </div>
+
+        <!-- Wizards box -->
+        <div class="box-team">
+          <div class="box-team__head box-team__head--away">
+            <span class="box-team__name">Wizards · 87</span>
+            <span class="box-team__score-summary">FG 33–78 · 3P 11–34 · FT 10–13</span>
+          </div>
+          <div class="box-table-wrapper">
+            <table class="box-table">
+              <thead>
+                <tr>
+                  <th>Player</th>
+                  <th>MIN</th>
+                  <th>PTS</th>
+                  <th>REB</th>
+                  <th>AST</th>
+                  <th>STL</th>
+                  <th>BLK</th>
+                  <th>TS%</th>
+                  <th>+/−</th>
+                  <th>Δ PTS</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Tre Johnson<span class="pos-tag">G</span></td>
+                  <td>30</td>
+                  <td>28</td>
+                  <td>3</td>
+                  <td>4</td>
+                  <td>2</td>
+                  <td>0</td>
+                  <td>54.7</td>
+                  <td class="minus">−7</td>
+                  <td class="delta-up">+7.0</td>
+                </tr>
+                <tr>
+                  <td>Bub Carrington<span class="pos-tag">G</span></td>
+                  <td>27</td>
+                  <td>14</td>
+                  <td>5</td>
+                  <td>6</td>
+                  <td>1</td>
+                  <td>0</td>
+                  <td>50.0</td>
+                  <td class="minus">−2</td>
+                  <td class="delta-flat">+0.5</td>
+                </tr>
+                <tr>
+                  <td>Bilal Coulibaly<span class="pos-tag">F</span></td>
+                  <td>26</td>
+                  <td>15</td>
+                  <td>7</td>
+                  <td>2</td>
+                  <td>2</td>
+                  <td>1</td>
+                  <td>55.5</td>
+                  <td class="minus">−3</td>
+                  <td class="delta-up">+2.4</td>
+                </tr>
+                <tr class="starters-divider">
+                  <td>Alex Sarr<span class="pos-tag">C</span></td>
+                  <td>24</td>
+                  <td>12</td>
+                  <td>10</td>
+                  <td>1</td>
+                  <td>1</td>
+                  <td>3</td>
+                  <td>52.1</td>
+                  <td class="plus">+2</td>
+                  <td class="delta-down">−1.8</td>
+                </tr>
+                <tr>
+                  <td>Kyshawn George<span class="pos-tag">F</span></td>
+                  <td>22</td>
+                  <td>8</td>
+                  <td>4</td>
+                  <td>3</td>
+                  <td>0</td>
+                  <td>0</td>
+                  <td>50.0</td>
+                  <td class="minus">−1</td>
+                  <td class="delta-down">−2.2</td>
+                </tr>
+                <tr>
+                  <td>Jared Butler<span class="pos-tag">G</span></td>
+                  <td>20</td>
+                  <td>6</td>
+                  <td>2</td>
+                  <td>5</td>
+                  <td>1</td>
+                  <td>0</td>
+                  <td>42.9</td>
+                  <td class="minus">−6</td>
+                  <td class="delta-down">−2.5</td>
+                </tr>
+                <tr>
+                  <td>JT Toppin<span class="pos-tag">F</span></td>
+                  <td>18</td>
+                  <td>2</td>
+                  <td>5</td>
+                  <td>1</td>
+                  <td>0</td>
+                  <td>1</td>
+                  <td>33.3</td>
+                  <td class="minus">−4</td>
+                  <td class="delta-down">−3.2</td>
+                </tr>
+                <tr>
+                  <td>Kadary Richmond<span class="pos-tag">G</span></td>
+                  <td>16</td>
+                  <td>2</td>
+                  <td>2</td>
+                  <td>3</td>
+                  <td>1</td>
+                  <td>0</td>
+                  <td>33.3</td>
+                  <td class="minus">−4</td>
+                  <td class="delta-down">−1.6</td>
+                </tr>
+                <tr>
+                  <td>Justin Champagnie<span class="pos-tag">F</span></td>
+                  <td>17</td>
+                  <td>0</td>
+                  <td>3</td>
+                  <td>0</td>
+                  <td>0</td>
+                  <td>0</td>
+                  <td>0.0</td>
+                  <td class="minus">−5</td>
+                  <td class="delta-down">−4.4</td>
+                </tr>
+                <tr class="totals">
+                  <td>Team Totals</td>
+                  <td>200</td>
+                  <td>87</td>
+                  <td>41</td>
+                  <td>25</td>
+                  <td>8</td>
+                  <td>5</td>
+                  <td>50.5</td>
+                  <td>−5</td>
+                  <td>—</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="box-team__footer">
+            <span>ORtg: <strong>88.6</strong> · DRtg: <strong>93.7</strong></span>
+            <span>Pace: <strong>98.2</strong> · 2PT 22/44 · 3PT 11/34 · AST/TO 25/14</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         LINEUP COMBINATIONS
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Lineup Combinations</div>
+          <div class="section-header__meta">5-man units · 5+ MIN · sorted by minutes</div>
+        </div>
+      </div>
+
+      <div class="lineup-wrapper">
+        <table class="lineup-table">
+          <thead>
+            <tr>
+              <th>Lineup</th>
+              <th>MIN</th>
+              <th>Net</th>
+              <th>ORtg</th>
+              <th>DRtg</th>
+              <th>Pace</th>
+              <th>AST/TO</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <span class="lineup-team lineup-team--home">DAL</span>
+                <span class="lineup-players">Flagg / Nembhard / Lively / Marshall / Hardy</span>
+              </td>
+              <td>14:22</td>
+              <td class="plus">+18</td>
+              <td>118.4</td>
+              <td>87.2</td>
+              <td>96.8</td>
+              <td>3.5</td>
+            </tr>
+            <tr class="highlight">
+              <td>
+                <span class="lineup-team lineup-team--home">DAL</span>
+                <span class="lineup-players">Flagg / Nembhard / Lively / Marshall / Prosper</span>
+              </td>
+              <td>9:18</td>
+              <td class="plus">+12</td>
+              <td>124.0</td>
+              <td>91.5</td>
+              <td>97.4</td>
+              <td>4.0</td>
+            </tr>
+            <tr>
+              <td>
+                <span class="lineup-team lineup-team--away">WAS</span>
+                <span class="lineup-players">Johnson / Carrington / Coulibaly / Sarr / George</span>
+              </td>
+              <td>13:08</td>
+              <td class="minus">−6</td>
+              <td>92.3</td>
+              <td>105.8</td>
+              <td>95.2</td>
+              <td>1.8</td>
+            </tr>
+            <tr>
+              <td>
+                <span class="lineup-team lineup-team--away">WAS</span>
+                <span class="lineup-players">Johnson / Butler / Coulibaly / Sarr / Toppin</span>
+              </td>
+              <td>8:46</td>
+              <td class="minus">−9</td>
+              <td>88.6</td>
+              <td>114.2</td>
+              <td>99.0</td>
+              <td>2.0</td>
+            </tr>
+            <tr>
+              <td>
+                <span class="lineup-team lineup-team--home">DAL</span>
+                <span class="lineup-players">Nembhard / Hardy / Williams / Marshall / Ajinca</span>
+              </td>
+              <td>7:34</td>
+              <td class="plus">+5</td>
+              <td>106.1</td>
+              <td>92.4</td>
+              <td>102.8</td>
+              <td>2.5</td>
+            </tr>
+            <tr>
+              <td>
+                <span class="lineup-team lineup-team--away">WAS</span>
+                <span class="lineup-players">Carrington / Richmond / George / Champagnie / Toppin</span>
+              </td>
+              <td>6:12</td>
+              <td class="minus">−4</td>
+              <td>83.7</td>
+              <td>98.1</td>
+              <td>91.6</td>
+              <td>1.0</td>
+            </tr>
+            <tr>
+              <td>
+                <span class="lineup-team lineup-team--home">DAL</span>
+                <span class="lineup-players">Flagg / Hardy / Marshall / Lively / Prosper</span>
+              </td>
+              <td>5:02</td>
+              <td class="plus">+3</td>
+              <td>109.3</td>
+              <td>96.0</td>
+              <td>94.4</td>
+              <td>1.5</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 0.5rem; font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-700);">
+        ★ <strong>Lineup of the game:</strong> the second Mavericks group (Flagg / Nembhard / Lively / Marshall / Prosper) posted a 124.0 ORtg — <strong>32.5 points above the SL average</strong> — in just over nine minutes. Worth tracking if Kidd keeps it together for the elimination round.
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         ON/OFF SPLITS
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">On / Off Splits</div>
+          <div class="section-header__meta">Net rating with player on the floor vs. off · biggest swings only</div>
+        </div>
+      </div>
+
+      <div class="onoff-pair">
+
+        <div class="onoff-team">
+          <div class="onoff-team__head">
+            <span>Mavericks</span>
+            <span class="onoff-team__head-meta">Net +5 game</span>
+          </div>
+          <ul class="onoff-list">
+            <li class="onoff-row">
+              <div>
+                <div class="onoff-row__name">Cooper Flagg</div>
+                <div class="onoff-row__mins">31 MIN on · 9 MIN off</div>
+              </div>
+              <div class="onoff-row__bar">
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--on" style="width: 84%;"></div>
+                </div>
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--off" style="width: 18%;"></div>
+                </div>
+                <div class="onoff-row__delta plus">Net swing +24.6</div>
+              </div>
+            </li>
+            <li class="onoff-row">
+              <div>
+                <div class="onoff-row__name">Ryan Nembhard</div>
+                <div class="onoff-row__mins">28 MIN on · 12 MIN off</div>
+              </div>
+              <div class="onoff-row__bar">
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--on" style="width: 78%;"></div>
+                </div>
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--off" style="width: 24%;"></div>
+                </div>
+                <div class="onoff-row__delta plus">Net swing +18.1</div>
+              </div>
+            </li>
+            <li class="onoff-row">
+              <div>
+                <div class="onoff-row__name">Dereck Lively II</div>
+                <div class="onoff-row__mins">23 MIN on · 17 MIN off</div>
+              </div>
+              <div class="onoff-row__bar">
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--on" style="width: 64%;"></div>
+                </div>
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--off" style="width: 41%;"></div>
+                </div>
+                <div class="onoff-row__delta plus">Net swing +9.4</div>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <div class="onoff-team">
+          <div class="onoff-team__head">
+            <span>Wizards</span>
+            <span class="onoff-team__head-meta">Net −5 game</span>
+          </div>
+          <ul class="onoff-list">
+            <li class="onoff-row">
+              <div>
+                <div class="onoff-row__name">Tre Johnson</div>
+                <div class="onoff-row__mins">30 MIN on · 10 MIN off</div>
+              </div>
+              <div class="onoff-row__bar">
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--on" style="width: 38%;"></div>
+                </div>
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--off" style="width: 22%;"></div>
+                </div>
+                <div class="onoff-row__delta minus">Net swing −12.4</div>
+              </div>
+            </li>
+            <li class="onoff-row">
+              <div>
+                <div class="onoff-row__name">Alex Sarr</div>
+                <div class="onoff-row__mins">24 MIN on · 16 MIN off</div>
+              </div>
+              <div class="onoff-row__bar">
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--on" style="width: 52%;"></div>
+                </div>
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--off" style="width: 28%;"></div>
+                </div>
+                <div class="onoff-row__delta plus">Net swing +6.2</div>
+              </div>
+            </li>
+            <li class="onoff-row">
+              <div>
+                <div class="onoff-row__name">Justin Champagnie</div>
+                <div class="onoff-row__mins">17 MIN on · 23 MIN off</div>
+              </div>
+              <div class="onoff-row__bar">
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--on" style="width: 22%;"></div>
+                </div>
+                <div class="onoff-bar-track">
+                  <div class="onoff-bar-fill onoff-bar-fill--off" style="width: 46%;"></div>
+                </div>
+                <div class="onoff-row__delta minus">Net swing −16.8</div>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         SHOT CHART
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Shot Chart</div>
+          <div class="section-header__meta">Zone efficiency · SL average baseline</div>
+        </div>
+      </div>
+
+      <div class="shot-toggle">
+        <span class="shot-toggle__label">View:</span>
+        <button class="shot-toggle__btn shot-toggle__btn--active">By team</button>
+        <button class="shot-toggle__btn">By player</button>
+        <span class="shot-toggle__label" style="margin-left: 1rem;">Player:</span>
+        <button class="shot-toggle__btn">Flagg</button>
+        <button class="shot-toggle__btn">Johnson</button>
+        <button class="shot-toggle__btn">All</button>
+      </div>
+
+      <div class="shot-chart-pair">
+
+        <!-- DAL shot chart -->
+        <div class="shot-court">
+          <div class="shot-court__title">Mavericks · <strong>92 PTS on 74 FGA</strong></div>
+          <!-- SVG half-court (illustrative) -->
+          <svg class="shot-court__svg" viewBox="0 0 360 280" role="img" aria-label="Mavericks shot chart">
+            <!-- Court markings -->
+            <rect x="2" y="2" width="356" height="276" fill="#fafbfc" stroke="#cbd5e1" stroke-width="1.5" rx="4"/>
+            <!-- 3pt arc -->
+            <path d="M 30 2 L 30 100 A 150 150 0 0 0 330 100 L 330 2" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+            <!-- Free throw lane -->
+            <rect x="130" y="2" width="100" height="140" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+            <!-- Free throw circle -->
+            <circle cx="180" cy="142" r="40" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <!-- Basket -->
+            <line x1="160" y1="20" x2="200" y2="20" stroke="#475569" stroke-width="3"/>
+            <circle cx="180" cy="27" r="6" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+
+            <!-- Shots — green = made, slate = missed.  Size = volume cluster -->
+            <!-- At rim cluster (hot) -->
+            <circle cx="180" cy="32" r="9" fill="#10b981" opacity="0.85"/>
+            <circle cx="170" cy="35" r="7" fill="#10b981" opacity="0.8"/>
+            <circle cx="195" cy="38" r="6" fill="#10b981" opacity="0.8"/>
+            <circle cx="185" cy="40" r="5" fill="#94a3b8" opacity="0.55"/>
+            <!-- Paint -->
+            <circle cx="160" cy="65" r="5" fill="#10b981" opacity="0.75"/>
+            <circle cx="200" cy="70" r="5" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="175" cy="85" r="4" fill="#94a3b8" opacity="0.55"/>
+            <!-- Mid range -->
+            <circle cx="120" cy="100" r="4" fill="#10b981" opacity="0.75"/>
+            <circle cx="240" cy="105" r="4" fill="#94a3b8" opacity="0.55"/>
+            <!-- Corner 3 -->
+            <circle cx="40" cy="60" r="6" fill="#10b981" opacity="0.85"/>
+            <circle cx="320" cy="65" r="5" fill="#94a3b8" opacity="0.55"/>
+            <!-- Wing 3 -->
+            <circle cx="65" cy="130" r="6" fill="#10b981" opacity="0.8"/>
+            <circle cx="295" cy="135" r="5" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="80" cy="160" r="4" fill="#94a3b8" opacity="0.55"/>
+            <!-- Top of key -->
+            <circle cx="180" cy="200" r="7" fill="#10b981" opacity="0.85"/>
+            <circle cx="160" cy="220" r="5" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="210" cy="225" r="4" fill="#94a3b8" opacity="0.55"/>
+          </svg>
+          <div class="shot-court__legend">
+            <span class="shot-court__legend-item"><span class="shot-court__legend-dot" style="background: #10b981;"></span>Made</span>
+            <span class="shot-court__legend-item"><span class="shot-court__legend-dot" style="background: #94a3b8;"></span>Missed</span>
+            <span class="shot-court__legend-item">Size = volume cluster</span>
+          </div>
+          <div class="shot-court__zones">
+            <div class="shot-zone">
+              <div class="shot-zone__label">At rim</div>
+              <div class="shot-zone__pct shot-zone__pct--hot">71%</div>
+            </div>
+            <div class="shot-zone">
+              <div class="shot-zone__label">Mid</div>
+              <div class="shot-zone__pct">38%</div>
+            </div>
+            <div class="shot-zone">
+              <div class="shot-zone__label">3PT</div>
+              <div class="shot-zone__pct">32%</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WAS shot chart -->
+        <div class="shot-court">
+          <div class="shot-court__title">Wizards · <strong>87 PTS on 78 FGA</strong></div>
+          <svg class="shot-court__svg" viewBox="0 0 360 280" role="img" aria-label="Wizards shot chart">
+            <rect x="2" y="2" width="356" height="276" fill="#fafbfc" stroke="#cbd5e1" stroke-width="1.5" rx="4"/>
+            <path d="M 30 2 L 30 100 A 150 150 0 0 0 330 100 L 330 2" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+            <rect x="130" y="2" width="100" height="140" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+            <circle cx="180" cy="142" r="40" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <line x1="160" y1="20" x2="200" y2="20" stroke="#475569" stroke-width="3"/>
+            <circle cx="180" cy="27" r="6" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+
+            <!-- WAS: lower at-rim conversion, lots of 3pt volume (11/34) -->
+            <circle cx="180" cy="32" r="7" fill="#10b981" opacity="0.8"/>
+            <circle cx="170" cy="38" r="6" fill="#94a3b8" opacity="0.6"/>
+            <circle cx="195" cy="42" r="5" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="155" cy="55" r="4" fill="#94a3b8" opacity="0.55"/>
+            <!-- Mid -->
+            <circle cx="120" cy="90" r="4" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="225" cy="95" r="4" fill="#94a3b8" opacity="0.55"/>
+            <!-- 3pt — high volume, mixed -->
+            <circle cx="40" cy="55" r="6" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="320" cy="60" r="6" fill="#10b981" opacity="0.8"/>
+            <circle cx="60" cy="120" r="7" fill="#94a3b8" opacity="0.65"/>
+            <circle cx="300" cy="130" r="6" fill="#94a3b8" opacity="0.6"/>
+            <circle cx="85" cy="155" r="5" fill="#10b981" opacity="0.75"/>
+            <circle cx="275" cy="160" r="5" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="180" cy="205" r="8" fill="#10b981" opacity="0.85"/>
+            <circle cx="155" cy="220" r="5" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="215" cy="225" r="6" fill="#94a3b8" opacity="0.6"/>
+            <circle cx="140" cy="235" r="4" fill="#10b981" opacity="0.7"/>
+          </svg>
+          <div class="shot-court__legend">
+            <span class="shot-court__legend-item"><span class="shot-court__legend-dot" style="background: #10b981;"></span>Made</span>
+            <span class="shot-court__legend-item"><span class="shot-court__legend-dot" style="background: #94a3b8;"></span>Missed</span>
+            <span class="shot-court__legend-item">Size = volume cluster</span>
+          </div>
+          <div class="shot-court__zones">
+            <div class="shot-zone">
+              <div class="shot-zone__label">At rim</div>
+              <div class="shot-zone__pct shot-zone__pct--cold">54%</div>
+            </div>
+            <div class="shot-zone">
+              <div class="shot-zone__label">Mid</div>
+              <div class="shot-zone__pct">36%</div>
+            </div>
+            <div class="shot-zone">
+              <div class="shot-zone__label">3PT</div>
+              <div class="shot-zone__pct">32%</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="margin-top: 0.75rem; padding: 0.75rem 1rem; background: rgba(6, 182, 212, 0.06); border: 1px solid rgba(6, 182, 212, 0.25); border-radius: 0.5rem; font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-700);">
+        <strong>Pattern:</strong> Both teams shot identical 32% from 3, but DAL converted 17 percentage points better at the rim (71% vs. 54%). The Mavericks' rim pressure — driven by Flagg's 9 finishes and Nembhard's 4 — was the structural edge in a game otherwise decided at the margins.
+      </div>
+    </section>
+
+    <div class="updated-strip">
+      <span class="updated-strip__dot" aria-hidden="true"></span>
+      Daily refresh · Last update: Jul 12, 2026 · 10:14 PT
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">Explorer</a></li>
+            <li><a href="#">All-Summer-League</a></li>
+            <li><a href="#">2026 Draft Class</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

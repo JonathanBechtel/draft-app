@@ -1,0 +1,1784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NBA Summer League — DraftGuru</title>
+  <meta name="description" content="Every NBA Summer League game, box score, and leaderboard from 2002 to today.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS (same palette as draftguru_stats_hub.html)
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .heading-font { font-family: var(--font-heading); letter-spacing: 0.02em; }
+    .mono-font { font-family: var(--font-mono); }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 4rem; }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    .section-header__title {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+      padding-left: 0.625rem;
+      border-left: 4px solid var(--color-accent-amber);
+    }
+
+    .section-header__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .section-header__cta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      color: #b45309;
+      padding-bottom: 1px;
+      border-bottom: 1px dotted rgba(180, 83, 9, 0.4);
+    }
+
+    .section-header__cta:hover { border-bottom-style: solid; }
+
+    /* ============================================================================
+       NAVBAR (shared)
+       ========================================================================= */
+    .navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .navbar-brand h1 {
+      font-size: 1.875rem;
+      color: var(--color-white);
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      padding: 0.25rem 0;
+      border-bottom: 2px solid transparent;
+      transition: all var(--transition-speed);
+    }
+
+    .navbar-link:hover,
+    .navbar-link.active {
+      color: var(--color-white);
+      border-bottom-color: var(--color-accent-amber);
+    }
+
+    .search-input {
+      width: 240px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd;
+      color: var(--color-slate-900);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      outline: none;
+    }
+
+    /* ============================================================================
+       BREADCRUMBS
+       ========================================================================= */
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    /* ============================================================================
+       SL HERO (in-season banner)
+       ========================================================================= */
+    .sl-hero {
+      padding: 1rem 0 2.5rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 2rem;
+      align-items: end;
+    }
+
+    .sl-hero__eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+
+    .sl-hero__eyebrow::before {
+      content: '';
+      width: 12px;
+      height: 2px;
+      background: var(--color-accent-amber);
+    }
+
+    .sl-hero__status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      background: rgba(245, 158, 11, 0.12);
+      color: #b45309;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      margin-left: 0.5rem;
+    }
+
+    .sl-hero__status-dot {
+      width: 0.4rem;
+      height: 0.4rem;
+      border-radius: 9999px;
+      background: var(--color-accent-amber);
+    }
+
+    .sl-hero h2 {
+      font-family: var(--font-heading);
+      font-size: 2.5rem;
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+      color: var(--color-slate-900);
+    }
+
+    .sl-hero__tagline {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.5rem;
+    }
+
+    .sl-hero__kpi {
+      display: flex;
+      gap: 1.5rem;
+    }
+
+    .sl-hero__kpi-cell {
+      text-align: right;
+    }
+
+    .sl-hero__kpi-label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .sl-hero__kpi-value {
+      font-family: var(--font-heading);
+      font-size: 2rem;
+      line-height: 1;
+      margin-top: 0.25rem;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .sl-hero__kpi-cell--accent .sl-hero__kpi-value { color: #b45309; }
+
+    /* ============================================================================
+       YEAR SCOREBOARD STRIP (the shared component)
+       ========================================================================= */
+    .year-strip-wrapper {
+      position: sticky;
+      top: 68px;
+      z-index: 900;
+      background: var(--color-white);
+      border-top: 1px solid var(--color-slate-200);
+      border-bottom: 1px solid var(--color-slate-200);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      margin-bottom: 2rem;
+    }
+
+    .year-strip {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      overflow-x: auto;
+      scroll-behavior: smooth;
+    }
+
+    .year-strip::-webkit-scrollbar { height: 4px; }
+    .year-strip::-webkit-scrollbar-thumb { background: var(--color-slate-300); border-radius: 4px; }
+
+    .year-strip__label {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      white-space: nowrap;
+      padding-right: 0.5rem;
+      border-right: 1px solid var(--color-slate-200);
+    }
+
+    .year-tile {
+      flex-shrink: 0;
+      min-width: 84px;
+      padding: 0.5rem 0.75rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      position: relative;
+    }
+
+    .year-tile:hover {
+      border-color: var(--color-slate-400);
+      transform: translateY(-1px);
+    }
+
+    .year-tile__year {
+      font-family: var(--font-heading);
+      font-size: 1rem;
+      color: var(--color-slate-900);
+      line-height: 1.1;
+    }
+
+    .year-tile__quality {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      margin-top: 0.25rem;
+    }
+
+    .year-tile__quality::before {
+      content: '';
+      width: 0.375rem;
+      height: 0.375rem;
+      border-radius: 9999px;
+      background: currentColor;
+    }
+
+    .year-tile__quality--full { color: var(--color-accent-emerald); }
+    .year-tile__quality--box  { color: var(--color-accent-amber); }
+    .year-tile__quality--partial { color: var(--color-slate-400); }
+
+    .year-tile--active {
+      background: linear-gradient(135deg, #fde68a, #fef3c7);
+      border: 1px solid var(--color-accent-amber);
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+    }
+    .year-tile--active .year-tile__year { color: #92400e; }
+
+    .year-tile--current {
+      border: 1px solid var(--color-accent-amber);
+    }
+    .year-tile--current::after {
+      content: 'NOW';
+      position: absolute;
+      top: -7px;
+      right: -7px;
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      background: var(--color-accent-amber);
+      color: var(--color-white);
+      padding: 0.0625rem 0.25rem;
+      border-radius: 0.1875rem;
+    }
+
+    /* ============================================================================
+       VENUE PILL ROW
+       ========================================================================= */
+    .venue-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.625rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .venue-pill {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 0.875rem;
+      border-radius: 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-white);
+      color: var(--color-slate-700);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all var(--transition-speed);
+    }
+
+    .venue-pill:hover { border-color: var(--color-slate-400); }
+
+    .venue-pill__dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 9999px;
+    }
+
+    .venue-pill__count {
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      font-weight: 400;
+    }
+
+    /* ============================================================================
+       RESULTS STRIP (today / yesterday)
+       ========================================================================= */
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 0.875rem;
+    }
+
+    .result-card {
+      background: var(--color-white);
+      border-radius: 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      padding: 0.875rem 1rem;
+      transition: all var(--transition-speed);
+      cursor: pointer;
+    }
+
+    .result-card:hover {
+      border-color: var(--color-slate-400);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+
+    .result-card__top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.625rem;
+    }
+
+    .result-card__date {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .result-card__venue {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      background: rgba(245, 158, 11, 0.1);
+      color: #b45309;
+    }
+
+    .result-card__teams {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .result-card__team {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0;
+    }
+
+    .result-card__team-name {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-800);
+    }
+
+    .result-card__team-name--lost { color: var(--color-slate-500); font-weight: 500; }
+
+    .result-card__score {
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .result-card__score--lost { color: var(--color-slate-500); font-weight: 500; }
+
+    .result-card__hl {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-600);
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px dashed var(--color-slate-200);
+    }
+
+    .result-card__hl strong {
+      color: var(--color-slate-900);
+      font-weight: 600;
+    }
+
+    /* ============================================================================
+       LEADERBOARD PREVIEW (4-up mini cards)
+       ========================================================================= */
+    .leader-preview-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+    }
+
+    .leader-mini {
+      background: var(--color-white);
+      border-radius: 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      overflow: hidden;
+      transition: all var(--transition-speed);
+      cursor: pointer;
+    }
+
+    .leader-mini:hover {
+      border-color: var(--color-accent-amber);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+    }
+
+    .leader-mini__head {
+      padding: 0.625rem 0.875rem;
+      background: linear-gradient(to right, #fef3c7, #fde68a);
+      border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .leader-mini__stat {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #92400e;
+    }
+
+    .leader-mini__mode {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: #b45309;
+      opacity: 0.7;
+    }
+
+    .leader-mini__body {
+      padding: 0.625rem 0;
+    }
+
+    .leader-mini__row {
+      display: grid;
+      grid-template-columns: 1.25rem 1fr auto;
+      gap: 0.5rem;
+      padding: 0.4rem 0.875rem;
+      align-items: center;
+      transition: background var(--transition-speed);
+    }
+
+    .leader-mini__row:hover { background: var(--color-slate-50); }
+
+    .leader-mini__rank {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-400);
+      font-weight: 600;
+      text-align: center;
+    }
+
+    .leader-mini__rank--medal-gold   { color: #d97706; }
+    .leader-mini__rank--medal-silver { color: var(--color-slate-500); }
+    .leader-mini__rank--medal-bronze { color: #a16207; }
+    .leader-mini__rank::after {
+      content: '';
+    }
+
+    .leader-mini__name {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-slate-800);
+      line-height: 1.2;
+    }
+
+    .leader-mini__team {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .leader-mini__value {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .leader-mini__sample {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-400);
+      padding: 0.5rem 0.875rem 0.625rem;
+      text-align: right;
+      border-top: 1px solid var(--color-slate-100);
+    }
+
+    /* ============================================================================
+       DRAFT CLASS PREVIEW
+       ========================================================================= */
+    .draft-class-preview {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+      border: 1px solid var(--color-slate-200);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+    }
+
+    .draft-class-preview__head {
+      padding: 1rem 1.25rem;
+      background: linear-gradient(135deg, #1e293b, #334155);
+      color: var(--color-white);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .draft-class-preview__head::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent 0, transparent 3px,
+        rgba(255,255,255,0.025) 3px, rgba(255,255,255,0.025) 4px
+      );
+      pointer-events: none;
+    }
+
+    .draft-class-preview__title {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      letter-spacing: 0.02em;
+      z-index: 1;
+    }
+
+    .draft-class-preview__sub {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.6);
+      margin-top: 0.125rem;
+      z-index: 1;
+    }
+
+    .draft-class-preview__cta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #fbbf24;
+      padding: 0.4rem 0.75rem;
+      border: 1px solid rgba(251, 191, 36, 0.55);
+      border-radius: 0.375rem;
+      z-index: 1;
+    }
+
+    .draft-class-preview__cta:hover { background: rgba(251, 191, 36, 0.12); color: var(--color-white); }
+
+    .draft-class-preview table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .draft-class-preview th {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.625rem 1rem;
+      text-align: left;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .draft-class-preview th.num,
+    .draft-class-preview td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    .draft-class-preview td {
+      font-size: 0.8125rem;
+      padding: 0.625rem 1rem;
+      color: var(--color-slate-800);
+      border-bottom: 1px solid var(--color-slate-100);
+    }
+
+    .draft-class-preview tr:last-child td { border-bottom: none; }
+    .draft-class-preview tr:hover td { background: var(--color-slate-50); }
+
+    .pick-pill {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      padding: 0.125rem 0.5rem;
+      border-radius: 0.25rem;
+      background: var(--color-slate-100);
+      color: var(--color-slate-700);
+      display: inline-block;
+      min-width: 2.25rem;
+      text-align: center;
+    }
+
+    .pick-pill--lotto {
+      background: rgba(99, 102, 241, 0.12);
+      color: #4338ca;
+    }
+
+    .player-link {
+      font-weight: 600;
+      color: var(--color-slate-900);
+    }
+
+    .player-link:hover { color: var(--color-accent-amber); }
+
+    /* Δ chip (green = beat, red = miss). Per shared-components rule:
+       arrow chip, NOT cell-background fill. */
+    .delta-chip {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .delta-chip--up {
+      background: rgba(16, 185, 129, 0.14);
+      color: #047857;
+    }
+
+    .delta-chip--down {
+      background: rgba(244, 63, 94, 0.14);
+      color: #be123c;
+    }
+
+    .delta-chip--flat {
+      background: var(--color-slate-100);
+      color: var(--color-slate-600);
+    }
+
+    /* Heat-shaded cell (top-quartile / bottom-quartile only) */
+    .heat-top { background: rgba(16, 185, 129, 0.08); }
+    .heat-bot { background: rgba(244, 63, 94, 0.08); }
+
+    /* ============================================================================
+       METHODOLOGY-PLACEHOLDER BANNER + INLINE INDICATORS
+       Mockup-only annotation flagging values whose formula is not yet designed.
+       ========================================================================= */
+    .methodology-banner {
+      border: 1px solid rgba(217, 70, 239, 0.4);
+      background:
+        linear-gradient(to right, rgba(217, 70, 239, 0.06), rgba(217, 70, 239, 0.02)),
+        repeating-linear-gradient(
+          135deg,
+          transparent, transparent 8px,
+          rgba(217, 70, 239, 0.04) 8px, rgba(217, 70, 239, 0.04) 9px
+        );
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      margin: 1rem 0 1.5rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.875rem;
+      align-items: start;
+    }
+    .methodology-banner__chip {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      background: rgba(217, 70, 239, 0.15);
+      color: #a21caf;
+      border: 1px solid rgba(217, 70, 239, 0.4);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      white-space: nowrap;
+      margin-top: 0.0625rem;
+    }
+    .methodology-banner__body {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      line-height: 1.5;
+    }
+    .methodology-banner__body strong { color: #86198f; font-weight: 600; }
+
+    .tbd-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      margin-left: 0.375rem;
+      vertical-align: middle;
+      cursor: help;
+    }
+
+    /* ============================================================================
+       POWER TOOLS (3 cards: Explorer / Leaders / All-SL)
+       ========================================================================= */
+    .power-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+
+    .power-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      padding: 1.25rem;
+      border: 1px solid var(--color-slate-200);
+      transition: all var(--transition-speed);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .power-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+      border-color: var(--color-accent-amber);
+    }
+
+    .power-card__icon {
+      font-size: 1.625rem;
+      line-height: 1;
+      margin-bottom: 0.75rem;
+    }
+
+    .power-card__title {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+      margin-bottom: 0.25rem;
+    }
+
+    .power-card__desc {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+      line-height: 1.5;
+    }
+
+    .power-card__arrow {
+      position: absolute;
+      bottom: 1rem;
+      right: 1rem;
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      color: var(--color-accent-amber);
+      transition: transform var(--transition-speed);
+    }
+
+    .power-card:hover .power-card__arrow {
+      transform: translateX(4px);
+    }
+
+    /* ============================================================================
+       ARCHIVE GRID
+       ========================================================================= */
+    .archive-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 0.625rem;
+    }
+
+    .archive-tile {
+      background: var(--color-white);
+      border-radius: 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      padding: 0.75rem 0.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      position: relative;
+    }
+
+    .archive-tile:hover {
+      border-color: var(--color-accent-amber);
+      transform: translateY(-1px);
+    }
+
+    .archive-tile__year {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      line-height: 1;
+      color: var(--color-slate-900);
+    }
+
+    .archive-tile__games {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-top: 0.375rem;
+    }
+
+    .archive-tile__quality {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 0.375rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .archive-tile__quality::before {
+      content: '';
+      width: 0.375rem;
+      height: 0.375rem;
+      border-radius: 9999px;
+      background: currentColor;
+    }
+
+    .archive-tile__quality--full { color: var(--color-accent-emerald); }
+    .archive-tile__quality--box  { color: var(--color-accent-amber); }
+    .archive-tile__quality--partial { color: var(--color-slate-400); }
+
+    /* ============================================================================
+       FOOTER / UPDATED STRIP (shared)
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 2rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+
+    .updated-strip__dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 980px) {
+      .sl-hero { grid-template-columns: 1fr; }
+      .sl-hero__kpi { justify-content: flex-start; }
+      .sl-hero__kpi-cell { text-align: left; }
+      .leader-preview-grid { grid-template-columns: repeat(2, 1fr); }
+      .power-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .leader-preview-grid { grid-template-columns: 1fr; }
+      .navbar-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================================
+       NAVBAR
+       ========================================================================= -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link active" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div><input class="search-input" type="search" placeholder="Search players…"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="/stats">Stats</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">Summer League</span>
+    </div>
+
+    <!-- ============================================================================
+         HERO
+         ========================================================================= -->
+    <header class="sl-hero">
+      <div>
+        <div class="sl-hero__eyebrow">
+          DraftGuru Stats
+          <span class="sl-hero__status">
+            <span class="sl-hero__status-dot"></span>
+            In Season
+          </span>
+        </div>
+        <h2>Summer League</h2>
+        <p class="sl-hero__tagline">Every game, every box score, every rookie line — Vegas, Salt Lake, California Classic, since 2002.</p>
+      </div>
+      <div class="sl-hero__kpi">
+        <div class="sl-hero__kpi-cell">
+          <div class="sl-hero__kpi-label">2026 Games</div>
+          <div class="sl-hero__kpi-value">38</div>
+        </div>
+        <div class="sl-hero__kpi-cell">
+          <div class="sl-hero__kpi-label">Players Tracked</div>
+          <div class="sl-hero__kpi-value">412</div>
+        </div>
+        <div class="sl-hero__kpi-cell sl-hero__kpi-cell--accent">
+          <div class="sl-hero__kpi-label">Top Scorer</div>
+          <div class="sl-hero__kpi-value">26.4</div>
+        </div>
+      </div>
+    </header>
+  </main>
+
+  <!-- ============================================================================
+       YEAR SCOREBOARD STRIP (sticky)  — shared component
+       ========================================================================= -->
+  <div class="year-strip-wrapper" role="region" aria-label="Season picker">
+    <div class="year-strip">
+      <span class="year-strip__label">Season</span>
+      <a class="year-tile year-tile--active year-tile--current" href="#">
+        <div class="year-tile__year">2026</div>
+        <div class="year-tile__quality year-tile__quality--full">Full</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2025</div>
+        <div class="year-tile__quality year-tile__quality--full">Full</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2024</div>
+        <div class="year-tile__quality year-tile__quality--full">Full</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2023</div>
+        <div class="year-tile__quality year-tile__quality--full">Full</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2022</div>
+        <div class="year-tile__quality year-tile__quality--full">Full</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2021</div>
+        <div class="year-tile__quality year-tile__quality--full">Full</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2019</div>
+        <div class="year-tile__quality year-tile__quality--full">Full</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2018</div>
+        <div class="year-tile__quality year-tile__quality--full">Full</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2017</div>
+        <div class="year-tile__quality year-tile__quality--box">Box only</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2016</div>
+        <div class="year-tile__quality year-tile__quality--box">Box only</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2015</div>
+        <div class="year-tile__quality year-tile__quality--box">Box only</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2010</div>
+        <div class="year-tile__quality year-tile__quality--partial">Partial</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2005</div>
+        <div class="year-tile__quality year-tile__quality--partial">Partial</div>
+      </a>
+    </div>
+  </div>
+
+  <main class="container">
+
+    <!-- Venue pill row -->
+    <div class="venue-row" aria-label="Venues this season">
+      <a class="venue-pill" href="#">
+        <span class="venue-pill__dot" style="background: var(--color-accent-amber);"></span>
+        Vegas
+        <span class="venue-pill__count">76 games · ongoing</span>
+      </a>
+      <a class="venue-pill" href="#">
+        <span class="venue-pill__dot" style="background: var(--color-accent-cyan);"></span>
+        Salt Lake
+        <span class="venue-pill__count">6 games · final</span>
+      </a>
+      <a class="venue-pill" href="#">
+        <span class="venue-pill__dot" style="background: var(--color-accent-fuchsia);"></span>
+        California Classic
+        <span class="venue-pill__count">10 games · final</span>
+      </a>
+    </div>
+
+    <!-- Methodology placeholder banner — removed once formulas are designed.
+         See docs/plans/summer-league-stats-pages.md → "Methodology Placeholders". -->
+    <div class="methodology-banner" role="note">
+      <span class="methodology-banner__chip">Methodology · TBD</span>
+      <div class="methodology-banner__body">
+        Values flagged <span class="tbd-indicator">TBD</span> on this page are <strong>methodology placeholders</strong> — visual treatment is settled, formulas are not. Affects the Draft Class table's <strong>Cohort %ile</strong> column and <strong>Δ vs. Consensus</strong> chips.
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         LAST NIGHT'S TAKEAWAYS
+         Each card carries the result (utility) but the lead is the analytical take.
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Last Night's Takeaways</div>
+          <div class="section-header__meta">Jul 11, 2026 · what the box scores showed</div>
+        </div>
+        <a class="section-header__cta" href="#">Full schedule →</a>
+      </div>
+
+      <div class="results-grid">
+
+        <div class="result-card">
+          <div class="result-card__top">
+            <span class="result-card__date">Jul 11 · DAL 92 – WAS 87 · Vegas</span>
+          </div>
+          <div class="result-card__hl" style="border-top: none; padding-top: 0;">
+            <strong>Flagg's TS% matches Banchero's 2022 SL peak.</strong> 64 TS% over 5 GP / 147 MIN ranks 4th among #1 picks at this stage since 2002.
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-card__top">
+            <span class="result-card__date">Jul 11 · SAS 104 – CHA 99 · Vegas</span>
+          </div>
+          <div class="result-card__hl" style="border-top: none; padding-top: 0;">
+            <strong>Harper's first 10-AST game.</strong> AST% (38) is class-best — only top-2 pick to clear 35 since Cunningham '21. USG% climbed +8 pts off college rate.
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-card__top">
+            <span class="result-card__date">Jul 11 · PHI 88 – HOU 82 · Vegas</span>
+          </div>
+          <div class="result-card__hl" style="border-top: none; padding-top: 0;">
+            <strong>Edgecombe leading the lotto in stocks rate.</strong> 3.6 stocks/36 across 5 GP — paired with a +12.1 on/off swing, the strongest defensive signal in the front of class.
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-card__top">
+            <span class="result-card__date">Jul 11 · UTA 95 – MIA 93 · Vegas</span>
+          </div>
+          <div class="result-card__hl" style="border-top: none; padding-top: 0;">
+            <strong>Bailey biggest lotto over-performer.</strong> Drafted #4, currently composite #1 of his class <span class="tbd-indicator">TBD</span> — 25.0 PPG on a 56 TS%, with the Jazz the only team 3-0 in SLC.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         LEADER PREVIEWS
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">2026 Season Leaders</div>
+          <div class="section-header__meta">Per Game · min. 60 MIN + 2 GP</div>
+        </div>
+        <a class="section-header__cta" href="#">See all leaders →</a>
+      </div>
+
+      <div class="leader-preview-grid">
+
+        <!-- PTS -->
+        <div class="leader-mini">
+          <div class="leader-mini__head">
+            <span class="leader-mini__stat">Points</span>
+            <span class="leader-mini__mode">Per Game</span>
+          </div>
+          <div class="leader-mini__body">
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-gold">1</span>
+              <div>
+                <div class="leader-mini__name">Cooper Flagg</div>
+                <div class="leader-mini__team">DAL · 5 GP</div>
+              </div>
+              <span class="leader-mini__value">26.4</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-silver">2</span>
+              <div>
+                <div class="leader-mini__name">Ace Bailey</div>
+                <div class="leader-mini__team">UTA · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">25.0</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-bronze">3</span>
+              <div>
+                <div class="leader-mini__name">Dylan Harper</div>
+                <div class="leader-mini__team">SAS · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">22.8</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank">4</span>
+              <div>
+                <div class="leader-mini__name">Tre Johnson</div>
+                <div class="leader-mini__team">WAS · 5 GP</div>
+              </div>
+              <span class="leader-mini__value">21.0</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank">5</span>
+              <div>
+                <div class="leader-mini__name">Kasparas Jakucionis</div>
+                <div class="leader-mini__team">MIA · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">20.5</span>
+            </div>
+          </div>
+          <div class="leader-mini__sample">412 qualifiers</div>
+        </div>
+
+        <!-- REB -->
+        <div class="leader-mini">
+          <div class="leader-mini__head">
+            <span class="leader-mini__stat">Rebounds</span>
+            <span class="leader-mini__mode">Per Game</span>
+          </div>
+          <div class="leader-mini__body">
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-gold">1</span>
+              <div>
+                <div class="leader-mini__name">Maxime Raynaud</div>
+                <div class="leader-mini__team">SAC · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">12.5</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-silver">2</span>
+              <div>
+                <div class="leader-mini__name">Adem Bona</div>
+                <div class="leader-mini__team">PHI · 5 GP</div>
+              </div>
+              <span class="leader-mini__value">11.0</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-bronze">3</span>
+              <div>
+                <div class="leader-mini__name">Cooper Flagg</div>
+                <div class="leader-mini__team">DAL · 5 GP</div>
+              </div>
+              <span class="leader-mini__value">10.2</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank">4</span>
+              <div>
+                <div class="leader-mini__name">Khaman Maluach</div>
+                <div class="leader-mini__team">PHX · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">9.8</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank">5</span>
+              <div>
+                <div class="leader-mini__name">Derik Queen</div>
+                <div class="leader-mini__team">NOP · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">9.5</span>
+            </div>
+          </div>
+          <div class="leader-mini__sample">412 qualifiers</div>
+        </div>
+
+        <!-- AST -->
+        <div class="leader-mini">
+          <div class="leader-mini__head">
+            <span class="leader-mini__stat">Assists</span>
+            <span class="leader-mini__mode">Per Game</span>
+          </div>
+          <div class="leader-mini__body">
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-gold">1</span>
+              <div>
+                <div class="leader-mini__name">Dylan Harper</div>
+                <div class="leader-mini__team">SAS · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">8.0</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-silver">2</span>
+              <div>
+                <div class="leader-mini__name">Egor Demin</div>
+                <div class="leader-mini__team">BKN · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">7.5</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-bronze">3</span>
+              <div>
+                <div class="leader-mini__name">Jeremiah Fears</div>
+                <div class="leader-mini__team">NOP · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">6.8</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank">4</span>
+              <div>
+                <div class="leader-mini__name">Boogie Fland</div>
+                <div class="leader-mini__team">CHA · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">6.5</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank">5</span>
+              <div>
+                <div class="leader-mini__name">Kasparas Jakucionis</div>
+                <div class="leader-mini__team">MIA · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">6.2</span>
+            </div>
+          </div>
+          <div class="leader-mini__sample">412 qualifiers</div>
+        </div>
+
+        <!-- Stocks (STL+BLK) -->
+        <div class="leader-mini">
+          <div class="leader-mini__head">
+            <span class="leader-mini__stat">Stocks (STL+BLK)</span>
+            <span class="leader-mini__mode">Per Game</span>
+          </div>
+          <div class="leader-mini__body">
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-gold">1</span>
+              <div>
+                <div class="leader-mini__name">Cooper Flagg</div>
+                <div class="leader-mini__team">DAL · 5 GP</div>
+              </div>
+              <span class="leader-mini__value">4.4</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-silver">2</span>
+              <div>
+                <div class="leader-mini__name">Khaman Maluach</div>
+                <div class="leader-mini__team">PHX · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">3.8</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank leader-mini__rank--medal-bronze">3</span>
+              <div>
+                <div class="leader-mini__name">VJ Edgecombe</div>
+                <div class="leader-mini__team">PHI · 5 GP</div>
+              </div>
+              <span class="leader-mini__value">3.6</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank">4</span>
+              <div>
+                <div class="leader-mini__name">Derik Queen</div>
+                <div class="leader-mini__team">NOP · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">3.2</span>
+            </div>
+            <div class="leader-mini__row">
+              <span class="leader-mini__rank">5</span>
+              <div>
+                <div class="leader-mini__name">Ace Bailey</div>
+                <div class="leader-mini__team">UTA · 4 GP</div>
+              </div>
+              <span class="leader-mini__value">3.0</span>
+            </div>
+          </div>
+          <div class="leader-mini__sample">412 qualifiers</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         DRAFT CLASS PREVIEW
+         ========================================================================= -->
+    <section class="section">
+      <div class="draft-class-preview">
+        <div class="draft-class-preview__head">
+          <div>
+            <div class="draft-class-preview__title">2026 Draft Class · Summer League</div>
+            <div class="draft-class-preview__sub">How the lottery is performing so far · sorted by pick</div>
+          </div>
+          <a class="draft-class-preview__cta" href="#">Full Draft Class →</a>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Pick</th>
+              <th>Player</th>
+              <th>Team</th>
+              <th class="num">GP</th>
+              <th class="num">PTS</th>
+              <th class="num">REB</th>
+              <th class="num">AST</th>
+              <th class="num">TS%</th>
+              <th class="num">Cohort %ile <span class="tbd-indicator">TBD</span></th>
+              <th>Δ vs. Consensus <span class="tbd-indicator">TBD</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">1</span></td>
+              <td><a class="player-link" href="#">Cooper Flagg</a></td>
+              <td>Mavericks</td>
+              <td class="num">5</td>
+              <td class="num heat-top">26.4</td>
+              <td class="num heat-top">10.2</td>
+              <td class="num">5.4</td>
+              <td class="num heat-top">64.0</td>
+              <td class="num heat-top">99</td>
+              <td><span class="delta-chip delta-chip--up">↑ +0 · holding</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">2</span></td>
+              <td><a class="player-link" href="#">Dylan Harper</a></td>
+              <td>Spurs</td>
+              <td class="num">4</td>
+              <td class="num">22.8</td>
+              <td class="num">4.5</td>
+              <td class="num heat-top">8.0</td>
+              <td class="num">59.2</td>
+              <td class="num heat-top">94</td>
+              <td><span class="delta-chip delta-chip--flat">→ steady</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">3</span></td>
+              <td><a class="player-link" href="#">VJ Edgecombe</a></td>
+              <td>76ers</td>
+              <td class="num">5</td>
+              <td class="num">19.4</td>
+              <td class="num">5.4</td>
+              <td class="num">3.2</td>
+              <td class="num heat-top">62.1</td>
+              <td class="num heat-top">91</td>
+              <td><span class="delta-chip delta-chip--up">↑ +2</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">4</span></td>
+              <td><a class="player-link" href="#">Ace Bailey</a></td>
+              <td>Jazz</td>
+              <td class="num">4</td>
+              <td class="num">25.0</td>
+              <td class="num">6.5</td>
+              <td class="num">2.0</td>
+              <td class="num">56.4</td>
+              <td class="num heat-top">96</td>
+              <td><span class="delta-chip delta-chip--up">↑ +5</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">5</span></td>
+              <td><a class="player-link" href="#">Tre Johnson</a></td>
+              <td>Wizards</td>
+              <td class="num">5</td>
+              <td class="num">21.0</td>
+              <td class="num">3.4</td>
+              <td class="num">2.8</td>
+              <td class="num">52.0</td>
+              <td class="num">78</td>
+              <td><span class="delta-chip delta-chip--flat">→ +1</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">6</span></td>
+              <td><a class="player-link" href="#">Khaman Maluach</a></td>
+              <td>Suns</td>
+              <td class="num">4</td>
+              <td class="num">14.2</td>
+              <td class="num heat-top">9.8</td>
+              <td class="num">1.2</td>
+              <td class="num">61.0</td>
+              <td class="num">73</td>
+              <td><span class="delta-chip delta-chip--up">↑ +3</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill">14</span></td>
+              <td><a class="player-link" href="#">Carter Bryant</a></td>
+              <td>Trail Blazers</td>
+              <td class="num">4</td>
+              <td class="num heat-bot">7.0</td>
+              <td class="num">4.5</td>
+              <td class="num">1.0</td>
+              <td class="num heat-bot">42.1</td>
+              <td class="num heat-bot">28</td>
+              <td><span class="delta-chip delta-chip--down">↓ −9</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         POWER TOOLS
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Dig Deeper</div>
+          <div class="section-header__meta">Power tools for the analytics-minded</div>
+        </div>
+      </div>
+
+      <div class="power-grid">
+        <a class="power-card" href="#">
+          <div class="power-card__icon">🎯</div>
+          <div class="power-card__title">Explorer</div>
+          <div class="power-card__desc">Build any query: filter by year, draft class, position, minutes, and any stat threshold. Share the URL.</div>
+          <span class="power-card__arrow">→</span>
+        </a>
+        <a class="power-card" href="#">
+          <div class="power-card__icon">🏆</div>
+          <div class="power-card__title">Leaders</div>
+          <div class="power-card__desc">Season + career + single-game leaderboards across every stat. Top 50, filterable by class and venue.</div>
+          <span class="power-card__arrow">→</span>
+        </a>
+        <a class="power-card" href="#">
+          <div class="power-card__icon">⭐</div>
+          <div class="power-card__title">All-Summer-League</div>
+          <div class="power-card__desc">First, Second, and Third teams by year. Position-balanced selections from a pure stats composite.</div>
+          <span class="power-card__arrow">→</span>
+        </a>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         ARCHIVE GRID
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Explore the Archive</div>
+          <div class="section-header__meta">2002 – 2026 · 24 Summer Leagues</div>
+        </div>
+        <a class="section-header__cta" href="#">Methodology →</a>
+      </div>
+
+      <div class="archive-grid">
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2026</div>
+          <div class="archive-tile__games">38 of ~120 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--full">Full</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2025</div>
+          <div class="archive-tile__games">112 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--full">Full</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2024</div>
+          <div class="archive-tile__games">108 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--full">Full</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2023</div>
+          <div class="archive-tile__games">102 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--full">Full</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2022</div>
+          <div class="archive-tile__games">96 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--full">Full</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2021</div>
+          <div class="archive-tile__games">86 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--full">Full</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2019</div>
+          <div class="archive-tile__games">94 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--full">Full</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2018</div>
+          <div class="archive-tile__games">92 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--full">Full</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2017</div>
+          <div class="archive-tile__games">88 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--box">Box only</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2016</div>
+          <div class="archive-tile__games">82 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--box">Box only</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2015</div>
+          <div class="archive-tile__games">76 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--box">Box only</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2014</div>
+          <div class="archive-tile__games">62 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--partial">Partial</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2013</div>
+          <div class="archive-tile__games">58 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--partial">Partial</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2010</div>
+          <div class="archive-tile__games">48 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--partial">Partial</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2008</div>
+          <div class="archive-tile__games">42 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--partial">Partial</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2005</div>
+          <div class="archive-tile__games">36 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--partial">Partial</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2003</div>
+          <div class="archive-tile__games">28 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--partial">Partial</div>
+        </a>
+        <a class="archive-tile" href="#">
+          <div class="archive-tile__year">2002</div>
+          <div class="archive-tile__games">24 GP</div>
+          <div class="archive-tile__quality archive-tile__quality--partial">Partial</div>
+        </a>
+      </div>
+
+      <div class="updated-strip">
+        <span class="updated-strip__dot" aria-hidden="true"></span>
+        Daily refresh · Last update: Jul 12, 2026 · 10:14 PT
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================================================================
+       FOOTER
+       ========================================================================= -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">Explorer</a></li>
+            <li><a href="#">All-Summer-League</a></li>
+            <li><a href="#">2026 Draft Class</a></li>
+            <li><a href="#">Model Validation</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

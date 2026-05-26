@@ -1,0 +1,1724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Summer League Share Cards · DraftGuru</title>
+  <meta name="description" content="Spec sheet for the six SVG → PNG share-card variants surfaced by the SL section.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    /* ============================================================================
+       NAVBAR
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--color-accent-amber);
+    }
+
+    /* ============================================================================
+       BREADCRUMBS
+       ========================================================================= */
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    /* ============================================================================
+       PAGE HERO
+       ========================================================================= */
+    .page-hero { padding: 1rem 0 1.5rem; }
+
+    .page-hero__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+    .page-hero__eyebrow::before {
+      content: ''; width: 12px; height: 2px;
+      background: var(--color-accent-amber);
+    }
+
+    .page-hero h2 {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+      color: var(--color-slate-900);
+    }
+
+    .page-hero__tagline {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.5rem;
+      max-width: 42rem;
+    }
+
+    /* ============================================================================
+       GLOBAL SPEC PANEL
+       ========================================================================= */
+    .global-spec {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1rem 1.25rem;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+
+    .spec-cell {
+      border-left: 3px solid var(--color-accent-amber);
+      padding-left: 0.75rem;
+    }
+
+    .spec-cell__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .spec-cell__value {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-900);
+      font-weight: 600;
+      margin-top: 0.25rem;
+    }
+
+    .spec-cell__sub {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-top: 0.125rem;
+    }
+
+    /* ============================================================================
+       CARD SECTION SHELL
+       ========================================================================= */
+    .card-section {
+      margin-bottom: 3.5rem;
+    }
+
+    .card-section__head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1.5rem;
+      align-items: end;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .card-section__title-block { }
+
+    .card-section__index {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-accent-amber);
+      margin-bottom: 0.25rem;
+    }
+
+    .card-section__title {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+    }
+
+    .card-section__desc {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+      margin-top: 0.5rem;
+      max-width: 44rem;
+      line-height: 1.5;
+    }
+
+    .card-section__source {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 0.75rem;
+      background: var(--color-slate-50);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      color: var(--color-slate-600);
+      white-space: nowrap;
+    }
+
+    .card-section__source strong {
+      color: var(--color-slate-900);
+      font-weight: 600;
+    }
+
+    /* ============================================================================
+       PREVIEW WRAPPER + CARD CHROME
+       Cards rendered at half scale (600x315) — production output is 1200x630 PNG.
+       ========================================================================= */
+    .preview-wrapper {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    .preview-frame {
+      position: relative;
+      width: 600px;
+      max-width: 100%;
+      aspect-ratio: 1200 / 630;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+
+    .preview-frame::after {
+      content: 'PNG export · 1200 × 630';
+      position: absolute;
+      bottom: -1.625rem;
+      left: 0;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    /* Cards share a base style */
+    .card {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1e293b, #334155);
+      color: var(--color-white);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 1.5rem 1.75rem;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent 0, transparent 3px,
+        rgba(255,255,255,0.025) 3px, rgba(255,255,255,0.025) 4px
+      );
+      pointer-events: none;
+    }
+
+    /* Pixel corner accents */
+    .card::after {
+      content: '';
+      position: absolute;
+      top: 0.625rem; left: 0.625rem;
+      width: 1rem; height: 1rem;
+      border-top: 3px solid var(--color-accent-amber);
+      border-left: 3px solid var(--color-accent-amber);
+      pointer-events: none;
+    }
+
+    .card__corner-br {
+      position: absolute;
+      bottom: 0.625rem; right: 0.625rem;
+      width: 1rem; height: 1rem;
+      border-bottom: 3px solid var(--color-accent-amber);
+      border-right: 3px solid var(--color-accent-amber);
+      pointer-events: none;
+    }
+
+    .card__head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      z-index: 1;
+    }
+
+    .card__eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #fbbf24;
+      font-weight: 600;
+    }
+
+    .card__eyebrow::before {
+      content: '';
+      width: 12px; height: 2px;
+      background: var(--color-accent-amber);
+    }
+
+    .card__date {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.5);
+    }
+
+    .card__body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      z-index: 1;
+    }
+
+    .card__footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1rem;
+      padding-top: 0.625rem;
+      border-top: 1px solid rgba(255,255,255,0.1);
+      z-index: 1;
+    }
+
+    .card__url {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: rgba(255,255,255,0.5);
+    }
+
+    .card__url strong { color: rgba(255,255,255,0.85); }
+
+    .card__brand {
+      font-family: var(--font-heading);
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+      color: var(--color-white);
+    }
+
+    /* ============================================================================
+       PLAYER CARD specifics
+       ========================================================================= */
+    .player-card-layout {
+      display: grid;
+      grid-template-columns: 90px 1fr auto;
+      gap: 1.25rem;
+      align-items: center;
+    }
+
+    .player-card__photo {
+      width: 90px; height: 110px;
+      background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+      border-radius: 0.5rem;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-heading);
+      font-size: 0.75rem;
+      color: var(--color-white);
+      border: 3px solid var(--color-accent-amber);
+    }
+
+    .player-card__name {
+      font-family: var(--font-heading);
+      font-size: 1.875rem;
+      letter-spacing: 0.02em;
+      line-height: 1;
+    }
+
+    .player-card__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: rgba(255,255,255,0.65);
+      margin-top: 0.375rem;
+    }
+
+    .player-card__line {
+      font-family: var(--font-heading);
+      font-size: 2rem;
+      letter-spacing: 0.02em;
+      margin-top: 0.5rem;
+      color: var(--color-white);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .player-card__rates {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: rgba(255,255,255,0.85);
+    }
+
+    .player-card__rates span strong { color: var(--color-white); font-family: var(--font-heading); }
+
+    .player-card__composite {
+      text-align: center;
+    }
+
+    .player-card__composite-label {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.5);
+    }
+
+    .player-card__composite-value {
+      font-family: var(--font-heading);
+      font-size: 2.5rem;
+      color: #fbbf24;
+      line-height: 1;
+      margin-top: 0.25rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .player-card__hook {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: rgba(255,255,255,0.7);
+      margin-top: 0.625rem;
+      padding: 0.5rem 0.625rem;
+      background: rgba(245, 158, 11, 0.12);
+      border-left: 2px solid var(--color-accent-amber);
+    }
+
+    /* ============================================================================
+       GAME CARD specifics
+       ========================================================================= */
+    .game-card-meta {
+      display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem;
+    }
+
+    .gc-chip {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.2rem 0.4375rem;
+      border-radius: 0.1875rem;
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.85);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    .gc-chip--final { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; border-color: rgba(16,185,129,0.4); }
+    .gc-chip--venue { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245,158,11,0.4); }
+
+    .game-matchup {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .game-team { text-align: center; }
+    .game-team__name {
+      font-family: var(--font-heading);
+      font-size: 1.375rem;
+      letter-spacing: 0.02em;
+    }
+    .game-team__name--won { color: var(--color-white); }
+    .game-team__name--lost { color: rgba(255,255,255,0.55); }
+
+    .game-team__score {
+      font-family: var(--font-heading);
+      font-size: 3.5rem;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .game-team__score--won { color: var(--color-white); }
+    .game-team__score--lost { color: rgba(255,255,255,0.55); }
+
+    .game-divider {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: rgba(255,255,255,0.3);
+    }
+
+    .game-top-performers {
+      margin-top: 0.875rem;
+      padding-top: 0.5rem;
+      border-top: 1px dashed rgba(255,255,255,0.15);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .game-tp {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: rgba(255,255,255,0.7);
+    }
+
+    .game-tp strong {
+      color: var(--color-white);
+      font-family: var(--font-heading);
+      font-size: 0.8125rem;
+    }
+
+    .game-takeaway {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: rgba(255,255,255,0.75);
+      margin-top: 0.75rem;
+      padding: 0.5rem 0.625rem;
+      background: rgba(217, 70, 239, 0.12);
+      border-left: 2px solid var(--color-accent-fuchsia);
+    }
+
+    .game-takeaway strong { color: var(--color-white); }
+
+    /* ============================================================================
+       LEADERBOARD CARD specifics
+       ========================================================================= */
+    .lb-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      column-gap: 1.25rem;
+      row-gap: 0.25rem;
+      margin-top: 0.5rem;
+    }
+
+    .lb-row {
+      display: grid;
+      grid-template-columns: 1.25rem 1fr auto;
+      gap: 0.5rem;
+      padding: 0.25rem 0;
+      align-items: center;
+      border-bottom: 1px dashed rgba(255,255,255,0.08);
+    }
+
+    .lb-row__rank {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: rgba(255,255,255,0.4);
+      text-align: center;
+    }
+    .lb-row__rank--gold { color: #d97706; font-weight: 700; }
+    .lb-row__rank--silver { color: rgba(255,255,255,0.65); font-weight: 700; }
+    .lb-row__rank--bronze { color: #a16207; font-weight: 700; }
+
+    .lb-row__player {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-white);
+    }
+
+    .lb-row__meta {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      color: rgba(255,255,255,0.45);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: -0.0625rem;
+    }
+
+    .lb-row__value {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: #fbbf24;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .lb-headline {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      letter-spacing: 0.02em;
+      margin-bottom: 0.25rem;
+    }
+
+    .lb-sub {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.55);
+    }
+
+    /* ============================================================================
+       DRAFT-CLASS CARD specifics
+       ========================================================================= */
+    .dc-title {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      letter-spacing: 0.02em;
+    }
+
+    .dc-sub {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.55);
+      margin-top: 0.25rem;
+    }
+
+    .dc-table {
+      width: 100%;
+      margin-top: 0.625rem;
+    }
+
+    .dc-table-row {
+      display: grid;
+      grid-template-columns: 1.75rem 1fr auto auto;
+      gap: 0.5rem;
+      padding: 0.3125rem 0;
+      align-items: center;
+      border-bottom: 1px dashed rgba(255,255,255,0.08);
+    }
+
+    .dc-table-row:last-child { border-bottom: none; }
+
+    .dc-table-row__pick {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 700;
+      color: #c7d2fe;
+      text-align: center;
+      padding: 0.125rem 0;
+    }
+
+    .dc-table-row__player {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-white);
+    }
+
+    .dc-table-row__comp {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.95);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .dc-table-row__delta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      padding: 0.0625rem 0.4rem;
+      border-radius: 9999px;
+      min-width: 2.5rem;
+      text-align: center;
+    }
+    .dc-table-row__delta--up { background: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+    .dc-table-row__delta--down { background: rgba(244, 63, 94, 0.18); color: #fda4af; }
+    .dc-table-row__delta--flat { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.55); }
+
+    .dc-callouts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.625rem;
+      margin-top: 0.625rem;
+      padding-top: 0.625rem;
+      border-top: 1px dashed rgba(255,255,255,0.15);
+    }
+
+    .dc-callout {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: rgba(255,255,255,0.75);
+      padding: 0.4rem 0.5rem;
+      border-radius: 0.25rem;
+    }
+
+    .dc-callout--beat { background: rgba(16, 185, 129, 0.12); border-left: 2px solid var(--color-accent-emerald); }
+    .dc-callout--miss { background: rgba(244, 63, 94, 0.12); border-left: 2px solid var(--color-accent-rose); }
+
+    .dc-callout strong { color: var(--color-white); }
+
+    /* ============================================================================
+       EXPLORER CARD specifics
+       ========================================================================= */
+    .ex-query {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      letter-spacing: 0.01em;
+      line-height: 1.3;
+      max-width: 95%;
+    }
+
+    .ex-meta {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.55);
+      margin-top: 0.25rem;
+    }
+
+    .ex-meta strong { color: #fbbf24; }
+
+    .ex-rows {
+      margin-top: 0.75rem;
+    }
+
+    .ex-row {
+      display: grid;
+      grid-template-columns: 1.5rem 1fr auto auto;
+      gap: 0.625rem;
+      padding: 0.3125rem 0;
+      align-items: center;
+      border-bottom: 1px dashed rgba(255,255,255,0.08);
+    }
+
+    .ex-row__rank {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: rgba(255,255,255,0.4);
+      text-align: center;
+      font-weight: 600;
+    }
+
+    .ex-row__player {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-white);
+    }
+
+    .ex-row__class {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: rgba(255,255,255,0.5);
+    }
+
+    .ex-row__val {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 700;
+      color: #fbbf24;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ex-bottom {
+      margin-top: 0.625rem;
+      padding-top: 0.5rem;
+      border-top: 1px dashed rgba(255,255,255,0.15);
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: rgba(255,255,255,0.7);
+    }
+
+    .ex-bottom strong { color: var(--color-white); }
+
+    /* ============================================================================
+       MODEL-VALIDATION CARD specifics
+       ========================================================================= */
+    .mv-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      align-items: center;
+    }
+
+    .mv-headline {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      letter-spacing: 0.02em;
+      line-height: 1.15;
+    }
+
+    .mv-r-value {
+      font-family: var(--font-heading);
+      font-size: 3.5rem;
+      color: #fbbf24;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      margin-top: 0.625rem;
+    }
+
+    .mv-r-label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.55);
+      margin-top: 0.25rem;
+    }
+
+    .mv-callouts {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      margin-top: 0.75rem;
+    }
+
+    .mv-callout {
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      color: rgba(255,255,255,0.75);
+      padding: 0.3rem 0.4375rem;
+      border-radius: 0.1875rem;
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .mv-callout--beat { background: rgba(16, 185, 129, 0.12); border-left: 2px solid var(--color-accent-emerald); }
+    .mv-callout--miss { background: rgba(244, 63, 94, 0.12); border-left: 2px solid var(--color-accent-rose); }
+
+    .mv-callout strong { color: var(--color-white); }
+
+    .mv-callout__delta {
+      font-weight: 700;
+      color: var(--color-white);
+    }
+
+    .mv-scatter {
+      width: 100%;
+      height: 180px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 0.375rem;
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 0.5rem;
+    }
+
+    .mv-scatter-svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* ============================================================================
+       SPEC CARD (right side of preview)
+       ========================================================================= */
+    .spec-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1rem 1.125rem 1.125rem;
+      width: 100%;
+    }
+
+    .spec-card__title {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-slate-700);
+      margin-bottom: 0.625rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px dashed var(--color-slate-200);
+    }
+
+    .spec-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4375rem;
+    }
+
+    .spec-list li {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-700);
+      line-height: 1.5;
+    }
+
+    .spec-list__k {
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      min-width: 4rem;
+    }
+
+    .spec-list li strong { color: var(--color-slate-900); }
+
+    .spec-card__hook {
+      margin-top: 0.625rem;
+      padding-top: 0.5rem;
+      border-top: 1px dashed var(--color-slate-200);
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-600);
+      line-height: 1.5;
+    }
+
+    .spec-card__hook strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       METHODOLOGY PLACEHOLDER UTILITY
+       ========================================================================= */
+    .tbd-indicator {
+      font-family: var(--font-mono); font-size: 0.5rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem; border-radius: 0.1875rem;
+      margin-left: 0.375rem; vertical-align: middle; cursor: help;
+    }
+
+    /* On the dark cards themselves, recolor the TBD to read on dark */
+    .card .tbd-indicator-dark {
+      font-family: var(--font-mono); font-size: 0.5rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: #f0abfc;
+      background: rgba(217, 70, 239, 0.2);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem; border-radius: 0.1875rem;
+      margin-left: 0.375rem; vertical-align: middle;
+    }
+
+    /* ============================================================================
+       UPDATED + FOOTER
+       ========================================================================= */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 980px) {
+      .preview-wrapper { grid-template-columns: 1fr; }
+      .global-spec { grid-template-columns: repeat(2, 1fr); }
+      .card-section__head { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .navbar-links { display: none; }
+      .global-spec { grid-template-columns: 1fr; }
+      .preview-frame { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link active" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="/stats">Stats</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league">Summer League</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">Share Cards · Spec</span>
+    </div>
+
+    <!-- Page hero -->
+    <header class="page-hero">
+      <div class="page-hero__eyebrow">DraftGuru · Share Asset Spec</div>
+      <h2>Summer League Share Cards</h2>
+      <p class="page-hero__tagline">Six SVG → PNG variants surfaced by the SL section. Every public SL page has a <strong>Share as PNG</strong> button that routes to the matching template. Cards below render at half scale; production output is 1200×630.</p>
+    </header>
+
+    <!-- Global spec panel -->
+    <div class="global-spec">
+      <div class="spec-cell">
+        <div class="spec-cell__label">Output format</div>
+        <div class="spec-cell__value">1200 × 630 PNG</div>
+        <div class="spec-cell__sub">Twitter / OG / Facebook compatible</div>
+      </div>
+      <div class="spec-cell">
+        <div class="spec-cell__label">Render path</div>
+        <div class="spec-cell__value">SVG → PNG (server-side)</div>
+        <div class="spec-cell__sub">Headless render at request time, cached 24h</div>
+      </div>
+      <div class="spec-cell">
+        <div class="spec-cell__label">Typography</div>
+        <div class="spec-cell__value">Russo One + Azeret Mono</div>
+        <div class="spec-cell__sub">Embedded as WOFF2 in the SVG</div>
+      </div>
+      <div class="spec-cell">
+        <div class="spec-cell__label">Treatment</div>
+        <div class="spec-cell__value">Dark slate · scanlines · pixel corners · amber accent</div>
+        <div class="spec-cell__sub">Per <code>docs/style_guide.md</code> · matches dark surfaces in app</div>
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         CARD 1: PLAYER SL SEASON
+         ========================================================================= -->
+    <section class="card-section">
+      <div class="card-section__head">
+        <div class="card-section__title-block">
+          <div class="card-section__index">Card 1 of 6</div>
+          <div class="card-section__title">Player SL Season Card</div>
+          <p class="card-section__desc">One player's full SL year in a single card. Stat line, composite chip, and one analytical hook below. Shareable from the per-player-season page.</p>
+        </div>
+        <div class="card-section__source">
+          Source · <strong>/players/{slug}/summer-league/{year}</strong>
+        </div>
+      </div>
+
+      <div class="preview-wrapper">
+        <div class="preview-frame">
+          <div class="card">
+            <div class="card__head">
+              <div class="card__eyebrow">Player · 2026 Summer League</div>
+              <div class="card__date">Through Jul 11</div>
+            </div>
+            <div class="card__body">
+              <div class="player-card-layout">
+                <div class="player-card__photo">Flagg</div>
+                <div>
+                  <div class="player-card__name">Cooper Flagg</div>
+                  <div class="player-card__meta">F · Mavericks · 2026 #1 pick · Vegas SL · 5 GP</div>
+                  <div class="player-card__line">26.4 / 10.2 / 5.4</div>
+                  <div class="player-card__rates">
+                    <span><strong>64.0</strong> TS%</span>
+                    <span><strong>31.4</strong> USG%</span>
+                    <span><strong>+12.4</strong> +/−</span>
+                  </div>
+                </div>
+                <div class="player-card__composite">
+                  <div class="player-card__composite-label">Composite <span class="tbd-indicator-dark">TBD</span></div>
+                  <div class="player-card__composite-value">94.2</div>
+                </div>
+              </div>
+              <div class="player-card__hook">
+                <strong>4th-best TS%</strong> by a #1 pick at this stage of a Vegas SL since 2002 · trails only Banchero '22, Wembanyama '23, Edwards '20.
+              </div>
+            </div>
+            <div class="card__footer">
+              <div class="card__url"><strong>draftguru.io</strong>/sl/2026/flagg</div>
+              <div class="card__brand">DraftGuru</div>
+            </div>
+            <span class="card__corner-br"></span>
+          </div>
+        </div>
+
+        <div class="spec-card">
+          <div class="spec-card__title">Card 1 Spec</div>
+          <ul class="spec-list">
+            <li><span class="spec-list__k">Source</span> Player-season page</li>
+            <li><span class="spec-list__k">Params</span> <code>slug</code>, <code>year</code></li>
+            <li><span class="spec-list__k">Bind</span> Photo, name, pos, team, pick, GP, per-game line, TS/USG/+/−, composite</li>
+            <li><span class="spec-list__k">Hook</span> Auto-generated from analytical context lookup</li>
+            <li><span class="spec-list__k">Accent</span> Amber</li>
+            <li><span class="spec-list__k">URL</span> <code>draftguru.io/sl/{year}/{slug-short}</code></li>
+          </ul>
+          <div class="spec-card__hook">
+            <strong>Highest-traffic share unit.</strong> Twitter cards of individual prospect SL lines will outshare every other variant during July.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         CARD 2: GAME BOX SCORE
+         ========================================================================= -->
+    <section class="card-section">
+      <div class="card-section__head">
+        <div class="card-section__title-block">
+          <div class="card-section__index">Card 2 of 6</div>
+          <div class="card-section__title">Game Box Score Card</div>
+          <p class="card-section__desc">Both teams' final box + top performer per team + one analytical takeaway. Generated when the user shares from any box-score page.</p>
+        </div>
+        <div class="card-section__source">
+          Source · <strong>/stats/summer-league/{year}/games/{game_id}</strong>
+        </div>
+      </div>
+
+      <div class="preview-wrapper">
+        <div class="preview-frame">
+          <div class="card">
+            <div class="card__head">
+              <div class="card__eyebrow">Game Recap · 2026 Vegas SL</div>
+              <div class="card__date">Jul 11, 2026 · Thomas &amp; Mack</div>
+            </div>
+            <div class="card__body">
+              <div class="game-card-meta">
+                <span class="gc-chip gc-chip--final">Final</span>
+                <span class="gc-chip gc-chip--venue">Vegas · T&amp;M</span>
+                <span class="gc-chip">Pace: 98.2 (SL avg 92.4)</span>
+              </div>
+              <div class="game-matchup">
+                <div class="game-team">
+                  <div class="game-team__name game-team__name--won">Mavericks</div>
+                  <div class="game-team__score game-team__score--won">92</div>
+                </div>
+                <div class="game-divider">vs.</div>
+                <div class="game-team">
+                  <div class="game-team__name game-team__name--lost">Wizards</div>
+                  <div class="game-team__score game-team__score--lost">87</div>
+                </div>
+              </div>
+              <div class="game-top-performers">
+                <div class="game-tp">
+                  DAL · <strong>Flagg</strong> · 32 / 9 / 6 · 64 TS%
+                </div>
+                <div class="game-tp">
+                  WAS · <strong>Johnson</strong> · 28 / 3 / 4 · 34.8 USG%
+                </div>
+              </div>
+              <div class="game-takeaway">
+                <strong>Flagg matched Banchero's 2022 SL TS% peak.</strong> 64 on 18 FGA — among #1 picks since '02, only Wembanyama and Edwards cleared it this early.
+              </div>
+            </div>
+            <div class="card__footer">
+              <div class="card__url"><strong>draftguru.io</strong>/sl/2026/g/dal-was-jul11</div>
+              <div class="card__brand">DraftGuru</div>
+            </div>
+            <span class="card__corner-br"></span>
+          </div>
+        </div>
+
+        <div class="spec-card">
+          <div class="spec-card__title">Card 2 Spec</div>
+          <ul class="spec-list">
+            <li><span class="spec-list__k">Source</span> Box-score page</li>
+            <li><span class="spec-list__k">Params</span> <code>year</code>, <code>game_id</code></li>
+            <li><span class="spec-list__k">Bind</span> Teams, final, line, pace, top performer (each team)</li>
+            <li><span class="spec-list__k">Hook</span> The top "What This Game Showed" storyline if available; else GameScore leader fact</li>
+            <li><span class="spec-list__k">Accent</span> Fuchsia (takeaway tinted)</li>
+            <li><span class="spec-list__k">URL</span> <code>draftguru.io/sl/{year}/g/{slug}</code></li>
+          </ul>
+          <div class="spec-card__hook">
+            Replaces the "ESPN box score screenshot" share — instead of a stat dump, the analytical takeaway is the leading line.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         CARD 3: LEADERBOARD TOP-10
+         ========================================================================= -->
+    <section class="card-section">
+      <div class="card-section__head">
+        <div class="card-section__title-block">
+          <div class="card-section__index">Card 3 of 6</div>
+          <div class="card-section__title">Leaderboard Top-10 Card</div>
+          <p class="card-section__desc">Snapshot of a single-stat leaderboard, top 10. The "look who leads PPG" share. Captures the active filter state (year range, venue, pick range).</p>
+        </div>
+        <div class="card-section__source">
+          Source · <strong>/stats/summer-league/leaders</strong>
+        </div>
+      </div>
+
+      <div class="preview-wrapper">
+        <div class="preview-frame">
+          <div class="card">
+            <div class="card__head">
+              <div class="card__eyebrow">Leaders · 2026 SL · Through Jul 11</div>
+              <div class="card__date">Min 60 MIN · 2+ GP</div>
+            </div>
+            <div class="card__body">
+              <div class="lb-headline">Points Per Game</div>
+              <div class="lb-sub">2026 Vegas + Salt Lake + Cal Classic · 412 qualifying</div>
+              <div class="lb-grid">
+                <div>
+                  <div class="lb-row">
+                    <span class="lb-row__rank lb-row__rank--gold">1</span>
+                    <div>
+                      <div class="lb-row__player">Cooper Flagg</div>
+                      <div class="lb-row__meta">DAL · #1 · 5 GP</div>
+                    </div>
+                    <span class="lb-row__value">26.4</span>
+                  </div>
+                  <div class="lb-row">
+                    <span class="lb-row__rank lb-row__rank--silver">2</span>
+                    <div>
+                      <div class="lb-row__player">Ace Bailey</div>
+                      <div class="lb-row__meta">UTA · #4 · 4 GP</div>
+                    </div>
+                    <span class="lb-row__value">25.0</span>
+                  </div>
+                  <div class="lb-row">
+                    <span class="lb-row__rank lb-row__rank--bronze">3</span>
+                    <div>
+                      <div class="lb-row__player">Dylan Harper</div>
+                      <div class="lb-row__meta">SAS · #2 · 4 GP</div>
+                    </div>
+                    <span class="lb-row__value">22.8</span>
+                  </div>
+                  <div class="lb-row">
+                    <span class="lb-row__rank">4</span>
+                    <div>
+                      <div class="lb-row__player">Tre Johnson</div>
+                      <div class="lb-row__meta">WAS · #5 · 5 GP</div>
+                    </div>
+                    <span class="lb-row__value">21.0</span>
+                  </div>
+                  <div class="lb-row">
+                    <span class="lb-row__rank">5</span>
+                    <div>
+                      <div class="lb-row__player">Kasparas Jakucionis</div>
+                      <div class="lb-row__meta">MIA · #11 · 8 GP</div>
+                    </div>
+                    <span class="lb-row__value">20.5</span>
+                  </div>
+                </div>
+                <div>
+                  <div class="lb-row">
+                    <span class="lb-row__rank">6</span>
+                    <div>
+                      <div class="lb-row__player">VJ Edgecombe</div>
+                      <div class="lb-row__meta">PHI · #3 · 5 GP</div>
+                    </div>
+                    <span class="lb-row__value">19.4</span>
+                  </div>
+                  <div class="lb-row">
+                    <span class="lb-row__rank">7</span>
+                    <div>
+                      <div class="lb-row__player">Jeremiah Fears</div>
+                      <div class="lb-row__meta">NOP · #7 · 4 GP</div>
+                    </div>
+                    <span class="lb-row__value">19.0</span>
+                  </div>
+                  <div class="lb-row">
+                    <span class="lb-row__rank">8</span>
+                    <div>
+                      <div class="lb-row__player">Egor Demin</div>
+                      <div class="lb-row__meta">BKN · #8 · 4 GP</div>
+                    </div>
+                    <span class="lb-row__value">18.5</span>
+                  </div>
+                  <div class="lb-row">
+                    <span class="lb-row__rank">9</span>
+                    <div>
+                      <div class="lb-row__player">Derik Queen</div>
+                      <div class="lb-row__meta">NOP · #10 · 4 GP</div>
+                    </div>
+                    <span class="lb-row__value">18.0</span>
+                  </div>
+                  <div class="lb-row">
+                    <span class="lb-row__rank">10</span>
+                    <div>
+                      <div class="lb-row__player">Ryan Nembhard</div>
+                      <div class="lb-row__meta">DAL · UND · 5 GP</div>
+                    </div>
+                    <span class="lb-row__value">17.8</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="card__footer">
+              <div class="card__url"><strong>draftguru.io</strong>/sl/leaders/ppg/2026</div>
+              <div class="card__brand">DraftGuru</div>
+            </div>
+            <span class="card__corner-br"></span>
+          </div>
+        </div>
+
+        <div class="spec-card">
+          <div class="spec-card__title">Card 3 Spec</div>
+          <ul class="spec-list">
+            <li><span class="spec-list__k">Source</span> Leaders page</li>
+            <li><span class="spec-list__k">Params</span> <code>stat</code>, <code>scope</code>, <code>filters</code></li>
+            <li><span class="spec-list__k">Bind</span> Stat label, mode, top 10 (rank/name/team/pick/sample/value)</li>
+            <li><span class="spec-list__k">Hook</span> Min-sample badge in header</li>
+            <li><span class="spec-list__k">Accent</span> Amber value column</li>
+            <li><span class="spec-list__k">URL</span> <code>draftguru.io/sl/leaders/{stat}/{year}</code></li>
+          </ul>
+          <div class="spec-card__hook">
+            <strong>Tracks the filter state.</strong> Sharing from "lottery picks only" or "all-time" produces distinct URLs and distinct cards.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         CARD 4: DRAFT-CLASS SCORECARD
+         ========================================================================= -->
+    <section class="card-section">
+      <div class="card-section__head">
+        <div class="card-section__title-block">
+          <div class="card-section__index">Card 4 of 6</div>
+          <div class="card-section__title">Draft-Class Scorecard</div>
+          <p class="card-section__desc">Top 10 of the class table with composite + Δ-vs-consensus chips. The moat-page export — "Did the lottery deliver?" in a single image.</p>
+        </div>
+        <div class="card-section__source">
+          Source · <strong>/stats/summer-league/{year}/draft-class</strong>
+        </div>
+      </div>
+
+      <div class="preview-wrapper">
+        <div class="preview-frame">
+          <div class="card">
+            <div class="card__head">
+              <div class="card__eyebrow">Draft Class Performance · 2026</div>
+              <div class="card__date">Through Jul 11 · 47 of 60 played</div>
+            </div>
+            <div class="card__body">
+              <div class="dc-title">2026 Class · Summer League <span class="tbd-indicator-dark">TBD</span></div>
+              <div class="dc-sub">Top 10 by composite · sorted by composite</div>
+
+              <div class="dc-table">
+                <div class="dc-table-row">
+                  <span class="dc-table-row__pick">#1</span>
+                  <span class="dc-table-row__player">Cooper Flagg · DAL</span>
+                  <span class="dc-table-row__comp">94.2</span>
+                  <span class="dc-table-row__delta dc-table-row__delta--flat">→ 0</span>
+                </div>
+                <div class="dc-table-row">
+                  <span class="dc-table-row__pick">#4</span>
+                  <span class="dc-table-row__player">Ace Bailey · UTA</span>
+                  <span class="dc-table-row__comp">91.7</span>
+                  <span class="dc-table-row__delta dc-table-row__delta--up">↑ +3</span>
+                </div>
+                <div class="dc-table-row">
+                  <span class="dc-table-row__pick">#2</span>
+                  <span class="dc-table-row__player">Dylan Harper · SAS</span>
+                  <span class="dc-table-row__comp">88.1</span>
+                  <span class="dc-table-row__delta dc-table-row__delta--down">↓ −1</span>
+                </div>
+                <div class="dc-table-row">
+                  <span class="dc-table-row__pick">#3</span>
+                  <span class="dc-table-row__player">VJ Edgecombe · PHI</span>
+                  <span class="dc-table-row__comp">85.3</span>
+                  <span class="dc-table-row__delta dc-table-row__delta--down">↓ −1</span>
+                </div>
+                <div class="dc-table-row">
+                  <span class="dc-table-row__pick">#42</span>
+                  <span class="dc-table-row__player">Maxime Raynaud · SAC</span>
+                  <span class="dc-table-row__comp">77.8</span>
+                  <span class="dc-table-row__delta dc-table-row__delta--up">↑ +37</span>
+                </div>
+                <div class="dc-table-row">
+                  <span class="dc-table-row__pick">#11</span>
+                  <span class="dc-table-row__player">Kasparas Jakucionis · MIA</span>
+                  <span class="dc-table-row__comp">76.4</span>
+                  <span class="dc-table-row__delta dc-table-row__delta--up">↑ +5</span>
+                </div>
+                <div class="dc-table-row">
+                  <span class="dc-table-row__pick">#5</span>
+                  <span class="dc-table-row__player">Tre Johnson · WAS</span>
+                  <span class="dc-table-row__comp">71.8</span>
+                  <span class="dc-table-row__delta dc-table-row__delta--down">↓ −2</span>
+                </div>
+                <div class="dc-table-row">
+                  <span class="dc-table-row__pick">#41</span>
+                  <span class="dc-table-row__player">Adem Bona · PHI</span>
+                  <span class="dc-table-row__comp">73.5</span>
+                  <span class="dc-table-row__delta dc-table-row__delta--up">↑ +33</span>
+                </div>
+              </div>
+
+              <div class="dc-callouts">
+                <div class="dc-callout dc-callout--beat">
+                  ↑ Biggest beat · <strong>Raynaud</strong> · #42 → composite #5
+                </div>
+                <div class="dc-callout dc-callout--miss">
+                  ↓ Biggest miss · <strong>Carter Bryant</strong> · #14 → composite #23
+                </div>
+              </div>
+            </div>
+            <div class="card__footer">
+              <div class="card__url"><strong>draftguru.io</strong>/sl/2026/draft-class</div>
+              <div class="card__brand">DraftGuru</div>
+            </div>
+            <span class="card__corner-br"></span>
+          </div>
+        </div>
+
+        <div class="spec-card">
+          <div class="spec-card__title">Card 4 Spec</div>
+          <ul class="spec-list">
+            <li><span class="spec-list__k">Source</span> Draft-class page</li>
+            <li><span class="spec-list__k">Params</span> <code>year</code></li>
+            <li><span class="spec-list__k">Bind</span> Top 8 by composite · pick · player · composite · Δ chip</li>
+            <li><span class="spec-list__k">Hook</span> Beat/miss callout strip at bottom</li>
+            <li><span class="spec-list__k">Accent</span> Indigo pick pills · green/red Δ chips</li>
+            <li><span class="spec-list__k">TBD</span> Composite formula M1 · all values placeholder</li>
+            <li><span class="spec-list__k">URL</span> <code>draftguru.io/sl/{year}/draft-class</code></li>
+          </ul>
+          <div class="spec-card__hook">
+            <strong>Highest viral potential</strong> alongside Card 1. Draft Twitter shares "Did the lottery deliver?" cards relentlessly during SL.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         CARD 5: EXPLORER QUERY
+         ========================================================================= -->
+    <section class="card-section">
+      <div class="card-section__head">
+        <div class="card-section__title-block">
+          <div class="card-section__index">Card 5 of 6</div>
+          <div class="card-section__title">Explorer Query Card</div>
+          <p class="card-section__desc">Snapshot of an Explorer query — top N rows + the plain-English query summary. The URL fully encodes the query; the card teases the result.</p>
+        </div>
+        <div class="card-section__source">
+          Source · <strong>/stats/summer-league/explorer</strong>
+        </div>
+      </div>
+
+      <div class="preview-wrapper">
+        <div class="preview-frame">
+          <div class="card">
+            <div class="card__head">
+              <div class="card__eyebrow">Explorer Query · Saved Share</div>
+              <div class="card__date">Through Jul 11, 2026 · 14 rows</div>
+            </div>
+            <div class="card__body">
+              <div class="ex-query">Lottery picks (1–14) · 2020–2026 · Vegas · ≥20 PPG · TS% &gt; 55 · sorted by TS%</div>
+              <div class="ex-meta"><strong>14 players</strong> match · open the URL to edit the query</div>
+
+              <div class="ex-rows">
+                <div class="ex-row">
+                  <span class="ex-row__rank">1</span>
+                  <span class="ex-row__player">Paolo Banchero</span>
+                  <span class="ex-row__class">'22 · #1</span>
+                  <span class="ex-row__val">66.2</span>
+                </div>
+                <div class="ex-row">
+                  <span class="ex-row__rank">2</span>
+                  <span class="ex-row__player">Victor Wembanyama</span>
+                  <span class="ex-row__class">'23 · #1</span>
+                  <span class="ex-row__val">65.8</span>
+                </div>
+                <div class="ex-row">
+                  <span class="ex-row__rank">3</span>
+                  <span class="ex-row__player">Cooper Flagg</span>
+                  <span class="ex-row__class">'26 · #1</span>
+                  <span class="ex-row__val">64.0</span>
+                </div>
+                <div class="ex-row">
+                  <span class="ex-row__rank">4</span>
+                  <span class="ex-row__player">Anthony Edwards</span>
+                  <span class="ex-row__class">'21 · #1</span>
+                  <span class="ex-row__val">64.3</span>
+                </div>
+                <div class="ex-row">
+                  <span class="ex-row__rank">5</span>
+                  <span class="ex-row__player">VJ Edgecombe</span>
+                  <span class="ex-row__class">'26 · #3</span>
+                  <span class="ex-row__val">62.1</span>
+                </div>
+                <div class="ex-row">
+                  <span class="ex-row__rank">6</span>
+                  <span class="ex-row__player">Tyler Herro</span>
+                  <span class="ex-row__class">'19 · #13</span>
+                  <span class="ex-row__val">56.8</span>
+                </div>
+              </div>
+
+              <div class="ex-bottom">
+                <strong>+8 more rows.</strong> Tap to open the full table and edit any filter — URL re-encodes live.
+              </div>
+            </div>
+            <div class="card__footer">
+              <div class="card__url"><strong>draftguru.io</strong>/sl/x?…</div>
+              <div class="card__brand">DraftGuru</div>
+            </div>
+            <span class="card__corner-br"></span>
+          </div>
+        </div>
+
+        <div class="spec-card">
+          <div class="spec-card__title">Card 5 Spec</div>
+          <ul class="spec-list">
+            <li><span class="spec-list__k">Source</span> Explorer page</li>
+            <li><span class="spec-list__k">Params</span> Full query state (URL-encoded)</li>
+            <li><span class="spec-list__k">Bind</span> Query summary string, row count, top 6 rows, "+N more"</li>
+            <li><span class="spec-list__k">Hook</span> "Open URL to edit" affirms the live nature</li>
+            <li><span class="spec-list__k">Accent</span> Amber value column</li>
+            <li><span class="spec-list__k">URL</span> <code>draftguru.io/sl/x?…</code> (encoded)</li>
+          </ul>
+          <div class="spec-card__hook">
+            <strong>SEO long-tail driver.</strong> Shared queries become entry points — each unique query is effectively a unique landing page.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         CARD 6: MODEL VALIDATION
+         ========================================================================= -->
+    <section class="card-section">
+      <div class="card-section__head">
+        <div class="card-section__title-block">
+          <div class="card-section__index">Card 6 of 6</div>
+          <div class="card-section__title">Model-Validation Card</div>
+          <p class="card-section__desc">Yearly retrospective: scatter highlights + correlation + biggest beats/misses. Annual update post-SL, drives the "did consensus get it right?" share.</p>
+        </div>
+        <div class="card-section__source">
+          Source · <strong>/stats/summer-league/model-validation</strong>
+        </div>
+      </div>
+
+      <div class="preview-wrapper">
+        <div class="preview-frame">
+          <div class="card">
+            <div class="card__head">
+              <div class="card__eyebrow">Model Validation · 2025 Class</div>
+              <div class="card__date">SL '25 complete · 52 of 60 played</div>
+            </div>
+            <div class="card__body">
+              <div class="mv-grid">
+                <div>
+                  <div class="mv-headline">The lottery delivered up top; consensus missed on Carrington &amp; Williams.</div>
+                  <div class="mv-r-value">0.61</div>
+                  <div class="mv-r-label">Spearman ρ · in line with 5-yr avg (0.58) <span class="tbd-indicator-dark">TBD</span></div>
+
+                  <div class="mv-callouts">
+                    <div class="mv-callout mv-callout--beat">
+                      <span>↑ <strong>Filipowski</strong> · #32 → #8</span>
+                      <span class="mv-callout__delta">+24</span>
+                    </div>
+                    <div class="mv-callout mv-callout--miss">
+                      <span>↓ <strong>Carrington</strong> · #14 → #42</span>
+                      <span class="mv-callout__delta">−28</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mv-scatter">
+                  <svg class="mv-scatter-svg" viewBox="0 0 280 180" preserveAspectRatio="none" role="img" aria-label="Scatter snapshot">
+                    <!-- baseline grid -->
+                    <line x1="20" y1="170" x2="270" y2="170" stroke="rgba(255,255,255,0.15)" stroke-width="0.8"/>
+                    <line x1="20" y1="10" x2="20" y2="170" stroke="rgba(255,255,255,0.15)" stroke-width="0.8"/>
+                    <line x1="20" y1="90" x2="270" y2="90" stroke="rgba(255,255,255,0.1)" stroke-width="0.5" stroke-dasharray="2 3"/>
+                    <text x="18" y="14" font-family="ui-monospace" font-size="6" fill="rgba(255,255,255,0.4)" text-anchor="end">100</text>
+                    <text x="18" y="94" font-family="ui-monospace" font-size="6" fill="rgba(255,255,255,0.4)" text-anchor="end">50</text>
+                    <text x="22" y="178" font-family="ui-monospace" font-size="6" fill="rgba(255,255,255,0.4)">1</text>
+                    <text x="265" y="178" font-family="ui-monospace" font-size="6" fill="rgba(255,255,255,0.4)" text-anchor="end">60</text>
+
+                    <!-- regression -->
+                    <line x1="20" y1="35" x2="270" y2="140" stroke="rgba(217, 70, 239, 0.5)" stroke-width="1" stroke-dasharray="3 3"/>
+
+                    <!-- dots (illustrative) -->
+                    <circle cx="25" cy="32" r="3" fill="#10b981"/>
+                    <circle cx="35" cy="55" r="3" fill="#10b981"/>
+                    <circle cx="45" cy="50" r="3" fill="#10b981"/>
+                    <circle cx="55" cy="74" r="3" fill="#94a3b8"/>
+                    <circle cx="65" cy="92" r="3" fill="#f43f5e"/>
+                    <circle cx="75" cy="65" r="3" fill="#10b981"/>
+                    <circle cx="85" cy="70" r="3" fill="#10b981"/>
+                    <circle cx="95" cy="115" r="3" fill="#f43f5e"/>
+                    <circle cx="105" cy="78" r="3" fill="#10b981"/>
+                    <circle cx="115" cy="95" r="3" fill="#94a3b8"/>
+                    <circle cx="125" cy="70" r="3" fill="#10b981"/>
+                    <circle cx="135" cy="100" r="3" fill="#f43f5e"/>
+                    <circle cx="145" cy="85" r="3" fill="#94a3b8"/>
+                    <circle cx="155" cy="78" r="3" fill="#10b981"/>
+                    <circle cx="165" cy="130" r="3" fill="#f43f5e"/>
+                    <circle cx="175" cy="95" r="3" fill="#94a3b8"/>
+                    <circle cx="185" cy="100" r="3" fill="#94a3b8"/>
+                    <circle cx="195" cy="42" r="4" fill="#10b981"/>
+                    <circle cx="205" cy="80" r="3" fill="#10b981"/>
+                    <circle cx="215" cy="135" r="3" fill="#94a3b8"/>
+                    <circle cx="225" cy="115" r="3" fill="#94a3b8"/>
+                    <circle cx="235" cy="100" r="3" fill="#94a3b8"/>
+                    <circle cx="245" cy="50" r="4" fill="#10b981"/>
+                    <circle cx="255" cy="125" r="3" fill="#94a3b8"/>
+                    <circle cx="265" cy="140" r="3" fill="#94a3b8"/>
+
+                    <!-- labeled outliers -->
+                    <text x="200" y="38" font-family="ui-monospace" font-size="6" fill="#6ee7b7" text-anchor="middle">Filipowski</text>
+                    <text x="65" y="106" font-family="ui-monospace" font-size="6" fill="#fda4af" text-anchor="middle">Carrington</text>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div class="card__footer">
+              <div class="card__url"><strong>draftguru.io</strong>/sl/validation/2025</div>
+              <div class="card__brand">DraftGuru</div>
+            </div>
+            <span class="card__corner-br"></span>
+          </div>
+        </div>
+
+        <div class="spec-card">
+          <div class="spec-card__title">Card 6 Spec</div>
+          <ul class="spec-list">
+            <li><span class="spec-list__k">Source</span> Model-validation page</li>
+            <li><span class="spec-list__k">Params</span> <code>year</code></li>
+            <li><span class="spec-list__k">Bind</span> Headline finding, ρ value, top beat, top miss, scatter</li>
+            <li><span class="spec-list__k">Hook</span> Compact scatter on right; headline + correlation on left</li>
+            <li><span class="spec-list__k">Accent</span> Amber correlation value · green/red callouts</li>
+            <li><span class="spec-list__k">TBD</span> Composite + ρ value M1 / M2</li>
+            <li><span class="spec-list__k">URL</span> <code>draftguru.io/sl/validation/{year}</code></li>
+          </ul>
+          <div class="spec-card__hook">
+            <strong>Annual moment</strong> — posts once each November when the prior class's SL retrospective updates.
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Landing</a></li>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">Explorer</a></li>
+            <li><a href="#">2026 Draft Class</a></li>
+            <li><a href="#">Model Validation</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

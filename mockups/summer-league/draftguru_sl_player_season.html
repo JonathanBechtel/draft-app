@@ -1,0 +1,1833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cooper Flagg · 2026 Summer League — DraftGuru</title>
+  <meta name="description" content="Every game, chart, split, and shot from Cooper Flagg's 2026 Summer League run.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      /* Page accent — venue-y amber */
+      --accent: var(--color-accent-amber);
+      --accent-fill: #fef3c7;
+      --accent-dark: #b45309;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    .section-header__title {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+      padding-left: 0.625rem;
+      border-left: 4px solid var(--accent);
+    }
+
+    .section-header__title--utility { border-left-color: var(--color-slate-300); }
+
+    .section-header__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .section-header__cta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      color: var(--accent-dark);
+      padding-bottom: 1px;
+      border-bottom: 1px dotted rgba(180, 83, 9, 0.4);
+    }
+    .section-header__cta:hover { border-bottom-style: solid; }
+
+    /* ============================================================================
+       NAVBAR (shared)
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--accent);
+    }
+    .search-input {
+      width: 240px; background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none;
+    }
+
+    /* ============================================================================
+       BREADCRUMBS + SEASON PAGER
+       ========================================================================= */
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    .season-pager {
+      padding: 0.5rem 0 1rem;
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .season-pager__btn {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.375rem 0.625rem;
+      border-radius: 0.375rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+    }
+    .season-pager__btn:hover { border-color: var(--color-slate-400); }
+    .season-pager__btn--active {
+      background: var(--accent-fill);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: var(--accent-dark);
+    }
+    .season-pager__btn--disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* ============================================================================
+       PLAYER HERO
+       ========================================================================= */
+    .player-hero {
+      background: linear-gradient(135deg, #1e293b, #334155);
+      border-radius: var(--border-radius);
+      padding: 1.5rem 1.75rem;
+      color: var(--color-white);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+      margin-bottom: 1.5rem;
+      display: grid;
+      grid-template-columns: 90px 1fr auto;
+      gap: 1.5rem;
+      align-items: center;
+    }
+
+    .player-hero::before {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent 0, transparent 3px,
+        rgba(255,255,255,0.025) 3px, rgba(255,255,255,0.025) 4px
+      );
+      pointer-events: none;
+    }
+
+    .player-hero__photo {
+      width: 90px;
+      height: 110px;
+      background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+      border-radius: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-heading);
+      font-size: 0.75rem;
+      color: var(--color-white);
+      border: 2px solid rgba(245, 158, 11, 0.5);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      z-index: 1;
+    }
+
+    .player-hero__body { z-index: 1; }
+
+    .player-hero__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.625rem;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: #fbbf24;
+      margin-bottom: 0.375rem;
+    }
+    .player-hero__eyebrow::before {
+      content: ''; width: 12px; height: 2px;
+      background: var(--accent);
+    }
+
+    .player-hero__name {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+      color: var(--color-white);
+    }
+
+    .player-hero__sub {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: rgba(255,255,255,0.7);
+      margin-top: 0.375rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .player-hero__badges {
+      display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap;
+    }
+
+    .ph-badge {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.3rem 0.5rem;
+      border-radius: 0.25rem;
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.85);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    .ph-badge--status {
+      background: rgba(245, 158, 11, 0.18);
+      color: #fbbf24;
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+
+    .ph-badge--quality {
+      background: rgba(16, 185, 129, 0.15);
+      color: #6ee7b7;
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    .player-hero__composite {
+      text-align: right;
+      z-index: 1;
+    }
+
+    .player-hero__composite-label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.5);
+    }
+
+    .player-hero__composite-value {
+      font-family: var(--font-heading);
+      font-size: 2.5rem;
+      color: #fbbf24;
+      line-height: 1;
+      margin-top: 0.25rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       SEASON TOTALS STRIP
+       ========================================================================= */
+    .totals-strip {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 0.625rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .totals-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-top: 3px solid var(--accent);
+      border-radius: 0.5rem;
+      padding: 0.75rem 0.875rem;
+    }
+
+    .totals-card__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .totals-card__value {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      color: var(--color-slate-900);
+      line-height: 1.1;
+      margin: 0.125rem 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .totals-card__hook {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+    }
+    .totals-card__hook--good { color: #047857; }
+    .totals-card__hook--bad { color: #be123c; }
+
+    /* ============================================================================
+       STORYLINES
+       ========================================================================= */
+    .moments-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.875rem;
+    }
+
+    .story-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-left: 4px solid;
+      border-radius: 0.5rem;
+      padding: 0.875rem 1rem;
+      transition: all var(--transition-speed);
+    }
+    .story-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+
+    .story-card--benchmark { border-left-color: var(--color-accent-amber); }
+    .story-card--trend { border-left-color: var(--color-accent-emerald); }
+    .story-card--pre-post { border-left-color: var(--color-accent-cyan); }
+
+    .story-card__type {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.375rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .story-card--benchmark .story-card__type { color: #b45309; }
+    .story-card--trend .story-card__type { color: #047857; }
+    .story-card--pre-post .story-card__type { color: #0e7490; }
+
+    .story-card__type-side { color: var(--color-slate-400); font-weight: 400; }
+
+    .story-card__headline {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      line-height: 1.25;
+    }
+
+    .story-card__body {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      margin-top: 0.375rem;
+      line-height: 1.5;
+    }
+    .story-card__body strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       PER-GAME CHARTS
+       ========================================================================= */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+
+    .chart-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1rem 1.125rem;
+    }
+
+    .chart-card__head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.625rem;
+    }
+
+    .chart-card__title {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-700);
+    }
+
+    .chart-card__avg {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+    }
+    .chart-card__avg strong { color: var(--color-slate-900); }
+
+    .chart-card__svg {
+      width: 100%;
+      height: 110px;
+      background: linear-gradient(to bottom, var(--color-slate-50), var(--color-white));
+      border: 1px solid var(--color-slate-100);
+      border-radius: 0.375rem;
+    }
+
+    .chart-card__footnote {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-top: 0.5rem;
+      line-height: 1.4;
+    }
+
+    .chart-card__footnote strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       GAME LOGS TABLE
+       ========================================================================= */
+    .logs-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .mode-toggle {
+      display: inline-flex; align-items: center; gap: 0;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      overflow: hidden;
+    }
+    .mode-toggle__btn {
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.4rem 0.75rem;
+      color: var(--color-slate-500);
+      background: transparent; border: none;
+      border-right: 1px solid var(--color-slate-200);
+      cursor: pointer;
+    }
+    .mode-toggle__btn:last-child { border-right: none; }
+    .mode-toggle__btn:hover { background: var(--color-slate-50); color: var(--color-slate-800); }
+    .mode-toggle__btn--active { background: rgba(245, 158, 11, 0.12); color: var(--accent-dark); }
+
+    .logs-meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .logs-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow-x: auto;
+    }
+
+    table.logs {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+    }
+
+    table.logs th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.5rem 0.4375rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+    table.logs th.left { text-align: left; }
+    table.logs th.sticky-left,
+    table.logs td.sticky-left {
+      position: sticky;
+      left: 0;
+      background: var(--color-white);
+      z-index: 2;
+      border-right: 1px solid var(--color-slate-200);
+    }
+    table.logs th.sticky-left { background: var(--color-slate-50); }
+
+    table.logs td {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.5rem 0.4375rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+    table.logs td.left {
+      text-align: left;
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      font-size: 0.8125rem;
+    }
+    table.logs tr:hover td { background: var(--color-slate-50); }
+    table.logs tr:hover td.sticky-left { background: var(--color-slate-50); }
+
+    .opp-link {
+      font-weight: 600;
+      color: var(--color-slate-900);
+    }
+    .opp-link:hover { color: var(--accent); }
+
+    .opp-tag {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      margin-left: 0.375rem;
+      vertical-align: middle;
+    }
+    .opp-tag--vegas { background: rgba(245, 158, 11, 0.12); color: var(--accent-dark); }
+    .opp-tag--slc { background: rgba(6, 182, 212, 0.12); color: #0e7490; }
+
+    .result-pill {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.125rem 0.4375rem;
+      border-radius: 0.1875rem;
+      display: inline-block;
+      min-width: 3.5rem;
+      text-align: center;
+    }
+    .result-pill--w { background: rgba(16, 185, 129, 0.14); color: #047857; }
+    .result-pill--l { background: rgba(244, 63, 94, 0.14); color: #be123c; }
+
+    .heat-top { background: rgba(16, 185, 129, 0.08); }
+    .heat-bot { background: rgba(244, 63, 94, 0.08); }
+
+    .totals-row td {
+      background: linear-gradient(to bottom, var(--color-slate-50), var(--accent-fill));
+      border-top: 2px solid var(--accent);
+      border-bottom: none;
+      font-weight: 700;
+      color: var(--color-slate-900);
+    }
+    .totals-row td.sticky-left {
+      background: linear-gradient(to bottom, var(--color-slate-50), var(--accent-fill));
+    }
+
+    .avg-row td {
+      background: var(--color-slate-50);
+      font-weight: 600;
+      color: var(--color-slate-900);
+      font-style: italic;
+    }
+    .avg-row td.sticky-left { background: var(--color-slate-50); }
+
+    .plus { color: #047857; font-weight: 600; }
+    .minus { color: #be123c; font-weight: 600; }
+
+    /* ============================================================================
+       PRE-DRAFT vs. SL (the unique-to-DraftGuru analytical block)
+       ========================================================================= */
+    .prepost-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1.125rem 1.375rem;
+    }
+
+    .prepost-intro {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-600);
+      line-height: 1.5;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px dashed var(--color-slate-200);
+    }
+    .prepost-intro strong { color: var(--color-slate-900); }
+
+    .prepost-row {
+      display: grid;
+      grid-template-columns: 90px 1fr 60px;
+      gap: 0.75rem;
+      padding: 0.625rem 0;
+      align-items: center;
+      border-bottom: 1px solid var(--color-slate-100);
+    }
+    .prepost-row:last-child { border-bottom: none; }
+
+    .prepost-row__label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-700);
+    }
+
+    .prepost-row__bars {
+      display: grid;
+      gap: 4px;
+    }
+
+    .prepost-bar {
+      height: 18px;
+      background: var(--color-slate-100);
+      border-radius: 4px;
+      position: relative;
+    }
+
+    .prepost-bar__fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      border-radius: 4px;
+    }
+
+    .prepost-bar__fill--college { background: var(--color-slate-400); }
+    .prepost-bar__fill--sl { background: var(--accent); }
+
+    .prepost-bar__value {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      right: 0.4375rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      color: var(--color-white);
+    }
+
+    .prepost-bar__label {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      left: 0.4375rem;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: rgba(255,255,255,0.85);
+      text-transform: uppercase;
+    }
+
+    .prepost-row__delta {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .prepost-row__delta--up { color: #047857; }
+    .prepost-row__delta--down { color: #be123c; }
+    .prepost-row__delta--flat { color: var(--color-slate-500); }
+
+    /* ============================================================================
+       SPLITS (compact card grid)
+       ========================================================================= */
+    .splits-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+    }
+
+    .split-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1rem 1.125rem;
+    }
+
+    .split-card__title {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.625rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px dashed var(--color-slate-200);
+    }
+
+    .split-row-mini {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--color-slate-100);
+      align-items: baseline;
+    }
+    .split-row-mini:last-child { border-bottom: none; }
+
+    .split-row-mini__label {
+      font-size: 0.8125rem;
+      color: var(--color-slate-700);
+    }
+
+    .split-row-mini__sample {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-400);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .split-row-mini__value {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .split-card__hook {
+      margin-top: 0.75rem;
+      padding-top: 0.625rem;
+      border-top: 1px dashed var(--color-slate-200);
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-600);
+      line-height: 1.5;
+    }
+    .split-card__hook strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       SHOT CHART (reused pattern)
+       ========================================================================= */
+    .shot-court {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1.25rem 1.5rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    .shot-court__svg {
+      width: 100%;
+      max-width: 360px;
+      height: auto;
+    }
+
+    .shot-court__legend {
+      display: flex;
+      gap: 0.875rem;
+      margin-top: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      justify-content: center;
+    }
+
+    .shot-court__legend-item { display: inline-flex; align-items: center; gap: 0.375rem; }
+
+    .shot-court__legend-dot {
+      width: 0.625rem; height: 0.625rem; border-radius: 9999px;
+    }
+
+    .shot-zones {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .shot-zones__title {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.25rem;
+    }
+
+    .shot-zone-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 0.625rem;
+      padding: 0.4375rem 0.625rem;
+      background: var(--color-slate-50);
+      border-radius: 0.375rem;
+      align-items: center;
+    }
+
+    .shot-zone-row__name {
+      font-size: 0.8125rem;
+      color: var(--color-slate-800);
+      font-weight: 500;
+    }
+
+    .shot-zone-row__attempts {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+    }
+
+    .shot-zone-row__pct {
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .shot-zone-row__pct--hot { color: #047857; }
+    .shot-zone-row__pct--cold { color: #be123c; }
+
+    .shot-zone-row__delta {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+      grid-column: 1 / -1;
+      margin-top: 0.125rem;
+    }
+    .shot-zone-row__delta--up { color: #047857; }
+    .shot-zone-row__delta--down { color: #be123c; }
+
+    /* ============================================================================
+       METHODOLOGY-PLACEHOLDER UTILITY
+       ========================================================================= */
+    .tbd-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      margin-left: 0.375rem;
+      vertical-align: middle;
+      cursor: help;
+    }
+
+    /* ============================================================================
+       UPDATED + FOOTER
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 1.5rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+    .updated-strip__dot {
+      width: 0.5rem; height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 980px) {
+      .player-hero { grid-template-columns: 1fr; text-align: center; }
+      .player-hero__photo { justify-self: center; }
+      .player-hero__badges { justify-content: center; }
+      .player-hero__composite { text-align: center; }
+      .totals-strip { grid-template-columns: repeat(3, 1fr); }
+      .moments-grid { grid-template-columns: 1fr; }
+      .charts-grid { grid-template-columns: 1fr; }
+      .splits-grid { grid-template-columns: 1fr; }
+      .shot-court { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .navbar-links { display: none; }
+      .totals-strip { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link active" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div><input class="search-input" type="search" placeholder="Search players…"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="#">Players</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="#">Cooper Flagg</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="#">Summer League</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">2026</span>
+    </div>
+
+    <!-- Season pager -->
+    <div class="season-pager">
+      <a class="season-pager__btn season-pager__btn--disabled" href="#">← Previous SL (none)</a>
+      <a class="season-pager__btn season-pager__btn--active" href="#">2026 SL</a>
+      <a class="season-pager__btn" href="#">All Flagg SL years</a>
+      <a class="season-pager__btn" href="#" style="margin-left: auto;">Cooper Flagg overview ↗</a>
+    </div>
+
+    <!-- ============================================================================
+         PLAYER HERO
+         ========================================================================= -->
+    <header class="player-hero">
+      <div class="player-hero__photo">Photo</div>
+      <div class="player-hero__body">
+        <div class="player-hero__eyebrow">DraftGuru Stats · Summer League · 2026</div>
+        <div class="player-hero__name">Cooper Flagg</div>
+        <div class="player-hero__sub">F · 6'9" · Mavericks · 2026 #1 pick · Vegas SL · debut year</div>
+        <div class="player-hero__badges">
+          <span class="ph-badge ph-badge--status">
+            5 GP played · Vegas group play complete
+          </span>
+          <span class="ph-badge ph-badge--quality">
+            Data quality · Full (PBP)
+          </span>
+          <span class="ph-badge">2026 cohort · #1 of 60</span>
+        </div>
+      </div>
+      <div class="player-hero__composite">
+        <div class="player-hero__composite-label">Composite <span class="tbd-indicator">TBD</span></div>
+        <div class="player-hero__composite-value">94.2</div>
+      </div>
+    </header>
+
+    <!-- ============================================================================
+         SEASON TOTALS STRIP
+         ========================================================================= -->
+    <div class="totals-strip">
+      <div class="totals-card">
+        <div class="totals-card__label">GP / MIN</div>
+        <div class="totals-card__value">5 <span style="font-size: 0.875rem; color: var(--color-slate-500);">/ 147</span></div>
+        <div class="totals-card__hook">Group play complete</div>
+      </div>
+      <div class="totals-card">
+        <div class="totals-card__label">PPG</div>
+        <div class="totals-card__value">26.4</div>
+        <div class="totals-card__hook totals-card__hook--good">5th if held · since 2002</div>
+      </div>
+      <div class="totals-card">
+        <div class="totals-card__label">RPG / APG</div>
+        <div class="totals-card__value">10.2 / 5.4</div>
+        <div class="totals-card__hook totals-card__hook--good">Top-10 RPG · class-best AST for F</div>
+      </div>
+      <div class="totals-card">
+        <div class="totals-card__label">TS%</div>
+        <div class="totals-card__value">64.0</div>
+        <div class="totals-card__hook totals-card__hook--good">4th-best #1-pick TS% since '02</div>
+      </div>
+      <div class="totals-card">
+        <div class="totals-card__label">USG%</div>
+        <div class="totals-card__value">31.4</div>
+        <div class="totals-card__hook">+4.6 vs. Duke college rate</div>
+      </div>
+      <div class="totals-card">
+        <div class="totals-card__label">Net (on)</div>
+        <div class="totals-card__value plus">+29.8</div>
+        <div class="totals-card__hook totals-card__hook--good">Largest on-court swing in Vegas</div>
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         STORYLINES
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Flagg's SL Storylines</div>
+          <div class="section-header__meta">5 games in · what the data is saying</div>
+        </div>
+      </div>
+
+      <div class="moments-grid">
+
+        <div class="story-card story-card--benchmark">
+          <div class="story-card__type">
+            #1-pick benchmark <span class="story-card__type-side">Since 2002</span>
+          </div>
+          <div class="story-card__headline">4th-best TS% by a #1 pick at this stage of Vegas</div>
+          <div class="story-card__body">
+            64.0 TS% on 5 GP. Trails only <strong>Banchero '22 (66.2)</strong>, <strong>Wembanyama '23 (65.8)</strong>, and <strong>Edwards '20 (64.3)</strong>. The post-2020 wing era keeps producing the most efficient #1 pick debuts on record.
+          </div>
+        </div>
+
+        <div class="story-card story-card--trend">
+          <div class="story-card__type">
+            Trend <span class="story-card__type-side">Games 1 → 5</span>
+          </div>
+          <div class="story-card__headline">TS% trending up; volume holding</div>
+          <div class="story-card__body">
+            60.0 → 58.6 → 61.2 → 64.0 → 65.4 across 5 games. <strong>+5.4 TS% improvement</strong> from Game 1 to 5 with USG holding at 31. Not a small-sample bounce — the trend has direction.
+          </div>
+        </div>
+
+        <div class="story-card story-card--pre-post">
+          <div class="story-card__type">
+            Pre-draft → SL <span class="story-card__type-side">College vs. now</span>
+          </div>
+          <div class="story-card__headline">USG% jumped 5 points off Duke; AST% nearly doubled</div>
+          <div class="story-card__body">
+            College USG 26.8 → SL 31.4 (+4.6). College AST% <strong>14.2 → SL 26.8</strong> — the biggest pre/post-draft playmaking jump of any 2026 lottery forward. Dallas using him as a point-forward already.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         PER-GAME CHARTS  (PTS / MIN / USG% over the 5-game run)
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Game-by-Game Trajectory</div>
+          <div class="section-header__meta">Each chart spans G1 → G5 · trend lines, not single-game noise</div>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+
+        <!-- PTS chart -->
+        <div class="chart-card">
+          <div class="chart-card__head">
+            <span class="chart-card__title">Points per game</span>
+            <span class="chart-card__avg">Avg <strong>26.4</strong></span>
+          </div>
+          <svg class="chart-card__svg" viewBox="0 0 320 110" preserveAspectRatio="none" role="img" aria-label="Points per game by SL game">
+            <!-- Grid lines -->
+            <line x1="0" y1="20" x2="320" y2="20" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="55" x2="320" y2="55" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="90" x2="320" y2="90" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 3"/>
+            <text x="2" y="18" font-family="ui-monospace" font-size="8" fill="#94a3b8">35</text>
+            <text x="2" y="58" font-family="ui-monospace" font-size="8" fill="#94a3b8">25 avg</text>
+            <text x="2" y="93" font-family="ui-monospace" font-size="8" fill="#94a3b8">15</text>
+
+            <!-- Game-by-game: 22, 24, 28, 32, 26 -->
+            <!-- Y mapping: y = 90 - ((pts - 15) / 20) * 70 -->
+            <polyline points="40,66 100,59 160,45 220,31 280,52"
+                      fill="none" stroke="#f59e0b" stroke-width="2.5"/>
+            <!-- Points -->
+            <circle cx="40"  cy="66" r="4" fill="#f59e0b"/>
+            <circle cx="100" cy="59" r="4" fill="#f59e0b"/>
+            <circle cx="160" cy="45" r="4" fill="#f59e0b"/>
+            <circle cx="220" cy="31" r="4" fill="#f59e0b"/>
+            <circle cx="280" cy="52" r="4" fill="#f59e0b"/>
+            <!-- Game labels -->
+            <text x="40" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G1</text>
+            <text x="100" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G2</text>
+            <text x="160" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G3</text>
+            <text x="220" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G4</text>
+            <text x="280" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G5</text>
+            <!-- Value annotations -->
+            <text x="40" y="62" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">22</text>
+            <text x="100" y="55" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">24</text>
+            <text x="160" y="41" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">28</text>
+            <text x="220" y="27" font-family="ui-monospace" font-size="8" fill="#b45309" text-anchor="middle" font-weight="700">32</text>
+            <text x="280" y="48" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">26</text>
+          </svg>
+          <div class="chart-card__footnote">
+            Game 4 high: <strong>32 vs. WAS</strong>. No game below 22. Floor + ceiling both above 2025 class average for top picks (18 / 28).
+          </div>
+        </div>
+
+        <!-- MIN chart -->
+        <div class="chart-card">
+          <div class="chart-card__head">
+            <span class="chart-card__title">Minutes per game</span>
+            <span class="chart-card__avg">Avg <strong>29.4</strong></span>
+          </div>
+          <svg class="chart-card__svg" viewBox="0 0 320 110" preserveAspectRatio="none" role="img" aria-label="Minutes per game by SL game">
+            <line x1="0" y1="20" x2="320" y2="20" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="55" x2="320" y2="55" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="90" x2="320" y2="90" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 3"/>
+            <text x="2" y="18" font-family="ui-monospace" font-size="8" fill="#94a3b8">36</text>
+            <text x="2" y="58" font-family="ui-monospace" font-size="8" fill="#94a3b8">29 avg</text>
+            <text x="2" y="93" font-family="ui-monospace" font-size="8" fill="#94a3b8">20</text>
+
+            <!-- MIN: 28, 30, 29, 31, 29 -->
+            <polyline points="40,58 100,46 160,52 220,40 280,52"
+                      fill="none" stroke="#06b6d4" stroke-width="2.5"/>
+            <circle cx="40"  cy="58" r="4" fill="#06b6d4"/>
+            <circle cx="100" cy="46" r="4" fill="#06b6d4"/>
+            <circle cx="160" cy="52" r="4" fill="#06b6d4"/>
+            <circle cx="220" cy="40" r="4" fill="#06b6d4"/>
+            <circle cx="280" cy="52" r="4" fill="#06b6d4"/>
+            <text x="40" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G1</text>
+            <text x="100" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G2</text>
+            <text x="160" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G3</text>
+            <text x="220" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G4</text>
+            <text x="280" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G5</text>
+            <text x="40" y="54" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">28</text>
+            <text x="100" y="42" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">30</text>
+            <text x="160" y="48" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">29</text>
+            <text x="220" y="36" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">31</text>
+            <text x="280" y="48" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">29</text>
+          </svg>
+          <div class="chart-card__footnote">
+            <strong>Highest #1-pick minutes load</strong> of any debut SL since '21. Dallas not protecting him — he's a workhorse from G1.
+          </div>
+        </div>
+
+        <!-- USG chart -->
+        <div class="chart-card">
+          <div class="chart-card__head">
+            <span class="chart-card__title">USG% (PBP)</span>
+            <span class="chart-card__avg">Avg <strong>31.4</strong></span>
+          </div>
+          <svg class="chart-card__svg" viewBox="0 0 320 110" preserveAspectRatio="none" role="img" aria-label="USG% by SL game">
+            <line x1="0" y1="20" x2="320" y2="20" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="55" x2="320" y2="55" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="0" y1="90" x2="320" y2="90" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 3"/>
+            <text x="2" y="18" font-family="ui-monospace" font-size="8" fill="#94a3b8">36</text>
+            <text x="2" y="58" font-family="ui-monospace" font-size="8" fill="#94a3b8">30 avg</text>
+            <text x="2" y="93" font-family="ui-monospace" font-size="8" fill="#94a3b8">22</text>
+
+            <!-- USG: 28.4, 30.2, 31.0, 32.5, 34.9 -->
+            <polyline points="40,67 100,55 160,49 220,40 280,22"
+                      fill="none" stroke="#d946ef" stroke-width="2.5"/>
+            <circle cx="40"  cy="67" r="4" fill="#d946ef"/>
+            <circle cx="100" cy="55" r="4" fill="#d946ef"/>
+            <circle cx="160" cy="49" r="4" fill="#d946ef"/>
+            <circle cx="220" cy="40" r="4" fill="#d946ef"/>
+            <circle cx="280" cy="22" r="4" fill="#d946ef"/>
+            <text x="40" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G1</text>
+            <text x="100" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G2</text>
+            <text x="160" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G3</text>
+            <text x="220" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G4</text>
+            <text x="280" y="106" font-family="ui-monospace" font-size="8" fill="#94a3b8" text-anchor="middle">G5</text>
+            <text x="40" y="63" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">28.4</text>
+            <text x="100" y="51" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">30.2</text>
+            <text x="160" y="45" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">31.0</text>
+            <text x="220" y="36" font-family="ui-monospace" font-size="8" fill="#475569" text-anchor="middle" font-weight="600">32.5</text>
+            <text x="280" y="18" font-family="ui-monospace" font-size="8" fill="#a21caf" text-anchor="middle" font-weight="700">34.9</text>
+          </svg>
+          <div class="chart-card__footnote">
+            <strong>USG% climbing every game.</strong> +6.5 pts G1 → G5 — Marshall is feeding him more, not protecting his rookie line.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         GAME LOGS
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Game Logs</div>
+          <div class="section-header__meta">Every Flagg game · Vegas SL 2026 · sortable</div>
+        </div>
+        <a class="section-header__cta" href="#">Open in Explorer →</a>
+      </div>
+
+      <div class="logs-controls">
+        <div class="mode-toggle" role="tablist">
+          <button class="mode-toggle__btn mode-toggle__btn--active">Per Game</button>
+          <button class="mode-toggle__btn">Per 36</button>
+          <button class="mode-toggle__btn">Per 100</button>
+          <button class="mode-toggle__btn">Totals</button>
+          <button class="mode-toggle__btn">Advanced</button>
+        </div>
+        <span class="logs-meta">5 GP · all venues · PBP enriched</span>
+      </div>
+
+      <div class="logs-wrapper">
+        <table class="logs">
+          <thead>
+            <tr>
+              <th class="sticky-left left">Date · Opp</th>
+              <th class="left">Result</th>
+              <th>MIN</th>
+              <th>PTS</th>
+              <th>REB</th>
+              <th>AST</th>
+              <th>STL</th>
+              <th>BLK</th>
+              <th>TOV</th>
+              <th>FG</th>
+              <th>3P</th>
+              <th>FT</th>
+              <th>TS%</th>
+              <th>USG%</th>
+              <th>+/−</th>
+              <th>GmScore</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="sticky-left left"><a class="opp-link" href="#">Jul 10 · vs. Lakers</a><span class="opp-tag opp-tag--vegas">Vegas</span></td>
+              <td class="left"><span class="result-pill result-pill--w">W 102-87</span></td>
+              <td>28</td>
+              <td>22</td>
+              <td>10</td>
+              <td>4</td>
+              <td>2</td>
+              <td>1</td>
+              <td>3</td>
+              <td>8-15</td>
+              <td>2-6</td>
+              <td>4-5</td>
+              <td>60.0</td>
+              <td>28.4</td>
+              <td class="plus">+9</td>
+              <td>18.6</td>
+            </tr>
+            <tr>
+              <td class="sticky-left left"><a class="opp-link" href="#">Jul 8 · @ Hornets</a><span class="opp-tag opp-tag--vegas">Vegas</span></td>
+              <td class="left"><span class="result-pill result-pill--w">W 88-79</span></td>
+              <td>30</td>
+              <td>24</td>
+              <td>11</td>
+              <td>4</td>
+              <td>1</td>
+              <td>3</td>
+              <td>2</td>
+              <td>9-17</td>
+              <td>2-5</td>
+              <td>4-5</td>
+              <td>58.6</td>
+              <td>30.2</td>
+              <td class="plus">+18</td>
+              <td>22.3</td>
+            </tr>
+            <tr>
+              <td class="sticky-left left"><a class="opp-link" href="#">Jul 9 · vs. Hornets</a><span class="opp-tag opp-tag--vegas">Vegas</span></td>
+              <td class="left"><span class="result-pill result-pill--l">L 84-91</span></td>
+              <td>29</td>
+              <td>28</td>
+              <td>10</td>
+              <td>5</td>
+              <td>2</td>
+              <td>2</td>
+              <td>3</td>
+              <td>10-19</td>
+              <td>3-7</td>
+              <td>5-6</td>
+              <td>61.2</td>
+              <td>31.0</td>
+              <td class="minus">−2</td>
+              <td>22.8</td>
+            </tr>
+            <tr>
+              <td class="sticky-left left"><a class="opp-link" href="#">Jul 11 · vs. Wizards</a><span class="opp-tag opp-tag--vegas">Vegas</span></td>
+              <td class="left"><span class="result-pill result-pill--w">W 92-87</span></td>
+              <td>31</td>
+              <td class="heat-top">32</td>
+              <td>9</td>
+              <td>6</td>
+              <td>4</td>
+              <td>1</td>
+              <td>2</td>
+              <td>11-18</td>
+              <td>3-6</td>
+              <td>7-7</td>
+              <td class="heat-top">64.0</td>
+              <td>31.4</td>
+              <td class="plus">+14</td>
+              <td class="heat-top">28.4</td>
+            </tr>
+            <tr>
+              <td class="sticky-left left"><a class="opp-link" href="#">Jul 12 · vs. Pelicans</a><span class="opp-tag opp-tag--vegas">Vegas</span></td>
+              <td class="left"><span class="result-pill result-pill--w">W 96-78</span></td>
+              <td>29</td>
+              <td>26</td>
+              <td>11</td>
+              <td>8</td>
+              <td>3</td>
+              <td>2</td>
+              <td>3</td>
+              <td>9-15</td>
+              <td>3-5</td>
+              <td>5-6</td>
+              <td>65.4</td>
+              <td class="heat-top">34.9</td>
+              <td class="plus">+20</td>
+              <td class="heat-top">26.1</td>
+            </tr>
+            <tr class="avg-row">
+              <td class="sticky-left left">Average · per game</td>
+              <td class="left">4–1</td>
+              <td>29.4</td>
+              <td>26.4</td>
+              <td>10.2</td>
+              <td>5.4</td>
+              <td>2.4</td>
+              <td>1.8</td>
+              <td>2.6</td>
+              <td>9.4-16.8</td>
+              <td>2.6-5.8</td>
+              <td>5.0-5.8</td>
+              <td>64.0</td>
+              <td>31.4</td>
+              <td class="plus">+11.8</td>
+              <td>23.6</td>
+            </tr>
+            <tr class="totals-row">
+              <td class="sticky-left left">Totals · Vegas 2026</td>
+              <td class="left">4–1</td>
+              <td>147</td>
+              <td>132</td>
+              <td>51</td>
+              <td>27</td>
+              <td>12</td>
+              <td>9</td>
+              <td>13</td>
+              <td>47-84</td>
+              <td>13-29</td>
+              <td>25-29</td>
+              <td>64.0</td>
+              <td>31.4</td>
+              <td>+59</td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         PRE-DRAFT vs. SL  (DraftGuru moat block)
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Pre-Draft → Summer League</div>
+          <div class="section-header__meta">Duke '25-26 season vs. Vegas SL 2026 · what's changed</div>
+        </div>
+      </div>
+
+      <div class="prepost-wrapper">
+        <div class="prepost-intro">
+          DraftGuru tracks every prospect's college rate stats — the post-draft <strong>delta</strong> is the most direct readout of how a team is actually deploying them. Below: Flagg's Duke season vs. his first SL run.
+        </div>
+
+        <div class="prepost-row">
+          <div class="prepost-row__label">PPG</div>
+          <div class="prepost-row__bars">
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--college" style="width: 76%;">
+                <span class="prepost-bar__label">Duke</span>
+                <span class="prepost-bar__value">19.2</span>
+              </div>
+            </div>
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--sl" style="width: 100%;">
+                <span class="prepost-bar__label">SL '26</span>
+                <span class="prepost-bar__value">26.4</span>
+              </div>
+            </div>
+          </div>
+          <div class="prepost-row__delta prepost-row__delta--up">+7.2</div>
+        </div>
+
+        <div class="prepost-row">
+          <div class="prepost-row__label">RPG</div>
+          <div class="prepost-row__bars">
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--college" style="width: 78%;">
+                <span class="prepost-bar__label">Duke</span>
+                <span class="prepost-bar__value">8.0</span>
+              </div>
+            </div>
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--sl" style="width: 100%;">
+                <span class="prepost-bar__label">SL '26</span>
+                <span class="prepost-bar__value">10.2</span>
+              </div>
+            </div>
+          </div>
+          <div class="prepost-row__delta prepost-row__delta--up">+2.2</div>
+        </div>
+
+        <div class="prepost-row">
+          <div class="prepost-row__label">APG</div>
+          <div class="prepost-row__bars">
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--college" style="width: 56%;">
+                <span class="prepost-bar__label">Duke</span>
+                <span class="prepost-bar__value">3.0</span>
+              </div>
+            </div>
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--sl" style="width: 100%;">
+                <span class="prepost-bar__label">SL '26</span>
+                <span class="prepost-bar__value">5.4</span>
+              </div>
+            </div>
+          </div>
+          <div class="prepost-row__delta prepost-row__delta--up">+2.4 · point-forward usage</div>
+        </div>
+
+        <div class="prepost-row">
+          <div class="prepost-row__label">USG%</div>
+          <div class="prepost-row__bars">
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--college" style="width: 85%;">
+                <span class="prepost-bar__label">Duke</span>
+                <span class="prepost-bar__value">26.8</span>
+              </div>
+            </div>
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--sl" style="width: 100%;">
+                <span class="prepost-bar__label">SL '26</span>
+                <span class="prepost-bar__value">31.4</span>
+              </div>
+            </div>
+          </div>
+          <div class="prepost-row__delta prepost-row__delta--up">+4.6</div>
+        </div>
+
+        <div class="prepost-row">
+          <div class="prepost-row__label">AST%</div>
+          <div class="prepost-row__bars">
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--college" style="width: 53%;">
+                <span class="prepost-bar__label">Duke</span>
+                <span class="prepost-bar__value">14.2</span>
+              </div>
+            </div>
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--sl" style="width: 100%;">
+                <span class="prepost-bar__label">SL '26</span>
+                <span class="prepost-bar__value">26.8</span>
+              </div>
+            </div>
+          </div>
+          <div class="prepost-row__delta prepost-row__delta--up">+12.6 · biggest lottery jump</div>
+        </div>
+
+        <div class="prepost-row">
+          <div class="prepost-row__label">TS%</div>
+          <div class="prepost-row__bars">
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--college" style="width: 94%;">
+                <span class="prepost-bar__label">Duke</span>
+                <span class="prepost-bar__value">60.3</span>
+              </div>
+            </div>
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--sl" style="width: 100%;">
+                <span class="prepost-bar__label">SL '26</span>
+                <span class="prepost-bar__value">64.0</span>
+              </div>
+            </div>
+          </div>
+          <div class="prepost-row__delta prepost-row__delta--up">+3.7 · efficient w/ added volume</div>
+        </div>
+
+        <div class="prepost-row">
+          <div class="prepost-row__label">3PT%</div>
+          <div class="prepost-row__bars">
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--college" style="width: 100%;">
+                <span class="prepost-bar__label">Duke</span>
+                <span class="prepost-bar__value">38.5</span>
+              </div>
+            </div>
+            <div class="prepost-bar">
+              <div class="prepost-bar__fill prepost-bar__fill--sl" style="width: 91%;">
+                <span class="prepost-bar__label">SL '26</span>
+                <span class="prepost-bar__value">35.2</span>
+              </div>
+            </div>
+          </div>
+          <div class="prepost-row__delta prepost-row__delta--flat">−3.3 · sample of 29 3PA</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         SPLITS
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Splits</div>
+          <div class="section-header__meta">3 lenses on the 5-game sample</div>
+        </div>
+      </div>
+
+      <div class="splits-grid">
+
+        <div class="split-card">
+          <div class="split-card__title">Wins (4) vs. Losses (1)</div>
+          <div class="split-row-mini">
+            <span class="split-row-mini__label">In wins</span>
+            <span class="split-row-mini__sample">4 GP · 117 MIN</span>
+            <span class="split-row-mini__value">26.0 PPG</span>
+          </div>
+          <div class="split-row-mini">
+            <span class="split-row-mini__label">In losses</span>
+            <span class="split-row-mini__sample">1 GP · 29 MIN</span>
+            <span class="split-row-mini__value">28.0 PPG</span>
+          </div>
+          <div class="split-row-mini">
+            <span class="split-row-mini__label">+/− in wins</span>
+            <span class="split-row-mini__sample">avg</span>
+            <span class="split-row-mini__value plus">+15.3</span>
+          </div>
+          <div class="split-card__hook">
+            Scored more in the loss but the team net swing dropped from +15 to −2. <strong>Volume up; team net down</strong> — typical "team can't keep up" loss pattern for a high-usage rookie.
+          </div>
+        </div>
+
+        <div class="split-card">
+          <div class="split-card__title">Home (T&amp;M) vs. Away (Cox)</div>
+          <div class="split-row-mini">
+            <span class="split-row-mini__label">At Thomas &amp; Mack</span>
+            <span class="split-row-mini__sample">3 GP · 88 MIN</span>
+            <span class="split-row-mini__value">28.0 PPG</span>
+          </div>
+          <div class="split-row-mini">
+            <span class="split-row-mini__label">At Cox Pavilion</span>
+            <span class="split-row-mini__sample">2 GP · 59 MIN</span>
+            <span class="split-row-mini__value">24.0 PPG</span>
+          </div>
+          <div class="split-row-mini">
+            <span class="split-row-mini__label">TS% gap</span>
+            <span class="split-row-mini__sample">T&amp;M − Cox</span>
+            <span class="split-row-mini__value plus">+5.6</span>
+          </div>
+          <div class="split-card__hook">
+            Slightly stronger on the main court. Probably noise on 5 GP — but DAL's bracket games are scheduled at <strong>T&amp;M</strong>, so the better venue for him is the right one.
+          </div>
+        </div>
+
+        <div class="split-card">
+          <div class="split-card__title">vs. top-30 picks on the floor</div>
+          <div class="split-row-mini">
+            <span class="split-row-mini__label">≥1 top-30 opp</span>
+            <span class="split-row-mini__sample">3 GP · 90 MIN</span>
+            <span class="split-row-mini__value">27.7 PPG</span>
+          </div>
+          <div class="split-row-mini">
+            <span class="split-row-mini__label">No top-30 opp</span>
+            <span class="split-row-mini__sample">2 GP · 57 MIN</span>
+            <span class="split-row-mini__value">24.5 PPG</span>
+          </div>
+          <div class="split-row-mini">
+            <span class="split-row-mini__label">TS% in tougher</span>
+            <span class="split-row-mini__sample">vs. ≥1 top-30</span>
+            <span class="split-row-mini__value plus">66.2</span>
+          </div>
+          <div class="split-card__hook">
+            <strong>Plays up to competition.</strong> Scoring and efficiency both higher against opponents with at least one top-30 draft pick on the roster. Encouraging early-career signal.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         SHOT CHART (aggregated across SL)
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Shot Chart · 2026 Vegas SL</div>
+          <div class="section-header__meta">Aggregated across 5 GP · zone Δ vs. league avg on the right</div>
+        </div>
+      </div>
+
+      <div class="shot-court">
+        <!-- SVG half-court -->
+        <div style="display: flex; flex-direction: column; align-items: center;">
+          <svg class="shot-court__svg" viewBox="0 0 360 280" role="img" aria-label="Flagg's shot chart">
+            <rect x="2" y="2" width="356" height="276" fill="#fafbfc" stroke="#cbd5e1" stroke-width="1.5" rx="4"/>
+            <path d="M 30 2 L 30 100 A 150 150 0 0 0 330 100 L 330 2" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+            <rect x="130" y="2" width="100" height="140" fill="none" stroke="#94a3b8" stroke-width="1.5"/>
+            <circle cx="180" cy="142" r="40" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4 3"/>
+            <line x1="160" y1="20" x2="200" y2="20" stroke="#475569" stroke-width="3"/>
+            <circle cx="180" cy="27" r="6" fill="none" stroke="#f59e0b" stroke-width="1.5"/>
+
+            <!-- Heavy at-rim cluster (hot) -->
+            <circle cx="178" cy="32" r="11" fill="#10b981" opacity="0.85"/>
+            <circle cx="168" cy="34" r="8" fill="#10b981" opacity="0.8"/>
+            <circle cx="190" cy="36" r="7" fill="#10b981" opacity="0.8"/>
+            <circle cx="182" cy="42" r="6" fill="#94a3b8" opacity="0.55"/>
+            <!-- Paint (medium) -->
+            <circle cx="158" cy="68" r="6" fill="#10b981" opacity="0.75"/>
+            <circle cx="200" cy="72" r="5" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="173" cy="85" r="5" fill="#10b981" opacity="0.7"/>
+            <!-- Mid range (cool) -->
+            <circle cx="115" cy="105" r="4" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="245" cy="110" r="4" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="140" cy="125" r="3" fill="#94a3b8" opacity="0.55"/>
+            <!-- Corner 3 -->
+            <circle cx="42" cy="58" r="7" fill="#10b981" opacity="0.85"/>
+            <circle cx="50" cy="80" r="5" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="318" cy="62" r="6" fill="#10b981" opacity="0.8"/>
+            <!-- Wing 3 -->
+            <circle cx="65" cy="135" r="6" fill="#10b981" opacity="0.8"/>
+            <circle cx="295" cy="140" r="5" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="80" cy="160" r="4" fill="#10b981" opacity="0.7"/>
+            <circle cx="275" cy="170" r="4" fill="#94a3b8" opacity="0.55"/>
+            <!-- Top of key (steady) -->
+            <circle cx="180" cy="205" r="7" fill="#10b981" opacity="0.85"/>
+            <circle cx="160" cy="218" r="4" fill="#94a3b8" opacity="0.55"/>
+            <circle cx="210" cy="222" r="5" fill="#10b981" opacity="0.75"/>
+            <circle cx="180" cy="240" r="5" fill="#94a3b8" opacity="0.55"/>
+          </svg>
+          <div class="shot-court__legend">
+            <span class="shot-court__legend-item"><span class="shot-court__legend-dot" style="background: #10b981;"></span>Made</span>
+            <span class="shot-court__legend-item"><span class="shot-court__legend-dot" style="background: #94a3b8;"></span>Missed</span>
+            <span class="shot-court__legend-item">Size = volume cluster</span>
+          </div>
+        </div>
+
+        <!-- Zone breakdown -->
+        <div class="shot-zones">
+          <div class="shot-zones__title">Zone efficiency · vs. league avg</div>
+
+          <div class="shot-zone-row">
+            <span class="shot-zone-row__name">At rim</span>
+            <span class="shot-zone-row__attempts">23 FGA</span>
+            <span class="shot-zone-row__pct shot-zone-row__pct--hot">74%</span>
+            <span class="shot-zone-row__delta shot-zone-row__delta--up">+11 pts vs. SL avg (63%) · primary look</span>
+          </div>
+
+          <div class="shot-zone-row">
+            <span class="shot-zone-row__name">Paint (non-rim)</span>
+            <span class="shot-zone-row__attempts">14 FGA</span>
+            <span class="shot-zone-row__pct">50%</span>
+            <span class="shot-zone-row__delta">−2 pts vs. SL avg · league-typical</span>
+          </div>
+
+          <div class="shot-zone-row">
+            <span class="shot-zone-row__name">Mid-range</span>
+            <span class="shot-zone-row__attempts">18 FGA</span>
+            <span class="shot-zone-row__pct shot-zone-row__pct--cold">39%</span>
+            <span class="shot-zone-row__delta shot-zone-row__delta--down">−5 pts vs. SL avg · the soft zone</span>
+          </div>
+
+          <div class="shot-zone-row">
+            <span class="shot-zone-row__name">Corner 3</span>
+            <span class="shot-zone-row__attempts">9 3PA</span>
+            <span class="shot-zone-row__pct shot-zone-row__pct--hot">44%</span>
+            <span class="shot-zone-row__delta shot-zone-row__delta--up">+9 pts vs. SL avg · efficient catch-and-shoot look</span>
+          </div>
+
+          <div class="shot-zone-row">
+            <span class="shot-zone-row__name">Wing 3</span>
+            <span class="shot-zone-row__attempts">14 3PA</span>
+            <span class="shot-zone-row__pct">36%</span>
+            <span class="shot-zone-row__delta">+1 pt vs. SL avg · league-typical</span>
+          </div>
+
+          <div class="shot-zone-row">
+            <span class="shot-zone-row__name">Top of key 3</span>
+            <span class="shot-zone-row__attempts">6 3PA</span>
+            <span class="shot-zone-row__pct shot-zone-row__pct--hot">50%</span>
+            <span class="shot-zone-row__delta shot-zone-row__delta--up">+15 pts vs. SL avg · small sample but loud</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: 0.875rem; padding: 0.75rem 1rem; background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 0.5rem; font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-700);">
+        <strong>Shot diet read:</strong> 74% at rim on 23 attempts is the headline — that's a top-decile finishing rate for a 6'9" forward across recent SL classes. Mid-range is the only inefficient zone; small sample of corner 3s suggests catch-and-shoot is sticky.
+      </div>
+    </section>
+
+    <div class="updated-strip">
+      <span class="updated-strip__dot" aria-hidden="true"></span>
+      Daily refresh · Last update: Jul 12, 2026 · 10:14 PT
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Landing</a></li>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">Explorer</a></li>
+            <li><a href="#">2026 Draft Class</a></li>
+            <li><a href="#">All-Summer-League</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

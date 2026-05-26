@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Summer League Explorer — DraftGuru</title>
+  <meta name="description" content="Build any Summer League query — filter by year, draft class, position, minutes, any stat threshold — and share the URL.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 2.5rem; }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    .section-header__title {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+      padding-left: 0.625rem;
+      border-left: 4px solid var(--color-accent-amber);
+    }
+
+    .section-header__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    /* ============================================================================
+       NAVBAR (shared)
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--color-accent-amber);
+    }
+    .search-input {
+      width: 240px; background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none;
+    }
+
+    /* ============================================================================
+       BREADCRUMBS
+       ========================================================================= */
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    /* ============================================================================
+       PAGE HERO
+       ========================================================================= */
+    .page-hero {
+      padding: 1rem 0 1.25rem;
+    }
+
+    .page-hero__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+    .page-hero__eyebrow::before {
+      content: ''; width: 12px; height: 2px;
+      background: var(--color-accent-amber);
+    }
+
+    .page-hero h2 {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+      color: var(--color-slate-900);
+    }
+
+    .page-hero__tagline {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.5rem;
+      max-width: 42rem;
+    }
+
+    /* ============================================================================
+       FEATURED QUERIES RAIL
+       ========================================================================= */
+    .featured-rail {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 0.875rem 1.125rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .featured-rail__head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.625rem;
+    }
+
+    .featured-rail__title {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-700);
+    }
+
+    .featured-rail__hint {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-400);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .featured-queries {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .featured-query {
+      font-family: var(--font-body);
+      font-size: 0.75rem;
+      padding: 0.4375rem 0.75rem;
+      border-radius: 9999px;
+      background: var(--color-slate-50);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-700);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .featured-query:hover {
+      background: var(--color-white);
+      border-color: var(--color-accent-amber);
+      color: #b45309;
+      transform: translateY(-1px);
+    }
+
+    .featured-query__icon {
+      font-size: 0.875rem;
+    }
+
+    .featured-query--active {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.45);
+      color: #b45309;
+    }
+
+    /* ============================================================================
+       QUERY SUMMARY BANNER  (the share unit)
+       ========================================================================= */
+    .query-summary {
+      background: linear-gradient(135deg, #1e293b, #334155);
+      border-radius: var(--border-radius);
+      padding: 1.25rem 1.5rem;
+      color: var(--color-white);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+      margin-bottom: 0.75rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1.5rem;
+      align-items: center;
+    }
+
+    .query-summary::before {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent 0, transparent 3px,
+        rgba(255,255,255,0.025) 3px, rgba(255,255,255,0.025) 4px
+      );
+      pointer-events: none;
+    }
+
+    .query-summary__body { z-index: 1; }
+
+    .query-summary__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.625rem;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: #fbbf24;
+      margin-bottom: 0.375rem;
+    }
+    .query-summary__eyebrow::before {
+      content: ''; width: 12px; height: 2px;
+      background: var(--color-accent-amber);
+    }
+
+    .query-summary__text {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      letter-spacing: 0.01em;
+      line-height: 1.3;
+      color: var(--color-white);
+    }
+
+    .query-summary__count {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.65);
+      margin-top: 0.5rem;
+    }
+
+    .query-summary__count strong { color: #fbbf24; }
+
+    .query-summary__actions {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      z-index: 1;
+    }
+
+    .qs-btn {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.375rem;
+      border: 1px solid;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .qs-btn--primary {
+      background: rgba(245, 158, 11, 0.18);
+      border-color: rgba(245, 158, 11, 0.55);
+      color: #fbbf24;
+    }
+    .qs-btn--primary:hover {
+      background: rgba(245, 158, 11, 0.28);
+      color: var(--color-white);
+    }
+
+    .qs-btn--secondary {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.2);
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .qs-btn--secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: var(--color-white);
+    }
+
+    /* ============================================================================
+       INSIGHT CALLOUT (what this query reveals)
+       ========================================================================= */
+    .insight-callout {
+      background: rgba(6, 182, 212, 0.06);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      border-left: 4px solid var(--color-accent-cyan);
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1.5rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.75rem;
+      align-items: start;
+    }
+
+    .insight-callout__chip {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      background: rgba(6, 182, 212, 0.15);
+      color: #0e7490;
+      border: 1px solid rgba(6, 182, 212, 0.4);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      white-space: nowrap;
+      margin-top: 0.0625rem;
+    }
+
+    .insight-callout__body {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-800);
+      line-height: 1.5;
+    }
+    .insight-callout__body strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       QUERY BUILDER PANEL
+       ========================================================================= */
+    .query-builder {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      margin-bottom: 1.5rem;
+      overflow: hidden;
+    }
+
+    .query-builder__head {
+      padding: 0.875rem 1.125rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .query-builder__title {
+      font-family: var(--font-heading);
+      font-size: 0.9375rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.625rem;
+    }
+
+    .query-builder__title-arrow {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-400);
+    }
+
+    .query-builder__sub {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .query-builder__body {
+      padding: 1.125rem 1.125rem 1.25rem;
+    }
+
+    .qb-section {
+      margin-bottom: 1.125rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px dashed var(--color-slate-200);
+    }
+    .qb-section:last-child { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }
+
+    .qb-section__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+
+    /* Subject toggle */
+    .subject-toggle {
+      display: inline-flex;
+      align-items: center;
+      background: var(--color-slate-100);
+      border-radius: 9999px;
+      padding: 0.1875rem;
+      gap: 0.1875rem;
+    }
+
+    .subject-btn {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.4rem 0.875rem;
+      border-radius: 9999px;
+      background: transparent;
+      border: none;
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .subject-btn--active {
+      background: var(--color-white);
+      color: var(--color-slate-900);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    /* Time + range inline */
+    .qb-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      align-items: start;
+    }
+
+    .qb-field { display: flex; flex-direction: column; gap: 0.375rem; }
+
+    .qb-field__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .range-slider {
+      width: 100%;
+      height: 4px;
+      background: var(--color-slate-200);
+      border-radius: 9999px;
+      position: relative;
+      margin: 0.4375rem 0 0.25rem;
+    }
+    .range-slider__fill {
+      position: absolute;
+      top: 0; height: 100%;
+      background: var(--color-accent-amber);
+      border-radius: 9999px;
+    }
+    .range-slider__handle {
+      position: absolute;
+      top: -4px;
+      width: 12px; height: 12px;
+      background: var(--color-white);
+      border: 2px solid var(--color-accent-amber);
+      border-radius: 9999px;
+      transform: translateX(-50%);
+    }
+
+    .range-display {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-600);
+    }
+
+    .qb-chips {
+      display: flex;
+      gap: 0.3125rem;
+      flex-wrap: wrap;
+    }
+
+    .qb-chip {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+      cursor: pointer;
+    }
+    .qb-chip:hover { border-color: var(--color-slate-400); }
+    .qb-chip--active {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #b45309;
+    }
+
+    .qb-input {
+      width: 100%;
+      padding: 0.4rem 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      background: var(--color-white);
+    }
+
+    /* Stat condition rows */
+    .conditions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .condition {
+      display: grid;
+      grid-template-columns: minmax(120px, 1.2fr) 110px minmax(80px, 1fr) auto;
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.4rem 0.5rem;
+      background: var(--color-slate-50);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+    }
+
+    .condition--predicate { grid-template-columns: minmax(180px, 1fr) auto auto; }
+
+    .condition select,
+    .condition input {
+      width: 100%;
+      padding: 0.3rem 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      background: var(--color-white);
+    }
+
+    .condition__remove {
+      background: transparent;
+      border: none;
+      color: var(--color-slate-400);
+      font-size: 1.125rem;
+      cursor: pointer;
+      padding: 0 0.25rem;
+      line-height: 1;
+    }
+    .condition__remove:hover { color: var(--color-accent-rose); }
+
+    .add-condition {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.4rem 0.625rem;
+      border-radius: 0.375rem;
+      border: 1px dashed var(--color-slate-300);
+      background: var(--color-white);
+      color: var(--color-slate-600);
+      cursor: pointer;
+      align-self: flex-start;
+    }
+    .add-condition:hover { border-color: var(--color-slate-400); color: var(--color-slate-800); }
+
+    .sort-row {
+      display: grid;
+      grid-template-columns: 1fr 110px 1fr 110px;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .sort-row select {
+      padding: 0.4rem 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      background: var(--color-white);
+    }
+
+    .sort-row__sep {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-400);
+      text-align: center;
+    }
+
+    .qb-footer {
+      margin-top: 0.875rem;
+      padding-top: 0.875rem;
+      border-top: 1px solid var(--color-slate-100);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .qb-footer__hint {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+    }
+
+    .qb-footer__hint kbd {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      padding: 0.125rem 0.3125rem;
+      background: var(--color-slate-100);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.1875rem;
+      color: var(--color-slate-700);
+    }
+
+    .qb-footer__actions { display: flex; gap: 0.5rem; }
+
+    .qb-reset {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.45rem 0.75rem;
+      border-radius: 0.375rem;
+      border: 1px solid var(--color-slate-200);
+      background: transparent;
+      color: var(--color-slate-600);
+      cursor: pointer;
+    }
+    .qb-reset:hover { background: var(--color-slate-50); color: var(--color-slate-800); }
+
+    .qb-run {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.45rem 0.875rem;
+      border-radius: 0.375rem;
+      border: 1px solid var(--color-accent-amber);
+      background: rgba(245, 158, 11, 0.12);
+      color: #b45309;
+      cursor: pointer;
+    }
+    .qb-run:hover { background: rgba(245, 158, 11, 0.2); }
+
+    /* ============================================================================
+       RESULT CONTROLS
+       ========================================================================= */
+    .result-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .controls-cluster { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+
+    .mode-toggle {
+      display: inline-flex; align-items: center; gap: 0;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      overflow: hidden;
+    }
+    .mode-toggle__btn {
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.4rem 0.75rem;
+      color: var(--color-slate-500);
+      background: transparent; border: none;
+      border-right: 1px solid var(--color-slate-200);
+      cursor: pointer;
+    }
+    .mode-toggle__btn:last-child { border-right: none; }
+    .mode-toggle__btn:hover { background: var(--color-slate-50); color: var(--color-slate-800); }
+    .mode-toggle__btn--active { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+
+    .result-meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    /* ============================================================================
+       RESULT TABLE
+       ========================================================================= */
+    .result-table-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow-x: auto;
+    }
+
+    table.result-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+    }
+
+    table.result-table th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.5rem 0.5rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+    table.result-table th.left { text-align: left; }
+    table.result-table th.sortable--active { color: #b45309; }
+    table.result-table th.sortable--active::after { content: ' ▼'; font-size: 0.5rem; }
+
+    table.result-table th.sticky-left,
+    table.result-table td.sticky-left {
+      position: sticky;
+      left: 0;
+      background: var(--color-white);
+      z-index: 2;
+      border-right: 1px solid var(--color-slate-200);
+    }
+    table.result-table th.sticky-left { background: var(--color-slate-50); }
+
+    table.result-table td {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.5rem 0.5rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+    table.result-table td.left {
+      text-align: left;
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      font-size: 0.8125rem;
+    }
+    table.result-table tr:hover td { background: var(--color-slate-50); }
+    table.result-table tr:hover td.sticky-left { background: var(--color-slate-50); }
+
+    .rt-rank {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-400);
+      width: 1.5rem;
+      text-align: center;
+    }
+
+    .rt-player {
+      font-weight: 600;
+      color: var(--color-slate-900);
+    }
+    .rt-player:hover { color: var(--color-accent-amber); }
+
+    .rt-context {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      margin-left: 0.375rem;
+    }
+
+    .pick-pill {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      background: var(--color-slate-100);
+      color: var(--color-slate-600);
+      margin-left: 0.375rem;
+      vertical-align: middle;
+    }
+    .pick-pill--lotto { background: rgba(99, 102, 241, 0.12); color: #4338ca; }
+
+    .heat-top { background: rgba(16, 185, 129, 0.08); }
+
+    .rt-sample {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-400);
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 0.875rem;
+      border-top: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+    }
+    .pagination__meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .pagination__pages { display: flex; gap: 0.25rem; }
+    .pagination__btn {
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+      padding: 0.25rem 0.5rem; border-radius: 0.25rem;
+      background: var(--color-white); border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-700); cursor: pointer;
+      min-width: 1.75rem; text-align: center;
+    }
+    .pagination__btn--active {
+      background: var(--color-slate-900); color: var(--color-white);
+      border-color: var(--color-slate-900);
+    }
+
+    /* ============================================================================
+       METHODOLOGY-PLACEHOLDER UTILITY
+       ========================================================================= */
+    .tbd-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      margin-left: 0.375rem;
+      vertical-align: middle;
+      cursor: help;
+    }
+
+    /* ============================================================================
+       UPDATED + FOOTER
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 1.5rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+    .updated-strip__dot {
+      width: 0.5rem; height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 980px) {
+      .query-summary { grid-template-columns: 1fr; }
+      .query-summary__actions { justify-content: flex-start; }
+      .qb-row { grid-template-columns: 1fr; }
+      .condition { grid-template-columns: 1fr 100px 1fr auto; }
+      .sort-row { grid-template-columns: 1fr 1fr; }
+      .sort-row__sep { display: none; }
+    }
+    @media (max-width: 640px) {
+      .navbar-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link active" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div><input class="search-input" type="search" placeholder="Search players…"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="/stats">Stats</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league">Summer League</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">Explorer</span>
+    </div>
+
+    <!-- Page hero -->
+    <header class="page-hero">
+      <div class="page-hero__eyebrow">DraftGuru Stats · Power Surface</div>
+      <h2>Explorer</h2>
+      <p class="page-hero__tagline">Build any Summer League query — year range, draft class, position, minutes, any stat threshold — then share the URL. Every query encodes to a permalink your followers can open.</p>
+    </header>
+
+    <!-- ============================================================================
+         FEATURED QUERIES
+         ========================================================================= -->
+    <div class="featured-rail">
+      <div class="featured-rail__head">
+        <span class="featured-rail__title">Featured Queries</span>
+        <span class="featured-rail__hint">One click to load · all editable</span>
+      </div>
+      <div class="featured-queries">
+        <a class="featured-query featured-query--active" href="#">
+          <span class="featured-query__icon">🎯</span>
+          Lottery picks with USG &gt; 30
+        </a>
+        <a class="featured-query" href="#">
+          <span class="featured-query__icon">⭐</span>
+          Best wing scorers since 2020
+        </a>
+        <a class="featured-query" href="#">
+          <span class="featured-query__icon">💎</span>
+          Undrafted standouts
+        </a>
+        <a class="featured-query" href="#">
+          <span class="featured-query__icon">🎯</span>
+          30+ PT games by rookies
+        </a>
+        <a class="featured-query" href="#">
+          <span class="featured-query__icon">🛡️</span>
+          Top defensive bigs (per-36 stocks)
+        </a>
+        <a class="featured-query" href="#">
+          <span class="featured-query__icon">📈</span>
+          Second-round breakouts
+        </a>
+        <a class="featured-query" href="#">
+          <span class="featured-query__icon">🌍</span>
+          International prospects by AST%
+        </a>
+        <a class="featured-query" href="#">
+          <span class="featured-query__icon">🎓</span>
+          One-and-done players by SL composite
+        </a>
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         QUERY SUMMARY (the share unit)
+         ========================================================================= -->
+    <div class="query-summary">
+      <div class="query-summary__body">
+        <div class="query-summary__eyebrow">Current Query</div>
+        <div class="query-summary__text">
+          Lottery picks (1–14) · 2020–2026 · Vegas · ≥20 PPG · TS% &gt; 55 · sorted by TS%
+        </div>
+        <div class="query-summary__count">
+          <strong>14 players</strong> match · URL encodes the full query · refreshes daily
+        </div>
+      </div>
+      <div class="query-summary__actions">
+        <button class="qs-btn qs-btn--primary">🔗 Copy share URL</button>
+        <button class="qs-btn qs-btn--secondary">⬇ Export CSV</button>
+        <button class="qs-btn qs-btn--secondary">★ Save query</button>
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         INSIGHT CALLOUT — what this query reveals (analytical voice)
+         ========================================================================= -->
+    <div class="insight-callout" role="note">
+      <span class="insight-callout__chip">What this reveals</span>
+      <div class="insight-callout__body">
+        14 lottery picks since 2020 have cleared 20 PPG at &gt;55 TS% in SL. <strong>Banchero '22 (66.2 TS%)</strong> and <strong>Wembanyama '23 (65.8)</strong> still hold the top two efficiency marks; <strong>Flagg '26 (64.0)</strong> is currently 3rd and tracking to finish a top-3 #1-pick SL efficiency run since the recent wing era opened in 2020.
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         QUERY BUILDER
+         ========================================================================= -->
+    <div class="query-builder" aria-label="Query builder panel">
+      <div class="query-builder__head">
+        <div class="query-builder__title">
+          <span class="query-builder__title-arrow">▼</span>
+          Query Builder
+        </div>
+        <div class="query-builder__sub">5 filters · 2 conditions · 1 sort</div>
+      </div>
+      <div class="query-builder__body">
+
+        <!-- Subject -->
+        <div class="qb-section">
+          <div class="qb-section__label">Subject</div>
+          <div class="subject-toggle">
+            <button class="subject-btn subject-btn--active">Players</button>
+            <button class="subject-btn">Teams</button>
+            <button class="subject-btn">Games</button>
+          </div>
+        </div>
+
+        <!-- Time + Venue -->
+        <div class="qb-section">
+          <div class="qb-section__label">Time &amp; Venue</div>
+          <div class="qb-row">
+            <div class="qb-field">
+              <span class="qb-field__label">Year range · 2020–2026</span>
+              <div class="range-slider">
+                <div class="range-slider__fill" style="left: 75%; width: 22%;"></div>
+                <div class="range-slider__handle" style="left: 75%;"></div>
+                <div class="range-slider__handle" style="left: 97%;"></div>
+              </div>
+              <div class="range-display">
+                <span>2002</span>
+                <span>2026</span>
+              </div>
+            </div>
+            <div class="qb-field">
+              <span class="qb-field__label">Venue</span>
+              <div class="qb-chips">
+                <span class="qb-chip">All</span>
+                <span class="qb-chip qb-chip--active">Vegas</span>
+                <span class="qb-chip">Salt Lake</span>
+                <span class="qb-chip">Cal Classic</span>
+                <span class="qb-chip">Orlando</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Player filters -->
+        <div class="qb-section">
+          <div class="qb-section__label">Player Filters</div>
+          <div class="qb-row">
+            <div class="qb-field">
+              <span class="qb-field__label">Draft pick range · 1–14 (lottery)</span>
+              <div class="range-slider">
+                <div class="range-slider__fill" style="left: 0; width: 23%;"></div>
+                <div class="range-slider__handle" style="left: 0;"></div>
+                <div class="range-slider__handle" style="left: 23%;"></div>
+              </div>
+              <div class="range-display">
+                <span>1</span>
+                <span>60</span>
+              </div>
+            </div>
+            <div class="qb-field">
+              <span class="qb-field__label">Position</span>
+              <div class="qb-chips">
+                <span class="qb-chip qb-chip--active">All</span>
+                <span class="qb-chip">G</span>
+                <span class="qb-chip">F</span>
+                <span class="qb-chip">C</span>
+              </div>
+            </div>
+          </div>
+          <div class="qb-row" style="margin-top: 0.875rem;">
+            <div class="qb-field">
+              <span class="qb-field__label">Pre-draft consensus rank range</span>
+              <div class="range-slider">
+                <div class="range-slider__fill" style="left: 0; width: 100%;"></div>
+                <div class="range-slider__handle" style="left: 0;"></div>
+                <div class="range-slider__handle" style="left: 100%;"></div>
+              </div>
+              <div class="range-display">
+                <span>1</span>
+                <span>100+</span>
+              </div>
+            </div>
+            <div class="qb-field">
+              <span class="qb-field__label">Age at SL · 18–24</span>
+              <div class="range-slider">
+                <div class="range-slider__fill" style="left: 0; width: 75%;"></div>
+                <div class="range-slider__handle" style="left: 0;"></div>
+                <div class="range-slider__handle" style="left: 75%;"></div>
+              </div>
+              <div class="range-display">
+                <span>17</span>
+                <span>26</span>
+              </div>
+            </div>
+          </div>
+          <div class="qb-row" style="margin-top: 0.875rem;">
+            <div class="qb-field">
+              <span class="qb-field__label">Country / origin</span>
+              <input class="qb-input" type="search" placeholder="USA, France, Lithuania…">
+            </div>
+            <div class="qb-field">
+              <span class="qb-field__label">College / pre-NBA team</span>
+              <input class="qb-input" type="search" placeholder="Duke, Real Madrid, Mega Basket…">
+            </div>
+          </div>
+        </div>
+
+        <!-- Stat conditions -->
+        <div class="qb-section">
+          <div class="qb-section__label">Stat Conditions · all must match (AND)</div>
+          <div class="conditions">
+
+            <div class="condition">
+              <select>
+                <option>PTS</option>
+                <option>REB</option>
+                <option>AST</option>
+                <option>TS%</option>
+                <option>USG%</option>
+                <option>AST%</option>
+                <option>Stocks</option>
+                <option>GameScore</option>
+              </select>
+              <select>
+                <option>≥</option>
+                <option>&gt;</option>
+                <option>=</option>
+                <option>&lt;</option>
+                <option>≤</option>
+                <option>between</option>
+              </select>
+              <input type="text" value="20" />
+              <button class="condition__remove" title="Remove">×</button>
+            </div>
+
+            <div class="condition">
+              <select>
+                <option>TS%</option>
+                <option>PTS</option>
+                <option>REB</option>
+                <option>AST</option>
+                <option>USG%</option>
+              </select>
+              <select>
+                <option>&gt;</option>
+                <option>≥</option>
+                <option>=</option>
+                <option>&lt;</option>
+                <option>≤</option>
+                <option>between</option>
+              </select>
+              <input type="text" value="55" />
+              <button class="condition__remove" title="Remove">×</button>
+            </div>
+
+            <div class="condition condition--predicate">
+              <select>
+                <option>Had a game with 30+ PTS</option>
+                <option>Had a game with 15+ REB</option>
+                <option>Had a game with 10+ AST</option>
+                <option>Had a 50+ TS% game on ≥10 FGA</option>
+                <option>Played multi-venue SL</option>
+              </select>
+              <span class="qb-field__label" style="margin: 0; padding: 0 0.5rem;">not required</span>
+              <button class="condition__remove" title="Remove">×</button>
+            </div>
+
+          </div>
+          <button class="add-condition" style="margin-top: 0.625rem;">+ Add condition</button>
+        </div>
+
+        <!-- Sort -->
+        <div class="qb-section">
+          <div class="qb-section__label">Sort</div>
+          <div class="sort-row">
+            <select>
+              <option>TS%</option>
+              <option>PTS</option>
+              <option>REB</option>
+              <option>AST</option>
+              <option>USG%</option>
+              <option>GameScore</option>
+              <option>Composite (TBD)</option>
+              <option>Δ vs. Consensus (TBD)</option>
+            </select>
+            <select>
+              <option>↓ desc</option>
+              <option>↑ asc</option>
+            </select>
+            <span class="sort-row__sep">then by</span>
+            <select>
+              <option>PTS</option>
+              <option>TS%</option>
+              <option>USG%</option>
+              <option>(none)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="qb-footer">
+          <div class="qb-footer__hint">
+            Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to run · URL updates live
+          </div>
+          <div class="qb-footer__actions">
+            <button class="qb-reset">Reset</button>
+            <button class="qb-run">Run query →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         RESULT CONTROLS
+         ========================================================================= -->
+    <div class="result-controls">
+      <div class="controls-cluster">
+        <div class="mode-toggle" role="tablist">
+          <button class="mode-toggle__btn mode-toggle__btn--active">Per Game</button>
+          <button class="mode-toggle__btn">Per 36</button>
+          <button class="mode-toggle__btn">Per 100</button>
+          <button class="mode-toggle__btn">Totals</button>
+          <button class="mode-toggle__btn">Advanced</button>
+        </div>
+      </div>
+      <div class="result-meta">14 of 14 · Min sample 60 MIN + 2 GP</div>
+    </div>
+
+    <!-- ============================================================================
+         RESULT TABLE
+         ========================================================================= -->
+    <div class="result-table-wrapper">
+      <table class="result-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th class="left sticky-left">Player</th>
+            <th class="left">Pick</th>
+            <th class="left">Class</th>
+            <th>GP</th>
+            <th>MIN</th>
+            <th>PTS</th>
+            <th>REB</th>
+            <th>AST</th>
+            <th>USG%</th>
+            <th class="sortable--active">TS%</th>
+            <th>Composite <span class="tbd-indicator">TBD</span></th>
+            <th class="left">Sample</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="rt-rank">1</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Paolo Banchero</a> <span class="rt-context">ORL · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#1</span></td>
+            <td>2022</td>
+            <td>2</td>
+            <td>27.5</td>
+            <td>22.5</td>
+            <td>6.0</td>
+            <td>3.5</td>
+            <td>30.0</td>
+            <td class="heat-top">66.2</td>
+            <td>78.4</td>
+            <td class="left"><span class="rt-sample">2 GP · 55 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">2</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Victor Wembanyama</a> <span class="rt-context">SAS · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#1</span></td>
+            <td>2023</td>
+            <td>2</td>
+            <td>27.0</td>
+            <td>24.5</td>
+            <td>10.0</td>
+            <td>3.5</td>
+            <td>32.8</td>
+            <td class="heat-top">65.8</td>
+            <td>82.0</td>
+            <td class="left"><span class="rt-sample">2 GP · 54 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">3</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Cooper Flagg</a> <span class="rt-context">DAL · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#1</span></td>
+            <td>2026</td>
+            <td>5</td>
+            <td>29.4</td>
+            <td>26.4</td>
+            <td>10.2</td>
+            <td>5.4</td>
+            <td>31.4</td>
+            <td class="heat-top">64.0</td>
+            <td>94.2</td>
+            <td class="left"><span class="rt-sample">5 GP · 147 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">4</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Anthony Edwards</a> <span class="rt-context">MIN · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#1</span></td>
+            <td>2021</td>
+            <td>4</td>
+            <td>28.8</td>
+            <td>23.5</td>
+            <td>4.5</td>
+            <td>2.8</td>
+            <td>31.0</td>
+            <td>64.3</td>
+            <td>71.0</td>
+            <td class="left"><span class="rt-sample">4 GP · 115 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">5</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">VJ Edgecombe</a> <span class="rt-context">PHI · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#3</span></td>
+            <td>2026</td>
+            <td>5</td>
+            <td>26.8</td>
+            <td>20.4</td>
+            <td>5.4</td>
+            <td>3.2</td>
+            <td>30.2</td>
+            <td>62.1</td>
+            <td>85.3</td>
+            <td class="left"><span class="rt-sample">5 GP · 134 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">6</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Tyler Herro</a> <span class="rt-context">MIA · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#13</span></td>
+            <td>2019</td>
+            <td>5</td>
+            <td>30.0</td>
+            <td>20.6</td>
+            <td>4.2</td>
+            <td>3.4</td>
+            <td>30.2</td>
+            <td>56.8</td>
+            <td>67.3</td>
+            <td class="left"><span class="rt-sample">5 GP · 150 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">7</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Ace Bailey</a> <span class="rt-context">UTA · SLC + Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#4</span></td>
+            <td>2026</td>
+            <td>4</td>
+            <td>27.8</td>
+            <td>25.0</td>
+            <td>6.5</td>
+            <td>2.0</td>
+            <td>32.0</td>
+            <td>56.4</td>
+            <td>91.7</td>
+            <td class="left"><span class="rt-sample">4 GP · 111 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">8</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Jamal Murray</a> <span class="rt-context">DEN · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#7</span></td>
+            <td>2016</td>
+            <td>5</td>
+            <td>32.4</td>
+            <td>21.2</td>
+            <td>3.6</td>
+            <td>3.2</td>
+            <td>28.2</td>
+            <td>55.7</td>
+            <td>66.8</td>
+            <td class="left"><span class="rt-sample">5 GP · 162 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">9</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Cade Cunningham</a> <span class="rt-context">DET · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#1</span></td>
+            <td>2021</td>
+            <td>2</td>
+            <td>32.0</td>
+            <td>25.5</td>
+            <td>4.5</td>
+            <td>5.0</td>
+            <td>32.4</td>
+            <td>55.0</td>
+            <td>69.4</td>
+            <td class="left"><span class="rt-sample">2 GP · 64 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">10</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Trae Young</a> <span class="rt-context">ATL · Vegas + Utah</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#5</span></td>
+            <td>2018</td>
+            <td>3</td>
+            <td>30.0</td>
+            <td>22.8</td>
+            <td>4.0</td>
+            <td>7.5</td>
+            <td>34.2</td>
+            <td>54.5</td>
+            <td>64.0</td>
+            <td class="left"><span class="rt-sample">3 GP · 90 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">11</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Tre Johnson</a> <span class="rt-context">WAS · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#5</span></td>
+            <td>2026</td>
+            <td>5</td>
+            <td>26.8</td>
+            <td>21.0</td>
+            <td>3.4</td>
+            <td>2.8</td>
+            <td>34.8</td>
+            <td>52.0</td>
+            <td>71.8</td>
+            <td class="left"><span class="rt-sample">5 GP · 134 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">12</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Brandon Miller</a> <span class="rt-context">CHA · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#2</span></td>
+            <td>2023</td>
+            <td>2</td>
+            <td>27.5</td>
+            <td>24.0</td>
+            <td>4.5</td>
+            <td>4.0</td>
+            <td>30.1</td>
+            <td>56.8</td>
+            <td>69.4</td>
+            <td class="left"><span class="rt-sample">2 GP · 55 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">13</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Jeremiah Fears</a> <span class="rt-context">NOP · Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#7</span></td>
+            <td>2026</td>
+            <td>4</td>
+            <td>27.1</td>
+            <td>20.0</td>
+            <td>3.8</td>
+            <td>6.8</td>
+            <td>29.4</td>
+            <td>55.5</td>
+            <td>67.1</td>
+            <td class="left"><span class="rt-sample">4 GP · 108 MIN</span></td>
+          </tr>
+          <tr>
+            <td class="rt-rank">14</td>
+            <td class="sticky-left left"><a class="rt-player" href="#">Kasparas Jakucionis</a> <span class="rt-context">MIA · CalC + Vegas</span></td>
+            <td class="left"><span class="pick-pill pick-pill--lotto">#11</span></td>
+            <td>2026</td>
+            <td>8</td>
+            <td>26.2</td>
+            <td>20.5</td>
+            <td>4.5</td>
+            <td>6.2</td>
+            <td>28.5</td>
+            <td>58.1</td>
+            <td>76.4</td>
+            <td class="left"><span class="rt-sample">8 GP · 209 MIN</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="pagination">
+        <span class="pagination__meta">All 14 results shown · query has fewer than 50 rows</span>
+        <div class="pagination__pages">
+          <button class="pagination__btn pagination__btn--active">1</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="updated-strip">
+      <span class="updated-strip__dot" aria-hidden="true"></span>
+      Daily refresh · Last update: Jul 12, 2026 · 10:14 PT
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Landing</a></li>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">All-Summer-League</a></li>
+            <li><a href="#">2026 Draft Class</a></li>
+            <li><a href="#">Model Validation</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

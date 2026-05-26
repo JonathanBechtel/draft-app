@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Summer League Leaders — DraftGuru</title>
+  <meta name="description" content="Season, career, and single-game leaderboards for NBA Summer League — every stat, every year, fully filterable.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    .section-header__title {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+      padding-left: 0.625rem;
+      border-left: 4px solid var(--color-accent-amber);
+    }
+
+    .section-header__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .section-header__cta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      color: #b45309;
+      padding-bottom: 1px;
+      border-bottom: 1px dotted rgba(180, 83, 9, 0.4);
+    }
+    .section-header__cta:hover { border-bottom-style: solid; }
+
+    /* ============================================================================
+       NAVBAR (shared)
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--color-accent-amber);
+    }
+    .search-input {
+      width: 240px; background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none;
+    }
+
+    /* ============================================================================
+       BREADCRUMBS
+       ========================================================================= */
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    /* ============================================================================
+       PAGE HERO
+       ========================================================================= */
+    .page-hero {
+      padding: 1rem 0 1.5rem;
+    }
+
+    .page-hero__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+    .page-hero__eyebrow::before {
+      content: ''; width: 12px; height: 2px;
+      background: var(--color-accent-amber);
+    }
+
+    .page-hero h2 {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+      color: var(--color-slate-900);
+    }
+
+    .page-hero__tagline {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.5rem;
+    }
+
+    /* ============================================================================
+       STAT PICKER
+       ========================================================================= */
+    .stat-picker {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+
+    .stat-picker__current {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+      margin-bottom: 0.875rem;
+      flex-wrap: wrap;
+    }
+
+    .stat-picker__current-block {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .stat-picker__current-label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .stat-picker__current-value {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+    }
+
+    .stat-picker__current-mode {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      background: rgba(245, 158, 11, 0.12);
+      color: #b45309;
+    }
+
+    .share-chip {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.4rem 0.625rem;
+      border-radius: 0.375rem;
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-700);
+      background: var(--color-white);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+    .share-chip:hover { border-color: var(--color-accent-amber); color: #b45309; }
+
+    .stat-picker__pills {
+      display: flex;
+      gap: 0.375rem;
+      flex-wrap: wrap;
+    }
+
+    .stat-pill {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.375rem 0.625rem;
+      border-radius: 9999px;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+    .stat-pill:hover { border-color: var(--color-slate-400); color: var(--color-slate-800); }
+    .stat-pill--active {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.45);
+      color: #b45309;
+    }
+
+    .stat-pill__group {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-400);
+      padding: 0.375rem 0.25rem;
+      margin-right: 0.125rem;
+      border-right: 1px solid var(--color-slate-200);
+      padding-right: 0.625rem;
+    }
+
+    /* ============================================================================
+       SCOPE BAR + MODE TOGGLE
+       ========================================================================= */
+    .scope-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      padding: 0.75rem 1.25rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .scope-tabs {
+      display: flex;
+      gap: 0.25rem;
+      border-bottom: 2px solid transparent;
+    }
+
+    .scope-tab {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.375rem 0.75rem;
+      color: var(--color-slate-500);
+      background: var(--color-slate-50);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .scope-tab:hover { background: var(--color-slate-100); color: var(--color-slate-800); }
+
+    .scope-tab--active {
+      background: var(--color-slate-900);
+      color: var(--color-white);
+      border-color: var(--color-slate-900);
+    }
+
+    .mode-toggle {
+      display: inline-flex; align-items: center; gap: 0;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      overflow: hidden;
+    }
+    .mode-toggle__btn {
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.4rem 0.75rem;
+      color: var(--color-slate-500);
+      background: transparent;
+      border: none;
+      border-right: 1px solid var(--color-slate-200);
+      cursor: pointer;
+    }
+    .mode-toggle__btn:last-child { border-right: none; }
+    .mode-toggle__btn:hover { background: var(--color-slate-50); color: var(--color-slate-800); }
+    .mode-toggle__btn--active { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+
+    /* ============================================================================
+       MAIN LAYOUT — sidebar + content
+       ========================================================================= */
+    .leaders-layout {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    /* ============================================================================
+       FILTERS SIDEBAR
+       ========================================================================= */
+    .filters {
+      position: sticky;
+      top: 84px;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1rem 1.125rem 1.25rem;
+      max-height: calc(100vh - 100px);
+      overflow-y: auto;
+    }
+
+    .filters__head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      margin-bottom: 0.875rem;
+    }
+
+    .filters__title {
+      font-family: var(--font-heading);
+      font-size: 0.9375rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+    }
+
+    .filters__count {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .filter-group {
+      margin-bottom: 1rem;
+      padding-bottom: 0.875rem;
+      border-bottom: 1px dashed var(--color-slate-200);
+    }
+    .filter-group:last-child { border-bottom: none; }
+
+    .filter-group__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .filter-group__label-meta { color: var(--color-slate-400); font-weight: 400; }
+
+    .filter-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3125rem;
+    }
+
+    .filter-chip {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+    .filter-chip:hover { border-color: var(--color-slate-400); }
+    .filter-chip--active {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #b45309;
+    }
+
+    .filter-checks {
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+
+    .filter-check {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-700);
+      cursor: pointer;
+    }
+
+    .filter-check__box {
+      width: 14px; height: 14px;
+      border: 1px solid var(--color-slate-300);
+      border-radius: 0.1875rem;
+      background: var(--color-white);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .filter-check--checked .filter-check__box {
+      background: var(--color-accent-amber);
+      border-color: var(--color-accent-amber);
+    }
+    .filter-check--checked .filter-check__box::after {
+      content: '✓';
+      color: var(--color-white);
+      font-size: 10px;
+      font-weight: bold;
+    }
+
+    .filter-check__count {
+      color: var(--color-slate-400);
+      margin-left: auto;
+      font-size: 0.5625rem;
+    }
+
+    .range-slider {
+      width: 100%;
+      height: 4px;
+      background: var(--color-slate-200);
+      border-radius: 9999px;
+      position: relative;
+      margin: 0.5rem 0;
+    }
+    .range-slider__fill {
+      position: absolute;
+      top: 0; height: 100%;
+      left: 18%; width: 64%;
+      background: var(--color-accent-amber);
+      border-radius: 9999px;
+    }
+    .range-slider__handle {
+      position: absolute;
+      top: -4px;
+      width: 12px; height: 12px;
+      background: var(--color-white);
+      border: 2px solid var(--color-accent-amber);
+      border-radius: 9999px;
+      transform: translateX(-50%);
+    }
+    .range-slider__handle--start { left: 18%; }
+    .range-slider__handle--end { left: 82%; }
+
+    .range-display {
+      display: flex;
+      justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-600);
+      margin-top: 0.25rem;
+    }
+
+    .text-search {
+      width: 100%;
+      padding: 0.4rem 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-700);
+      background: var(--color-white);
+    }
+
+    .filters__actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.875rem;
+    }
+
+    .filters__reset {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.4rem 0.625rem;
+      border-radius: 0.375rem;
+      border: 1px solid var(--color-slate-200);
+      background: transparent;
+      color: var(--color-slate-600);
+      cursor: pointer;
+    }
+    .filters__reset:hover { background: var(--color-slate-50); color: var(--color-slate-800); }
+
+    .filters__apply {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.4rem 0.625rem;
+      border-radius: 0.375rem;
+      border: 1px solid var(--color-accent-amber);
+      background: rgba(245, 158, 11, 0.12);
+      color: #b45309;
+      cursor: pointer;
+      flex: 1;
+    }
+    .filters__apply:hover { background: rgba(245, 158, 11, 0.2); }
+
+    /* ============================================================================
+       CONTENT COLUMN
+       ========================================================================= */
+    .content-col {
+      min-width: 0;
+    }
+
+    /* Active-filter summary */
+    .active-summary {
+      padding: 0.625rem 0.875rem;
+      background: rgba(245, 158, 11, 0.06);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: #b45309;
+      margin-bottom: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .active-summary__pills {
+      display: flex;
+      gap: 0.375rem;
+      flex-wrap: wrap;
+    }
+
+    .active-pill {
+      background: var(--color-white);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #b45309;
+      padding: 0.125rem 0.4375rem;
+      border-radius: 9999px;
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .active-pill__x {
+      color: #d97706;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .active-summary__count {
+      color: var(--color-slate-700);
+      font-weight: 600;
+    }
+
+    /* ============================================================================
+       ANALYTICAL CONTEXT STRIP (top of results)
+       ========================================================================= */
+    .context-strip {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.625rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .context-mini {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-left: 4px solid;
+      border-radius: 0.5rem;
+      padding: 0.625rem 0.875rem;
+    }
+    .context-mini--good { border-left-color: var(--color-accent-emerald); }
+    .context-mini--neutral { border-left-color: var(--color-accent-amber); }
+    .context-mini--insight { border-left-color: var(--color-accent-cyan); }
+
+    .context-mini__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .context-mini__value {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      color: var(--color-slate-900);
+      line-height: 1.1;
+      margin: 0.125rem 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .context-mini__note {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-600);
+      line-height: 1.5;
+    }
+    .context-mini__note strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       LEADERBOARD TABLE
+       ========================================================================= */
+    .leader-table-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow-x: auto;
+    }
+
+    table.leader-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+    }
+
+    table.leader-table th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.5rem 0.5rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+
+    table.leader-table th.left { text-align: left; }
+
+    table.leader-table th.sortable {
+      cursor: pointer;
+      position: relative;
+    }
+    table.leader-table th.sortable:hover { color: var(--color-slate-800); }
+    table.leader-table th.sortable--active {
+      color: #b45309;
+    }
+    table.leader-table th.sortable--active::after {
+      content: '▼';
+      margin-left: 0.25rem;
+      font-size: 0.5rem;
+    }
+
+    table.leader-table td {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.5rem 0.5rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+
+    table.leader-table td.left {
+      text-align: left;
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      font-size: 0.8125rem;
+    }
+
+    table.leader-table tr:hover td { background: var(--color-slate-50); }
+
+    .lt-rank {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-slate-400);
+      width: 1.75rem;
+      text-align: center;
+    }
+    .lt-rank--gold { color: #d97706; font-weight: 700; }
+    .lt-rank--silver { color: var(--color-slate-500); font-weight: 700; }
+    .lt-rank--bronze { color: #a16207; font-weight: 700; }
+
+    .lt-medal-dot {
+      display: inline-block;
+      width: 0.4375rem;
+      height: 0.4375rem;
+      border-radius: 9999px;
+      margin-right: 0.25rem;
+      vertical-align: middle;
+    }
+    .lt-medal-dot--gold   { background: #d97706; }
+    .lt-medal-dot--silver { background: var(--color-slate-400); }
+    .lt-medal-dot--bronze { background: #a16207; }
+
+    .lt-player {
+      font-weight: 600;
+      color: var(--color-slate-900);
+    }
+    .lt-player:hover { color: var(--color-accent-amber); }
+
+    .lt-context {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      margin-left: 0.375rem;
+    }
+
+    .pick-pill {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      background: var(--color-slate-100);
+      color: var(--color-slate-600);
+      margin-left: 0.375rem;
+      vertical-align: middle;
+    }
+    .pick-pill--lotto { background: rgba(99, 102, 241, 0.12); color: #4338ca; }
+    .pick-pill--und { background: rgba(244, 63, 94, 0.1); color: #be123c; }
+
+    .lt-stat {
+      font-family: var(--font-heading);
+      font-size: 0.9375rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+    }
+
+    .lt-sample {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-400);
+    }
+
+    .heat-top { background: rgba(16, 185, 129, 0.08); }
+
+    /* Historical-context inline column */
+    .lt-context-chip {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.125rem 0.4375rem;
+      border-radius: 0.25rem;
+      display: inline-block;
+    }
+    .lt-context-chip--all-time { background: rgba(217, 70, 239, 0.1); color: #a21caf; }
+    .lt-context-chip--rare { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+    .lt-context-chip--era { background: rgba(6, 182, 212, 0.1); color: #0e7490; }
+    .lt-context-chip--ok { background: var(--color-slate-100); color: var(--color-slate-500); }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 0.875rem;
+      border-top: 1px solid var(--color-slate-200);
+      background: var(--color-slate-50);
+    }
+
+    .pagination__meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .pagination__pages {
+      display: flex;
+      gap: 0.25rem;
+    }
+
+    .pagination__btn {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-700);
+      cursor: pointer;
+      min-width: 1.75rem;
+      text-align: center;
+    }
+    .pagination__btn:hover { border-color: var(--color-slate-400); }
+    .pagination__btn--active {
+      background: var(--color-slate-900);
+      color: var(--color-white);
+      border-color: var(--color-slate-900);
+    }
+
+    /* ============================================================================
+       METHODOLOGY-PLACEHOLDER UTILITY
+       ========================================================================= */
+    .tbd-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      margin-left: 0.375rem;
+      vertical-align: middle;
+      cursor: help;
+    }
+
+    /* ============================================================================
+       UPDATED + FOOTER
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 1.5rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+    .updated-strip__dot {
+      width: 0.5rem; height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 980px) {
+      .leaders-layout { grid-template-columns: 1fr; }
+      .filters {
+        position: static;
+        max-height: none;
+      }
+      .context-strip { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .navbar-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link active" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div><input class="search-input" type="search" placeholder="Search players…"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="/stats">Stats</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league">Summer League</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">Leaders</span>
+    </div>
+
+    <!-- Page hero -->
+    <header class="page-hero">
+      <div class="page-hero__eyebrow">DraftGuru Stats · Summer League</div>
+      <h2>Leaders</h2>
+      <p class="page-hero__tagline">Season · career · single-game · since 2002 — every stat, every cohort, fully filterable.</p>
+    </header>
+
+    <!-- ============================================================================
+         STAT PICKER
+         ========================================================================= -->
+    <div class="stat-picker">
+      <div class="stat-picker__current">
+        <div class="stat-picker__current-block">
+          <span class="stat-picker__current-label">Showing leaders for</span>
+          <span class="stat-picker__current-value">Points</span>
+          <span class="stat-picker__current-mode">Per Game</span>
+        </div>
+        <button class="share-chip">
+          🔗 Share this leaderboard
+        </button>
+      </div>
+      <div class="stat-picker__pills">
+        <span class="stat-pill__group">Scoring</span>
+        <span class="stat-pill stat-pill--active">PTS</span>
+        <span class="stat-pill">FGM</span>
+        <span class="stat-pill">3PM</span>
+        <span class="stat-pill">FTM</span>
+        <span class="stat-pill__group">Rebounding</span>
+        <span class="stat-pill">REB</span>
+        <span class="stat-pill">ORB</span>
+        <span class="stat-pill">DRB</span>
+        <span class="stat-pill__group">Playmaking</span>
+        <span class="stat-pill">AST</span>
+        <span class="stat-pill">AST/TO</span>
+        <span class="stat-pill__group">Defense</span>
+        <span class="stat-pill">STL</span>
+        <span class="stat-pill">BLK</span>
+        <span class="stat-pill">Stocks</span>
+        <span class="stat-pill__group">Efficiency</span>
+        <span class="stat-pill">TS%</span>
+        <span class="stat-pill">eFG%</span>
+        <span class="stat-pill">FT%</span>
+        <span class="stat-pill__group">Advanced</span>
+        <span class="stat-pill">USG%</span>
+        <span class="stat-pill">AST%</span>
+        <span class="stat-pill">TRB%</span>
+        <span class="stat-pill">GameScore</span>
+        <span class="stat-pill">PER <span class="tbd-indicator">TBD</span></span>
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         SCOPE BAR + MODE TOGGLE
+         ========================================================================= -->
+    <div class="scope-bar">
+      <div class="scope-tabs">
+        <button class="scope-tab scope-tab--active">This Season</button>
+        <button class="scope-tab">All-Time SL</button>
+        <button class="scope-tab">Single Game</button>
+        <button class="scope-tab">Single Quarter</button>
+      </div>
+      <div class="mode-toggle" role="tablist" aria-label="Stat mode">
+        <button class="mode-toggle__btn mode-toggle__btn--active">Per Game</button>
+        <button class="mode-toggle__btn">Per 36</button>
+        <button class="mode-toggle__btn">Per 100</button>
+        <button class="mode-toggle__btn">Totals</button>
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         TWO-COLUMN LAYOUT
+         ========================================================================= -->
+    <div class="leaders-layout">
+
+      <!-- ============================================================================
+           FILTERS SIDEBAR
+           ========================================================================= -->
+      <aside class="filters" aria-label="Leaderboard filters">
+        <div class="filters__head">
+          <div class="filters__title">Filters</div>
+          <div class="filters__count">5 active</div>
+        </div>
+
+        <!-- Year range -->
+        <div class="filter-group">
+          <div class="filter-group__label">
+            Year range
+            <span class="filter-group__label-meta">2010 – 2026</span>
+          </div>
+          <div class="range-slider">
+            <div class="range-slider__fill"></div>
+            <div class="range-slider__handle range-slider__handle--start"></div>
+            <div class="range-slider__handle range-slider__handle--end"></div>
+          </div>
+          <div class="range-display">
+            <span>2014</span>
+            <span>2026</span>
+          </div>
+        </div>
+
+        <!-- Venue -->
+        <div class="filter-group">
+          <div class="filter-group__label">
+            Venue
+            <span class="filter-group__label-meta">All</span>
+          </div>
+          <div class="filter-chips">
+            <span class="filter-chip filter-chip--active">All</span>
+            <span class="filter-chip">Vegas</span>
+            <span class="filter-chip">Salt Lake</span>
+            <span class="filter-chip">Cal Classic</span>
+            <span class="filter-chip">Orlando</span>
+          </div>
+        </div>
+
+        <!-- Draft class -->
+        <div class="filter-group">
+          <div class="filter-group__label">
+            Draft class
+            <span class="filter-group__label-meta">Any</span>
+          </div>
+          <input class="text-search" type="search" placeholder="e.g. 2026">
+        </div>
+
+        <!-- Draft round -->
+        <div class="filter-group">
+          <div class="filter-group__label">Draft round</div>
+          <div class="filter-checks">
+            <label class="filter-check filter-check--checked">
+              <span class="filter-check__box"></span>
+              Round 1 <span class="filter-check__count">486</span>
+            </label>
+            <label class="filter-check filter-check--checked">
+              <span class="filter-check__box"></span>
+              Round 2 <span class="filter-check__count">412</span>
+            </label>
+            <label class="filter-check">
+              <span class="filter-check__box"></span>
+              Undrafted <span class="filter-check__count">2,184</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Draft pick range -->
+        <div class="filter-group">
+          <div class="filter-group__label">
+            Draft pick range
+            <span class="filter-group__label-meta">1 – 60</span>
+          </div>
+          <div class="range-slider">
+            <div class="range-slider__fill" style="left: 0; width: 100%;"></div>
+            <div class="range-slider__handle range-slider__handle--start" style="left: 0;"></div>
+            <div class="range-slider__handle range-slider__handle--end" style="left: 100%;"></div>
+          </div>
+          <div class="range-display">
+            <span>1</span>
+            <span>60</span>
+          </div>
+        </div>
+
+        <!-- Position -->
+        <div class="filter-group">
+          <div class="filter-group__label">Position</div>
+          <div class="filter-chips">
+            <span class="filter-chip filter-chip--active">All</span>
+            <span class="filter-chip">G</span>
+            <span class="filter-chip">F</span>
+            <span class="filter-chip">C</span>
+          </div>
+        </div>
+
+        <!-- Age at SL -->
+        <div class="filter-group">
+          <div class="filter-group__label">
+            Age at SL
+            <span class="filter-group__label-meta">18 – 24</span>
+          </div>
+          <div class="range-slider">
+            <div class="range-slider__fill"></div>
+            <div class="range-slider__handle range-slider__handle--start"></div>
+            <div class="range-slider__handle range-slider__handle--end"></div>
+          </div>
+          <div class="range-display">
+            <span>18</span>
+            <span>26</span>
+          </div>
+        </div>
+
+        <!-- Min sample -->
+        <div class="filter-group">
+          <div class="filter-group__label">
+            Min sample
+            <span class="filter-group__label-meta">60 MIN · 2 GP</span>
+          </div>
+          <div class="range-slider">
+            <div class="range-slider__fill" style="left: 0; width: 25%;"></div>
+            <div class="range-slider__handle range-slider__handle--start" style="left: 0;"></div>
+            <div class="range-slider__handle range-slider__handle--end" style="left: 25%;"></div>
+          </div>
+          <div class="range-display">
+            <span>0 MIN</span>
+            <span>240 MIN</span>
+          </div>
+        </div>
+
+        <!-- Country -->
+        <div class="filter-group">
+          <div class="filter-group__label">Country / origin</div>
+          <input class="text-search" type="search" placeholder="USA, France, Lithuania…">
+        </div>
+
+        <!-- College -->
+        <div class="filter-group">
+          <div class="filter-group__label">College / pre-NBA team</div>
+          <input class="text-search" type="search" placeholder="Duke, Kentucky, Real Madrid…">
+        </div>
+
+        <!-- Actions -->
+        <div class="filters__actions">
+          <button class="filters__reset">Reset</button>
+          <button class="filters__apply">Apply (regen)</button>
+        </div>
+      </aside>
+
+      <!-- ============================================================================
+           CONTENT COLUMN
+           ========================================================================= -->
+      <div class="content-col">
+
+        <!-- Active-filter summary -->
+        <div class="active-summary">
+          <div>
+            <div class="active-summary__pills">
+              <span class="active-pill">Year 2014–2026 <span class="active-pill__x">×</span></span>
+              <span class="active-pill">All venues <span class="active-pill__x">×</span></span>
+              <span class="active-pill">R1 + R2 <span class="active-pill__x">×</span></span>
+              <span class="active-pill">All positions <span class="active-pill__x">×</span></span>
+              <span class="active-pill">Min 60 MIN + 2 GP <span class="active-pill__x">×</span></span>
+            </div>
+          </div>
+          <div>
+            <span class="active-summary__count">628</span> qualifying players
+          </div>
+        </div>
+
+        <!-- Analytical context strip -->
+        <div class="context-strip">
+          <div class="context-mini context-mini--good">
+            <div class="context-mini__label">Best this year</div>
+            <div class="context-mini__value">26.4 PPG</div>
+            <div class="context-mini__note">
+              <strong>Cooper Flagg</strong> · would rank <strong>5th all-time</strong> if it holds through Vegas
+            </div>
+          </div>
+          <div class="context-mini context-mini--neutral">
+            <div class="context-mini__label">All-time #1</div>
+            <div class="context-mini__value">29.2 PPG</div>
+            <div class="context-mini__note">
+              <strong>Damian Lillard '13</strong> · Portland, Las Vegas SL · still standing
+            </div>
+          </div>
+          <div class="context-mini context-mini--insight">
+            <div class="context-mini__label">Last to clear 25 PPG</div>
+            <div class="context-mini__value">2023</div>
+            <div class="context-mini__note">
+              <strong>Cam Thomas</strong> (27.0). Only 14 players have done it since 2010.
+            </div>
+          </div>
+        </div>
+
+        <!-- Leaderboard table -->
+        <div class="leader-table-wrapper">
+          <table class="leader-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th class="left">Player</th>
+                <th>Year</th>
+                <th class="sortable sortable--active">PTS</th>
+                <th class="sortable">GP</th>
+                <th class="sortable">MIN</th>
+                <th class="sortable">FG%</th>
+                <th class="sortable">3P%</th>
+                <th class="sortable">TS%</th>
+                <th class="sortable">USG%</th>
+                <th class="left">Sample</th>
+                <th class="left">Historical context</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="lt-rank lt-rank--gold"><span class="lt-medal-dot lt-medal-dot--gold"></span>1</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Cooper Flagg</a>
+                  <span class="pick-pill pick-pill--lotto">#1</span>
+                  <span class="lt-context">DAL · Vegas</span>
+                </td>
+                <td>2026</td>
+                <td class="lt-stat heat-top">26.4</td>
+                <td>5</td>
+                <td>29.4</td>
+                <td>52.8</td>
+                <td>38.5</td>
+                <td class="heat-top">64.0</td>
+                <td>31.4</td>
+                <td class="left"><span class="lt-sample">5 GP · 147 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--rare">5th if held</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank lt-rank--silver"><span class="lt-medal-dot lt-medal-dot--silver"></span>2</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Ace Bailey</a>
+                  <span class="pick-pill pick-pill--lotto">#4</span>
+                  <span class="lt-context">UTA · SLC + Vegas</span>
+                </td>
+                <td>2026</td>
+                <td class="lt-stat heat-top">25.0</td>
+                <td>4</td>
+                <td>27.8</td>
+                <td>47.1</td>
+                <td>36.4</td>
+                <td>56.4</td>
+                <td>32.0</td>
+                <td class="left"><span class="lt-sample">4 GP · 111 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--ok">Class-best lottery beat</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank lt-rank--bronze"><span class="lt-medal-dot lt-medal-dot--bronze"></span>3</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Dylan Harper</a>
+                  <span class="pick-pill pick-pill--lotto">#2</span>
+                  <span class="lt-context">SAS · Vegas</span>
+                </td>
+                <td>2026</td>
+                <td class="lt-stat">22.8</td>
+                <td>4</td>
+                <td>28.6</td>
+                <td>48.5</td>
+                <td>35.0</td>
+                <td>59.2</td>
+                <td class="heat-top">34.9</td>
+                <td class="left"><span class="lt-sample">4 GP · 114 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--era">PG-led class trend</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">4</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Cam Thomas</a>
+                  <span class="pick-pill">#27</span>
+                  <span class="lt-context">BKN · Vegas</span>
+                </td>
+                <td>2023</td>
+                <td class="lt-stat">27.0</td>
+                <td>4</td>
+                <td>31.5</td>
+                <td>43.6</td>
+                <td>33.2</td>
+                <td>57.4</td>
+                <td>33.8</td>
+                <td class="left"><span class="lt-sample">4 GP · 126 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--rare">Last 25-PPG SL</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">5</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Tre Johnson</a>
+                  <span class="pick-pill pick-pill--lotto">#5</span>
+                  <span class="lt-context">WAS · Vegas</span>
+                </td>
+                <td>2026</td>
+                <td class="lt-stat">21.0</td>
+                <td>5</td>
+                <td>26.8</td>
+                <td>42.5</td>
+                <td>33.3</td>
+                <td>52.0</td>
+                <td>34.8</td>
+                <td class="left"><span class="lt-sample">5 GP · 134 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--ok">Top-15 since 2020</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">6</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Kasparas Jakucionis</a>
+                  <span class="pick-pill pick-pill--lotto">#11</span>
+                  <span class="lt-context">MIA · CalC + Vegas</span>
+                </td>
+                <td>2026</td>
+                <td class="lt-stat">20.5</td>
+                <td>8</td>
+                <td>26.2</td>
+                <td>47.5</td>
+                <td>37.5</td>
+                <td>58.1</td>
+                <td>28.5</td>
+                <td class="left"><span class="lt-sample">8 GP · 209 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--era">Highest-vol two-tournament</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">7</td>
+                <td class="left">
+                  <a class="lt-player" href="#">VJ Edgecombe</a>
+                  <span class="pick-pill pick-pill--lotto">#3</span>
+                  <span class="lt-context">PHI · Vegas</span>
+                </td>
+                <td>2026</td>
+                <td class="lt-stat">19.4</td>
+                <td>5</td>
+                <td>26.8</td>
+                <td>49.0</td>
+                <td>39.1</td>
+                <td>62.1</td>
+                <td>27.5</td>
+                <td class="left"><span class="lt-sample">5 GP · 134 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--ok">Top-5 TS% under 6 GP</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">8</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Cade Cunningham</a>
+                  <span class="pick-pill pick-pill--lotto">#1</span>
+                  <span class="lt-context">DET · Vegas</span>
+                </td>
+                <td>2021</td>
+                <td class="lt-stat">25.5</td>
+                <td>2</td>
+                <td>32.0</td>
+                <td>43.9</td>
+                <td>36.4</td>
+                <td>55.0</td>
+                <td>32.4</td>
+                <td class="left"><span class="lt-sample">2 GP · 64 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--rare">#1 pick benchmark</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">9</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Brandon Miller</a>
+                  <span class="pick-pill pick-pill--lotto">#2</span>
+                  <span class="lt-context">CHA · Vegas</span>
+                </td>
+                <td>2023</td>
+                <td class="lt-stat">24.0</td>
+                <td>2</td>
+                <td>27.5</td>
+                <td>44.2</td>
+                <td>34.6</td>
+                <td>56.8</td>
+                <td>30.1</td>
+                <td class="left"><span class="lt-sample">2 GP · 55 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--ok">Class-2 standard</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">10</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Anthony Edwards</a>
+                  <span class="pick-pill pick-pill--lotto">#1</span>
+                  <span class="lt-context">MIN · Vegas</span>
+                </td>
+                <td>2021</td>
+                <td class="lt-stat">23.5</td>
+                <td>4</td>
+                <td>28.8</td>
+                <td>46.4</td>
+                <td>38.5</td>
+                <td>59.0</td>
+                <td>31.0</td>
+                <td class="left"><span class="lt-sample">4 GP · 115 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--era">Post-rookie SL</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">11</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Trae Young</a>
+                  <span class="pick-pill pick-pill--lotto">#5</span>
+                  <span class="lt-context">ATL · Vegas + Utah</span>
+                </td>
+                <td>2018</td>
+                <td class="lt-stat">22.8</td>
+                <td>3</td>
+                <td>30.0</td>
+                <td>42.3</td>
+                <td>33.3</td>
+                <td>54.5</td>
+                <td>34.2</td>
+                <td class="left"><span class="lt-sample">3 GP · 90 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--ok">Pre-rookie</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">12</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Paolo Banchero</a>
+                  <span class="pick-pill pick-pill--lotto">#1</span>
+                  <span class="lt-context">ORL · Vegas</span>
+                </td>
+                <td>2022</td>
+                <td class="lt-stat">22.5</td>
+                <td>2</td>
+                <td>27.5</td>
+                <td>52.0</td>
+                <td>37.5</td>
+                <td>66.2</td>
+                <td>30.0</td>
+                <td class="left"><span class="lt-sample">2 GP · 55 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--all-time">Best #1 TS% since '02</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">13</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Jamal Murray</a>
+                  <span class="pick-pill pick-pill--lotto">#7</span>
+                  <span class="lt-context">DEN · Vegas</span>
+                </td>
+                <td>2016</td>
+                <td class="lt-stat">21.2</td>
+                <td>5</td>
+                <td>32.4</td>
+                <td>43.9</td>
+                <td>40.0</td>
+                <td>55.7</td>
+                <td>28.2</td>
+                <td class="left"><span class="lt-sample">5 GP · 162 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--ok">All-Summer-League 1st</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">14</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Lonzo Ball</a>
+                  <span class="pick-pill pick-pill--lotto">#2</span>
+                  <span class="lt-context">LAL · Vegas</span>
+                </td>
+                <td>2017</td>
+                <td class="lt-stat">21.0</td>
+                <td>4</td>
+                <td>33.5</td>
+                <td>42.5</td>
+                <td>34.3</td>
+                <td>53.0</td>
+                <td>30.4</td>
+                <td class="left"><span class="lt-sample">4 GP · 134 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--era">SL MVP year</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">15</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Tyler Herro</a>
+                  <span class="pick-pill pick-pill--lotto">#13</span>
+                  <span class="lt-context">MIA · Vegas</span>
+                </td>
+                <td>2019</td>
+                <td class="lt-stat">20.6</td>
+                <td>5</td>
+                <td>30.0</td>
+                <td>41.7</td>
+                <td>36.1</td>
+                <td>56.8</td>
+                <td>30.2</td>
+                <td class="left"><span class="lt-sample">5 GP · 150 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--ok">Pre-Bubble Heat</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">16</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Damian Lillard</a>
+                  <span class="pick-pill pick-pill--lotto">#6</span>
+                  <span class="lt-context">POR · Vegas</span>
+                </td>
+                <td>2012</td>
+                <td class="lt-stat heat-top">29.2</td>
+                <td>5</td>
+                <td>32.2</td>
+                <td>48.5</td>
+                <td>41.0</td>
+                <td>62.8</td>
+                <td>32.8</td>
+                <td class="left"><span class="lt-sample">5 GP · 161 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--all-time">All-time #1</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">17</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Jonathan Isaac</a>
+                  <span class="pick-pill pick-pill--lotto">#6</span>
+                  <span class="lt-context">ORL · Vegas</span>
+                </td>
+                <td>2017</td>
+                <td class="lt-stat">19.8</td>
+                <td>5</td>
+                <td>27.6</td>
+                <td>48.0</td>
+                <td>33.3</td>
+                <td>61.4</td>
+                <td>25.4</td>
+                <td class="left"><span class="lt-sample">5 GP · 138 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--ok">All-SL 2nd</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">18</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Marcus Sasser</a>
+                  <span class="pick-pill">#25</span>
+                  <span class="lt-context">DET · Vegas</span>
+                </td>
+                <td>2024</td>
+                <td class="lt-stat">19.5</td>
+                <td>5</td>
+                <td>28.8</td>
+                <td>44.6</td>
+                <td>40.0</td>
+                <td>58.2</td>
+                <td>28.0</td>
+                <td class="left"><span class="lt-sample">5 GP · 144 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--ok">Late-1st leader</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">19</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Jaxson Hayes</a>
+                  <span class="pick-pill pick-pill--lotto">#8</span>
+                  <span class="lt-context">NOP · Vegas + SLC</span>
+                </td>
+                <td>2019</td>
+                <td class="lt-stat">19.3</td>
+                <td>6</td>
+                <td>26.0</td>
+                <td>56.2</td>
+                <td>—</td>
+                <td>63.4</td>
+                <td>26.0</td>
+                <td class="left"><span class="lt-sample">6 GP · 156 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--ok">High-vol C</span></td>
+              </tr>
+              <tr>
+                <td class="lt-rank">20</td>
+                <td class="left">
+                  <a class="lt-player" href="#">Ryan Nembhard</a>
+                  <span class="pick-pill pick-pill--und">UND</span>
+                  <span class="lt-context">DAL · Vegas</span>
+                </td>
+                <td>2026</td>
+                <td class="lt-stat">17.8</td>
+                <td>5</td>
+                <td>26.8</td>
+                <td>49.4</td>
+                <td>39.0</td>
+                <td>62.4</td>
+                <td>24.0</td>
+                <td class="left"><span class="lt-sample">5 GP · 134 MIN</span></td>
+                <td class="left"><span class="lt-context-chip lt-context-chip--rare">Top-25 undrafted ever</span></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="pagination">
+            <span class="pagination__meta">Showing 1–20 of 50 · 628 qualifying total</span>
+            <div class="pagination__pages">
+              <button class="pagination__btn">‹</button>
+              <button class="pagination__btn pagination__btn--active">1</button>
+              <button class="pagination__btn">2</button>
+              <button class="pagination__btn">3</button>
+              <button class="pagination__btn">›</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="updated-strip">
+          <span class="updated-strip__dot" aria-hidden="true"></span>
+          Daily refresh · Last update: Jul 12, 2026 · 10:14 PT
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Landing</a></li>
+            <li><a href="#">Explorer</a></li>
+            <li><a href="#">All-Summer-League</a></li>
+            <li><a href="#">2026 Draft Class</a></li>
+            <li><a href="#">Model Validation</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
