@@ -137,6 +137,7 @@ async def async_engine(
     from app.schemas import boards  # noqa: F401
     from app.schemas import consensus  # noqa: F401
     from app.schemas import x_post_history  # noqa: F401
+    from app.schemas import player_embeddings  # noqa: F401
 
     connect_args = {
         # Disable prepared statement caching to avoid type OID/cache issues after DDL.
@@ -144,13 +145,63 @@ async def async_engine(
         "statement_cache_size": 0,
     }
     engine = create_async_engine(database_url, echo=False, pool_pre_ping=True, connect_args=connect_args)
+
+    # pgvector is a database-level extension.  Install it before create_all so
+    # the vector type is available.  The extension DDL must be committed and the
+    # pool disposed before create_all runs so that asyncpg opens a fresh
+    # connection with an up-to-date type codec cache.
+    async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    await engine.dispose()
+
+    # Rebuild the engine so all new connections open after the extension commit.
+    engine = create_async_engine(database_url, echo=False, pool_pre_ping=True, connect_args=connect_args)
+
+    # Exclude player_embeddings from create_all — asyncpg's prepared-statement
+    # path validates column types even for DDL; the vector codec is not
+    # registered until the extension is already committed AND the connection
+    # bootstraps its type cache.  We create that table via a raw asyncpg
+    # execute() call (not prepare()) to bypass the OID-lookup step.
+    from app.schemas.player_embeddings import PlayerEmbedding
+    pe_table = PlayerEmbedding.__table__  # type: ignore[attr-defined]
+
     async with engine.begin() as conn:
         await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{test_schema}"'))
         # Use a schema-only search_path so tests never fall back to `public`.
         # This prevents accidental cross-test contamination if `public` already
         # contains tables with the same names (e.g., from previous runs).
         await conn.execute(text(f'SET search_path TO "{test_schema}"'))
-        await conn.run_sync(SQLModel.metadata.create_all)
+
+        def _create_all_except_embeddings(sync_conn):  # type: ignore[no-untyped-def]
+            SQLModel.metadata.create_all(
+                sync_conn, tables=[t for t in SQLModel.metadata.sorted_tables if t is not pe_table]
+            )
+
+        await conn.run_sync(_create_all_except_embeddings)
+
+        # Create player_embeddings via the raw asyncpg connection so we can
+        # temporarily widen search_path to include `public` (where pgvector
+        # registers the `vector` type).  The isolated test schema excludes
+        # `public`, but without it the type name `vector` cannot be resolved
+        # during DDL parsing.  We restore the isolated path immediately after.
+        raw_conn = await conn.get_raw_connection()
+        asyncpg_conn = raw_conn.driver_connection  # the native asyncpg connection
+        await asyncpg_conn.execute(
+            f'SET LOCAL search_path TO "{test_schema}", public'
+        )
+        await asyncpg_conn.execute(
+            f'CREATE TABLE IF NOT EXISTS "{test_schema}".player_embeddings ('
+            "    player_id INTEGER NOT NULL PRIMARY KEY,"
+            "    embedding vector(768) NOT NULL,"
+            "    model_name TEXT NOT NULL,"
+            "    created_at TIMESTAMP NOT NULL DEFAULT now(),"
+            "    updated_at TIMESTAMP NOT NULL DEFAULT now(),"
+            f'   FOREIGN KEY (player_id) REFERENCES "{test_schema}".players_master (id) ON DELETE CASCADE'
+            ")"
+        )
+        # Restore the isolated search_path (SET LOCAL is transaction-local,
+        # so it will revert on commit anyway, but be explicit for clarity).
+        await asyncpg_conn.execute(f'SET LOCAL search_path TO "{test_schema}"')
     try:
         yield engine
     finally:
