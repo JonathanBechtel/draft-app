@@ -16,9 +16,9 @@ class Settings(BaseSettings):
     )
     debug: bool = False
     log_level: str = "INFO"
-    access_log: bool = True
+    access_log: bool = False
     log_requests: bool = False
-    sql_echo: bool = True
+    sql_echo: bool = False
     auto_init_db: bool = True
 
     # Gemini API settings
