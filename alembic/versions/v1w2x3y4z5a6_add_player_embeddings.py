@@ -1,7 +1,7 @@
 """Add pgvector extension and player_embeddings table.
 
-Revision ID: u0v1w2x3y4z5
-Revises: t9u0v1w2x3y4
+Revision ID: v1w2x3y4z5a6
+Revises: u0v1w2x3y4z5
 Create Date: 2026-05-26
 
 Adds the pgvector extension and a ``player_embeddings`` table that stores
@@ -25,8 +25,8 @@ import sqlalchemy as sa
 from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
-revision: str = "u0v1w2x3y4z5"
-down_revision: Union[str, None] = "t9u0v1w2x3y4"
+revision: str = "v1w2x3y4z5a6"
+down_revision: Union[str, None] = "u0v1w2x3y4z5"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
