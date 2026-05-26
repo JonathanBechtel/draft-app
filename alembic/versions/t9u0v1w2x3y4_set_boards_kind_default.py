@@ -46,10 +46,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.alter_column(
-        "boards",
-        "kind",
-        server_default=None,
-        existing_type=_KIND_ENUM,
-        existing_nullable=False,
-    )
+    # No-op by design. The predecessor revision s8t9u0v1w2x3 (unify_boards)
+    # also declares ``server_default="BIG_BOARD"`` on this column, so the
+    # target schema state of *both* this revision and its predecessor is
+    # "kind has DEFAULT BIG_BOARD". This revision exists only to re-apply
+    # that default on environments where the predecessor's add_column
+    # landed without it (most likely because the table was bootstrapped
+    # via SQLModel.metadata.create_all and the alembic head was then
+    # stamped without re-running the column add).
+    #
+    # Dropping the default during downgrade would put the DB into a state
+    # neither revision targets, and would re-surface the NOT NULL INSERT
+    # failure that motivated this migration. Leave the default in place.
+    pass
