@@ -51,9 +51,13 @@ class DuplicatePlayerError(BoardError):
 
 @dataclass(frozen=True)
 class EntryInput:
-    """One ranked player passed in during board creation or row addition."""
+    """One ranked player passed in during board creation or row addition.
 
-    player_id: int
+    ``player_id`` is optional: an entry can land unresolved (no DB match for
+    the analyst's name) and a human resolves it later through the admin UI.
+    """
+
+    player_id: Optional[int]
     position: int
     raw_name: str = ""
     resolution_method: ResolutionMethod = ResolutionMethod.MANUAL
@@ -173,7 +177,7 @@ async def add_entry(
     db: AsyncSession,
     *,
     board_id: int,
-    player_id: int,
+    player_id: Optional[int],
     position: int,
     raw_name: str = "",
     resolution_method: ResolutionMethod = ResolutionMethod.MANUAL,
