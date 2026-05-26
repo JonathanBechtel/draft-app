@@ -505,7 +505,7 @@ You will be given the cleaned body text of an NBA Draft analyst's "big board" ar
 Rules:
 - "rank" is the analyst's position in the ranking (1, 2, 3, ...), not the player's pick projection.
 - "tier" is only present when the analyst explicitly groups players into tiers (Tier 1, Tier 2, ...). Otherwise leave it null.
-- Extract EVERY ranked position in the list. Use whatever name the analyst writes at that position — partial names like "Mara" or "Acuff, Jr." are acceptable; downstream resolution handles them.
+- Extract EVERY ranked position in the list. Use whatever name the analyst writes at that position — partial names like "Mara" or "Bronny James Jr." are acceptable; downstream resolution handles them.
 - Skip honorable-mention sections, "watch list" addenda, NBA veterans referenced for comparison, and analyst self-references.
 - Only include players from the analyst's RANKED LIST, in the order the analyst presents them. Do not include incidental player mentions from the surrounding commentary.
 - If you cannot identify a coherent ordered list of prospects, return an empty entries list.
@@ -561,7 +561,7 @@ def _build_extraction_schema() -> types.Schema:
                                 "The player's name exactly as it appears "
                                 "at the ranked position in the article. "
                                 "Partial or surname-only forms are "
-                                "acceptable (e.g., 'Mara', 'Acuff, Jr.'); "
+                                "acceptable (e.g., 'Mara', 'Bronny James Jr.'); "
                                 "downstream resolution handles them. "
                                 "Never skip a ranked position — always "
                                 "emit whatever name the analyst uses there."
