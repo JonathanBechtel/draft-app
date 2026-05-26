@@ -638,10 +638,10 @@ def test_build_extraction_schema_player_name_allows_partial() -> None:
     """The schema's player_name description must allow partial/surname-only names.
 
     This is the load-bearing piece of guidance sent to Gemini's structured-output
-    decoder. After the aggressive-extraction flip (T6 / #243) the contract is
-    inverted: emit every ranked position using whatever name the analyst writes
-    there; downstream resolution handles precision. Losing this (e.g., reverting
-    to the old anti-surname language) silently reduces recall on prose-heavy boards.
+    decoder. The contract is recall-first: emit every ranked position using
+    whatever name the analyst writes there; downstream resolution handles
+    precision. Losing this (e.g., reverting to anti-surname language) silently
+    reduces recall on prose-heavy boards.
     """
     schema = _build_extraction_schema()
     entries_items = schema.properties["entries"].items
