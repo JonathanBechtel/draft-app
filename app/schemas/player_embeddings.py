@@ -5,10 +5,9 @@ enabling vector-search-based entity resolution (fuzzy name matching).
 """
 
 from datetime import datetime
-from typing import Optional
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text
+from sqlalchemy import Column, ForeignKey, Integer, Text
 from sqlmodel import Field, SQLModel
 
 
@@ -50,11 +49,5 @@ class PlayerEmbedding(SQLModel, table=True):  # type: ignore[call-arg]
 
     model_name: str = Field(sa_column=Column(Text, nullable=False))
 
-    created_at: Optional[datetime] = Field(
-        default_factory=datetime.utcnow,
-        sa_column=Column(DateTime, nullable=False, default=datetime.utcnow),
-    )
-    updated_at: Optional[datetime] = Field(
-        default_factory=datetime.utcnow,
-        sa_column=Column(DateTime, nullable=False, default=datetime.utcnow),
-    )
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
