@@ -6,7 +6,9 @@ real DB through the fixtures in ``tests/integration/conftest.py``.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,8 +22,12 @@ from app.services import board_extraction_service
 from app.services.board_extraction_service import (
     ExtractedBoard,
     ExtractedBoardEntry,
+    PaywallDetectedError,
     extract_board,
 )
+
+
+_FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "substack"
 
 
 # --- Helpers ----------------------------------------------------------------
@@ -420,3 +426,115 @@ async def test_extract_board_rejects_mock_draft_kind(
             news_item_id=item.id,
             kind=BoardKind.MOCK_DRAFT,
         )
+
+
+# --- Substack API routing through _default_fetcher ------------------------
+
+
+@pytest.mark.asyncio
+async def test_extract_board_routes_substack_url_through_api(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    monkeypatch,
+) -> None:
+    """A Substack post URL hits the JSON API path and lands a PENDING Board.
+
+    The HTTP layer is stubbed to return the captured fixture payload,
+    so ``_default_fetcher`` walks the full Substack branch (URL
+    translation → API fetch → ``body_html`` text extraction) before
+    handing off to a stubbed Gemini.
+    """
+    assert news_source.id is not None
+    item = await _make_news_item(
+        db_session,
+        source_id=news_source.id,
+        url="https://example.substack.com/p/2026-nba-draft-big-board-v3",
+    )
+    flagg = await _make_player(db_session, display_name="Cooper Flagg")
+    harper = await _make_player(db_session, display_name="Dylan Harper")
+
+    fixture_payload = json.loads(
+        (_FIXTURE_DIR / "big_board_free.json").read_text()
+    )
+    api_urls_called: list[str] = []
+
+    async def _stub_http_get(url: str) -> str:
+        api_urls_called.append(url)
+        return json.dumps(fixture_payload)
+
+    monkeypatch.setattr(board_extraction_service, "_http_get", _stub_http_get)
+
+    _stub_extraction(
+        monkeypatch,
+        ExtractedBoard(
+            draft_year=2026,
+            published_at=datetime(2026, 5, 15),
+            entries=[
+                ExtractedBoardEntry(player_name="Cooper Flagg", rank=1, tier=1),
+                ExtractedBoardEntry(player_name="Dylan Harper", rank=2, tier=1),
+            ],
+        ),
+    )
+
+    assert item.id is not None
+    board = await extract_board(db_session, news_item_id=item.id)
+
+    assert board is not None
+    assert board.status == BoardStatus.PENDING
+    assert board.size == 2
+
+    # Confirms the fetcher translated the post URL into the API URL.
+    assert api_urls_called == [
+        "https://example.substack.com/api/v1/posts/2026-nba-draft-big-board-v3"
+    ]
+
+    entries_stmt = select(BoardEntry).where(BoardEntry.board_id == board.id)
+    result = await db_session.execute(entries_stmt)
+    entries = sorted(result.scalars().all(), key=lambda e: e.position)
+    assert [e.player_id for e in entries] == [flagg.id, harper.id]
+
+
+@pytest.mark.asyncio
+async def test_extract_board_paywalled_substack_post_raises(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    monkeypatch,
+) -> None:
+    """A Substack post with ``audience=only_paid`` raises before Gemini is called."""
+    assert news_source.id is not None
+    item = await _make_news_item(
+        db_session,
+        source_id=news_source.id,
+        url="https://example.substack.com/p/2026-nba-draft-big-board-paid",
+    )
+
+    fixture_payload = json.loads(
+        (_FIXTURE_DIR / "big_board_paid.json").read_text()
+    )
+
+    async def _stub_http_get(url: str) -> str:
+        return json.dumps(fixture_payload)
+
+    monkeypatch.setattr(board_extraction_service, "_http_get", _stub_http_get)
+
+    gemini_called = {"called": False}
+
+    async def _gemini_should_not_be_called(article_text: str, *, client=None):
+        gemini_called["called"] = True
+        return ExtractedBoard(draft_year=2026, entries=[])
+
+    monkeypatch.setattr(
+        board_extraction_service,
+        "_extract_via_gemini",
+        _gemini_should_not_be_called,
+    )
+
+    assert item.id is not None
+    with pytest.raises(PaywallDetectedError):
+        await extract_board(db_session, news_item_id=item.id)
+
+    assert gemini_called["called"] is False
+    result = await db_session.execute(
+        select(Board).where(Board.news_item_id == item.id)
+    )
+    assert result.scalar_one_or_none() is None
