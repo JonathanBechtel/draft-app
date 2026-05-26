@@ -1,4 +1,4 @@
-"""Gemini text-embedding-004 service for player-name vector generation.
+"""Gemini embedding service for player-name vector generation.
 
 Provides three public helpers:
 
@@ -18,6 +18,7 @@ import logging
 from typing import Optional
 
 from google import genai
+from google.genai import types
 
 from app.config import settings
 from app.schemas.players_master import PlayerMaster
@@ -26,6 +27,25 @@ logger = logging.getLogger(__name__)
 
 # Module-level client; instantiated on first use.
 _client: Optional[genai.Client] = None
+
+
+def _embed_config() -> types.EmbedContentConfig:
+    """Build the embed config pinning output width to the table's vector size.
+
+    ``gemini-embedding-001`` defaults to 3072 dims; we request
+    ``settings.gemini_embedding_dim`` (768) so vectors fit the
+    ``player_embeddings.embedding`` column. Cosine search is scale-invariant,
+    so truncated-dimension vectors need no manual renormalization.
+
+    ``task_type`` is pinned to ``settings.gemini_embedding_task_type``
+    (SEMANTIC_SIMILARITY): name-to-name matching needs a symmetric task type
+    on both the stored vector and the query, or short queries match on surface
+    form rather than name content.
+    """
+    return types.EmbedContentConfig(
+        output_dimensionality=settings.gemini_embedding_dim,
+        task_type=settings.gemini_embedding_task_type,
+    )
 
 
 def _get_client() -> genai.Client:
@@ -131,6 +151,7 @@ async def embed_text(
     response = await _c.aio.models.embed_content(
         model=settings.gemini_embedding_model,
         contents=[text],  # type: ignore[arg-type]
+        config=_embed_config(),
     )
     embeddings = response.embeddings
     if not embeddings or embeddings[0].values is None:
@@ -170,6 +191,7 @@ async def embed_players_batch(
     response = await _c.aio.models.embed_content(
         model=settings.gemini_embedding_model,
         contents=texts,  # type: ignore[arg-type]
+        config=_embed_config(),
     )
     embeddings = response.embeddings
     if not embeddings or len(embeddings) != len(players):

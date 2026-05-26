@@ -26,7 +26,16 @@ class Settings(BaseSettings):
     gemini_summarization_api_key: Optional[str] = (
         None  # Separate key for RSS summarization
     )
-    gemini_embedding_model: str = "text-embedding-004"
+    gemini_embedding_model: str = "gemini-embedding-001"
+    # Output dimensionality requested from the embedding model. Must match the
+    # vector width of the player_embeddings.embedding column; changing it
+    # requires a migration + re-embed.
+    gemini_embedding_dim: int = 768
+    # Task type for embeddings. SEMANTIC_SIMILARITY is symmetric (same for the
+    # stored player vector and the query) and materially outperforms the
+    # default/retrieval modes for short name-to-name matching. Changing it
+    # requires re-embedding the whole table.
+    gemini_embedding_task_type: str = "SEMANTIC_SIMILARITY"
     youtube_api_key: Optional[str] = None
 
     # Image generation settings

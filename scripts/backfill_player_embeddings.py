@@ -169,13 +169,17 @@ async def backfill(
             if not rows:
                 continue
 
-            async with db.begin():
-                stmt = (
-                    pg_insert(PlayerEmbedding)
-                    .values(rows)
-                    .on_conflict_do_nothing(index_elements=["player_id"])
-                )
-                await db.execute(stmt)
+            # NB: the initial fetch_players_missing_embeddings SELECT autobegins
+            # a transaction on this session, so an explicit ``async with
+            # db.begin()`` here would raise "a transaction is already begun".
+            # Execute within the active transaction and commit per batch instead.
+            stmt = (
+                pg_insert(PlayerEmbedding)
+                .values(rows)
+                .on_conflict_do_nothing(index_elements=["player_id"])
+            )
+            await db.execute(stmt)
+            await db.commit()
 
             total_written += len(rows)
             logger.info(
