@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.boards import Board, BoardEntry, BoardStatus
+from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus
 
 
 class BoardError(Exception):
@@ -60,8 +60,9 @@ async def create_board(
     published_at: datetime,
     entries: Sequence[EntryInput],
     news_item_id: Optional[int] = None,
+    kind: BoardKind = BoardKind.BIG_BOARD,
 ) -> Board:
-    """Create a PENDING big board with its initial entries.
+    """Create a PENDING board with its initial entries.
 
     Args:
         db: Async session; caller owns commit.
@@ -71,6 +72,10 @@ async def create_board(
         entries: Initial set of ranked players. May be empty if the admin
             wants to create the shell first and add rows afterward.
         news_item_id: Optional FK linking to the source article.
+        kind: Board discriminator. Defaults to ``BIG_BOARD`` because that
+            is the only kind with an active write path today; the column's
+            server_default matches, so this is also a defense-in-depth
+            against environments where the default isn't applied.
 
     Returns:
         The persisted Board (with ``id``, ``status`` defaulted to PENDING).
@@ -80,6 +85,7 @@ async def create_board(
             the per-board uniqueness constraints.
     """
     board = Board(
+        kind=kind,
         news_source_id=news_source_id,
         news_item_id=news_item_id,
         draft_year=draft_year,

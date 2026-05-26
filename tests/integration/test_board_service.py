@@ -11,7 +11,7 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.boards import Board, BoardEntry, BoardStatus
+from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service as svc
@@ -61,6 +61,10 @@ async def test_create_board_persists_pending_board_and_entries(
     assert board.status is BoardStatus.PENDING
     assert board.approved_at is None
     assert board.size == 3
+    # Defaults to BIG_BOARD when caller omits ``kind`` — without this the
+    # NOT NULL column would only land via the server-side default, which
+    # has historically been missing on some environments. See #235.
+    assert board.kind is BoardKind.BIG_BOARD
 
     _, entries = await svc.get_board_with_entries(db_session, board.id)  # type: ignore[arg-type]
     assert [(e.position, e.player_id, e.tier) for e in entries] == [
@@ -68,6 +72,31 @@ async def test_create_board_persists_pending_board_and_entries(
         (2, players[1].id, 1),
         (3, players[2].id, 2),
     ]
+
+
+@pytest.mark.asyncio
+async def test_create_board_persists_explicit_kind(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    players: list[PlayerMaster],
+) -> None:
+    """Caller can override ``kind`` (forward-compat for mock-draft path)."""
+    assert news_source.id is not None
+    board = await svc.create_board(
+        db_session,
+        kind=BoardKind.BIG_BOARD,
+        news_source_id=news_source.id,
+        draft_year=2026,
+        published_at=_published_at(),
+        entries=[
+            svc.EntryInput(player_id=players[0].id, position=1),  # type: ignore[arg-type]
+        ],
+    )
+    await db_session.commit()
+
+    refreshed = await db_session.get(Board, board.id)
+    assert refreshed is not None
+    assert refreshed.kind is BoardKind.BIG_BOARD
 
 
 @pytest.mark.asyncio

@@ -237,6 +237,7 @@ async def extract_board(
     published_at = extracted.published_at or news_item.published_at or datetime.utcnow()
     board = await board_service.create_board(
         db,
+        kind=kind,
         news_source_id=news_item.source_id,
         draft_year=extracted.draft_year,
         published_at=published_at,
