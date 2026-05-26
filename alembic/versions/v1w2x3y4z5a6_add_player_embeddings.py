@@ -80,7 +80,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Drop HNSW index, player_embeddings table, and pgvector extension."""
+    """Drop HNSW index and player_embeddings table.
+
+    The pgvector extension is intentionally left in place. ``CREATE
+    EXTENSION IF NOT EXISTS vector`` in upgrade may have been a no-op
+    (the extension may pre-exist or be shared with other objects in the
+    database), and unconditionally dropping it can either fail on
+    dependent objects or remove infrastructure this migration did not
+    exclusively own.
+    """
     op.execute("DROP INDEX IF EXISTS ix_player_embeddings_hnsw")
     op.drop_table("player_embeddings")
-    op.execute("DROP EXTENSION IF EXISTS vector")

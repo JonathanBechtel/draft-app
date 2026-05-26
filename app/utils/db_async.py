@@ -6,6 +6,7 @@ import ssl
 from typing import Any, AsyncGenerator, Dict, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from sqlalchemy import text as sa_text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
@@ -122,6 +123,10 @@ async def init_db():
     load_schema_modules()
 
     async with engine.begin() as conn:
+        # ``player_embeddings`` declares a pgvector ``Vector(768)`` column,
+        # so the extension must exist before ``create_all`` runs on a fresh
+        # database. Idempotent — no-op if already enabled.
+        await conn.execute(sa_text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(SQLModel.metadata.create_all)
 
 
