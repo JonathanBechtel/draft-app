@@ -44,7 +44,13 @@ This repo does **not** distinguish `integration/no_deps/` vs `integration/with_d
 - `DRAFTGURU_ADMIN_EMAIL`
 - `DRAFTGURU_ADMIN_PASSWORD`
 
-The orchestrator harness loads `.env` automatically via `scripts/with-db-env.sh`. If the agent needs them directly inside a Python process, `from app.config import settings` does not surface them — read from `os.environ`.
+`.env` does not get loaded by Python automatically. Two ways to surface these to whatever you're running:
+
+- For shell commands (alembic, pytest, ad-hoc scripts) — wrap with `scripts/with-db-env.sh`, e.g. `scripts/with-db-env.sh conda run -n draftguru python -m pytest tests/`. The script `source`s `.env` and `exec`s your command with the variables exported.
+- For one-off shell sessions — `set -a && source .env && set +a` before invoking commands.
+- For Playwright MCP browser steps — pass the variables when filling the form (most MCP clients resolve `$VAR` from the host shell). If they aren't set, halt and ask the user rather than guessing credentials.
+
+Note that `from app.config import settings` does NOT surface these particular vars — they're not part of `app/config.py`. Read from `os.environ` directly when you need them inside Python code.
 
 A dedicated dev-test admin account (`admin@draftguru.local`, separate from the repo owner's personal account) exists for this purpose. The credentials live only in `.env`; do not embed them in tickets, PR descriptions, screenshots, or commit messages.
 
