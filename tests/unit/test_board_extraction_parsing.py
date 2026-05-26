@@ -410,6 +410,41 @@ def test_substack_api_url_case_insensitive_host() -> None:
     )
 
 
+def test_substack_api_url_translates_open_substack_share_link() -> None:
+    """Share-link URLs on ``open.substack.com`` resolve to the publication's API.
+
+    Substack's share button generates ``open.substack.com/pub/<pub>/p/<slug>``
+    URLs that RSS feeds and social posts commonly carry. Without this branch
+    they fall through to the HTML scraper and silently lose the article body.
+    """
+    assert (
+        _substack_api_url(
+            "https://open.substack.com/pub/edemirnba/p/2026-big-board"
+        )
+        == "https://edemirnba.substack.com/api/v1/posts/2026-big-board"
+    )
+
+
+def test_substack_api_url_open_share_link_drops_query_and_trailing_slash() -> None:
+    """Share links arrive from clients with utm tags and trailing slashes."""
+    assert (
+        _substack_api_url(
+            "https://open.substack.com/pub/edemirnba/p/2026-big-board/?r=abc"
+        )
+        == "https://edemirnba.substack.com/api/v1/posts/2026-big-board"
+    )
+
+
+def test_substack_api_url_rejects_open_host_without_pub_path() -> None:
+    """``open.substack.com`` paths that don't carry /pub/<pub>/p/<slug> are not posts."""
+    assert _substack_api_url("https://open.substack.com/") is None
+    assert _substack_api_url("https://open.substack.com/pub/edemirnba") is None
+    assert (
+        _substack_api_url("https://open.substack.com/pub/edemirnba/p/") is None
+    )
+    assert _substack_api_url("https://open.substack.com/p/2026-big-board") is None
+
+
 # --- _fetch_substack_api ------------------------------------------------
 
 
