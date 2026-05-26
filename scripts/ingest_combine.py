@@ -449,15 +449,12 @@ def main() -> None:
     asyncio.run(run(Path(args.out_dir), args.season, args.source))
 
 
-if __name__ == "__main__":
-    main()
-# ------------------------------
-# Helpers
-# ------------------------------
-
-
 def _position_triplet(
     raw_pos: Optional[str],
 ) -> tuple[Optional[str], Optional[str], Optional[List[str]]]:
     fine, parents = derive_position_tags(raw_pos)
     return raw_pos or None, fine, parents or None
+
+
+if __name__ == "__main__":
+    main()
