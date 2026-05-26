@@ -634,20 +634,24 @@ async def test_default_fetcher_falls_back_to_html_for_non_substack(
 # --- _build_extraction_schema -------------------------------------------
 
 
-def test_build_extraction_schema_player_name_description_forbids_surnames() -> None:
-    """The schema's player_name field must carry the anti-surname guidance.
+def test_build_extraction_schema_player_name_allows_partial() -> None:
+    """The schema's player_name description must allow partial/surname-only names.
 
-    This is the load-bearing piece of guidance that gets sent to Gemini's
-    structured-output decoder — losing it (e.g., during a refactor that
-    moves to introspecting the Pydantic model) silently regresses
-    extraction quality on prose-heavy big boards.
+    This is the load-bearing piece of guidance sent to Gemini's structured-output
+    decoder. After the aggressive-extraction flip (T6 / #243) the contract is
+    inverted: emit every ranked position using whatever name the analyst writes
+    there; downstream resolution handles precision. Losing this (e.g., reverting
+    to the old anti-surname language) silently reduces recall on prose-heavy boards.
     """
     schema = _build_extraction_schema()
     entries_items = schema.properties["entries"].items
     description = entries_items.properties["player_name"].description or ""
-    assert "full first" in description.lower()
-    assert "bare surname" in description.lower() or "never emit" in description.lower()
-    assert "omit the entry" in description.lower()
+    # Must explicitly allow partial/surname-only names.
+    assert "partial" in description.lower() or "surname" in description.lower()
+    # Must NOT tell Gemini to omit entries or refuse partial names.
+    assert "omit the entry" not in description.lower()
+    assert "never emit" not in description.lower()
+    assert "full first" not in description.lower()
 
 
 def test_build_extraction_schema_requires_player_name_and_rank() -> None:

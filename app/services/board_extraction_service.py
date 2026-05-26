@@ -505,7 +505,7 @@ You will be given the cleaned body text of an NBA Draft analyst's "big board" ar
 Rules:
 - "rank" is the analyst's position in the ranking (1, 2, 3, ...), not the player's pick projection.
 - "tier" is only present when the analyst explicitly groups players into tiers (Tier 1, Tier 2, ...). Otherwise leave it null.
-- "player_name" MUST be the player's full first name AND last name (e.g., "Cooper Flagg", never just "Flagg"). Some analysts structure their boards as numbered headers using only a last name (e.g., "1. Mara", "2. Steinbach") and introduce the player by full name earlier in the article — usually in the same section or in a preceding "Tier" header. When you encounter a bare-surname ranking line, scan back through the article for that player's first full-name introduction and use that. If you genuinely cannot find any full-name reference anywhere in the article for that position, OMIT that entry entirely rather than emitting a partial name.
+- Extract EVERY ranked position in the list. Use whatever name the analyst writes at that position — partial names like "Mara" or "Acuff, Jr." are acceptable; downstream resolution handles them.
 - Skip honorable-mention sections, "watch list" addenda, NBA veterans referenced for comparison, and analyst self-references.
 - Only include players from the analyst's RANKED LIST, in the order the analyst presents them. Do not include incidental player mentions from the surrounding commentary.
 - If you cannot identify a coherent ordered list of prospects, return an empty entries list.
@@ -558,18 +558,13 @@ def _build_extraction_schema() -> types.Schema:
                         "player_name": types.Schema(
                             type=types.Type.STRING,
                             description=(
-                                "The player's full first AND last name "
-                                "(e.g., 'Cooper Flagg'). NEVER emit a "
-                                "bare surname even if the ranking line "
-                                "itself only shows a surname — scan the "
-                                "surrounding article text (preceding "
-                                "tier headers, intro paragraphs, prior "
-                                "sections) for that player's first "
-                                "full-name introduction and use that. "
-                                "If no full first+last name exists "
-                                "anywhere in the article for this "
-                                "position, omit the entry entirely "
-                                "rather than emitting a partial name."
+                                "The player's name exactly as it appears "
+                                "at the ranked position in the article. "
+                                "Partial or surname-only forms are "
+                                "acceptable (e.g., 'Mara', 'Acuff, Jr.'); "
+                                "downstream resolution handles them. "
+                                "Never skip a ranked position — always "
+                                "emit whatever name the analyst uses there."
                             ),
                         ),
                         "rank": types.Schema(
