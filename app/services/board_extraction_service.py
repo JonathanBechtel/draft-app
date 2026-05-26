@@ -205,7 +205,7 @@ async def extract_board(
     seen_player_ids: set[int] = set()
     seen_positions: set[int] = set()
     for raw in extracted.entries:
-        player_id = await _resolve_player_id(db, raw.player_name)
+        player_id, method = await _resolve_player_id(db, raw.player_name)
         if player_id is None:
             unmatched.append(raw.player_name)
             continue
@@ -219,7 +219,7 @@ async def extract_board(
                 player_id=player_id,
                 position=raw.rank,
                 raw_name=raw.player_name,
-                resolution_method=board_service.ResolutionMethod.EXACT,
+                resolution_method=method,
                 tier=raw.tier,
             )
         )
@@ -718,7 +718,9 @@ def normalize_player_name(name: str) -> str:
     return collapsed.lower()
 
 
-async def _resolve_player_id(db: AsyncSession, raw_name: str) -> Optional[int]:
+async def _resolve_player_id(
+    db: AsyncSession, raw_name: str
+) -> tuple[Optional[int], board_service.ResolutionMethod]:
     """Look up a PlayerMaster id by name; fall back to aliases.
 
     Strategy:
@@ -728,17 +730,21 @@ async def _resolve_player_id(db: AsyncSession, raw_name: str) -> Optional[int]:
        extension and don't apply a prefix prefilter (diacritic-leading
        names would be missed by a SQL ``LIKE`` on the normalized first
        letter).
-    3. If exactly one candidate matches, return its id.
-    4. If zero, try the same on ``player_aliases.full_name``.
+    3. If exactly one candidate matches ``display_name``, return its id
+       with ``EXACT``.
+    4. If zero, try the same on ``player_aliases.full_name`` — match
+       there is reported as ``ALIAS`` so callers can record the
+       provenance accurately.
     5. If multiple candidates match (e.g., two real prospects share a
        name), treat as unresolved — never guess. The follow-up ticket
        persists these for admin review.
 
-    Returns ``None`` for empty input, no match, or ambiguous match.
+    Returns ``(None, UNRESOLVED)`` for empty input, no match, or
+    ambiguous match.
     """
     needle = normalize_player_name(raw_name)
     if not needle:
-        return None
+        return None, board_service.ResolutionMethod.UNRESOLVED
 
     candidate = await _find_unique_normalized_match(
         db,
@@ -747,14 +753,18 @@ async def _resolve_player_id(db: AsyncSession, raw_name: str) -> Optional[int]:
         needle=needle,
     )
     if candidate is not None:
-        return candidate
+        return candidate, board_service.ResolutionMethod.EXACT
 
-    return await _find_unique_normalized_match(
+    alias_match = await _find_unique_normalized_match(
         db,
         column=PlayerAlias.full_name,  # type: ignore[arg-type]
         id_column=PlayerAlias.player_id,  # type: ignore[arg-type]
         needle=needle,
     )
+    if alias_match is not None:
+        return alias_match, board_service.ResolutionMethod.ALIAS
+
+    return None, board_service.ResolutionMethod.UNRESOLVED
 
 
 async def _find_unique_normalized_match(

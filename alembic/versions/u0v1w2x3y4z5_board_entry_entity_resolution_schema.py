@@ -83,11 +83,13 @@ def upgrade() -> None:
 
     # 7. Backfill existing rows: set raw_name from the resolved player's
     #    display_name and tag them as MANUAL (a human previously verified them).
+    #    ``players_master.display_name`` is nullable, so COALESCE to '' to keep
+    #    the NOT NULL constraint satisfied even for stub players.
     op.execute(
         """
         UPDATE board_entries be
         SET
-            raw_name          = pm.display_name,
+            raw_name          = COALESCE(pm.display_name, ''),
             resolution_method = 'MANUAL'
         FROM players_master pm
         WHERE be.player_id = pm.id
