@@ -15,6 +15,7 @@ from app.services.board_extraction_service import (
     BoardExtractionError,
     ExtractedBoard,
     PaywallDetectedError,
+    _build_extraction_schema,
     _fetch_substack_api,
     _substack_api_url,
     extract_article_text,
@@ -628,3 +629,36 @@ async def test_default_fetcher_falls_back_to_html_for_non_substack(
     assert called["api"] is False
     assert called["html"] is True
     assert "Real content here" in text
+
+
+# --- _build_extraction_schema -------------------------------------------
+
+
+def test_build_extraction_schema_player_name_description_forbids_surnames() -> None:
+    """The schema's player_name field must carry the anti-surname guidance.
+
+    This is the load-bearing piece of guidance that gets sent to Gemini's
+    structured-output decoder — losing it (e.g., during a refactor that
+    moves to introspecting the Pydantic model) silently regresses
+    extraction quality on prose-heavy big boards.
+    """
+    schema = _build_extraction_schema()
+    entries_items = schema.properties["entries"].items
+    description = entries_items.properties["player_name"].description or ""
+    assert "full first" in description.lower()
+    assert "bare surname" in description.lower() or "never emit" in description.lower()
+    assert "omit the entry" in description.lower()
+
+
+def test_build_extraction_schema_requires_player_name_and_rank() -> None:
+    """Both fields must be marked required so the decoder can't omit them."""
+    schema = _build_extraction_schema()
+    entries_items = schema.properties["entries"].items
+    assert set(entries_items.required) >= {"player_name", "rank"}
+
+
+def test_build_extraction_schema_tier_is_nullable() -> None:
+    """``tier`` is opt-in — only set when analyst explicitly groups players."""
+    schema = _build_extraction_schema()
+    tier_field = schema.properties["entries"].items.properties["tier"]
+    assert tier_field.nullable is True
