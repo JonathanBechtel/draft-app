@@ -60,12 +60,26 @@ _NON_REPLAYABLE_PREFIXES = (
     "RESET",
 )
 
+# Data-modifying keywords. Used to reject writable CTEs such as
+# `WITH x AS (INSERT INTO ... RETURNING *) SELECT * FROM x`, which would execute
+# their side effects when wrapped in EXPLAIN ANALYZE.
+_DML_KEYWORDS_RE = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE)\b", re.IGNORECASE
+)
+
 
 def _is_replayable_select(statement: str) -> bool:
     head = statement.lstrip().upper()
     if head.startswith(_NON_REPLAYABLE_PREFIXES):
         return False
-    return head.startswith("SELECT") or head.startswith("WITH")
+    if head.startswith("SELECT"):
+        return True
+    if head.startswith("WITH"):
+        # WITH could be a read-only CTE or a writable CTE. EXPLAIN ANALYZE on the
+        # latter would execute its writes against the target DB. Skip anything that
+        # mentions a DML keyword anywhere in the statement.
+        return _DML_KEYWORDS_RE.search(statement) is None
+    return False
 
 
 def _install_listeners(engine) -> None:
