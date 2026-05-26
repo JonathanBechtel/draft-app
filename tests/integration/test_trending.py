@@ -145,13 +145,18 @@ class TestGetTrendingPlayers:
         db_session.add(player)
         await db_session.flush()
 
+        # Anchor "today's" timestamps to ``now`` itself so the mention's
+        # ``published_at`` is guaranteed to fall in today's UTC date bucket.
+        # The previous ``now - timedelta(hours=1)`` form caused a flake when
+        # CI ran in the first hour after UTC midnight — "1 hour ago" landed
+        # in yesterday's UTC bucket and ``daily_counts[-1]`` came back 0.
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        pub_today = now - timedelta(hours=1)
+        pub_today = now
         pub_2d = now - timedelta(hours=48)
 
         # Articles published today and 2 days ago
         art_today = make_article(
-            news_source.id, "today-art", hours_ago=1  # type: ignore[arg-type]
+            news_source.id, "today-art", hours_ago=0  # type: ignore[arg-type]
         )
         art_2d = make_article(
             news_source.id, "2d-art", hours_ago=48  # type: ignore[arg-type]
