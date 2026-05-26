@@ -23,6 +23,7 @@ from sqlalchemy import (
     Integer,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 
@@ -39,6 +40,26 @@ class BoardKind(str, Enum):
 
     BIG_BOARD = "BIG_BOARD"
     MOCK_DRAFT = "MOCK_DRAFT"
+
+
+class ResolutionMethod(str, Enum):
+    """How a raw player name was resolved (or not) to a ``players_master`` row.
+
+    Values:
+        EXACT: Normalized name matched a ``players_master.display_name`` exactly.
+        ALIAS: Matched via a ``player_aliases`` row.
+        VECTOR: Matched by embedding nearest-neighbour search.
+        MANUAL: Resolved by a human admin via the resolution UI.
+        STUB: Auto-created a stub ``players_master`` row for an unrecognised name.
+        UNRESOLVED: Not yet resolved; awaiting human review.
+    """
+
+    EXACT = "EXACT"
+    ALIAS = "ALIAS"
+    VECTOR = "VECTOR"
+    MANUAL = "MANUAL"
+    STUB = "STUB"
+    UNRESOLVED = "UNRESOLVED"
 
 
 class Board(SQLModel, table=True):  # type: ignore[call-arg]
@@ -110,6 +131,15 @@ class BoardEntry(SQLModel, table=True):  # type: ignore[call-arg]
     For ``MOCK_DRAFT`` boards, ``position`` is the overall pick number
     (1–60) and ``round``, ``team_id``, ``original_team_id``,
     ``trade_note`` carry the additional pick-specific context.
+
+    Entity resolution fields:
+        raw_name: The exact name string the AI emitted, stored verbatim
+            so it can be re-evaluated or audited later.
+        resolution_method: How (or whether) ``raw_name`` was resolved to
+            ``player_id``.  UNRESOLVED rows have ``player_id=None``.
+        vector_candidates: JSONB list of ``{player_id, display_name,
+            score}`` produced by the embedding nearest-neighbour pass,
+            preserved for admin review.
     """
 
     __tablename__ = "board_entries"
@@ -119,6 +149,7 @@ class BoardEntry(SQLModel, table=True):  # type: ignore[call-arg]
         ),
         UniqueConstraint("board_id", "player_id", name="uq_board_entries_board_player"),
         Index("ix_board_entries_player", "player_id"),
+        Index("ix_board_entries_resolution_method", "resolution_method"),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -130,9 +161,35 @@ class BoardEntry(SQLModel, table=True):  # type: ignore[call-arg]
             index=True,
         )
     )
-    player_id: int = Field(foreign_key="players_master.id")
+    player_id: Optional[int] = Field(
+        default=None,
+        foreign_key="players_master.id",
+        description="Resolved player; NULL while resolution_method is UNRESOLVED.",
+    )
     position: int = Field(
         description="Rank (big board) or overall pick number (mock draft); 1-based."
+    )
+
+    # Entity-resolution fields.
+    raw_name: str = Field(
+        default="",
+        description="Verbatim player name emitted by the extraction AI.",
+    )
+    resolution_method: ResolutionMethod = Field(
+        default=ResolutionMethod.UNRESOLVED,
+        sa_column=Column(
+            SAEnum(ResolutionMethod, name="resolution_method_enum"),
+            nullable=False,
+            server_default=ResolutionMethod.UNRESOLVED.value,
+        ),
+    )
+    vector_candidates: Optional[list[dict]] = Field(  # type: ignore[type-arg]
+        default=None,
+        sa_column=Column(JSONB, nullable=True),
+        description=(
+            "Nearest-neighbour candidates from the vector pass: "
+            "[{player_id, display_name, score}, ...]"
+        ),
     )
 
     # Big-board-only field.

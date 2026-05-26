@@ -11,7 +11,13 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus
+from app.schemas.boards import (
+    Board,
+    BoardEntry,
+    BoardKind,
+    BoardStatus,
+    ResolutionMethod,
+)
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service as svc
@@ -661,3 +667,90 @@ async def test_list_boards_filters_by_status_source_and_year(
         pending_older.id,
         approved_other_year.id,
     }
+
+
+@pytest.mark.asyncio
+async def test_board_entry_unresolved_round_trip(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+) -> None:
+    """BoardEntry with player_id=None and UNRESOLVED resolution_method persists and round-trips.
+
+    Verifies the entity-resolution schema columns: raw_name (NOT NULL),
+    resolution_method (enum), player_id (NULLABLE), and vector_candidates
+    (JSONB) can all be written and read back without error.
+    """
+    assert news_source.id is not None
+
+    board = Board(
+        news_source_id=news_source.id,
+        draft_year=2026,
+        published_at=_published_at(),
+        size=1,
+        status=BoardStatus.PENDING,
+    )
+    db_session.add(board)
+    await db_session.flush()
+    assert board.id is not None
+
+    candidates = [
+        {"player_id": 99, "display_name": "Mara Jones", "score": 0.91},
+        {"player_id": 100, "display_name": "Mara Smith", "score": 0.87},
+    ]
+    entry = BoardEntry(
+        board_id=board.id,
+        player_id=None,
+        position=1,
+        raw_name="Mara",
+        resolution_method=ResolutionMethod.UNRESOLVED,
+        vector_candidates=candidates,
+    )
+    db_session.add(entry)
+    await db_session.flush()
+    assert entry.id is not None
+
+    await db_session.commit()
+
+    fetched = await db_session.get(BoardEntry, entry.id)
+    assert fetched is not None
+    assert fetched.player_id is None
+    assert fetched.raw_name == "Mara"
+    assert fetched.resolution_method is ResolutionMethod.UNRESOLVED
+    assert fetched.vector_candidates == candidates
+
+
+@pytest.mark.asyncio
+async def test_board_entry_resolved_stores_raw_name_and_method(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    players: list[PlayerMaster],
+) -> None:
+    """A resolved BoardEntry stores raw_name and resolution_method alongside player_id.
+
+    Checks that the entity-resolution columns coexist correctly with a
+    non-NULL player_id on a standard resolved entry.
+    """
+    assert news_source.id is not None
+    board = await svc.create_board(
+        db_session,
+        news_source_id=news_source.id,
+        draft_year=2026,
+        published_at=_published_at(),
+        entries=[
+            svc.EntryInput(
+                player_id=players[0].id,  # type: ignore[arg-type]
+                position=1,
+                raw_name="Cooper Flagg",
+                resolution_method=ResolutionMethod.EXACT,
+            ),
+        ],
+    )
+    await db_session.commit()
+
+    _, entries = await svc.get_board_with_entries(db_session, board.id)  # type: ignore[arg-type]
+    assert len(entries) == 1
+    e = entries[0]
+    assert e.player_id == players[0].id
+    assert e.raw_name == "Cooper Flagg"
+    assert e.resolution_method is ResolutionMethod.EXACT
+    assert e.vector_candidates is None
