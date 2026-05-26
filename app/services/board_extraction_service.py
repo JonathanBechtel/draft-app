@@ -216,7 +216,11 @@ async def extract_board(
         seen_positions.add(raw.rank)
         entries_in.append(
             board_service.EntryInput(
-                player_id=player_id, position=raw.rank, tier=raw.tier
+                player_id=player_id,
+                position=raw.rank,
+                raw_name=raw.player_name,
+                resolution_method=board_service.ResolutionMethod.EXACT,
+                tier=raw.tier,
             )
         )
 

@@ -16,7 +16,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus
+from app.schemas.boards import (
+    Board,
+    BoardEntry,
+    BoardKind,
+    BoardStatus,
+    ResolutionMethod,
+)
 
 
 class BoardError(Exception):
@@ -49,6 +55,8 @@ class EntryInput:
 
     player_id: int
     position: int
+    raw_name: str = ""
+    resolution_method: ResolutionMethod = ResolutionMethod.MANUAL
     tier: Optional[int] = None
 
 
@@ -103,6 +111,8 @@ async def create_board(
                 board_id=board.id,
                 player_id=entry.player_id,
                 position=entry.position,
+                raw_name=entry.raw_name,
+                resolution_method=entry.resolution_method,
                 tier=entry.tier,
             )
         )
@@ -165,6 +175,8 @@ async def add_entry(
     board_id: int,
     player_id: int,
     position: int,
+    raw_name: str = "",
+    resolution_method: ResolutionMethod = ResolutionMethod.MANUAL,
     tier: Optional[int] = None,
 ) -> BoardEntry:
     """Append an entry to a PENDING board and bump ``size``."""
@@ -172,7 +184,12 @@ async def add_entry(
     _require_pending(board)
 
     entry = BoardEntry(
-        board_id=board_id, player_id=player_id, position=position, tier=tier
+        board_id=board_id,
+        player_id=player_id,
+        position=position,
+        raw_name=raw_name,
+        resolution_method=resolution_method,
+        tier=tier,
     )
     db.add(entry)
     board.size = board.size + 1
@@ -377,6 +394,8 @@ async def clone_board(
                 board_id=clone.id,
                 player_id=entry.player_id,
                 position=entry.position,
+                raw_name=entry.raw_name,
+                resolution_method=entry.resolution_method,
                 tier=entry.tier,
             )
         )
