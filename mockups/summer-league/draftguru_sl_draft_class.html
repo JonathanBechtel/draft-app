@@ -1,0 +1,1875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2026 Draft Class · Summer League — DraftGuru</title>
+  <meta name="description" content="How the 2026 NBA Draft class is performing in Summer League — by pick, with consensus deltas.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    .section-header__title {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+      padding-left: 0.625rem;
+      border-left: 4px solid var(--color-accent-amber);
+    }
+
+    .section-header__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .section-header__cta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      color: #b45309;
+      padding-bottom: 1px;
+      border-bottom: 1px dotted rgba(180, 83, 9, 0.4);
+    }
+    .section-header__cta:hover { border-bottom-style: solid; }
+
+    /* ============================================================================
+       NAVBAR / BREADCRUMBS (shared)
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--color-accent-amber);
+    }
+    .search-input {
+      width: 240px; background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none;
+    }
+
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    /* ============================================================================
+       PAGE HERO
+       ========================================================================= */
+    .page-hero {
+      padding: 1rem 0 2rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 2rem;
+      align-items: end;
+    }
+
+    .page-hero__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+    .page-hero__eyebrow::before {
+      content: ''; width: 12px; height: 2px;
+      background: var(--color-accent-amber);
+    }
+
+    .page-hero h2 {
+      font-family: var(--font-heading);
+      font-size: 2.5rem;
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+      color: var(--color-slate-900);
+    }
+
+    .page-hero__tagline {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.5rem;
+      max-width: 38rem;
+    }
+
+    .page-hero__kpi {
+      display: flex;
+      gap: 1.5rem;
+    }
+    .page-hero__kpi-cell { text-align: right; }
+    .page-hero__kpi-label {
+      font-family: var(--font-mono); font-size: 0.625rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+    .page-hero__kpi-value {
+      font-family: var(--font-heading); font-size: 2rem; line-height: 1;
+      margin-top: 0.25rem; color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       YEAR SCOREBOARD STRIP (shared component)
+       ========================================================================= */
+    .year-strip-wrapper {
+      position: sticky;
+      top: 68px;
+      z-index: 900;
+      background: var(--color-white);
+      border-top: 1px solid var(--color-slate-200);
+      border-bottom: 1px solid var(--color-slate-200);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      margin-bottom: 2rem;
+    }
+    .year-strip {
+      max-width: 1152px; width: var(--content-width);
+      margin: 0 auto; padding: 0.75rem 1.5rem;
+      display: flex; align-items: center; gap: 0.75rem;
+      overflow-x: auto;
+    }
+    .year-strip::-webkit-scrollbar { height: 4px; }
+    .year-strip::-webkit-scrollbar-thumb { background: var(--color-slate-300); border-radius: 4px; }
+    .year-strip__label {
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500); white-space: nowrap;
+      padding-right: 0.5rem; border-right: 1px solid var(--color-slate-200);
+    }
+    .year-strip__suffix {
+      font-family: var(--font-mono); font-size: 0.625rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-slate-400);
+      padding-left: 0.5rem;
+      border-left: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+    .year-tile {
+      flex-shrink: 0; min-width: 84px;
+      padding: 0.5rem 0.75rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.5rem;
+      text-align: center;
+      transition: all var(--transition-speed);
+      position: relative;
+    }
+    .year-tile:hover { border-color: var(--color-slate-400); transform: translateY(-1px); }
+    .year-tile__year {
+      font-family: var(--font-heading); font-size: 1rem;
+      color: var(--color-slate-900); line-height: 1.1;
+    }
+    .year-tile__quality {
+      font-family: var(--font-mono); font-size: 0.5rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      margin-top: 0.25rem;
+    }
+    .year-tile__quality::before {
+      content: ''; width: 0.375rem; height: 0.375rem;
+      border-radius: 9999px; background: currentColor;
+    }
+    .year-tile__quality--full { color: var(--color-accent-emerald); }
+    .year-tile__quality--box  { color: var(--color-accent-amber); }
+    .year-tile__quality--partial { color: var(--color-slate-400); }
+    .year-tile--active {
+      background: linear-gradient(135deg, #fde68a, #fef3c7);
+      border: 1px solid var(--color-accent-amber);
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18);
+    }
+    .year-tile--active .year-tile__year { color: #92400e; }
+    .year-tile--current { border: 1px solid var(--color-accent-amber); }
+    .year-tile--current::after {
+      content: 'NOW'; position: absolute; top: -7px; right: -7px;
+      font-family: var(--font-mono); font-size: 0.5rem; font-weight: 600;
+      background: var(--color-accent-amber); color: var(--color-white);
+      padding: 0.0625rem 0.25rem; border-radius: 0.1875rem;
+      letter-spacing: 0.06em;
+    }
+
+    /* ============================================================================
+       METHODOLOGY-PLACEHOLDER BANNER + INLINE INDICATORS
+       (consistent across all SL mockups)
+       ========================================================================= */
+    .methodology-banner {
+      border: 1px solid rgba(217, 70, 239, 0.4);
+      background:
+        linear-gradient(to right, rgba(217, 70, 239, 0.06), rgba(217, 70, 239, 0.02)),
+        repeating-linear-gradient(
+          135deg, transparent, transparent 8px,
+          rgba(217, 70, 239, 0.04) 8px, rgba(217, 70, 239, 0.04) 9px
+        );
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      margin: 0 0 1.5rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.875rem;
+      align-items: start;
+    }
+    .methodology-banner__chip {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      background: rgba(217, 70, 239, 0.15);
+      color: #a21caf;
+      border: 1px solid rgba(217, 70, 239, 0.4);
+      padding: 0.25rem 0.5rem; border-radius: 0.25rem;
+      white-space: nowrap; margin-top: 0.0625rem;
+    }
+    .methodology-banner__body {
+      font-family: var(--font-mono); font-size: 0.75rem;
+      color: var(--color-slate-700); line-height: 1.5;
+    }
+    .methodology-banner__body strong { color: #86198f; font-weight: 600; }
+    .tbd-indicator {
+      font-family: var(--font-mono); font-size: 0.5rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem; border-radius: 0.1875rem;
+      margin-left: 0.375rem; vertical-align: middle; cursor: help;
+    }
+
+    /* ============================================================================
+       CLASS IN CONTEXT STRIP (3-4 analytical big-number cards)
+       ========================================================================= */
+    .context-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.875rem;
+    }
+
+    .context-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-left: 4px solid;
+      border-radius: 0.5rem;
+      padding: 0.875rem 1rem;
+    }
+
+    .context-card--good { border-left-color: var(--color-accent-emerald); }
+    .context-card--neutral { border-left-color: var(--color-accent-amber); }
+    .context-card--insight { border-left-color: var(--color-accent-indigo); }
+    .context-card--cohort { border-left-color: var(--color-accent-fuchsia); }
+
+    .context-card__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .context-card__value {
+      font-family: var(--font-heading);
+      font-size: 1.75rem;
+      line-height: 1.1;
+      color: var(--color-slate-900);
+      margin: 0.25rem 0 0.375rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .context-card__value-unit {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+      font-weight: 400;
+      margin-left: 0.25rem;
+    }
+
+    .context-card__note {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-600);
+      line-height: 1.45;
+    }
+
+    .context-card__note strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       STORYLINES
+       ========================================================================= */
+    .moments-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.875rem;
+    }
+
+    .story-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-left: 4px solid;
+      border-radius: 0.5rem;
+      padding: 0.875rem 1rem;
+      transition: all var(--transition-speed);
+    }
+
+    .story-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+
+    .story-card--beat { border-left-color: var(--color-accent-emerald); }
+    .story-card--miss { border-left-color: var(--color-accent-rose); }
+    .story-card--positional { border-left-color: var(--color-accent-cyan); }
+    .story-card--narrative { border-left-color: var(--color-accent-fuchsia); }
+
+    .story-card__type {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.375rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .story-card--beat .story-card__type { color: #047857; }
+    .story-card--miss .story-card__type { color: #be123c; }
+    .story-card--positional .story-card__type { color: #0e7490; }
+    .story-card--narrative .story-card__type { color: #a21caf; }
+
+    .story-card__type-side { color: var(--color-slate-400); font-weight: 400; }
+
+    .story-card__headline {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      line-height: 1.25;
+    }
+
+    .story-card__body {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      margin-top: 0.375rem;
+      line-height: 1.5;
+    }
+
+    .story-card__body strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       Δ VISUAL — picks-by-pick lollipop chart
+       ========================================================================= */
+    .delta-chart {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1.25rem 1.5rem;
+    }
+
+    .delta-chart__legend {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      align-items: center;
+    }
+
+    .delta-chart__legend-item { display: inline-flex; align-items: center; gap: 0.375rem; }
+
+    .delta-chart__legend-dot { width: 0.5rem; height: 0.5rem; border-radius: 9999px; }
+
+    .delta-chart__svg {
+      width: 100%;
+      height: 240px;
+    }
+
+    /* ============================================================================
+       CONTROLS BAR
+       ========================================================================= */
+    .table-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .controls-cluster {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .mode-toggle {
+      display: inline-flex; align-items: center; gap: 0;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      overflow: hidden;
+    }
+    .mode-toggle__btn {
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.4rem 0.75rem;
+      color: var(--color-slate-500);
+      background: transparent;
+      border: none;
+      border-right: 1px solid var(--color-slate-200);
+      cursor: pointer;
+    }
+    .mode-toggle__btn:last-child { border-right: none; }
+    .mode-toggle__btn:hover { background: var(--color-slate-50); color: var(--color-slate-800); }
+    .mode-toggle__btn--active { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+
+    .filter-chip {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.375rem 0.625rem;
+      border-radius: 9999px;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+    .filter-chip:hover { border-color: var(--color-slate-400); }
+    .filter-chip--active {
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #b45309;
+    }
+
+    .min-filter {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .min-filter__slider {
+      width: 80px; height: 4px;
+      background: var(--color-slate-200);
+      border-radius: 9999px;
+      position: relative;
+    }
+    .min-filter__slider::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; height: 100%;
+      width: 30%; background: var(--color-accent-amber);
+      border-radius: 9999px;
+    }
+    .min-filter__slider::after {
+      content: ''; position: absolute;
+      top: -4px; left: 30%; width: 12px; height: 12px;
+      background: var(--color-white);
+      border: 2px solid var(--color-accent-amber);
+      border-radius: 9999px; transform: translateX(-50%);
+    }
+
+    /* ============================================================================
+       MAIN DRAFT-CLASS TABLE
+       ========================================================================= */
+    .dc-table-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow-x: auto;
+    }
+
+    table.dc-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 1000px;
+    }
+
+    table.dc-table th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.625rem 0.5rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+
+    table.dc-table th.left { text-align: left; }
+    table.dc-table th.sticky-left,
+    table.dc-table td.sticky-left {
+      position: sticky;
+      left: 0;
+      background: var(--color-white);
+      z-index: 2;
+      border-right: 1px solid var(--color-slate-200);
+    }
+    table.dc-table th.sticky-left { background: var(--color-slate-50); }
+
+    table.dc-table td {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      padding: 0.5rem 0.5rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+
+    table.dc-table td.left {
+      text-align: left;
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+    }
+
+    table.dc-table tr:hover td { background: var(--color-slate-50); }
+    table.dc-table tr:hover td.sticky-left { background: var(--color-slate-50); }
+
+    .pick-pill {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      padding: 0.125rem 0.5rem;
+      border-radius: 0.25rem;
+      background: var(--color-slate-100);
+      color: var(--color-slate-700);
+      display: inline-block;
+      min-width: 2.25rem;
+      text-align: center;
+    }
+
+    .pick-pill--lotto { background: rgba(99, 102, 241, 0.12); color: #4338ca; }
+    .pick-pill--top5 { background: rgba(99, 102, 241, 0.2); color: #4338ca; font-weight: 700; }
+    .pick-pill--r2 { background: var(--color-slate-100); color: var(--color-slate-500); }
+
+    .player-link {
+      font-weight: 600;
+      color: var(--color-slate-900);
+      font-family: var(--font-body);
+    }
+    .player-link:hover { color: var(--color-accent-amber); }
+
+    .pos-tag {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: var(--color-slate-400);
+      margin-left: 0.375rem;
+      vertical-align: middle;
+    }
+
+    .team-tag {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--color-slate-600);
+    }
+
+    .heat-top { background: rgba(16, 185, 129, 0.08); }
+    .heat-bot { background: rgba(244, 63, 94, 0.08); }
+
+    /* Δ chip per shared rule */
+    .delta-chip {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .delta-chip--up   { background: rgba(16, 185, 129, 0.14); color: #047857; }
+    .delta-chip--down { background: rgba(244, 63, 94, 0.14);  color: #be123c; }
+    .delta-chip--flat { background: var(--color-slate-100);   color: var(--color-slate-600); }
+
+    /* Sparkline */
+    .spark {
+      height: 24px;
+      width: 64px;
+      display: inline-block;
+      vertical-align: middle;
+    }
+
+    /* Composite chip cell */
+    .composite-cell {
+      font-family: var(--font-heading);
+      font-size: 0.9375rem;
+      color: var(--color-slate-900);
+    }
+
+    /* DNP / 0 GP styling */
+    .dnp-row td {
+      color: var(--color-slate-400);
+      background: var(--color-slate-50);
+    }
+    .dnp-row td.left { color: var(--color-slate-500); font-style: italic; }
+
+    /* Section divider for r2 boundary */
+    .dc-table .r2-divider td {
+      background: linear-gradient(to right, var(--color-slate-100), transparent);
+      border-top: 2px dashed var(--color-slate-300);
+      padding: 0.25rem 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      text-align: left;
+    }
+
+    /* ============================================================================
+       UNDRAFTED STANDOUTS
+       ========================================================================= */
+    .undrafted-table-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow-x: auto;
+    }
+    table.undrafted-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    table.undrafted-table th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.625rem 0.5rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+    table.undrafted-table th.left { text-align: left; }
+    table.undrafted-table td {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      padding: 0.5rem 0.5rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+    table.undrafted-table td.left {
+      text-align: left;
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+    }
+    table.undrafted-table tr:hover td { background: var(--color-slate-50); }
+
+    .undrafted-tag {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.125rem 0.4375rem;
+      border-radius: 0.25rem;
+      background: rgba(244, 63, 94, 0.1);
+      color: #be123c;
+      margin-right: 0.5rem;
+    }
+    .returning-tag {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.125rem 0.4375rem;
+      border-radius: 0.25rem;
+      background: rgba(6, 182, 212, 0.1);
+      color: #0e7490;
+      margin-right: 0.5rem;
+    }
+
+    /* ============================================================================
+       UPDATED + FOOTER (shared)
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 2rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+    .updated-strip__dot {
+      width: 0.5rem; height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 980px) {
+      .page-hero { grid-template-columns: 1fr; }
+      .page-hero__kpi { justify-content: flex-start; }
+      .page-hero__kpi-cell { text-align: left; }
+      .context-grid { grid-template-columns: repeat(2, 1fr); }
+      .moments-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .context-grid { grid-template-columns: 1fr; }
+      .navbar-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link active" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div><input class="search-input" type="search" placeholder="Search players…"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="/stats">Stats</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league">Summer League</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league/2026">2026</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">Draft Class</span>
+    </div>
+
+    <!-- Page hero -->
+    <header class="page-hero">
+      <div>
+        <div class="page-hero__eyebrow">DraftGuru Moat · The Moment After the Draft</div>
+        <h2>2026 Draft Class · Summer League</h2>
+        <p class="page-hero__tagline">Did the lottery deliver? 60 draftees ranked by pick, with Δ-vs-consensus chips on every row.</p>
+      </div>
+      <div class="page-hero__kpi">
+        <div class="page-hero__kpi-cell">
+          <div class="page-hero__kpi-label">Drafted players</div>
+          <div class="page-hero__kpi-value">60</div>
+        </div>
+        <div class="page-hero__kpi-cell">
+          <div class="page-hero__kpi-label">Played ≥2 GP</div>
+          <div class="page-hero__kpi-value">47</div>
+        </div>
+        <div class="page-hero__kpi-cell">
+          <div class="page-hero__kpi-label">Avg GP</div>
+          <div class="page-hero__kpi-value">3.8</div>
+        </div>
+      </div>
+    </header>
+  </main>
+
+  <!-- ============================================================================
+       YEAR SCOREBOARD STRIP (sticky) — lets users flip across classes
+       ========================================================================= -->
+  <div class="year-strip-wrapper" role="region" aria-label="Class picker">
+    <div class="year-strip">
+      <span class="year-strip__label">Class</span>
+      <a class="year-tile year-tile--active year-tile--current" href="#">
+        <div class="year-tile__year">2026</div>
+        <div class="year-tile__quality year-tile__quality--full">In progress</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2025</div>
+        <div class="year-tile__quality year-tile__quality--full">Year 1</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2024</div>
+        <div class="year-tile__quality year-tile__quality--full">Year 2</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2023</div>
+        <div class="year-tile__quality year-tile__quality--full">Year 3</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2022</div>
+        <div class="year-tile__quality year-tile__quality--full">Year 4</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2021</div>
+        <div class="year-tile__quality year-tile__quality--full">Year 5</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2019</div>
+        <div class="year-tile__quality year-tile__quality--full">Year 7</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2018</div>
+        <div class="year-tile__quality year-tile__quality--full">Year 8</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2017</div>
+        <div class="year-tile__quality year-tile__quality--box">Box only</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2016</div>
+        <div class="year-tile__quality year-tile__quality--box">Box only</div>
+      </a>
+      <span class="year-strip__suffix">Open Model Validation →</span>
+    </div>
+  </div>
+
+  <main class="container">
+
+    <!-- ============================================================================
+         METHODOLOGY-PLACEHOLDER BANNER (this page is composite-central)
+         ========================================================================= -->
+    <div class="methodology-banner" role="note">
+      <span class="methodology-banner__chip">Methodology · TBD</span>
+      <div class="methodology-banner__body">
+        Almost every value on this page is a <strong>methodology placeholder</strong>: <strong>Composite Score</strong>, <strong>Cohort %ile</strong>, and <strong>Δ vs. Consensus Rank</strong> are visual treatments only — underlying formulas are not yet designed. Open questions M1–M3 in <em>docs/plans/summer-league-stats-pages.md → Methodology Placeholders</em>. PTS/REB/AST/TS%/USG% columns are well-defined.
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         CLASS IN CONTEXT
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Class in Context</div>
+          <div class="section-header__meta">2026 class through Jul 11 · compared to history</div>
+        </div>
+      </div>
+
+      <div class="context-grid">
+
+        <div class="context-card context-card--good">
+          <div class="context-card__label">Top-3 combined PPG</div>
+          <div class="context-card__value">74.6</div>
+          <div class="context-card__note">
+            <strong>2nd-highest top-3 combined</strong> SL output since 2002. Trails only 2003 (LeBron / Bosh / Anthony · 78.1).
+          </div>
+        </div>
+
+        <div class="context-card context-card--neutral">
+          <div class="context-card__label">Class TS% vs. 5-yr median</div>
+          <div class="context-card__value">+4.1<span class="context-card__value-unit">pts</span></div>
+          <div class="context-card__note">
+            <strong>Best-shooting class since 2018.</strong> Min sample: 60 MIN + 2 GP. Holds across position cohort.
+          </div>
+        </div>
+
+        <div class="context-card context-card--insight">
+          <div class="context-card__label">Front-of-class composite <span class="tbd-indicator">TBD</span></div>
+          <div class="context-card__value">3 of 3</div>
+          <div class="context-card__note">
+            Top 3 picks <strong>all top-5</strong> in SL composite. First time since 2003 the lottery delivered like this at this stage of Vegas.
+          </div>
+        </div>
+
+        <div class="context-card context-card--cohort">
+          <div class="context-card__label">2nd-round breakouts <span class="tbd-indicator">TBD</span></div>
+          <div class="context-card__value">3</div>
+          <div class="context-card__note">
+            Second-rounders already in <strong>top-25 composite</strong> (Raynaud / Bona / Bryant). 2017 Kuzma-Mitchell class is the historical comp.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         STORYLINES
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Storylines</div>
+          <div class="section-header__meta">Who's beating their pick · who's slipping · what to watch</div>
+        </div>
+      </div>
+
+      <div class="moments-grid">
+
+        <div class="story-card story-card--beat">
+          <div class="story-card__type">
+            Biggest lottery beat <span class="story-card__type-side">Δ +5 pts <span class="tbd-indicator">TBD</span></span>
+          </div>
+          <div class="story-card__headline">Ace Bailey (#4 pick → composite #1 of class)</div>
+          <div class="story-card__body">
+            25.0 PPG on 56.4 TS%, 96th cohort percentile. <strong>Largest pick-to-composite jump in the lottery</strong>. Was Bailey actually a top-pick talent at his shooting peak? The Jazz are betting yes.
+          </div>
+        </div>
+
+        <div class="story-card story-card--miss">
+          <div class="story-card__type">
+            Biggest lottery miss <span class="story-card__type-side">Δ −9 pts <span class="tbd-indicator">TBD</span></span>
+          </div>
+          <div class="story-card__headline">Carter Bryant (#14 pick → composite #23 of class)</div>
+          <div class="story-card__body">
+            7.0 PPG on 42.1 TS%, 28th cohort percentile. Sample is small (<strong>4 GP / 96 MIN</strong>) so don't over-index — but the pre-draft thesis was scoring efficiency, and the early signal is the opposite.
+          </div>
+        </div>
+
+        <div class="story-card story-card--positional">
+          <div class="story-card__type">
+            Positional pattern <span class="story-card__type-side">PG cohort</span>
+          </div>
+          <div class="story-card__headline">Class is point-guard heavy and it shows</div>
+          <div class="story-card__body">
+            <strong>5 of the top 10</strong> draft-class composite players are primary ballhandlers (Harper, Fears, Demin, Fland, Jakucionis). Combined AST% (32.4) leads every position group by 8+ points.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         Δ VISUAL — picks 1–60 lollipop chart
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Δ vs. Consensus, by Pick</div>
+          <div class="section-header__meta">Each pick's composite-rank delta · positive = over-performing draft slot <span class="tbd-indicator">TBD</span></div>
+        </div>
+      </div>
+
+      <div class="delta-chart">
+        <div class="delta-chart__legend">
+          <span class="delta-chart__legend-item">
+            <span class="delta-chart__legend-dot" style="background: #10b981;"></span> Over-performer
+          </span>
+          <span class="delta-chart__legend-item">
+            <span class="delta-chart__legend-dot" style="background: #f43f5e;"></span> Under-performer
+          </span>
+          <span class="delta-chart__legend-item">
+            <span class="delta-chart__legend-dot" style="background: var(--color-slate-300);"></span> ≤1 GP (greyed)
+          </span>
+          <span class="delta-chart__legend-item" style="margin-left: auto;">
+            Y-axis: Δ in composite rank · X-axis: draft pick (1–60)
+          </span>
+        </div>
+
+        <!-- Illustrative lollipop chart -->
+        <svg class="delta-chart__svg" viewBox="0 0 1100 240" preserveAspectRatio="none" role="img" aria-label="Draft pick delta chart">
+          <!-- Zero baseline -->
+          <line x1="40" y1="120" x2="1080" y2="120" stroke="#cbd5e1" stroke-width="1.5" />
+          <text x="36" y="124" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="end">0</text>
+          <line x1="40" y1="60" x2="1080" y2="60" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 3" />
+          <text x="36" y="64" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="end">+15</text>
+          <line x1="40" y1="180" x2="1080" y2="180" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 3" />
+          <text x="36" y="184" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="end">−15</text>
+
+          <!-- X-axis labels every 10 picks -->
+          <text x="63" y="234" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">1</text>
+          <text x="231" y="234" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">10</text>
+          <text x="402" y="234" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">20</text>
+          <text x="573" y="234" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">30</text>
+          <text x="744" y="234" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">40</text>
+          <text x="915" y="234" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">50</text>
+          <text x="1068" y="234" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">60</text>
+
+          <!-- Lottery shading -->
+          <rect x="56" y="20" width="252" height="200" fill="#6366f1" opacity="0.04" />
+          <text x="182" y="35" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle" letter-spacing="1">LOTTERY (1–14)</text>
+
+          <!-- R2 boundary -->
+          <line x1="552" y1="20" x2="552" y2="220" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3 3" />
+          <text x="558" y="35" font-family="ui-monospace" font-size="9" fill="#94a3b8" letter-spacing="1">R2 →</text>
+
+          <!-- Lollipops (illustrative — each = pick) -->
+          <!-- Format: line from y=120 to value, then circle at value -->
+          <!-- Lottery picks 1-14 -->
+          <line x1="63" y1="120" x2="63" y2="112" stroke="#10b981" stroke-width="2" /><circle cx="63" cy="112" r="3.5" fill="#10b981" />
+          <line x1="80" y1="120" x2="80" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="80" cy="116" r="3.5" fill="#10b981" />
+          <line x1="97" y1="120" x2="97" y2="112" stroke="#10b981" stroke-width="2" /><circle cx="97" cy="112" r="3.5" fill="#10b981" />
+          <line x1="114" y1="120" x2="114" y2="100" stroke="#10b981" stroke-width="2" /><circle cx="114" cy="100" r="4.5" fill="#10b981" />
+          <line x1="131" y1="120" x2="131" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="131" cy="116" r="3.5" fill="#10b981" />
+          <line x1="148" y1="120" x2="148" y2="108" stroke="#10b981" stroke-width="2" /><circle cx="148" cy="108" r="3.5" fill="#10b981" />
+          <line x1="165" y1="120" x2="165" y2="128" stroke="#f43f5e" stroke-width="2" /><circle cx="165" cy="128" r="3.5" fill="#f43f5e" />
+          <line x1="182" y1="120" x2="182" y2="124" stroke="#f43f5e" stroke-width="2" /><circle cx="182" cy="124" r="3.5" fill="#f43f5e" />
+          <line x1="199" y1="120" x2="199" y2="112" stroke="#10b981" stroke-width="2" /><circle cx="199" cy="112" r="3.5" fill="#10b981" />
+          <line x1="216" y1="120" x2="216" y2="132" stroke="#f43f5e" stroke-width="2" /><circle cx="216" cy="132" r="3.5" fill="#f43f5e" />
+          <line x1="233" y1="120" x2="233" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="233" cy="116" r="3.5" fill="#10b981" />
+          <line x1="250" y1="120" x2="250" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="250" cy="120" r="3.5" fill="#cbd5e1" />
+          <line x1="267" y1="120" x2="267" y2="128" stroke="#f43f5e" stroke-width="2" /><circle cx="267" cy="128" r="3.5" fill="#f43f5e" />
+          <line x1="284" y1="120" x2="284" y2="156" stroke="#f43f5e" stroke-width="2" /><circle cx="284" cy="156" r="5" fill="#f43f5e" />
+
+          <!-- Picks 15-30 -->
+          <line x1="301" y1="120" x2="301" y2="108" stroke="#10b981" stroke-width="2" /><circle cx="301" cy="108" r="3.5" fill="#10b981" />
+          <line x1="318" y1="120" x2="318" y2="132" stroke="#f43f5e" stroke-width="2" /><circle cx="318" cy="132" r="3.5" fill="#f43f5e" />
+          <line x1="335" y1="120" x2="335" y2="124" stroke="#f43f5e" stroke-width="2" /><circle cx="335" cy="124" r="3.5" fill="#f43f5e" />
+          <line x1="352" y1="120" x2="352" y2="112" stroke="#10b981" stroke-width="2" /><circle cx="352" cy="112" r="3.5" fill="#10b981" />
+          <line x1="369" y1="120" x2="369" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="369" cy="120" r="3.5" fill="#cbd5e1" />
+          <line x1="386" y1="120" x2="386" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="386" cy="116" r="3.5" fill="#10b981" />
+          <line x1="403" y1="120" x2="403" y2="100" stroke="#10b981" stroke-width="2" /><circle cx="403" cy="100" r="4" fill="#10b981" />
+          <line x1="420" y1="120" x2="420" y2="124" stroke="#f43f5e" stroke-width="2" /><circle cx="420" cy="124" r="3.5" fill="#f43f5e" />
+          <line x1="437" y1="120" x2="437" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="437" cy="116" r="3.5" fill="#10b981" />
+          <line x1="454" y1="120" x2="454" y2="112" stroke="#10b981" stroke-width="2" /><circle cx="454" cy="112" r="3.5" fill="#10b981" />
+          <line x1="471" y1="120" x2="471" y2="128" stroke="#f43f5e" stroke-width="2" /><circle cx="471" cy="128" r="3.5" fill="#f43f5e" />
+          <line x1="488" y1="120" x2="488" y2="136" stroke="#f43f5e" stroke-width="2" /><circle cx="488" cy="136" r="3.5" fill="#f43f5e" />
+          <line x1="505" y1="120" x2="505" y2="124" stroke="#f43f5e" stroke-width="2" /><circle cx="505" cy="124" r="3.5" fill="#f43f5e" />
+          <line x1="522" y1="120" x2="522" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="522" cy="120" r="3.5" fill="#cbd5e1" />
+          <line x1="539" y1="120" x2="539" y2="112" stroke="#10b981" stroke-width="2" /><circle cx="539" cy="112" r="3.5" fill="#10b981" />
+
+          <!-- R2 picks 31-60 -->
+          <line x1="573" y1="120" x2="573" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="573" cy="116" r="3" fill="#10b981" />
+          <line x1="590" y1="120" x2="590" y2="124" stroke="#f43f5e" stroke-width="2" /><circle cx="590" cy="124" r="3" fill="#f43f5e" />
+          <line x1="607" y1="120" x2="607" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="607" cy="120" r="3" fill="#cbd5e1" />
+          <line x1="624" y1="120" x2="624" y2="92" stroke="#10b981" stroke-width="2" /><circle cx="624" cy="92" r="4.5" fill="#10b981" />
+          <line x1="641" y1="120" x2="641" y2="80" stroke="#10b981" stroke-width="2" /><circle cx="641" cy="80" r="5" fill="#10b981" />
+          <line x1="658" y1="120" x2="658" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="658" cy="120" r="3" fill="#cbd5e1" />
+          <line x1="675" y1="120" x2="675" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="675" cy="116" r="3" fill="#10b981" />
+          <line x1="692" y1="120" x2="692" y2="124" stroke="#f43f5e" stroke-width="2" /><circle cx="692" cy="124" r="3" fill="#f43f5e" />
+          <line x1="709" y1="120" x2="709" y2="108" stroke="#10b981" stroke-width="2" /><circle cx="709" cy="108" r="3.5" fill="#10b981" />
+          <line x1="726" y1="120" x2="726" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="726" cy="120" r="3" fill="#cbd5e1" />
+          <line x1="743" y1="120" x2="743" y2="100" stroke="#10b981" stroke-width="2" /><circle cx="743" cy="100" r="4" fill="#10b981" />
+          <line x1="760" y1="120" x2="760" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="760" cy="116" r="3" fill="#10b981" />
+          <line x1="777" y1="120" x2="777" y2="128" stroke="#f43f5e" stroke-width="2" /><circle cx="777" cy="128" r="3" fill="#f43f5e" />
+          <line x1="794" y1="120" x2="794" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="794" cy="120" r="3" fill="#cbd5e1" />
+          <line x1="811" y1="120" x2="811" y2="112" stroke="#10b981" stroke-width="2" /><circle cx="811" cy="112" r="3" fill="#10b981" />
+          <line x1="828" y1="120" x2="828" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="828" cy="120" r="3" fill="#cbd5e1" />
+          <line x1="845" y1="120" x2="845" y2="124" stroke="#f43f5e" stroke-width="2" /><circle cx="845" cy="124" r="3" fill="#f43f5e" />
+          <line x1="862" y1="120" x2="862" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="862" cy="116" r="3" fill="#10b981" />
+          <line x1="879" y1="120" x2="879" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="879" cy="120" r="3" fill="#cbd5e1" />
+          <line x1="896" y1="120" x2="896" y2="108" stroke="#10b981" stroke-width="2" /><circle cx="896" cy="108" r="3" fill="#10b981" />
+          <line x1="913" y1="120" x2="913" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="913" cy="120" r="3" fill="#cbd5e1" />
+          <line x1="930" y1="120" x2="930" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="930" cy="116" r="3" fill="#10b981" />
+          <line x1="947" y1="120" x2="947" y2="124" stroke="#f43f5e" stroke-width="2" /><circle cx="947" cy="124" r="3" fill="#f43f5e" />
+          <line x1="964" y1="120" x2="964" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="964" cy="120" r="3" fill="#cbd5e1" />
+          <line x1="981" y1="120" x2="981" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="981" cy="116" r="3" fill="#10b981" />
+          <line x1="998" y1="120" x2="998" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="998" cy="120" r="3" fill="#cbd5e1" />
+          <line x1="1015" y1="120" x2="1015" y2="124" stroke="#f43f5e" stroke-width="2" /><circle cx="1015" cy="124" r="3" fill="#f43f5e" />
+          <line x1="1032" y1="120" x2="1032" y2="116" stroke="#10b981" stroke-width="2" /><circle cx="1032" cy="116" r="3" fill="#10b981" />
+          <line x1="1049" y1="120" x2="1049" y2="120" stroke="#cbd5e1" stroke-width="2" /><circle cx="1049" cy="120" r="3" fill="#cbd5e1" />
+          <line x1="1066" y1="120" x2="1066" y2="112" stroke="#10b981" stroke-width="2" /><circle cx="1066" cy="112" r="3" fill="#10b981" />
+
+          <!-- Labeled annotations on outliers -->
+          <text x="114" y="92" font-family="ui-monospace" font-size="8" fill="#047857" text-anchor="middle">Bailey +5</text>
+          <text x="284" y="170" font-family="ui-monospace" font-size="8" fill="#be123c" text-anchor="middle">Bryant −9</text>
+          <text x="641" y="72" font-family="ui-monospace" font-size="8" fill="#047857" text-anchor="middle">Raynaud +18</text>
+        </svg>
+
+        <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: var(--color-slate-50); border-radius: 0.5rem; font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-700); line-height: 1.5;">
+          <strong>What to read:</strong> the lottery is mostly green-to-flat with one outlier miss (Bryant). The R2 has the class's biggest absolute over-performer — <strong>Raynaud at pick #42</strong>, currently composite top-25. Grey dots are draftees with ≤1 GP — too small a sample to rank yet.
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         MAIN DRAFT-CLASS TABLE
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Class Table</div>
+          <div class="section-header__meta">60 draftees · sorted by pick · sortable on any column</div>
+        </div>
+        <a class="section-header__cta" href="#">Open in Explorer →</a>
+      </div>
+
+      <div class="table-controls">
+        <div class="controls-cluster">
+          <div class="mode-toggle">
+            <button class="mode-toggle__btn mode-toggle__btn--active">Per Game</button>
+            <button class="mode-toggle__btn">Per 36</button>
+            <button class="mode-toggle__btn">Per 100</button>
+            <button class="mode-toggle__btn">Totals</button>
+            <button class="mode-toggle__btn">Advanced</button>
+          </div>
+          <div class="min-filter">
+            Min sample
+            <div class="min-filter__slider" aria-label="Min games"></div>
+            2+ GP · 60 MIN
+          </div>
+        </div>
+        <div class="controls-cluster">
+          <span class="filter-chip filter-chip--active">All 60</span>
+          <span class="filter-chip">Lottery (1–14)</span>
+          <span class="filter-chip">R1 (1–30)</span>
+          <span class="filter-chip">R2 (31–60)</span>
+          <span class="filter-chip">Show undrafted</span>
+        </div>
+      </div>
+
+      <div class="dc-table-wrapper">
+        <table class="dc-table">
+          <thead>
+            <tr>
+              <th>Pick</th>
+              <th class="left sticky-left">Player</th>
+              <th class="left">Team</th>
+              <th>GP</th>
+              <th>MIN</th>
+              <th>PTS</th>
+              <th>REB</th>
+              <th>AST</th>
+              <th>TS%</th>
+              <th>USG%</th>
+              <th>Trend</th>
+              <th>Cohort %ile <span class="tbd-indicator">TBD</span></th>
+              <th>Composite <span class="tbd-indicator">TBD</span></th>
+              <th class="left">Δ vs. Consensus <span class="tbd-indicator">TBD</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- LOTTERY -->
+            <tr>
+              <td><span class="pick-pill pick-pill--top5">1</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Cooper Flagg</a><span class="pos-tag">F</span></td>
+              <td class="left"><span class="team-tag">DAL</span></td>
+              <td>5</td>
+              <td>29.4</td>
+              <td class="heat-top">26.4</td>
+              <td class="heat-top">10.2</td>
+              <td>5.4</td>
+              <td class="heat-top">64.0</td>
+              <td>31.4</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,12 16,8 28,14 42,6 56,4" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td class="heat-top">99</td>
+              <td class="composite-cell heat-top">94.2</td>
+              <td class="left"><span class="delta-chip delta-chip--flat">→ +0 holding</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--top5">2</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Dylan Harper</a><span class="pos-tag">G</span></td>
+              <td class="left"><span class="team-tag">SAS</span></td>
+              <td>4</td>
+              <td>28.6</td>
+              <td>22.8</td>
+              <td>4.5</td>
+              <td class="heat-top">8.0</td>
+              <td>59.2</td>
+              <td class="heat-top">34.9</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,16 18,10 34,12 50,8" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td class="heat-top">94</td>
+              <td class="composite-cell heat-top">88.1</td>
+              <td class="left"><span class="delta-chip delta-chip--flat">→ +0 steady</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--top5">3</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">VJ Edgecombe</a><span class="pos-tag">G</span></td>
+              <td class="left"><span class="team-tag">PHI</span></td>
+              <td>5</td>
+              <td>26.8</td>
+              <td>19.4</td>
+              <td>5.4</td>
+              <td>3.2</td>
+              <td class="heat-top">62.1</td>
+              <td>27.5</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,10 16,14 30,8 44,6 58,10" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td class="heat-top">91</td>
+              <td class="composite-cell heat-top">85.3</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +2</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--top5">4</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Ace Bailey</a><span class="pos-tag">F</span></td>
+              <td class="left"><span class="team-tag">UTA</span></td>
+              <td>4</td>
+              <td>27.8</td>
+              <td class="heat-top">25.0</td>
+              <td>6.5</td>
+              <td>2.0</td>
+              <td>56.4</td>
+              <td>32.0</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,14 18,8 34,6 50,4" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td class="heat-top">96</td>
+              <td class="composite-cell heat-top">91.7</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +5 biggest lotto beat</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--top5">5</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Tre Johnson</a><span class="pos-tag">G</span></td>
+              <td class="left"><span class="team-tag">WAS</span></td>
+              <td>5</td>
+              <td>26.8</td>
+              <td>21.0</td>
+              <td>3.4</td>
+              <td>2.8</td>
+              <td>52.0</td>
+              <td>34.8</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,8 18,12 34,10 50,14 62,12" fill="none" stroke="#94a3b8" stroke-width="1.5"/></svg>
+              </td>
+              <td>78</td>
+              <td class="composite-cell">71.8</td>
+              <td class="left"><span class="delta-chip delta-chip--flat">→ +1</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">6</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Khaman Maluach</a><span class="pos-tag">C</span></td>
+              <td class="left"><span class="team-tag">PHX</span></td>
+              <td>4</td>
+              <td>24.6</td>
+              <td>14.2</td>
+              <td class="heat-top">9.8</td>
+              <td>1.2</td>
+              <td>61.0</td>
+              <td>19.8</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,14 18,10 34,8 50,12" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td>73</td>
+              <td class="composite-cell">68.4</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +3</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">7</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Jeremiah Fears</a><span class="pos-tag">G</span></td>
+              <td class="left"><span class="team-tag">NOP</span></td>
+              <td>4</td>
+              <td>27.1</td>
+              <td>19.0</td>
+              <td>3.8</td>
+              <td>6.8</td>
+              <td>54.0</td>
+              <td>29.4</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,12 18,8 34,14 50,10" fill="none" stroke="#94a3b8" stroke-width="1.5"/></svg>
+              </td>
+              <td>72</td>
+              <td class="composite-cell">67.1</td>
+              <td class="left"><span class="delta-chip delta-chip--down">↓ −1</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">8</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Egor Demin</a><span class="pos-tag">G</span></td>
+              <td class="left"><span class="team-tag">BKN</span></td>
+              <td>4</td>
+              <td>25.3</td>
+              <td>18.5</td>
+              <td>4.0</td>
+              <td>7.5</td>
+              <td>55.7</td>
+              <td>27.2</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,14 18,12 34,10 50,8" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td>74</td>
+              <td class="composite-cell">69.3</td>
+              <td class="left"><span class="delta-chip delta-chip--flat">→ −1</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">9</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Boogie Fland</a><span class="pos-tag">G</span></td>
+              <td class="left"><span class="team-tag">CHA</span></td>
+              <td>4</td>
+              <td>24.0</td>
+              <td>15.8</td>
+              <td>3.2</td>
+              <td>6.5</td>
+              <td>51.4</td>
+              <td>26.8</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,10 18,12 34,8 50,10" fill="none" stroke="#94a3b8" stroke-width="1.5"/></svg>
+              </td>
+              <td>66</td>
+              <td class="composite-cell">62.4</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +2</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">10</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Derik Queen</a><span class="pos-tag">C</span></td>
+              <td class="left"><span class="team-tag">NOP</span></td>
+              <td>4</td>
+              <td>26.0</td>
+              <td>18.0</td>
+              <td>9.5</td>
+              <td>2.2</td>
+              <td>53.5</td>
+              <td>26.4</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,12 18,8 34,12 50,6" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td>71</td>
+              <td class="composite-cell">66.2</td>
+              <td class="left"><span class="delta-chip delta-chip--flat">→ +1</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">11</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Kasparas Jakucionis</a><span class="pos-tag">G</span></td>
+              <td class="left"><span class="team-tag">MIA</span></td>
+              <td>8</td>
+              <td>26.2</td>
+              <td>20.5</td>
+              <td>4.5</td>
+              <td>6.2</td>
+              <td>58.1</td>
+              <td>28.5</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,14 12,10 22,8 32,6 42,8 52,4 62,6" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td>80</td>
+              <td class="composite-cell">76.4</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +4</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">12</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Asa Newell</a><span class="pos-tag">F</span></td>
+              <td class="left"><span class="team-tag">ATL</span></td>
+              <td>0</td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+              <td><span style="color: var(--color-slate-400); font-size: 0.6875rem;">no data</span></td>
+              <td>—</td>
+              <td class="composite-cell" style="color: var(--color-slate-400);">—</td>
+              <td class="left"><span class="delta-chip delta-chip--flat">awaiting tip</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">13</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Collin Murray-Boyles</a><span class="pos-tag">F</span></td>
+              <td class="left"><span class="team-tag">TOR</span></td>
+              <td>4</td>
+              <td>23.4</td>
+              <td>12.5</td>
+              <td>7.0</td>
+              <td>2.5</td>
+              <td>54.2</td>
+              <td>21.8</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,14 18,12 34,10 50,12" fill="none" stroke="#94a3b8" stroke-width="1.5"/></svg>
+              </td>
+              <td>62</td>
+              <td class="composite-cell">59.7</td>
+              <td class="left"><span class="delta-chip delta-chip--down">↓ −2</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--lotto">14</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Carter Bryant</a><span class="pos-tag">F</span></td>
+              <td class="left"><span class="team-tag">POR</span></td>
+              <td>4</td>
+              <td>22.0</td>
+              <td class="heat-bot">7.0</td>
+              <td>4.5</td>
+              <td>1.0</td>
+              <td class="heat-bot">42.1</td>
+              <td>18.5</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,8 18,14 34,16 50,18" fill="none" stroke="#f43f5e" stroke-width="1.5"/></svg>
+              </td>
+              <td class="heat-bot">28</td>
+              <td class="composite-cell heat-bot">37.4</td>
+              <td class="left"><span class="delta-chip delta-chip--down">↓ −9 biggest lotto miss</span></td>
+            </tr>
+            <!-- R1 picks 15–30 (compressed sample) -->
+            <tr>
+              <td><span class="pick-pill">15</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Thomas Sorber</a><span class="pos-tag">C</span></td>
+              <td class="left"><span class="team-tag">OKC</span></td>
+              <td>3</td>
+              <td>21.0</td>
+              <td>11.0</td>
+              <td>8.2</td>
+              <td>1.5</td>
+              <td>56.2</td>
+              <td>22.0</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,12 28,8 56,10" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td>68</td>
+              <td class="composite-cell">64.0</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +3</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill">19</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Will Riley</a><span class="pos-tag">F</span></td>
+              <td class="left"><span class="team-tag">BKN</span></td>
+              <td>4</td>
+              <td>22.4</td>
+              <td>13.5</td>
+              <td>3.8</td>
+              <td>2.0</td>
+              <td>55.0</td>
+              <td>23.4</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,14 18,8 34,10 50,6" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td>72</td>
+              <td class="composite-cell">68.0</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +6</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill">21</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Joan Beringer</a><span class="pos-tag">C</span></td>
+              <td class="left"><span class="team-tag">MIN</span></td>
+              <td>3</td>
+              <td>19.0</td>
+              <td>8.0</td>
+              <td>7.5</td>
+              <td>0.5</td>
+              <td>52.8</td>
+              <td>18.0</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,14 28,12 56,10" fill="none" stroke="#94a3b8" stroke-width="1.5"/></svg>
+              </td>
+              <td>54</td>
+              <td class="composite-cell">52.0</td>
+              <td class="left"><span class="delta-chip delta-chip--flat">→ +1</span></td>
+            </tr>
+            <tr class="dnp-row">
+              <td><span class="pick-pill">25</span></td>
+              <td class="sticky-left left">Ben Saraf</td>
+              <td class="left"><span class="team-tag">PHI</span></td>
+              <td>1</td>
+              <td>14.0</td>
+              <td>4.0</td>
+              <td>2.0</td>
+              <td>3.0</td>
+              <td>—</td>
+              <td>—</td>
+              <td><span style="color: var(--color-slate-400); font-size: 0.6875rem;">1 GP</span></td>
+              <td>—</td>
+              <td class="composite-cell">—</td>
+              <td class="left"><span class="delta-chip delta-chip--flat">sample &lt; 60 MIN</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill">30</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Hugo González</a><span class="pos-tag">F</span></td>
+              <td class="left"><span class="team-tag">BOS</span></td>
+              <td>4</td>
+              <td>21.5</td>
+              <td>10.8</td>
+              <td>4.2</td>
+              <td>2.4</td>
+              <td>53.6</td>
+              <td>22.0</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,12 18,10 34,8 50,12" fill="none" stroke="#94a3b8" stroke-width="1.5"/></svg>
+              </td>
+              <td>61</td>
+              <td class="composite-cell">58.4</td>
+              <td class="left"><span class="delta-chip delta-chip--flat">→ −1</span></td>
+            </tr>
+
+            <!-- R2 boundary -->
+            <tr class="r2-divider">
+              <td colspan="14">— Second round (picks 31–60) — top-scoring rows shown</td>
+            </tr>
+
+            <tr>
+              <td><span class="pick-pill pick-pill--r2">34</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Carter Bryant</a><span class="pos-tag">F</span></td>
+              <td class="left"><span class="team-tag">SAS</span></td>
+              <td>3</td>
+              <td>18.0</td>
+              <td>11.5</td>
+              <td>5.0</td>
+              <td>2.0</td>
+              <td>54.0</td>
+              <td>22.8</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,12 28,10 56,8" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td>62</td>
+              <td class="composite-cell">59.2</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +12</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--r2">41</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Adem Bona</a><span class="pos-tag">C</span></td>
+              <td class="left"><span class="team-tag">PHI</span></td>
+              <td>5</td>
+              <td>20.4</td>
+              <td>13.5</td>
+              <td class="heat-top">11.0</td>
+              <td>1.0</td>
+              <td class="heat-top">62.8</td>
+              <td>20.5</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,10 16,8 30,6 44,6 58,4" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td>78</td>
+              <td class="composite-cell heat-top">73.5</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +14</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--r2">42</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Maxime Raynaud</a><span class="pos-tag">C</span></td>
+              <td class="left"><span class="team-tag">SAC</span></td>
+              <td>4</td>
+              <td>24.8</td>
+              <td class="heat-top">17.2</td>
+              <td class="heat-top">12.5</td>
+              <td>1.8</td>
+              <td>56.4</td>
+              <td>23.6</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,14 18,10 34,6 50,4" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td class="heat-top">82</td>
+              <td class="composite-cell heat-top">77.8</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +18 biggest class beat</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--r2">52</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Tyrese Proctor</a><span class="pos-tag">G</span></td>
+              <td class="left"><span class="team-tag">CLE</span></td>
+              <td>3</td>
+              <td>18.5</td>
+              <td>12.0</td>
+              <td>2.5</td>
+              <td>4.2</td>
+              <td>52.0</td>
+              <td>21.0</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,10 28,12 56,8" fill="none" stroke="#94a3b8" stroke-width="1.5"/></svg>
+              </td>
+              <td>58</td>
+              <td class="composite-cell">55.0</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +5</span></td>
+            </tr>
+            <tr>
+              <td><span class="pick-pill pick-pill--r2">58</span></td>
+              <td class="sticky-left left"><a class="player-link" href="#">Ryan Kalkbrenner</a><span class="pos-tag">C</span></td>
+              <td class="left"><span class="team-tag">CHA</span></td>
+              <td>4</td>
+              <td>19.0</td>
+              <td>10.5</td>
+              <td>8.5</td>
+              <td>0.8</td>
+              <td>58.0</td>
+              <td>18.4</td>
+              <td>
+                <svg class="spark" viewBox="0 0 64 24" preserveAspectRatio="none"><polyline points="2,12 18,10 34,8 50,8" fill="none" stroke="#10b981" stroke-width="1.5"/></svg>
+              </td>
+              <td>56</td>
+              <td class="composite-cell">53.6</td>
+              <td class="left"><span class="delta-chip delta-chip--up">↑ +8</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top: 0.625rem; padding: 0.5rem 0.875rem; font-family: var(--font-mono); font-size: 0.625rem; color: var(--color-slate-500); text-transform: uppercase; letter-spacing: 0.06em;">
+        Showing top-of-class + R2 standouts · <a href="#" style="color: #b45309; border-bottom: 1px dotted rgba(180, 83, 9, 0.4); padding-bottom: 1px;">Open full 60-pick table →</a>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         UNDRAFTED STANDOUTS
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Undrafted Standouts</div>
+          <div class="section-header__meta">Names worth a roster spot · sample ≥ 60 MIN + 2 GP</div>
+        </div>
+        <a class="section-header__cta" href="#">All undrafted SL players →</a>
+      </div>
+
+      <div class="undrafted-table-wrapper">
+        <table class="undrafted-table">
+          <thead>
+            <tr>
+              <th class="left">Player</th>
+              <th class="left">Origin</th>
+              <th class="left">Team</th>
+              <th>GP</th>
+              <th>MIN</th>
+              <th>PTS</th>
+              <th>REB</th>
+              <th>AST</th>
+              <th>TS%</th>
+              <th>Composite <span class="tbd-indicator">TBD</span></th>
+              <th class="left">Why they belong</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="left">
+                <span class="returning-tag">Returning</span>
+                <a class="player-link" href="#">Ryan Nembhard</a>
+              </td>
+              <td class="left">Gonzaga · undrafted 2024</td>
+              <td class="left">DAL</td>
+              <td>5</td>
+              <td>26.8</td>
+              <td>17.8</td>
+              <td>4.2</td>
+              <td>9.8</td>
+              <td>62.4</td>
+              <td>74.2</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">AST% (41) top-3 among all SL guards</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="undrafted-tag">2026</span>
+                <a class="player-link" href="#">Brice Williams</a>
+              </td>
+              <td class="left">Nebraska · undrafted 2026</td>
+              <td class="left">MIN</td>
+              <td>4</td>
+              <td>24.0</td>
+              <td>15.5</td>
+              <td>4.0</td>
+              <td>2.5</td>
+              <td>58.2</td>
+              <td>67.8</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">41% from 3 on 6 attempts/G</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="returning-tag">Returning</span>
+                <a class="player-link" href="#">Yongxi Cui</a>
+              </td>
+              <td class="left">China · undrafted 2023</td>
+              <td class="left">DAL</td>
+              <td>4</td>
+              <td>21.5</td>
+              <td>14.2</td>
+              <td>3.0</td>
+              <td>2.0</td>
+              <td>61.0</td>
+              <td>65.4</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">3rd SL · returning-vet curve still climbing</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="undrafted-tag">2026</span>
+                <a class="player-link" href="#">Vladislav Goldin</a>
+              </td>
+              <td class="left">Michigan · undrafted 2026</td>
+              <td class="left">MIA</td>
+              <td>4</td>
+              <td>22.0</td>
+              <td>13.0</td>
+              <td>10.2</td>
+              <td>1.2</td>
+              <td>62.5</td>
+              <td>64.2</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">Best per-36 BLK rate of 7-footers</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="returning-tag">Returning</span>
+                <a class="player-link" href="#">Pat Spencer</a>
+              </td>
+              <td class="left">Northwestern · undrafted 2020</td>
+              <td class="left">GSW</td>
+              <td>5</td>
+              <td>23.0</td>
+              <td>14.0</td>
+              <td>3.8</td>
+              <td>7.2</td>
+              <td>56.0</td>
+              <td>62.0</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">7th SL · steadiest two-way G in CA Classic</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="updated-strip">
+      <span class="updated-strip__dot" aria-hidden="true"></span>
+      Daily refresh · Last update: Jul 12, 2026 · 10:14 PT
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">Explorer</a></li>
+            <li><a href="#">All-Summer-League</a></li>
+            <li><a href="#">Model Validation</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

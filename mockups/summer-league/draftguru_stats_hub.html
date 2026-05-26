@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stats — DraftGuru</title>
+  <meta name="description" content="DraftGuru Stats Hub — NBA Draft Combine measurements and NBA Summer League performance, in one place.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS (mirrors mockups/draftguru_stats_homepage.html)
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .heading-font { font-family: var(--font-heading); letter-spacing: 0.02em; }
+    .mono-font { font-family: var(--font-mono); }
+    .uppercase { text-transform: uppercase; letter-spacing: 0.06em; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+
+    /* ============================================================================
+       LAYOUT
+       ========================================================================= */
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 4rem; }
+
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(
+        to right, transparent,
+        rgba(148, 163, 184, 0.3) 20%,
+        rgba(148, 163, 184, 0.3) 80%,
+        transparent
+      );
+      margin: 3rem 0;
+    }
+
+    /* ============================================================================
+       NAVBAR
+       ========================================================================= */
+    .navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--color-primary);
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .navbar-brand h1 {
+      font-size: 1.875rem;
+      color: var(--color-white);
+      font-family: var(--font-heading);
+      letter-spacing: 0.02em;
+    }
+
+    .navbar-links {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      padding: 0.25rem 0;
+      border-bottom: 2px solid transparent;
+      transition: all var(--transition-speed);
+    }
+
+    .navbar-link:hover,
+    .navbar-link.active {
+      color: var(--color-white);
+      border-bottom-color: var(--color-accent-amber);
+    }
+
+    .navbar-search { display: flex; align-items: center; gap: 0.5rem; }
+    .search-input {
+      width: 240px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd;
+      color: var(--color-slate-900);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      outline: none;
+    }
+
+    /* ============================================================================
+       PAGE HERO
+       ========================================================================= */
+    .stats-hero {
+      padding: 5rem 0 1.5rem;
+      margin-top: 4rem;
+    }
+
+    .stats-hero__eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+
+    .stats-hero__eyebrow::before {
+      content: '';
+      width: 12px;
+      height: 2px;
+      background: var(--color-accent-amber);
+    }
+
+    .stats-hero h2 {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+    }
+
+    .stats-hero-tagline {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.5rem;
+    }
+
+    /* ============================================================================
+       HEADLINE MOMENT (in-season hero)
+       ========================================================================= */
+    .headline-moment {
+      margin-top: 2rem;
+      background: linear-gradient(135deg, #1e293b, #334155);
+      border-radius: var(--border-radius);
+      padding: 1.5rem 1.75rem;
+      position: relative;
+      overflow: hidden;
+      color: var(--color-white);
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 1.5rem;
+      align-items: center;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.18);
+    }
+
+    /* Scanline texture */
+    .headline-moment::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent 0,
+        transparent 3px,
+        rgba(255,255,255,0.025) 3px,
+        rgba(255,255,255,0.025) 4px
+      );
+      pointer-events: none;
+    }
+
+    .headline-moment__chip {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      background: rgba(245, 158, 11, 0.18);
+      color: #fcd34d;
+      border: 1px solid rgba(245, 158, 11, 0.45);
+      padding: 0.375rem 0.625rem;
+      border-radius: 0.375rem;
+      white-space: nowrap;
+      z-index: 1;
+    }
+
+    .headline-moment__body { z-index: 1; }
+    .headline-moment__label {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.55);
+    }
+    .headline-moment__line {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      letter-spacing: 0.01em;
+      color: var(--color-white);
+      margin-top: 0.25rem;
+      line-height: 1.15;
+    }
+    .headline-moment__meta {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.7);
+      margin-top: 0.375rem;
+    }
+
+    .headline-moment__cta {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #fbbf24;
+      padding: 0.5rem 0.875rem;
+      border: 1px solid rgba(245, 158, 11, 0.55);
+      border-radius: 0.375rem;
+      transition: all var(--transition-speed);
+      z-index: 1;
+      white-space: nowrap;
+    }
+
+    .headline-moment__cta:hover {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--color-white);
+    }
+
+    /* ============================================================================
+       CATEGORY GRID (the meat of the hub)
+       ========================================================================= */
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.5rem;
+      margin-top: 3rem;
+    }
+
+    .category-card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      outline: 2px solid;
+      outline-offset: -2px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+      position: relative;
+      overflow: hidden;
+      transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .category-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 24px rgba(0,0,0,0.14);
+    }
+
+    .category-card::before,
+    .category-card::after {
+      content: '';
+      position: absolute;
+      width: 0.75rem;
+      height: 0.75rem;
+      opacity: 0;
+      transition: opacity var(--transition-speed);
+      z-index: 2;
+    }
+    .category-card::before { top: -0.25rem; left: -0.25rem; }
+    .category-card::after { bottom: -0.25rem; right: -0.25rem; }
+    .category-card:hover::before,
+    .category-card:hover::after { opacity: 1; }
+
+    /* Theme: Combine (indigo) */
+    .category-card--combine {
+      outline-color: rgba(99, 102, 241, 0.4);
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 14px 14px;
+    }
+    .category-card--combine::before { background: linear-gradient(45deg, transparent 50%, var(--color-accent-indigo) 50%); }
+    .category-card--combine::after { background: linear-gradient(225deg, transparent 50%, var(--color-accent-indigo) 50%); }
+    .category-card--combine .category-card__header {
+      background: linear-gradient(to right, #e0e7ff, #c7d2fe);
+      border-bottom: 2px solid var(--color-accent-indigo);
+    }
+    .category-card--combine .category-card__cta { color: var(--color-accent-indigo); border-color: rgba(99,102,241,0.4); }
+    .category-card--combine .category-card__cta:hover { background: rgba(99,102,241,0.08); }
+    .category-card--combine .category-card__metric-value { color: var(--color-accent-indigo); }
+
+    /* Theme: Summer League (amber) */
+    .category-card--sl {
+      outline-color: rgba(245, 158, 11, 0.5);
+      background-image:
+        linear-gradient(#ffffff, #ffffff),
+        radial-gradient(circle at 1px 1px, rgba(245, 158, 11, 0.05) 1px, transparent 1px);
+      background-size: 100% 100%, 14px 14px;
+    }
+    .category-card--sl::before { background: linear-gradient(45deg, transparent 50%, var(--color-accent-amber) 50%); }
+    .category-card--sl::after { background: linear-gradient(225deg, transparent 50%, var(--color-accent-amber) 50%); }
+    .category-card--sl .category-card__header {
+      background: linear-gradient(to right, #fef3c7, #fde68a);
+      border-bottom: 2px solid var(--color-accent-amber);
+    }
+    .category-card--sl .category-card__cta { color: #b45309; border-color: rgba(245,158,11,0.45); }
+    .category-card--sl .category-card__cta:hover { background: rgba(245,158,11,0.1); }
+    .category-card--sl .category-card__metric-value { color: #b45309; }
+
+    .category-card__header {
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .category-card__title {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+    }
+
+    .category-card__icon {
+      font-size: 1.375rem;
+      line-height: 1;
+    }
+
+    .category-card__name {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+    }
+
+    .category-card__badge {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+    }
+
+    .category-card__badge--live {
+      background: rgba(244, 63, 94, 0.12);
+      color: #be123c;
+      border: 1px solid rgba(244, 63, 94, 0.3);
+    }
+
+    .category-card__badge--archive {
+      background: rgba(15, 23, 42, 0.06);
+      color: var(--color-slate-600);
+      border: 1px solid rgba(15, 23, 42, 0.12);
+    }
+
+    .category-card__body {
+      padding: 1.25rem 1.25rem 1rem;
+      flex: 1;
+    }
+
+    .category-card__tagline {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-600);
+      margin-bottom: 1rem;
+      line-height: 1.5;
+    }
+
+    .category-card__metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      padding: 0.875rem;
+      background: var(--color-slate-50);
+      border-radius: 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      margin-bottom: 1rem;
+    }
+
+    .category-card__metric {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .category-card__metric-label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .category-card__metric-value {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      line-height: 1.1;
+      margin-top: 0.25rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .category-card__metric-unit {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      margin-top: 0.125rem;
+    }
+
+    .category-card__leaderlets {
+      list-style: none;
+      margin-top: 0.5rem;
+    }
+
+    .category-card__leaderlets li {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.625rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--color-slate-200);
+      align-items: center;
+    }
+
+    .category-card__leaderlets li:last-child { border-bottom: none; }
+
+    .leaderlet__rank {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: var(--color-slate-400);
+      width: 1.25rem;
+    }
+
+    .leaderlet__name {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-slate-800);
+    }
+
+    .leaderlet__meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+    }
+
+    .leaderlet__value {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-slate-700);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .category-card__footer {
+      padding: 0.875rem 1.25rem 1.125rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--color-slate-200);
+    }
+
+    .category-card__cta {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 0.875rem;
+      border-radius: 0.375rem;
+      border: 1px solid;
+      transition: all var(--transition-speed);
+    }
+
+    .category-card__sublinks {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .category-card__sublink {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      padding-bottom: 1px;
+      border-bottom: 1px dotted var(--color-slate-300);
+    }
+
+    .category-card__sublink:hover { color: var(--color-slate-800); border-bottom-style: solid; }
+
+    /* ============================================================================
+       COMING-SOON RAIL
+       ========================================================================= */
+    .coming-soon-rail {
+      margin-top: 2rem;
+      padding: 1rem 1.25rem;
+      background: repeating-linear-gradient(
+        45deg,
+        var(--color-slate-50),
+        var(--color-slate-50) 12px,
+        var(--color-white) 12px,
+        var(--color-white) 24px
+      );
+      border-radius: 0.5rem;
+      border: 1px dashed var(--color-slate-300);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .coming-soon-rail__label {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .coming-soon-rail__tags {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .coming-soon-rail__tag {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      background: var(--color-white);
+      color: var(--color-slate-500);
+      border: 1px solid var(--color-slate-200);
+    }
+
+    /* ============================================================================
+       UPDATED-AT FOOTER STRIP
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 2.5rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+
+    .updated-strip__dot {
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    /* ============================================================================
+       FOOTER (matches stats-homepage pattern)
+       ========================================================================= */
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a {
+      color: var(--color-slate-700);
+      font-size: 0.875rem;
+    }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 880px) {
+      .category-grid { grid-template-columns: 1fr; }
+      .headline-moment {
+        grid-template-columns: 1fr;
+        gap: 0.875rem;
+      }
+      .headline-moment__cta { justify-self: start; }
+      .navbar-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================================
+       NAVBAR
+       ========================================================================= -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand">
+        <h1>DraftGuru</h1>
+      </div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link active" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div class="navbar-search">
+        <input class="search-input" type="search" placeholder="Search players…">
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============================================================================
+       MAIN
+       ========================================================================= -->
+  <main class="container">
+
+    <header class="stats-hero">
+      <div class="stats-hero__eyebrow">DraftGuru Stats</div>
+      <h2>The Numbers, the Whole Numbers</h2>
+      <p class="stats-hero-tagline">Combine measurements · Summer League performance · the data behind the draft</p>
+
+      <!-- In-season headline moment.  Swap this for an off-season variant (e.g.,
+           "Last year's biggest combine standout") once SL wraps. -->
+      <div class="headline-moment" role="banner">
+        <span class="headline-moment__chip">Vegas SL · Last Night</span>
+        <div class="headline-moment__body">
+          <div class="headline-moment__label">Top Performance</div>
+          <div class="headline-moment__line">Cooper Flagg · 32 PTS · 9 REB · 6 AST · 64.0 TS%</div>
+          <div class="headline-moment__meta">Mavericks 92 – Wizards 87 · Thomas &amp; Mack · Jul 11</div>
+        </div>
+        <a class="headline-moment__cta" href="#">View Box Score →</a>
+      </div>
+    </header>
+
+    <!-- ============================================================================
+         CATEGORY GRID
+         ========================================================================= -->
+    <section class="section">
+      <div class="category-grid">
+
+        <!-- ============================================================================
+             COMBINE
+             ========================================================================= -->
+        <article class="category-card category-card--combine" role="group" aria-label="Combine stats">
+          <div class="category-card__header">
+            <div class="category-card__title">
+              <span class="category-card__icon">📏</span>
+              <span class="category-card__name">Combine</span>
+            </div>
+            <span class="category-card__badge category-card__badge--archive">2018 – 2026</span>
+          </div>
+
+          <div class="category-card__body">
+            <p class="category-card__tagline">Every measurement, athletic test, and shooting drill from the NBA Draft Combine. Browse by year, position, or metric.</p>
+
+            <div class="category-card__metrics">
+              <div class="category-card__metric">
+                <span class="category-card__metric-label">Players</span>
+                <span class="category-card__metric-value">622</span>
+                <span class="category-card__metric-unit">tested</span>
+              </div>
+              <div class="category-card__metric">
+                <span class="category-card__metric-label">Metrics</span>
+                <span class="category-card__metric-value">24</span>
+                <span class="category-card__metric-unit">tracked</span>
+              </div>
+              <div class="category-card__metric">
+                <span class="category-card__metric-label">Classes</span>
+                <span class="category-card__metric-value">9</span>
+                <span class="category-card__metric-unit">years</span>
+              </div>
+            </div>
+
+            <ul class="category-card__leaderlets">
+              <li>
+                <span class="leaderlet__rank">1</span>
+                <div>
+                  <div class="leaderlet__name">Victor Wembanyama</div>
+                  <div class="leaderlet__meta">Wingspan · 2023</div>
+                </div>
+                <span class="leaderlet__value">96.0"</span>
+              </li>
+              <li>
+                <span class="leaderlet__rank">1</span>
+                <div>
+                  <div class="leaderlet__name">Mac McClung</div>
+                  <div class="leaderlet__meta">Vertical · 2021</div>
+                </div>
+                <span class="leaderlet__value">44.0"</span>
+              </li>
+              <li>
+                <span class="leaderlet__rank">1</span>
+                <div>
+                  <div class="leaderlet__name">Cooper Flagg</div>
+                  <div class="leaderlet__meta">Lane Agility · 2026</div>
+                </div>
+                <span class="leaderlet__value">10.41s</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="category-card__footer">
+            <div class="category-card__sublinks">
+              <a class="category-card__sublink" href="#">Measurements</a>
+              <a class="category-card__sublink" href="#">Athletic</a>
+              <a class="category-card__sublink" href="#">Shooting</a>
+            </div>
+            <a class="category-card__cta" href="/stats/combine">Browse Combine →</a>
+          </div>
+        </article>
+
+        <!-- ============================================================================
+             SUMMER LEAGUE
+             ========================================================================= -->
+        <article class="category-card category-card--sl" role="group" aria-label="Summer League stats">
+          <div class="category-card__header">
+            <div class="category-card__title">
+              <span class="category-card__icon">☀️</span>
+              <span class="category-card__name">Summer League</span>
+            </div>
+            <!-- Switches to "2002 – 2026" off-season; "Live" appears during SL only. -->
+            <span class="category-card__badge category-card__badge--live">In Season</span>
+          </div>
+
+          <div class="category-card__body">
+            <p class="category-card__tagline">Every game, every box score, every rookie line — Vegas, Salt Lake, California Classic, and the historical archive going back to 2002.</p>
+
+            <div class="category-card__metrics">
+              <div class="category-card__metric">
+                <span class="category-card__metric-label">Games</span>
+                <span class="category-card__metric-value">38</span>
+                <span class="category-card__metric-unit">2026 so far</span>
+              </div>
+              <div class="category-card__metric">
+                <span class="category-card__metric-label">Players</span>
+                <span class="category-card__metric-value">412</span>
+                <span class="category-card__metric-unit">this year</span>
+              </div>
+              <div class="category-card__metric">
+                <span class="category-card__metric-label">Archive</span>
+                <span class="category-card__metric-value">24</span>
+                <span class="category-card__metric-unit">years</span>
+              </div>
+            </div>
+
+            <ul class="category-card__leaderlets">
+              <li>
+                <span class="leaderlet__rank">1</span>
+                <div>
+                  <div class="leaderlet__name">Cooper Flagg</div>
+                  <div class="leaderlet__meta">PPG · 2026 SL · 5 GP</div>
+                </div>
+                <span class="leaderlet__value">26.4</span>
+              </li>
+              <li>
+                <span class="leaderlet__rank">1</span>
+                <div>
+                  <div class="leaderlet__name">Dylan Harper</div>
+                  <div class="leaderlet__meta">APG · 2026 SL · 4 GP</div>
+                </div>
+                <span class="leaderlet__value">8.0</span>
+              </li>
+              <li>
+                <span class="leaderlet__rank">1</span>
+                <div>
+                  <div class="leaderlet__name">VJ Edgecombe</div>
+                  <div class="leaderlet__meta">+/− · 2026 SL · 5 GP</div>
+                </div>
+                <span class="leaderlet__value">+58</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="category-card__footer">
+            <div class="category-card__sublinks">
+              <a class="category-card__sublink" href="#">2026 Class</a>
+              <a class="category-card__sublink" href="#">Leaders</a>
+              <a class="category-card__sublink" href="#">Explorer</a>
+            </div>
+            <a class="category-card__cta" href="/stats/summer-league">Browse Summer League →</a>
+          </div>
+        </article>
+
+      </div>
+
+      <!-- Reserved future-modules rail. Hidden when empty in production. -->
+      <div class="coming-soon-rail" aria-label="Future stats sections">
+        <span class="coming-soon-rail__label">Coming soon</span>
+        <div class="coming-soon-rail__tags">
+          <span class="coming-soon-rail__tag">G-League</span>
+          <span class="coming-soon-rail__tag">Rookie NBA Season</span>
+          <span class="coming-soon-rail__tag">Pre-Draft Workouts</span>
+        </div>
+      </div>
+
+      <div class="updated-strip">
+        <span class="updated-strip__dot" aria-hidden="true"></span>
+        Stats updated daily · Last refresh: Jul 12, 2026 · 10:14 PT
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================================================================
+       FOOTER
+       ========================================================================= -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Stats</h4>
+          <ul>
+            <li><a href="#">Combine</a></li>
+            <li><a href="#">Summer League</a></li>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">Explorer</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

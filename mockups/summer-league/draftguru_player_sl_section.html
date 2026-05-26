@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cooper Flagg — DraftGuru (Summer League Section)</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS (mirrors other mockups)
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    /* ============================================================================
+       NAVBAR (same as other mockups)
+       ========================================================================= */
+    .navbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+      transition: all var(--transition-speed);
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--color-accent-amber);
+    }
+    .search-input {
+      width: 240px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd;
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      outline: none;
+    }
+
+    /* ============================================================================
+       BREADCRUMBS
+       ========================================================================= */
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    /* ============================================================================
+       COMPRESSED PLAYER HEADER  (placeholder for the real player hero)
+       This mockup focuses on the NEW SL section.  In production, the SL section
+       sits below the existing bio + consensus + percentile-bar surfaces.
+       ========================================================================= */
+    .player-header-stub {
+      background: var(--color-white);
+      border: 1px dashed var(--color-slate-300);
+      border-radius: var(--border-radius);
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+      display: grid;
+      grid-template-columns: 80px 1fr auto;
+      gap: 1.25rem;
+      align-items: center;
+      position: relative;
+    }
+
+    .player-header-stub__caption {
+      position: absolute;
+      top: -0.625rem;
+      left: 1rem;
+      background: var(--color-white);
+      padding: 0 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-400);
+    }
+
+    .player-photo-stub {
+      width: 80px; height: 96px;
+      border-radius: 0.5rem;
+      background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-heading); font-size: 0.875rem;
+      color: var(--color-white);
+      border: 2px solid rgba(74, 127, 184, 0.4);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .player-bio-stub__name {
+      font-family: var(--font-heading);
+      font-size: 1.75rem; letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+      line-height: 1.1;
+    }
+
+    .player-bio-stub__meta {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 0.25rem;
+    }
+
+    .player-bio-stub__consensus {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      margin-top: 0.625rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      background: rgba(99, 102, 241, 0.1);
+      color: #4338ca;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+    }
+
+    .player-jump-nav {
+      display: flex;
+      gap: 0.625rem;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .player-jump-link {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.375rem 0.625rem;
+      border-radius: 0.25rem;
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+      transition: all var(--transition-speed);
+    }
+    .player-jump-link:hover { border-color: var(--color-slate-400); color: var(--color-slate-800); }
+    .player-jump-link--active {
+      background: rgba(245, 158, 11, 0.1);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #b45309;
+    }
+
+    /* ============================================================================
+       PRE-SECTION EXISTING-CONTENT PEEK
+       ========================================================================= */
+    .above-fold-peek {
+      border: 1px dashed var(--color-slate-300);
+      border-radius: var(--border-radius);
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+      background: repeating-linear-gradient(
+        135deg,
+        var(--color-slate-50), var(--color-slate-50) 10px,
+        var(--color-white) 10px, var(--color-white) 20px
+      );
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .above-fold-peek__caption {
+      position: absolute;
+      top: -0.625rem;
+      left: 1rem;
+      background: var(--color-white);
+      padding: 0 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-400);
+    }
+
+    .above-fold-peek__label {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .above-fold-peek__contents {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+    }
+
+    /* ============================================================================
+       METHODOLOGY-PLACEHOLDER BANNER + INLINE INDICATORS
+       Flags fields whose underlying formula is not yet designed. Visible by
+       design — don't let placeholder numbers imply a settled methodology.
+       ========================================================================= */
+    .methodology-banner {
+      border: 1px solid rgba(217, 70, 239, 0.4);
+      background:
+        linear-gradient(to right, rgba(217, 70, 239, 0.06), rgba(217, 70, 239, 0.02)),
+        repeating-linear-gradient(
+          135deg,
+          transparent, transparent 8px,
+          rgba(217, 70, 239, 0.04) 8px, rgba(217, 70, 239, 0.04) 9px
+        );
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      margin: 0.75rem 0 1.5rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.875rem;
+      align-items: start;
+    }
+
+    .methodology-banner__chip {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      background: rgba(217, 70, 239, 0.15);
+      color: #a21caf;
+      border: 1px solid rgba(217, 70, 239, 0.4);
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.25rem;
+      white-space: nowrap;
+      margin-top: 0.0625rem;
+    }
+
+    .methodology-banner__body {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      line-height: 1.5;
+    }
+
+    .methodology-banner__body strong { color: #86198f; font-weight: 600; }
+
+    .tbd-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      margin-left: 0.375rem;
+      vertical-align: middle;
+      cursor: help;
+    }
+
+    .tbd-indicator--inline-chip {
+      margin-left: 0.5rem;
+    }
+
+    /* ============================================================================
+       SL SECTION HEADER STRIP
+       ========================================================================= */
+    .sl-section {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+      overflow: hidden;
+      border: 1px solid var(--color-slate-200);
+    }
+
+    .sl-section__head {
+      background: linear-gradient(135deg, #1e293b, #334155);
+      color: var(--color-white);
+      padding: 1.25rem 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1.5rem;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .sl-section__head::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent 0, transparent 3px,
+        rgba(255,255,255,0.025) 3px, rgba(255,255,255,0.025) 4px
+      );
+      pointer-events: none;
+    }
+
+    .sl-section__title-block { z-index: 1; }
+
+    .sl-section__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #fbbf24;
+      margin-bottom: 0.5rem;
+    }
+
+    .sl-section__eyebrow::before {
+      content: '';
+      width: 12px; height: 2px;
+      background: var(--color-accent-amber);
+    }
+
+    .sl-section__title {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      letter-spacing: 0.02em;
+      color: var(--color-white);
+    }
+
+    .sl-section__chips {
+      display: flex; gap: 0.5rem; flex-wrap: wrap;
+      z-index: 1;
+    }
+
+    .sl-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.375rem 0.625rem;
+      border-radius: 0.375rem;
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.85);
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    .sl-chip__label {
+      color: rgba(255,255,255,0.55);
+      font-weight: 400;
+    }
+
+    .sl-chip--accent {
+      background: rgba(245, 158, 11, 0.18);
+      color: #fbbf24;
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+
+    .sl-chip--accent .sl-chip__label { color: rgba(251, 191, 36, 0.7); }
+
+    /* ============================================================================
+       CONTROLS BAR  (per-mode toggle + year filter)
+       ========================================================================= */
+    .sl-controls {
+      padding: 0.75rem 1.5rem;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .mode-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      overflow: hidden;
+    }
+
+    .mode-toggle__btn {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.4rem 0.75rem;
+      color: var(--color-slate-500);
+      background: transparent;
+      border: none;
+      border-right: 1px solid var(--color-slate-200);
+      cursor: pointer;
+      transition: all var(--transition-speed);
+    }
+
+    .mode-toggle__btn:last-child { border-right: none; }
+    .mode-toggle__btn:hover { background: var(--color-slate-50); color: var(--color-slate-800); }
+    .mode-toggle__btn--active {
+      background: rgba(245, 158, 11, 0.12);
+      color: #b45309;
+    }
+
+    .controls-meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    /* ============================================================================
+       PER-SEASON TABLE
+       ========================================================================= */
+    .sl-table-wrapper {
+      overflow-x: auto;
+    }
+
+    table.sl-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    table.sl-table th {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.75rem 0.75rem 0.625rem;
+      text-align: left;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+
+    table.sl-table th.num,
+    table.sl-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    table.sl-table th.sticky-left,
+    table.sl-table td.sticky-left {
+      position: sticky;
+      left: 0;
+      background: var(--color-white);
+      z-index: 2;
+      border-right: 1px solid var(--color-slate-200);
+    }
+
+    table.sl-table th.sticky-left { background: var(--color-slate-50); }
+
+    table.sl-table td {
+      font-size: 0.8125rem;
+      padding: 0.625rem 0.75rem;
+      color: var(--color-slate-800);
+      border-bottom: 1px solid var(--color-slate-100);
+    }
+
+    table.sl-table tr:hover td { background: var(--color-slate-50); }
+    table.sl-table tr:hover td.sticky-left { background: var(--color-slate-50); }
+
+    .sl-table__season-link {
+      font-weight: 600;
+      color: var(--color-slate-900);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .sl-table__season-link:hover { color: var(--color-accent-amber); }
+
+    .sl-table__venue-tag {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      background: var(--color-slate-100);
+      color: var(--color-slate-600);
+    }
+
+    .sl-table__venue-tag--vegas { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+    .sl-table__venue-tag--salt-lake { background: rgba(6, 182, 212, 0.12); color: #0e7490; }
+    .sl-table__venue-tag--cal { background: rgba(217, 70, 239, 0.1); color: #a21caf; }
+    .sl-table__venue-tag--orlando { background: rgba(99, 102, 241, 0.1); color: #4338ca; }
+
+    /* Sample-size badge */
+    .sample-badge {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-400);
+      margin-left: 0.375rem;
+    }
+
+    /* Heat shading */
+    .heat-top { background: rgba(16, 185, 129, 0.08); }
+    .heat-bot { background: rgba(244, 63, 94, 0.08); }
+
+    /* Career totals row */
+    table.sl-table tr.career-row td {
+      background: linear-gradient(to bottom, var(--color-slate-50), #fef3c7);
+      border-top: 2px solid var(--color-accent-amber);
+      border-bottom: none;
+      font-weight: 600;
+    }
+
+    table.sl-table tr.career-row td.sticky-left {
+      background: linear-gradient(to bottom, var(--color-slate-50), #fef3c7);
+    }
+
+    /* ============================================================================
+       COHORT PERCENTILE STRIP
+       ========================================================================= */
+    .cohort-strip {
+      padding: 1rem 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1.5rem;
+      align-items: center;
+      background: var(--color-white);
+      border-bottom: 1px solid var(--color-slate-200);
+    }
+
+    .cohort-strip__label {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .cohort-strip__caption {
+      font-size: 0.8125rem;
+      color: var(--color-slate-700);
+      margin-top: 0.25rem;
+    }
+
+    .cohort-strip__caption strong {
+      color: var(--color-slate-900);
+      font-weight: 600;
+    }
+
+    .cohort-bar {
+      width: 320px;
+      height: 12px;
+      background: var(--color-slate-100);
+      border-radius: 9999px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cohort-bar__fill {
+      position: absolute;
+      top: 0; left: 0; bottom: 0;
+      background: linear-gradient(to right, #fcd34d, #f59e0b);
+      border-radius: 9999px;
+    }
+
+    .cohort-bar__marker {
+      position: absolute;
+      top: -4px; bottom: -4px;
+      width: 3px;
+      background: var(--color-slate-900);
+      border-radius: 2px;
+    }
+
+    .cohort-bar__value {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      color: var(--color-slate-900);
+      line-height: 1;
+      margin-top: 0.25rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cohort-strip__right {
+      text-align: right;
+    }
+
+    .cohort-strip__suffix {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 0.25rem;
+    }
+
+    /* ============================================================================
+       LATEST GAMES
+       ========================================================================= */
+    .latest-games {
+      padding: 1.25rem 1.5rem 1.5rem;
+    }
+
+    .latest-games__head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 0.875rem;
+    }
+
+    .latest-games__title {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .latest-games__cta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #b45309;
+      padding-bottom: 1px;
+      border-bottom: 1px dotted rgba(180, 83, 9, 0.4);
+    }
+    .latest-games__cta:hover { border-bottom-style: solid; }
+
+    .latest-games__grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.875rem;
+    }
+
+    .game-card {
+      background: var(--color-slate-50);
+      border-radius: 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      padding: 0.875rem 1rem;
+      transition: all var(--transition-speed);
+      cursor: pointer;
+    }
+
+    .game-card:hover {
+      background: var(--color-white);
+      border-color: var(--color-accent-amber);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+
+    .game-card__top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .game-card__date {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .game-card__opp {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-slate-700);
+    }
+
+    .game-card__result {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      padding: 0.0625rem 0.375rem;
+      border-radius: 0.25rem;
+      letter-spacing: 0.06em;
+    }
+
+    .game-card__result--w { background: rgba(16, 185, 129, 0.14); color: #047857; }
+    .game-card__result--l { background: rgba(244, 63, 94, 0.14); color: #be123c; }
+
+    .game-card__line {
+      font-family: var(--font-mono);
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      margin-top: 0.375rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .game-card__detail {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-top: 0.25rem;
+    }
+
+    /* ============================================================================
+       EMPTY STATE  (alternate at bottom of mockup)
+       ========================================================================= */
+    .empty-state-wrapper {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 2px dashed var(--color-slate-300);
+    }
+
+    .empty-state-caption {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-400);
+      margin-bottom: 0.75rem;
+    }
+
+    .sl-empty {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 2.5rem 1.5rem;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    }
+
+    .sl-empty__icon {
+      font-size: 2.25rem;
+      opacity: 0.4;
+      margin-bottom: 0.75rem;
+    }
+
+    .sl-empty__title {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      color: var(--color-slate-700);
+      letter-spacing: 0.02em;
+      margin-bottom: 0.375rem;
+    }
+
+    .sl-empty__body {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+      max-width: 36rem;
+      margin: 0 auto;
+    }
+
+    .sl-empty__footnote {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-400);
+      margin-top: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* ============================================================================
+       UPDATED + FOOTER
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 2rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+
+    .updated-strip__dot {
+      width: 0.5rem; height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 900px) {
+      .player-header-stub { grid-template-columns: 64px 1fr; }
+      .player-jump-nav { grid-column: 1 / -1; justify-content: flex-start; }
+      .latest-games__grid { grid-template-columns: 1fr; }
+      .cohort-strip { grid-template-columns: 1fr; }
+      .cohort-strip__right { text-align: left; }
+      .cohort-bar { width: 100%; }
+    }
+    @media (max-width: 640px) {
+      .navbar-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============================================================================
+       NAVBAR
+       ========================================================================= -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link active" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div><input class="search-input" type="search" placeholder="Search players…"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="#">Players</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">Cooper Flagg</span>
+    </div>
+
+    <!-- Compressed player header — represents existing bio/photo block -->
+    <div class="player-header-stub">
+      <span class="player-header-stub__caption">Existing player hero (compressed for this mockup)</span>
+      <div class="player-photo-stub">Photo</div>
+      <div>
+        <div class="player-bio-stub__name">Cooper Flagg</div>
+        <div class="player-bio-stub__meta">F · 6'9" · Duke · 2026 Draft Class · Selected #1 by Dallas</div>
+        <div class="player-bio-stub__consensus">Consensus Rank · #1</div>
+      </div>
+      <div class="player-jump-nav">
+        <a class="player-jump-link" href="#">Bio</a>
+        <a class="player-jump-link" href="#">Combine</a>
+        <a class="player-jump-link" href="#">College</a>
+        <a class="player-jump-link" href="#">Comps</a>
+        <a class="player-jump-link" href="#">News</a>
+        <a class="player-jump-link player-jump-link--active" href="#summer-league">Summer League</a>
+      </div>
+    </div>
+
+    <!-- Existing-content peek -->
+    <div class="above-fold-peek">
+      <span class="above-fold-peek__caption">Existing sections above</span>
+      <span class="above-fold-peek__label">Bio · Combine percentiles · College stats · Comps · News</span>
+      <span class="above-fold-peek__contents">↓ scroll for the new Summer League section</span>
+    </div>
+
+    <!-- ============================================================================
+         METHODOLOGY-PLACEHOLDER BANNER
+         Mockup-only annotation.  Removed once underlying formulas are designed
+         (see docs/plans/summer-league-stats-pages.md → "Methodology Placeholders").
+         ========================================================================= -->
+    <div class="methodology-banner" role="note">
+      <span class="methodology-banner__chip">Methodology · TBD</span>
+      <div class="methodology-banner__body">
+        Values below labeled <span class="tbd-indicator">TBD</span> are <strong>methodology placeholders</strong> — the visual treatment is settled but the underlying formula is not yet designed. Affects: <strong>SL Composite Score</strong>, <strong>Cohort Percentile</strong>. See <em>docs/plans/summer-league-stats-pages.md</em> → "Methodology Placeholders" for the open questions before implementation.
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         THE NEW SL SECTION
+         ========================================================================= -->
+    <section class="section" id="summer-league">
+
+      <article class="sl-section">
+
+        <!-- Header strip -->
+        <div class="sl-section__head">
+          <div class="sl-section__title-block">
+            <div class="sl-section__eyebrow">Summer League</div>
+            <div class="sl-section__title">Summer League Performance</div>
+          </div>
+          <div class="sl-section__chips">
+            <span class="sl-chip">
+              <span class="sl-chip__label">Latest</span>
+              2026 · Vegas
+            </span>
+            <span class="sl-chip">
+              <span class="sl-chip__label">Career GP</span>
+              5
+            </span>
+            <span class="sl-chip sl-chip--accent" title="Methodology placeholder — formula TBD">
+              <span class="sl-chip__label">Composite</span>
+              94.2
+              <span class="tbd-indicator tbd-indicator--inline-chip">TBD</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Controls bar -->
+        <div class="sl-controls">
+          <div class="mode-toggle" role="tablist" aria-label="Stat mode">
+            <button class="mode-toggle__btn mode-toggle__btn--active">Per Game</button>
+            <button class="mode-toggle__btn">Per 36</button>
+            <button class="mode-toggle__btn">Per 100</button>
+            <button class="mode-toggle__btn">Totals</button>
+            <button class="mode-toggle__btn">Advanced</button>
+          </div>
+          <span class="controls-meta">All venues · Career view</span>
+        </div>
+
+        <!-- Per-season table -->
+        <div class="sl-table-wrapper">
+          <table class="sl-table">
+            <thead>
+              <tr>
+                <th class="sticky-left">Season</th>
+                <th>Team</th>
+                <th class="num">GP</th>
+                <th class="num">MIN</th>
+                <th class="num">PTS</th>
+                <th class="num">REB</th>
+                <th class="num">AST</th>
+                <th class="num">STL</th>
+                <th class="num">BLK</th>
+                <th class="num">FG%</th>
+                <th class="num">3P%</th>
+                <th class="num">FT%</th>
+                <th class="num">TS%</th>
+                <th class="num">+/−</th>
+                <th class="num">GmScore</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="sticky-left">
+                  <a class="sl-table__season-link" href="#">
+                    2026
+                    <span class="sl-table__venue-tag sl-table__venue-tag--vegas">Vegas</span>
+                  </a>
+                </td>
+                <td>Mavericks</td>
+                <td class="num">5</td>
+                <td class="num">29.4</td>
+                <td class="num heat-top">26.4</td>
+                <td class="num heat-top">10.2</td>
+                <td class="num">5.4</td>
+                <td class="num">2.0</td>
+                <td class="num heat-top">2.4</td>
+                <td class="num">52.8</td>
+                <td class="num">38.5</td>
+                <td class="num">81.0</td>
+                <td class="num heat-top">64.0</td>
+                <td class="num heat-top">+12.4</td>
+                <td class="num heat-top">22.5</td>
+              </tr>
+              <tr class="career-row">
+                <td class="sticky-left">Career SL</td>
+                <td>—</td>
+                <td class="num">5</td>
+                <td class="num">29.4</td>
+                <td class="num">26.4</td>
+                <td class="num">10.2</td>
+                <td class="num">5.4</td>
+                <td class="num">2.0</td>
+                <td class="num">2.4</td>
+                <td class="num">52.8</td>
+                <td class="num">38.5</td>
+                <td class="num">81.0</td>
+                <td class="num">64.0</td>
+                <td class="num">+12.4</td>
+                <td class="num">22.5</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Cohort percentile strip -->
+        <div class="cohort-strip">
+          <div>
+            <div class="cohort-strip__label">
+              2026 Draft Class Cohort · Composite Score
+              <span class="tbd-indicator" title="Composite formula and cohort definition TBD">Methodology TBD</span>
+            </div>
+            <div class="cohort-strip__caption">
+              <strong>99th percentile</strong> · top performer in the 2026 class so far. Beats 60 of 60 drafted peers with ≥2 GP.
+            </div>
+            <div class="cohort-bar" aria-label="Cohort percentile">
+              <div class="cohort-bar__fill" style="width: 99%;"></div>
+              <div class="cohort-bar__marker" style="left: 99%;"></div>
+            </div>
+          </div>
+          <div class="cohort-strip__right">
+            <div class="cohort-bar__value">99<span style="font-size: 1rem; color: var(--color-slate-500);">th</span></div>
+            <div class="cohort-strip__suffix">vs. 2026 class</div>
+          </div>
+        </div>
+
+        <!-- Latest games -->
+        <div class="latest-games">
+          <div class="latest-games__head">
+            <span class="latest-games__title">Latest Games</span>
+            <a class="latest-games__cta" href="#">See full 2026 logs →</a>
+          </div>
+          <div class="latest-games__grid">
+
+            <a class="game-card" href="#">
+              <div class="game-card__top">
+                <span class="game-card__date">Jul 11 · @ WAS</span>
+                <span class="game-card__result game-card__result--w">W 92-87</span>
+              </div>
+              <div class="game-card__line">32 / 9 / 6</div>
+              <div class="game-card__detail">31 MIN · 64.0 TS% · 4 STL · +14</div>
+            </a>
+
+            <a class="game-card" href="#">
+              <div class="game-card__top">
+                <span class="game-card__date">Jul 9 · vs. CHA</span>
+                <span class="game-card__result game-card__result--w">W 88-79</span>
+              </div>
+              <div class="game-card__line">24 / 11 / 4</div>
+              <div class="game-card__detail">28 MIN · 58.6 TS% · 3 BLK · +18</div>
+            </a>
+
+            <a class="game-card" href="#">
+              <div class="game-card__top">
+                <span class="game-card__date">Jul 7 · vs. UTA</span>
+                <span class="game-card__result game-card__result--l">L 84-91</span>
+              </div>
+              <div class="game-card__line">22 / 10 / 7</div>
+              <div class="game-card__detail">30 MIN · 61.2 TS% · 2 STL · +4</div>
+            </a>
+
+          </div>
+        </div>
+
+      </article>
+
+      <div class="updated-strip">
+        <span class="updated-strip__dot" aria-hidden="true"></span>
+        Daily refresh · Last update: Jul 12, 2026 · 10:14 PT
+      </div>
+
+    </section>
+
+    <!-- ============================================================================
+         ALT STATE: EMPTY (player without SL appearances)
+         Shown for mockup completeness; in production only one state renders at a time.
+         ========================================================================= -->
+    <div class="empty-state-wrapper">
+      <div class="empty-state-caption">Alternate state — player without Summer League appearances</div>
+
+      <article class="sl-section">
+        <div class="sl-section__head">
+          <div class="sl-section__title-block">
+            <div class="sl-section__eyebrow">Summer League</div>
+            <div class="sl-section__title">Summer League Performance</div>
+          </div>
+          <div class="sl-section__chips">
+            <span class="sl-chip">
+              <span class="sl-chip__label">Career GP</span>
+              0
+            </span>
+          </div>
+        </div>
+
+        <div class="sl-empty">
+          <div class="sl-empty__icon">☀️</div>
+          <div class="sl-empty__title">Hasn't played Summer League yet</div>
+          <div class="sl-empty__body">
+            Khaman Maluach's first Summer League runs July 2026 with the Suns. We'll fill this section in as games tip off.
+          </div>
+          <div class="sl-empty__footnote">Tip-off in 3 days · Vegas · vs. Hornets</div>
+        </div>
+      </article>
+    </div>
+
+  </main>
+
+  <!-- ============================================================================
+       FOOTER
+       ========================================================================= -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">Explorer</a></li>
+            <li><a href="#">All-Summer-League</a></li>
+            <li><a href="#">2026 Draft Class</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

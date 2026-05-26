@@ -1,0 +1,1683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lakers · All-Time Summer League — DraftGuru</title>
+  <meta name="description" content="The Los Angeles Lakers' complete Summer League résumé — every year, every team, every All-Summer-League selection.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      /* Lakers team palette */
+      --team: #552583;
+      --team-fill: #ebe1f6;
+      --team-dark: #3e1864;
+      --team-accent: #fdb927;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    .section-header__title {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+      padding-left: 0.625rem;
+      border-left: 4px solid var(--team);
+    }
+
+    .section-header__title--utility { border-left-color: var(--color-slate-300); }
+
+    .section-header__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .section-header__cta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      color: var(--team);
+      padding-bottom: 1px;
+      border-bottom: 1px dotted rgba(85, 37, 131, 0.4);
+    }
+    .section-header__cta:hover { border-bottom-style: solid; }
+
+    /* ============================================================================
+       NAVBAR
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--color-accent-amber);
+    }
+    .search-input {
+      width: 240px; background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none;
+    }
+
+    /* ============================================================================
+       BREADCRUMBS + FRANCHISE PAGER
+       ========================================================================= */
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    .franchise-pager {
+      padding: 0.5rem 0 1rem;
+      display: flex;
+      gap: 0.375rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .franchise-pager__label {
+      font-family: var(--font-mono); font-size: 0.5625rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding-right: 0.5rem;
+      border-right: 1px solid var(--color-slate-200);
+      margin-right: 0.25rem;
+    }
+
+    .franchise-pager__chip {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.25rem 0.4375rem;
+      border-radius: 0.25rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+    }
+    .franchise-pager__chip:hover { border-color: var(--color-slate-400); }
+    .franchise-pager__chip--active {
+      background: var(--team-fill);
+      border-color: rgba(85, 37, 131, 0.3);
+      color: var(--team-dark);
+    }
+
+    /* ============================================================================
+       FRANCHISE HERO
+       ========================================================================= */
+    .franchise-hero {
+      background: linear-gradient(135deg, var(--team-dark), var(--team));
+      border-radius: var(--border-radius);
+      padding: 1.75rem 2rem;
+      color: var(--color-white);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+      margin-bottom: 1.5rem;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .franchise-hero::before {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent 0, transparent 3px,
+        rgba(255,255,255,0.025) 3px, rgba(255,255,255,0.025) 4px
+      );
+      pointer-events: none;
+    }
+
+    .franchise-hero__logo {
+      width: 96px; height: 96px;
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-heading);
+      font-size: 1.75rem;
+      color: var(--team);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      z-index: 1;
+      border: 3px solid var(--team-accent);
+    }
+
+    .franchise-hero__body { z-index: 1; }
+
+    .franchise-hero__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.625rem;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: rgba(253, 185, 39, 0.85);
+      margin-bottom: 0.375rem;
+    }
+    .franchise-hero__eyebrow::before {
+      content: ''; width: 12px; height: 2px;
+      background: var(--team-accent);
+    }
+
+    .franchise-hero__name {
+      font-family: var(--font-heading);
+      font-size: 2.5rem;
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+      color: var(--color-white);
+    }
+
+    .franchise-hero__sub {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: rgba(255,255,255,0.7);
+      margin-top: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .franchise-hero__badges {
+      display: flex; gap: 0.5rem; margin-top: 0.875rem; flex-wrap: wrap;
+    }
+
+    .fh-badge {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.3rem 0.5rem;
+      border-radius: 0.25rem;
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.9);
+      border: 1px solid rgba(255,255,255,0.15);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+    }
+
+    .fh-badge--gold {
+      background: rgba(253, 185, 39, 0.18);
+      color: var(--team-accent);
+      border-color: rgba(253, 185, 39, 0.4);
+    }
+
+    .franchise-hero__record-block {
+      text-align: right;
+      z-index: 1;
+    }
+
+    .franchise-hero__record {
+      font-family: var(--font-heading);
+      font-size: 3rem;
+      line-height: 1;
+      letter-spacing: 0.02em;
+      color: var(--color-white);
+    }
+
+    .franchise-hero__record-label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.55);
+      margin-top: 0.375rem;
+    }
+
+    /* ============================================================================
+       QUICK STATS STRIP
+       ========================================================================= */
+    .quick-stats {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+    }
+
+    .qs-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-top: 3px solid var(--team);
+      border-radius: 0.5rem;
+      padding: 0.75rem 0.875rem;
+    }
+
+    .qs-card__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .qs-card__value {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      color: var(--color-slate-900);
+      line-height: 1.1;
+      margin: 0.125rem 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .qs-card__hook {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+    }
+
+    /* ============================================================================
+       STORYLINES
+       ========================================================================= */
+    .moments-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.875rem;
+    }
+
+    .story-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-left: 4px solid;
+      border-radius: 0.5rem;
+      padding: 0.875rem 1rem;
+    }
+
+    .story-card--peak { border-left-color: var(--team-accent); }
+    .story-card--pipeline { border-left-color: var(--color-accent-emerald); }
+    .story-card--miss { border-left-color: var(--color-accent-rose); }
+
+    .story-card__type {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.375rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .story-card--peak .story-card__type { color: #b45309; }
+    .story-card--pipeline .story-card__type { color: #047857; }
+    .story-card--miss .story-card__type { color: #be123c; }
+
+    .story-card__type-side { color: var(--color-slate-400); font-weight: 400; }
+
+    .story-card__headline {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      line-height: 1.25;
+    }
+
+    .story-card__body {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      margin-top: 0.375rem;
+      line-height: 1.5;
+    }
+    .story-card__body strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       WINS-BY-YEAR SPARKLINE STRIP
+       ========================================================================= */
+    .timeline-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1.125rem 1.375rem;
+    }
+
+    .timeline-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.875rem;
+    }
+
+    .timeline-head__title {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-700);
+    }
+
+    .timeline-head__meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+    }
+
+    .timeline-svg {
+      width: 100%;
+      height: 110px;
+    }
+
+    .timeline-callout {
+      margin-top: 0.75rem;
+      padding-top: 0.625rem;
+      border-top: 1px dashed var(--color-slate-200);
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-600);
+      line-height: 1.5;
+    }
+    .timeline-callout strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       SEASON TABLE
+       ========================================================================= */
+    .season-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow-x: auto;
+    }
+
+    table.seasons {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
+    }
+
+    table.seasons th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.5rem 0.625rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+    table.seasons th.left { text-align: left; }
+
+    table.seasons td {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.5rem 0.625rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+    table.seasons td.left {
+      text-align: left;
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      font-size: 0.8125rem;
+    }
+
+    table.seasons tr {
+      cursor: pointer;
+      transition: background var(--transition-speed);
+    }
+    table.seasons tr:hover td { background: var(--color-slate-50); }
+
+    .season-year-link {
+      font-family: var(--font-heading);
+      font-size: 0.9375rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+    }
+
+    .venue-tag {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      margin-left: 0.375rem;
+      vertical-align: middle;
+    }
+    .venue-tag--vegas { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+    .venue-tag--cal { background: rgba(217, 70, 239, 0.1); color: #a21caf; }
+    .venue-tag--slc { background: rgba(6, 182, 212, 0.12); color: #0e7490; }
+
+    .record-good { color: #047857; font-weight: 600; }
+    .record-bad { color: #be123c; font-weight: 600; }
+
+    .finish-pill {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.125rem 0.4375rem;
+      border-radius: 0.1875rem;
+      display: inline-block;
+    }
+    .finish-pill--champ { background: rgba(253, 185, 39, 0.18); color: var(--team-dark); border: 1px solid var(--team-accent); }
+    .finish-pill--final { background: rgba(85, 37, 131, 0.1); color: var(--team-dark); }
+    .finish-pill--bracket { background: var(--color-slate-100); color: var(--color-slate-600); }
+    .finish-pill--exhib { background: var(--color-slate-50); color: var(--color-slate-500); font-style: italic; }
+    .finish-pill--missed { background: var(--color-slate-50); color: var(--color-slate-400); }
+
+    .top-performer {
+      font-weight: 600;
+      color: var(--color-slate-900);
+      font-family: var(--font-body);
+    }
+    .top-performer:hover { color: var(--team); }
+
+    .top-performer__line {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+      margin-left: 0.4rem;
+    }
+
+    /* ============================================================================
+       FRANCHISE LEADERS (split: career + single-game)
+       ========================================================================= */
+    .leaders-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .leaders-col {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    .leaders-col__head {
+      padding: 0.75rem 1rem;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .leaders-col__title {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-700);
+    }
+
+    .leaders-col__tabs {
+      display: flex;
+      gap: 0.25rem;
+    }
+
+    .leaders-col__tab {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.25rem 0.4375rem;
+      border-radius: 0.1875rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+      cursor: pointer;
+    }
+
+    .leaders-col__tab--active {
+      background: var(--team-fill);
+      border-color: rgba(85, 37, 131, 0.3);
+      color: var(--team-dark);
+    }
+
+    .leaders-col__list {
+      list-style: none;
+    }
+
+    .leader-row {
+      display: grid;
+      grid-template-columns: 1.5rem 1fr auto;
+      gap: 0.625rem;
+      padding: 0.5rem 1rem;
+      border-bottom: 1px solid var(--color-slate-100);
+      align-items: center;
+    }
+    .leader-row:last-child { border-bottom: none; }
+    .leader-row:hover { background: var(--color-slate-50); }
+
+    .leader-row__rank {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: var(--color-slate-400);
+      text-align: center;
+    }
+    .leader-row__rank--gold { color: #d97706; font-weight: 700; }
+    .leader-row__rank--silver { color: var(--color-slate-500); font-weight: 700; }
+    .leader-row__rank--bronze { color: #a16207; font-weight: 700; }
+
+    .leader-row__player {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+    }
+    .leader-row__player:hover { color: var(--team); }
+
+    .leader-row__meta {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 0.125rem;
+    }
+
+    .leader-row__value {
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       ALL-PLAYERS DIRECTORY
+       ========================================================================= */
+    .directory-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .filter-chip {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.375rem 0.625rem;
+      border-radius: 9999px;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+      cursor: pointer;
+    }
+    .filter-chip:hover { border-color: var(--color-slate-400); }
+    .filter-chip--active {
+      background: var(--team-fill);
+      border-color: rgba(85, 37, 131, 0.3);
+      color: var(--team-dark);
+    }
+
+    .directory-search {
+      padding: 0.4rem 0.625rem;
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      background: var(--color-white);
+      width: 220px;
+    }
+
+    .directory-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.5rem;
+    }
+
+    .player-row {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.625rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.5rem;
+      align-items: center;
+      transition: all var(--transition-speed);
+      cursor: pointer;
+    }
+
+    .player-row:hover {
+      border-color: var(--team);
+      transform: translateY(-1px);
+    }
+
+    .player-row__name {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      line-height: 1.1;
+    }
+
+    .player-row__years {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 0.125rem;
+    }
+
+    .player-row__tag {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      padding: 0.125rem 0.3125rem;
+      border-radius: 0.1875rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .player-row__tag--star { background: rgba(253, 185, 39, 0.2); color: var(--team-dark); }
+    .player-row__tag--starter { background: rgba(16, 185, 129, 0.12); color: #047857; }
+    .player-row__tag--rotation { background: rgba(6, 182, 212, 0.1); color: #0e7490; }
+    .player-row__tag--played { background: var(--color-slate-100); color: var(--color-slate-500); }
+    .player-row__tag--unsigned { background: rgba(244, 63, 94, 0.08); color: #be123c; }
+
+    /* ============================================================================
+       METHODOLOGY PLACEHOLDER UTILITY
+       ========================================================================= */
+    .tbd-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      margin-left: 0.375rem;
+      vertical-align: middle;
+      cursor: help;
+    }
+
+    /* ============================================================================
+       UPDATED + FOOTER
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 2rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+    .updated-strip__dot {
+      width: 0.5rem; height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 980px) {
+      .franchise-hero { grid-template-columns: 1fr; text-align: center; }
+      .franchise-hero__logo { justify-self: center; }
+      .franchise-hero__badges { justify-content: center; }
+      .franchise-hero__record-block { text-align: center; }
+      .quick-stats { grid-template-columns: repeat(2, 1fr); }
+      .moments-grid { grid-template-columns: 1fr; }
+      .leaders-pair { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .navbar-links { display: none; }
+      .quick-stats { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link active" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div><input class="search-input" type="search" placeholder="Search players…"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="/stats">Stats</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league">Summer League</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="#">Teams</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">Lakers</span>
+    </div>
+
+    <!-- Franchise pager (alphabetical jump) -->
+    <div class="franchise-pager">
+      <span class="franchise-pager__label">Jump to franchise</span>
+      <a class="franchise-pager__chip" href="#">ATL</a>
+      <a class="franchise-pager__chip" href="#">BKN</a>
+      <a class="franchise-pager__chip" href="#">BOS</a>
+      <a class="franchise-pager__chip" href="#">CHA</a>
+      <a class="franchise-pager__chip" href="#">CHI</a>
+      <a class="franchise-pager__chip" href="#">CLE</a>
+      <a class="franchise-pager__chip" href="#">DAL</a>
+      <a class="franchise-pager__chip" href="#">DEN</a>
+      <a class="franchise-pager__chip" href="#">DET</a>
+      <a class="franchise-pager__chip" href="#">GSW</a>
+      <a class="franchise-pager__chip" href="#">HOU</a>
+      <a class="franchise-pager__chip" href="#">IND</a>
+      <a class="franchise-pager__chip" href="#">LAC</a>
+      <a class="franchise-pager__chip franchise-pager__chip--active" href="#">LAL</a>
+      <a class="franchise-pager__chip" href="#">MEM</a>
+      <a class="franchise-pager__chip" href="#">MIA</a>
+      <a class="franchise-pager__chip" href="#">MIL</a>
+      <a class="franchise-pager__chip" href="#">MIN</a>
+      <a class="franchise-pager__chip" href="#">NOP</a>
+      <a class="franchise-pager__chip" href="#">NYK</a>
+      <a class="franchise-pager__chip" href="#">OKC</a>
+      <a class="franchise-pager__chip" href="#">ORL</a>
+      <a class="franchise-pager__chip" href="#">PHI</a>
+      <a class="franchise-pager__chip" href="#">PHX</a>
+      <a class="franchise-pager__chip" href="#">POR</a>
+      <a class="franchise-pager__chip" href="#">SAC</a>
+      <a class="franchise-pager__chip" href="#">SAS</a>
+      <a class="franchise-pager__chip" href="#">TOR</a>
+      <a class="franchise-pager__chip" href="#">UTA</a>
+      <a class="franchise-pager__chip" href="#">WAS</a>
+    </div>
+
+    <!-- ============================================================================
+         FRANCHISE HERO
+         ========================================================================= -->
+    <header class="franchise-hero">
+      <div class="franchise-hero__logo">LAL</div>
+      <div class="franchise-hero__body">
+        <div class="franchise-hero__eyebrow">DraftGuru Stats · Franchise SL Résumé</div>
+        <div class="franchise-hero__name">Los Angeles Lakers</div>
+        <div class="franchise-hero__sub">2004 – 2026 · 22 Summer Leagues · 8 venues across eras</div>
+        <div class="franchise-hero__badges">
+          <span class="fh-badge fh-badge--gold">
+            ★ 1 SL title · Vegas 2017
+          </span>
+          <span class="fh-badge">
+            2 SL MVPs · Hart '18 · Ball '17
+          </span>
+          <span class="fh-badge">
+            6 All-Summer-League selections
+          </span>
+        </div>
+      </div>
+      <div class="franchise-hero__record-block">
+        <div class="franchise-hero__record">78-52</div>
+        <div class="franchise-hero__record-label">All-time SL record</div>
+      </div>
+    </header>
+
+    <!-- ============================================================================
+         QUICK STATS STRIP
+         ========================================================================= -->
+    <div class="quick-stats">
+      <div class="qs-card">
+        <div class="qs-card__label">SL games</div>
+        <div class="qs-card__value">130</div>
+        <div class="qs-card__hook">across 22 years</div>
+      </div>
+      <div class="qs-card">
+        <div class="qs-card__label">Win %</div>
+        <div class="qs-card__value">.600</div>
+        <div class="qs-card__hook">3rd-best since 2010</div>
+      </div>
+      <div class="qs-card">
+        <div class="qs-card__label">Championships</div>
+        <div class="qs-card__value">1</div>
+        <div class="qs-card__hook">Vegas 2017 · Lonzo / Kuzma</div>
+      </div>
+      <div class="qs-card">
+        <div class="qs-card__label">SL MVPs</div>
+        <div class="qs-card__value">2</div>
+        <div class="qs-card__hook">Hart '18 · Ball '17</div>
+      </div>
+      <div class="qs-card">
+        <div class="qs-card__label">All-SL 1st team</div>
+        <div class="qs-card__value">6</div>
+        <div class="qs-card__hook">most of any franchise since '15</div>
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         STORYLINES
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Lakers SL Storylines</div>
+          <div class="section-header__meta">The patterns across 22 years of Lakers Summer League rosters</div>
+        </div>
+      </div>
+
+      <div class="moments-grid">
+
+        <div class="story-card story-card--peak">
+          <div class="story-card__type">
+            Franchise peak <span class="story-card__type-side">2017 Vegas</span>
+          </div>
+          <div class="story-card__headline">The Lonzo / Kuzma summer was a once-in-a-decade SL run</div>
+          <div class="story-card__body">
+            6-0 record, the Vegas title, Ball as MVP, and Kuzma on the 1st team. <strong>Largest single-year delta over franchise SL baseline</strong> (+0.40 win%) — and both players cleared a 70 composite, the only Lakers duo to do that in the same SL.
+          </div>
+        </div>
+
+        <div class="story-card story-card--pipeline">
+          <div class="story-card__type">
+            NBA hit rate <span class="story-card__type-side">SL → rotation</span>
+          </div>
+          <div class="story-card__headline">68% of Lakers SL stars carved out NBA roles</div>
+          <div class="story-card__body">
+            Of <strong>19 Lakers SL players</strong> with a composite ≥65, 13 became NBA rotation players or better. <strong>Above the league SL→NBA conversion rate</strong> (52% for that composite tier post-2015) — Lakers SL produces real signal.
+          </div>
+        </div>
+
+        <div class="story-card story-card--miss">
+          <div class="story-card__type">
+            Franchise miss <span class="story-card__type-side">2014–15 era</span>
+          </div>
+          <div class="story-card__headline">Worst SL run came right before the rebuild took off</div>
+          <div class="story-card__body">
+            Combined <strong>4-12 across 2014–2015</strong> Vegas. Julius Randle and D'Angelo Russell both posted sub-50 composites in their first SLs — both eventually traded. SL doesn't always project; this era is the cautionary case.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         WINS-BY-YEAR TIMELINE
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Wins by Year · 2010 → 2025</div>
+          <div class="section-header__meta">Bar height = SL wins · gold bars = title runs · grey = missed SL</div>
+        </div>
+      </div>
+
+      <div class="timeline-wrapper">
+        <div class="timeline-head">
+          <span class="timeline-head__title">SL Wins by Year</span>
+          <span class="timeline-head__meta">Median per franchise: 3.4 wins/yr</span>
+        </div>
+
+        <svg class="timeline-svg" viewBox="0 0 800 110" preserveAspectRatio="none" role="img" aria-label="Lakers SL wins by year">
+          <!-- Baseline -->
+          <line x1="20" y1="92" x2="780" y2="92" stroke="#cbd5e1" stroke-width="1"/>
+          <!-- Median reference line -->
+          <line x1="20" y1="62" x2="780" y2="62" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2 3"/>
+          <text x="784" y="65" font-family="ui-monospace" font-size="9" fill="#94a3b8">3.4 median</text>
+
+          <!-- Bars: 2010 through 2025 (16 years; 2020 = no SL) -->
+          <!-- y mapping: wins of 6 → top at y=10; baseline y=92 -->
+          <!-- 2010: 3 wins -->
+          <rect x="30"  y="65" width="34" height="27" fill="#552583"/>
+          <text x="47"  y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'10</text>
+          <!-- 2011: 4 wins -->
+          <rect x="78"  y="56" width="34" height="36" fill="#552583"/>
+          <text x="95"  y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'11</text>
+          <!-- 2012: 3 wins -->
+          <rect x="126" y="65" width="34" height="27" fill="#552583"/>
+          <text x="143" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'12</text>
+          <!-- 2013: 2 wins -->
+          <rect x="174" y="74" width="34" height="18" fill="#552583"/>
+          <text x="191" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'13</text>
+          <!-- 2014: 2 wins -->
+          <rect x="222" y="74" width="34" height="18" fill="#94a3b8"/>
+          <text x="239" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'14</text>
+          <!-- 2015: 2 wins -->
+          <rect x="270" y="74" width="34" height="18" fill="#94a3b8"/>
+          <text x="287" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'15</text>
+          <!-- 2016: 3 wins -->
+          <rect x="318" y="65" width="34" height="27" fill="#552583"/>
+          <text x="335" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'16</text>
+          <!-- 2017: 6 wins (title!) -->
+          <rect x="366" y="20" width="34" height="72" fill="#fdb927" stroke="#552583" stroke-width="1.5"/>
+          <text x="383" y="106" font-family="ui-monospace" font-size="9" fill="#552583" text-anchor="middle" font-weight="700">'17</text>
+          <text x="383" y="15" font-family="ui-monospace" font-size="9" fill="#552583" text-anchor="middle" font-weight="700">★ 6</text>
+          <!-- 2018: 5 wins -->
+          <rect x="414" y="29" width="34" height="63" fill="#552583"/>
+          <text x="431" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'18</text>
+          <text x="431" y="24" font-family="ui-monospace" font-size="9" fill="#475569" text-anchor="middle">5</text>
+          <!-- 2019: 4 wins -->
+          <rect x="462" y="56" width="34" height="36" fill="#552583"/>
+          <text x="479" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'19</text>
+          <!-- 2020: no SL (COVID) - grey strikethrough -->
+          <rect x="510" y="82" width="34" height="10" fill="#e2e8f0"/>
+          <text x="527" y="106" font-family="ui-monospace" font-size="9" fill="#cbd5e1" text-anchor="middle">'20</text>
+          <line x1="510" y1="82" x2="544" y2="92" stroke="#94a3b8" stroke-width="1"/>
+          <!-- 2021: 3 wins -->
+          <rect x="558" y="65" width="34" height="27" fill="#552583"/>
+          <text x="575" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'21</text>
+          <!-- 2022: 4 wins -->
+          <rect x="606" y="56" width="34" height="36" fill="#552583"/>
+          <text x="623" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'22</text>
+          <!-- 2023: 3 wins -->
+          <rect x="654" y="65" width="34" height="27" fill="#552583"/>
+          <text x="671" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'23</text>
+          <!-- 2024: 3 wins -->
+          <rect x="702" y="65" width="34" height="27" fill="#552583"/>
+          <text x="719" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'24</text>
+          <!-- 2025: 5 wins -->
+          <rect x="750" y="29" width="34" height="63" fill="#552583"/>
+          <text x="767" y="106" font-family="ui-monospace" font-size="9" fill="#94a3b8" text-anchor="middle">'25</text>
+          <text x="767" y="24" font-family="ui-monospace" font-size="9" fill="#475569" text-anchor="middle">5</text>
+        </svg>
+
+        <div class="timeline-callout">
+          <strong>Three above-median peaks since 2010:</strong> 2017 (title), 2018 (Hart MVP defense of title), and 2025 (Knecht-led return to relevance). 2020 not played (COVID); 2014–2015 the franchise low.
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         BY SEASON TABLE
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Every Lakers Summer League · 2004 → 2026</div>
+          <div class="section-header__meta">23 entries · click any row to open that team-season page</div>
+        </div>
+        <a class="section-header__cta" href="#">Cross-franchise standings →</a>
+      </div>
+
+      <div class="season-wrapper">
+        <table class="seasons">
+          <thead>
+            <tr>
+              <th class="left">Year</th>
+              <th class="left">Venue(s)</th>
+              <th>Record</th>
+              <th class="left">Finish</th>
+              <th class="left">Top Performer</th>
+              <th class="left">All-SL</th>
+              <th>Class Δ <span class="tbd-indicator">TBD</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2026</a>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">Vegas</td>
+              <td><span class="record-bad">1-2</span></td>
+              <td class="left"><span class="finish-pill finish-pill--bracket">Group play</span></td>
+              <td class="left"><a class="top-performer" href="#">Dalton Knecht</a><span class="top-performer__line">18.4 / 4.2 / 2.6</span></td>
+              <td class="left">—</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2025</a>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">Vegas</td>
+              <td><span class="record-good">5-1</span></td>
+              <td class="left"><span class="finish-pill finish-pill--final">Semifinals</span></td>
+              <td class="left"><a class="top-performer" href="#">Dalton Knecht</a><span class="top-performer__line">23.8 / 4.6 / 2.0 · 60.1 TS%</span></td>
+              <td class="left">1st (Knecht)</td>
+              <td class="record-good">+0.18</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2024</a>
+                <span class="venue-tag venue-tag--cal">CalC</span>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">CalC + Vegas</td>
+              <td>3-4</td>
+              <td class="left"><span class="finish-pill finish-pill--bracket">Round of 16</span></td>
+              <td class="left"><a class="top-performer" href="#">Max Christie</a><span class="top-performer__line">19.4 / 5.2 / 3.0</span></td>
+              <td class="left">—</td>
+              <td class="record-bad">−0.05</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2023</a>
+                <span class="venue-tag venue-tag--cal">CalC</span>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">CalC + Vegas</td>
+              <td>3-3</td>
+              <td class="left"><span class="finish-pill finish-pill--bracket">Round of 16</span></td>
+              <td class="left"><a class="top-performer" href="#">Maxwell Lewis</a><span class="top-performer__line">16.0 / 4.2 / 3.4</span></td>
+              <td class="left">—</td>
+              <td>+0.02</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2022</a>
+                <span class="venue-tag venue-tag--cal">CalC</span>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">CalC + Vegas</td>
+              <td><span class="record-good">4-3</span></td>
+              <td class="left"><span class="finish-pill finish-pill--bracket">Quarterfinals</span></td>
+              <td class="left"><a class="top-performer" href="#">Scotty Pippen Jr.</a><span class="top-performer__line">17.6 / 3.8 / 7.0 · top AST</span></td>
+              <td class="left">—</td>
+              <td>+0.05</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2021</a>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">Vegas</td>
+              <td>3-2</td>
+              <td class="left"><span class="finish-pill finish-pill--bracket">Round of 16</span></td>
+              <td class="left"><a class="top-performer" href="#">Austin Reaves</a><span class="top-performer__line">18.6 / 5.0 / 4.0 · 62.0 TS%</span></td>
+              <td class="left">Honorable mention</td>
+              <td class="record-good">+0.08</td>
+            </tr>
+            <tr style="opacity: 0.5;">
+              <td class="left">
+                <span class="season-year-link" style="color: var(--color-slate-400);">2020</span>
+              </td>
+              <td class="left">—</td>
+              <td>—</td>
+              <td class="left"><span class="finish-pill finish-pill--missed">No SL (COVID)</span></td>
+              <td class="left">—</td>
+              <td class="left">—</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2019</a>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">Vegas</td>
+              <td><span class="record-good">4-2</span></td>
+              <td class="left"><span class="finish-pill finish-pill--bracket">Quarterfinals</span></td>
+              <td class="left"><a class="top-performer" href="#">Talen Horton-Tucker</a><span class="top-performer__line">21.2 / 4.0 / 3.6</span></td>
+              <td class="left">2nd team (THT)</td>
+              <td>+0.06</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2018</a>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">Vegas</td>
+              <td><span class="record-good">5-1</span></td>
+              <td class="left"><span class="finish-pill finish-pill--final">Finals (L)</span></td>
+              <td class="left"><a class="top-performer" href="#">Josh Hart</a><span class="top-performer__line">★ MVP · 24.2 / 5.2 / 2.8</span></td>
+              <td class="left">★ 1st (Hart) · MVP</td>
+              <td class="record-good">+0.22</td>
+            </tr>
+            <tr style="background: rgba(253, 185, 39, 0.06);">
+              <td class="left">
+                <a class="season-year-link" style="color: var(--team-dark);" href="#">2017</a>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">Vegas</td>
+              <td><span class="record-good">6-0</span></td>
+              <td class="left"><span class="finish-pill finish-pill--champ">★ Champions</span></td>
+              <td class="left"><a class="top-performer" href="#">Lonzo Ball</a><span class="top-performer__line">★ MVP · 21.0 / 8.4 / 5.2 · 53.0 TS%</span></td>
+              <td class="left">★ 1st (Ball, Kuzma)</td>
+              <td class="record-good">+0.40</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2016</a>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">Vegas</td>
+              <td>3-3</td>
+              <td class="left"><span class="finish-pill finish-pill--bracket">Quarterfinals</span></td>
+              <td class="left"><a class="top-performer" href="#">D'Angelo Russell</a><span class="top-performer__line">21.8 / 4.0 / 5.0</span></td>
+              <td class="left">—</td>
+              <td>+0.04</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2015</a>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">Vegas</td>
+              <td><span class="record-bad">2-3</span></td>
+              <td class="left"><span class="finish-pill finish-pill--bracket">Group play</span></td>
+              <td class="left"><a class="top-performer" href="#">Larry Nance Jr.</a><span class="top-performer__line">15.8 / 7.0 / 1.8</span></td>
+              <td class="left">—</td>
+              <td class="record-bad">−0.12</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <a class="season-year-link" href="#">2014</a>
+                <span class="venue-tag venue-tag--vegas">Vegas</span>
+              </td>
+              <td class="left">Vegas</td>
+              <td><span class="record-bad">2-3</span></td>
+              <td class="left"><span class="finish-pill finish-pill--bracket">Group play</span></td>
+              <td class="left"><a class="top-performer" href="#">Julius Randle</a><span class="top-performer__line">15.6 / 8.2 / 1.4</span></td>
+              <td class="left">—</td>
+              <td class="record-bad">−0.18</td>
+            </tr>
+            <tr style="opacity: 0.7;">
+              <td class="left">… <em>13 more entries (2004–2013)</em></td>
+              <td class="left">Vegas + Orlando</td>
+              <td>—</td>
+              <td class="left"><a class="section-header__cta" href="#">Expand →</a></td>
+              <td class="left">—</td>
+              <td class="left">—</td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         FRANCHISE LEADERS (career + single-game)
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Franchise Leaders</div>
+          <div class="section-header__meta">All-time SL performances by players in Lakers SL uniforms</div>
+        </div>
+      </div>
+
+      <div class="leaders-pair">
+
+        <div class="leaders-col">
+          <div class="leaders-col__head">
+            <span class="leaders-col__title">Single-Game Highs</span>
+            <div class="leaders-col__tabs">
+              <button class="leaders-col__tab leaders-col__tab--active">PTS</button>
+              <button class="leaders-col__tab">REB</button>
+              <button class="leaders-col__tab">AST</button>
+              <button class="leaders-col__tab">TS%</button>
+            </div>
+          </div>
+          <ul class="leaders-col__list">
+            <li class="leader-row">
+              <span class="leader-row__rank leader-row__rank--gold">1</span>
+              <div>
+                <a class="leader-row__player" href="#">Josh Hart</a>
+                <div class="leader-row__meta">vs. POR · Jul 11, 2018 · 12-of-19 FG</div>
+              </div>
+              <span class="leader-row__value">37</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank leader-row__rank--silver">2</span>
+              <div>
+                <a class="leader-row__player" href="#">D'Angelo Russell</a>
+                <div class="leader-row__meta">vs. PHI · Jul 14, 2016 · 5-of-8 from 3</div>
+              </div>
+              <span class="leader-row__value">35</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank leader-row__rank--bronze">3</span>
+              <div>
+                <a class="leader-row__player" href="#">Lonzo Ball</a>
+                <div class="leader-row__meta">vs. PHI championship · Jul 17, 2017</div>
+              </div>
+              <span class="leader-row__value">34</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank">4</span>
+              <div>
+                <a class="leader-row__player" href="#">Kyle Kuzma</a>
+                <div class="leader-row__meta">vs. SAC · Jul 14, 2017</div>
+              </div>
+              <span class="leader-row__value">31</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank">5</span>
+              <div>
+                <a class="leader-row__player" href="#">Dalton Knecht</a>
+                <div class="leader-row__meta">vs. WAS · Jul 16, 2025</div>
+              </div>
+              <span class="leader-row__value">30</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank">6</span>
+              <div>
+                <a class="leader-row__player" href="#">Austin Reaves</a>
+                <div class="leader-row__meta">vs. NOP · Jul 9, 2021</div>
+              </div>
+              <span class="leader-row__value">28</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank">7</span>
+              <div>
+                <a class="leader-row__player" href="#">Talen Horton-Tucker</a>
+                <div class="leader-row__meta">vs. UTA · Jul 6, 2019</div>
+              </div>
+              <span class="leader-row__value">27</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="leaders-col">
+          <div class="leaders-col__head">
+            <span class="leaders-col__title">Career SL Totals · in Lakers uniform</span>
+            <div class="leaders-col__tabs">
+              <button class="leaders-col__tab leaders-col__tab--active">PTS</button>
+              <button class="leaders-col__tab">GP</button>
+              <button class="leaders-col__tab">Composite <span class="tbd-indicator">TBD</span></button>
+            </div>
+          </div>
+          <ul class="leaders-col__list">
+            <li class="leader-row">
+              <span class="leader-row__rank leader-row__rank--gold">1</span>
+              <div>
+                <a class="leader-row__player" href="#">Lonzo Ball</a>
+                <div class="leader-row__meta">2017 · 6 GP · 21.0 PPG · MVP</div>
+              </div>
+              <span class="leader-row__value">126</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank leader-row__rank--silver">2</span>
+              <div>
+                <a class="leader-row__player" href="#">Josh Hart</a>
+                <div class="leader-row__meta">2017 + '18 · 11 GP · 22.7 PPG</div>
+              </div>
+              <span class="leader-row__value">250</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank leader-row__rank--bronze">3</span>
+              <div>
+                <a class="leader-row__player" href="#">Kyle Kuzma</a>
+                <div class="leader-row__meta">2017 only · 6 GP · 21.9 PPG</div>
+              </div>
+              <span class="leader-row__value">131</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank">4</span>
+              <div>
+                <a class="leader-row__player" href="#">Dalton Knecht</a>
+                <div class="leader-row__meta">2025 + '26 · 9 GP · 22.0 PPG</div>
+              </div>
+              <span class="leader-row__value">198</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank">5</span>
+              <div>
+                <a class="leader-row__player" href="#">Austin Reaves</a>
+                <div class="leader-row__meta">2021 only · 5 GP · 18.6 PPG</div>
+              </div>
+              <span class="leader-row__value">93</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank">6</span>
+              <div>
+                <a class="leader-row__player" href="#">Talen Horton-Tucker</a>
+                <div class="leader-row__meta">2019 + '21 · 11 GP · 18.4 PPG</div>
+              </div>
+              <span class="leader-row__value">202</span>
+            </li>
+            <li class="leader-row">
+              <span class="leader-row__rank">7</span>
+              <div>
+                <a class="leader-row__player" href="#">D'Angelo Russell</a>
+                <div class="leader-row__meta">2015 + '16 · 11 GP · 18.7 PPG</div>
+              </div>
+              <span class="leader-row__value">206</span>
+            </li>
+          </ul>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         ALL-PLAYERS DIRECTORY
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">All Players · Lakers SL Alumni</div>
+          <div class="section-header__meta">Every player who's worn a Lakers SL uniform · 218 alumni · alphabetical</div>
+        </div>
+      </div>
+
+      <div class="directory-controls">
+        <div style="display: flex; gap: 0.375rem; flex-wrap: wrap;">
+          <span class="filter-chip filter-chip--active">All (218)</span>
+          <span class="filter-chip">NBA stars (6)</span>
+          <span class="filter-chip">NBA starters (24)</span>
+          <span class="filter-chip">NBA rotation (61)</span>
+          <span class="filter-chip">Played NBA (98)</span>
+          <span class="filter-chip">Never signed (120)</span>
+        </div>
+        <input class="directory-search" type="search" placeholder="Filter by name…">
+      </div>
+
+      <div class="directory-grid">
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Lonzo Ball</div>
+            <div class="player-row__years">2017 · MVP</div>
+          </div>
+          <span class="player-row__tag player-row__tag--star">★ NBA star</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Josh Hart</div>
+            <div class="player-row__years">2017, '18 · MVP '18</div>
+          </div>
+          <span class="player-row__tag player-row__tag--star">★ NBA star</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Kyle Kuzma</div>
+            <div class="player-row__years">2017 · All-SL 1st</div>
+          </div>
+          <span class="player-row__tag player-row__tag--star">★ NBA star</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Austin Reaves</div>
+            <div class="player-row__years">2021</div>
+          </div>
+          <span class="player-row__tag player-row__tag--starter">NBA starter</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">D'Angelo Russell</div>
+            <div class="player-row__years">2015, '16</div>
+          </div>
+          <span class="player-row__tag player-row__tag--starter">NBA starter</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Brandon Ingram</div>
+            <div class="player-row__years">2016</div>
+          </div>
+          <span class="player-row__tag player-row__tag--star">★ NBA star</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Julius Randle</div>
+            <div class="player-row__years">2014, '15</div>
+          </div>
+          <span class="player-row__tag player-row__tag--star">★ NBA star</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Talen Horton-Tucker</div>
+            <div class="player-row__years">2019, '21</div>
+          </div>
+          <span class="player-row__tag player-row__tag--rotation">NBA rotation</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Max Christie</div>
+            <div class="player-row__years">2022, '23, '24</div>
+          </div>
+          <span class="player-row__tag player-row__tag--rotation">NBA rotation</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Dalton Knecht</div>
+            <div class="player-row__years">2025, '26 · All-SL 1st '25</div>
+          </div>
+          <span class="player-row__tag player-row__tag--starter">NBA starter</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Larry Nance Jr.</div>
+            <div class="player-row__years">2015</div>
+          </div>
+          <span class="player-row__tag player-row__tag--rotation">NBA rotation</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Scotty Pippen Jr.</div>
+            <div class="player-row__years">2022, '23</div>
+          </div>
+          <span class="player-row__tag player-row__tag--rotation">NBA rotation</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Maxwell Lewis</div>
+            <div class="player-row__years">2023, '24</div>
+          </div>
+          <span class="player-row__tag player-row__tag--played">Played NBA</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Cole Swider</div>
+            <div class="player-row__years">2022, '23</div>
+          </div>
+          <span class="player-row__tag player-row__tag--played">Played NBA</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Mason Jones</div>
+            <div class="player-row__years">2021</div>
+          </div>
+          <span class="player-row__tag player-row__tag--played">Played NBA</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Devontae Cacok</div>
+            <div class="player-row__years">2019, '21</div>
+          </div>
+          <span class="player-row__tag player-row__tag--rotation">NBA rotation</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Joel Berry II</div>
+            <div class="player-row__years">2018</div>
+          </div>
+          <span class="player-row__tag player-row__tag--unsigned">Never signed</span>
+        </a>
+        <a class="player-row" href="#">
+          <div>
+            <div class="player-row__name">Vander Blue</div>
+            <div class="player-row__years">2017, '18</div>
+          </div>
+          <span class="player-row__tag player-row__tag--unsigned">Never signed</span>
+        </a>
+      </div>
+
+      <div style="margin-top: 0.875rem; padding: 0.5rem 0.875rem; font-family: var(--font-mono); font-size: 0.625rem; color: var(--color-slate-500); text-transform: uppercase; letter-spacing: 0.06em; text-align: center;">
+        Showing 18 of 218 · <a href="#" style="color: var(--team); border-bottom: 1px dotted rgba(85, 37, 131, 0.4); padding-bottom: 1px;">Load all alumni →</a>
+      </div>
+    </section>
+
+    <div class="updated-strip">
+      <span class="updated-strip__dot" aria-hidden="true"></span>
+      Daily refresh during SL · Last update: Jul 12, 2026 · 10:14 PT
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Landing</a></li>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">Explorer</a></li>
+            <li><a href="#">Model Validation</a></li>
+            <li><a href="#">All-Summer-League</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

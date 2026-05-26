@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SL Resolution Queue · DraftGuru Admin</title>
+  <meta name="description" content="Internal triage for ambiguous Summer League roster matches.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      /* Admin accent — distinct from public-page amber */
+      --admin: #4338ca;
+      --admin-fill: #eef2ff;
+      --admin-dark: #312e81;
+
+      --max-width: 1320px;
+      --content-width: 88%;
+      --border-radius: 0.625rem;
+      --transition-speed: 0.15s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: var(--color-slate-50);
+      min-height: 100vh;
+      line-height: 1.55;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1280px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    /* ============================================================================
+       ADMIN NAVBAR (slate, not blue — visually distinct from public nav)
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-slate-900);
+      border-bottom: 1px solid var(--color-slate-700);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.18);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 0.75rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand {
+      display: flex; align-items: center; gap: 0.625rem;
+    }
+    .navbar-brand h1 {
+      font-size: 1.375rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-brand__admin-tag {
+      font-family: var(--font-mono); font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      padding: 0.25rem 0.4375rem;
+      background: var(--admin);
+      color: var(--color-white);
+      border-radius: 0.1875rem;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.25rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.7);
+      font-family: var(--font-mono); font-size: 0.75rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+      transition: all var(--transition-speed);
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--admin);
+    }
+    .navbar-user {
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      color: rgba(255,255,255,0.6);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .navbar-user__avatar {
+      width: 1.625rem; height: 1.625rem;
+      background: var(--admin);
+      color: var(--color-white);
+      border-radius: 9999px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.5625rem; font-weight: 700;
+    }
+
+    /* ============================================================================
+       ADMIN SUB-NAV (sticky, under main navbar)
+       ========================================================================= */
+    .admin-subnav {
+      position: sticky; top: 53px; z-index: 900;
+      background: var(--color-white);
+      border-bottom: 1px solid var(--color-slate-200);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    }
+
+    .admin-subnav__content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 0 1.5rem;
+      display: flex; align-items: center; gap: 0;
+      overflow-x: auto;
+    }
+
+    .admin-subnav__tab {
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.75rem 0.875rem;
+      color: var(--color-slate-500);
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: all var(--transition-speed);
+      display: inline-flex; align-items: center; gap: 0.4rem;
+    }
+
+    .admin-subnav__tab:hover {
+      color: var(--color-slate-800);
+      background: var(--color-slate-50);
+    }
+
+    .admin-subnav__tab--active {
+      color: var(--admin-dark);
+      border-bottom-color: var(--admin);
+    }
+
+    .admin-subnav__tab-count {
+      font-size: 0.5625rem;
+      background: var(--color-slate-200);
+      color: var(--color-slate-700);
+      padding: 0.0625rem 0.4rem;
+      border-radius: 9999px;
+      font-weight: 700;
+    }
+
+    .admin-subnav__tab--active .admin-subnav__tab-count {
+      background: var(--admin);
+      color: var(--color-white);
+    }
+
+    .admin-subnav__tab--warn .admin-subnav__tab-count {
+      background: var(--color-accent-rose);
+      color: var(--color-white);
+    }
+
+    /* ============================================================================
+       MAIN
+       ========================================================================= */
+    main { padding-top: 4.5rem; padding-bottom: 4rem; }
+
+    /* Breadcrumbs */
+    .breadcrumbs {
+      padding: 0.75rem 0 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex; gap: 0.5rem; align-items: center;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    /* ============================================================================
+       PAGE HEADER
+       ========================================================================= */
+    .page-head {
+      padding: 0.5rem 0 1rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1.5rem;
+      align-items: end;
+    }
+
+    .page-head h2 {
+      font-family: var(--font-heading);
+      font-size: 1.75rem;
+      letter-spacing: 0.02em;
+      line-height: 1.1;
+      color: var(--color-slate-900);
+    }
+
+    .page-head__sub {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-600);
+      margin-top: 0.375rem;
+      max-width: 48rem;
+    }
+
+    .page-head__sub strong { color: var(--color-slate-900); }
+
+    .page-head__shortcuts {
+      display: flex; gap: 0.4rem; flex-wrap: wrap;
+      font-family: var(--font-mono); font-size: 0.625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+
+    .kbd {
+      display: inline-block;
+      padding: 0.125rem 0.375rem;
+      background: var(--color-slate-100);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.1875rem;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-700);
+      font-weight: 700;
+    }
+
+    /* ============================================================================
+       COUNTS STRIP
+       ========================================================================= */
+    .counts-strip {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .count-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 0.75rem 0.875rem;
+      display: flex; flex-direction: column; gap: 0.125rem;
+    }
+
+    .count-card--pending { border-top: 3px solid var(--color-accent-amber); }
+    .count-card--auto { border-top: 3px solid var(--color-accent-emerald); }
+    .count-card--stubs { border-top: 3px solid var(--admin); }
+    .count-card--unresolved { border-top: 3px solid var(--color-accent-rose); }
+    .count-card--throughput { border-top: 3px solid var(--color-slate-400); }
+
+    .count-card__label {
+      font-family: var(--font-mono); font-size: 0.5625rem;
+      font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--color-slate-500);
+    }
+
+    .count-card__value {
+      font-family: var(--font-heading);
+      font-size: 1.5rem; color: var(--color-slate-900);
+      line-height: 1.1; margin-top: 0.125rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .count-card__delta {
+      font-family: var(--font-mono); font-size: 0.5625rem;
+      color: var(--color-slate-500);
+    }
+
+    .count-card__delta--up { color: #047857; }
+    .count-card__delta--down { color: #be123c; }
+
+    /* ============================================================================
+       FILTER BAR
+       ========================================================================= */
+    .filter-bar {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 0.625rem 0.875rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .filter-label {
+      font-family: var(--font-mono); font-size: 0.5625rem;
+      font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--color-slate-500);
+      padding-right: 0.5rem;
+      border-right: 1px solid var(--color-slate-200);
+      margin-right: 0.25rem;
+    }
+
+    .filter-chip {
+      font-family: var(--font-mono); font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.3rem 0.5rem;
+      border-radius: 0.3125rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+      cursor: pointer;
+    }
+    .filter-chip:hover { border-color: var(--color-slate-400); }
+    .filter-chip--active {
+      background: var(--admin-fill);
+      border-color: rgba(67, 56, 202, 0.3);
+      color: var(--admin-dark);
+    }
+
+    .filter-bar__sep {
+      width: 1px;
+      height: 1.25rem;
+      background: var(--color-slate-200);
+    }
+
+    .filter-bar__search {
+      padding: 0.3rem 0.5rem;
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.3125rem;
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      color: var(--color-slate-700);
+      background: var(--color-white);
+      width: 200px;
+    }
+
+    .filter-bar__spacer { flex: 1; }
+
+    .filter-bar__bulk {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      font-family: var(--font-mono); font-size: 0.625rem;
+      color: var(--color-slate-600);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+
+    .filter-bar__bulk-btn {
+      font-family: var(--font-mono); font-size: 0.625rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.35rem 0.625rem;
+      border-radius: 0.3125rem;
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-white);
+      color: var(--color-slate-700);
+      cursor: pointer;
+    }
+    .filter-bar__bulk-btn:hover { border-color: var(--color-slate-400); }
+    .filter-bar__bulk-btn--primary {
+      background: var(--admin);
+      border-color: var(--admin);
+      color: var(--color-white);
+    }
+
+    /* ============================================================================
+       QUEUE LIST
+       ========================================================================= */
+    .queue {
+      display: flex; flex-direction: column; gap: 0.75rem;
+    }
+
+    .queue-row {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 0.875rem 1rem;
+      display: grid;
+      grid-template-columns: 24px 220px 1fr 240px;
+      gap: 1rem;
+      align-items: start;
+      transition: all var(--transition-speed);
+    }
+
+    .queue-row:hover { border-color: var(--color-slate-400); }
+
+    .queue-row--priority { border-left: 3px solid var(--color-accent-rose); }
+    .queue-row--ambiguous { border-left: 3px solid var(--color-accent-amber); }
+    .queue-row--likely { border-left: 3px solid var(--color-accent-emerald); }
+    .queue-row--likely-stub { border-left: 3px solid var(--admin); }
+
+    /* Checkbox column */
+    .queue-row__check {
+      width: 16px; height: 16px;
+      border: 1.5px solid var(--color-slate-300);
+      border-radius: 0.1875rem;
+      cursor: pointer;
+      margin-top: 0.125rem;
+    }
+
+    /* Source column */
+    .queue-row__source {
+      display: flex; flex-direction: column; gap: 0.25rem;
+    }
+
+    .queue-row__source-name {
+      font-family: var(--font-heading);
+      font-size: 1rem;
+      letter-spacing: 0.01em;
+      color: var(--color-slate-900);
+      line-height: 1.15;
+    }
+
+    .queue-row__source-aka {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+    }
+    .queue-row__source-aka span { color: var(--color-slate-700); }
+
+    .queue-row__source-ctx {
+      display: flex; gap: 0.3125rem; flex-wrap: wrap; margin-top: 0.25rem;
+    }
+
+    .ctx-chip {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.125rem;
+      background: var(--color-slate-100);
+      color: var(--color-slate-600);
+    }
+    .ctx-chip--vegas { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+    .ctx-chip--cal { background: rgba(217, 70, 239, 0.1); color: #a21caf; }
+    .ctx-chip--slc { background: rgba(6, 182, 212, 0.12); color: #0e7490; }
+    .ctx-chip--orl { background: rgba(99, 102, 241, 0.1); color: #4338ca; }
+
+    .queue-row__source-meta {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-400);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      margin-top: 0.4rem;
+    }
+
+    .queue-row__source-meta strong { color: var(--color-slate-700); }
+
+    /* Candidate column */
+    .queue-row__candidates {
+      display: flex; flex-direction: column; gap: 0.4rem;
+    }
+
+    .queue-row__candidates-head {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.125rem;
+    }
+
+    .candidate {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 0.5rem;
+      padding: 0.4rem 0.5rem;
+      background: var(--color-slate-50);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.3125rem;
+      align-items: center;
+    }
+
+    .candidate__radio {
+      width: 12px; height: 12px;
+      border: 1.5px solid var(--color-slate-400);
+      border-radius: 9999px;
+    }
+
+    .candidate--top .candidate__radio {
+      border-color: var(--admin);
+      background: radial-gradient(circle, var(--admin) 35%, transparent 36%);
+    }
+
+    .candidate__photo {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+      border-radius: 0.25rem;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-heading);
+      font-size: 0.5rem;
+      color: var(--color-white);
+      flex-shrink: 0;
+    }
+
+    .candidate__body {
+      display: flex; flex-direction: column; gap: 0.0625rem;
+      min-width: 0;
+    }
+
+    .candidate__name {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      line-height: 1.1;
+      display: flex; align-items: baseline; gap: 0.375rem;
+      flex-wrap: wrap;
+    }
+
+    .candidate__id-pill {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.125rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-500);
+    }
+
+    .candidate__id-pill--nba   { background: rgba(16, 185, 129, 0.1); color: #047857; border-color: rgba(16, 185, 129, 0.3); }
+    .candidate__id-pill--prospect { background: rgba(99, 102, 241, 0.1); color: #4338ca; border-color: rgba(99, 102, 241, 0.3); }
+    .candidate__id-pill--stub  { background: rgba(244, 63, 94, 0.08); color: #be123c; border-color: rgba(244, 63, 94, 0.25); }
+
+    .candidate__meta {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase; letter-spacing: 0.04em;
+      line-height: 1.3;
+    }
+
+    .candidate__reasons {
+      display: flex; gap: 0.25rem; flex-wrap: wrap;
+      margin-top: 0.125rem;
+    }
+
+    .reason-tag {
+      font-family: var(--font-mono);
+      font-size: 0.4375rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.0625rem 0.25rem;
+      border-radius: 0.125rem;
+    }
+
+    .reason-tag--match  { background: rgba(16, 185, 129, 0.1); color: #047857; }
+    .reason-tag--soft  { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+    .reason-tag--miss  { background: rgba(244, 63, 94, 0.08); color: #be123c; }
+    .reason-tag--neutral { background: var(--color-slate-100); color: var(--color-slate-600); }
+
+    .candidate__score {
+      font-family: var(--font-heading);
+      font-size: 0.9375rem;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.01em;
+    }
+
+    .candidate__score-label {
+      font-family: var(--font-mono);
+      font-size: 0.4375rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.0625rem;
+      text-align: right;
+    }
+
+    .candidate__action {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.3rem 0.5rem;
+      border-radius: 0.25rem;
+      border: 1px solid var(--admin);
+      background: var(--admin-fill);
+      color: var(--admin-dark);
+      cursor: pointer;
+    }
+    .candidate__action:hover {
+      background: var(--admin);
+      color: var(--color-white);
+    }
+
+    /* Actions column */
+    .queue-row__actions {
+      display: flex; flex-direction: column; gap: 0.375rem;
+    }
+
+    .qa-btn {
+      font-family: var(--font-mono); font-size: 0.6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.5rem 0.625rem;
+      border-radius: 0.3125rem;
+      border: 1px solid;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+      transition: all var(--transition-speed);
+    }
+
+    .qa-btn:hover { transform: translateY(-1px); }
+
+    .qa-btn--primary {
+      background: var(--admin);
+      border-color: var(--admin);
+      color: var(--color-white);
+    }
+    .qa-btn--primary:hover { background: var(--admin-dark); }
+
+    .qa-btn--secondary {
+      background: var(--color-white);
+      border-color: var(--color-slate-300);
+      color: var(--color-slate-700);
+    }
+    .qa-btn--secondary:hover { border-color: var(--color-slate-500); color: var(--color-slate-900); }
+
+    .qa-btn--skip {
+      background: var(--color-white);
+      border-color: var(--color-slate-200);
+      color: var(--color-slate-500);
+    }
+    .qa-btn--skip:hover { color: var(--color-slate-800); border-color: var(--color-slate-400); }
+
+    .qa-btn__hint {
+      font-size: 0.5rem;
+      letter-spacing: 0.08em;
+      opacity: 0.7;
+    }
+
+    .queue-row__why {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+      margin-top: 0.25rem;
+      padding: 0.4rem 0.5rem;
+      background: var(--color-slate-50);
+      border-left: 2px solid var(--color-accent-amber);
+      border-radius: 0.1875rem;
+      line-height: 1.4;
+    }
+
+    .queue-row__why--likely { border-left-color: var(--color-accent-emerald); }
+    .queue-row__why--priority { border-left-color: var(--color-accent-rose); }
+    .queue-row__why--stub { border-left-color: var(--admin); }
+
+    .queue-row__why strong { color: var(--color-slate-800); }
+
+    /* ============================================================================
+       RECENTLY RESOLVED
+       ========================================================================= */
+    .resolved-section { margin-top: 2.5rem; }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--color-slate-200);
+      margin-bottom: 0.875rem;
+    }
+
+    .section-head__title {
+      font-family: var(--font-heading);
+      font-size: 1rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+    }
+
+    .section-head__meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+    }
+
+    .resolved-list {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    .resolved-row {
+      display: grid;
+      grid-template-columns: 90px 1fr auto 90px;
+      gap: 1rem;
+      padding: 0.5rem 0.875rem;
+      border-bottom: 1px solid var(--color-slate-100);
+      align-items: center;
+    }
+    .resolved-row:last-child { border-bottom: none; }
+    .resolved-row:hover { background: var(--color-slate-50); }
+
+    .resolved-row__action {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.1875rem 0.4375rem;
+      border-radius: 0.1875rem;
+      text-align: center;
+    }
+    .resolved-row__action--link   { background: rgba(16, 185, 129, 0.12); color: #047857; }
+    .resolved-row__action--stub   { background: rgba(67, 56, 202, 0.1); color: #4338ca; }
+    .resolved-row__action--skip   { background: var(--color-slate-100); color: var(--color-slate-500); }
+
+    .resolved-row__detail {
+      font-family: var(--font-body);
+      font-size: 0.8125rem;
+      color: var(--color-slate-700);
+      line-height: 1.4;
+    }
+    .resolved-row__detail strong { color: var(--color-slate-900); }
+    .resolved-row__detail .arrow {
+      color: var(--color-slate-400);
+      margin: 0 0.4rem;
+    }
+
+    .resolved-row__by {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      text-align: right;
+    }
+    .resolved-row__by strong { color: var(--color-slate-700); }
+
+    .resolved-row__undo {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.3125rem 0.5rem;
+      border-radius: 0.25rem;
+      border: 1px solid var(--color-slate-200);
+      background: var(--color-white);
+      color: var(--color-slate-600);
+      cursor: pointer;
+    }
+    .resolved-row__undo:hover {
+      border-color: var(--color-accent-rose);
+      color: var(--color-accent-rose);
+    }
+
+    /* ============================================================================
+       SIDEBAR HELP CALLOUT
+       ========================================================================= */
+    .helper-callout {
+      margin-top: 2rem;
+      padding: 0.875rem 1rem;
+      background: var(--admin-fill);
+      border: 1px solid rgba(67, 56, 202, 0.2);
+      border-radius: var(--border-radius);
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-700);
+      line-height: 1.5;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.875rem;
+      align-items: start;
+    }
+
+    .helper-callout__chip {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      background: var(--admin);
+      color: var(--color-white);
+      padding: 0.25rem 0.4375rem;
+      border-radius: 0.1875rem;
+      white-space: nowrap;
+      margin-top: 0.0625rem;
+    }
+
+    .helper-callout__body strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       UPDATED + FOOTER
+       ========================================================================= */
+    .footer {
+      margin-top: 3rem;
+      padding: 1rem 1.5rem;
+      background: var(--color-white);
+      border-top: 1px solid var(--color-slate-200);
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .footer__env {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+    }
+
+    .footer__env::before {
+      content: '';
+      width: 0.5rem; height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 1100px) {
+      .queue-row { grid-template-columns: 24px 1fr 200px; }
+      .queue-row__source { grid-column: 2; }
+      .queue-row__candidates { grid-column: 2; }
+      .queue-row__actions { grid-column: 3; grid-row: 1 / span 2; }
+    }
+    @media (max-width: 768px) {
+      .counts-strip { grid-template-columns: repeat(2, 1fr); }
+      .queue-row {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+      }
+      .queue-row__check, .queue-row__source, .queue-row__candidates, .queue-row__actions {
+        grid-column: 1;
+      }
+      .navbar-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ADMIN NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand">
+        <h1>DraftGuru</h1>
+        <span class="navbar-brand__admin-tag">Admin</span>
+      </div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Ingestion</a>
+        <a class="navbar-link active" href="#">SL Queue</a>
+        <a class="navbar-link" href="#">Sources</a>
+        <a class="navbar-link" href="#">Audit log</a>
+      </div>
+      <div class="navbar-user">
+        admin@draftguru
+        <span class="navbar-user__avatar">JB</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ADMIN SUB-NAV -->
+  <div class="admin-subnav">
+    <div class="admin-subnav__content">
+      <a class="admin-subnav__tab admin-subnav__tab--active" href="#">
+        Pending
+        <span class="admin-subnav__tab-count">38</span>
+      </a>
+      <a class="admin-subnav__tab admin-subnav__tab--warn" href="#">
+        Priority
+        <span class="admin-subnav__tab-count">6</span>
+      </a>
+      <a class="admin-subnav__tab" href="#">
+        Auto-matched
+        <span class="admin-subnav__tab-count">412</span>
+      </a>
+      <a class="admin-subnav__tab" href="#">
+        Stubs created
+        <span class="admin-subnav__tab-count">94</span>
+      </a>
+      <a class="admin-subnav__tab" href="#">
+        Unresolved
+        <span class="admin-subnav__tab-count">22</span>
+      </a>
+      <a class="admin-subnav__tab" href="#">
+        Audit log
+      </a>
+      <a class="admin-subnav__tab" href="#">
+        Threshold tuning
+      </a>
+    </div>
+  </div>
+
+  <main>
+    <div class="container">
+
+      <!-- Breadcrumbs -->
+      <div class="breadcrumbs">
+        <a href="#">Admin</a>
+        <span class="breadcrumbs__sep">/</span>
+        <a href="#">SL Ingestion</a>
+        <span class="breadcrumbs__sep">/</span>
+        <span class="breadcrumbs__current">Resolution Queue</span>
+      </div>
+
+      <!-- Page head -->
+      <header class="page-head">
+        <div>
+          <h2>Roster Resolution Queue</h2>
+          <p class="page-head__sub">
+            Triage SL roster names that fuzzy-matched <strong>two or more</strong> candidates in <code>PlayerMaster</code>, or matched none above the <code>token_sort_ratio = 92</code> threshold. Never guess — ambiguous matches stay unresolved until reviewed.
+          </p>
+        </div>
+        <div class="page-head__shortcuts">
+          <span class="kbd">J</span> next ·
+          <span class="kbd">K</span> prev ·
+          <span class="kbd">1</span>–<span class="kbd">3</span> pick candidate ·
+          <span class="kbd">S</span> stub ·
+          <span class="kbd">X</span> skip ·
+          <span class="kbd">⌘</span><span class="kbd">Z</span> undo
+        </div>
+      </header>
+
+      <!-- Counts strip -->
+      <div class="counts-strip">
+        <div class="count-card count-card--pending">
+          <div class="count-card__label">Pending</div>
+          <div class="count-card__value">38</div>
+          <div class="count-card__delta">across 3 venues · 2026 SL</div>
+        </div>
+        <div class="count-card count-card--auto">
+          <div class="count-card__label">Auto-matched today</div>
+          <div class="count-card__value">142</div>
+          <div class="count-card__delta count-card__delta--up">↑ 18 vs. yesterday</div>
+        </div>
+        <div class="count-card count-card--stubs">
+          <div class="count-card__label">Stubs created today</div>
+          <div class="count-card__value">12</div>
+          <div class="count-card__delta">all flagged for Gemini skip</div>
+        </div>
+        <div class="count-card count-card--unresolved">
+          <div class="count-card__label">Marked unresolved</div>
+          <div class="count-card__value">6</div>
+          <div class="count-card__delta">re-review in 7 days</div>
+        </div>
+        <div class="count-card count-card--throughput">
+          <div class="count-card__label">Manual throughput · 7d</div>
+          <div class="count-card__value">58 / day</div>
+          <div class="count-card__delta">avg ~24s per decision</div>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="filter-bar">
+        <span class="filter-label">Filter</span>
+        <span class="filter-chip filter-chip--active">All (38)</span>
+        <span class="filter-chip">Priority (6)</span>
+        <span class="filter-chip">Ambiguous (24)</span>
+        <span class="filter-chip">Likely stub (8)</span>
+
+        <span class="filter-bar__sep"></span>
+
+        <span class="filter-chip">2026 (38)</span>
+        <span class="filter-chip">Vegas (28)</span>
+        <span class="filter-chip">Salt Lake (4)</span>
+        <span class="filter-chip">Cal Classic (6)</span>
+
+        <span class="filter-bar__sep"></span>
+
+        <input class="filter-bar__search" type="search" placeholder="Search roster name…">
+
+        <span class="filter-bar__spacer"></span>
+
+        <span class="filter-bar__bulk">
+          <span class="queue-row__check" style="margin-top: 0;"></span>
+          0 selected
+        </span>
+        <button class="filter-bar__bulk-btn" disabled>Stub selected</button>
+        <button class="filter-bar__bulk-btn filter-bar__bulk-btn--primary" disabled>Apply top match</button>
+      </div>
+
+      <!-- ============================================================================
+           QUEUE
+           ========================================================================= -->
+      <div class="queue">
+
+        <!-- ROW 1: priority (cross-source ambiguity) -->
+        <article class="queue-row queue-row--priority">
+          <span class="queue-row__check"></span>
+
+          <div class="queue-row__source">
+            <div class="queue-row__source-name">RJ Hampton</div>
+            <div class="queue-row__source-aka">
+              Source string: <span>"R.J. Hampton"</span>
+            </div>
+            <div class="queue-row__source-ctx">
+              <span class="ctx-chip ctx-chip--vegas">Vegas</span>
+              <span class="ctx-chip">2026</span>
+              <span class="ctx-chip">Pistons</span>
+            </div>
+            <div class="queue-row__source-meta">
+              NBA.com PERSON_ID: <strong>1629689</strong> · seen in 3 box scores
+            </div>
+            <div class="queue-row__why queue-row__why--priority">
+              <strong>Priority flag:</strong> existing <code>player_external_ids</code> row for this PERSON_ID points to a different <code>PlayerMaster</code> than the fuzzy match. Possible duplicate-master issue — needs review before linking.
+            </div>
+          </div>
+
+          <div class="queue-row__candidates">
+            <div class="queue-row__candidates-head">Top candidates · fuzzy + external_id</div>
+
+            <div class="candidate candidate--top">
+              <span class="candidate__radio"></span>
+              <div class="candidate__photo">RH</div>
+              <div class="candidate__body">
+                <div class="candidate__name">
+                  R.J. Hampton
+                  <span class="candidate__id-pill candidate__id-pill--nba">NBA · prior rotation</span>
+                </div>
+                <div class="candidate__meta">2020 #24 · Detroit Pistons · slug: <code>rj-hampton</code></div>
+                <div class="candidate__reasons">
+                  <span class="reason-tag reason-tag--match">PERSON_ID match</span>
+                  <span class="reason-tag reason-tag--match">name 100</span>
+                  <span class="reason-tag reason-tag--match">team match</span>
+                </div>
+              </div>
+              <div>
+                <div class="candidate__score-label">fuzzy</div>
+                <div class="candidate__score">100</div>
+              </div>
+              <button class="candidate__action">Link</button>
+            </div>
+
+            <div class="candidate">
+              <span class="candidate__radio"></span>
+              <div class="candidate__photo">RH</div>
+              <div class="candidate__body">
+                <div class="candidate__name">
+                  Ronald Hampton
+                  <span class="candidate__id-pill candidate__id-pill--stub">Stub · 2018</span>
+                </div>
+                <div class="candidate__meta">2018 G-League · slug: <code>ronald-hampton</code></div>
+                <div class="candidate__reasons">
+                  <span class="reason-tag reason-tag--soft">name 88</span>
+                  <span class="reason-tag reason-tag--miss">no PERSON_ID</span>
+                  <span class="reason-tag reason-tag--miss">team mismatch</span>
+                </div>
+              </div>
+              <div>
+                <div class="candidate__score-label">fuzzy</div>
+                <div class="candidate__score">88</div>
+              </div>
+              <button class="candidate__action">Link</button>
+            </div>
+          </div>
+
+          <div class="queue-row__actions">
+            <button class="qa-btn qa-btn--primary">
+              Link top match
+              <span class="qa-btn__hint">⏎</span>
+            </button>
+            <button class="qa-btn qa-btn--secondary">
+              Open in Player admin
+              <span class="qa-btn__hint">O</span>
+            </button>
+            <button class="qa-btn qa-btn--skip">
+              Mark unresolved
+              <span class="qa-btn__hint">X</span>
+            </button>
+          </div>
+        </article>
+
+        <!-- ROW 2: ambiguous fuzzy match (two strong candidates) -->
+        <article class="queue-row queue-row--ambiguous">
+          <span class="queue-row__check"></span>
+
+          <div class="queue-row__source">
+            <div class="queue-row__source-name">A. Davis</div>
+            <div class="queue-row__source-aka">
+              Source string: <span>"A. Davis"</span>
+            </div>
+            <div class="queue-row__source-ctx">
+              <span class="ctx-chip ctx-chip--vegas">Vegas</span>
+              <span class="ctx-chip">2026</span>
+              <span class="ctx-chip">Lakers</span>
+            </div>
+            <div class="queue-row__source-meta">
+              NBA.com PERSON_ID: <strong>—</strong> · seen in 1 box score · jersey #14
+            </div>
+            <div class="queue-row__why">
+              <strong>Why this is ambiguous:</strong> single-letter first name explodes the candidate pool. Three players match the team context. <em>Never auto-resolve initials — always queue.</em>
+            </div>
+          </div>
+
+          <div class="queue-row__candidates">
+            <div class="queue-row__candidates-head">Top candidates · 3 of 7</div>
+
+            <div class="candidate candidate--top">
+              <span class="candidate__radio"></span>
+              <div class="candidate__photo">AD</div>
+              <div class="candidate__body">
+                <div class="candidate__name">
+                  Antonio Davis
+                  <span class="candidate__id-pill candidate__id-pill--prospect">Prospect</span>
+                </div>
+                <div class="candidate__meta">2026 UDFA · Stanford · slug: <code>antonio-davis-2026</code></div>
+                <div class="candidate__reasons">
+                  <span class="reason-tag reason-tag--match">team match</span>
+                  <span class="reason-tag reason-tag--soft">init 100</span>
+                  <span class="reason-tag reason-tag--neutral">jersey unknown</span>
+                </div>
+              </div>
+              <div>
+                <div class="candidate__score-label">fuzzy</div>
+                <div class="candidate__score">94</div>
+              </div>
+              <button class="candidate__action">Link</button>
+            </div>
+
+            <div class="candidate">
+              <span class="candidate__radio"></span>
+              <div class="candidate__photo">AD</div>
+              <div class="candidate__body">
+                <div class="candidate__name">
+                  Aaron Davis
+                  <span class="candidate__id-pill candidate__id-pill--stub">Stub · 2023</span>
+                </div>
+                <div class="candidate__meta">2023 G-League · slug: <code>aaron-davis-2023</code></div>
+                <div class="candidate__reasons">
+                  <span class="reason-tag reason-tag--miss">team mismatch</span>
+                  <span class="reason-tag reason-tag--soft">init 100</span>
+                </div>
+              </div>
+              <div>
+                <div class="candidate__score-label">fuzzy</div>
+                <div class="candidate__score">88</div>
+              </div>
+              <button class="candidate__action">Link</button>
+            </div>
+
+            <div class="candidate">
+              <span class="candidate__radio"></span>
+              <div class="candidate__photo">AD</div>
+              <div class="candidate__body">
+                <div class="candidate__name">
+                  Anthony Davis
+                  <span class="candidate__id-pill candidate__id-pill--nba">NBA · veteran</span>
+                </div>
+                <div class="candidate__meta">2012 #1 · slug: <code>anthony-davis</code></div>
+                <div class="candidate__reasons">
+                  <span class="reason-tag reason-tag--miss">vet (won't be in SL)</span>
+                  <span class="reason-tag reason-tag--miss">age 33</span>
+                </div>
+              </div>
+              <div>
+                <div class="candidate__score-label">fuzzy</div>
+                <div class="candidate__score">82</div>
+              </div>
+              <button class="candidate__action">Link</button>
+            </div>
+          </div>
+
+          <div class="queue-row__actions">
+            <button class="qa-btn qa-btn--primary">
+              Link top match
+              <span class="qa-btn__hint">⏎</span>
+            </button>
+            <button class="qa-btn qa-btn--secondary">
+              Create new stub
+              <span class="qa-btn__hint">S</span>
+            </button>
+            <button class="qa-btn qa-btn--skip">
+              Mark unresolved
+              <span class="qa-btn__hint">X</span>
+            </button>
+          </div>
+        </article>
+
+        <!-- ROW 3: likely-stub (no candidate above threshold) -->
+        <article class="queue-row queue-row--likely-stub">
+          <span class="queue-row__check"></span>
+
+          <div class="queue-row__source">
+            <div class="queue-row__source-name">Yongxi Cui</div>
+            <div class="queue-row__source-aka">
+              Source string: <span>"Yongxi Cui"</span>
+            </div>
+            <div class="queue-row__source-ctx">
+              <span class="ctx-chip ctx-chip--vegas">Vegas</span>
+              <span class="ctx-chip">2026</span>
+              <span class="ctx-chip">Mavericks</span>
+            </div>
+            <div class="queue-row__source-meta">
+              NBA.com PERSON_ID: <strong>1631522</strong> · returning SL player · 3rd Vegas
+            </div>
+            <div class="queue-row__why queue-row__why--stub">
+              <strong>Likely needs a stub.</strong> No fuzzy match above 92 — but PERSON_ID was assigned in 2023 SL ingestion. Resolution: link to that existing stub. <em>Gemini enrichment skipped per stub policy.</em>
+            </div>
+          </div>
+
+          <div class="queue-row__candidates">
+            <div class="queue-row__candidates-head">Top candidate · 1 match</div>
+
+            <div class="candidate candidate--top">
+              <span class="candidate__radio"></span>
+              <div class="candidate__photo">YC</div>
+              <div class="candidate__body">
+                <div class="candidate__name">
+                  Yongxi Cui
+                  <span class="candidate__id-pill candidate__id-pill--stub">Stub · 2023</span>
+                </div>
+                <div class="candidate__meta">Created 2023-07-12 · China · slug: <code>yongxi-cui</code></div>
+                <div class="candidate__reasons">
+                  <span class="reason-tag reason-tag--match">PERSON_ID match</span>
+                  <span class="reason-tag reason-tag--match">name 100</span>
+                  <span class="reason-tag reason-tag--neutral">returning SL</span>
+                </div>
+              </div>
+              <div>
+                <div class="candidate__score-label">fuzzy</div>
+                <div class="candidate__score">100</div>
+              </div>
+              <button class="candidate__action">Link</button>
+            </div>
+          </div>
+
+          <div class="queue-row__actions">
+            <button class="qa-btn qa-btn--primary">
+              Link to existing stub
+              <span class="qa-btn__hint">⏎</span>
+            </button>
+            <button class="qa-btn qa-btn--secondary">
+              Promote stub to player
+              <span class="qa-btn__hint">P</span>
+            </button>
+            <button class="qa-btn qa-btn--skip">
+              Mark unresolved
+              <span class="qa-btn__hint">X</span>
+            </button>
+          </div>
+        </article>
+
+        <!-- ROW 4: likely (high-confidence cross-source typo) -->
+        <article class="queue-row queue-row--likely">
+          <span class="queue-row__check"></span>
+
+          <div class="queue-row__source">
+            <div class="queue-row__source-name">Cam Reddish</div>
+            <div class="queue-row__source-aka">
+              Source string: <span>"Cameron Reddish"</span>
+            </div>
+            <div class="queue-row__source-ctx">
+              <span class="ctx-chip ctx-chip--cal">Cal Classic</span>
+              <span class="ctx-chip">2026</span>
+              <span class="ctx-chip">Heat</span>
+            </div>
+            <div class="queue-row__source-meta">
+              NBA.com PERSON_ID: <strong>1629631</strong> · seen as both Cam &amp; Cameron historically
+            </div>
+            <div class="queue-row__why queue-row__why--likely">
+              <strong>High-confidence match.</strong> PERSON_ID and team align; only the first-name spelling differs from canonical (Cam → Cameron). Linking creates a <code>PlayerAlias</code> with context <code>summer_league_2026</code>.
+            </div>
+          </div>
+
+          <div class="queue-row__candidates">
+            <div class="queue-row__candidates-head">Top candidate · 1 strong match</div>
+
+            <div class="candidate candidate--top">
+              <span class="candidate__radio"></span>
+              <div class="candidate__photo">CR</div>
+              <div class="candidate__body">
+                <div class="candidate__name">
+                  Cam Reddish
+                  <span class="candidate__id-pill candidate__id-pill--nba">NBA · rotation</span>
+                </div>
+                <div class="candidate__meta">2019 #10 · slug: <code>cam-reddish</code></div>
+                <div class="candidate__reasons">
+                  <span class="reason-tag reason-tag--match">PERSON_ID match</span>
+                  <span class="reason-tag reason-tag--soft">name 96 (alias)</span>
+                  <span class="reason-tag reason-tag--match">team match</span>
+                </div>
+              </div>
+              <div>
+                <div class="candidate__score-label">fuzzy</div>
+                <div class="candidate__score">96</div>
+              </div>
+              <button class="candidate__action">Link + alias</button>
+            </div>
+          </div>
+
+          <div class="queue-row__actions">
+            <button class="qa-btn qa-btn--primary">
+              Link + create alias
+              <span class="qa-btn__hint">⏎</span>
+            </button>
+            <button class="qa-btn qa-btn--secondary">
+              Open in Player admin
+              <span class="qa-btn__hint">O</span>
+            </button>
+            <button class="qa-btn qa-btn--skip">
+              Skip
+              <span class="qa-btn__hint">X</span>
+            </button>
+          </div>
+        </article>
+
+        <!-- ROW 5: ambiguous international (international roster) -->
+        <article class="queue-row queue-row--ambiguous">
+          <span class="queue-row__check"></span>
+
+          <div class="queue-row__source">
+            <div class="queue-row__source-name">Aleksa Dimitrijević</div>
+            <div class="queue-row__source-aka">
+              Source string: <span>"Aleksa Dimitrijevic"</span> (no diacritics)
+            </div>
+            <div class="queue-row__source-ctx">
+              <span class="ctx-chip ctx-chip--vegas">Vegas</span>
+              <span class="ctx-chip">2026</span>
+              <span class="ctx-chip">Magic</span>
+            </div>
+            <div class="queue-row__source-meta">
+              NBA.com PERSON_ID: <strong>—</strong> · no prior SL appearance · Serbia U23
+            </div>
+            <div class="queue-row__why">
+              <strong>No existing record.</strong> No PERSON_ID, no fuzzy match in <code>PlayerMaster</code>. Stub creation is the likely answer; Gemini enrichment will be skipped (per <code>bio_source = summer_league_ingest</code>).
+            </div>
+          </div>
+
+          <div class="queue-row__candidates">
+            <div class="queue-row__candidates-head">No candidates above 92 threshold</div>
+
+            <div class="candidate">
+              <span class="candidate__radio"></span>
+              <div class="candidate__photo">AD</div>
+              <div class="candidate__body">
+                <div class="candidate__name">
+                  Aleksandar Dimitrov
+                  <span class="candidate__id-pill candidate__id-pill--stub">Stub · 2019</span>
+                </div>
+                <div class="candidate__meta">Bulgaria · slug: <code>aleksandar-dimitrov</code></div>
+                <div class="candidate__reasons">
+                  <span class="reason-tag reason-tag--soft">name 78</span>
+                  <span class="reason-tag reason-tag--miss">country mismatch</span>
+                  <span class="reason-tag reason-tag--miss">age mismatch</span>
+                </div>
+              </div>
+              <div>
+                <div class="candidate__score-label">fuzzy</div>
+                <div class="candidate__score">78</div>
+              </div>
+              <button class="candidate__action">Link</button>
+            </div>
+          </div>
+
+          <div class="queue-row__actions">
+            <button class="qa-btn qa-btn--primary">
+              Create new stub
+              <span class="qa-btn__hint">S</span>
+            </button>
+            <button class="qa-btn qa-btn--secondary">
+              Force-link to candidate
+              <span class="qa-btn__hint">F</span>
+            </button>
+            <button class="qa-btn qa-btn--skip">
+              Mark unresolved
+              <span class="qa-btn__hint">X</span>
+            </button>
+          </div>
+        </article>
+
+        <!-- ROW 6: ambiguous (jersey-number disambiguation needed) -->
+        <article class="queue-row queue-row--ambiguous">
+          <span class="queue-row__check"></span>
+
+          <div class="queue-row__source">
+            <div class="queue-row__source-name">Carter Bryant</div>
+            <div class="queue-row__source-aka">
+              Source string: <span>"Carter Bryant"</span>
+            </div>
+            <div class="queue-row__source-ctx">
+              <span class="ctx-chip ctx-chip--vegas">Vegas</span>
+              <span class="ctx-chip">2026</span>
+              <span class="ctx-chip">Spurs</span>
+            </div>
+            <div class="queue-row__source-meta">
+              NBA.com PERSON_ID: <strong>—</strong> · jersey #34 · two known players with this name
+            </div>
+            <div class="queue-row__why">
+              <strong>Two real players named Carter Bryant</strong> with active draft footprints — one in 2025 class (Trail Blazers), one undrafted 2026. Without PERSON_ID, only team context disambiguates. <em>Spurs context → the 2026 UDFA.</em>
+            </div>
+          </div>
+
+          <div class="queue-row__candidates">
+            <div class="queue-row__candidates-head">Top candidates · 2 of 2 with name 100</div>
+
+            <div class="candidate candidate--top">
+              <span class="candidate__radio"></span>
+              <div class="candidate__photo">CB</div>
+              <div class="candidate__body">
+                <div class="candidate__name">
+                  Carter Bryant
+                  <span class="candidate__id-pill candidate__id-pill--prospect">2026 UDFA</span>
+                </div>
+                <div class="candidate__meta">UCLA · slug: <code>carter-bryant-2026</code></div>
+                <div class="candidate__reasons">
+                  <span class="reason-tag reason-tag--match">name 100</span>
+                  <span class="reason-tag reason-tag--match">team SAS confirmed</span>
+                  <span class="reason-tag reason-tag--match">2026 cohort</span>
+                </div>
+              </div>
+              <div>
+                <div class="candidate__score-label">fuzzy</div>
+                <div class="candidate__score">100</div>
+              </div>
+              <button class="candidate__action">Link</button>
+            </div>
+
+            <div class="candidate">
+              <span class="candidate__radio"></span>
+              <div class="candidate__photo">CB</div>
+              <div class="candidate__body">
+                <div class="candidate__name">
+                  Carter Bryant
+                  <span class="candidate__id-pill candidate__id-pill--nba">NBA · 2025 #14</span>
+                </div>
+                <div class="candidate__meta">Trail Blazers · slug: <code>carter-bryant</code></div>
+                <div class="candidate__reasons">
+                  <span class="reason-tag reason-tag--match">name 100</span>
+                  <span class="reason-tag reason-tag--miss">team POR (mismatch)</span>
+                  <span class="reason-tag reason-tag--miss">already in SAS '26 SL? no</span>
+                </div>
+              </div>
+              <div>
+                <div class="candidate__score-label">fuzzy</div>
+                <div class="candidate__score">100</div>
+              </div>
+              <button class="candidate__action">Link</button>
+            </div>
+          </div>
+
+          <div class="queue-row__actions">
+            <button class="qa-btn qa-btn--primary">
+              Link top match
+              <span class="qa-btn__hint">⏎</span>
+            </button>
+            <button class="qa-btn qa-btn--secondary">
+              Create new stub
+              <span class="qa-btn__hint">S</span>
+            </button>
+            <button class="qa-btn qa-btn--skip">
+              Mark unresolved
+              <span class="qa-btn__hint">X</span>
+            </button>
+          </div>
+        </article>
+
+      </div>
+
+      <!-- ============================================================================
+           RECENTLY RESOLVED
+           ========================================================================= -->
+      <section class="resolved-section">
+        <div class="section-head">
+          <div class="section-head__title">Recently Resolved · Today</div>
+          <div class="section-head__meta">158 decisions · undo within 24h</div>
+        </div>
+
+        <div class="resolved-list">
+
+          <div class="resolved-row">
+            <span class="resolved-row__action resolved-row__action--link">Linked</span>
+            <div class="resolved-row__detail">
+              <strong>"Adem Bona"</strong> <span class="arrow">→</span> <strong>Adem Bona</strong> (PHI · 2025 #41) <span class="arrow">·</span> Vegas 2026 <span class="arrow">·</span> fuzzy 100, PERSON_ID match
+            </div>
+            <div class="resolved-row__by">10:14 PT · <strong>JB</strong></div>
+            <button class="resolved-row__undo">Undo</button>
+          </div>
+
+          <div class="resolved-row">
+            <span class="resolved-row__action resolved-row__action--link">Linked</span>
+            <div class="resolved-row__detail">
+              <strong>"Vlad Goldin"</strong> <span class="arrow">→</span> <strong>Vladislav Goldin</strong> (MIA · 2026 UDFA) <span class="arrow">·</span> Vegas 2026 <span class="arrow">·</span> alias created
+            </div>
+            <div class="resolved-row__by">10:12 PT · <strong>JB</strong></div>
+            <button class="resolved-row__undo">Undo</button>
+          </div>
+
+          <div class="resolved-row">
+            <span class="resolved-row__action resolved-row__action--stub">Stub</span>
+            <div class="resolved-row__detail">
+              Created stub <strong>Karim Lopez</strong> <span class="arrow">·</span> Cal Classic 2026 <span class="arrow">·</span> Mexico · no PERSON_ID · <em>Gemini skipped</em>
+            </div>
+            <div class="resolved-row__by">10:08 PT · <strong>JB</strong></div>
+            <button class="resolved-row__undo">Undo</button>
+          </div>
+
+          <div class="resolved-row">
+            <span class="resolved-row__action resolved-row__action--link">Linked</span>
+            <div class="resolved-row__detail">
+              <strong>"Ryan Nembhard"</strong> <span class="arrow">→</span> <strong>Ryan Nembhard</strong> (DAL · 2024 UDFA returning) <span class="arrow">·</span> Vegas 2026 <span class="arrow">·</span> fuzzy 100
+            </div>
+            <div class="resolved-row__by">10:05 PT · <strong>JB</strong></div>
+            <button class="resolved-row__undo">Undo</button>
+          </div>
+
+          <div class="resolved-row">
+            <span class="resolved-row__action resolved-row__action--skip">Unresolved</span>
+            <div class="resolved-row__detail">
+              <strong>"J. Williams"</strong> <span class="arrow">·</span> Vegas 2026 <span class="arrow">·</span> Wizards <span class="arrow">·</span> 4 candidates, no PERSON_ID <span class="arrow">·</span> re-review 2026-06-02
+            </div>
+            <div class="resolved-row__by">10:02 PT · <strong>JB</strong></div>
+            <button class="resolved-row__undo">Undo</button>
+          </div>
+
+          <div class="resolved-row">
+            <span class="resolved-row__action resolved-row__action--stub">Stub</span>
+            <div class="resolved-row__detail">
+              Created stub <strong>Lior Berman</strong> <span class="arrow">·</span> Vegas 2026 <span class="arrow">·</span> Israel · jersey #4 · <em>auto-promoted from threshold pass</em>
+            </div>
+            <div class="resolved-row__by">09:55 PT · <strong>system</strong></div>
+            <button class="resolved-row__undo">Undo</button>
+          </div>
+
+          <div class="resolved-row">
+            <span class="resolved-row__action resolved-row__action--link">Linked</span>
+            <div class="resolved-row__detail">
+              <strong>"Cam Christie"</strong> <span class="arrow">→</span> <strong>Cam Christie</strong> (LAC · 2024 #46) <span class="arrow">·</span> Cal Classic 2026 <span class="arrow">·</span> fuzzy 100, PERSON_ID match
+            </div>
+            <div class="resolved-row__by">09:48 PT · <strong>JB</strong></div>
+            <button class="resolved-row__undo">Undo</button>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Helper callout -->
+      <div class="helper-callout">
+        <span class="helper-callout__chip">Policy</span>
+        <div class="helper-callout__body">
+          <strong>Never auto-resolve ambiguous matches.</strong> If two candidates score within 5 fuzzy points <em>and</em> share the SL team context, the row stays in the queue. The cost of a wrong link is invisible composite pollution; the cost of a missed link is one player's stats not aggregating. The asymmetry favors caution. See <code>docs/plans/summer-league-stats-pages.md</code> → Methodology Placeholders and the entity-resolution philosophy memo.
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    <span>Ingestion run: <strong>2026-07-12 10:14 PT</strong> · 412 rosters processed · 38 queued</span>
+    <span class="footer__env">env: stage · admin queue v2</span>
+  </footer>
+
+</body>
+</html>

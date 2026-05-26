@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Validation — Pre-Draft Consensus vs. Summer League · DraftGuru</title>
+  <meta name="description" content="DraftGuru's retrospective on pre-draft consensus rank vs. NBA Summer League composite performance, by class.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --accent: var(--color-accent-fuchsia);
+      --accent-fill: #fdf2f8;
+      --accent-dark: #a21caf;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    .section-header__title {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+      padding-left: 0.625rem;
+      border-left: 4px solid var(--accent);
+    }
+
+    .section-header__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .section-header__cta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      color: var(--accent-dark);
+      padding-bottom: 1px;
+      border-bottom: 1px dotted rgba(162, 28, 175, 0.4);
+    }
+    .section-header__cta:hover { border-bottom-style: solid; }
+
+    /* ============================================================================
+       NAVBAR
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--color-accent-amber);
+    }
+    .search-input {
+      width: 240px; background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none;
+    }
+
+    /* ============================================================================
+       BREADCRUMBS
+       ========================================================================= */
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    /* ============================================================================
+       PAGE HERO
+       ========================================================================= */
+    .page-hero {
+      padding: 1rem 0 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 2rem;
+      align-items: end;
+    }
+
+    .page-hero__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.5rem;
+    }
+    .page-hero__eyebrow::before {
+      content: ''; width: 12px; height: 2px;
+      background: var(--accent);
+    }
+
+    .page-hero h2 {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+      color: var(--color-slate-900);
+    }
+
+    .page-hero__tagline {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 0.5rem;
+      max-width: 42rem;
+    }
+
+    .page-hero__kpi {
+      display: flex;
+      gap: 1.5rem;
+    }
+    .page-hero__kpi-cell { text-align: right; }
+    .page-hero__kpi-label {
+      font-family: var(--font-mono); font-size: 0.625rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+    .page-hero__kpi-value {
+      font-family: var(--font-heading); font-size: 1.875rem; line-height: 1;
+      margin-top: 0.25rem; color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+    .page-hero__kpi-cell--accent .page-hero__kpi-value { color: var(--accent-dark); }
+
+    /* ============================================================================
+       YEAR SCOREBOARD STRIP (shared component, repurposed as class picker)
+       ========================================================================= */
+    .year-strip-wrapper {
+      position: sticky;
+      top: 68px;
+      z-index: 900;
+      background: var(--color-white);
+      border-top: 1px solid var(--color-slate-200);
+      border-bottom: 1px solid var(--color-slate-200);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      margin-bottom: 2rem;
+    }
+    .year-strip {
+      max-width: 1152px; width: var(--content-width);
+      margin: 0 auto; padding: 0.75rem 1.5rem;
+      display: flex; align-items: center; gap: 0.75rem;
+      overflow-x: auto;
+    }
+    .year-strip__label {
+      font-family: var(--font-mono); font-size: 0.6875rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500); white-space: nowrap;
+      padding-right: 0.5rem; border-right: 1px solid var(--color-slate-200);
+    }
+    .year-tile {
+      flex-shrink: 0; min-width: 100px;
+      padding: 0.5rem 0.75rem;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.5rem;
+      text-align: center;
+      transition: all var(--transition-speed);
+      position: relative;
+    }
+    .year-tile:hover { border-color: var(--color-slate-400); transform: translateY(-1px); }
+    .year-tile__year {
+      font-family: var(--font-heading); font-size: 1rem;
+      color: var(--color-slate-900); line-height: 1.1;
+    }
+    .year-tile__sub {
+      font-family: var(--font-mono); font-size: 0.5rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      margin-top: 0.25rem;
+    }
+    .year-tile--active {
+      background: var(--accent-fill);
+      border: 1px solid var(--accent);
+      box-shadow: 0 0 0 2px rgba(217, 70, 239, 0.18);
+    }
+    .year-tile--active .year-tile__year { color: var(--accent-dark); }
+    .year-tile--in-progress {
+      opacity: 0.6;
+      border-style: dashed;
+    }
+    .year-tile--in-progress::after {
+      content: 'LIVE';
+      position: absolute; top: -7px; right: -7px;
+      font-family: var(--font-mono); font-size: 0.5rem; font-weight: 600;
+      background: var(--color-accent-amber); color: var(--color-white);
+      padding: 0.0625rem 0.25rem; border-radius: 0.1875rem;
+      letter-spacing: 0.06em;
+    }
+
+    /* ============================================================================
+       METHODOLOGY-PLACEHOLDER BANNER + INLINE INDICATORS
+       ========================================================================= */
+    .methodology-banner {
+      border: 1px solid rgba(217, 70, 239, 0.4);
+      background:
+        linear-gradient(to right, rgba(217, 70, 239, 0.06), rgba(217, 70, 239, 0.02)),
+        repeating-linear-gradient(
+          135deg, transparent, transparent 8px,
+          rgba(217, 70, 239, 0.04) 8px, rgba(217, 70, 239, 0.04) 9px
+        );
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      margin: 0 0 1.5rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.875rem;
+      align-items: start;
+    }
+    .methodology-banner__chip {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      background: rgba(217, 70, 239, 0.15);
+      color: #a21caf;
+      border: 1px solid rgba(217, 70, 239, 0.4);
+      padding: 0.25rem 0.5rem; border-radius: 0.25rem;
+      white-space: nowrap; margin-top: 0.0625rem;
+    }
+    .methodology-banner__body {
+      font-family: var(--font-mono); font-size: 0.75rem;
+      color: var(--color-slate-700); line-height: 1.5;
+    }
+    .methodology-banner__body strong { color: #86198f; font-weight: 600; }
+    .tbd-indicator {
+      font-family: var(--font-mono); font-size: 0.5rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem; border-radius: 0.1875rem;
+      margin-left: 0.375rem; vertical-align: middle; cursor: help;
+    }
+
+    /* ============================================================================
+       HEADLINE FINDING CARD
+       ========================================================================= */
+    .headline-finding {
+      background: linear-gradient(135deg, #1e293b, #334155);
+      border-radius: var(--border-radius);
+      padding: 1.5rem 1.75rem;
+      color: var(--color-white);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+      margin-bottom: 1.5rem;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 1.5rem;
+      align-items: center;
+    }
+    .headline-finding::before {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent 0, transparent 3px,
+        rgba(255,255,255,0.025) 3px, rgba(255,255,255,0.025) 4px
+      );
+      pointer-events: none;
+    }
+
+    .headline-finding__chip {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      background: rgba(217, 70, 239, 0.18);
+      color: #f0abfc;
+      border: 1px solid rgba(217, 70, 239, 0.45);
+      padding: 0.375rem 0.625rem;
+      border-radius: 0.375rem;
+      white-space: nowrap;
+      z-index: 1;
+    }
+
+    .headline-finding__body { z-index: 1; }
+
+    .headline-finding__label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.55);
+    }
+
+    .headline-finding__text {
+      font-family: var(--font-heading);
+      font-size: 1.375rem;
+      letter-spacing: 0.01em;
+      line-height: 1.25;
+      color: var(--color-white);
+      margin-top: 0.25rem;
+    }
+
+    .headline-finding__sub {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: rgba(255,255,255,0.7);
+      margin-top: 0.5rem;
+      line-height: 1.5;
+    }
+
+    .headline-finding__r {
+      text-align: right;
+      z-index: 1;
+    }
+
+    .headline-finding__r-label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.55);
+    }
+
+    .headline-finding__r-value {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      color: #f0abfc;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      margin-top: 0.25rem;
+    }
+
+    .headline-finding__r-note {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: rgba(255,255,255,0.55);
+      margin-top: 0.375rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* ============================================================================
+       SCATTER CHART
+       ========================================================================= */
+    .scatter-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1.25rem 1.5rem;
+    }
+
+    .scatter-legend {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      align-items: center;
+    }
+
+    .scatter-legend__item { display: inline-flex; align-items: center; gap: 0.375rem; }
+
+    .scatter-legend__dot { width: 0.5rem; height: 0.5rem; border-radius: 9999px; }
+
+    .scatter-svg {
+      width: 100%;
+      height: 380px;
+    }
+
+    .scatter-axis-label {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+
+    .scatter-callout {
+      margin-top: 0.875rem;
+      padding: 0.75rem 1rem;
+      background: rgba(217, 70, 239, 0.04);
+      border: 1px solid rgba(217, 70, 239, 0.2);
+      border-radius: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      line-height: 1.5;
+    }
+    .scatter-callout strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       BEATS / MISSES
+       ========================================================================= */
+    .bm-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+    }
+
+    .bm-col {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    .bm-col__head {
+      padding: 0.875rem 1.125rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid;
+    }
+
+    .bm-col--beats .bm-col__head {
+      background: linear-gradient(to right, rgba(16, 185, 129, 0.08), transparent);
+      border-bottom-color: var(--color-accent-emerald);
+    }
+
+    .bm-col--misses .bm-col__head {
+      background: linear-gradient(to right, rgba(244, 63, 94, 0.08), transparent);
+      border-bottom-color: var(--color-accent-rose);
+    }
+
+    .bm-col__title {
+      font-family: var(--font-heading);
+      font-size: 1.0625rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+    }
+
+    .bm-col__sub {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .bm-col__list {
+      list-style: none;
+    }
+
+    .bm-row {
+      display: grid;
+      grid-template-columns: 1.5rem 1fr auto;
+      gap: 0.625rem;
+      padding: 0.625rem 1.125rem;
+      border-bottom: 1px solid var(--color-slate-100);
+      align-items: center;
+    }
+    .bm-row:last-child { border-bottom: none; }
+
+    .bm-row__rank {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      color: var(--color-slate-400);
+      text-align: center;
+    }
+
+    .bm-row__player {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+    }
+    .bm-row__player:hover { color: var(--accent); }
+
+    .bm-row__pick {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      background: var(--color-slate-100);
+      color: var(--color-slate-600);
+      margin-left: 0.375rem;
+      vertical-align: middle;
+    }
+    .bm-row__pick--lotto { background: rgba(99, 102, 241, 0.12); color: #4338ca; }
+    .bm-row__pick--und { background: rgba(244, 63, 94, 0.1); color: #be123c; }
+
+    .bm-row__meta {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-top: 0.125rem;
+    }
+    .bm-row__meta strong { color: var(--color-slate-700); font-weight: 600; }
+
+    .bm-row__delta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      padding: 0.125rem 0.5rem;
+      border-radius: 9999px;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .bm-row__delta--beat { background: rgba(16, 185, 129, 0.14); color: #047857; }
+    .bm-row__delta--miss { background: rgba(244, 63, 94, 0.14); color: #be123c; }
+
+    /* ============================================================================
+       CALIBRATION TABLE
+       ========================================================================= */
+    .calibration-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow-x: auto;
+    }
+
+    table.calibration {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+    }
+
+    table.calibration th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.625rem 0.5rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+    table.calibration th.left { text-align: left; }
+
+    table.calibration td {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      padding: 0.625rem 0.5rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+    table.calibration td.left {
+      text-align: left;
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .tier-tag {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      padding: 0.0625rem 0.375rem;
+      border-radius: 0.1875rem;
+      margin-right: 0.4375rem;
+      vertical-align: middle;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .tier-tag--top5  { background: rgba(99, 102, 241, 0.18); color: #4338ca; }
+    .tier-tag--lotto { background: rgba(99, 102, 241, 0.1); color: #4338ca; }
+    .tier-tag--r1    { background: var(--color-slate-100); color: var(--color-slate-600); }
+    .tier-tag--r2    { background: var(--color-slate-100); color: var(--color-slate-500); }
+    .tier-tag--und   { background: rgba(244, 63, 94, 0.1); color: #be123c; }
+
+    .hit-bar {
+      display: inline-block;
+      vertical-align: middle;
+      width: 100px;
+      height: 8px;
+      background: var(--color-slate-100);
+      border-radius: 9999px;
+      overflow: hidden;
+      margin-right: 0.5rem;
+    }
+    .hit-bar__fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 9999px;
+    }
+
+    .heat-top { background: rgba(16, 185, 129, 0.08); }
+    .heat-bot { background: rgba(244, 63, 94, 0.08); }
+
+    .calib-footnote {
+      margin-top: 0.75rem;
+      padding: 0.625rem 0.875rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-600);
+      line-height: 1.5;
+      background: var(--color-slate-50);
+      border-radius: 0.5rem;
+    }
+    .calib-footnote strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       CROSS-YEAR COMPARISON
+       ========================================================================= */
+    .cross-year-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.875rem;
+    }
+
+    .cross-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-left: 4px solid var(--color-slate-300);
+      border-radius: 0.5rem;
+      padding: 0.875rem 1rem;
+    }
+
+    .cross-card--current {
+      border-left-color: var(--accent);
+    }
+
+    .cross-card__year {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+    }
+
+    .cross-card__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-top: 0.5rem;
+    }
+
+    .cross-card__value {
+      font-family: var(--font-heading);
+      font-size: 1.375rem;
+      color: var(--color-slate-900);
+      line-height: 1.1;
+      margin: 0.125rem 0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .cross-card__sub {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+    }
+    .cross-card__sub strong { color: var(--color-slate-700); }
+
+    /* ============================================================================
+       UPDATED + FOOTER
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 1.5rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+    .updated-strip__dot {
+      width: 0.5rem; height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 980px) {
+      .page-hero { grid-template-columns: 1fr; }
+      .page-hero__kpi { justify-content: flex-start; }
+      .page-hero__kpi-cell { text-align: left; }
+      .headline-finding { grid-template-columns: 1fr; text-align: left; }
+      .headline-finding__r { text-align: left; }
+      .bm-pair { grid-template-columns: 1fr; }
+      .cross-year-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 640px) {
+      .navbar-links { display: none; }
+      .cross-year-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link active" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div><input class="search-input" type="search" placeholder="Search players…"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="/stats">Stats</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league">Summer League</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">Model Validation</span>
+    </div>
+
+    <!-- Page hero -->
+    <header class="page-hero">
+      <div>
+        <div class="page-hero__eyebrow">DraftGuru Moat · The Retrospective</div>
+        <h2>Pre-Draft Consensus vs. Summer League</h2>
+        <p class="page-hero__tagline">Did the pre-draft consensus get it right? Class of 2025 — one Summer League completed, 60 picks evaluated against their actual SL composite.</p>
+      </div>
+      <div class="page-hero__kpi">
+        <div class="page-hero__kpi-cell">
+          <div class="page-hero__kpi-label">Class</div>
+          <div class="page-hero__kpi-value">2025</div>
+        </div>
+        <div class="page-hero__kpi-cell">
+          <div class="page-hero__kpi-label">SL played</div>
+          <div class="page-hero__kpi-value">52 / 60</div>
+        </div>
+        <div class="page-hero__kpi-cell page-hero__kpi-cell--accent">
+          <div class="page-hero__kpi-label">Rank correlation</div>
+          <div class="page-hero__kpi-value">0.61</div>
+        </div>
+      </div>
+    </header>
+  </main>
+
+  <!-- ============================================================================
+       CLASS PICKER (sticky)
+       ========================================================================= -->
+  <div class="year-strip-wrapper" role="region" aria-label="Class picker">
+    <div class="year-strip">
+      <span class="year-strip__label">Class</span>
+      <a class="year-tile year-tile--in-progress" href="#">
+        <div class="year-tile__year">2026</div>
+        <div class="year-tile__sub">SL in progress</div>
+      </a>
+      <a class="year-tile year-tile--active" href="#">
+        <div class="year-tile__year">2025</div>
+        <div class="year-tile__sub">SL '25 · Year 1</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2024</div>
+        <div class="year-tile__sub">SL '24 + '25</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2023</div>
+        <div class="year-tile__sub">3 SLs</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2022</div>
+        <div class="year-tile__sub">4 SLs</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2021</div>
+        <div class="year-tile__sub">5 SLs</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2019</div>
+        <div class="year-tile__sub">7 SLs</div>
+      </a>
+      <a class="year-tile" href="#">
+        <div class="year-tile__year">2018</div>
+        <div class="year-tile__sub">8 SLs</div>
+      </a>
+    </div>
+  </div>
+
+  <main class="container">
+
+    <!-- ============================================================================
+         METHODOLOGY-PLACEHOLDER BANNER (heavy on this page)
+         ========================================================================= -->
+    <div class="methodology-banner" role="note">
+      <span class="methodology-banner__chip">Methodology · TBD</span>
+      <div class="methodology-banner__body">
+        Every chart and table on this page rests on the unresolved <strong>SL Composite</strong>, <strong>Cohort Percentile</strong>, and <strong>Δ-vs-Consensus Rank</strong> formulas. Visual treatment is settled — formulas are not. The <strong>0.61 rank correlation</strong> in the hero, the scatter chart placement, and all "Δ" deltas in the beats/misses lists will move when M1–M3 in <em>docs/plans/summer-league-stats-pages.md → Methodology Placeholders</em> are resolved. Pre-draft consensus rank source: DraftGuru's day-of-draft snapshot.
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         HEADLINE FINDING
+         ========================================================================= -->
+    <div class="headline-finding">
+      <span class="headline-finding__chip">Class of 2025</span>
+      <div class="headline-finding__body">
+        <div class="headline-finding__label">The retrospective</div>
+        <div class="headline-finding__text">
+          The 2025 lottery delivered as expected at the top — Castle (#1) was the class composite leader — but the consensus board missed badly on Bub Carrington and Cody Williams.
+        </div>
+        <div class="headline-finding__sub">
+          Rank correlation (Spearman) <strong style="color: #f0abfc;">0.61</strong> · in line with the post-2020 average (0.58). The model fits at the extremes; mid-lottery and late-1st show the most noise. <span class="tbd-indicator">TBD</span>
+        </div>
+      </div>
+      <div class="headline-finding__r">
+        <div class="headline-finding__r-label">Hit rate · top 5</div>
+        <div class="headline-finding__r-value">4 / 5</div>
+        <div class="headline-finding__r-note">in top-15 composite</div>
+      </div>
+    </div>
+
+    <!-- ============================================================================
+         SCATTER CHART
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Consensus Rank vs. SL Composite</div>
+          <div class="section-header__meta">Every 2025 draftee · trend line is class-fit linear regression <span class="tbd-indicator">TBD</span></div>
+        </div>
+        <a class="section-header__cta" href="#">Download CSV →</a>
+      </div>
+
+      <div class="scatter-wrapper">
+        <div class="scatter-legend">
+          <span class="scatter-legend__item">
+            <span class="scatter-legend__dot" style="background: #10b981;"></span>
+            Over-performed pick
+          </span>
+          <span class="scatter-legend__item">
+            <span class="scatter-legend__dot" style="background: #f43f5e;"></span>
+            Under-performed pick
+          </span>
+          <span class="scatter-legend__item">
+            <span class="scatter-legend__dot" style="background: var(--color-slate-400);"></span>
+            ≤1 GP / no signal
+          </span>
+          <span class="scatter-legend__item" style="margin-left: auto;">
+            Y: SL composite (0–100) · X: consensus rank (1–60)
+          </span>
+        </div>
+
+        <!-- Scatter SVG -->
+        <svg class="scatter-svg" viewBox="0 0 1080 380" preserveAspectRatio="none" role="img" aria-label="Scatter plot of consensus rank vs. SL composite">
+
+          <!-- Gridlines -->
+          <line x1="60" y1="40" x2="1040" y2="40" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 4"/>
+          <line x1="60" y1="120" x2="1040" y2="120" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 4"/>
+          <line x1="60" y1="200" x2="1040" y2="200" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2 4"/>
+          <line x1="60" y1="280" x2="1040" y2="280" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="2 4"/>
+
+          <!-- Y axis labels -->
+          <text x="50" y="44" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="end">100</text>
+          <text x="50" y="124" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="end">75</text>
+          <text x="50" y="204" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="end">50</text>
+          <text x="50" y="284" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="end">25</text>
+          <text x="50" y="344" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="end">0</text>
+
+          <!-- X axis labels -->
+          <text x="80" y="368" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="middle">1</text>
+          <text x="241" y="368" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="middle">10</text>
+          <text x="402" y="368" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="middle">20</text>
+          <text x="563" y="368" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="middle">30</text>
+          <text x="724" y="368" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="middle">40</text>
+          <text x="885" y="368" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="middle">50</text>
+          <text x="1030" y="368" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="middle">60</text>
+
+          <!-- Lottery shading -->
+          <rect x="80" y="40" width="241" height="300" fill="#6366f1" opacity="0.04"/>
+          <text x="200" y="55" font-family="ui-monospace" font-size="10" fill="#94a3b8" text-anchor="middle" letter-spacing="1">LOTTERY (1–14)</text>
+
+          <!-- R2 boundary -->
+          <line x1="563" y1="40" x2="563" y2="340" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="3 3"/>
+          <text x="571" y="55" font-family="ui-monospace" font-size="10" fill="#94a3b8" letter-spacing="1">R2 →</text>
+
+          <!-- Regression line (illustrative) -->
+          <line x1="80" y1="65" x2="1030" y2="290" stroke="#d946ef" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.5"/>
+          <text x="930" y="285" font-family="ui-monospace" font-size="10" fill="#a21caf" letter-spacing="1">expected fit</text>
+
+          <!-- DOTS (illustrative — each is one player) -->
+          <!-- Top picks (lottery) -->
+          <circle cx="80" cy="70" r="6" fill="#10b981"/>
+          <text x="92" y="74" font-family="ui-monospace" font-size="9" fill="#047857">Castle</text>
+
+          <circle cx="96" cy="105" r="5" fill="#10b981"/>
+          <text x="108" y="109" font-family="ui-monospace" font-size="9" fill="#047857">Sarr</text>
+
+          <circle cx="112" cy="95" r="5" fill="#10b981"/>
+          <text x="124" y="99" font-family="ui-monospace" font-size="9" fill="#047857">Risacher</text>
+
+          <circle cx="128" cy="150" r="5" fill="#94a3b8"/>
+          <text x="140" y="154" font-family="ui-monospace" font-size="9" fill="#64748b">Sheppard</text>
+
+          <circle cx="144" cy="180" r="5" fill="#f43f5e"/>
+          <text x="156" y="184" font-family="ui-monospace" font-size="9" fill="#be123c">Williams</text>
+
+          <circle cx="160" cy="125" r="5" fill="#10b981"/>
+          <text x="172" y="129" font-family="ui-monospace" font-size="9" fill="#047857">Knecht</text>
+
+          <circle cx="176" cy="135" r="5" fill="#10b981"/>
+          <text x="188" y="139" font-family="ui-monospace" font-size="9" fill="#047857">Buzelis</text>
+
+          <circle cx="192" cy="220" r="5" fill="#f43f5e"/>
+          <text x="204" y="224" font-family="ui-monospace" font-size="9" fill="#be123c">Carrington</text>
+
+          <circle cx="208" cy="148" r="5" fill="#10b981"/>
+          <circle cx="224" cy="170" r="5" fill="#94a3b8"/>
+          <circle cx="240" cy="135" r="5" fill="#10b981"/>
+          <circle cx="256" cy="190" r="5" fill="#f43f5e"/>
+          <circle cx="272" cy="165" r="5" fill="#94a3b8"/>
+          <circle cx="288" cy="155" r="5" fill="#10b981"/>
+          <circle cx="304" cy="245" r="5" fill="#f43f5e"/>
+
+          <!-- R1 picks 15-30 -->
+          <circle cx="336" cy="180" r="4" fill="#10b981"/>
+          <circle cx="352" cy="195" r="4" fill="#94a3b8"/>
+          <circle cx="368" cy="160" r="4" fill="#10b981"/>
+          <circle cx="384" cy="245" r="4" fill="#f43f5e"/>
+          <circle cx="400" cy="175" r="4" fill="#10b981"/>
+          <circle cx="416" cy="225" r="4" fill="#94a3b8"/>
+          <circle cx="432" cy="155" r="5" fill="#10b981"/>
+          <text x="442" y="159" font-family="ui-monospace" font-size="9" fill="#047857">Wells</text>
+          <circle cx="448" cy="210" r="4" fill="#94a3b8"/>
+          <circle cx="464" cy="200" r="4" fill="#94a3b8"/>
+          <circle cx="480" cy="265" r="4" fill="#f43f5e"/>
+          <circle cx="496" cy="190" r="4" fill="#10b981"/>
+          <circle cx="512" cy="230" r="4" fill="#94a3b8"/>
+          <circle cx="528" cy="210" r="4" fill="#94a3b8"/>
+          <circle cx="544" cy="220" r="4" fill="#94a3b8"/>
+
+          <!-- R2 picks 31-60 -->
+          <circle cx="585" cy="225" r="4" fill="#94a3b8"/>
+          <circle cx="601" cy="270" r="4" fill="#f43f5e"/>
+          <circle cx="617" cy="245" r="4" fill="#94a3b8"/>
+          <circle cx="633" cy="148" r="5" fill="#10b981"/>
+          <text x="643" y="152" font-family="ui-monospace" font-size="9" fill="#047857">Filipowski</text>
+          <circle cx="649" cy="178" r="4" fill="#10b981"/>
+          <circle cx="665" cy="265" r="4" fill="#94a3b8"/>
+          <circle cx="681" cy="230" r="4" fill="#94a3b8"/>
+          <circle cx="697" cy="285" r="4" fill="#f43f5e"/>
+          <circle cx="713" cy="190" r="4" fill="#10b981"/>
+          <circle cx="729" cy="260" r="4" fill="#94a3b8"/>
+          <circle cx="745" cy="140" r="5" fill="#10b981"/>
+          <text x="755" y="144" font-family="ui-monospace" font-size="9" fill="#047857">Missi</text>
+          <circle cx="761" cy="245" r="4" fill="#94a3b8"/>
+          <circle cx="777" cy="220" r="4" fill="#94a3b8"/>
+          <circle cx="793" cy="280" r="4" fill="#f43f5e"/>
+          <circle cx="809" cy="200" r="4" fill="#10b981"/>
+          <circle cx="825" cy="265" r="4" fill="#94a3b8"/>
+          <circle cx="841" cy="235" r="4" fill="#94a3b8"/>
+          <circle cx="857" cy="290" r="4" fill="#f43f5e"/>
+          <circle cx="873" cy="225" r="4" fill="#94a3b8"/>
+          <circle cx="889" cy="215" r="4" fill="#10b981"/>
+          <circle cx="905" cy="260" r="4" fill="#94a3b8"/>
+          <circle cx="921" cy="280" r="4" fill="#94a3b8"/>
+          <circle cx="937" cy="245" r="4" fill="#94a3b8"/>
+          <circle cx="953" cy="225" r="4" fill="#10b981"/>
+          <circle cx="969" cy="275" r="4" fill="#94a3b8"/>
+          <circle cx="985" cy="290" r="4" fill="#94a3b8"/>
+          <circle cx="1001" cy="255" r="4" fill="#94a3b8"/>
+          <circle cx="1017" cy="270" r="4" fill="#94a3b8"/>
+
+        </svg>
+
+        <div class="scatter-axis-label">Pre-draft consensus rank (lower = higher pick)</div>
+
+        <div class="scatter-callout">
+          <strong>How to read this:</strong> dots far <em>above</em> the dashed line beat their consensus rank in SL (green); dots far <em>below</em> missed (red). The lottery is mostly green-or-flat, with two outlier misses (Carrington, Williams) and one outlier R2 beat (Filipowski). The R2 has a higher noise floor — many grey dots — but the green R2 outliers (Filipowski, Missi) suggest the consensus board left value on the floor in the back half of the draft.
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         BIGGEST BEATS / MISSES
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Beats &amp; Misses · Top 10 each</div>
+          <div class="section-header__meta">Sorted by Δ-vs-consensus rank <span class="tbd-indicator">TBD</span></div>
+        </div>
+      </div>
+
+      <div class="bm-pair">
+
+        <div class="bm-col bm-col--beats">
+          <div class="bm-col__head">
+            <div class="bm-col__title">↑ Biggest Beats</div>
+            <div class="bm-col__sub">Drafted lower than they played</div>
+          </div>
+          <ul class="bm-col__list">
+            <li class="bm-row">
+              <span class="bm-row__rank">1</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Kyle Filipowski</a>
+                  <span class="bm-row__pick">#32</span>
+                </div>
+                <div class="bm-row__meta">UTA · Composite <strong>74.0</strong> (#8 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--beat">↑ +24</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">2</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Yves Missi</a>
+                  <span class="bm-row__pick">#21</span>
+                </div>
+                <div class="bm-row__meta">NOP · Composite <strong>78.5</strong> (#5 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--beat">↑ +16</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">3</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Jaylen Wells</a>
+                  <span class="bm-row__pick">#39</span>
+                </div>
+                <div class="bm-row__meta">MEM · Composite <strong>68.4</strong> (#14 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--beat">↑ +25</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">4</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Tristan da Silva</a>
+                  <span class="bm-row__pick">#18</span>
+                </div>
+                <div class="bm-row__meta">ORL · Composite <strong>71.2</strong> (#11 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--beat">↑ +7</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">5</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Jamal Shead</a>
+                  <span class="bm-row__pick">#45</span>
+                </div>
+                <div class="bm-row__meta">TOR · Composite <strong>64.5</strong> (#18 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--beat">↑ +27</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">6</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Dalton Knecht</a>
+                  <span class="bm-row__pick bm-row__pick--lotto">#13</span>
+                </div>
+                <div class="bm-row__meta">LAL · Composite <strong>74.8</strong> (#7 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--beat">↑ +6</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">7</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Bobi Klintman</a>
+                  <span class="bm-row__pick">#37</span>
+                </div>
+                <div class="bm-row__meta">DET · Composite <strong>60.0</strong> (#22 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--beat">↑ +15</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">8</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Pacôme Dadiet</a>
+                  <span class="bm-row__pick">#25</span>
+                </div>
+                <div class="bm-row__meta">NYK · Composite <strong>62.4</strong> (#20 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--beat">↑ +5</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">9</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Kel'el Ware</a>
+                  <span class="bm-row__pick">#15</span>
+                </div>
+                <div class="bm-row__meta">MIA · Composite <strong>70.4</strong> (#10 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--beat">↑ +5</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">10</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Quinten Post</a>
+                  <span class="bm-row__pick">#52</span>
+                </div>
+                <div class="bm-row__meta">GSW · Composite <strong>54.0</strong> (#27 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--beat">↑ +25</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="bm-col bm-col--misses">
+          <div class="bm-col__head">
+            <div class="bm-col__title">↓ Biggest Misses</div>
+            <div class="bm-col__sub">Drafted higher than they played</div>
+          </div>
+          <ul class="bm-col__list">
+            <li class="bm-row">
+              <span class="bm-row__rank">1</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Bub Carrington</a>
+                  <span class="bm-row__pick bm-row__pick--lotto">#14</span>
+                </div>
+                <div class="bm-row__meta">WAS · Composite <strong>34.0</strong> (#42 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--miss">↓ −28</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">2</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Cody Williams</a>
+                  <span class="bm-row__pick bm-row__pick--lotto">#10</span>
+                </div>
+                <div class="bm-row__meta">UTA · Composite <strong>38.5</strong> (#38 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--miss">↓ −28</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">3</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Ron Holland</a>
+                  <span class="bm-row__pick">#5</span>
+                </div>
+                <div class="bm-row__meta">DET · Composite <strong>52.0</strong> (#28 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--miss">↓ −23</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">4</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Reed Sheppard</a>
+                  <span class="bm-row__pick">#3</span>
+                </div>
+                <div class="bm-row__meta">HOU · Composite <strong>56.8</strong> (#24 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--miss">↓ −21</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">5</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Devin Carter</a>
+                  <span class="bm-row__pick">#13</span>
+                </div>
+                <div class="bm-row__meta">SAC · Composite <strong>44.0</strong> (#32 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--miss">↓ −19</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">6</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Rob Dillingham</a>
+                  <span class="bm-row__pick">#8</span>
+                </div>
+                <div class="bm-row__meta">MIN · Composite <strong>50.4</strong> (#23 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--miss">↓ −15</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">7</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Tidjane Salaün</a>
+                  <span class="bm-row__pick">#6</span>
+                </div>
+                <div class="bm-row__meta">CHA · Composite <strong>48.5</strong> (#25 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--miss">↓ −19</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">8</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Stephon Castle</a>
+                  <span class="bm-row__pick bm-row__pick--lotto">#4</span>
+                </div>
+                <div class="bm-row__meta">SAS · Composite <strong>76.0</strong> (#9 of class) · still beat #9 baseline</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--miss">↓ −5</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">9</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Nikola Topić</a>
+                  <span class="bm-row__pick">#12</span>
+                </div>
+                <div class="bm-row__meta">OKC · Composite <strong>—</strong> · injured, no SL · excluded from sample</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--miss">N/A</span>
+            </li>
+            <li class="bm-row">
+              <span class="bm-row__rank">10</span>
+              <div>
+                <div>
+                  <a class="bm-row__player" href="#">Kyshawn George</a>
+                  <span class="bm-row__pick">#24</span>
+                </div>
+                <div class="bm-row__meta">WAS · Composite <strong>43.6</strong> (#33 of class)</div>
+              </div>
+              <span class="bm-row__delta bm-row__delta--miss">↓ −9</span>
+            </li>
+          </ul>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         CALIBRATION TABLE
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Calibration · by Consensus Tier</div>
+          <div class="section-header__meta">Where consensus is most/least predictive · 2025 class only</div>
+        </div>
+        <a class="section-header__cta" href="#">Multi-year view →</a>
+      </div>
+
+      <div class="calibration-wrapper">
+        <table class="calibration">
+          <thead>
+            <tr>
+              <th class="left">Consensus tier</th>
+              <th>N</th>
+              <th>Avg composite <span class="tbd-indicator">TBD</span></th>
+              <th>Std dev</th>
+              <th>Hit rate · top-15</th>
+              <th>Avg Δ-vs-pick</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="left"><span class="tier-tag tier-tag--top5">Top 5</span> Picks 1–5</td>
+              <td>5</td>
+              <td class="heat-top">76.4</td>
+              <td>10.2</td>
+              <td>
+                <span class="hit-bar"><span class="hit-bar__fill" style="width: 80%;"></span></span>
+                <strong>80%</strong>
+              </td>
+              <td>−4.0 (slight downward)</td>
+            </tr>
+            <tr>
+              <td class="left"><span class="tier-tag tier-tag--lotto">Lottery</span> Picks 6–14</td>
+              <td>9</td>
+              <td>62.8</td>
+              <td>14.5</td>
+              <td>
+                <span class="hit-bar"><span class="hit-bar__fill" style="width: 44%;"></span></span>
+                <strong>44%</strong>
+              </td>
+              <td class="heat-bot">−8.5 (mid-lotto noise)</td>
+            </tr>
+            <tr>
+              <td class="left"><span class="tier-tag tier-tag--r1">Late 1st</span> Picks 15–30</td>
+              <td>16</td>
+              <td>57.4</td>
+              <td>12.8</td>
+              <td>
+                <span class="hit-bar"><span class="hit-bar__fill" style="width: 38%;"></span></span>
+                <strong>38%</strong>
+              </td>
+              <td>−3.2 (steady)</td>
+            </tr>
+            <tr>
+              <td class="left"><span class="tier-tag tier-tag--r2">R2</span> Picks 31–60</td>
+              <td>22</td>
+              <td>50.1</td>
+              <td>14.0</td>
+              <td>
+                <span class="hit-bar"><span class="hit-bar__fill" style="width: 18%;"></span></span>
+                <strong>18%</strong>
+              </td>
+              <td class="heat-top">+9.4 (consensus too pessimistic)</td>
+            </tr>
+            <tr>
+              <td class="left"><span class="tier-tag tier-tag--und">Undrafted</span> consensus 61+</td>
+              <td>1,250+</td>
+              <td>34.2</td>
+              <td>9.8</td>
+              <td>
+                <span class="hit-bar"><span class="hit-bar__fill" style="width: 1%;"></span></span>
+                <strong>&lt;1%</strong>
+              </td>
+              <td>+12.2 (long-tail upside exists)</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="calib-footnote">
+          <strong>What this reveals:</strong> the consensus board is highly predictive at the top (top-5 hit rate <strong>80%</strong>) and noisiest in mid-lotto (picks 6–14, just <strong>44%</strong>). R2 is where consensus is most <em>pessimistic</em> — the average R2 player slightly outperforms their slot, suggesting consensus boards systematically over-discount this tier.
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         CROSS-YEAR COMPARISON
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Rank Correlation · by Year</div>
+          <div class="section-header__meta">How predictive was consensus → SL composite, year over year <span class="tbd-indicator">TBD</span></div>
+        </div>
+      </div>
+
+      <div class="cross-year-grid">
+        <div class="cross-card cross-card--current">
+          <div class="cross-card__year">2025</div>
+          <div class="cross-card__label">Spearman ρ</div>
+          <div class="cross-card__value">0.61</div>
+          <div class="cross-card__sub">Bub Carrington biggest miss · <strong>Filipowski</strong> biggest beat</div>
+        </div>
+        <div class="cross-card">
+          <div class="cross-card__year">2024</div>
+          <div class="cross-card__label">Spearman ρ</div>
+          <div class="cross-card__value">0.58</div>
+          <div class="cross-card__sub">Wemby +50 outlier · <strong>Hauser</strong> biggest miss</div>
+        </div>
+        <div class="cross-card">
+          <div class="cross-card__year">2023</div>
+          <div class="cross-card__label">Spearman ρ</div>
+          <div class="cross-card__value">0.64</div>
+          <div class="cross-card__sub">Banchero / Holmgren held; <strong>Mathurin</strong> biggest beat</div>
+        </div>
+        <div class="cross-card">
+          <div class="cross-card__year">2022</div>
+          <div class="cross-card__label">Spearman ρ</div>
+          <div class="cross-card__value">0.49</div>
+          <div class="cross-card__sub">Class-worst fit · <strong>Cunningham</strong> #1 held but lotto noisy</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 0.875rem; padding: 0.75rem 1rem; background: var(--color-slate-50); border-radius: 0.5rem; font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-700); line-height: 1.5;">
+        <strong>Five-year baseline:</strong> Spearman ρ averages <strong>0.58</strong> across post-2020 classes — meaningful signal at the top, real noise in the mid/late first. 2025's 0.61 sits in line. 2022 (0.49) remains the historical low — that class is now the benchmark when arguing the consensus board "missed."
+      </div>
+    </section>
+
+    <div class="updated-strip">
+      <span class="updated-strip__dot" aria-hidden="true"></span>
+      Daily refresh · Last update: Jul 12, 2026 · 10:14 PT
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Landing</a></li>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">Explorer</a></li>
+            <li><a href="#">2026 Draft Class</a></li>
+            <li><a href="#">All-Summer-League</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

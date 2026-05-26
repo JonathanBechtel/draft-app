@@ -1,0 +1,1908 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vegas Summer League 2026 — DraftGuru</title>
+  <meta name="description" content="Vegas 2026 NBA Summer League: bracket, standings, leaders, and analytical takeaways from Thomas & Mack + Cox Pavilion.">
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       TOKENS
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-400: #94a3b8;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      /* Vegas venue accent */
+      --venue: var(--color-accent-amber);
+      --venue-fill: #fef3c7;
+      --venue-dark: #b45309;
+
+      --max-width: 1280px;
+      --content-width: 80%;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+    a { color: inherit; text-decoration: none; }
+
+    .container {
+      max-width: 1152px;
+      width: var(--content-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section { margin-bottom: 3rem; }
+
+    .section-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      gap: 1rem;
+    }
+
+    .section-header__title {
+      font-family: var(--font-heading);
+      font-size: 1.25rem;
+      color: var(--color-slate-900);
+      letter-spacing: 0.02em;
+      padding-left: 0.625rem;
+      border-left: 4px solid var(--venue);
+    }
+
+    .section-header__title--utility { border-left-color: var(--color-slate-300); }
+
+    .section-header__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .section-header__cta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      color: var(--venue-dark);
+      padding-bottom: 1px;
+      border-bottom: 1px dotted rgba(180, 83, 9, 0.4);
+    }
+    .section-header__cta:hover { border-bottom-style: solid; }
+
+    /* ============================================================================
+       NAVBAR (shared)
+       ========================================================================= */
+    .navbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    .navbar-content {
+      max-width: var(--max-width); margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .navbar-brand h1 {
+      font-size: 1.875rem; color: var(--color-white);
+      font-family: var(--font-heading); letter-spacing: 0.02em;
+    }
+    .navbar-links { display: flex; align-items: center; gap: 1.5rem; }
+    .navbar-link {
+      color: rgba(255,255,255,0.85);
+      font-family: var(--font-mono); font-size: 0.8125rem;
+      text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600;
+      padding: 0.25rem 0; border-bottom: 2px solid transparent;
+    }
+    .navbar-link:hover, .navbar-link.active {
+      color: var(--color-white); border-bottom-color: var(--venue);
+    }
+    .search-input {
+      width: 240px; background: rgba(255,255,255,0.9);
+      border: 1px solid #93c5fd; border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem; font-size: 0.875rem; outline: none;
+    }
+
+    /* ============================================================================
+       BREADCRUMBS + VENUE PAGER
+       ========================================================================= */
+    .breadcrumbs {
+      margin-top: 4rem;
+      padding: 0.875rem 0 0.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs a:hover { color: var(--color-slate-800); }
+    .breadcrumbs__sep { color: var(--color-slate-300); }
+    .breadcrumbs__current { color: var(--color-slate-800); font-weight: 600; }
+
+    .venue-pager {
+      padding: 0.5rem 0 1rem;
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .venue-pager__btn {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.375rem 0.625rem;
+      border-radius: 9999px;
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      color: var(--color-slate-600);
+    }
+    .venue-pager__btn:hover { border-color: var(--color-slate-400); }
+    .venue-pager__btn--active {
+      background: var(--venue-fill);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: var(--venue-dark);
+    }
+
+    /* ============================================================================
+       VENUE HERO
+       ========================================================================= */
+    .venue-hero {
+      background: linear-gradient(135deg, #1e293b, #334155);
+      border-radius: var(--border-radius);
+      padding: 1.5rem 1.75rem;
+      color: var(--color-white);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.18);
+      margin-bottom: 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .venue-hero::before {
+      content: ''; position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent 0, transparent 3px,
+        rgba(255,255,255,0.025) 3px, rgba(255,255,255,0.025) 4px
+      );
+      pointer-events: none;
+    }
+
+    .venue-hero__body { z-index: 1; }
+
+    .venue-hero__eyebrow {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.625rem;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      color: #fbbf24;
+      margin-bottom: 0.375rem;
+    }
+    .venue-hero__eyebrow::before {
+      content: ''; width: 12px; height: 2px;
+      background: var(--venue);
+    }
+
+    .venue-hero__title {
+      font-family: var(--font-heading);
+      font-size: 2.25rem;
+      letter-spacing: 0.02em;
+      line-height: 1.05;
+      color: var(--color-white);
+    }
+
+    .venue-hero__sub {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: rgba(255,255,255,0.7);
+      margin-top: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .venue-hero__badges {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .venue-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.3rem 0.5rem;
+      border-radius: 0.25rem;
+      border: 1px solid;
+    }
+
+    .venue-badge--status {
+      background: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border-color: rgba(245, 158, 11, 0.4);
+    }
+
+    .venue-badge--quality {
+      background: rgba(16, 185, 129, 0.15);
+      color: #6ee7b7;
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    .venue-badge__dot {
+      width: 0.4rem; height: 0.4rem; border-radius: 9999px;
+      background: currentColor;
+    }
+
+    .venue-hero__kpi {
+      display: flex;
+      gap: 1.5rem;
+      z-index: 1;
+    }
+    .venue-hero__kpi-cell { text-align: right; }
+    .venue-hero__kpi-label {
+      font-family: var(--font-mono); font-size: 0.625rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.55);
+    }
+    .venue-hero__kpi-value {
+      font-family: var(--font-heading); font-size: 1.875rem; line-height: 1;
+      margin-top: 0.25rem; color: var(--color-white);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ============================================================================
+       VENUE-IN-CONTEXT STRIP
+       ========================================================================= */
+    .context-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.875rem;
+    }
+
+    .context-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-left: 4px solid;
+      border-radius: 0.5rem;
+      padding: 0.875rem 1rem;
+    }
+
+    .context-card--good { border-left-color: var(--color-accent-emerald); }
+    .context-card--neutral { border-left-color: var(--color-accent-amber); }
+    .context-card--insight { border-left-color: var(--color-accent-indigo); }
+    .context-card--cohort { border-left-color: var(--color-accent-fuchsia); }
+
+    .context-card__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .context-card__value {
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      line-height: 1.1;
+      color: var(--color-slate-900);
+      margin: 0.25rem 0 0.375rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .context-card__value-unit {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-500);
+      font-weight: 400;
+      margin-left: 0.25rem;
+    }
+
+    .context-card__note {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-600);
+      line-height: 1.5;
+    }
+    .context-card__note strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       STORYLINES
+       ========================================================================= */
+    .moments-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.875rem;
+    }
+
+    .story-card {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-left: 4px solid;
+      border-radius: 0.5rem;
+      padding: 0.875rem 1rem;
+      transition: all var(--transition-speed);
+    }
+    .story-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+
+    .story-card--scoring { border-left-color: var(--color-accent-amber); }
+    .story-card--cohort { border-left-color: var(--color-accent-emerald); }
+    .story-card--narrative { border-left-color: var(--color-accent-fuchsia); }
+
+    .story-card__type {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.375rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .story-card--scoring .story-card__type { color: #b45309; }
+    .story-card--cohort .story-card__type { color: #047857; }
+    .story-card--narrative .story-card__type { color: #a21caf; }
+
+    .story-card__type-side { color: var(--color-slate-400); font-weight: 400; }
+
+    .story-card__headline {
+      font-size: 0.9375rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      line-height: 1.25;
+    }
+
+    .story-card__body {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+      margin-top: 0.375rem;
+      line-height: 1.5;
+    }
+    .story-card__body strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       BRACKET (Vegas-only championship)
+       ========================================================================= */
+    .bracket-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+    }
+
+    .bracket-status {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+
+    .bracket-status__title {
+      font-family: var(--font-heading);
+      font-size: 1.125rem;
+      letter-spacing: 0.02em;
+      color: var(--color-slate-900);
+    }
+
+    .bracket-status__meta {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+    }
+
+    .bracket {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      min-width: 720px;
+    }
+
+    .bracket-round {
+      display: flex;
+      flex-direction: column;
+      gap: 0.625rem;
+      justify-content: space-around;
+    }
+
+    .bracket-round__label {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      text-align: center;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px dashed var(--color-slate-200);
+    }
+
+    .bracket-game {
+      background: var(--color-slate-50);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.375rem;
+      overflow: hidden;
+      transition: all var(--transition-speed);
+      cursor: pointer;
+    }
+    .bracket-game:hover {
+      border-color: var(--venue);
+      transform: translateY(-1px);
+    }
+
+    .bracket-game__row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.5rem;
+      padding: 0.4375rem 0.625rem;
+      align-items: center;
+    }
+
+    .bracket-game__row + .bracket-game__row {
+      border-top: 1px solid var(--color-slate-200);
+    }
+
+    .bracket-game__team {
+      font-size: 0.75rem;
+      color: var(--color-slate-700);
+    }
+
+    .bracket-game__team--won {
+      color: var(--color-slate-900);
+      font-weight: 600;
+    }
+
+    .bracket-game__team--lost { color: var(--color-slate-500); }
+
+    .bracket-game__team--tbd {
+      color: var(--color-slate-400);
+      font-style: italic;
+    }
+
+    .bracket-game__score {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-slate-900);
+      font-variant-numeric: tabular-nums;
+    }
+    .bracket-game__score--lost { color: var(--color-slate-500); font-weight: 400; }
+    .bracket-game__score--tbd { color: var(--color-slate-300); }
+
+    .bracket-game__meta {
+      padding: 0.25rem 0.625rem;
+      background: var(--color-white);
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-top: 1px solid var(--color-slate-200);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .bracket-game__meta--upcoming { color: var(--venue-dark); }
+
+    /* Group standings (pre-bracket) */
+    .standings-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      padding: 1.25rem 1.5rem;
+    }
+
+    .standings-intro {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-600);
+      margin-bottom: 0.875rem;
+      line-height: 1.5;
+    }
+    .standings-intro strong { color: var(--color-slate-900); }
+
+    table.standings {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    table.standings th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.5rem 0.5rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+    table.standings th.left { text-align: left; }
+
+    table.standings td {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.4375rem 0.5rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+
+    table.standings td.left {
+      text-align: left;
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      font-size: 0.8125rem;
+      font-weight: 500;
+    }
+
+    table.standings tr:hover td { background: var(--color-slate-50); }
+
+    .seed {
+      display: inline-block;
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      width: 1.25rem;
+      text-align: center;
+      color: var(--color-slate-500);
+      margin-right: 0.5rem;
+    }
+    .seed--bye { color: var(--venue-dark); }
+
+    .standings-team {
+      font-weight: 600;
+      color: var(--color-slate-900);
+    }
+    .standings-team:hover { color: var(--venue); }
+
+    .standings-context {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      margin-left: 0.375rem;
+    }
+
+    .bye-tag {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      background: var(--venue-fill);
+      color: var(--venue-dark);
+      margin-left: 0.375rem;
+      vertical-align: middle;
+    }
+
+    /* ============================================================================
+       SCHEDULE / RESULTS  (lightweight utility)
+       ========================================================================= */
+    .schedule-list {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    .schedule-day {
+      padding: 0.5rem 1rem;
+      background: var(--color-slate-50);
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      border-bottom: 1px solid var(--color-slate-200);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .schedule-row {
+      display: grid;
+      grid-template-columns: 70px 1fr auto auto;
+      gap: 1rem;
+      padding: 0.625rem 1rem;
+      border-bottom: 1px solid var(--color-slate-100);
+      align-items: center;
+      cursor: pointer;
+    }
+    .schedule-row:hover { background: var(--color-slate-50); }
+    .schedule-row:last-child { border-bottom: none; }
+
+    .schedule-row__time {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .schedule-row__matchup {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .schedule-row__team {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .schedule-row__team--away { justify-content: flex-end; }
+    .schedule-row__team-name { font-size: 0.875rem; font-weight: 600; color: var(--color-slate-800); }
+    .schedule-row__team-name--lost { color: var(--color-slate-500); font-weight: 500; }
+
+    .schedule-row__score {
+      font-family: var(--font-mono); font-size: 1rem; font-weight: 600;
+      color: var(--color-slate-900); font-variant-numeric: tabular-nums;
+      min-width: 1.75rem; text-align: center;
+    }
+    .schedule-row__score--lost { color: var(--color-slate-500); font-weight: 500; }
+    .schedule-row__dash {
+      font-family: var(--font-mono); color: var(--color-slate-400); font-size: 0.875rem;
+    }
+
+    .schedule-row__court {
+      font-family: var(--font-mono); font-size: 0.5625rem;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.125rem 0.4375rem; border-radius: 0.25rem;
+      background: var(--color-slate-100); color: var(--color-slate-600);
+    }
+
+    .schedule-row__cta {
+      font-family: var(--font-mono); font-size: 0.625rem;
+      color: var(--color-slate-400); text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .schedule-row:hover .schedule-row__cta { color: var(--venue-dark); }
+
+    /* ============================================================================
+       VENUE LEADERS (compact tabs + 5-row table)
+       ========================================================================= */
+    .leader-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 2px solid var(--color-slate-200);
+      margin-bottom: 0.75rem;
+      overflow-x: auto;
+    }
+
+    .leader-tab {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.5rem 0.75rem;
+      color: var(--color-slate-500);
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .leader-tab:hover { color: var(--color-slate-800); }
+    .leader-tab--active {
+      color: var(--venue-dark);
+      border-bottom-color: var(--venue);
+    }
+
+    .leader-table-wrapper {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.5rem;
+      overflow: hidden;
+    }
+
+    table.leader-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    table.leader-table th {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      padding: 0.5rem 0.5rem;
+      text-align: right;
+      background: var(--color-slate-50);
+      border-bottom: 1px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+    table.leader-table th.left { text-align: left; }
+    table.leader-table td {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.4375rem 0.5rem;
+      text-align: right;
+      color: var(--color-slate-700);
+      border-bottom: 1px solid var(--color-slate-100);
+      font-variant-numeric: tabular-nums;
+    }
+    table.leader-table td.left {
+      text-align: left;
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      font-size: 0.8125rem;
+    }
+    table.leader-table tr:hover td { background: var(--color-slate-50); }
+
+    .lt-rank {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      color: var(--color-slate-400);
+      width: 1.5rem;
+      text-align: center;
+      font-weight: 600;
+    }
+    .lt-rank--gold { color: #d97706; }
+    .lt-rank--silver { color: var(--color-slate-500); }
+    .lt-rank--bronze { color: #a16207; }
+
+    .lt-player {
+      font-weight: 600;
+      color: var(--color-slate-900);
+    }
+    .lt-player:hover { color: var(--venue); }
+
+    .lt-context {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      margin-left: 0.375rem;
+    }
+
+    .lt-stat {
+      font-family: var(--font-heading);
+      font-size: 0.9375rem;
+      color: var(--color-slate-900);
+    }
+
+    .lt-sample {
+      font-family: var(--font-mono);
+      font-size: 0.5625rem;
+      color: var(--color-slate-400);
+    }
+
+    .heat-top { background: rgba(16, 185, 129, 0.08); }
+
+    /* ============================================================================
+       TEAMS GRID
+       ========================================================================= */
+    .teams-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 0.625rem;
+    }
+
+    .team-tile {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 0.5rem;
+      padding: 0.625rem 0.75rem;
+      transition: all var(--transition-speed);
+      cursor: pointer;
+    }
+    .team-tile:hover {
+      border-color: var(--venue);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+
+    .team-tile__top {
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .team-tile__logo {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+      border-radius: 0.375rem;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--font-heading);
+      font-size: 0.5625rem;
+      color: var(--color-white);
+    }
+
+    .team-tile__name {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-slate-800);
+      line-height: 1.1;
+    }
+
+    .team-tile__record {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      font-weight: 600;
+      color: var(--color-slate-700);
+    }
+
+    .team-tile__hook {
+      font-family: var(--font-mono);
+      font-size: 0.625rem;
+      color: var(--color-slate-500);
+      margin-top: 0.4375rem;
+      padding-top: 0.4375rem;
+      border-top: 1px dashed var(--color-slate-200);
+      line-height: 1.4;
+    }
+    .team-tile__hook strong { color: var(--color-slate-900); font-weight: 600; }
+
+    /* ============================================================================
+       METHODOLOGY-PLACEHOLDER UTILITY
+       ========================================================================= */
+    .tbd-indicator {
+      font-family: var(--font-mono);
+      font-size: 0.5rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #a21caf;
+      background: rgba(217, 70, 239, 0.12);
+      border: 1px dashed rgba(217, 70, 239, 0.5);
+      padding: 0.0625rem 0.3125rem;
+      border-radius: 0.1875rem;
+      margin-left: 0.375rem;
+      vertical-align: middle;
+      cursor: help;
+    }
+
+    /* ============================================================================
+       UPDATED + FOOTER
+       ========================================================================= */
+    .updated-strip {
+      margin-top: 1.5rem;
+      padding: 0.625rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-500);
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      justify-content: flex-end;
+    }
+    .updated-strip__dot {
+      width: 0.5rem; height: 0.5rem;
+      border-radius: 9999px;
+      background: var(--color-accent-emerald);
+    }
+
+    .footer {
+      background: var(--color-secondary);
+      border-top: 1px solid rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.08);
+      margin-top: 4rem;
+    }
+    .footer-content { max-width: var(--max-width); margin: 0 auto; padding: 2rem 1.5rem; }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+    }
+    .footer-column h4 {
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-slate-800);
+      margin-bottom: 0.75rem;
+    }
+    .footer-column ul { list-style: none; }
+    .footer-column ul li { margin-bottom: 0.5rem; }
+    .footer-column a { color: var(--color-slate-700); font-size: 0.875rem; }
+    .footer-copyright {
+      border-top: 1px solid rgba(0,0,0,0.1);
+      padding-top: 1.5rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: var(--color-slate-700);
+    }
+
+    /* ============================================================================
+       RESPONSIVE
+       ========================================================================= */
+    @media (max-width: 980px) {
+      .venue-hero { grid-template-columns: 1fr; }
+      .venue-hero__kpi { justify-content: flex-start; }
+      .venue-hero__kpi-cell { text-align: left; }
+      .context-grid { grid-template-columns: repeat(2, 1fr); }
+      .moments-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .navbar-links { display: none; }
+      .context-grid { grid-template-columns: 1fr; }
+      .schedule-row { grid-template-columns: 1fr; gap: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <div class="navbar-brand"><h1>DraftGuru</h1></div>
+      <div class="navbar-links">
+        <a class="navbar-link" href="#">Players</a>
+        <a class="navbar-link" href="#">Compare</a>
+        <a class="navbar-link" href="#">Consensus</a>
+        <a class="navbar-link active" href="#">Stats</a>
+        <a class="navbar-link" href="#">News</a>
+      </div>
+      <div><input class="search-input" type="search" placeholder="Search players…"></div>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <!-- Breadcrumbs -->
+    <div class="breadcrumbs">
+      <a href="/stats">Stats</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league">Summer League</a>
+      <span class="breadcrumbs__sep">/</span>
+      <a href="/stats/summer-league/2026">2026</a>
+      <span class="breadcrumbs__sep">/</span>
+      <span class="breadcrumbs__current">Vegas</span>
+    </div>
+
+    <!-- Venue pager -->
+    <div class="venue-pager">
+      <a class="venue-pager__btn" href="#">All 2026 venues</a>
+      <a class="venue-pager__btn" href="#">Salt Lake</a>
+      <a class="venue-pager__btn" href="#">California Classic</a>
+      <a class="venue-pager__btn venue-pager__btn--active" href="#">Vegas</a>
+      <a class="venue-pager__btn" href="#" style="margin-left: auto;">Vegas 2025 →</a>
+    </div>
+
+    <!-- ============================================================================
+         VENUE HERO
+         ========================================================================= -->
+    <header class="venue-hero">
+      <div class="venue-hero__body">
+        <div class="venue-hero__eyebrow">DraftGuru Stats · Summer League · Vegas</div>
+        <div class="venue-hero__title">Vegas Summer League 2026</div>
+        <div class="venue-hero__sub">Jul 10 – Jul 20 · Thomas &amp; Mack Center + Cox Pavilion</div>
+        <div class="venue-hero__badges">
+          <span class="venue-badge venue-badge--status">
+            <span class="venue-badge__dot"></span>
+            Day 5 of 9 · Group play winding down
+          </span>
+          <span class="venue-badge venue-badge--quality">
+            <span class="venue-badge__dot"></span>
+            Data quality · Full (PBP)
+          </span>
+        </div>
+      </div>
+      <div class="venue-hero__kpi">
+        <div class="venue-hero__kpi-cell">
+          <div class="venue-hero__kpi-label">Teams</div>
+          <div class="venue-hero__kpi-value">30</div>
+        </div>
+        <div class="venue-hero__kpi-cell">
+          <div class="venue-hero__kpi-label">Games</div>
+          <div class="venue-hero__kpi-value">22 / 76</div>
+        </div>
+        <div class="venue-hero__kpi-cell">
+          <div class="venue-hero__kpi-label">Players tracked</div>
+          <div class="venue-hero__kpi-value">368</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ============================================================================
+         VENUE IN CONTEXT
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Vegas in Context</div>
+          <div class="section-header__meta">2026 vs. the rolling 10-year Vegas SL baseline</div>
+        </div>
+      </div>
+
+      <div class="context-grid">
+
+        <div class="context-card context-card--good">
+          <div class="context-card__label">Avg pace</div>
+          <div class="context-card__value">94.1</div>
+          <div class="context-card__note">
+            <strong>+1.7 pts above 10-yr Vegas median.</strong> Faster pace than '22–'24; meaningful when reading per-100 rates.
+          </div>
+        </div>
+
+        <div class="context-card context-card--neutral">
+          <div class="context-card__label">Avg game TS%</div>
+          <div class="context-card__value">54.8<span class="context-card__value-unit">%</span></div>
+          <div class="context-card__note">
+            <strong>Best-shooting Vegas SL since 2018.</strong> 3PT volume up 14% YoY; 3PT conversion only +1 pt — read the volume bump cautiously.
+          </div>
+        </div>
+
+        <div class="context-card context-card--insight">
+          <div class="context-card__label">Avg margin of victory</div>
+          <div class="context-card__value">11.4</div>
+          <div class="context-card__note">
+            <strong>Largest gap since 2017</strong>. SL skill gradient is steeper this year — fewer competitive games, more blowouts.
+          </div>
+        </div>
+
+        <div class="context-card context-card--cohort">
+          <div class="context-card__label">Class delivery <span class="tbd-indicator">TBD</span></div>
+          <div class="context-card__value">3 of 3</div>
+          <div class="context-card__note">
+            <strong>Top-3 picks all top-5 composite</strong> — first time since 2003 the lottery's headliners have showed up like this at Vegas.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         STORYLINES
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Vegas Storylines</div>
+          <div class="section-header__meta">What this week is showing · cohort + historical reads</div>
+        </div>
+      </div>
+
+      <div class="moments-grid">
+
+        <div class="story-card story-card--cohort">
+          <div class="story-card__type">
+            Front of class <span class="story-card__type-side">2026 lottery</span>
+          </div>
+          <div class="story-card__headline">Three lotto picks in top-5 composite — best Vegas front-of-class since 2003</div>
+          <div class="story-card__body">
+            Flagg (DAL), Harper (SAS), Edgecombe (PHI) all sit top-5 in 2026 SL composite <span class="tbd-indicator">TBD</span>. Last year only the top pick (Castle) cracked the top-10. <strong>2003 (LeBron / Bosh / Anthony)</strong> is the historical analog.
+          </div>
+        </div>
+
+        <div class="story-card story-card--scoring">
+          <div class="story-card__type">
+            Pace context <span class="story-card__type-side">Vegas avg 94.1</span>
+          </div>
+          <div class="story-card__headline">Top scorers are not pace-inflated</div>
+          <div class="story-card__body">
+            Vegas pace runs +1.7 above the 10-yr median — but the top 5 scorers all post higher per-36 than per-game ratios. <strong>Flagg's per-100 (40.4 PTS)</strong> would still rank 8th all-time after pace adjustment.
+          </div>
+        </div>
+
+        <div class="story-card story-card--narrative">
+          <div class="story-card__type">
+            Defensive signal <span class="story-card__type-side">PBP only</span>
+          </div>
+          <div class="story-card__headline">Maluach's on-court DRtg leads all Vegas bigs</div>
+          <div class="story-card__body">
+            <strong>Suns DRtg drops 11 pts</strong> with Khaman Maluach on the floor. Best on/off defensive swing of any rookie center at Vegas SL since Mobley '22. Pair with his per-36 BLK rate (3.6) — the early defensive read is loud.
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         CHAMPIONSHIP BRACKET PREVIEW
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Championship Bracket</div>
+          <div class="section-header__meta">Top 4 records get byes · 16 teams play single-elim from Jul 16</div>
+        </div>
+        <a class="section-header__cta" href="#">Group standings →</a>
+      </div>
+
+      <div class="bracket-wrapper">
+        <div class="bracket-status">
+          <div class="bracket-status__title">Projected Bracket · seeding live through Jul 15</div>
+          <div class="bracket-status__meta">Bracket tips off Jul 16 · final Jul 20</div>
+        </div>
+
+        <div class="bracket">
+
+          <!-- Round of 16 -->
+          <div class="bracket-round">
+            <div class="bracket-round__label">Round of 16 · Jul 16</div>
+
+            <div class="bracket-game">
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">#1 DAL (3-0)</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">#16 winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__meta bracket-game__meta--upcoming">
+                <span>4:00 PT · T&amp;M</span>
+                <span>Jul 16</span>
+              </div>
+            </div>
+
+            <div class="bracket-game">
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">#8 OKC (2-1)</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">#9 NOP (2-1)</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__meta bracket-game__meta--upcoming">
+                <span>4:30 PT · Cox</span>
+                <span>Jul 16</span>
+              </div>
+            </div>
+
+            <div class="bracket-game">
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">#4 PHI (3-0)</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">#13 winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__meta bracket-game__meta--upcoming">
+                <span>6:00 PT · T&amp;M</span>
+                <span>Jul 16</span>
+              </div>
+            </div>
+
+            <div class="bracket-game">
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">#5 BKN (2-1)</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">#12 winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__meta bracket-game__meta--upcoming">
+                <span>6:30 PT · Cox</span>
+                <span>Jul 16</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Quarters -->
+          <div class="bracket-round">
+            <div class="bracket-round__label">Quarterfinals · Jul 17</div>
+            <div class="bracket-game">
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">R16 winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">R16 winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__meta">TBD · Jul 17</div>
+            </div>
+            <div class="bracket-game">
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">R16 winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">R16 winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__meta">TBD · Jul 17</div>
+            </div>
+          </div>
+
+          <!-- Semis -->
+          <div class="bracket-round">
+            <div class="bracket-round__label">Semifinals · Jul 19</div>
+            <div class="bracket-game">
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">QF winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">QF winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__meta">TBD · Jul 19</div>
+            </div>
+          </div>
+
+          <!-- Final -->
+          <div class="bracket-round">
+            <div class="bracket-round__label">Championship · Jul 20</div>
+            <div class="bracket-game">
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">SF winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__row">
+                <span class="bracket-game__team bracket-game__team--tbd">SF winner</span>
+                <span class="bracket-game__score bracket-game__score--tbd">—</span>
+              </div>
+              <div class="bracket-game__meta">8:00 PT · T&amp;M · Jul 20</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         GROUP STANDINGS  (pre-bracket — seeding)
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Group Standings · Live Seeding</div>
+          <div class="section-header__meta">Top 4 records get byes into Round of 16 · point differential breaks ties</div>
+        </div>
+      </div>
+
+      <div class="standings-wrapper">
+        <div class="standings-intro">
+          <strong>How seeding works:</strong> all 30 teams play 4 group games (Jul 10–15); top 16 records advance, top 4 get auto-byes to the Round of 16 win bracket. Read the right-most column for the analytical hook on each team.
+        </div>
+
+        <table class="standings">
+          <thead>
+            <tr>
+              <th class="left">Team</th>
+              <th>GP</th>
+              <th>W</th>
+              <th>L</th>
+              <th>Pace</th>
+              <th>ORtg</th>
+              <th>DRtg</th>
+              <th>Net</th>
+              <th class="left">Story</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="left">
+                <span class="seed seed--bye">1</span>
+                <a class="standings-team" href="#">Mavericks</a>
+                <span class="standings-context">Flagg-led</span>
+                <span class="bye-tag">Bye</span>
+              </td>
+              <td>3</td>
+              <td>3</td>
+              <td>0</td>
+              <td>96.8</td>
+              <td>114.5</td>
+              <td>92.0</td>
+              <td style="color: #047857; font-weight: 600;">+22.5</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">Only team with +20 net · Flagg lineup most dominant</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="seed seed--bye">2</span>
+                <a class="standings-team" href="#">Spurs</a>
+                <span class="standings-context">Harper at 1</span>
+                <span class="bye-tag">Bye</span>
+              </td>
+              <td>3</td>
+              <td>3</td>
+              <td>0</td>
+              <td>95.4</td>
+              <td>110.2</td>
+              <td>93.1</td>
+              <td style="color: #047857; font-weight: 600;">+17.1</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">Top-3 AST/TO ratio · Wembanyama on bench leading cheers</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="seed seed--bye">3</span>
+                <a class="standings-team" href="#">76ers</a>
+                <span class="standings-context">Edgecombe debut</span>
+                <span class="bye-tag">Bye</span>
+              </td>
+              <td>3</td>
+              <td>3</td>
+              <td>0</td>
+              <td>93.2</td>
+              <td>108.4</td>
+              <td>94.8</td>
+              <td style="color: #047857; font-weight: 600;">+13.6</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">Best Vegas 3PT volume since 2019</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="seed seed--bye">4</span>
+                <a class="standings-team" href="#">Suns</a>
+                <span class="standings-context">Maluach + Booker dust</span>
+                <span class="bye-tag">Bye</span>
+              </td>
+              <td>3</td>
+              <td>2</td>
+              <td>1</td>
+              <td>92.0</td>
+              <td>104.8</td>
+              <td>94.4</td>
+              <td style="color: #047857; font-weight: 600;">+10.4</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">Best DRtg in field; Maluach on-court DRtg leads all bigs</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="seed">5</span>
+                <a class="standings-team" href="#">Nets</a>
+                <span class="standings-context">Demin running it</span>
+              </td>
+              <td>3</td>
+              <td>2</td>
+              <td>1</td>
+              <td>97.2</td>
+              <td>104.1</td>
+              <td>96.0</td>
+              <td style="color: #047857; font-weight: 600;">+8.1</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">Demin AST% 38 — top-3 among PGs</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="seed">6</span>
+                <a class="standings-team" href="#">Pelicans</a>
+                <span class="standings-context">Queen + Fears</span>
+              </td>
+              <td>3</td>
+              <td>2</td>
+              <td>1</td>
+              <td>95.6</td>
+              <td>103.5</td>
+              <td>96.8</td>
+              <td style="color: #047857; font-weight: 600;">+6.7</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">Best two-rookie ORtg combo (Queen+Fears on the floor: 114)</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="seed">7</span>
+                <a class="standings-team" href="#">Jazz</a>
+                <span class="standings-context">Bailey 25 PPG</span>
+              </td>
+              <td>3</td>
+              <td>2</td>
+              <td>1</td>
+              <td>93.0</td>
+              <td>105.2</td>
+              <td>99.4</td>
+              <td style="color: #047857; font-weight: 600;">+5.8</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">Bailey USG 32 — highest by a lotto pick this year</td>
+            </tr>
+            <tr>
+              <td class="left">
+                <span class="seed">8</span>
+                <a class="standings-team" href="#">Thunder</a>
+                <span class="standings-context">Sorber breakout</span>
+              </td>
+              <td>3</td>
+              <td>2</td>
+              <td>1</td>
+              <td>91.4</td>
+              <td>104.0</td>
+              <td>99.8</td>
+              <td style="color: #047857; font-weight: 600;">+4.2</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">Slowest pace in top-8 — meaningful efficiency despite half-court</td>
+            </tr>
+            <tr style="border-top: 2px dashed var(--color-slate-300);">
+              <td class="left">
+                <span class="seed">9</span>
+                <a class="standings-team" href="#">Hornets</a>
+                <span class="standings-context">Fland looking</span>
+              </td>
+              <td>3</td>
+              <td>0</td>
+              <td>3</td>
+              <td>96.6</td>
+              <td>96.4</td>
+              <td>108.2</td>
+              <td style="color: #be123c; font-weight: 600;">−11.8</td>
+              <td class="left" style="font-family: var(--font-mono); font-size: 0.6875rem; color: var(--color-slate-600);">Worst DRtg — Fland's 16 PPG on a losing team</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         VENUE LEADERS
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Vegas Leaders · 2026</div>
+          <div class="section-header__meta">Scoped to Vegas only · min 60 MIN + 2 GP</div>
+        </div>
+        <a class="section-header__cta" href="#">All venues + all-time →</a>
+      </div>
+
+      <div class="leader-tabs" role="tablist">
+        <button class="leader-tab leader-tab--active">Points</button>
+        <button class="leader-tab">Rebounds</button>
+        <button class="leader-tab">Assists</button>
+        <button class="leader-tab">TS%</button>
+        <button class="leader-tab">USG%</button>
+        <button class="leader-tab">Stocks</button>
+        <button class="leader-tab">Net rtg (on)</button>
+      </div>
+
+      <div class="leader-table-wrapper">
+        <table class="leader-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th class="left">Player</th>
+              <th>GP</th>
+              <th>MIN</th>
+              <th>PTS</th>
+              <th>TS%</th>
+              <th>USG%</th>
+              <th class="left">Sample</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="lt-rank lt-rank--gold">1</td>
+              <td class="left"><a class="lt-player" href="#">Cooper Flagg</a><span class="lt-context">DAL · #1 pick</span></td>
+              <td>5</td>
+              <td>29.4</td>
+              <td class="lt-stat heat-top">26.4</td>
+              <td>64.0</td>
+              <td>31.4</td>
+              <td class="left"><span class="lt-sample">5 GP · 147 MIN</span></td>
+            </tr>
+            <tr>
+              <td class="lt-rank lt-rank--silver">2</td>
+              <td class="left"><a class="lt-player" href="#">Dylan Harper</a><span class="lt-context">SAS · #2 pick</span></td>
+              <td>4</td>
+              <td>28.6</td>
+              <td class="lt-stat">22.8</td>
+              <td>59.2</td>
+              <td>34.9</td>
+              <td class="left"><span class="lt-sample">4 GP · 114 MIN</span></td>
+            </tr>
+            <tr>
+              <td class="lt-rank lt-rank--bronze">3</td>
+              <td class="left"><a class="lt-player" href="#">Tre Johnson</a><span class="lt-context">WAS · #5 pick</span></td>
+              <td>5</td>
+              <td>26.8</td>
+              <td class="lt-stat">21.0</td>
+              <td>52.0</td>
+              <td>34.8</td>
+              <td class="left"><span class="lt-sample">5 GP · 134 MIN</span></td>
+            </tr>
+            <tr>
+              <td class="lt-rank">4</td>
+              <td class="left"><a class="lt-player" href="#">Ace Bailey</a><span class="lt-context">UTA · #4 pick · SLC + Vegas</span></td>
+              <td>2</td>
+              <td>27.0</td>
+              <td class="lt-stat">20.5</td>
+              <td>54.0</td>
+              <td>32.0</td>
+              <td class="left"><span class="lt-sample">Vegas: 2 GP · 54 MIN</span></td>
+            </tr>
+            <tr>
+              <td class="lt-rank">5</td>
+              <td class="left"><a class="lt-player" href="#">Kasparas Jakucionis</a><span class="lt-context">MIA · #11 pick · CalC + Vegas</span></td>
+              <td>3</td>
+              <td>27.0</td>
+              <td class="lt-stat">19.7</td>
+              <td>58.5</td>
+              <td>28.8</td>
+              <td class="left"><span class="lt-sample">Vegas: 3 GP · 81 MIN</span></td>
+            </tr>
+            <tr>
+              <td class="lt-rank">6</td>
+              <td class="left"><a class="lt-player" href="#">VJ Edgecombe</a><span class="lt-context">PHI · #3 pick</span></td>
+              <td>5</td>
+              <td>26.8</td>
+              <td class="lt-stat">19.4</td>
+              <td>62.1</td>
+              <td>27.5</td>
+              <td class="left"><span class="lt-sample">5 GP · 134 MIN</span></td>
+            </tr>
+            <tr>
+              <td class="lt-rank">7</td>
+              <td class="left"><a class="lt-player" href="#">Jeremiah Fears</a><span class="lt-context">NOP · #7 pick</span></td>
+              <td>4</td>
+              <td>27.1</td>
+              <td class="lt-stat">19.0</td>
+              <td>54.0</td>
+              <td>29.4</td>
+              <td class="left"><span class="lt-sample">4 GP · 108 MIN</span></td>
+            </tr>
+            <tr>
+              <td class="lt-rank">8</td>
+              <td class="left"><a class="lt-player" href="#">Egor Demin</a><span class="lt-context">BKN · #8 pick</span></td>
+              <td>4</td>
+              <td>25.3</td>
+              <td class="lt-stat">18.5</td>
+              <td>55.7</td>
+              <td>27.2</td>
+              <td class="left"><span class="lt-sample">4 GP · 101 MIN</span></td>
+            </tr>
+            <tr>
+              <td class="lt-rank">9</td>
+              <td class="left"><a class="lt-player" href="#">Ryan Nembhard</a><span class="lt-context">DAL · undrafted</span></td>
+              <td>5</td>
+              <td>26.8</td>
+              <td class="lt-stat">17.8</td>
+              <td>62.4</td>
+              <td>24.0</td>
+              <td class="left"><span class="lt-sample">5 GP · 134 MIN</span></td>
+            </tr>
+            <tr>
+              <td class="lt-rank">10</td>
+              <td class="left"><a class="lt-player" href="#">Derik Queen</a><span class="lt-context">NOP · #10 pick</span></td>
+              <td>4</td>
+              <td>26.0</td>
+              <td class="lt-stat">18.0</td>
+              <td>53.5</td>
+              <td>26.4</td>
+              <td class="left"><span class="lt-sample">4 GP · 104 MIN</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         TEAMS AT VEGAS
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title">Teams at Vegas · 2026</div>
+          <div class="section-header__meta">30 SL rosters · click for team-season page</div>
+        </div>
+      </div>
+
+      <div class="teams-grid">
+
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">DAL</span>
+            <div class="team-tile__name">Mavericks</div>
+            <div class="team-tile__record">3–0</div>
+          </div>
+          <div class="team-tile__hook">
+            <strong>Net +22.5</strong> · Flagg lineup most dominant in Vegas
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">SAS</span>
+            <div class="team-tile__name">Spurs</div>
+            <div class="team-tile__record">3–0</div>
+          </div>
+          <div class="team-tile__hook">
+            <strong>Harper</strong> running PG · top-3 AST/TO ratio
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">PHI</span>
+            <div class="team-tile__name">76ers</div>
+            <div class="team-tile__record">3–0</div>
+          </div>
+          <div class="team-tile__hook">
+            <strong>Edgecombe</strong> debut · best 3PT volume since 2019
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">PHX</span>
+            <div class="team-tile__name">Suns</div>
+            <div class="team-tile__record">2–1</div>
+          </div>
+          <div class="team-tile__hook">
+            <strong>Maluach</strong> anchors best DRtg in field
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">UTA</span>
+            <div class="team-tile__name">Jazz</div>
+            <div class="team-tile__record">2–1</div>
+          </div>
+          <div class="team-tile__hook">
+            <strong>Bailey 25 PPG</strong> · class's biggest pick-to-composite jump
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">NOP</span>
+            <div class="team-tile__name">Pelicans</div>
+            <div class="team-tile__record">2–1</div>
+          </div>
+          <div class="team-tile__hook">
+            <strong>Queen+Fears</strong> best two-rookie ORtg in field
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">OKC</span>
+            <div class="team-tile__name">Thunder</div>
+            <div class="team-tile__record">2–1</div>
+          </div>
+          <div class="team-tile__hook">
+            <strong>Sorber</strong> 11/8 line · efficient half-court ball
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">BKN</span>
+            <div class="team-tile__name">Nets</div>
+            <div class="team-tile__record">2–1</div>
+          </div>
+          <div class="team-tile__hook">
+            <strong>Demin</strong> AST% 38 · top-3 PG playmaker
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">WAS</span>
+            <div class="team-tile__name">Wizards</div>
+            <div class="team-tile__record">1–2</div>
+          </div>
+          <div class="team-tile__hook">
+            <strong>Johnson USG 34.8</strong> · highest of any lotto pick
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">MIA</span>
+            <div class="team-tile__name">Heat</div>
+            <div class="team-tile__record">0–1 V · 2-2 CalC</div>
+          </div>
+          <div class="team-tile__hook">
+            <strong>Jakucionis</strong> deepest two-tournament sample
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">CHA</span>
+            <div class="team-tile__name">Hornets</div>
+            <div class="team-tile__record">0–3</div>
+          </div>
+          <div class="team-tile__hook">
+            Worst DRtg · <strong>Fland</strong> 16 PPG on a losing team
+          </div>
+        </a>
+        <a class="team-tile" href="#">
+          <div class="team-tile__top">
+            <span class="team-tile__logo">+19</span>
+            <div class="team-tile__name">19 more rosters</div>
+            <div class="team-tile__record">View all →</div>
+          </div>
+          <div class="team-tile__hook">
+            Rosters 12–30 by seeding
+          </div>
+        </a>
+
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         RECENT VEGAS SCHEDULE  (Game Browser style — utility)
+         ========================================================================= -->
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <div class="section-header__title section-header__title--utility">Game Browser · Vegas</div>
+          <div class="section-header__meta">Most recent · jump to a box score</div>
+        </div>
+        <a class="section-header__cta" href="#">Full Vegas schedule →</a>
+      </div>
+
+      <div class="schedule-list">
+
+        <div class="schedule-day">
+          <span>Saturday · Jul 11, 2026 · Final</span>
+          <span>8 games</span>
+        </div>
+
+        <div class="schedule-row">
+          <span class="schedule-row__time">4:00 PT</span>
+          <div class="schedule-row__matchup">
+            <div class="schedule-row__team">
+              <span class="schedule-row__team-name">Mavericks</span>
+            </div>
+            <div>
+              <span class="schedule-row__score">92</span>
+              <span class="schedule-row__dash">–</span>
+              <span class="schedule-row__score schedule-row__score--lost">87</span>
+            </div>
+            <div class="schedule-row__team schedule-row__team--away">
+              <span class="schedule-row__team-name schedule-row__team-name--lost">Wizards</span>
+            </div>
+          </div>
+          <span class="schedule-row__court">T&amp;M</span>
+          <span class="schedule-row__cta">Box →</span>
+        </div>
+
+        <div class="schedule-row">
+          <span class="schedule-row__time">4:30 PT</span>
+          <div class="schedule-row__matchup">
+            <div class="schedule-row__team">
+              <span class="schedule-row__team-name">Spurs</span>
+            </div>
+            <div>
+              <span class="schedule-row__score">104</span>
+              <span class="schedule-row__dash">–</span>
+              <span class="schedule-row__score schedule-row__score--lost">99</span>
+            </div>
+            <div class="schedule-row__team schedule-row__team--away">
+              <span class="schedule-row__team-name schedule-row__team-name--lost">Hornets</span>
+            </div>
+          </div>
+          <span class="schedule-row__court">Cox</span>
+          <span class="schedule-row__cta">Box →</span>
+        </div>
+
+        <div class="schedule-row">
+          <span class="schedule-row__time">6:00 PT</span>
+          <div class="schedule-row__matchup">
+            <div class="schedule-row__team">
+              <span class="schedule-row__team-name">76ers</span>
+            </div>
+            <div>
+              <span class="schedule-row__score">88</span>
+              <span class="schedule-row__dash">–</span>
+              <span class="schedule-row__score schedule-row__score--lost">82</span>
+            </div>
+            <div class="schedule-row__team schedule-row__team--away">
+              <span class="schedule-row__team-name schedule-row__team-name--lost">Rockets</span>
+            </div>
+          </div>
+          <span class="schedule-row__court">T&amp;M</span>
+          <span class="schedule-row__cta">Box →</span>
+        </div>
+
+        <div class="schedule-row">
+          <span class="schedule-row__time">6:30 PT</span>
+          <div class="schedule-row__matchup">
+            <div class="schedule-row__team">
+              <span class="schedule-row__team-name">Jazz</span>
+            </div>
+            <div>
+              <span class="schedule-row__score">95</span>
+              <span class="schedule-row__dash">–</span>
+              <span class="schedule-row__score schedule-row__score--lost">93</span>
+            </div>
+            <div class="schedule-row__team schedule-row__team--away">
+              <span class="schedule-row__team-name schedule-row__team-name--lost">Heat</span>
+            </div>
+          </div>
+          <span class="schedule-row__court">Cox</span>
+          <span class="schedule-row__cta">Box →</span>
+        </div>
+
+      </div>
+
+      <div class="updated-strip">
+        <span class="updated-strip__dot" aria-hidden="true"></span>
+        Daily refresh · Last update: Jul 12, 2026 · 10:14 PT
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-grid">
+        <div class="footer-column">
+          <h4>Explore</h4>
+          <ul>
+            <li><a href="#">Players</a></li>
+            <li><a href="#">Compare</a></li>
+            <li><a href="#">Consensus Mock</a></li>
+            <li><a href="#">News</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>Summer League</h4>
+          <ul>
+            <li><a href="#">Landing</a></li>
+            <li><a href="#">Leaders</a></li>
+            <li><a href="#">Explorer</a></li>
+            <li><a href="#">2026 Draft Class</a></li>
+            <li><a href="#">All-Summer-League</a></li>
+          </ul>
+        </div>
+        <div class="footer-column">
+          <h4>About</h4>
+          <ul>
+            <li><a href="#">Methodology</a></li>
+            <li><a href="#">Data Sources</a></li>
+            <li><a href="#">Contact</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-copyright">
+        © 2026 DraftGuru · Built for the love of the draft.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
