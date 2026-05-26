@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     gemini_summarization_api_key: Optional[str] = (
         None  # Separate key for RSS summarization
     )
+    gemini_embedding_model: str = "text-embedding-004"
     youtube_api_key: Optional[str] = None
 
     # Image generation settings
