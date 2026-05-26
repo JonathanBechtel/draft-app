@@ -213,8 +213,13 @@ class TestFindSimilarPlayers:
                 await find_similar_players(db, "   ", k=5)
 
     @pytest.mark.asyncio
-    async def test_search_path_widened_when_public_absent(self) -> None:
-        """When ``public`` is not in the current search_path, SET search_path is called."""
+    async def test_search_path_widened_then_restored_when_public_absent(self) -> None:
+        """When ``public`` is absent, search_path is widened then restored in finally.
+
+        The connection is pooled, so the widened path must not leak to whoever
+        reuses it next: we expect two SET statements — widen, then restore the
+        original narrow path.
+        """
         records: list[dict[str, Any]] = []
         db = _make_db_session(records, current_path='"pytest_schema_abc123"')
 
@@ -228,10 +233,14 @@ class TestFindSimilarPlayers:
         ):
             await find_similar_players(db, "test", k=5)
 
-        asyncpg_conn.execute.assert_called_once()
-        call_args = asyncpg_conn.execute.call_args[0][0]
-        assert "search_path" in call_args
-        assert "public" in call_args
+        assert asyncpg_conn.execute.call_count == 2
+        widen_sql = asyncpg_conn.execute.call_args_list[0][0][0]
+        restore_sql = asyncpg_conn.execute.call_args_list[1][0][0]
+        assert "search_path" in widen_sql and "public" in widen_sql
+        assert "search_path" in restore_sql
+        # Restored to the original narrow path — public must not linger.
+        assert "public" not in restore_sql
+        assert '"pytest_schema_abc123"' in restore_sql
 
     @pytest.mark.asyncio
     async def test_search_path_not_modified_when_public_present(self) -> None:
