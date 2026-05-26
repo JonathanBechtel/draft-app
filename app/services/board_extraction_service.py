@@ -19,15 +19,15 @@ import json
 import logging
 import re
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Protocol
 
 import httpx
 from bs4 import BeautifulSoup
 from google import genai
 from google.genai import types
-from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import func, select
+from pydantic import BaseModel, Field, ValidationError, field_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -91,6 +91,22 @@ class ExtractedBoard(BaseModel):
     draft_year: int = Field(ge=2024, le=2040)
     published_at: Optional[datetime] = None
     entries: list[ExtractedBoardEntry] = Field(default_factory=list)
+
+    @field_validator("published_at")
+    @classmethod
+    def _strip_tzinfo(cls, value: Optional[datetime]) -> Optional[datetime]:
+        """Coerce timezone-aware datetimes to naive UTC.
+
+        Gemini frequently emits ISO-8601 with a trailing ``Z`` or explicit
+        offset, which Pydantic parses as a timezone-aware ``datetime``. The
+        DB column for ``Board.published_at`` is naive UTC, and asyncpg
+        refuses to bind a tz-aware datetime to a naive ``timestamp`` column.
+        Strip tzinfo at the DTO boundary so downstream code can stay
+        oblivious.
+        """
+        if value is None or value.tzinfo is None:
+            return value
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 # --- Public entry point ----------------------------------------------------
@@ -330,7 +346,11 @@ def is_paywalled(html: str) -> bool:
         for blob in _iter_json_ld_blobs(payload):
             if not isinstance(blob, dict):
                 continue
-            if blob.get("@type") != "NewsArticle":
+            # JSON-LD allows ``@type`` to be a single string OR a list of
+            # strings (e.g. ``["NewsArticle", "Article"]``). Handle both.
+            type_value = blob.get("@type")
+            type_strings = type_value if isinstance(type_value, list) else [type_value]
+            if "NewsArticle" not in type_strings:
                 continue
             # schema.org default is "true" when omitted, so only treat
             # explicit "false" (or stringified equivalents) as gated.
@@ -509,10 +529,11 @@ async def _resolve_player_id(db: AsyncSession, raw_name: str) -> Optional[int]:
 
     Strategy:
     1. Normalize the extracted name (``normalize_player_name``).
-    2. Load candidates whose normalized display_name matches exactly.
-       Use ``func.lower(...)`` for the case-insensitive comparison and
-       compute the diacritic-fold in Python so we don't depend on the
-       ``unaccent`` Postgres extension.
+    2. Load candidate rows and compute the same normalization Python-side
+       to find an exact match. We avoid the ``unaccent`` Postgres
+       extension and don't apply a prefix prefilter (diacritic-leading
+       names would be missed by a SQL ``LIKE`` on the normalized first
+       letter).
     3. If exactly one candidate matches, return its id.
     4. If zero, try the same on ``player_aliases.full_name``.
     5. If multiple candidates match (e.g., two real prospects share a
@@ -553,17 +574,17 @@ async def _find_unique_normalized_match(
 
     Returns ``None`` if zero or multiple candidates match.
 
-    The first-letter prefix narrows the candidate set so we don't pull
-    the entire player table into memory per lookup, while still
-    capturing rows that differ only in diacritics.
+    No SQL-side prefix filter: a prefix like ``LIKE 'e%'`` would miss
+    rows whose first character is a diacritic (e.g. "Éric" → lower form
+    "éric" → does not satisfy ``LIKE 'e%'``), even though the normalized
+    needle starts with ``e``. The candidate tables (``players_master``,
+    ``player_aliases``) are small enough that scanning Python-side is
+    cheap and unambiguously correct.
     """
-    first_char = needle[0] if needle else ""
-    if not first_char:
+    if not needle:
         return None
 
-    # Cast the column to text for prefix filtering; the narrow filter
-    # keeps the candidate set tiny (one letter's worth of names).
-    stmt = select(id_column, column).where(func.lower(column).like(f"{first_char}%"))
+    stmt = select(id_column, column)
     result = await db.execute(stmt)
 
     matches: list[int] = []

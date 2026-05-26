@@ -284,6 +284,46 @@ async def test_extract_board_matches_across_diacritics(
 
 
 @pytest.mark.asyncio
+async def test_extract_board_matches_when_db_name_starts_with_diacritic(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    monkeypatch,
+) -> None:
+    """A DB row starting with a diacritic character is found even though the
+    extracted (normalized) needle starts with a plain ASCII letter.
+
+    Previously a SQL prefix prefilter (LIKE 'e%') would skip "Éric ..." rows
+    because lower('É') != 'e'. The fix loads candidates without a prefix
+    filter and matches Python-side on the normalized form.
+    """
+    assert news_source.id is not None
+    item = await _make_news_item(db_session, source_id=news_source.id)
+    eric = await _make_player(db_session, display_name="Éric Dubois")
+
+    _stub_extraction(
+        monkeypatch,
+        ExtractedBoard(
+            draft_year=2026,
+            entries=[ExtractedBoardEntry(player_name="Eric Dubois", rank=1)],
+        ),
+    )
+
+    assert item.id is not None
+    board = await extract_board(
+        db_session,
+        news_item_id=item.id,
+        fetcher=_fake_fetcher("article text"),
+    )
+
+    assert board is not None
+    entries_stmt = select(BoardEntry).where(BoardEntry.board_id == board.id)
+    result = await db_session.execute(entries_stmt)
+    entries = result.scalars().all()
+    assert len(entries) == 1
+    assert entries[0].player_id == eric.id
+
+
+@pytest.mark.asyncio
 async def test_extract_board_matches_across_suffix(
     db_session: AsyncSession,
     news_source: NewsSource,

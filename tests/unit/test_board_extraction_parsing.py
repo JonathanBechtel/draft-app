@@ -5,10 +5,13 @@ No DB, no network. Anything DB-bound lives in the integration suite.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from app.services.board_extraction_service import (
     BoardExtractionError,
+    ExtractedBoard,
     extract_article_text,
     is_paywalled,
     normalize_player_name,
@@ -260,3 +263,75 @@ def test_parse_gemini_response_rejects_zero_rank() -> None:
 def test_parse_gemini_response_empty_response_raises() -> None:
     with pytest.raises(BoardExtractionError):
         parse_gemini_response("")
+
+
+# --- ExtractedBoard timezone normalization ------------------------------
+
+
+def test_extracted_board_strips_tzinfo_from_utc_z() -> None:
+    """A Z-suffixed ISO string lands as a naive UTC datetime."""
+    board = ExtractedBoard.model_validate(
+        {"draft_year": 2026, "published_at": "2026-03-15T00:00:00Z", "entries": []}
+    )
+    assert board.published_at is not None
+    assert board.published_at.tzinfo is None
+    assert board.published_at == datetime(2026, 3, 15, 0, 0, 0)
+
+
+def test_extracted_board_strips_tzinfo_from_explicit_offset() -> None:
+    """A datetime with an explicit non-UTC offset is converted to naive UTC."""
+    board = ExtractedBoard.model_validate(
+        {"draft_year": 2026, "published_at": "2026-03-15T08:00:00+04:00", "entries": []}
+    )
+    assert board.published_at is not None
+    assert board.published_at.tzinfo is None
+    # 08:00 +04:00 == 04:00 UTC
+    assert board.published_at == datetime(2026, 3, 15, 4, 0, 0)
+
+
+def test_extracted_board_keeps_already_naive_datetime() -> None:
+    """A naive datetime passes through untouched."""
+    board = ExtractedBoard.model_validate(
+        {"draft_year": 2026, "published_at": "2026-03-15T12:30:00", "entries": []}
+    )
+    assert board.published_at == datetime(2026, 3, 15, 12, 30, 0)
+    assert board.published_at.tzinfo is None  # type: ignore[union-attr]
+
+
+def test_extracted_board_published_at_none_is_preserved() -> None:
+    board = ExtractedBoard.model_validate({"draft_year": 2026, "entries": []})
+    assert board.published_at is None
+
+
+# --- is_paywalled with @type as a list ----------------------------------
+
+
+def test_is_paywalled_accepts_type_as_list_with_newsarticle() -> None:
+    """JSON-LD validly emits ``@type`` as a list; recognize NewsArticle inside."""
+    html = """
+    <html><head>
+      <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": ["NewsArticle", "Article"],
+          "isAccessibleForFree": false
+        }
+      </script>
+    </head><body></body></html>
+    """
+    assert is_paywalled(html) is True
+
+
+def test_is_paywalled_type_list_without_newsarticle_is_ignored() -> None:
+    """A list of types that doesn't include NewsArticle isn't gated."""
+    html = """
+    <html><head>
+      <script type="application/ld+json">
+        {
+          "@type": ["BlogPosting", "Article"],
+          "isAccessibleForFree": false
+        }
+      </script>
+    </head></html>
+    """
+    assert is_paywalled(html) is False
