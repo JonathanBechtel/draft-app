@@ -19,6 +19,7 @@ import json
 import logging
 import re
 import unicodedata
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional, Protocol
 
@@ -32,11 +33,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from urllib.parse import urlparse
 
 from app.config import settings
-from app.schemas.boards import Board, BoardKind, BoardStatus
+from app.schemas.boards import Board, BoardKind, BoardStatus, ResolutionMethod
 from app.schemas.news_items import NewsItem
 from app.schemas.player_aliases import PlayerAlias
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service
+from app.services.player_search_service import find_similar_players
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +121,32 @@ class ExtractedBoard(BaseModel):
         return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
+# --- Resolution result DTO ------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ResolutionResult:
+    """Result of a single player-name resolution attempt.
+
+    Attributes:
+        player_id: The resolved ``players_master`` id, or ``None`` when the
+            name could not be unambiguously matched.
+        method: How the match was achieved (EXACT / ALIAS / UNRESOLVED).
+            VECTOR is reserved for a future threshold-based auto-resolve
+            ticket; this cascade always returns UNRESOLVED when vector
+            candidates are emitted rather than promoting a match on score.
+        candidates: Top-K nearest-neighbour results from the vector search
+            step, serialised as ``[{player_id, display_name, score}, ...]``
+            for storage in ``BoardEntry.vector_candidates``.  Only populated
+            when ``method`` is UNRESOLVED and the vector pass ran; ``None``
+            otherwise.
+    """
+
+    player_id: Optional[int]
+    method: ResolutionMethod
+    candidates: Optional[list[dict]] = None  # type: ignore[type-arg]
+
+
 # --- Public entry point ----------------------------------------------------
 
 
@@ -199,42 +227,55 @@ async def extract_board(
         )
         return None
 
-    # 3. Resolve player names → players_master ids (drop unmatched, log them).
+    # 3. Resolve player names via cascade (exact → alias → vector).
+    #    Every entry is persisted: resolved entries carry a player_id, while
+    #    unresolved entries land with player_id=None and UNRESOLVED method so
+    #    an admin can review them later (T7).
     entries_in: list[board_service.EntryInput] = []
-    unmatched: list[str] = []
+    unresolved_names: list[str] = []
     seen_player_ids: set[int] = set()
     seen_positions: set[int] = set()
     for raw in extracted.entries:
-        player_id, method = await _resolve_player_id(db, raw.player_name)
-        if player_id is None:
-            unmatched.append(raw.player_name)
+        resolution = await resolve_player(db, raw.player_name)
+
+        # Dedup: skip a rank or player that Gemini already emitted to avoid
+        # unique-constraint violations. Only resolved entries (with a real
+        # player_id) participate in the player-dedup check; unresolved entries
+        # each get their own slot at the extracted rank.
+        if raw.rank in seen_positions:
             continue
-        if player_id in seen_player_ids or raw.rank in seen_positions:
-            # Gemini occasionally repeats a player or a rank; skip silently.
+        if resolution.player_id is not None and resolution.player_id in seen_player_ids:
             continue
-        seen_player_ids.add(player_id)
+
+        if resolution.player_id is not None:
+            seen_player_ids.add(resolution.player_id)
         seen_positions.add(raw.rank)
+
+        if resolution.player_id is None:
+            unresolved_names.append(raw.player_name)
+
         entries_in.append(
             board_service.EntryInput(
-                player_id=player_id,
+                player_id=resolution.player_id,
                 position=raw.rank,
                 raw_name=raw.player_name,
-                resolution_method=method,
+                resolution_method=resolution.method,
                 tier=raw.tier,
+                vector_candidates=resolution.candidates,
             )
         )
 
-    if unmatched:
+    if unresolved_names:
         logger.info(
-            "board.extract.unmatched_players news_item_id=%s count=%d names=%s",
+            "board.extract.unresolved_players news_item_id=%s count=%d names=%s",
             news_item_id,
-            len(unmatched),
-            unmatched[:10],
+            len(unresolved_names),
+            unresolved_names[:10],
         )
 
     if not entries_in:
         logger.warning(
-            "board.extract.no_resolvable_entries news_item_id=%s url=%s",
+            "board.extract.no_entries_to_persist news_item_id=%s url=%s",
             news_item_id,
             news_item.url,
         )
@@ -252,11 +293,11 @@ async def extract_board(
         news_item_id=news_item_id,
     )
     logger.info(
-        "board.extract.created board_id=%s news_item_id=%s entries=%d unmatched=%d",
+        "board.extract.created board_id=%s news_item_id=%s entries=%d unresolved=%d",
         board.id,
         news_item_id,
         len(entries_in),
-        len(unmatched),
+        len(unresolved_names),
     )
     return board
 
@@ -713,29 +754,102 @@ def normalize_player_name(name: str) -> str:
     return collapsed.lower()
 
 
+async def resolve_player(db: AsyncSession, raw_name: str) -> ResolutionResult:
+    """Resolve a raw player name to a ``players_master`` id via a three-step cascade.
+
+    Cascade order:
+    1. **Exact** — normalized match on ``players_master.display_name``.
+    2. **Alias** — normalized match on ``player_aliases.full_name``.
+    3. **Vector** — embed ``raw_name`` and run a k-NN search against
+       ``player_embeddings``; return the top-5 candidates for admin review,
+       but **do not auto-resolve** — that is a deferred future ticket.
+
+    The normalization applied in steps 1 and 2 (``normalize_player_name``)
+    folds Unicode diacritics, strips trailing suffixes (Jr./Sr./II/III/IV/V),
+    and lowercases so that "Théo Maledon" in the DB matches "Theo Maledon"
+    from the extraction, and "Bronny James" matches "Bronny James Jr.".
+
+    For ambiguous exact/alias matches (two players with the same name) the
+    rule is: never guess.  Ambiguity falls through to the vector step so an
+    admin can choose from the top-K candidates.
+
+    Args:
+        db: Async session; caller owns any open transaction.
+        raw_name: The player name exactly as emitted by the extraction AI.
+
+    Returns:
+        A :class:`ResolutionResult` with:
+        - ``player_id`` set and ``method`` EXACT/ALIAS when a unique match
+          is found in the first two steps.
+        - ``player_id=None``, ``method=UNRESOLVED``, and ``candidates``
+          populated when the vector step runs (even if it returns 0 rows).
+    """
+    needle = normalize_player_name(raw_name)
+    if not needle:
+        return ResolutionResult(player_id=None, method=ResolutionMethod.UNRESOLVED)
+
+    # Step 1: exact match on display_name.
+    candidate = await _find_unique_normalized_match(
+        db,
+        column=PlayerMaster.display_name,  # type: ignore[arg-type]
+        id_column=PlayerMaster.id,  # type: ignore[arg-type]
+        needle=needle,
+    )
+    if candidate is not None:
+        return ResolutionResult(player_id=candidate, method=ResolutionMethod.EXACT)
+
+    # Step 2: alias match.
+    alias_match = await _find_unique_normalized_match(
+        db,
+        column=PlayerAlias.full_name,  # type: ignore[arg-type]
+        id_column=PlayerAlias.player_id,  # type: ignore[arg-type]
+        needle=needle,
+    )
+    if alias_match is not None:
+        return ResolutionResult(player_id=alias_match, method=ResolutionMethod.ALIAS)
+
+    # Step 3: vector search.  Persist candidates regardless of score so an
+    # admin can review them.  Do NOT auto-resolve — that is a follow-up ticket.
+    try:
+        vector_hits = await find_similar_players(db, raw_name, k=5)
+    except Exception:
+        logger.exception(
+            "board.resolve.vector_search_error raw_name=%r — returning UNRESOLVED",
+            raw_name,
+        )
+        vector_hits = []
+
+    candidates: Optional[list[dict]] = (  # type: ignore[type-arg]
+        [
+            {
+                "player_id": hit.player_id,
+                "display_name": hit.display_name,
+                "score": round(hit.score, 6),
+            }
+            for hit in vector_hits
+        ]
+        if vector_hits
+        else None
+    )
+    return ResolutionResult(
+        player_id=None,
+        method=ResolutionMethod.UNRESOLVED,
+        candidates=candidates,
+    )
+
+
 async def _resolve_player_id(
     db: AsyncSession, raw_name: str
 ) -> tuple[Optional[int], board_service.ResolutionMethod]:
-    """Look up a PlayerMaster id by name; fall back to aliases.
+    """Thin compatibility wrapper around :func:`resolve_player`.
 
-    Strategy:
-    1. Normalize the extracted name (``normalize_player_name``).
-    2. Load candidate rows and compute the same normalization Python-side
-       to find an exact match. We avoid the ``unaccent`` Postgres
-       extension and don't apply a prefix prefilter (diacritic-leading
-       names would be missed by a SQL ``LIKE`` on the normalized first
-       letter).
-    3. If exactly one candidate matches ``display_name``, return its id
-       with ``EXACT``.
-    4. If zero, try the same on ``player_aliases.full_name`` — match
-       there is reported as ``ALIAS`` so callers can record the
-       provenance accurately.
-    5. If multiple candidates match (e.g., two real prospects share a
-       name), treat as unresolved — never guess. The follow-up ticket
-       persists these for admin review.
+    Existing callers that expect a ``(player_id, ResolutionMethod)`` tuple
+    can continue using this function unchanged.  The vector step is NOT
+    invoked here to avoid unexpected embedding calls from callers that are
+    not prepared to handle candidates.
 
-    Returns ``(None, UNRESOLVED)`` for empty input, no match, or
-    ambiguous match.
+    .. deprecated::
+        Prefer :func:`resolve_player` for new call sites.
     """
     needle = normalize_player_name(raw_name)
     if not needle:

@@ -55,6 +55,10 @@ class EntryInput:
 
     ``player_id`` is optional: an entry can land unresolved (no DB match for
     the analyst's name) and a human resolves it later through the admin UI.
+
+    ``vector_candidates`` is only populated for UNRESOLVED entries that went
+    through the vector search step; it carries the top-K nearest-neighbour
+    candidates as ``[{player_id, display_name, score}, ...]`` for admin review.
     """
 
     player_id: Optional[int]
@@ -62,6 +66,7 @@ class EntryInput:
     raw_name: str = ""
     resolution_method: ResolutionMethod = ResolutionMethod.MANUAL
     tier: Optional[int] = None
+    vector_candidates: Optional[list[dict]] = None  # type: ignore[type-arg]
 
 
 async def create_board(
@@ -118,6 +123,7 @@ async def create_board(
                 raw_name=entry.raw_name,
                 resolution_method=entry.resolution_method,
                 tier=entry.tier,
+                vector_candidates=entry.vector_candidates,
             )
         )
     try:
