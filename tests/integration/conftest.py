@@ -146,12 +146,13 @@ async def async_engine(
     }
     engine = create_async_engine(database_url, echo=False, pool_pre_ping=True, connect_args=connect_args)
 
-    # pgvector is a database-level extension.  Install it before create_all so
-    # the vector type is available.  The extension DDL must be committed and the
-    # pool disposed before create_all runs so that asyncpg opens a fresh
-    # connection with an up-to-date type codec cache.
+    # Database-level extensions must be installed before create_all so that
+    # the types and operators they provide are available.  The extension DDL
+    # must be committed and the pool disposed before create_all runs so that
+    # asyncpg opens a fresh connection with an up-to-date type codec cache.
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     await engine.dispose()
 
     # Rebuild the engine so all new connections open after the extension commit.

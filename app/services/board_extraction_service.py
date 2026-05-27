@@ -38,7 +38,7 @@ from app.schemas.news_items import NewsItem
 from app.schemas.player_aliases import PlayerAlias
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service
-from app.services.player_search_service import find_similar_players
+from app.services.player_search_service import find_candidate_players
 
 logger = logging.getLogger(__name__)
 
@@ -808,16 +808,18 @@ async def resolve_player(db: AsyncSession, raw_name: str) -> ResolutionResult:
     if alias_match is not None:
         return ResolutionResult(player_id=alias_match, method=ResolutionMethod.ALIAS)
 
-    # Step 3: vector search.  Persist candidates regardless of score so an
-    # admin can review them.  Do NOT auto-resolve — that is a follow-up ticket.
+    # Step 3: hybrid search (trigram lexical + cosine-distance vector).
+    # Blending both signals surfaces bare/short-surname queries that pure vector
+    # search misses.  Persist candidates regardless of score so an admin can
+    # review them.  Do NOT auto-resolve — that is a follow-up ticket.
     try:
-        vector_hits = await find_similar_players(db, raw_name, k=5)
+        hybrid_hits = await find_candidate_players(db, raw_name, k=5)
     except Exception:
         logger.exception(
-            "board.resolve.vector_search_error raw_name=%r — returning UNRESOLVED",
+            "board.resolve.hybrid_search_error raw_name=%r — returning UNRESOLVED",
             raw_name,
         )
-        vector_hits = []
+        hybrid_hits = []
 
     candidates: Optional[list[dict]] = (  # type: ignore[type-arg]
         [
@@ -826,9 +828,9 @@ async def resolve_player(db: AsyncSession, raw_name: str) -> ResolutionResult:
                 "display_name": hit.display_name,
                 "score": round(hit.score, 6),
             }
-            for hit in vector_hits
+            for hit in hybrid_hits
         ]
-        if vector_hits
+        if hybrid_hits
         else None
     )
     return ResolutionResult(

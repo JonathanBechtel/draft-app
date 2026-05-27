@@ -84,17 +84,21 @@ def _stub_vector_search(
     monkeypatch,
     candidates: list[Candidate] | None = None,
 ) -> None:
-    """Patch find_similar_players in board_extraction_service to return canned results.
+    """Patch find_candidate_players in board_extraction_service to return canned results.
 
-    Prevents any live Gemini embedding or DB vector-search calls in tests.
-    Pass ``candidates=None`` (default) to simulate an empty result set.
+    Prevents any live Gemini embedding or DB trigram/vector-search calls in
+    tests.  Pass ``candidates=None`` (default) to simulate an empty result set.
+
+    Note: ``resolve_player`` uses ``find_candidate_players`` (the hybrid
+    lexical+vector function) rather than the bare ``find_similar_players``
+    since T10.  The patch target is updated accordingly.
     """
     _candidates = candidates or []
 
     async def _stub(db, query: str, k: int = 5) -> list[Candidate]:
         return _candidates
 
-    monkeypatch.setattr(board_extraction_service, "find_similar_players", _stub)
+    monkeypatch.setattr(board_extraction_service, "find_candidate_players", _stub)
 
 
 # --- Happy path ------------------------------------------------------------
