@@ -1,0 +1,200 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Name Comparison" %}
+{% set active_nav = "players" %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Name Comparison Tool</h1>
+  <p class="admin-main__subtitle">Explore player embeddings: find nearest neighbours or compare two names.</p>
+</header>
+
+{% if compare_error %}
+<div class="admin-alert admin-alert--error" role="alert">{{ compare_error }}</div>
+{% endif %}
+
+<!-- ── Mode 1: Find similar ─────────────────────────────────────────── -->
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Find similar to…</h2>
+  </div>
+  <form class="admin-filters" method="get" action="/admin/players/compare" id="form-similar">
+    <div class="admin-filters__row">
+      <div class="admin-filters__field admin-filters__field--wide">
+        <label class="admin-filters__label" for="q">Name / query</label>
+        <input
+          class="admin-form__input"
+          type="text"
+          id="q"
+          name="q"
+          value="{{ q }}"
+          placeholder="e.g. mara, Cooper Flagg, flagg duke…"
+          autocomplete="off"
+        >
+      </div>
+      <div class="admin-filters__field">
+        <label class="admin-filters__label" for="k">Top-K</label>
+        <input
+          class="admin-form__input"
+          type="number"
+          id="k"
+          name="k"
+          value="{{ k }}"
+          min="1"
+          max="50"
+          style="width: 5rem;"
+        >
+      </div>
+      <div class="admin-filters__actions">
+        <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Search</button>
+        {% if q %}
+        <a href="/admin/players/compare" class="admin-btn admin-btn--secondary admin-btn--small">Reset</a>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+
+  {% if similar_results is not none %}
+    {% if similar_results %}
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Name</th>
+          <th>School</th>
+          <th>Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in similar_results %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>
+            <a href="/admin/players/{{ c.player_id }}" class="admin-link">
+              {{ c.display_name or '—' }}
+            </a>
+          </td>
+          <td>{{ c.school or '—' }}</td>
+          <td>
+            <span class="admin-badge {% if c.score >= 0.85 %}admin-badge--active{% elif c.score >= 0.6 %}admin-badge--unknown{% else %}admin-badge--inactive{% endif %}">
+              {{ "%.4f"|format(c.score) }}
+            </span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="admin-empty">
+      <div class="admin-empty__icon">&#128269;</div>
+      <h3 class="admin-empty__title">No results</h3>
+      <p class="admin-empty__text">No players matched <strong>{{ q }}</strong>. Check the embeddings table is populated.</p>
+    </div>
+    {% endif %}
+  {% endif %}
+</div>
+
+<!-- ── Mode 2: Compare two names ────────────────────────────────────── -->
+<div class="admin-card" style="margin-top: 1.5rem;">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Compare two names</h2>
+  </div>
+  <form class="admin-filters" method="get" action="/admin/players/compare" id="form-compare">
+    <div class="admin-filters__row">
+      <div class="admin-filters__field admin-filters__field--wide">
+        <label class="admin-filters__label" for="name_a">Name A</label>
+        <input
+          class="admin-form__input"
+          type="text"
+          id="name_a"
+          name="name_a"
+          value="{{ name_a }}"
+          placeholder="e.g. Mara"
+          autocomplete="off"
+        >
+      </div>
+      <div class="admin-filters__field admin-filters__field--wide">
+        <label class="admin-filters__label" for="name_b">Name B</label>
+        <input
+          class="admin-form__input"
+          type="text"
+          id="name_b"
+          name="name_b"
+          value="{{ name_b }}"
+          placeholder="e.g. Aday Mara"
+          autocomplete="off"
+        >
+      </div>
+      <div class="admin-filters__actions">
+        <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Compare</button>
+        {% if name_a or name_b %}
+        <a href="/admin/players/compare" class="admin-btn admin-btn--secondary admin-btn--small">Reset</a>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+
+  {% if similarity_score is not none %}
+  <div class="admin-compare-result">
+    <p class="admin-compare-result__label">Cosine similarity</p>
+    <p class="admin-compare-result__names">
+      <strong>{{ name_a }}</strong>
+      <span class="admin-compare-result__vs">vs</span>
+      <strong>{{ name_b }}</strong>
+    </p>
+    <p class="admin-compare-result__score
+      {% if similarity_score >= 0.85 %}admin-compare-result__score--high
+      {% elif similarity_score >= 0.6 %}admin-compare-result__score--mid
+      {% else %}admin-compare-result__score--low{% endif %}">
+      {{ "%.4f"|format(similarity_score) }}
+    </p>
+    <p class="admin-compare-result__hint">
+      {% if similarity_score >= 0.85 %}
+        High similarity — likely the same person.
+      {% elif similarity_score >= 0.6 %}
+        Moderate similarity — possible match; review manually.
+      {% else %}
+        Low similarity — likely different people.
+      {% endif %}
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+{% block admin_css %}
+<style>
+.admin-compare-result {
+  padding: 1.5rem 1.25rem;
+  text-align: center;
+}
+.admin-compare-result__label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted, #888);
+  margin-bottom: 0.5rem;
+}
+.admin-compare-result__names {
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+.admin-compare-result__vs {
+  margin: 0 0.5rem;
+  color: var(--color-text-muted, #888);
+}
+.admin-compare-result__score {
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 1;
+  margin: 0.25rem 0 0.5rem;
+}
+.admin-compare-result__score--high { color: #22c55e; }
+.admin-compare-result__score--mid  { color: #f59e0b; }
+.admin-compare-result__score--low  { color: #ef4444; }
+.admin-compare-result__hint {
+  font-size: 0.875rem;
+  color: var(--color-text-muted, #888);
+}
+</style>
+{% endblock %}
+{% endblock %}
