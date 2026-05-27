@@ -246,6 +246,49 @@ async def update_entry(
     return entry
 
 
+async def assign_entry(
+    db: AsyncSession,
+    *,
+    entry_id: int,
+    player_id: int,
+) -> BoardEntry:
+    """Manually assign a player to an UNRESOLVED (or any PENDING) entry.
+
+    Sets ``player_id`` to the supplied value and stamps
+    ``resolution_method=MANUAL``.  The board must be PENDING; callers own
+    the transaction.
+
+    Args:
+        db: Async session; caller owns commit.
+        entry_id: PK of the ``board_entries`` row to update.
+        player_id: PK of the ``players_master`` row to assign.
+
+    Returns:
+        The updated :class:`BoardEntry`.
+
+    Raises:
+        EntryNotFoundError: If ``entry_id`` does not resolve to a row.
+        BoardNotEditableError: If the parent board is not PENDING.
+        DuplicatePlayerError: If the board already contains this player on
+            another entry.
+    """
+    entry = await db.get(BoardEntry, entry_id)
+    if entry is None:
+        raise EntryNotFoundError(f"No board entry with id={entry_id}")
+
+    board = await get_board(db, entry.board_id)
+    _require_pending(board)
+
+    entry.player_id = player_id
+    entry.resolution_method = ResolutionMethod.MANUAL
+    board.updated_at = datetime.utcnow()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        _translate_entry_integrity_error(exc)
+    return entry
+
+
 async def delete_entry(db: AsyncSession, *, entry_id: int) -> None:
     """Remove an entry from a PENDING board and decrement ``size``."""
     entry = await db.get(BoardEntry, entry_id)

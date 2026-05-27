@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
@@ -23,10 +23,11 @@ from app.routes.admin.helpers import (
     base_context_with_permissions,
     require_dataset_access,
 )
-from app.schemas.boards import BoardStatus
+from app.schemas.boards import BoardStatus, ResolutionMethod
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service as svc
+from app.services.player_search_service import find_lexical_players
 from app.utils.db_async import get_session
 
 logger = logging.getLogger(__name__)
@@ -205,13 +206,17 @@ async def big_board_detail(
 
     source = await db.get(NewsSource, board.news_source_id)
 
-    player_ids = [e.player_id for e in entries]
+    player_ids = [e.player_id for e in entries if e.player_id is not None]
     players_by_id: dict[int, PlayerMaster] = {}
     if player_ids:
         rows = await db.execute(
             select(PlayerMaster).where(PlayerMaster.id.in_(player_ids))  # type: ignore[union-attr]
         )
         players_by_id = {p.id: p for p in rows.scalars().all() if p.id is not None}
+
+    unresolved_count = sum(
+        1 for e in entries if e.resolution_method is ResolutionMethod.UNRESOLVED
+    )
 
     is_pending = board.status is BoardStatus.PENDING
     default_tier = (
@@ -253,6 +258,7 @@ async def big_board_detail(
             entries=entries,
             source=source,
             players_by_id=players_by_id,
+            unresolved_count=unresolved_count,
             is_pending=is_pending,
             default_tier=default_tier,
             default_next_rank=default_next_rank,
@@ -623,6 +629,83 @@ async def _move_entry(
         return _redirect_with_error(board_id, str(exc))
 
     return RedirectResponse(url=f"/admin/boards/{board_id}", status_code=303)
+
+
+@router.post("/{board_id}/entries/{entry_id}/assign", response_class=HTMLResponse)
+async def assign_board_entry(
+    request: Request,
+    board_id: int,
+    entry_id: int,
+    player_id: int = Form(...),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Manually assign a player to an unresolved entry.
+
+    Sets ``player_id`` on the entry and stamps
+    ``resolution_method=MANUAL``.  The board must be PENDING.
+    Redirects back to the board detail page on success.
+    """
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "boards",
+        need_edit=True,
+        next_path=f"/admin/boards/{board_id}",
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    try:
+        async with db.begin():
+            await svc.assign_entry(db, entry_id=entry_id, player_id=player_id)
+    except svc.BoardError as exc:
+        return _redirect_with_error(board_id, str(exc))
+
+    return RedirectResponse(
+        url=f"/admin/boards/{board_id}?success=entry_updated", status_code=303
+    )
+
+
+@router.get("/{board_id}/entries/player-search", response_class=JSONResponse)
+async def board_player_search(
+    request: Request,
+    board_id: int,
+    q: str = Query(default="", min_length=0),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Return up to 10 players matching *q* by trigram similarity.
+
+    Used by the free-form search input on unresolved entries.  Results are
+    JSON-serialised ``[{id, display_name, school}, ...]`` matching the
+    shape consumed by the autocomplete helper in ``boards-detail.js``.
+    """
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "boards",
+        need_edit=False,
+        next_path=f"/admin/boards/{board_id}",
+    )
+    if redirect:
+        return JSONResponse(content=[], status_code=401)
+    assert user is not None
+
+    q_stripped = q.strip()
+    if len(q_stripped) < 2:
+        return JSONResponse(content=[])
+
+    candidates = await find_lexical_players(db, q_stripped, k=10)
+    return JSONResponse(
+        content=[
+            {
+                "id": c.player_id,
+                "display_name": c.display_name or "",
+                "school": c.school or "",
+            }
+            for c in candidates
+        ]
+    )
 
 
 def _parse_optional_int(raw: str | None) -> int | None:
