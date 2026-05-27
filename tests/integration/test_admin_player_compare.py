@@ -107,7 +107,7 @@ async def test_compare_find_similar_renders_candidates(
     app_client: AsyncClient,
     admin_logged_in: None,
 ) -> None:
-    """?q=mara triggers find_similar_players and renders the candidate table.
+    """?q=mara triggers find_candidate_players and renders the candidate table.
 
     The mock returns a known Candidate set; we assert display_name, school,
     and score appear in the rendered HTML.
@@ -124,7 +124,7 @@ async def test_compare_find_similar_renders_candidates(
     ]
 
     with patch(
-        "app.routes.admin.players.find_similar_players",
+        "app.routes.admin.players.find_candidate_players",
         new=AsyncMock(return_value=fake_candidates),
     ):
         resp = await app_client.get("/admin/players/compare?q=mara")
@@ -149,7 +149,7 @@ async def test_compare_find_similar_empty_results(
     """
     _ = admin_logged_in
     with patch(
-        "app.routes.admin.players.find_similar_players",
+        "app.routes.admin.players.find_candidate_players",
         new=AsyncMock(return_value=[]),
     ):
         resp = await app_client.get("/admin/players/compare?q=nobody")

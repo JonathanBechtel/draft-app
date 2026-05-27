@@ -50,7 +50,7 @@ from app.services.admin_combine_service import (
 from app.services.player_search_service import (
     Candidate,
     compare_names,
-    find_similar_players,
+    find_candidate_players,
 )
 from app.services.admin_player_service import (
     PlayerFormData,
@@ -381,8 +381,10 @@ async def player_compare(
 
     Two modes — selected by which query params are present:
 
-    * **Find similar** (``?q=<name>``): embed the query and return the top-K
-      nearest neighbours from ``player_embeddings`` with their cosine scores.
+    * **Find similar** (``?q=<name>``): run the hybrid lexical + vector
+      candidate search and return the top-K matches with their scores. Using
+      the hybrid primitive (rather than vector-only) means ultra-short bare
+      surnames like ``mara`` still surface the right player (Aday Mara).
     * **Compare two names** (``?name_a=<a>&name_b=<b>``): embed both strings
       independently and return the cosine similarity between them (no DB
       lookup beyond the two embed calls).
@@ -414,9 +416,9 @@ async def player_compare(
 
     if q and q.strip():
         try:
-            similar_results = await find_similar_players(db, q.strip(), k=k)
+            similar_results = await find_candidate_players(db, q.strip(), k=k)
         except Exception as exc:
-            logger.warning("find_similar_players failed for query %r: %s", q, exc)
+            logger.warning("find_candidate_players failed for query %r: %s", q, exc)
             compare_error = f"Search failed: {exc}"
 
     elif name_a and name_b and name_a.strip() and name_b.strip():
