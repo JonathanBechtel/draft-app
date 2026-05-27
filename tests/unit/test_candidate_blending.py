@@ -60,27 +60,38 @@ class TestMergeCandidates:
         assert len(result) == 1
         assert result[0].player_id == 1
 
-    def test_max_score_wins_lexical_higher(self) -> None:
-        """When lexical score > vector score, combined score = lexical score."""
-        lex = [_c(1, 0.9)]
-        vec = [_c(1, 0.4)]
-        result = _merge_candidates(lex, vec)
-        assert result[0].score == pytest.approx(0.9)
+    def test_strong_lexical_leads_over_higher_vector(self) -> None:
+        """The key fix: a strong lexical match leads a higher-scored vector match.
 
-    def test_max_score_wins_vector_higher(self) -> None:
-        """When vector score > lexical score, combined score = vector score."""
-        lex = [_c(1, 0.3)]
+        "mara" → Aday Mara (lexical 0.5) must beat vector noise (0.85), because
+        cross-modality scores aren't comparable.
+        """
+        lex = [_c(1, 0.5, "Aday Mara")]
+        vec = [_c(2, 0.85, "Jamar Butler")]
+        result = _merge_candidates(lex, vec)
+        assert [r.player_id for r in result] == [1, 2]
+
+    def test_player_in_both_keeps_lexical_score(self) -> None:
+        """A player in both lists appears once and keeps its lexical score (no max)."""
+        lex = [_c(1, 0.4)]
         vec = [_c(1, 0.85)]
         result = _merge_candidates(lex, vec)
-        assert result[0].score == pytest.approx(0.85)
+        assert len(result) == 1
+        assert result[0].score == pytest.approx(0.4)
 
-    def test_sorted_by_combined_score_descending(self) -> None:
-        """Merged result is ordered from highest to lowest combined score."""
-        lex = [_c(1, 0.5), _c(2, 0.2)]
-        vec = [_c(2, 0.9), _c(3, 0.7)]
+    def test_weak_lexical_ranks_below_vector(self) -> None:
+        """Lexical matches below the priority threshold fall behind vector matches."""
+        lex = [_c(1, 0.2, "coincidental trigram")]
+        vec = [_c(2, 0.8, "semantic hit")]
         result = _merge_candidates(lex, vec)
-        scores = [r.score for r in result]
-        assert scores == sorted(scores, reverse=True)
+        assert [r.player_id for r in result] == [2, 1]
+
+    def test_order_is_strong_lexical_then_vector_then_weak(self) -> None:
+        """Ordering: strong lexical, then vector, then weak lexical."""
+        lex = [_c(1, 0.5), _c(2, 0.2)]  # id1 strong, id2 weak
+        vec = [_c(3, 0.9)]
+        result = _merge_candidates(lex, vec)
+        assert [r.player_id for r in result] == [1, 3, 2]
 
     def test_union_of_ids(self) -> None:
         """All unique player_ids from both lists appear in the output."""
@@ -140,9 +151,10 @@ class TestFindCandidatePlayers:
 
         ids = {r.player_id for r in result}
         assert ids == {1, 2}
-        # Cooper Flagg (0.9) should rank above Aday Mara (0.8)
-        assert result[0].player_id == 2
-        assert result[1].player_id == 1
+        # Lexical priority: the strong lexical hit (Aday Mara) leads even though
+        # the vector hit (Cooper Flagg) has a higher raw score.
+        assert result[0].player_id == 1
+        assert result[1].player_id == 2
 
     @pytest.mark.asyncio
     async def test_dedup_in_async_path(self) -> None:
@@ -168,7 +180,7 @@ class TestFindCandidatePlayers:
 
         assert len(result) == 1
         assert result[0].player_id == 42
-        assert result[0].score == pytest.approx(0.7)  # max(0.7, 0.5)
+        assert result[0].score == pytest.approx(0.7)  # lexical entry leads, keeps its score
 
     @pytest.mark.asyncio
     async def test_k_truncates_output(self) -> None:

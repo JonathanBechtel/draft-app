@@ -317,60 +317,64 @@ async def find_lexical_players(
 # ---------------------------------------------------------------------------
 
 
+# Lexical matches at or above this trigram score lead the merged list, ahead
+# of vector matches. Cross-modality scores are NOT comparable: cosine
+# similarity for a short query is uniformly high (~0.8) for many unrelated
+# players, which would bury a correct trigram substring hit (~0.5) under a
+# max-of-scores ranking. A substring/typo hit is the more trustworthy signal,
+# so it leads regardless of the vector score.
+_LEXICAL_PRIORITY_THRESHOLD: float = 0.3
+
+
 def _merge_candidates(
     lexical: list[Candidate],
     vector: list[Candidate],
 ) -> list[Candidate]:
-    """Merge lexical and vector candidate lists into a single ranked list.
+    """Merge lexical and vector candidates with lexical priority.
 
-    De-duplicates by ``player_id``.  For players that appear in both lists the
-    combined score is ``max(lexical_score, vector_score)``.  Players that
-    appear in only one list keep their original score.  The returned list is
-    ordered by combined score descending.
+    This is deliberately *not* a max-of-scores ranking — cross-modality scores
+    are not comparable (see ``_LEXICAL_PRIORITY_THRESHOLD``). Order is:
 
-    This is the blend strategy: max-of-two rather than a weighted average.
-    The rationale is that a strong signal from *either* modality should
-    surface the candidate regardless of the other modality's score — this
-    avoids penalising players who appear in only one result set (e.g. a
-    player with no embedding row but a strong trigram hit).
+    1. Strong lexical matches (score >= ``_LEXICAL_PRIORITY_THRESHOLD``), by
+       descending lexical score;
+    2. then vector matches, by descending cosine score;
+    3. then any weak lexical matches.
+
+    De-duplicated by ``player_id`` (first occurrence wins, keeping that
+    candidate's originating-modality score and metadata).
 
     Args:
         lexical: Candidates from the trigram-similarity query.
         vector: Candidates from the cosine-distance k-NN query.
 
     Returns:
-        De-duplicated, combined-score-ordered list of :class:`Candidate`
-        instances.
+        De-duplicated, lexical-priority-ordered list of :class:`Candidate`.
     """
-    # Build a score map keyed by player_id.  Start with lexical scores, then
-    # fold in vector scores by taking the max.
-    scores: dict[int, float] = {}
-    meta: dict[
-        int, tuple[str | None, str | None]
-    ] = {}  # player_id → (display_name, school)
+    ordered: list[Candidate] = []
+    seen: set[int] = set()
 
-    for c in lexical:
-        scores[c.player_id] = c.score
-        meta[c.player_id] = (c.display_name, c.school)
+    def _extend(cands: list[Candidate]) -> None:
+        for c in cands:
+            if c.player_id not in seen:
+                seen.add(c.player_id)
+                ordered.append(c)
 
-    for c in vector:
-        if c.player_id in scores:
-            scores[c.player_id] = max(scores[c.player_id], c.score)
-        else:
-            scores[c.player_id] = c.score
-            meta[c.player_id] = (c.display_name, c.school)
+    strong_lexical = sorted(
+        (c for c in lexical if c.score >= _LEXICAL_PRIORITY_THRESHOLD),
+        key=lambda c: c.score,
+        reverse=True,
+    )
+    weak_lexical = sorted(
+        (c for c in lexical if c.score < _LEXICAL_PRIORITY_THRESHOLD),
+        key=lambda c: c.score,
+        reverse=True,
+    )
+    vector_sorted = sorted(vector, key=lambda c: c.score, reverse=True)
 
-    merged: list[Candidate] = [
-        Candidate(
-            player_id=pid,
-            display_name=meta[pid][0],
-            school=meta[pid][1],
-            score=combined_score,
-        )
-        for pid, combined_score in scores.items()
-    ]
-    merged.sort(key=lambda c: c.score, reverse=True)
-    return merged
+    _extend(strong_lexical)
+    _extend(vector_sorted)
+    _extend(weak_lexical)
+    return ordered
 
 
 async def find_candidate_players(
