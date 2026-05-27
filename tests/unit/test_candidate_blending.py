@@ -157,6 +157,32 @@ class TestFindCandidatePlayers:
         assert result[1].player_id == 2
 
     @pytest.mark.asyncio
+    async def test_vector_failure_degrades_to_lexical_only(self) -> None:
+        """If vector search raises (e.g. Gemini down), lexical matches still return.
+
+        The lexical fallback is precisely the path that should work without the
+        embedding API, so a vector failure must not discard it.
+        """
+        from app.services.player_search_service import find_candidate_players
+
+        lex_result = [_c(1, 0.5, "Aday Mara")]
+
+        db = AsyncMock()
+        with (
+            patch(
+                "app.services.player_search_service.find_lexical_players",
+                new=AsyncMock(return_value=lex_result),
+            ),
+            patch(
+                "app.services.player_search_service.find_similar_players",
+                new=AsyncMock(side_effect=RuntimeError("Gemini unavailable")),
+            ),
+        ):
+            result = await find_candidate_players(db, "mara", k=5)
+
+        assert [r.player_id for r in result] == [1]
+
+    @pytest.mark.asyncio
     async def test_dedup_in_async_path(self) -> None:
         """Player appearing in both lexical and vector results deduped to one entry."""
         from app.services.player_search_service import find_candidate_players

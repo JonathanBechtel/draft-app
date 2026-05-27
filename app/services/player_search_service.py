@@ -41,24 +41,27 @@ parameter binding, which would itself require type OID resolution.
 
 Hybrid blending strategy
 ------------------------
-``find_candidate_players`` unions lexical (trigram) and vector candidates,
-de-duplicates by ``player_id``, and orders by a combined score defined as::
-
-    combined_score = max(lexical_score, vector_score)
-
-Using ``max`` rather than a weighted average means a strong signal from
-*either* modality wins, without penalising players who only appear in one
-result set (e.g. a player with no embedding still surfaces via trigram).
+``find_candidate_players`` unions lexical (trigram) and vector candidates and
+de-duplicates by ``player_id``. Cross-modality scores are *not* comparable — a
+short query has uniformly high cosine similarity (~0.8) to many unrelated
+players, which would bury a correct trigram substring hit (~0.5). So rather
+than a max-of-scores ranking, strong lexical matches lead, then vector
+matches, then weak lexical (see ``_merge_candidates``). Vector search depends
+on the Gemini embedding API; if it is unavailable the hybrid degrades to
+lexical-only rather than discarding the trigram matches that need no API.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.embedding_service import embed_text
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -413,6 +416,18 @@ async def find_candidate_players(
     # latency overhead is dominated by network round-trips to Postgres and
     # Gemini, not by Python scheduling.
     lexical = await find_lexical_players(db, query, k=k)
-    vector = await find_similar_players(db, query, k=k)
+    # Isolate vector-search failures: vector depends on the Gemini embedding
+    # API, while lexical (trigram) needs no API. A transient embed failure must
+    # not discard successful lexical matches — degrade to lexical-only instead.
+    try:
+        vector = await find_similar_players(db, query, k=k)
+    except Exception:
+        logger.warning(
+            "Vector search unavailable for query %r; "
+            "returning lexical-only candidates.",
+            query,
+            exc_info=True,
+        )
+        vector = []
     merged = _merge_candidates(lexical, vector)
     return merged[:k]
