@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Any, Optional
 from datetime import datetime, date
 from sqlmodel import SQLModel, Field
@@ -76,6 +77,26 @@ class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# A display_name like "ohlbrti01" is a Basketball-Reference id slug with no
+# recoverable real name; embedding such rows pollutes vector candidate lists.
+_BBREF_SLUG_RE = re.compile(r"^[a-z]+\d{2}$")
+
+
+def is_embeddable(player: PlayerMaster) -> bool:
+    """Whether a player has a real enough name to be a vector-search candidate.
+
+    Excludes rows with an empty ``display_name`` and rows whose ``display_name``
+    is a BBRef-style id slug (no recoverable name), so they are never embedded
+    and never surface as resolution candidates.
+    """
+    name = (player.display_name or "").strip()
+    if not name:
+        return False
+    if _BBREF_SLUG_RE.match(name):
+        return False
+    return True
 
 
 @event.listens_for(PlayerMaster, "before_insert")
@@ -197,7 +218,7 @@ def collect_inserted_players_for_embedding(
     """
     pending: list[dict[str, Any]] = session.info.setdefault(_PENDING_EMBEDDINGS_KEY, [])
     for obj in session.new:
-        if isinstance(obj, PlayerMaster) and obj.id is not None:
+        if isinstance(obj, PlayerMaster) and obj.id is not None and is_embeddable(obj):
             pending.append(
                 {
                     "player_id": obj.id,

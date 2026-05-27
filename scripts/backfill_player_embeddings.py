@@ -53,7 +53,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 )
 
 from app.schemas.player_embeddings import PlayerEmbedding  # noqa: E402
-from app.schemas.players_master import PlayerMaster  # noqa: E402
+from app.schemas.players_master import PlayerMaster, is_embeddable  # noqa: E402
 from app.services.embedding_service import embed_players_batch  # noqa: E402
 from app.config import settings  # noqa: E402
 
@@ -128,7 +128,13 @@ async def backfill(
 
     async with session_factory() as db:
         players = await fetch_players_missing_embeddings(db)
-        logger.info("Found %d player(s) without embeddings.", len(players))
+        skipped = sum(1 for p in players if not is_embeddable(p))
+        players = [p for p in players if is_embeddable(p)]
+        logger.info(
+            "Found %d embeddable player(s) without embeddings (skipped %d nameless).",
+            len(players),
+            skipped,
+        )
 
         if dry_run:
             logger.info("Dry run — skipping API calls and writes.")
