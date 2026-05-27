@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.boards import Board, BoardEntry, BoardStatus, ResolutionMethod
@@ -517,6 +518,58 @@ class TestMintStubPlayer:
         assert still is not None
         assert still.player_id is None
         assert still.resolution_method is ResolutionMethod.UNRESOLVED
+
+    async def test_mint_stub_rejected_for_already_resolved_entry(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        source: NewsSource,
+        players: list[PlayerMaster],
+    ) -> None:
+        """Minting on an already-resolved entry errors and creates no new stub.
+
+        Guards against stale-page/double-submit: the resolved entry keeps its
+        original player_id + method, and no extra stub PlayerMaster is minted.
+        """
+        _ = admin_logged_in
+        assert source.id is not None
+        board, resolved, _ = await _seed_board_with_entries(
+            db_session, source.id, players[0]
+        )
+        assert resolved.id is not None
+        original_player_id = resolved.player_id
+
+        stubs_before = (
+            await db_session.execute(
+                select(func.count())
+                .select_from(PlayerMaster)
+                .where(PlayerMaster.is_stub.is_(True))  # type: ignore[attr-defined]
+            )
+        ).scalar_one()
+
+        resp = await app_client.post(
+            f"/admin/boards/{board.id}/entries/{resolved.id}/mint-stub",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "error=" in resp.headers["location"]
+
+        # The resolved entry is unchanged.
+        still = await db_session.get(BoardEntry, resolved.id, populate_existing=True)
+        assert still is not None
+        assert still.player_id == original_player_id
+        assert still.resolution_method is ResolutionMethod.EXACT
+
+        # No new stub was minted.
+        stubs_after = (
+            await db_session.execute(
+                select(func.count())
+                .select_from(PlayerMaster)
+                .where(PlayerMaster.is_stub.is_(True))  # type: ignore[attr-defined]
+            )
+        ).scalar_one()
+        assert stubs_after == stubs_before
 
     async def test_mint_stub_redirects_with_error_for_unknown_entry(
         self,

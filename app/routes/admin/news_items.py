@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from urllib.parse import quote
 
+import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, select
@@ -370,7 +371,9 @@ async def extract_board_from_news_item(
       with ``?success=already_extracted``.
     - No entries extracted → redirect back to this news item with an error notice.
     - ``PaywallDetectedError`` → redirect back with paywall error notice.
-    - ``BoardExtractionError`` → redirect back with the error message.
+    - ``BoardExtractionError`` (incl. wrapped fetch failures) → redirect back
+      with the error message.
+    - Raw ``httpx.HTTPError`` → redirect back with a fetch-failure notice.
     """
     from app.schemas.boards import Board, BoardKind
     from sqlmodel import select as sm_select
@@ -429,6 +432,10 @@ async def extract_board_from_news_item(
         )
     except BoardExtractionError as exc:
         return _back_with_error(str(exc))
+    except httpx.HTTPError as exc:
+        # Defensive: the default fetcher wraps transport errors in
+        # BoardExtractionError, but a custom fetcher might not — never 500.
+        return _back_with_error(f"Could not fetch the article: {exc}")
 
     if board is None:
         # Gemini returned no ranked entries — nothing to review.

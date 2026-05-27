@@ -304,6 +304,32 @@ def test_extracted_board_keeps_already_naive_datetime() -> None:
     assert board.published_at.tzinfo is None  # type: ignore[union-attr]
 
 
+@pytest.mark.asyncio
+async def test_http_get_wraps_httpx_errors(monkeypatch) -> None:
+    """Transport failures from httpx surface as BoardExtractionError.
+
+    Guards the extract-board admin trigger: a dead article URL must not
+    leak a raw httpx error (which would 500) — it should map to the
+    documented BoardExtractionError so callers can redirect cleanly.
+    """
+    import httpx
+
+    class _FakeClient:
+        async def __aenter__(self) -> "_FakeClient":
+            return self
+
+        async def __aexit__(self, *exc: object) -> bool:
+            return False
+
+        async def get(self, url: str) -> object:
+            raise httpx.ConnectError("simulated DNS/connect failure")
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: _FakeClient())
+
+    with pytest.raises(board_extraction_service.BoardExtractionError):
+        await board_extraction_service._http_get("https://example.com/dead")
+
+
 def test_extracted_board_published_at_none_is_preserved() -> None:
     board = ExtractedBoard.model_validate({"draft_year": 2026, "entries": []})
     assert board.published_at is None

@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from unittest.mock import patch
 
+import httpx
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
@@ -161,6 +162,15 @@ def _stub_extraction_error(monkeypatch, message: str) -> None:
         raise BoardExtractionError(message)
 
     monkeypatch.setattr(board_extraction_service, "_extract_via_gemini", _stub)
+
+
+def _stub_fetch_http_error(monkeypatch) -> None:
+    """Make _default_fetcher raise a raw httpx error (e.g. dead URL/timeout)."""
+
+    async def _fake_fetcher(url: str) -> str:
+        raise httpx.ConnectError("simulated DNS/connect failure")
+
+    monkeypatch.setattr(board_extraction_service, "_default_fetcher", _fake_fetcher)
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +344,32 @@ async def test_extract_board_paywalled_redirects_back_with_error(
     assert "error=" in location
     # The URL-encoded error message should contain paywall-related text.
     assert "paywall" in location.lower() or "paywalled" in location.lower()
+
+
+@pytest.mark.asyncio
+async def test_extract_board_fetch_failure_redirects_with_error(
+    app_client: AsyncClient,
+    admin_logged_in: None,
+    big_board_item: NewsItem,
+    monkeypatch,
+) -> None:
+    """A dead article URL (raw httpx error) redirects back, not a 500.
+
+    Defends the route's promise to surface fetch failures cleanly even if a
+    transport error reaches it unwrapped.
+    """
+    _stub_fetch_http_error(monkeypatch)
+
+    assert big_board_item.id is not None
+    response = await app_client.post(
+        f"/admin/news-items/{big_board_item.id}/extract-board",
+        follow_redirects=False,
+    )
+
+    assert response.status_code in {302, 303}
+    location = response.headers.get("location", "")
+    assert f"/admin/news-items/{big_board_item.id}" in location
+    assert "error=" in location
 
 
 # ---------------------------------------------------------------------------

@@ -50,6 +50,15 @@ class DuplicatePlayerError(BoardError):
     """Raised when a board already contains the requested player."""
 
 
+class EntryAlreadyResolvedError(BoardError):
+    """Raised when a resolution action targets an already-resolved entry.
+
+    Guards irreversible actions (e.g. minting a stub) against stale pages
+    or double-submits that would otherwise orphan a new row and clobber an
+    existing resolution.
+    """
+
+
 @dataclass(frozen=True)
 class EntryInput:
     """One ranked player passed in during board creation or row addition.
@@ -313,6 +322,8 @@ async def mint_stub_for_entry(
     Raises:
         EntryNotFoundError: If ``entry_id`` does not resolve to a row.
         BoardNotEditableError: If the parent board is not PENDING.
+        EntryAlreadyResolvedError: If the entry is already resolved (guards
+            against stale-page/double-submit minting a duplicate stub).
         DuplicatePlayerError: If the board already contains a player
             assigned to this entry (e.g., a concurrent assign raced ahead).
     """
@@ -322,6 +333,17 @@ async def mint_stub_for_entry(
 
     board = await get_board(db, entry.board_id)
     _require_pending(board)
+
+    # Reject already-resolved entries: minting is irreversible, so a stale
+    # page or double-submit must not orphan a second stub or clobber an
+    # existing manual/candidate/exact resolution.
+    if entry.player_id is not None or entry.resolution_method != (
+        ResolutionMethod.UNRESOLVED
+    ):
+        raise EntryAlreadyResolvedError(
+            f"Entry {entry_id} is already resolved "
+            f"(method={entry.resolution_method.value}); refusing to mint a stub."
+        )
 
     stub = PlayerMaster(
         display_name=entry.raw_name or f"Unknown #{entry_id}",

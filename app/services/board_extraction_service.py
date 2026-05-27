@@ -440,8 +440,14 @@ async def _http_get(url: str) -> str:
         headers=_PAGE_FETCH_HEADERS,
         follow_redirects=True,
     ) as client:
-        response = await client.get(url)
-        response.raise_for_status()
+        try:
+            response = await client.get(url)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            # DNS/timeout/connect failures and 4xx/5xx responses surface as
+            # httpx.HTTPError; wrap them in the documented BoardExtractionError
+            # contract so callers don't see a raw transport error (or a 500).
+            raise BoardExtractionError(f"Failed to fetch {url}: {exc}") from exc
         return response.text
 
 
