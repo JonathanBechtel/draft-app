@@ -1,10 +1,16 @@
-"""k-NN vector search over player_embeddings.
+"""k-NN vector search and hybrid lexical+vector candidate search.
 
-Provides ``find_similar_players``, the single entry-point for cosine-similarity
-search against the ``player_embeddings`` table.  Used by:
+Provides two public search functions:
 
-* The resolution cascade (T5) when exact and alias lookups both fail.
-* The admin compare tool (T9) for free-form player-similarity queries.
+* ``find_similar_players`` — pure cosine-similarity k-NN search against the
+  ``player_embeddings`` table.  Used by the admin compare tool (T9) where the
+  caller supplies a semantically rich query string.
+* ``find_candidate_players`` — hybrid search that blends a trigram lexical
+  score (``pg_trgm`` similarity over ``players_master.display_name`` and
+  ``player_aliases.full_name``) with the cosine-distance vector score.  Used
+  by the resolution cascade (T5/T10) when exact and alias lookups both fail,
+  because bare/short surnames (e.g. ``"mara"``) have low semantic signal but
+  strong lexical overlap with the full name (``"Aday Mara"``).
 
 No live Gemini calls occur inside this module; the embedding for an incoming
 query string is produced by ``embedding_service.embed_text`` and then passed
@@ -21,17 +27,28 @@ their type resolved at parse time.
 
 We work around this by:
 1. Obtaining the raw asyncpg connection from the SQLAlchemy session.
-2. Issuing ``SET LOCAL search_path TO <current_path>, public`` via the raw
+2. Issuing ``SET search_path TO <current_path>, public`` via the raw
    connection before running the k-NN query.  asyncpg can execute ``SET``
-   without a PREPARE because it is a utility statement.  ``SET LOCAL`` limits
-   the change to the current transaction so it is rolled back when the caller's
-   transaction ends.
+   without a PREPARE because it is a utility statement.  The original path is
+   restored in a ``finally`` block so the widened path does not leak to the
+   next caller that reuses the pooled connection.
 3. Running the k-NN SQL via the raw connection, which now resolves ``vector``
    correctly.
 
 The vector literal is interpolated directly into the SQL string (never from raw
 user input — the list comes from ``float()``-coerced embedding values) to avoid
 parameter binding, which would itself require type OID resolution.
+
+Hybrid blending strategy
+------------------------
+``find_candidate_players`` unions lexical (trigram) and vector candidates,
+de-duplicates by ``player_id``, and orders by a combined score defined as::
+
+    combined_score = max(lexical_score, vector_score)
+
+Using ``max`` rather than a weighted average means a strong signal from
+*either* modality wins, without penalising players who only appear in one
+result set (e.g. a player with no embedding still surfaces via trigram).
 """
 
 from __future__ import annotations
@@ -175,3 +192,223 @@ async def find_similar_players(
         )
 
     return candidates
+
+
+# ---------------------------------------------------------------------------
+# Trigram / lexical search
+# ---------------------------------------------------------------------------
+
+# Minimum pg_trgm similarity threshold for a row to appear in lexical results.
+# A value of 0.1 is deliberately permissive: we want the candidate list to be
+# broad (the resolution cascade never auto-resolves on score alone), and a
+# bare surname like "mara" has ~0.25 similarity to "Aday Mara" which already
+# clears the bar comfortably.
+_TRGM_THRESHOLD: float = 0.1
+
+
+async def find_lexical_players(
+    db: AsyncSession,
+    query: str,
+    k: int = 5,
+) -> list[Candidate]:
+    """Return up to *k* players with the highest pg_trgm similarity to *query*.
+
+    Searches both ``players_master.display_name`` and
+    ``player_aliases.full_name``, returning one entry per player (the highest
+    similarity score across both columns).  Rows below ``_TRGM_THRESHOLD``
+    are excluded.
+
+    This function executes the similarity SQL directly on the raw asyncpg
+    connection (bypassing SQLAlchemy's PREPARE adapter) so that the
+    ``similarity()`` function resolves correctly regardless of the active
+    ``search_path``.  The ``pg_trgm`` functions live in ``public``, but
+    schema-isolated integration tests restrict ``search_path`` to only the test
+    schema.  We widen the path to include ``public`` before executing and
+    restore it in ``finally`` — the same pattern used by ``find_similar_players``
+    for the pgvector ``<=>`` operator.
+
+    The ``query`` string is passed as a positional parameter (``$1``, ``$2``,
+    ``$3``) rather than interpolated, so no raw user input reaches the SQL
+    string itself.
+
+    Args:
+        db: An active async database session.
+        query: The raw player name to search for (e.g. ``"mara"``).
+        k: Maximum number of candidates to return.  Defaults to 5.
+
+    Returns:
+        A list of at most *k* :class:`Candidate` instances ordered by
+        descending trigram similarity (highest first).
+    """
+    if not query.strip():
+        return []
+
+    # UNION of display_name similarity and alias similarity; take the max
+    # score per player so a player who matches on both surfaces once with the
+    # best score.  Parameters are positional ($1/$2/$3) to work with asyncpg's
+    # native parameter binding (no PREPARE needed for SET statements).
+    trgm_sql = (
+        "SELECT"
+        "    player_id,"
+        "    display_name,"
+        "    school,"
+        "    MAX(sim) AS score"
+        " FROM ("
+        "    SELECT"
+        "        pm.id           AS player_id,"
+        "        pm.display_name AS display_name,"
+        "        pm.school       AS school,"
+        "        similarity(pm.display_name, $1) AS sim"
+        "    FROM players_master pm"
+        "    WHERE pm.display_name IS NOT NULL"
+        "      AND similarity(pm.display_name, $1) >= $2"
+        "    UNION ALL"
+        "    SELECT"
+        "        pm.id           AS player_id,"
+        "        pm.display_name AS display_name,"
+        "        pm.school       AS school,"
+        "        similarity(pa.full_name, $1) AS sim"
+        "    FROM player_aliases pa"
+        "    JOIN players_master pm ON pm.id = pa.player_id"
+        "    WHERE similarity(pa.full_name, $1) >= $2"
+        " ) sub"
+        " GROUP BY player_id, display_name, school"
+        " ORDER BY score DESC"
+        " LIMIT $3"
+    )
+
+    # --- Raw-connection path to avoid search_path hiding pg_trgm functions ---
+    async_conn = await db.connection()
+    raw_conn = await async_conn.get_raw_connection()
+    asyncpg_conn: Any = raw_conn.driver_connection  # native asyncpg Connection
+
+    path_record = await asyncpg_conn.fetchrow(
+        "SELECT current_setting('search_path') AS sp"
+    )
+    current_path: str = path_record["sp"] if path_record else "public"
+    widened = "public" not in current_path
+    if widened:
+        await asyncpg_conn.execute(f"SET search_path TO {current_path}, public")
+
+    try:
+        rows = await asyncpg_conn.fetch(trgm_sql, query, _TRGM_THRESHOLD, k)
+    finally:
+        if widened:
+            await asyncpg_conn.execute(f"SET search_path TO {current_path}")
+    # -------------------------------------------------------------------------
+
+    lexical_candidates: list[Candidate] = []
+    for row in rows:
+        raw_score = float(row["score"])
+        score = max(0.0, min(1.0, raw_score))
+        lexical_candidates.append(
+            Candidate(
+                player_id=int(row["player_id"]),
+                display_name=row["display_name"],
+                school=row["school"],
+                score=score,
+            )
+        )
+    return lexical_candidates
+
+
+# ---------------------------------------------------------------------------
+# Hybrid candidate search (lexical + vector)
+# ---------------------------------------------------------------------------
+
+
+def _merge_candidates(
+    lexical: list[Candidate],
+    vector: list[Candidate],
+) -> list[Candidate]:
+    """Merge lexical and vector candidate lists into a single ranked list.
+
+    De-duplicates by ``player_id``.  For players that appear in both lists the
+    combined score is ``max(lexical_score, vector_score)``.  Players that
+    appear in only one list keep their original score.  The returned list is
+    ordered by combined score descending.
+
+    This is the blend strategy: max-of-two rather than a weighted average.
+    The rationale is that a strong signal from *either* modality should
+    surface the candidate regardless of the other modality's score — this
+    avoids penalising players who appear in only one result set (e.g. a
+    player with no embedding row but a strong trigram hit).
+
+    Args:
+        lexical: Candidates from the trigram-similarity query.
+        vector: Candidates from the cosine-distance k-NN query.
+
+    Returns:
+        De-duplicated, combined-score-ordered list of :class:`Candidate`
+        instances.
+    """
+    # Build a score map keyed by player_id.  Start with lexical scores, then
+    # fold in vector scores by taking the max.
+    scores: dict[int, float] = {}
+    meta: dict[
+        int, tuple[str | None, str | None]
+    ] = {}  # player_id → (display_name, school)
+
+    for c in lexical:
+        scores[c.player_id] = c.score
+        meta[c.player_id] = (c.display_name, c.school)
+
+    for c in vector:
+        if c.player_id in scores:
+            scores[c.player_id] = max(scores[c.player_id], c.score)
+        else:
+            scores[c.player_id] = c.score
+            meta[c.player_id] = (c.display_name, c.school)
+
+    merged: list[Candidate] = [
+        Candidate(
+            player_id=pid,
+            display_name=meta[pid][0],
+            school=meta[pid][1],
+            score=combined_score,
+        )
+        for pid, combined_score in scores.items()
+    ]
+    merged.sort(key=lambda c: c.score, reverse=True)
+    return merged
+
+
+async def find_candidate_players(
+    db: AsyncSession,
+    query: str,
+    k: int = 5,
+) -> list[Candidate]:
+    """Return up to *k* hybrid (lexical + vector) candidates for *query*.
+
+    Runs a trigram lexical search (``find_lexical_players``) and a
+    cosine-similarity vector search (``find_similar_players``) sequentially,
+    then merges the results via :func:`_merge_candidates`.  The combined list
+    is truncated to *k* entries.
+
+    This is the function used by ``resolve_player`` in the board-extraction
+    cascade when exact and alias lookups both fail.  It is more robust than
+    pure vector search for short or bare-surname queries where semantic signal
+    is weak.
+
+    ``find_similar_players`` remains intact and is used directly by the admin
+    compare tool, which always has richer, semantically meaningful queries.
+
+    Args:
+        db: An active async database session.
+        query: The raw player name to search for (e.g. ``"mara"``).
+        k: Maximum number of candidates to return after merging.  Defaults
+            to 5.
+
+    Returns:
+        A list of at most *k* :class:`Candidate` instances ordered by
+        descending combined score.
+    """
+    # Run sequentially: SQLAlchemy's AsyncSession is not concurrency-safe —
+    # two coroutines awaiting the same session object at once causes
+    # ``IllegalStateChangeError``.  Sequential execution is fine here; the
+    # latency overhead is dominated by network round-trips to Postgres and
+    # Gemini, not by Python scheduling.
+    lexical = await find_lexical_players(db, query, k=k)
+    vector = await find_similar_players(db, query, k=k)
+    merged = _merge_candidates(lexical, vector)
+    return merged[:k]
