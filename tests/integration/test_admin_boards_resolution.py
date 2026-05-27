@@ -18,7 +18,6 @@ from datetime import datetime, timezone
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.boards import Board, BoardEntry, BoardStatus, ResolutionMethod
@@ -33,9 +32,7 @@ ADMIN_PASSWORD = "admin-password-res-123"
 
 
 @pytest_asyncio.fixture
-async def admin_logged_in(
-    app_client: AsyncClient, db_session: AsyncSession
-) -> None:
+async def admin_logged_in(app_client: AsyncClient, db_session: AsyncSession) -> None:
     """Create an admin user and establish a session cookie on ``app_client``."""
     await create_auth_user(
         db_session,
@@ -117,7 +114,11 @@ async def _seed_board_with_entries(
         raw_name="mara",
         resolution_method=ResolutionMethod.UNRESOLVED,
         vector_candidates=[
-            {"player_id": unresolved_player_id or 9999, "display_name": "Aday Mara", "score": 0.91},
+            {
+                "player_id": unresolved_player_id or 9999,
+                "display_name": "Aday Mara",
+                "score": 0.91,
+            },
             {"player_id": 9998, "display_name": "Someone Else", "score": 0.55},
         ],
     )
@@ -173,9 +174,9 @@ class TestBoardDetailResolutionDisplay:
 
         resp = await app_client.get(f"/admin/boards/{board.id}")
         assert resp.status_code == 200
-        assert "mara" in resp.text           # raw_name
-        assert "Aday Mara" in resp.text      # first candidate
-        assert "0.91" in resp.text           # score
+        assert "mara" in resp.text  # raw_name
+        assert "Aday Mara" in resp.text  # first candidate
+        assert "0.91" in resp.text  # score
 
     async def test_unresolved_count_badge_in_subtitle(
         self,
@@ -188,9 +189,7 @@ class TestBoardDetailResolutionDisplay:
         """The subtitle shows '1 unresolved' when there is one unresolved entry."""
         _ = admin_logged_in
         assert source.id is not None
-        board, _, _ = await _seed_board_with_entries(
-            db_session, source.id, players[0]
-        )
+        board, _, _ = await _seed_board_with_entries(db_session, source.id, players[0])
 
         resp = await app_client.get(f"/admin/boards/{board.id}")
         assert resp.status_code == 200
@@ -318,9 +317,7 @@ class TestAssignEntry:
         assert "error=" in resp.headers["location"]
 
         # Entry must remain unchanged.
-        still = await db_session.get(
-            BoardEntry, unresolved.id, populate_existing=True
-        )
+        still = await db_session.get(BoardEntry, unresolved.id, populate_existing=True)
         assert still is not None
         assert still.player_id is None
         assert still.resolution_method is ResolutionMethod.UNRESOLVED
@@ -414,7 +411,7 @@ class TestBoardPlayerSearch:
         """The search endpoint redirects to login when the user is logged out."""
         assert source.id is not None
         resp = await app_client.get(
-            f"/admin/boards/1/entries/player-search?q=flagg",
+            "/admin/boards/1/entries/player-search?q=flagg",
             follow_redirects=False,
         )
         # Unauthenticated requests get a 401 JSON or 302/303 redirect.
@@ -422,3 +419,136 @@ class TestBoardPlayerSearch:
         # If it returned JSON it should be an empty list (401 path).
         if resp.status_code == 200:
             assert resp.json() == []
+
+
+@pytest.mark.asyncio
+class TestMintStubPlayer:
+    """POST /admin/boards/<id>/entries/<entry_id>/mint-stub."""
+
+    async def test_mint_stub_creates_player_and_resolves_entry(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        source: NewsSource,
+        players: list[PlayerMaster],
+    ) -> None:
+        """Minting a stub creates a PlayerMaster with is_stub=True and sets STUB method."""
+        _ = admin_logged_in
+        assert source.id is not None
+        board, _, unresolved = await _seed_board_with_entries(
+            db_session, source.id, players[0]
+        )
+        assert unresolved.id is not None
+
+        resp = await app_client.post(
+            f"/admin/boards/{board.id}/entries/{unresolved.id}/mint-stub",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "success=stub_minted" in resp.headers["location"]
+
+        # Reload the entry and verify it is now resolved.
+        updated = await db_session.get(
+            BoardEntry, unresolved.id, populate_existing=True
+        )
+        assert updated is not None
+        assert updated.player_id is not None
+        assert updated.resolution_method is ResolutionMethod.STUB
+
+        # The new PlayerMaster stub should exist with is_stub=True and correct name.
+        stub = await db_session.get(PlayerMaster, updated.player_id)
+        assert stub is not None
+        assert stub.is_stub is True
+        assert stub.display_name == unresolved.raw_name
+
+    async def test_mint_stub_shows_resolved_on_detail_page(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        source: NewsSource,
+        players: list[PlayerMaster],
+    ) -> None:
+        """After minting, the board detail page shows the stub name and STUB badge."""
+        _ = admin_logged_in
+        assert source.id is not None
+        board, _, unresolved = await _seed_board_with_entries(
+            db_session, source.id, players[0]
+        )
+        assert unresolved.id is not None
+
+        await app_client.post(
+            f"/admin/boards/{board.id}/entries/{unresolved.id}/mint-stub",
+            follow_redirects=False,
+        )
+
+        resp = await app_client.get(f"/admin/boards/{board.id}")
+        assert resp.status_code == 200
+        assert "STUB" in resp.text
+
+    async def test_mint_stub_rejected_on_approved_board(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        source: NewsSource,
+        players: list[PlayerMaster],
+    ) -> None:
+        """Minting on an APPROVED board redirects with an error and leaves entry unchanged."""
+        _ = admin_logged_in
+        assert source.id is not None
+        board, _, unresolved = await _seed_board_with_entries(
+            db_session, source.id, players[0]
+        )
+        board.status = BoardStatus.APPROVED
+        await db_session.commit()
+        assert unresolved.id is not None
+
+        resp = await app_client.post(
+            f"/admin/boards/{board.id}/entries/{unresolved.id}/mint-stub",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "error=" in resp.headers["location"]
+
+        # Entry must remain unresolved.
+        still = await db_session.get(BoardEntry, unresolved.id, populate_existing=True)
+        assert still is not None
+        assert still.player_id is None
+        assert still.resolution_method is ResolutionMethod.UNRESOLVED
+
+    async def test_mint_stub_redirects_with_error_for_unknown_entry(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        source: NewsSource,
+    ) -> None:
+        """Minting on a non-existent entry redirects with an error query param."""
+        _ = admin_logged_in
+        assert source.id is not None
+        board = _make_board(source.id)
+        db_session.add(board)
+        await db_session.commit()
+        await db_session.refresh(board)
+
+        resp = await app_client.post(
+            f"/admin/boards/{board.id}/entries/999999/mint-stub",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "error=" in resp.headers["location"]
+
+    async def test_mint_stub_requires_login(
+        self,
+        app_client: AsyncClient,
+        source: NewsSource,
+    ) -> None:
+        """The mint-stub endpoint redirects unauthenticated users."""
+        assert source.id is not None
+        resp = await app_client.post(
+            "/admin/boards/1/entries/1/mint-stub",
+            follow_redirects=False,
+        )
+        assert resp.status_code in {302, 303}

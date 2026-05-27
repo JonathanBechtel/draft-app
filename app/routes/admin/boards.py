@@ -39,6 +39,7 @@ _SUCCESS_MESSAGES: dict[str, str] = {
     "entry_added": "Entry added.",
     "entry_updated": "Entry updated.",
     "entry_deleted": "Entry removed.",
+    "stub_minted": "Stub player created and entry resolved.",
     "approved": "Board approved.",
     "rejected": "Board rejected.",
     "deleted": "Board deleted.",
@@ -664,6 +665,41 @@ async def assign_board_entry(
 
     return RedirectResponse(
         url=f"/admin/boards/{board_id}?success=entry_updated", status_code=303
+    )
+
+
+@router.post("/{board_id}/entries/{entry_id}/mint-stub", response_class=HTMLResponse)
+async def mint_stub_player(
+    request: Request,
+    board_id: int,
+    entry_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Create a stub PlayerMaster from an unresolved entry's raw_name.
+
+    Mints a new ``PlayerMaster`` row with ``is_stub=True`` and assigns
+    it to the entry with ``resolution_method=STUB``.  The board must be
+    PENDING.  Redirects back to the board detail page on success.
+    """
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "boards",
+        need_edit=True,
+        next_path=f"/admin/boards/{board_id}",
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    try:
+        async with db.begin():
+            await svc.mint_stub_for_entry(db, entry_id=entry_id)
+    except svc.BoardError as exc:
+        return _redirect_with_error(board_id, str(exc))
+
+    return RedirectResponse(
+        url=f"/admin/boards/{board_id}?success=stub_minted", status_code=303
     )
 
 

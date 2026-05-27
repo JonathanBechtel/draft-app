@@ -188,6 +188,16 @@
                 />
                 <ul class="admin-autocomplete bb-offlist-results" hidden></ul>
               </div>
+              {# Mint-stub fallback: create a lightweight stub row from the raw name #}
+              <form method="post"
+                    action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/mint-stub"
+                    class="admin-form--inline bb-mint-stub-form"
+                    onsubmit="return confirm('Create a stub player for “{{ entry.raw_name }}”? This cannot be undone without direct DB intervention.');">
+                <button type="submit" class="admin-btn admin-btn--small bb-mint-stub-btn"
+                        title="Mint a stub PlayerMaster row for &quot;{{ entry.raw_name }}&quot;">
+                  Mint stub player
+                </button>
+              </form>
             </div>
           {% else %}
             {# Resolved (non-UNRESOLVED), player_id not yet in players_by_id (edge case) #}

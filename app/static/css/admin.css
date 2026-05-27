@@ -585,6 +585,25 @@
   color: var(--color-white);
 }
 
+/* Mint-stub action for unresolved entries */
+.bb-mint-stub-form {
+  margin-top: 0.4rem;
+}
+
+.bb-mint-stub-btn {
+  font-size: 0.78rem;
+  padding: 0.18rem 0.5rem;
+  background: var(--color-slate-100, #f1f5f9);
+  border: 1px dashed var(--color-slate-400, #94a3b8);
+  color: var(--color-slate-600, #475569);
+}
+
+.bb-mint-stub-btn:hover {
+  background: var(--color-accent-amber, #f59e0b);
+  border-color: var(--color-accent-amber, #f59e0b);
+  color: var(--color-white);
+}
+
 .admin-link--center {
   display: block;
   text-align: center;

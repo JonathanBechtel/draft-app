@@ -23,6 +23,7 @@ from app.schemas.boards import (
     BoardStatus,
     ResolutionMethod,
 )
+from app.schemas.players_master import PlayerMaster
 
 
 class BoardError(Exception):
@@ -281,6 +282,57 @@ async def assign_entry(
 
     entry.player_id = player_id
     entry.resolution_method = ResolutionMethod.MANUAL
+    board.updated_at = datetime.utcnow()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        _translate_entry_integrity_error(exc)
+    return entry
+
+
+async def mint_stub_for_entry(
+    db: AsyncSession,
+    *,
+    entry_id: int,
+) -> BoardEntry:
+    """Create a stub PlayerMaster from an unresolved entry's raw_name.
+
+    Mints a new ``PlayerMaster`` row with ``is_stub=True`` and
+    ``display_name=raw_name``, then assigns it to the entry with
+    ``resolution_method=STUB``.  The ``before_insert`` listener
+    auto-generates the slug; the ``after_commit`` hook queues an
+    embedding.  The board must be PENDING; callers own the transaction.
+
+    Args:
+        db: Async session; caller owns commit.
+        entry_id: PK of the ``board_entries`` row to resolve.
+
+    Returns:
+        The updated :class:`BoardEntry` (with ``player_id`` and method set).
+
+    Raises:
+        EntryNotFoundError: If ``entry_id`` does not resolve to a row.
+        BoardNotEditableError: If the parent board is not PENDING.
+        DuplicatePlayerError: If the board already contains a player
+            assigned to this entry (e.g., a concurrent assign raced ahead).
+    """
+    entry = await db.get(BoardEntry, entry_id)
+    if entry is None:
+        raise EntryNotFoundError(f"No board entry with id={entry_id}")
+
+    board = await get_board(db, entry.board_id)
+    _require_pending(board)
+
+    stub = PlayerMaster(
+        display_name=entry.raw_name or f"Unknown #{entry_id}",
+        is_stub=True,
+    )
+    db.add(stub)
+    await db.flush()
+    assert stub.id is not None
+
+    entry.player_id = stub.id
+    entry.resolution_method = ResolutionMethod.STUB
     board.updated_at = datetime.utcnow()
     try:
         await db.flush()
