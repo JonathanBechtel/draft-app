@@ -1,9 +1,16 @@
-from typing import Optional
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any, Optional
 from datetime import datetime, date
 from sqlmodel import SQLModel, Field
 from sqlalchemy import event
+from sqlalchemy.orm import Session
 
 from app.utils.slug import generate_unique_slug_from_connection
+
+logger = logging.getLogger(__name__)
 
 
 class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
@@ -91,3 +98,127 @@ def generate_slug_before_insert(
         target.display_name,
         connection,
     )
+
+
+# Key under which newly-inserted PlayerMaster snapshots are stashed on the
+# Session until the surrounding transaction commits.
+_PENDING_EMBEDDINGS_KEY = "_pending_player_embeddings"
+
+
+def _schedule_player_embedding(snapshot: dict[str, Any]) -> None:
+    """Best-effort: fire-and-forget an embedding write for one player snapshot.
+
+    Spawns an async task that generates the embedding via Gemini and persists
+    it in its own session/connection, so a Gemini failure never affects the
+    caller. Deliberately swallows all exceptions — a missed embedding is
+    recoverable via the backfill script; a broken insert is not.
+
+    Called only from the ``after_commit`` handler below, so the player row is
+    already durably committed and visible to the separate session. The FK
+    insert therefore cannot race the caller's commit or persist for a row that
+    was rolled back.
+    """
+    player_id = snapshot["player_id"]
+
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        # No event loop in this thread — skip embedding silently.
+        return
+    if not loop.is_running():
+        # Synchronous / test context without a running loop — skip.
+        return
+
+    async def _embed() -> None:
+        """Generate and persist the embedding for the committed player."""
+        try:
+            from app.services.embedding_service import embed_text  # noqa: PLC0415
+            from app.schemas.player_embeddings import PlayerEmbedding  # noqa: PLC0415
+            from app.config import settings as _settings  # noqa: PLC0415
+            from sqlalchemy.ext.asyncio import (  # noqa: PLC0415
+                AsyncSession,
+                async_sessionmaker,
+                create_async_engine,
+            )
+
+            parts = [
+                part
+                for part in (
+                    snapshot["display_name"],
+                    snapshot["school"],
+                    snapshot["birth_country"],
+                )
+                if part
+            ]
+            embed_input = " ".join(parts) if parts else (snapshot["display_name"] or "")
+            if not embed_input.strip():
+                return
+
+            vector = await embed_text(embed_input)
+
+            engine = create_async_engine(_settings.database_url, echo=False)
+            try:
+                factory = async_sessionmaker(
+                    bind=engine, expire_on_commit=False, class_=AsyncSession
+                )
+                async with factory() as db:
+                    async with db.begin():
+                        db.add(
+                            PlayerEmbedding(
+                                player_id=player_id,
+                                embedding=vector,
+                                model_name=_settings.gemini_embedding_model,
+                            )
+                        )
+            finally:
+                # Always dispose, even if embed/insert raised, so per-insert
+                # engines never leak pooled connections in long-running workers.
+                await engine.dispose()
+        except Exception:
+            logger.debug(
+                "Best-effort embedding skipped for player_id=%s",
+                player_id,
+                exc_info=True,
+            )
+
+    asyncio.ensure_future(_embed())
+
+
+@event.listens_for(Session, "after_flush")
+def collect_inserted_players_for_embedding(
+    session: Session,
+    flush_context: Any,
+) -> None:
+    """Snapshot newly-inserted players so they can be embedded after commit.
+
+    Runs inside the flush, where the INSERTs have executed and PKs are
+    populated, but defers the embedding write to ``after_commit`` so it never
+    races the caller's commit or persists for a row that is later rolled back.
+    """
+    pending: list[dict[str, Any]] = session.info.setdefault(_PENDING_EMBEDDINGS_KEY, [])
+    for obj in session.new:
+        if isinstance(obj, PlayerMaster) and obj.id is not None:
+            pending.append(
+                {
+                    "player_id": obj.id,
+                    "display_name": obj.display_name,
+                    "school": obj.school,
+                    "birth_country": obj.birth_country,
+                }
+            )
+
+
+@event.listens_for(Session, "after_commit")
+def embed_committed_players(session: Session) -> None:
+    """Fire best-effort embedding tasks for players committed in this session."""
+    pending = session.info.pop(_PENDING_EMBEDDINGS_KEY, None)
+    if not pending:
+        return
+    for snapshot in pending:
+        _schedule_player_embedding(snapshot)
+
+
+@event.listens_for(Session, "after_rollback")
+def discard_uncommitted_player_embeddings(session: Session) -> None:
+    """Drop snapshots for inserts that were rolled back — never embed them."""
+    session.info.pop(_PENDING_EMBEDDINGS_KEY, None)

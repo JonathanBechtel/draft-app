@@ -14,9 +14,10 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus
+from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus, ResolutionMethod
 from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import NewsSource
+from app.schemas.player_aliases import PlayerAlias
 from app.schemas.players_master import PlayerMaster
 from app.services import board_extraction_service
 from app.services.board_extraction_service import (
@@ -25,6 +26,7 @@ from app.services.board_extraction_service import (
     PaywallDetectedError,
     extract_board,
 )
+from app.services.player_search_service import Candidate
 
 
 _FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "substack"
@@ -78,6 +80,23 @@ def _stub_extraction(monkeypatch, extracted: ExtractedBoard) -> None:
     monkeypatch.setattr(board_extraction_service, "_extract_via_gemini", _stub)
 
 
+def _stub_vector_search(
+    monkeypatch,
+    candidates: list[Candidate] | None = None,
+) -> None:
+    """Patch find_similar_players in board_extraction_service to return canned results.
+
+    Prevents any live Gemini embedding or DB vector-search calls in tests.
+    Pass ``candidates=None`` (default) to simulate an empty result set.
+    """
+    _candidates = candidates or []
+
+    async def _stub(db, query: str, k: int = 5) -> list[Candidate]:
+        return _candidates
+
+    monkeypatch.setattr(board_extraction_service, "find_similar_players", _stub)
+
+
 # --- Happy path ------------------------------------------------------------
 
 
@@ -127,19 +146,91 @@ async def test_extract_board_creates_pending_with_resolved_players(
     assert all(e.tier == 1 for e in entries)
 
 
-# --- Unmatched player names ------------------------------------------------
+# --- Resolution cascade: ALIAS branch -------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_extract_board_drops_unmatched_players(
+async def test_extract_board_resolves_via_alias(
     db_session: AsyncSession,
     news_source: NewsSource,
     monkeypatch,
 ) -> None:
-    """Unknown player names are dropped silently; matched ones still land."""
+    """A name that misses display_name but matches a player_alias resolves as ALIAS.
+
+    Confirms the second step of the cascade is reachable and records the
+    correct ResolutionMethod on the persisted entry.
+    """
+    assert news_source.id is not None
+    item = await _make_news_item(db_session, source_id=news_source.id)
+
+    # Create a player whose display_name won't match the extracted name.
+    player = await _make_player(db_session, display_name="Lonzo Ball")
+    assert player.id is not None
+
+    # Create an alias that will match the extraction output.
+    alias = PlayerAlias(player_id=player.id, full_name="Zo Ball")
+    db_session.add(alias)
+    await db_session.flush()
+
+    _stub_extraction(
+        monkeypatch,
+        ExtractedBoard(
+            draft_year=2026,
+            entries=[
+                ExtractedBoardEntry(player_name="Zo Ball", rank=1),
+            ],
+        ),
+    )
+
+    assert item.id is not None
+    board = await extract_board(
+        db_session,
+        news_item_id=item.id,
+        fetcher=_fake_fetcher("article text"),
+    )
+
+    assert board is not None
+    assert board.size == 1
+
+    entries_stmt = (
+        select(BoardEntry)
+        .where(BoardEntry.board_id == board.id)  # type: ignore[arg-type]
+    )
+    result = await db_session.execute(entries_stmt)
+    entries = list(result.scalars().all())
+
+    assert len(entries) == 1
+    assert entries[0].player_id == player.id
+    assert entries[0].resolution_method == ResolutionMethod.ALIAS
+    assert entries[0].raw_name == "Zo Ball"
+    assert entries[0].vector_candidates is None
+
+
+# --- Unmatched player names ------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_extract_board_persists_unresolved_players(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    monkeypatch,
+) -> None:
+    """Unknown player names are persisted as UNRESOLVED entries, not dropped.
+
+    The board contains both the matched and unmatched entries. The unmatched
+    entry carries player_id=None, method=UNRESOLVED, and the top-K vector
+    candidates for admin review.
+    """
     assert news_source.id is not None
     item = await _make_news_item(db_session, source_id=news_source.id)
     flagg = await _make_player(db_session, display_name="Cooper Flagg")
+
+    # Two fake vector candidates returned by the mocked search.
+    fake_candidates = [
+        Candidate(player_id=999, display_name="Nobody Player", school="Duke", score=0.85),
+        Candidate(player_id=998, display_name="Somebody Else", school=None, score=0.70),
+    ]
+    _stub_vector_search(monkeypatch, candidates=fake_candidates)
 
     _stub_extraction(
         monkeypatch,
@@ -160,25 +251,53 @@ async def test_extract_board_drops_unmatched_players(
     )
 
     assert board is not None
-    entries_stmt = select(BoardEntry).where(BoardEntry.board_id == board.id)
+    assert board.size == 2  # Both entries landed.
+
+    entries_stmt = (
+        select(BoardEntry)
+        .where(BoardEntry.board_id == board.id)  # type: ignore[arg-type]
+        .order_by(BoardEntry.position)  # type: ignore[attr-defined]
+    )
     result = await db_session.execute(entries_stmt)
-    entries = result.scalars().all()
+    entries = list(result.scalars().all())
 
-    assert len(entries) == 1
+    assert len(entries) == 2
+
+    # First entry: resolved by EXACT match.
     assert entries[0].player_id == flagg.id
+    assert entries[0].resolution_method == ResolutionMethod.EXACT
+    assert entries[0].vector_candidates is None
+
+    # Second entry: unresolved, carries vector candidates.
+    assert entries[1].player_id is None
+    assert entries[1].resolution_method == ResolutionMethod.UNRESOLVED
+    assert entries[1].raw_name == "Nobody Player"
+    assert entries[1].vector_candidates is not None
+    assert len(entries[1].vector_candidates) == 2
+    assert entries[1].vector_candidates[0]["player_id"] == 999
+    assert entries[1].vector_candidates[0]["display_name"] == "Nobody Player"
+    assert entries[1].vector_candidates[1]["player_id"] == 998
 
 
-# --- No resolvable entries → returns None, no Board created ---------------
+# --- All entries unresolved → board still created with UNRESOLVED entries ---
 
 
 @pytest.mark.asyncio
-async def test_extract_board_returns_none_when_no_players_match(
+async def test_extract_board_creates_board_when_all_players_unresolved(
     db_session: AsyncSession,
     news_source: NewsSource,
     monkeypatch,
 ) -> None:
+    """When no player name resolves, a PENDING board is still created.
+
+    Every entry persists as UNRESOLVED so an admin can review and resolve
+    them. The board is NOT None — silently dropping all work is the old
+    behaviour; the new behaviour is preserve-everything-for-review.
+    """
     assert news_source.id is not None
     item = await _make_news_item(db_session, source_id=news_source.id)
+
+    _stub_vector_search(monkeypatch, candidates=[])  # No helpful candidates.
 
     _stub_extraction(
         monkeypatch,
@@ -198,10 +317,57 @@ async def test_extract_board_returns_none_when_no_players_match(
         fetcher=_fake_fetcher("article text"),
     )
 
+    # Board is created — it contains unresolved entries awaiting admin review.
+    assert board is not None
+    assert board.status == BoardStatus.PENDING
+    assert board.size == 2
+
+    entries_stmt = (
+        select(BoardEntry)
+        .where(BoardEntry.board_id == board.id)  # type: ignore[arg-type]
+        .order_by(BoardEntry.position)  # type: ignore[attr-defined]
+    )
+    result = await db_session.execute(entries_stmt)
+    entries = list(result.scalars().all())
+
+    assert len(entries) == 2
+    assert all(e.player_id is None for e in entries)
+    assert all(e.resolution_method == ResolutionMethod.UNRESOLVED for e in entries)
+    assert entries[0].raw_name == "Nobody One"
+    assert entries[1].raw_name == "Nobody Two"
+
+
+@pytest.mark.asyncio
+async def test_extract_board_returns_none_only_when_gemini_emits_no_entries(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    monkeypatch,
+) -> None:
+    """extract_board returns None only when Gemini extracts zero entries.
+
+    This is the only remaining case where no board is created; it is
+    unrelated to player resolution (there are simply no ranked entries to
+    persist at all).
+    """
+    assert news_source.id is not None
+    item = await _make_news_item(db_session, source_id=news_source.id)
+
+    _stub_extraction(
+        monkeypatch,
+        ExtractedBoard(draft_year=2026, entries=[]),
+    )
+
+    assert item.id is not None
+    board = await extract_board(
+        db_session,
+        news_item_id=item.id,
+        fetcher=_fake_fetcher("article text"),
+    )
+
     assert board is None
     # And no Board row was created.
     result = await db_session.execute(
-        select(Board).where(Board.news_item_id == item.id)
+        select(Board).where(Board.news_item_id == item.id)  # type: ignore[arg-type]
     )
     assert result.scalar_one_or_none() is None
 
@@ -369,16 +535,19 @@ async def test_extract_board_treats_ambiguous_name_as_unresolved(
     news_source: NewsSource,
     monkeypatch,
 ) -> None:
-    """Two players sharing a display name → ambiguous match, treated as unresolved.
+    """Two players sharing a display name → ambiguous match, persisted as UNRESOLVED.
 
-    The function does not crash or pick arbitrarily; the other (legitimate)
-    entry still lands.
+    The function does not crash or pick arbitrarily. The unambiguous entry
+    resolves normally; the ambiguous one lands as UNRESOLVED with vector
+    candidates so an admin can pick the correct player.
     """
     assert news_source.id is not None
     item = await _make_news_item(db_session, source_id=news_source.id)
     await _make_player(db_session, display_name="Justin Edwards")
     await _make_player(db_session, display_name="Justin Edwards")  # collision
     flagg = await _make_player(db_session, display_name="Cooper Flagg")
+
+    _stub_vector_search(monkeypatch, candidates=[])  # No helpful candidates.
 
     _stub_extraction(
         monkeypatch,
@@ -398,14 +567,26 @@ async def test_extract_board_treats_ambiguous_name_as_unresolved(
         fetcher=_fake_fetcher("article text"),
     )
 
-    # The unambiguous entry lands; the ambiguous one is dropped (until
-    # #225 enables persisting it as an unresolved entry).
+    # Both entries persist: the unambiguous one is resolved, the ambiguous
+    # one is UNRESOLVED with player_id=None for admin review.
     assert board is not None
-    entries_stmt = select(BoardEntry).where(BoardEntry.board_id == board.id)
+    assert board.size == 2
+
+    entries_stmt = (
+        select(BoardEntry)
+        .where(BoardEntry.board_id == board.id)  # type: ignore[arg-type]
+        .order_by(BoardEntry.position)  # type: ignore[attr-defined]
+    )
     result = await db_session.execute(entries_stmt)
-    entries = result.scalars().all()
-    assert len(entries) == 1
+    entries = list(result.scalars().all())
+
+    assert len(entries) == 2
     assert entries[0].player_id == flagg.id
+    assert entries[0].resolution_method == ResolutionMethod.EXACT
+
+    assert entries[1].player_id is None
+    assert entries[1].resolution_method == ResolutionMethod.UNRESOLVED
+    assert entries[1].raw_name == "Justin Edwards"
 
 
 # --- MOCK_DRAFT extraction is intentionally not supported in this iteration
