@@ -7,6 +7,7 @@ are ingested from RSS feeds.
 from __future__ import annotations
 
 from datetime import datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -21,6 +22,11 @@ from app.routes.admin.helpers import (
 from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
+from app.services import board_extraction_service
+from app.services.board_extraction_service import (
+    BoardExtractionError,
+    PaywallDetectedError,
+)
 from app.services.news_service import set_sticky_news_item
 from app.utils.db_async import get_session
 
@@ -161,6 +167,8 @@ async def list_news_items(
 async def edit_news_item(
     request: Request,
     item_id: int,
+    error: str | None = Query(default=None),
+    success: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """Display the edit news item form."""
@@ -206,7 +214,8 @@ async def edit_news_item(
             source=source,
             player=player,
             tags=list(NewsItemTag),
-            error=None,
+            error=error,
+            success=success,
             active_nav="news-items",
         ),
     )
@@ -341,3 +350,98 @@ async def delete_news_item(
         await db.delete(item)
 
     return RedirectResponse(url="/admin/news-items?success=deleted", status_code=303)
+
+
+@router.post("/{item_id}/extract-board", response_class=HTMLResponse)
+async def extract_board_from_news_item(
+    request: Request,
+    item_id: int,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Trigger AI board extraction for a NewsItem and redirect to the result.
+
+    Calls ``extract_board`` inline (network + Gemini), persists a PENDING
+    Board, then redirects the admin to the board detail page so they can
+    immediately review and resolve unresolved entries.
+
+    Outcomes:
+    - New board created → redirect to ``/admin/boards/{board_id}?success=extracted``.
+    - Board already existed (duplicate) → redirect to the existing board
+      with ``?success=already_extracted``.
+    - No entries extracted → redirect back to this news item with an error notice.
+    - ``PaywallDetectedError`` → redirect back with paywall error notice.
+    - ``BoardExtractionError`` → redirect back with the error message.
+    """
+    from app.schemas.boards import Board, BoardKind
+    from sqlmodel import select as sm_select
+
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "boards",
+        need_edit=True,
+        next_path=f"/admin/news-items/{item_id}",
+    )
+    if redirect:
+        return redirect
+    assert user is not None  # Guaranteed by require_dataset_access if no redirect
+
+    def _back_with_error(message: str) -> Response:
+        return RedirectResponse(
+            url=f"/admin/news-items/{item_id}?error={quote(message)}",
+            status_code=303,
+        )
+
+    # All reads and the extraction write happen inside a single transaction.
+    # Reads prior to begin() would autobegin an implicit transaction and cause
+    # begin() to raise InvalidRequestError (require_dataset_access already
+    # commits its own auth transaction, so _transaction is None here).
+    try:
+        async with db.begin():
+            # Verify the NewsItem exists (404 guard).
+            item_result = await db.execute(
+                select(NewsItem).where(NewsItem.id == item_id)  # type: ignore[arg-type]
+            )
+            item = item_result.scalar_one_or_none()
+            if item is None:
+                raise HTTPException(status_code=404, detail="News item not found")
+
+            # Snapshot whether a board already existed so we can distinguish
+            # "just created" from "already there" without a second DB round-trip.
+            pre_stmt = (
+                sm_select(Board)
+                .where(Board.news_item_id == item_id)  # type: ignore[arg-type]
+                .where(Board.kind == BoardKind.BIG_BOARD)  # type: ignore[arg-type]
+                .limit(1)
+            )
+            pre_result = await db.execute(pre_stmt)
+            pre_existing_board = pre_result.scalar_one_or_none()
+
+            board = await board_extraction_service.extract_board(
+                db, news_item_id=item_id
+            )
+    except HTTPException:
+        raise
+    except PaywallDetectedError:
+        return _back_with_error(
+            "Article is paywalled — extraction cannot proceed. "
+            "Only free articles can be extracted."
+        )
+    except BoardExtractionError as exc:
+        return _back_with_error(str(exc))
+
+    if board is None:
+        # Gemini returned no ranked entries — nothing to review.
+        return _back_with_error(
+            "No ranked entries were found in this article. "
+            "The article may not contain a big board, or extraction failed to "
+            "identify any players."
+        )
+
+    # Determine whether the board is new or was already there.
+    was_duplicate = pre_existing_board is not None and pre_existing_board.id == board.id
+    success_key = "already_extracted" if was_duplicate else "extracted"
+    return RedirectResponse(
+        url=f"/admin/boards/{board.id}?success={success_key}",
+        status_code=303,
+    )

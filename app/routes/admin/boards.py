@@ -46,6 +46,8 @@ _SUCCESS_MESSAGES: dict[str, str] = {
     "reopened": "Board reopened for editing.",
     "cloned": "Board cloned. Edit the new copy below.",
     "meta_updated": "Board details updated.",
+    "extracted": "Board extracted successfully. Review and resolve unresolved entries below.",
+    "already_extracted": "A board for this article already existed — shown below.",
 }
 
 

@@ -124,6 +124,23 @@
       <a href="/admin/news-items" class="admin-btn admin-btn--secondary">Cancel</a>
     </div>
   </form>
+
+  <!-- Board extraction trigger -->
+  <div class="admin-form__section admin-form__section--actions">
+    <h3 class="admin-form__section-title">Board Extraction</h3>
+    <p class="admin-form__help">
+      Extract a big board from this article using AI. The result is saved as a
+      PENDING board for your review. Only articles tagged
+      <strong>BIG_BOARD</strong> are suitable; extraction may fail for paywalled
+      or non-ranking articles.
+    </p>
+    <form method="post" action="/admin/news-items/{{ item.id }}/extract-board"
+          onsubmit="return confirm('Run board extraction? This will fetch the article and call the AI — it may take up to 60 seconds.');">
+      <button type="submit" class="admin-btn admin-btn--secondary">
+        Extract Board
+      </button>
+    </form>
+  </div>
 </div>
 {% endblock %}
 
