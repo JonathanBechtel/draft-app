@@ -23,7 +23,12 @@ from app.services.news_service import (
 )
 from app.schemas.boards import BoardKind
 from app.schemas.player_content_mentions import ContentType
-from app.services.consensus_read_service import get_consensus_board
+from app.services.consensus_read_service import (
+    get_biggest_movers,
+    get_board_freshness,
+    get_consensus_board,
+    get_source_spotlight,
+)
 from app.services.podcast_service import (
     get_latest_podcast_episodes,
     get_player_podcast_feed,
@@ -138,6 +143,11 @@ async def home(
         }
         for r in consensus_rows_raw
     ]
+
+    # --- Supporting panels: Biggest Movers, Source Spotlight, Board Freshness --
+    biggest_movers = await get_biggest_movers(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    source_spotlight = await get_source_spotlight(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    board_freshness = await get_board_freshness(db, draft_year=CONSENSUS_DRAFT_YEAR)
 
     # --- Expanded trending payload (featured cards + compact tail) ------------
     expanded = await get_expanded_trending_players(db)
@@ -339,6 +349,10 @@ async def home(
             "consensus_rows": consensus_rows,
             "snapshot_computed_at": snapshot_computed_at,
             "draft_year": CONSENSUS_DRAFT_YEAR,
+            # Supporting panels
+            "biggest_movers": biggest_movers,
+            "source_spotlight": source_spotlight,
+            "board_freshness": board_freshness,
             # Existing sections
             "featured_trending": featured_trending,
             "compact_trending": compact_trending,

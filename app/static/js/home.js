@@ -1153,6 +1153,30 @@ const ConsensusHeroModule = {
 
 /**
  * ============================================================================
+ * CONSENSUS PANELS MODULE
+ * Minimal hover micro-interactions for the three supporting panel cards.
+ * ============================================================================
+ */
+const ConsensusPanelsModule = {
+  /** Attach focus-ring keyboard nav to mover player links. */
+  init() {
+    const panel = document.getElementById('consensusPanelsSection');
+    if (!panel) return;
+
+    // Ensure panel cards reveal an accent ring on keyboard focus-within
+    panel.querySelectorAll('.consensus-panel').forEach((card) => {
+      card.addEventListener('focusin', () => {
+        card.classList.add('consensus-panel--focus');
+      });
+      card.addEventListener('focusout', () => {
+        card.classList.remove('consensus-panel--focus');
+      });
+    });
+  },
+};
+
+/**
+ * ============================================================================
  * APPLICATION INITIALIZATION
  * Initialize all modules when DOM is ready
  * ============================================================================
@@ -1170,6 +1194,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize consensus hero row-click navigation
   ConsensusHeroModule.init();
+
+  // Initialize consensus supporting panels (movers / spotlight / freshness)
+  ConsensusPanelsModule.init();
 
   // Initialize trending players and news section modules
   TrendingModule.init();

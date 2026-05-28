@@ -134,6 +134,174 @@
   <div class="section-divider"></div>
 
   <!-- ==========================================================================
+       CONSENSUS SUPPORTING PANELS
+       Biggest Movers · Source Spotlight · Board Freshness
+       Three cards in a responsive 3-column grid beneath the consensus hero.
+       Each panel degrades gracefully when data is absent.
+       ========================================================================== -->
+  <section class="section consensus-panels" id="consensusPanelsSection"
+           aria-label="Consensus supporting panels">
+    <div class="consensus-panels__grid">
+
+      <!-- ---- Biggest Movers ---- -->
+      <div class="consensus-panel card card-ring card-ring-amber"
+           id="biggestMoversPanel"
+           aria-label="Biggest movers">
+        <div class="consensus-panel__header">
+          <svg class="consensus-panel__icon" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2">
+            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+            <polyline points="16 7 22 7 22 13"></polyline>
+          </svg>
+          <h3 class="consensus-panel__title mono-font uppercase">Biggest Movers</h3>
+        </div>
+
+        {% if biggest_movers.risers or biggest_movers.fallers %}
+          {% if biggest_movers.risers %}
+          <div class="consensus-panel__group">
+            <span class="consensus-panel__group-label">Risers</span>
+            <ul class="consensus-panel__mover-list">
+              {% for mover in biggest_movers.risers %}
+              <li class="consensus-panel__mover consensus-panel__mover--up">
+                <span class="consensus-panel__mover-delta">
+                  <svg viewBox="0 0 10 10" width="8" height="8" fill="currentColor">
+                    <path d="M5 1 L9 9 L1 9 Z"/>
+                  </svg>
+                  {{ mover.rank_delta }}
+                </span>
+                {% if mover.slug %}
+                <a class="consensus-panel__mover-name"
+                   href="/players/{{ mover.slug }}">{{ mover.player_name or "—" }}</a>
+                {% else %}
+                <span class="consensus-panel__mover-name">{{ mover.player_name or "—" }}</span>
+                {% endif %}
+                <span class="consensus-panel__mover-rank tabular-nums">#{{ mover.consensus_rank }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+          {% if biggest_movers.fallers %}
+          <div class="consensus-panel__group">
+            <span class="consensus-panel__group-label">Fallers</span>
+            <ul class="consensus-panel__mover-list">
+              {% for mover in biggest_movers.fallers %}
+              <li class="consensus-panel__mover consensus-panel__mover--down">
+                <span class="consensus-panel__mover-delta">
+                  <svg viewBox="0 0 10 10" width="8" height="8" fill="currentColor">
+                    <path d="M5 9 L9 1 L1 1 Z"/>
+                  </svg>
+                  {{ mover.rank_delta | abs }}
+                </span>
+                {% if mover.slug %}
+                <a class="consensus-panel__mover-name"
+                   href="/players/{{ mover.slug }}">{{ mover.player_name or "—" }}</a>
+                {% else %}
+                <span class="consensus-panel__mover-name">{{ mover.player_name or "—" }}</span>
+                {% endif %}
+                <span class="consensus-panel__mover-rank tabular-nums">#{{ mover.consensus_rank }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+
+        {% else %}
+        <div class="consensus-panel__empty" aria-live="polite">
+          <p class="consensus-panel__empty-msg">
+            Movement data available once a second snapshot is computed.
+          </p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- ---- Source Spotlight ---- -->
+      <div class="consensus-panel card card-ring card-ring-cyan"
+           id="sourceSpotlightPanel"
+           aria-label="Source spotlight">
+        <div class="consensus-panel__header">
+          <svg class="consensus-panel__icon" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          <h3 class="consensus-panel__title mono-font uppercase">Source Spotlight</h3>
+        </div>
+
+        {% if source_spotlight %}
+        <div class="consensus-panel__spotlight">
+          <p class="consensus-panel__spotlight-label mono-font">Most contrarian source this week</p>
+          <p class="consensus-panel__spotlight-source">
+            {{ source_spotlight.source_display_name }}
+          </p>
+          <p class="consensus-panel__spotlight-stat mono-font">
+            Avg deviation
+            <strong class="consensus-panel__spotlight-value">
+              {{ "%.1f"|format(source_spotlight.avg_deviation) }}
+            </strong>
+            picks from consensus
+          </p>
+          <p class="consensus-panel__spotlight-score mono-font">
+            Contrarian score:
+            <strong>{{ "%.2f"|format(source_spotlight.contrarian_score) }}</strong>
+          </p>
+        </div>
+        {% else %}
+        <div class="consensus-panel__empty" aria-live="polite">
+          <p class="consensus-panel__empty-msg">
+            Source analytics are not yet available.
+          </p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- ---- Board Freshness ---- -->
+      <div class="consensus-panel card card-ring card-ring-emerald"
+           id="boardFreshnessPanel"
+           aria-label="Board freshness">
+        <div class="consensus-panel__header">
+          <svg class="consensus-panel__icon" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          <h3 class="consensus-panel__title mono-font uppercase">Board Freshness</h3>
+        </div>
+
+        {% if board_freshness %}
+        <div class="consensus-panel__freshness">
+          <p class="consensus-panel__freshness-summary mono-font">
+            Based on
+            <strong class="consensus-panel__freshness-value">{{ board_freshness.num_boards }}</strong>
+            board{{ "s" if board_freshness.num_boards != 1 else "" }}
+            from
+            <strong class="consensus-panel__freshness-value">{{ board_freshness.num_sources }}</strong>
+            source{{ "s" if board_freshness.num_sources != 1 else "" }}
+          </p>
+          <p class="consensus-panel__freshness-date mono-font">
+            Last updated
+            <strong>{{ board_freshness.last_updated.strftime('%b %-d, %Y') }}</strong>
+          </p>
+        </div>
+        {% else %}
+        <div class="consensus-panel__empty" aria-live="polite">
+          <p class="consensus-panel__empty-msg">
+            No approved boards available yet.
+          </p>
+        </div>
+        {% endif %}
+      </div>
+
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
        NEWS HERO
        Featured article with image-based display mode
        ========================================================================== -->

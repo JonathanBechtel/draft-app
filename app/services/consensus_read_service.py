@@ -23,7 +23,7 @@ from app.models.consensus import (
     SourceAnalyticsRow,
     SourceRankEntry,
 )
-from app.schemas.boards import Board, BoardEntry
+from app.schemas.boards import Board, BoardEntry, BoardStatus
 from app.schemas.consensus import (
     BigBoardConsensus,
     ConsensusSnapshot,
@@ -397,3 +397,193 @@ async def get_snapshots(
         )
         for row in rows
     ]
+
+
+async def get_biggest_movers(
+    db: AsyncSession,
+    *,
+    draft_year: int,
+    k: int = 5,
+) -> dict:
+    """Return the top risers and fallers between the two most recent snapshots.
+
+    Compares ``rank_delta`` (positive = rising, negative = falling) on the
+    most recent snapshot. Rows with no ``rank_delta`` (i.e. only one snapshot
+    exists) are excluded, so the result may be empty.
+
+    Args:
+        db: Async DB session.
+        draft_year: Draft class to query.
+        k: Maximum number of risers and fallers to return (each).
+
+    Returns:
+        ``{"risers": [...], "fallers": [...]}`` where each item is a dict with
+        ``player_id``, ``player_name``, ``slug``, ``consensus_rank``,
+        ``rank_delta``, and ``prev_rank``. Both lists are empty when no prior
+        snapshot exists.
+    """
+    sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
+    if sid is None:
+        return {"risers": [], "fallers": []}
+
+    # Fetch all rows for the current snapshot that have a non-null rank_delta.
+    bbc_rows = (
+        (
+            await db.execute(
+                select(BigBoardConsensus)  # type: ignore[call-overload]
+                .where(BigBoardConsensus.snapshot_id == sid)  # type: ignore[arg-type]
+                .where(BigBoardConsensus.rank_delta.is_not(None))  # type: ignore[union-attr]
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not bbc_rows:
+        return {"risers": [], "fallers": []}
+
+    player_ids = [r.player_id for r in bbc_rows]
+    player_map = await _player_name_map(db, player_ids)
+
+    def _to_mover(bbc: BigBoardConsensus) -> dict:
+        player = player_map.get(bbc.player_id)
+        return {
+            "player_id": bbc.player_id,
+            "player_name": player.display_name if player else None,
+            "slug": player.slug if player else None,
+            "consensus_rank": bbc.consensus_rank,
+            "rank_delta": bbc.rank_delta,
+            "prev_rank": bbc.prev_rank,
+        }
+
+    # rank_delta > 0 → risen (smaller rank number); sort descending by delta
+    risers = sorted(
+        [r for r in bbc_rows if r.rank_delta is not None and r.rank_delta > 0],
+        key=lambda r: -(r.rank_delta or 0),
+    )[:k]
+
+    # rank_delta < 0 → fallen; sort ascending (most negative first)
+    fallers = sorted(
+        [r for r in bbc_rows if r.rank_delta is not None and r.rank_delta < 0],
+        key=lambda r: (r.rank_delta or 0),
+    )[:k]
+
+    return {
+        "risers": [_to_mover(r) for r in risers],
+        "fallers": [_to_mover(r) for r in fallers],
+    }
+
+
+async def get_source_spotlight(
+    db: AsyncSession,
+    *,
+    draft_year: int,
+) -> Optional[dict]:
+    """Return the most contrarian source for the latest snapshot.
+
+    Selects the ``SourceAnalytics`` row with the highest ``contrarian_score``
+    and returns a callout-ready dict.
+
+    Args:
+        db: Async DB session.
+        draft_year: Draft class to query.
+
+    Returns:
+        Dict with ``source_name``, ``source_display_name``,
+        ``avg_deviation``, and ``contrarian_score``, or ``None`` when no
+        source analytics exist for the latest snapshot.
+    """
+    sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
+    if sid is None:
+        return None
+
+    sa_row = (
+        await db.execute(
+            select(SourceAnalytics)  # type: ignore[call-overload]
+            .where(SourceAnalytics.snapshot_id == sid)  # type: ignore[arg-type]
+            .order_by(SourceAnalytics.contrarian_score.desc())  # type: ignore[attr-defined]
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if sa_row is None:
+        return None
+
+    src = (
+        await db.execute(
+            select(NewsSource).where(  # type: ignore[call-overload]
+                NewsSource.id == sa_row.news_source_id  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one_or_none()
+
+    return {
+        "news_source_id": sa_row.news_source_id,
+        "source_name": src.name if src else f"source_{sa_row.news_source_id}",
+        "source_display_name": src.display_name
+        if src
+        else f"source_{sa_row.news_source_id}",
+        "avg_deviation": sa_row.avg_deviation,
+        "contrarian_score": sa_row.contrarian_score,
+    }
+
+
+async def get_board_freshness(
+    db: AsyncSession,
+    *,
+    draft_year: int,
+) -> Optional[dict]:
+    """Return freshness metadata for the latest snapshot.
+
+    Derives board count, unique source count, and the latest ``published_at``
+    date from the APPROVED boards that fed the current snapshot.
+
+    Args:
+        db: Async DB session.
+        draft_year: Draft class to query.
+
+    Returns:
+        Dict with ``num_boards``, ``num_sources``, and ``last_updated``
+        (a ``datetime``), or ``None`` when no snapshot exists.
+    """
+    sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
+    if sid is None:
+        return None
+
+    snapshot = (
+        await db.execute(
+            select(ConsensusSnapshot).where(  # type: ignore[call-overload]
+                ConsensusSnapshot.id == sid  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one_or_none()
+
+    if snapshot is None or not snapshot.board_ids:
+        return None
+
+    board_rows = (
+        (
+            await db.execute(
+                select(Board)  # type: ignore[call-overload]
+                .where(Board.id.in_(snapshot.board_ids))  # type: ignore[union-attr]
+                .where(Board.status == BoardStatus.APPROVED)  # type: ignore[arg-type]
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not board_rows:
+        return None
+
+    unique_sources = len({b.news_source_id for b in board_rows})
+    last_updated = max(
+        (b.approved_at for b in board_rows if b.approved_at is not None),
+        default=snapshot.computed_at,
+    )
+
+    return {
+        "num_boards": len(board_rows),
+        "num_sources": unique_sources,
+        "last_updated": last_updated,
+    }
