@@ -21,7 +21,9 @@ from app.services.news_service import (
     get_sticky_news_item,
     get_trending_players,
 )
+from app.schemas.boards import BoardKind
 from app.schemas.player_content_mentions import ContentType
+from app.services.consensus_read_service import get_consensus_board
 from app.services.podcast_service import (
     get_latest_podcast_episodes,
     get_player_podcast_feed,
@@ -36,7 +38,7 @@ from app.services.video_service import (
 )
 from sqlmodel import select
 
-from app.config import settings
+from app.config import get_consensus_board_kind, settings
 from app.models.fields import MetricSource
 from app.schemas.metrics import MetricSnapshot
 from app.schemas.seasons import Season
@@ -89,13 +91,54 @@ def _news_item_to_dict(item: NewsItemRead, *, is_sticky: bool = False) -> dict:
     }
 
 
+# Draft year for the current cycle.  Update each off-season.
+CONSENSUS_DRAFT_YEAR = 2026
+
+
 @router.get("/", response_class=HTMLResponse)
 async def home(
     request: Request,
     db: AsyncSession = Depends(get_session),
 ):
-    """Render the Homepage with expanded trending players, VS arena, and news feed."""
-    # Fetch expanded trending payload (featured cards + compact tail).
+    """Render the Homepage with consensus hero, trending players, VS arena, and news feed."""
+    # --- Consensus hero -------------------------------------------------------
+    # Select the board kind from the draft calendar.  Fall back to BIG_BOARD
+    # when the calendar-selected kind returns no rows (e.g. MOCK_DRAFT data has
+    # not yet been ingested; see ticket notes on that ticket).  This ensures
+    # the hero is never empty even before mock-draft extraction ships.
+    board_kind = get_consensus_board_kind()
+    consensus_rows_raw = await get_consensus_board(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    if not consensus_rows_raw and board_kind != BoardKind.BIG_BOARD:
+        # Fallback: calendar wants MOCK_DRAFT but no data exists yet.
+        board_kind = BoardKind.BIG_BOARD
+        consensus_rows_raw = await get_consensus_board(
+            db, draft_year=CONSENSUS_DRAFT_YEAR
+        )
+
+    # Derive snapshot_computed_at from the first row's data is not directly
+    # available on ConsensusRow; pass None (template shows nothing when absent).
+    snapshot_computed_at: datetime | None = None
+
+    consensus_rows = [
+        {
+            "player_id": r.player_id,
+            "player_name": r.player_name,
+            "school": r.school,
+            "slug": r.slug,
+            "consensus_rank": r.consensus_rank,
+            "avg_rank": r.avg_rank,
+            "high_rank": r.high_rank,
+            "low_rank": r.low_rank,
+            "num_sources": r.num_sources,
+            # rank_delta: None when no prior snapshot (single-snapshot case).
+            # Positive delta = moved up (lower rank number), negative = moved down.
+            "rank_delta": r.rank_delta,
+            "prev_rank": r.prev_rank,
+        }
+        for r in consensus_rows_raw
+    ]
+
+    # --- Expanded trending payload (featured cards + compact tail) ------------
     expanded = await get_expanded_trending_players(db)
     featured_trending = [
         {
@@ -290,6 +333,12 @@ async def home(
         "home.html",
         {
             "request": request,
+            # Consensus hero
+            "board_kind": board_kind,
+            "consensus_rows": consensus_rows,
+            "snapshot_computed_at": snapshot_computed_at,
+            "draft_year": CONSENSUS_DRAFT_YEAR,
+            # Existing sections
             "featured_trending": featured_trending,
             "compact_trending": compact_trending,
             "feed_items": feed_items,

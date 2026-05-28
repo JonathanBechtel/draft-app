@@ -17,6 +17,123 @@
 <main class="home-container mt-28">
 
   <!-- ==========================================================================
+       CONSENSUS HERO
+       Full top-30+ ranking table; switches between Big Board (pre-lottery)
+       and Mock Draft (post-lottery) based on the draft calendar.
+       ========================================================================== -->
+  <section class="section consensus-hero" id="consensusHeroSection">
+    <div class="section-header-row">
+      <h2 class="section-header mono-font uppercase"
+          style="border-left-color: var(--color-accent-amber);">
+        <!-- Draft board icon -->
+        <svg class="icon icon-lg" style="color: var(--color-accent-amber); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/>
+        </svg>
+        {% if board_kind.value == 'BIG_BOARD' %}
+          {{ draft_year }} Consensus Board
+        {% else %}
+          {{ draft_year }} Consensus Mock Draft
+        {% endif %}
+      </h2>
+      {% if snapshot_computed_at %}
+      <span class="section-subtitle consensus-hero__updated">
+        Updated {{ snapshot_computed_at.strftime('%b %-d') }}
+      </span>
+      {% endif %}
+    </div>
+
+    {% if consensus_rows %}
+    <div class="card card-ring card-ring-amber consensus-hero__card">
+      <div class="scanlines"></div>
+      <div class="consensus-hero__table-wrap">
+        <table class="consensus-hero__table" id="consensusHeroTable">
+          <thead>
+            <tr>
+              <th class="consensus-hero__th consensus-hero__th--rank">#</th>
+              <th class="consensus-hero__th consensus-hero__th--delta"></th>
+              <th class="consensus-hero__th consensus-hero__th--player">Player</th>
+              <th class="consensus-hero__th consensus-hero__th--school">School</th>
+              <th class="consensus-hero__th consensus-hero__th--avg">Avg</th>
+              <th class="consensus-hero__th consensus-hero__th--range">Range</th>
+              <th class="consensus-hero__th consensus-hero__th--sources"># Sources</th>
+            </tr>
+          </thead>
+          <tbody id="consensusHeroBody">
+            {% for row in consensus_rows %}
+            <tr class="consensus-hero__row"
+                data-player-id="{{ row.player_id }}"
+                data-slug="{{ row.slug or '' }}"
+                tabindex="0"
+                role="button"
+                aria-label="View {{ row.player_name or 'Player' }} details">
+              <td class="consensus-hero__td consensus-hero__td--rank tabular-nums">
+                {{ row.consensus_rank }}
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--delta">
+                {% if row.rank_delta is none %}
+                  {# No prior snapshot — first-ever entry; show nothing #}
+                {% elif row.rank_delta > 0 %}
+                  {# Positive rank_delta = moved up (smaller rank number is better) #}
+                  <span class="consensus-hero__delta consensus-hero__delta--up" title="Up {{ row.rank_delta }}">
+                    <svg viewBox="0 0 10 10" width="10" height="10" fill="currentColor"><path d="M5 1 L9 9 L1 9 Z"/></svg>
+                    {{ row.rank_delta }}
+                  </span>
+                {% elif row.rank_delta < 0 %}
+                  <span class="consensus-hero__delta consensus-hero__delta--down" title="Down {{ row.rank_delta | abs }}">
+                    <svg viewBox="0 0 10 10" width="10" height="10" fill="currentColor"><path d="M5 9 L9 1 L1 1 Z"/></svg>
+                    {{ row.rank_delta | abs }}
+                  </span>
+                {% else %}
+                  <span class="consensus-hero__delta consensus-hero__delta--flat" title="No change">&ndash;</span>
+                {% endif %}
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--player">
+                {% if row.slug %}
+                <a class="consensus-hero__player-name"
+                   href="/players/{{ row.slug }}"
+                   onclick="event.stopPropagation()">
+                  {{ row.player_name or "—" }}
+                </a>
+                {% else %}
+                <span class="consensus-hero__player-name">
+                  {{ row.player_name or "—" }}
+                </span>
+                {% endif %}
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--school consensus-hero__school">
+                {{ row.school or "—" }}
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--avg tabular-nums">
+                {{ "%.1f"|format(row.avg_rank) }}
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--range tabular-nums">
+                {{ row.high_rank }}–{{ row.low_rank }}
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--sources tabular-nums">
+                {{ row.num_sources }}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="consensus-hero__empty">
+      <p class="consensus-hero__empty-msg">
+        {% if board_kind.value == 'MOCK_DRAFT' %}
+          Mock draft consensus data will be available after draft boards are ingested.
+        {% else %}
+          Consensus board data is not yet available for {{ draft_year }}.
+        {% endif %}
+      </p>
+    </div>
+    {% endif %}
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ==========================================================================
        NEWS HERO
        Featured article with image-based display mode
        ========================================================================== -->
@@ -278,6 +395,10 @@
   // Image style and S3 base URL for dynamic image URLs (used by VS Arena)
   window.IMAGE_STYLE = {{ image_style | tojson | safe }};
   window.S3_IMAGE_BASE_URL = {{ s3_image_base_url | tojson | safe }};
+  // Consensus hero data injected for future client-side use
+  window.consensus = {{ consensus_rows | tojson | safe }};
+  window.BOARD_KIND = {{ board_kind.value | tojson | safe }};
+  window.DRAFT_YEAR = {{ draft_year | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/home.js') }}"></script>
 <script src="{{ url_for('static', path='js/film-room.js') }}"></script>

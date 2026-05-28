@@ -1103,6 +1103,56 @@ function shareVSArenaTweet() {
 
 /**
  * ============================================================================
+ * CONSENSUS HERO MODULE
+ * Wires row-click navigation for the server-rendered consensus ranking table.
+ *
+ * Slugs are server-rendered into each row's ``data-slug`` attribute, so no
+ * API round-trip is needed.  The module attaches a delegated click (and
+ * Enter/Space keydown) handler on the table body that navigates to
+ * /players/<slug> when a row is activated.  No sort UI in this ticket.
+ * ============================================================================
+ */
+const ConsensusHeroModule = {
+  /**
+   * Navigate to the player detail page for a given row element.
+   * Uses the data-slug attribute that was server-rendered into the row.
+   * @param {HTMLElement} row
+   */
+  navigateToPlayer(row) {
+    const slug = row.dataset.slug;
+    if (slug) {
+      window.location.href = `/players/${slug}`;
+    }
+  },
+
+  /**
+   * Initialize the consensus hero: attach delegated click + keyboard handler.
+   */
+  init() {
+    const tbody = document.getElementById('consensusHeroBody');
+    if (!tbody) return;
+
+    // Delegated click handler
+    tbody.addEventListener('click', (e) => {
+      const row = e.target.closest('.consensus-hero__row');
+      if (row) this.navigateToPlayer(row);
+    });
+
+    // Keyboard accessibility: Enter / Space activates a focused row
+    tbody.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        const row = e.target.closest('.consensus-hero__row');
+        if (row) {
+          e.preventDefault();
+          this.navigateToPlayer(row);
+        }
+      }
+    });
+  },
+};
+
+/**
+ * ============================================================================
  * APPLICATION INITIALIZATION
  * Initialize all modules when DOM is ready
  * ============================================================================
@@ -1117,6 +1167,9 @@ document.addEventListener('DOMContentLoaded', () => {
     exportBtnId: 'vsArenaExportBtn',
     tweetBtnId: 'vsArenaTweetBtn'
   });
+
+  // Initialize consensus hero row-click navigation
+  ConsensusHeroModule.init();
 
   // Initialize trending players and news section modules
   TrendingModule.init();

@@ -84,6 +84,7 @@ def _to_consensus_row(
         player_id=bbc.player_id,
         player_name=player.display_name if player else None,
         school=player.school if player else None,
+        slug=player.slug if player else None,
         consensus_rank=bbc.consensus_rank,
         avg_rank=bbc.avg_rank,
         median_rank=bbc.median_rank,
