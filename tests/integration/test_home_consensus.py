@@ -157,10 +157,10 @@ async def test_home_pre_lottery_renders_big_board(
     assert "Consensus Board" in html
     # At least the first player's name must appear.
     assert players[0].display_name in html
-    # Player photo thumbnails are wired in for every row.
-    assert "consensus-hero__photo" in html
-    # School-logo cell wrapper is present (logo img itself appears only when
-    # a logo is registered for the school, which the fixture doesn't seed).
+    # Photo + school-logo cells are wired in for every row. The inner <img>
+    # tags only render when a real PlayerImageAsset or school logo exists —
+    # the cell wrappers always render, so we assert on those.
+    assert "consensus-hero__player-cell" in html
     assert "consensus-hero__school-cell" in html
     # The rank column header must be present.
     assert "consensus-hero__th--rank" in html or "#" in html
