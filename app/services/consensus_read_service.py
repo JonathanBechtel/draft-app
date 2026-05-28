@@ -31,6 +31,8 @@ from app.schemas.consensus import (
 )
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
+from app.services.school_logo_service import get_logo_urls_for_schools
+from app.utils.images import get_player_photo_url
 
 
 async def _resolve_snapshot_id(
@@ -83,14 +85,30 @@ async def _player_name_map(
 
 
 def _to_consensus_row(
-    bbc: BigBoardConsensus, player: Optional[PlayerMaster]
+    bbc: BigBoardConsensus,
+    player: Optional[PlayerMaster],
+    school_logo_url: Optional[str] = None,
 ) -> ConsensusRow:
-    """Map a ``BigBoardConsensus`` ORM row to the ``ConsensusRow`` model."""
+    """Map a ``BigBoardConsensus`` ORM row to the ``ConsensusRow`` model.
+
+    Args:
+        bbc: The ORM consensus row.
+        player: The resolved ``PlayerMaster`` for ``bbc.player_id`` if any.
+        school_logo_url: Pre-resolved school logo URL (async/DB-cached, so
+            the caller batch-resolves and passes it in).
+    """
+    photo_url: Optional[str] = None
+    if player is not None and player.id is not None and player.slug is not None:
+        photo_url = get_player_photo_url(
+            player.id, player.slug, display_name=player.display_name
+        )
     return ConsensusRow(
         player_id=bbc.player_id,
         player_name=player.display_name if player else None,
         school=player.school if player else None,
         slug=player.slug if player else None,
+        photo_url=photo_url,
+        school_logo_url=school_logo_url,
         consensus_rank=bbc.consensus_rank,
         avg_rank=bbc.avg_rank,
         median_rank=bbc.median_rank,
@@ -140,7 +158,24 @@ async def get_consensus_board(
         return []
 
     player_map = await _player_name_map(db, [r.player_id for r in bbc_rows])
-    return [_to_consensus_row(r, player_map.get(r.player_id)) for r in bbc_rows]
+    # Batch-resolve school logos once (cache-backed) so each row lookup is a
+    # plain dict get instead of N async calls.
+    logo_map = await get_logo_urls_for_schools(
+        db,
+        [player_map[r.player_id].school for r in bbc_rows if r.player_id in player_map],
+    )
+    return [
+        _to_consensus_row(
+            r,
+            player_map.get(r.player_id),
+            school_logo_url=(
+                logo_map.get(player_map[r.player_id].school or "")
+                if r.player_id in player_map
+                else None
+            ),
+        )
+        for r in bbc_rows
+    ]
 
 
 async def get_player_consensus_detail(
@@ -510,6 +545,11 @@ async def get_source_detail(
     all_player_ids = [e.player_id for e in source_entries if e.player_id is not None]
     player_map = await _player_name_map(db, all_player_ids)
 
+    # Batch-resolve school logos once (cache-backed).
+    logo_map = await get_logo_urls_for_schools(
+        db, [p.school for p in player_map.values()]
+    )
+
     # Biggest outlier player id (for highlighting)
     biggest_outlier_player_id = sa_row.biggest_outlier_player_id
 
@@ -523,11 +563,21 @@ async def get_source_detail(
             delta = (
                 entry.position - consensus_row.consensus_rank
             )  # positive = source lower
+        photo_url = None
+        if player is not None and player.id is not None and player.slug is not None:
+            photo_url = get_player_photo_url(
+                player.id, player.slug, display_name=player.display_name
+            )
         overlay_rows.append(
             {
                 "player_id": entry.player_id,
                 "player_name": player.display_name if player else None,
                 "player_slug": player.slug if player else None,
+                "school": player.school if player else None,
+                "photo_url": photo_url,
+                "school_logo_url": (
+                    logo_map.get(player.school or "") if player else None
+                ),
                 "source_rank": entry.position,
                 "consensus_rank": consensus_row.consensus_rank
                 if consensus_row

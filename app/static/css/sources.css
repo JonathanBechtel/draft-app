@@ -465,3 +465,53 @@
     display: none;
   }
 }
+
+/* -- Source detail overlay: player photos + school logos -------------------
+   The Player column shows a small thumbnail, the player name (and outlier
+   star), and a sub-line with the school name + logo. Keeps the overlay
+   visually consistent with the homepage consensus hero. */
+.sources-detail__player-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.sources-detail__photo {
+  width: 32px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #edf2f7;
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.sources-detail__player-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.sources-detail__player-school {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #6b7280);
+}
+
+.sources-detail__school-logo {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .sources-detail__photo {
+    width: 28px;
+    height: 36px;
+  }
+}

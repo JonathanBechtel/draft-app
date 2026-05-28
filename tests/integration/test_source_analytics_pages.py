@@ -221,6 +221,11 @@ async def test_source_detail_happy_path(
     found_player = any(p.display_name in body for p in players)
     assert found_player, "Expected at least one player's name in source detail page"
 
+    # Player thumbnails are wired into the overlay rows (logo img only renders
+    # when a school logo is registered, which the fixture doesn't seed).
+    assert "sources-detail__photo" in body
+    assert "sources-detail__player-cell" in body
+
 
 @pytest.mark.asyncio
 async def test_source_detail_shows_both_columns(

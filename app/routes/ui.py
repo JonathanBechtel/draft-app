@@ -134,6 +134,8 @@ async def home(
             "player_name": r.player_name,
             "school": r.school,
             "slug": r.slug,
+            "photo_url": r.photo_url,
+            "school_logo_url": r.school_logo_url,
             "consensus_rank": r.consensus_rank,
             "avg_rank": r.avg_rank,
             "high_rank": r.high_rank,

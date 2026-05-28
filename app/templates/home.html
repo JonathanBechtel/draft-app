@@ -88,20 +88,40 @@
                 {% endif %}
               </td>
               <td class="consensus-hero__td consensus-hero__td--player">
-                {% if row.slug %}
-                <a class="consensus-hero__player-name"
-                   href="/players/{{ row.slug }}"
-                   onclick="event.stopPropagation()">
-                  {{ row.player_name or "—" }}
-                </a>
-                {% else %}
-                <span class="consensus-hero__player-name">
-                  {{ row.player_name or "—" }}
-                </span>
-                {% endif %}
+                <div class="consensus-hero__player-cell">
+                  {% if row.photo_url %}
+                  <img class="consensus-hero__photo"
+                       src="{{ row.photo_url }}"
+                       alt=""
+                       loading="lazy"
+                       width="36"
+                       height="48">
+                  {% endif %}
+                  {% if row.slug %}
+                  <a class="consensus-hero__player-name"
+                     href="/players/{{ row.slug }}"
+                     onclick="event.stopPropagation()">
+                    {{ row.player_name or "—" }}
+                  </a>
+                  {% else %}
+                  <span class="consensus-hero__player-name">
+                    {{ row.player_name or "—" }}
+                  </span>
+                  {% endif %}
+                </div>
               </td>
               <td class="consensus-hero__td consensus-hero__td--school consensus-hero__school">
-                {{ row.school or "—" }}
+                <div class="consensus-hero__school-cell">
+                  {% if row.school_logo_url %}
+                  <img class="consensus-hero__school-logo"
+                       src="{{ row.school_logo_url }}"
+                       alt=""
+                       loading="lazy"
+                       width="22"
+                       height="22">
+                  {% endif %}
+                  <span class="consensus-hero__school-name">{{ row.school or "—" }}</span>
+                </div>
               </td>
               <td class="consensus-hero__td consensus-hero__td--avg tabular-nums">
                 {{ "%.1f"|format(row.avg_rank) }}

@@ -18,6 +18,8 @@ class ConsensusRow(SQLModel):
     player_name: Optional[str]
     school: Optional[str]
     slug: Optional[str] = None
+    photo_url: Optional[str] = None
+    school_logo_url: Optional[str] = None
     consensus_rank: int
     avg_rank: float
     median_rank: float

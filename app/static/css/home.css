@@ -1065,3 +1065,52 @@ tbody td {
     justify-self: center;
   }
 }
+
+/* -- Consensus hero: player photos + school logos --------------------------
+   Small inline thumbnails alongside the player name and school name so the
+   board feels visually rich without overflowing the table density. */
+.consensus-hero__player-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.consensus-hero__photo {
+  width: 36px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #edf2f7;
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.consensus-hero__school-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.consensus-hero__school-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.consensus-hero__school-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  /* Existing breakpoint hides the school column; shrink the photo a touch
+     so the player cell stays comfortable on narrow viewports. */
+  .consensus-hero__photo {
+    width: 32px;
+    height: 42px;
+  }
+}

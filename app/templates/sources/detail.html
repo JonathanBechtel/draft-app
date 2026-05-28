@@ -89,16 +89,41 @@
             {% for row in source.overlay_rows %}
             <tr class="sources-detail__row{% if row.is_biggest_outlier %} sources-detail__row--outlier{% endif %}">
               <td class="sources-detail__td sources-detail__td--player">
-                {% if row.player_slug %}
-                <a class="sources-detail__player-link" href="/players/{{ row.player_slug }}">
-                  {{ row.player_name or "—" }}
-                </a>
-                {% else %}
-                <span>{{ row.player_name or "—" }}</span>
-                {% endif %}
-                {% if row.is_biggest_outlier %}
-                <span class="sources-detail__outlier-badge" title="Biggest outlier pick">&#9733;</span>
-                {% endif %}
+                <div class="sources-detail__player-cell">
+                  {% if row.photo_url %}
+                  <img class="sources-detail__photo"
+                       src="{{ row.photo_url }}"
+                       alt=""
+                       loading="lazy"
+                       width="32"
+                       height="42">
+                  {% endif %}
+                  <div class="sources-detail__player-text">
+                    {% if row.player_slug %}
+                    <a class="sources-detail__player-link" href="/players/{{ row.player_slug }}">
+                      {{ row.player_name or "—" }}
+                    </a>
+                    {% else %}
+                    <span>{{ row.player_name or "—" }}</span>
+                    {% endif %}
+                    {% if row.is_biggest_outlier %}
+                    <span class="sources-detail__outlier-badge" title="Biggest outlier pick">&#9733;</span>
+                    {% endif %}
+                    {% if row.school %}
+                    <div class="sources-detail__player-school">
+                      {% if row.school_logo_url %}
+                      <img class="sources-detail__school-logo"
+                           src="{{ row.school_logo_url }}"
+                           alt=""
+                           loading="lazy"
+                           width="16"
+                           height="16">
+                      {% endif %}
+                      <span>{{ row.school }}</span>
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
               </td>
               <td class="sources-detail__td sources-detail__td--source-rank tabular-nums">
                 {{ row.source_rank }}
