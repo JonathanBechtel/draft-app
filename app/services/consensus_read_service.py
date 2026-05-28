@@ -107,6 +107,7 @@ async def _recent_ranks_map(
     *,
     draft_year: int,
     player_ids: list[int],
+    up_to_snapshot_id: Optional[int] = None,
     limit_per_player: int = 8,
 ) -> dict[int, list[int]]:
     """Return ``{player_id: [rank, ...]}`` of each player's recent ranks.
@@ -114,30 +115,51 @@ async def _recent_ranks_map(
     The list is ordered oldest-first across the last ``limit_per_player``
     snapshots for ``draft_year``. Powers the per-row sparkline on the
     consensus board. One query, grouped + sliced in Python.
+
+    Args:
+        db: Async DB session.
+        draft_year: Year scope.
+        player_ids: Players to fetch history for.
+        up_to_snapshot_id: When set, cap history at that snapshot's
+            ``computed_at`` (inclusive). Required for point-in-time
+            historical responses — a request for an older
+            ``snapshot_id`` must not surface ranks from snapshots that
+            were computed AFTER it. ``None`` means "no upper bound"
+            (the caller wants the full latest series).
+        limit_per_player: Max series length per player.
     """
     if not player_ids:
         return {}
-    rows = (
-        await db.execute(
-            select(  # type: ignore[call-overload]
-                BigBoardConsensus.player_id,
-                BigBoardConsensus.consensus_rank,
-                ConsensusSnapshot.computed_at,
-            )
-            .join(
-                ConsensusSnapshot,
-                ConsensusSnapshot.id == BigBoardConsensus.snapshot_id,  # type: ignore[arg-type]
-            )
-            .where(BigBoardConsensus.draft_year == draft_year)  # type: ignore[arg-type]
-            .where(
-                BigBoardConsensus.player_id.in_(player_ids)  # type: ignore[attr-defined]
-            )
-            .order_by(
-                BigBoardConsensus.player_id,  # type: ignore[arg-type]
-                ConsensusSnapshot.computed_at,  # type: ignore[arg-type]
-            )
+    stmt = (
+        select(  # type: ignore[call-overload]
+            BigBoardConsensus.player_id,
+            BigBoardConsensus.consensus_rank,
+            ConsensusSnapshot.computed_at,
         )
-    ).all()
+        .join(
+            ConsensusSnapshot,
+            ConsensusSnapshot.id == BigBoardConsensus.snapshot_id,  # type: ignore[arg-type]
+        )
+        .where(BigBoardConsensus.draft_year == draft_year)  # type: ignore[arg-type]
+        .where(
+            BigBoardConsensus.player_id.in_(player_ids)  # type: ignore[attr-defined]
+        )
+        .order_by(
+            BigBoardConsensus.player_id,  # type: ignore[arg-type]
+            ConsensusSnapshot.computed_at,  # type: ignore[arg-type]
+        )
+    )
+    if up_to_snapshot_id is not None:
+        # Scalar subquery: only include snapshots whose computed_at is at
+        # or before the target snapshot's — so a historical query stays
+        # point-in-time and doesn't leak future ranks.
+        cutoff_subq = (
+            select(ConsensusSnapshot.computed_at)  # type: ignore[call-overload]
+            .where(ConsensusSnapshot.id == up_to_snapshot_id)  # type: ignore[arg-type]
+            .scalar_subquery()
+        )
+        stmt = stmt.where(ConsensusSnapshot.computed_at <= cutoff_subq)  # type: ignore[arg-type]
+    rows = (await db.execute(stmt)).all()
     series: dict[int, list[int]] = {}
     for pid, rank, _computed_at in rows:
         series.setdefault(pid, []).append(rank)
@@ -241,6 +263,11 @@ async def get_consensus_board(
         db,
         draft_year=draft_year,
         player_ids=[r.player_id for r in bbc_rows],
+        # Cap history at the requested snapshot so a historical query
+        # (older ``snapshot_id``) stays point-in-time. ``sid`` is the
+        # resolved snapshot id — when the caller asked for the latest,
+        # passing the latest's id is equivalent to no upper bound.
+        up_to_snapshot_id=sid,
     )
     return [
         _to_consensus_row(

@@ -470,6 +470,84 @@ async def test_snapshots_mock_draft_returns_empty(
 
 
 # ---------------------------------------------------------------------------
+# Point-in-time: a historical snapshot_id must not surface ranks from
+# snapshots that were computed AFTER it (sparkline history is bounded).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_consensus_recent_ranks_capped_at_requested_snapshot(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+    two_players: list[PlayerMaster],
+    two_sources: list[NewsSource],
+) -> None:
+    """A request for an older ``snapshot_id`` must return point-in-time history.
+
+    Seeds two consecutive snapshots in the same draft year. Querying
+    ``/api/consensus`` at the OLDER snapshot_id must return ``recent_ranks``
+    series whose lengths reflect only history up to (and including) that
+    snapshot — not the newer one. Querying at the LATEST snapshot returns
+    the full series.
+    """
+    p1, p2 = two_players
+    s1, s2 = two_sources
+
+    await _make_approved_board(
+        db_session, source=s1, draft_year=2026, entries=[(p1, 1), (p2, 2)]
+    )
+    await _make_approved_board(
+        db_session, source=s2, draft_year=2026, entries=[(p1, 1), (p2, 2)]
+    )
+    await db_session.commit()
+
+    snap_older = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    snap_newer = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.SCHEDULED
+    )
+    await db_session.commit()
+
+    # Asking for the OLDER snapshot: each row's recent_ranks should have
+    # exactly 1 entry (the older snapshot's own rank), NOT 2.
+    resp = await app_client.get(
+        "/api/consensus",
+        params={
+            "draft_year": 2026,
+            "kind": "BIG_BOARD",
+            "snapshot_id": snap_older.id,
+        },
+    )
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert rows, "expected rows for the older snapshot"
+    for row in rows:
+        assert len(row["recent_ranks"]) == 1, (
+            f"historical snapshot leaked future ranks for player "
+            f"{row['player_id']}: {row['recent_ranks']}"
+        )
+
+    # Asking for the LATEST snapshot: each row's recent_ranks should
+    # include BOTH snapshots' ranks (oldest-first), length 2.
+    resp = await app_client.get(
+        "/api/consensus",
+        params={
+            "draft_year": 2026,
+            "kind": "BIG_BOARD",
+            "snapshot_id": snap_newer.id,
+        },
+    )
+    assert resp.status_code == 200
+    rows = resp.json()
+    for row in rows:
+        assert len(row["recent_ranks"]) == 2, (
+            f"latest snapshot lost prior history for player "
+            f"{row['player_id']}: {row['recent_ranks']}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Cross-year isolation: a snapshot_id from a different draft_year must NOT
 # surface its rows under the requested year.
 # ---------------------------------------------------------------------------

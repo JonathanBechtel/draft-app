@@ -13,14 +13,18 @@ Usage::
     scripts/with-db-env.sh conda run -n draftguru --no-capture-output \\
         python scripts/seed_synthetic_consensus_history.py
 
-Idempotent: re-running deletes prior synthetics (every snapshot for the
-draft year except the original ``CURRENT_SNAPSHOT_ID``) and regenerates.
-The original snapshot is preserved.
+Idempotent + safe: every snapshot this script creates is sentinel-tagged
+with ``num_boards=0`` and ``board_ids=[]``, which a real
+``recompute_consensus`` call would never produce (a real recompute
+requires at least one approved board). Re-running this script only
+removes rows that carry that sentinel, so legitimate historical
+recomputes — even ones using ``trigger=MANUAL`` — are preserved.
 
 Reversibility::
 
     DELETE FROM consensus_snapshots
-    WHERE draft_year=2026 AND id <> 1 AND trigger='MANUAL';
+    WHERE draft_year=2026 AND id <> 1
+      AND trigger='MANUAL' AND num_boards=0;
     -- cascades to big_board_consensus rows.
 
 Then re-run ``recompute_consensus`` to clear the original snapshot's
@@ -31,7 +35,7 @@ import asyncio
 import importlib
 import pkgutil
 import random
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import app.schemas
 
@@ -71,24 +75,26 @@ def _perturb_ranks(prior_ranks: dict[int, int], std: float) -> dict[int, int]:
 
 async def main() -> None:
     async with SessionLocal() as db:
-        # 1. Wipe any prior synthetic snapshots (anything except the original).
+        # 1. Wipe only snapshots this script created on a prior run.
+        # The sentinel `num_boards=0 AND trigger=MANUAL` is impossible for a
+        # real `recompute_consensus` (which always references >=1 approved
+        # board), so this never touches legitimate historical recomputes.
         await db.execute(
-            text("DELETE FROM consensus_snapshots WHERE draft_year=:y AND id <> :sid"),
+            text(
+                "DELETE FROM consensus_snapshots WHERE draft_year=:y "
+                "AND id <> :sid AND num_boards = 0 AND trigger = 'MANUAL'"
+            ),
             {"y": DRAFT_YEAR, "sid": CURRENT_SNAPSHOT_ID},
         )
 
-        # 2. Anchor on the current real snapshot.
-        snap1 = (
+        # 2. Anchor on the current real snapshot — we only need its
+        # computed_at to backdate the synthetic ones relative to it.
+        snap1_at = (
             await db.execute(
-                text(
-                    "SELECT computed_at, board_ids FROM consensus_snapshots WHERE id=:s"
-                ),
+                text("SELECT computed_at FROM consensus_snapshots WHERE id=:s"),
                 {"s": CURRENT_SNAPSHOT_ID},
             )
-        ).first()
-        assert snap1 is not None, f"snapshot {CURRENT_SNAPSHOT_ID} missing"
-        snap1_at: datetime = snap1[0]
-        board_ids: list[int] = list(snap1[1])
+        ).scalar_one()
 
         rows = (
             await db.execute(
@@ -117,8 +123,11 @@ async def main() -> None:
             snap = ConsensusSnapshot(
                 draft_year=DRAFT_YEAR,
                 computed_at=snap1_at - timedelta(weeks=weeks),
-                num_boards=len(board_ids),
-                board_ids=board_ids,
+                # Sentinel: real recomputes always reference >=1 approved
+                # board, so num_boards=0 + board_ids=[] uniquely marks this
+                # snapshot as synthetic for the cleanup query above.
+                num_boards=0,
+                board_ids=[],
                 trigger=ConsensusTrigger.MANUAL,
             )
             db.add(snap)
