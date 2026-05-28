@@ -14,6 +14,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.routes import (
     admin,
+    consensus,
     export,
     news,
     players,
@@ -111,6 +112,7 @@ if settings.log_requests:
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.state.templates = Jinja2Templates(directory="app/templates")
+app.include_router(consensus.router)
 app.include_router(export.router)
 app.include_router(news.router)
 app.include_router(podcasts.router)
