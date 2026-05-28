@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}{{ source.source_display_name }} — Source Detail — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/sources.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="sources-container mt-28">
+
+  <!-- =========================================================
+       BACK LINK + PAGE HEADER
+       ========================================================= -->
+  <nav class="sources-detail__breadcrumb" aria-label="Breadcrumb">
+    <a href="/sources" class="sources-detail__back-link">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M10 3 L5 8 L10 13"/>
+      </svg>
+      All Sources
+    </a>
+  </nav>
+
+  <div class="section-header-row">
+    <h1 class="section-header mono-font uppercase"
+        style="border-left-color: var(--color-accent-amber);">
+      <svg class="icon icon-lg" style="color: var(--color-accent-amber); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      {{ source.source_display_name }}
+    </h1>
+    <span class="section-subtitle" style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-400);">
+      {{ draft_year }}
+      {% if board_kind.value == 'BIG_BOARD' %}Big Board{% else %}Mock Draft{% endif %}
+    </span>
+  </div>
+
+  <!-- =========================================================
+       ANALYTICS SUMMARY CARDS
+       ========================================================= -->
+  <section class="sources-detail__summary-row section">
+    <div class="sources-detail__stat-card">
+      <span class="sources-detail__stat-label">Contrarian Score</span>
+      <span class="sources-detail__stat-value tabular-nums
+        {% if source.contrarian_score > 0.5 %}sources-detail__stat-value--high
+        {% elif source.contrarian_score > 0 %}sources-detail__stat-value--mid
+        {% else %}sources-detail__stat-value--low{% endif %}">
+        {{ "%.2f"|format(source.contrarian_score) }}
+      </span>
+    </div>
+    <div class="sources-detail__stat-card">
+      <span class="sources-detail__stat-label">Avg Deviation</span>
+      <span class="sources-detail__stat-value tabular-nums">
+        {{ "%.1f"|format(source.avg_deviation) }}
+      </span>
+    </div>
+    <div class="sources-detail__stat-card">
+      <span class="sources-detail__stat-label">Total Players Ranked</span>
+      <span class="sources-detail__stat-value tabular-nums">
+        {{ source.overlay_rows | length }}
+      </span>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       BOARD VS CONSENSUS OVERLAY TABLE
+       ========================================================= -->
+  <section class="section" id="sourceDetailSection">
+    <h2 class="section-header mono-font uppercase" style="font-size: 0.875rem; border-left-color: var(--color-accent-amber);">
+      Board vs Consensus
+    </h2>
+
+    {% if source.overlay_rows %}
+    <div class="card card-ring card-ring-amber sources-detail__card">
+      <div class="scanlines"></div>
+      <div class="sources-detail__table-wrap">
+        <table class="sources-detail__table" id="sourceDetailTable">
+          <thead>
+            <tr>
+              <th class="sources-detail__th sources-detail__th--player">Player</th>
+              <th class="sources-detail__th sources-detail__th--source-rank">
+                {{ source.source_display_name }}
+              </th>
+              <th class="sources-detail__th sources-detail__th--consensus-rank">Consensus</th>
+              <th class="sources-detail__th sources-detail__th--delta">Difference</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in source.overlay_rows %}
+            <tr class="sources-detail__row{% if row.is_biggest_outlier %} sources-detail__row--outlier{% endif %}">
+              <td class="sources-detail__td sources-detail__td--player">
+                {% if row.player_slug %}
+                <a class="sources-detail__player-link" href="/players/{{ row.player_slug }}">
+                  {{ row.player_name or "—" }}
+                </a>
+                {% else %}
+                <span>{{ row.player_name or "—" }}</span>
+                {% endif %}
+                {% if row.is_biggest_outlier %}
+                <span class="sources-detail__outlier-badge" title="Biggest outlier pick">&#9733;</span>
+                {% endif %}
+              </td>
+              <td class="sources-detail__td sources-detail__td--source-rank tabular-nums">
+                {{ row.source_rank }}
+              </td>
+              <td class="sources-detail__td sources-detail__td--consensus-rank tabular-nums">
+                {{ row.consensus_rank if row.consensus_rank is not none else "—" }}
+              </td>
+              <td class="sources-detail__td sources-detail__td--delta tabular-nums">
+                {% if row.delta is not none %}
+                  <span class="sources-detail__delta
+                    {% if row.delta < -2 %}sources-detail__delta--up
+                    {% elif row.delta > 2 %}sources-detail__delta--down
+                    {% else %}sources-detail__delta--flat{% endif %}">
+                    {% if row.delta > 0 %}+{% endif %}{{ row.delta }}
+                  </span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="sources-detail__legend">
+      <strong>Difference</strong> = source rank &minus; consensus rank.
+      Negative means the source ranks the player <em>higher</em> than consensus;
+      positive means <em>lower</em>.
+      <svg viewBox="0 0 12 12" width="10" height="10" fill="var(--color-accent-amber)"><path d="M6 0L7.8 4.2H12L8.7 6.8L9.9 11L6 8.5L2.1 11L3.3 6.8L0 4.2H4.2Z"/></svg>
+      marks the biggest outlier pick.
+    </p>
+    {% else %}
+    <div class="sources-detail__empty">
+      <p class="sources-detail__empty-msg">No board data available for this source.</p>
+    </div>
+    {% endif %}
+  </section>
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='js/sources.js') }}"></script>
+{% endblock %}

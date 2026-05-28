@@ -358,6 +358,193 @@ async def get_source_analytics(
     return out
 
 
+async def get_source_leaderboard(
+    db: AsyncSession,
+    *,
+    draft_year: int,
+) -> list[dict]:
+    """Return source analytics rows shaped for the /sources leaderboard page.
+
+    Each dict includes source name, slug, contrarian score, avg deviation,
+    and biggest-outlier player info. Ordered by contrarian_score desc.
+
+    Args:
+        db: Async DB session.
+        draft_year: Draft class to query.
+
+    Returns:
+        List of dicts ready for template rendering, or empty list when no
+        snapshot exists for ``draft_year``.
+    """
+    from app.utils.slug import generate_slug
+
+    analytics_rows = await get_source_analytics(db, draft_year=draft_year)
+    if not analytics_rows:
+        return []
+
+    outlier_player_ids = [
+        r.biggest_outlier_player_id
+        for r in analytics_rows
+        if r.biggest_outlier_player_id is not None
+    ]
+    outlier_player_map = await _player_name_map(db, outlier_player_ids)
+
+    out: list[dict] = []
+    for row in analytics_rows:
+        outlier_player = (
+            outlier_player_map.get(row.biggest_outlier_player_id)
+            if row.biggest_outlier_player_id is not None
+            else None
+        )
+        out.append(
+            {
+                "news_source_id": row.news_source_id,
+                "source_name": row.source_name,
+                "source_display_name": row.source_display_name,
+                "source_slug": generate_slug(row.source_name),
+                "contrarian_score": row.contrarian_score,
+                "avg_deviation": row.avg_deviation,
+                "biggest_outlier_player_name": outlier_player.display_name
+                if outlier_player
+                else None,
+                "biggest_outlier_player_slug": outlier_player.slug
+                if outlier_player
+                else None,
+                "outlier_delta": row.outlier_delta,
+            }
+        )
+    return out
+
+
+async def get_source_detail(
+    db: AsyncSession,
+    *,
+    source_slug: str,
+    draft_year: int,
+) -> Optional[dict]:
+    """Return detail data for a single source: its board vs consensus overlay.
+
+    Resolves the source by slug-matching ``NewsSource.name`` (kebab-cased).
+    Returns ``None`` when no source matches the slug.
+
+    Args:
+        db: Async DB session.
+        source_slug: URL slug derived from ``NewsSource.name``.
+        draft_year: Draft class to query.
+
+    Returns:
+        Dict with source metadata, per-player overlay rows (source rank vs
+        consensus rank), and analytics summary; or ``None`` when the slug
+        does not match any known source.
+    """
+    from app.utils.slug import generate_slug
+
+    # --- Resolve source by slug -----------------------------------------------
+    all_sources = (
+        (
+            await db.execute(
+                select(NewsSource)  # type: ignore[call-overload]
+            )
+        )
+        .scalars()
+        .all()
+    )
+    matched_source: Optional[NewsSource] = None
+    for src in all_sources:
+        if generate_slug(src.name) == source_slug:
+            matched_source = src
+            break
+    if matched_source is None or matched_source.id is None:
+        return None
+
+    # --- Source analytics row for this source ---------------------------------
+    sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
+    if sid is None:
+        return None
+
+    sa_row = (
+        await db.execute(
+            select(SourceAnalytics)  # type: ignore[call-overload]
+            .where(SourceAnalytics.snapshot_id == sid)  # type: ignore[arg-type]
+            .where(SourceAnalytics.news_source_id == matched_source.id)  # type: ignore[arg-type]
+        )
+    ).scalar_one_or_none()
+
+    if sa_row is None:
+        return None
+
+    # --- Source board entries (latest approved board for this source) ----------
+    source_board = (
+        await db.execute(
+            select(Board).where(Board.id == sa_row.latest_board_id)  # type: ignore[call-overload]  # type: ignore[arg-type]
+        )
+    ).scalar_one_or_none()
+
+    source_entries: list[BoardEntry] = []
+    if source_board is not None and source_board.id is not None:
+        source_entries = list(
+            (
+                await db.execute(
+                    select(BoardEntry)  # type: ignore[call-overload]
+                    .where(BoardEntry.board_id == source_board.id)  # type: ignore[arg-type]
+                    .order_by(BoardEntry.position)  # type: ignore[arg-type]
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    # --- Consensus board for overlay ------------------------------------------
+    consensus_rows = await get_consensus_board(
+        db, draft_year=draft_year, snapshot_id=sid
+    )
+    consensus_rank_map = {r.player_id: r for r in consensus_rows}
+
+    # --- Build overlay rows ---------------------------------------------------
+    all_player_ids = [e.player_id for e in source_entries if e.player_id is not None]
+    player_map = await _player_name_map(db, all_player_ids)
+
+    # Biggest outlier player id (for highlighting)
+    biggest_outlier_player_id = sa_row.biggest_outlier_player_id
+
+    overlay_rows: list[dict] = []
+    for entry in source_entries:
+        pid = entry.player_id
+        player = player_map.get(pid) if pid is not None else None  # type: ignore[arg-type]
+        consensus_row = consensus_rank_map.get(pid) if pid is not None else None  # type: ignore[arg-type]
+        delta = None
+        if consensus_row is not None:
+            delta = (
+                entry.position - consensus_row.consensus_rank
+            )  # positive = source lower
+        overlay_rows.append(
+            {
+                "player_id": entry.player_id,
+                "player_name": player.display_name if player else None,
+                "player_slug": player.slug if player else None,
+                "source_rank": entry.position,
+                "consensus_rank": consensus_row.consensus_rank
+                if consensus_row
+                else None,
+                "delta": delta,
+                "is_biggest_outlier": entry.player_id == biggest_outlier_player_id,
+            }
+        )
+
+    return {
+        "news_source_id": matched_source.id,
+        "source_name": matched_source.name,
+        "source_display_name": matched_source.display_name,
+        "source_slug": source_slug,
+        "avg_deviation": sa_row.avg_deviation,
+        "contrarian_score": sa_row.contrarian_score,
+        "outlier_delta": sa_row.outlier_delta,
+        "biggest_outlier_player_id": biggest_outlier_player_id,
+        "overlay_rows": overlay_rows,
+        "draft_year": draft_year,
+    }
+
+
 async def get_snapshots(
     db: AsyncSession,
     *,

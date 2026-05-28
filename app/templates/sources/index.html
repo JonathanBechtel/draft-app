@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Source Analytics — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/sources.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="sources-container mt-28">
+
+  <!-- =========================================================
+       PAGE HEADER
+       ========================================================= -->
+  <div class="section-header-row">
+    <h1 class="section-header mono-font uppercase"
+        style="border-left-color: var(--color-accent-amber);">
+      <svg class="icon icon-lg" style="color: var(--color-accent-amber); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+      </svg>
+      {{ draft_year }} Source Analytics
+    </h1>
+    <span class="section-subtitle" style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-400);">
+      {% if board_kind.value == 'BIG_BOARD' %}Big Board{% else %}Mock Draft{% endif %}
+      &middot; Ranked by Contrarian Score
+    </span>
+  </div>
+
+  <!-- =========================================================
+       LEADERBOARD TABLE
+       ========================================================= -->
+  {% if leaderboard %}
+  <section class="section" id="sourcesLeaderboardSection">
+    <div class="card card-ring card-ring-amber sources-leaderboard__card">
+      <div class="scanlines"></div>
+      <div class="sources-leaderboard__table-wrap">
+        <table class="sources-leaderboard__table" id="sourcesLeaderboardTable">
+          <thead>
+            <tr>
+              <th class="sources-leaderboard__th sources-leaderboard__th--name">Source</th>
+              <th class="sources-leaderboard__th sources-leaderboard__th--score sortable"
+                  data-col="contrarian_score" aria-sort="descending">
+                Contrarian Score
+                <span class="sort-indicator" aria-hidden="true">&#9660;</span>
+              </th>
+              <th class="sources-leaderboard__th sources-leaderboard__th--deviation sortable"
+                  data-col="avg_deviation" aria-sort="none">
+                Avg Deviation
+                <span class="sort-indicator" aria-hidden="true"></span>
+              </th>
+              <th class="sources-leaderboard__th sources-leaderboard__th--outlier">Biggest Outlier Pick</th>
+            </tr>
+          </thead>
+          <tbody id="sourcesLeaderboardBody">
+            {% for row in leaderboard %}
+            <tr class="sources-leaderboard__row"
+                data-contrarian-score="{{ row.contrarian_score }}"
+                data-avg-deviation="{{ row.avg_deviation }}"
+                data-href="/sources/{{ row.source_slug }}"
+                tabindex="0"
+                role="button"
+                aria-label="View {{ row.source_display_name }} detail">
+              <td class="sources-leaderboard__td sources-leaderboard__td--name">
+                <a class="sources-leaderboard__source-link"
+                   href="/sources/{{ row.source_slug }}">
+                  {{ row.source_display_name }}
+                </a>
+              </td>
+              <td class="sources-leaderboard__td sources-leaderboard__td--score tabular-nums">
+                <span class="sources-leaderboard__score-badge
+                  {% if row.contrarian_score > 0.5 %}sources-leaderboard__score-badge--high
+                  {% elif row.contrarian_score > 0 %}sources-leaderboard__score-badge--mid
+                  {% else %}sources-leaderboard__score-badge--low{% endif %}">
+                  {{ "%.2f"|format(row.contrarian_score) }}
+                </span>
+              </td>
+              <td class="sources-leaderboard__td sources-leaderboard__td--deviation tabular-nums">
+                {{ "%.1f"|format(row.avg_deviation) }}
+              </td>
+              <td class="sources-leaderboard__td sources-leaderboard__td--outlier">
+                {% if row.biggest_outlier_player_name %}
+                  {% if row.biggest_outlier_player_slug %}
+                  <a class="sources-leaderboard__player-link"
+                     href="/players/{{ row.biggest_outlier_player_slug }}"
+                     onclick="event.stopPropagation()">
+                    {{ row.biggest_outlier_player_name }}
+                  </a>
+                  {% else %}
+                  {{ row.biggest_outlier_player_name }}
+                  {% endif %}
+                  <span class="sources-leaderboard__outlier-delta
+                    {% if row.outlier_delta > 0 %}sources-leaderboard__outlier-delta--up
+                    {% elif row.outlier_delta < 0 %}sources-leaderboard__outlier-delta--down{% endif %}">
+                    {% if row.outlier_delta > 0 %}+{% endif %}{{ row.outlier_delta }}
+                  </span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <p class="sources-leaderboard__legend">
+      <strong>Contrarian Score</strong> is a z-score of avg deviation across all sources in the current snapshot —
+      higher means the source diverges more from consensus.
+      <strong>Avg Deviation</strong> is the mean absolute rank-distance from consensus.
+    </p>
+  </section>
+  {% else %}
+  <div class="sources-leaderboard__empty">
+    <p class="sources-leaderboard__empty-msg">
+      No source analytics available yet for {{ draft_year }}.
+    </p>
+  </div>
+  {% endif %}
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='js/sources.js') }}"></script>
+{% endblock %}

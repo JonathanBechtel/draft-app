@@ -28,6 +28,8 @@ from app.services.consensus_read_service import (
     get_board_freshness,
     get_consensus_board,
     get_player_consensus_detail,
+    get_source_detail,
+    get_source_leaderboard,
     get_source_spotlight,
 )
 from app.services.podcast_service import (
@@ -1134,5 +1136,70 @@ async def cookie_policy(request: Request):
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "current_date": datetime.now().strftime("%B %d, %Y"),
+        },
+    )
+
+
+@router.get("/sources", response_class=HTMLResponse)
+async def sources_leaderboard(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+):
+    """Render the Sources leaderboard page.
+
+    Shows all sources ranked by contrarian score for the current snapshot,
+    with avg deviation and biggest-outlier pick called out. Each row links
+    to the source detail page.
+    """
+    board_kind = get_consensus_board_kind()
+    leaderboard = await get_source_leaderboard(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    # Force big-board kind when data exists (same as homepage pattern —
+    # mock-draft source analytics are a later ticket).
+    if leaderboard:
+        board_kind = BoardKind.BIG_BOARD
+
+    return request.app.state.templates.TemplateResponse(
+        "sources/index.html",
+        {
+            "request": request,
+            "leaderboard": leaderboard,
+            "board_kind": board_kind,
+            "draft_year": CONSENSUS_DRAFT_YEAR,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/sources/{slug}", response_class=HTMLResponse)
+async def source_detail(
+    request: Request,
+    slug: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """Render the Source Detail page with its board vs consensus overlay.
+
+    Shows the source's most-recent board side-by-side with the consensus,
+    highlighting their biggest-outlier picks.  Returns 404 when the slug
+    does not match any known source.
+    """
+    board_kind = get_consensus_board_kind()
+    detail = await get_source_detail(
+        db, source_slug=slug, draft_year=CONSENSUS_DRAFT_YEAR
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if detail.get("overlay_rows"):
+        board_kind = BoardKind.BIG_BOARD
+
+    return request.app.state.templates.TemplateResponse(
+        "sources/detail.html",
+        {
+            "request": request,
+            "source": detail,
+            "board_kind": board_kind,
+            "draft_year": CONSENSUS_DRAFT_YEAR,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
         },
     )
