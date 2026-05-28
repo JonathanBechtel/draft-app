@@ -60,6 +60,7 @@ from app.services.player_service import (
 )
 from app.services.school_logo_service import get_logo_url_for_school
 from app.utils.db_async import get_session
+from app.utils.sparkline import build_sparkline_path, sparkline_direction
 from app.utils.images import (
     get_placeholder_url,
     get_player_image_url,
@@ -136,6 +137,7 @@ async def home(
             "slug": r.slug,
             "photo_url": r.photo_url,
             "school_logo_url": r.school_logo_url,
+            "age": r.age,
             "consensus_rank": r.consensus_rank,
             "avg_rank": r.avg_rank,
             "high_rank": r.high_rank,
@@ -145,6 +147,10 @@ async def home(
             # Positive delta = moved up (lower rank number), negative = moved down.
             "rank_delta": r.rank_delta,
             "prev_rank": r.prev_rank,
+            # Sparkline trajectory across recent snapshots; oldest-first.
+            "recent_ranks": r.recent_ranks,
+            "sparkline_path": build_sparkline_path(r.recent_ranks),
+            "sparkline_direction": sparkline_direction(r.recent_ranks),
         }
         for r in consensus_rows_raw
     ]

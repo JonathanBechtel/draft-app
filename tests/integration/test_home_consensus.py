@@ -164,9 +164,12 @@ async def test_home_pre_lottery_renders_big_board(
     assert "consensus-hero__school-cell" in html
     # The rank column header must be present.
     assert "consensus-hero__th--rank" in html or "#" in html
-    # The avg / range / sources columns must be present.
+    # The avg / high / low / age / sources columns must be present.
     assert "Avg" in html
-    assert "Range" in html
+    assert "High" in html
+    assert "Low" in html
+    assert "Age" in html
+    assert "Trend" in html
 
 
 @pytest.mark.asyncio
