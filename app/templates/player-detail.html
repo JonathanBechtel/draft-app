@@ -221,6 +221,99 @@
 
   <div class="section-divider"></div>
 
+  {% if consensus %}
+  <!-- ==========================================================================
+       CONSENSUS RANK SECTION
+       Current rank, source breakdown, and rank-history chart
+       ========================================================================== -->
+  <section class="section consensus-section" id="consensusSection">
+    <div class="section-header-row">
+      <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-amber);">
+        <!-- Trophy/rank icon -->
+        <svg class="icon icon-lg" style="color: var(--color-accent-amber); margin-right: 0.5rem; display: inline-block;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <polyline points="9 21 3 21 3 15"></polyline>
+          <line x1="21" y1="3" x2="14" y2="10"></line>
+          <line x1="3" y1="21" x2="10" y2="14"></line>
+        </svg>
+        Consensus Big Board
+      </h2>
+    </div>
+
+    <div class="consensus-grid">
+
+      <!-- LEFT: Current rank card -->
+      <div class="card card-ring card-ring-amber consensus-rank-card">
+        <div class="scanlines"></div>
+        <div class="consensus-rank-card__inner">
+          <div class="consensus-rank-card__label mono-font">Consensus Rank</div>
+          <div class="consensus-rank-card__number heading-font">#{{ consensus.current.consensus_rank }}</div>
+          {% if consensus.current.rank_delta is not none %}
+            {% if consensus.current.rank_delta > 0 %}
+          <div class="consensus-rank-card__delta consensus-rank-card__delta--up">
+            &#9650; {{ consensus.current.rank_delta }} vs prior
+          </div>
+            {% elif consensus.current.rank_delta < 0 %}
+          <div class="consensus-rank-card__delta consensus-rank-card__delta--down">
+            &#9660; {{ (consensus.current.rank_delta * -1) }} vs prior
+          </div>
+            {% else %}
+          <div class="consensus-rank-card__delta consensus-rank-card__delta--flat">
+            &#9644; unchanged
+          </div>
+            {% endif %}
+          {% endif %}
+          <div class="consensus-rank-card__stats mono-font">
+            <span>Avg: {{ '%.1f' % consensus.current.avg_rank }}</span>
+            <span>Range: #{{ consensus.current.high_rank }}–#{{ consensus.current.low_rank }}</span>
+            <span>Sources: {{ consensus.current.num_sources }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Source breakdown + rank history chart -->
+      <div class="consensus-right-col">
+
+        {% if consensus.sources %}
+        <!-- Source breakdown table -->
+        <div class="consensus-sources">
+          <div class="consensus-sources__label mono-font">Source Breakdown</div>
+          <table class="consensus-sources__table">
+            <thead>
+              <tr>
+                <th class="consensus-sources__th">Source</th>
+                <th class="consensus-sources__th consensus-sources__th--rank">Rank</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for src in consensus.sources %}
+              <tr class="consensus-sources__row">
+                <td class="consensus-sources__source">{{ src.source_display_name }}</td>
+                <td class="consensus-sources__rank mono-font">#{{ src.source_rank }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+
+        {% if consensus.history | length >= 2 %}
+        <!-- Rank-history chart (rendered by JS) -->
+        <div class="consensus-chart">
+          <div class="consensus-chart__label mono-font">Rank History</div>
+          <svg id="consensusHistoryChart" class="consensus-chart__svg" aria-label="Rank history chart">
+            <!-- Populated by player-detail.js ConsensusChartModule -->
+          </svg>
+        </div>
+        {% endif %}
+
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+  {% endif %}
+
   {% include "partials/film-study-section.html" %}
 
   {% if player.combine_year %}
@@ -585,6 +678,8 @@
   // Image style and S3 base URL for dynamic image URLs
   window.IMAGE_STYLE = {{ image_style | tojson | safe }};
   window.S3_IMAGE_BASE_URL = {{ s3_image_base_url | tojson | safe }};
+  // Consensus rank history (array of {computed_at, consensus_rank}); null when no consensus.
+  window.consensusHistory = {{ (consensus.history if consensus else none) | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/player-detail.js') }}"></script>
 <script src="{{ url_for('static', path='js/film-room.js') }}"></script>

@@ -27,6 +27,7 @@ from app.services.consensus_read_service import (
     get_biggest_movers,
     get_board_freshness,
     get_consensus_board,
+    get_player_consensus_detail,
     get_source_spotlight,
 )
 from app.services.podcast_service import (
@@ -879,6 +880,43 @@ async def player_detail(
         for row in college_stats_rows
     ]
 
+    # Fetch consensus detail for this player.
+    # Treat a None result (player not on any board) as "omit the section" — do
+    # NOT raise 404; the rest of the page must still render normally.
+    consensus: dict | None = None
+    if player_profile.id is not None:
+        consensus_detail = await get_player_consensus_detail(
+            db,
+            player_id=player_profile.id,
+            draft_year=CONSENSUS_DRAFT_YEAR,
+        )
+        if consensus_detail is not None:
+            consensus = {
+                "current": {
+                    "consensus_rank": consensus_detail.consensus_rank,
+                    "avg_rank": consensus_detail.avg_rank,
+                    "high_rank": consensus_detail.high_rank,
+                    "low_rank": consensus_detail.low_rank,
+                    "num_sources": consensus_detail.num_sources,
+                    "prev_rank": consensus_detail.prev_rank,
+                    "rank_delta": consensus_detail.rank_delta,
+                },
+                "sources": [
+                    {
+                        "source_display_name": s.source_display_name,
+                        "source_rank": s.source_rank,
+                    }
+                    for s in consensus_detail.source_ranks
+                ],
+                "history": [
+                    {
+                        "computed_at": h.computed_at.isoformat(),
+                        "consensus_rank": h.consensus_rank,
+                    }
+                    for h in consensus_detail.rank_history
+                ],
+            }
+
     percentile_data = {
         "anthropometrics": [
             {"metric": "Height", "value": "6'9\"", "percentile": 92, "unit": ""},
@@ -1037,6 +1075,7 @@ async def player_detail(
         {
             "request": request,
             "player": player,
+            "consensus": consensus,
             "college_stats": college_stats,
             "percentile_data": percentile_data,
             "comparison_data": comparison_data,
