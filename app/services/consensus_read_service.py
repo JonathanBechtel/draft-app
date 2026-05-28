@@ -39,14 +39,20 @@ async def _resolve_snapshot_id(
     draft_year: int,
     snapshot_id: Optional[int],
 ) -> Optional[int]:
-    """Return the target snapshot id.
+    """Return the target snapshot id, scoped to ``draft_year``.
 
-    When ``snapshot_id`` is supplied it is returned as-is (caller is
-    responsible for validating it exists). When omitted, the most recent
-    snapshot for ``draft_year`` is selected.
+    When ``snapshot_id`` is supplied it is validated against ``draft_year``
+    in the same query — a snapshot belonging to a different year returns
+    ``None`` so callers behave identically to "no data" rather than
+    surfacing cross-year rows under the requested year. When ``snapshot_id``
+    is omitted, the most recent snapshot for ``draft_year`` is selected.
     """
     if snapshot_id is not None:
-        return snapshot_id
+        return await db.scalar(
+            select(ConsensusSnapshot.id)  # type: ignore[call-overload]
+            .where(ConsensusSnapshot.id == snapshot_id)  # type: ignore[arg-type]
+            .where(ConsensusSnapshot.draft_year == draft_year)  # type: ignore[arg-type]
+        )
     sid = await db.scalar(
         select(ConsensusSnapshot.id)  # type: ignore[call-overload]
         .where(ConsensusSnapshot.draft_year == draft_year)  # type: ignore[arg-type]

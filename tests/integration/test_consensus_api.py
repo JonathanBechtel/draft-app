@@ -470,6 +470,92 @@ async def test_snapshots_mock_draft_returns_empty(
 
 
 # ---------------------------------------------------------------------------
+# Cross-year isolation: a snapshot_id from a different draft_year must NOT
+# surface its rows under the requested year.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_consensus_rejects_cross_year_snapshot_id(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+    two_players: list[PlayerMaster],
+    two_sources: list[NewsSource],
+) -> None:
+    """A snapshot_id from a different draft_year returns 200 [] (no bleed).
+
+    Guards the public API against a request like
+    ``/api/consensus?draft_year=2026&snapshot_id=<id-from-2027>`` — the 2027
+    rows must NOT surface under a 2026 query just because the caller can
+    pick the snapshot id.
+    """
+    p1, p2 = two_players
+    s1, s2 = two_sources
+
+    # Seed a 2026 snapshot.
+    await _make_approved_board(
+        db_session, source=s1, draft_year=2026, entries=[(p1, 1), (p2, 2)]
+    )
+    await _make_approved_board(
+        db_session, source=s2, draft_year=2026, entries=[(p1, 1), (p2, 2)]
+    )
+    await db_session.commit()
+    snap_2026 = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+    # Seed a separate 2027 snapshot.
+    await _make_approved_board(
+        db_session, source=s1, draft_year=2027, entries=[(p1, 1), (p2, 2)]
+    )
+    await _make_approved_board(
+        db_session, source=s2, draft_year=2027, entries=[(p1, 1), (p2, 2)]
+    )
+    await db_session.commit()
+    snap_2027 = await svc.recompute_consensus(
+        db_session, draft_year=2027, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+    # Mismatched: 2026 query with a 2027 snapshot id → empty.
+    resp = await app_client.get(
+        "/api/consensus",
+        params={
+            "draft_year": 2026,
+            "kind": "BIG_BOARD",
+            "snapshot_id": snap_2027.id,
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+    # Inverse: 2027 query with a 2026 snapshot id → empty.
+    resp = await app_client.get(
+        "/api/consensus",
+        params={
+            "draft_year": 2027,
+            "kind": "BIG_BOARD",
+            "snapshot_id": snap_2026.id,
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+    # Sanity: the matching pair still returns rows.
+    resp = await app_client.get(
+        "/api/consensus",
+        params={
+            "draft_year": 2026,
+            "kind": "BIG_BOARD",
+            "snapshot_id": snap_2026.id,
+        },
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()) >= 1
+
+
+# ---------------------------------------------------------------------------
 # kind filter: BIG_BOARD rows don't bleed into other query kinds
 # ---------------------------------------------------------------------------
 
