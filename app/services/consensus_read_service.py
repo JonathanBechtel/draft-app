@@ -10,6 +10,7 @@ only reads. UI tickets #218–#221 will extend the helpers here.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Optional
 
 from sqlalchemy import select
@@ -88,11 +89,68 @@ async def _player_name_map(
     return {p.id: p for p in rows if p.id is not None}
 
 
+def _years_old(birth: Optional[date], as_of: Optional[date] = None) -> Optional[float]:
+    """Return the player's age in years (one-decimal precision) from a birthdate.
+
+    ``None`` when ``birth`` is missing. Uses today's date by default — the
+    consensus board surfaces age as informational context, not a stat that
+    needs anchoring to draft day.
+    """
+    if birth is None:
+        return None
+    today = as_of or date.today()
+    return round((today - birth).days / 365.25, 1)
+
+
+async def _recent_ranks_map(
+    db: AsyncSession,
+    *,
+    draft_year: int,
+    player_ids: list[int],
+    limit_per_player: int = 8,
+) -> dict[int, list[int]]:
+    """Return ``{player_id: [rank, ...]}`` of each player's recent ranks.
+
+    The list is ordered oldest-first across the last ``limit_per_player``
+    snapshots for ``draft_year``. Powers the per-row sparkline on the
+    consensus board. One query, grouped + sliced in Python.
+    """
+    if not player_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(  # type: ignore[call-overload]
+                BigBoardConsensus.player_id,
+                BigBoardConsensus.consensus_rank,
+                ConsensusSnapshot.computed_at,
+            )
+            .join(
+                ConsensusSnapshot,
+                ConsensusSnapshot.id == BigBoardConsensus.snapshot_id,  # type: ignore[arg-type]
+            )
+            .where(BigBoardConsensus.draft_year == draft_year)  # type: ignore[arg-type]
+            .where(
+                BigBoardConsensus.player_id.in_(player_ids)  # type: ignore[attr-defined]
+            )
+            .order_by(
+                BigBoardConsensus.player_id,  # type: ignore[arg-type]
+                ConsensusSnapshot.computed_at,  # type: ignore[arg-type]
+            )
+        )
+    ).all()
+    series: dict[int, list[int]] = {}
+    for pid, rank, _computed_at in rows:
+        series.setdefault(pid, []).append(rank)
+    # Cap the trailing window per player (sparkline shouldn't grow unbounded).
+    return {pid: ranks[-limit_per_player:] for pid, ranks in series.items()}
+
+
 def _to_consensus_row(
     bbc: BigBoardConsensus,
     player: Optional[PlayerMaster],
     school_logo_url: Optional[str] = None,
     photo_url: Optional[str] = None,
+    recent_ranks: Optional[list[int]] = None,
 ) -> ConsensusRow:
     """Map a ``BigBoardConsensus`` ORM row to the ``ConsensusRow`` model.
 
@@ -105,6 +163,9 @@ def _to_consensus_row(
             (caller batch-resolves via ``get_current_image_urls_for_players``).
             ``None`` for players without a generated image — templates skip
             the ``<img>`` rather than show a placeholder.
+        recent_ranks: Oldest-to-newest series of this player's consensus
+            ranks across recent snapshots (caller batch-resolves via
+            ``_recent_ranks_map``); rendered as a sparkline.
     """
     return ConsensusRow(
         player_id=bbc.player_id,
@@ -113,6 +174,7 @@ def _to_consensus_row(
         slug=player.slug if player else None,
         photo_url=photo_url,
         school_logo_url=school_logo_url,
+        age=_years_old(player.birthdate) if player else None,
         consensus_rank=bbc.consensus_rank,
         avg_rank=bbc.avg_rank,
         median_rank=bbc.median_rank,
@@ -122,6 +184,7 @@ def _to_consensus_row(
         num_sources=bbc.num_sources,
         prev_rank=bbc.prev_rank,
         rank_delta=bbc.rank_delta,
+        recent_ranks=recent_ranks or [],
     )
 
 
@@ -162,9 +225,9 @@ async def get_consensus_board(
         return []
 
     player_map = await _player_name_map(db, [r.player_id for r in bbc_rows])
-    # Batch-resolve school logos (cache-backed) and player photos (from
-    # PlayerImageAsset) once per snapshot so each row lookup is a plain dict
-    # get instead of N async calls.
+    # Batch-resolve school logos (cache-backed), player photos (from
+    # PlayerImageAsset), and per-player rank history once per snapshot so
+    # each row lookup is a plain dict get instead of N async calls.
     logo_map = await get_logo_urls_for_schools(
         db,
         [player_map[r.player_id].school for r in bbc_rows if r.player_id in player_map],
@@ -173,6 +236,11 @@ async def get_consensus_board(
         db,
         player_ids=[r.player_id for r in bbc_rows],
         style=_CONSENSUS_PHOTO_STYLE,
+    )
+    history_map = await _recent_ranks_map(
+        db,
+        draft_year=draft_year,
+        player_ids=[r.player_id for r in bbc_rows],
     )
     return [
         _to_consensus_row(
@@ -184,6 +252,7 @@ async def get_consensus_board(
                 else None
             ),
             photo_url=photo_map.get(r.player_id),
+            recent_ranks=history_map.get(r.player_id, []),
         )
         for r in bbc_rows
     ]

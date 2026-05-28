@@ -20,6 +20,7 @@ class ConsensusRow(SQLModel):
     slug: Optional[str] = None
     photo_url: Optional[str] = None
     school_logo_url: Optional[str] = None
+    age: Optional[float] = None
     consensus_rank: int
     avg_rank: float
     median_rank: float
@@ -29,6 +30,9 @@ class ConsensusRow(SQLModel):
     num_sources: int
     prev_rank: Optional[int] = None
     rank_delta: Optional[int] = None
+    # Oldest-to-newest series of this player's consensus_rank across recent
+    # snapshots; consumers render it as a sparkline. Empty when no history.
+    recent_ranks: list[int] = []
 
 
 class RankHistoryPoint(SQLModel):

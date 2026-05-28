@@ -49,14 +49,31 @@
 }
 
 .consensus-hero__th--rank,
+.consensus-hero__th--age,
 .consensus-hero__th--avg,
-.consensus-hero__th--range,
+.consensus-hero__th--high,
+.consensus-hero__th--low,
 .consensus-hero__th--sources {
   text-align: right;
 }
 
+.consensus-hero__th--delta,
+.consensus-hero__th--trend {
+  text-align: center;
+}
+
 .consensus-hero__th--delta {
-  width: 2.5rem;
+  width: 2.75rem;
+}
+
+.consensus-hero__th--trend {
+  width: 5.5rem;
+}
+
+.consensus-hero__th--age,
+.consensus-hero__th--high,
+.consensus-hero__th--low {
+  width: 3rem;
 }
 
 /* Data rows */
@@ -119,8 +136,10 @@
   font-size: 0.8125rem;
 }
 
+.consensus-hero__td--age,
 .consensus-hero__td--avg,
-.consensus-hero__td--range,
+.consensus-hero__td--high,
+.consensus-hero__td--low,
 .consensus-hero__td--sources {
   text-align: right;
   color: var(--color-slate-600);
@@ -129,6 +148,30 @@
 .consensus-hero__td--avg {
   font-weight: 600;
   color: var(--color-slate-800);
+}
+
+.consensus-hero__td--trend {
+  text-align: center;
+  width: 5.5rem;
+}
+
+/* Sparkline SVG — small inline trajectory; colored by direction. */
+.consensus-hero__sparkline {
+  display: inline-block;
+  vertical-align: middle;
+  color: var(--color-slate-400);
+}
+.consensus-hero__sparkline--up {
+  color: #10b981; /* green-500: rank improved */
+}
+.consensus-hero__sparkline--down {
+  color: #ef4444; /* red-500: rank worsened */
+}
+.consensus-hero__sparkline--flat {
+  color: var(--color-slate-400);
+}
+.consensus-hero__sparkline-empty {
+  color: var(--color-slate-300);
 }
 
 /* Player name link treatment */
@@ -188,9 +231,23 @@
 }
 
 /* Responsive: collapse school column on narrow viewports */
+@media (max-width: 860px) {
+  /* At medium widths, drop the most info-dense columns first. */
+  .consensus-hero__th--trend,
+  .consensus-hero__td--trend,
+  .consensus-hero__th--sources,
+  .consensus-hero__td--sources {
+    display: none;
+  }
+}
+
 @media (max-width: 640px) {
   .consensus-hero__th--school,
-  .consensus-hero__td--school {
+  .consensus-hero__td--school,
+  .consensus-hero__th--age,
+  .consensus-hero__td--age,
+  .consensus-hero__th--high,
+  .consensus-hero__td--high {
     display: none;
   }
 }
