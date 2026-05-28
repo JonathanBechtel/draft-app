@@ -108,12 +108,13 @@ async def home(
     # the hero is never empty even before mock-draft extraction ships.
     board_kind = get_consensus_board_kind()
     consensus_rows_raw = await get_consensus_board(db, draft_year=CONSENSUS_DRAFT_YEAR)
-    if not consensus_rows_raw and board_kind != BoardKind.BIG_BOARD:
-        # Fallback: calendar wants MOCK_DRAFT but no data exists yet.
+    # `get_consensus_board` returns BIG_BOARD consensus only today (mock-draft
+    # consensus is produced by a later ticket). Any rows we have are therefore
+    # big-board rows, so force the heading to match the data — otherwise a
+    # post-lottery calendar phase would label big-board rows as "Mock Draft".
+    # Once a kind-aware mock read path exists, fetch by `board_kind` here.
+    if consensus_rows_raw:
         board_kind = BoardKind.BIG_BOARD
-        consensus_rows_raw = await get_consensus_board(
-            db, draft_year=CONSENSUS_DRAFT_YEAR
-        )
 
     # Derive snapshot_computed_at from the first row's data is not directly
     # available on ConsensusRow; pass None (template shows nothing when absent).

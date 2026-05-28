@@ -191,6 +191,11 @@ async def test_home_post_lottery_falls_back_to_big_board(
     assert "consensusHeroSection" in html
     # Because no mock-draft data exists, the fallback renders the big board rows.
     assert players[0].display_name in html
+    # Heading must match the data shown: big-board rows get the big-board
+    # heading, never the mock-draft heading (regression: post-lottery phase
+    # previously mislabeled big-board rows as "Consensus Mock Draft").
+    assert "Consensus Board" in html
+    assert "Consensus Mock Draft" not in html
 
 
 @pytest.mark.asyncio
