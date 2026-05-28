@@ -1,0 +1,517 @@
+/* ============================================================================
+   SOURCES.CSS — Source Analytics pages (leaderboard + detail)
+   Visual language: light retro analytics, Russo One / Azeret Mono.
+   BEM: .sources-leaderboard__*, .sources-detail__*
+   ========================================================================= */
+
+/* ============================================================================
+   SHARED LAYOUT
+   ========================================================================= */
+
+.sources-container {
+  max-width: 1100px;
+  width: 95%;
+  margin-inline: auto;
+  padding: 0 1.5rem 4rem;
+}
+
+/* ============================================================================
+   LEADERBOARD TABLE
+   ========================================================================= */
+
+.sources-leaderboard__card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: var(--color-white);
+}
+
+.sources-leaderboard__card .scanlines {
+  pointer-events: none;
+}
+
+.sources-leaderboard__table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sources-leaderboard__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  font-family: var(--font-mono);
+}
+
+/* Column headers */
+.sources-leaderboard__th {
+  padding: 0.625rem 0.875rem;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-500);
+  border-bottom: 2px solid var(--color-slate-200);
+  white-space: nowrap;
+  background: var(--color-slate-50);
+}
+
+.sources-leaderboard__th--score,
+.sources-leaderboard__th--deviation {
+  text-align: right;
+}
+
+/* Sortable column headers */
+.sources-leaderboard__th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--transition-speed);
+}
+
+.sources-leaderboard__th.sortable:hover {
+  color: var(--color-accent-amber);
+}
+
+.sources-leaderboard__th.sortable[aria-sort="ascending"] .sort-indicator::after,
+.sources-leaderboard__th.sortable[aria-sort="descending"] .sort-indicator::after {
+  color: var(--color-accent-amber);
+}
+
+.sort-indicator {
+  display: inline-block;
+  margin-left: 0.25rem;
+  font-size: 0.6rem;
+  color: var(--color-slate-400);
+  transition: color var(--transition-speed);
+}
+
+/* Data rows */
+.sources-leaderboard__row {
+  border-bottom: 1px solid var(--color-slate-100);
+  cursor: pointer;
+  transition: background var(--transition-speed);
+}
+
+.sources-leaderboard__row:hover {
+  background: rgba(245, 158, 11, 0.04);
+}
+
+.sources-leaderboard__row:nth-child(even) {
+  background: rgba(248, 250, 252, 0.6);
+}
+
+.sources-leaderboard__row:nth-child(even):hover {
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.sources-leaderboard__row:focus-visible {
+  outline: 2px solid var(--color-accent-amber);
+  outline-offset: -2px;
+}
+
+/* Data cells */
+.sources-leaderboard__td {
+  padding: 0.625rem 0.875rem;
+  vertical-align: middle;
+}
+
+.sources-leaderboard__td--name {
+  font-family: var(--font-heading);
+  font-size: 0.875rem;
+}
+
+.sources-leaderboard__td--score,
+.sources-leaderboard__td--deviation {
+  text-align: right;
+}
+
+.sources-leaderboard__td--outlier {
+  color: var(--color-slate-600);
+  font-size: 0.8125rem;
+}
+
+/* Source name link */
+.sources-leaderboard__source-link {
+  color: var(--color-slate-900);
+  text-decoration: none;
+  transition: color var(--transition-speed);
+}
+
+.sources-leaderboard__row:hover .sources-leaderboard__source-link {
+  color: var(--color-accent-amber);
+}
+
+/* Player link within outlier cell */
+.sources-leaderboard__player-link {
+  color: var(--color-slate-700);
+  text-decoration: none;
+  transition: color var(--transition-speed);
+}
+
+.sources-leaderboard__player-link:hover {
+  color: var(--color-accent-amber);
+}
+
+/* Contrarian score badge */
+.sources-leaderboard__score-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.sources-leaderboard__score-badge--high {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--color-accent-amber);
+}
+
+.sources-leaderboard__score-badge--mid {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--color-slate-600);
+}
+
+.sources-leaderboard__score-badge--low {
+  background: var(--color-slate-100);
+  color: var(--color-slate-500);
+}
+
+/* Outlier delta pill */
+.sources-leaderboard__outlier-delta {
+  display: inline-block;
+  margin-left: 0.375rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.sources-leaderboard__outlier-delta--up {
+  color: var(--color-accent-emerald);
+}
+
+.sources-leaderboard__outlier-delta--down {
+  color: var(--color-accent-rose);
+}
+
+/* Legend */
+.sources-leaderboard__legend {
+  margin-top: 1rem;
+  font-size: 0.78rem;
+  color: var(--color-slate-500);
+  font-family: var(--font-mono);
+  line-height: 1.6;
+}
+
+/* Empty state */
+.sources-leaderboard__empty {
+  padding: 3rem 1rem;
+  text-align: center;
+  border: 1px dashed var(--color-slate-300);
+  border-radius: var(--border-radius);
+  background: var(--color-slate-50);
+}
+
+.sources-leaderboard__empty-msg {
+  color: var(--color-slate-500);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+/* ============================================================================
+   DETAIL PAGE — BREADCRUMB
+   ========================================================================= */
+
+.sources-detail__breadcrumb {
+  margin-bottom: 1.25rem;
+}
+
+.sources-detail__back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-slate-500);
+  text-decoration: none;
+  transition: color var(--transition-speed);
+}
+
+.sources-detail__back-link:hover {
+  color: var(--color-accent-amber);
+}
+
+/* ============================================================================
+   DETAIL PAGE — SUMMARY STAT CARDS
+   ========================================================================= */
+
+.sources-detail__summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 0;
+}
+
+.sources-detail__stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 1rem 1.25rem 1.25rem;
+  background: var(--color-white);
+  border-radius: var(--border-radius);
+  border: 1px solid var(--color-slate-200);
+}
+
+.sources-detail__stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-slate-500);
+}
+
+.sources-detail__stat-value {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-slate-800);
+}
+
+.sources-detail__stat-value--high {
+  color: var(--color-accent-amber);
+}
+
+.sources-detail__stat-value--mid {
+  color: var(--color-slate-700);
+}
+
+.sources-detail__stat-value--low {
+  color: var(--color-slate-500);
+}
+
+/* ============================================================================
+   DETAIL PAGE — OVERLAY TABLE
+   ========================================================================= */
+
+.sources-detail__card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  background: var(--color-white);
+}
+
+.sources-detail__card .scanlines {
+  pointer-events: none;
+}
+
+.sources-detail__table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sources-detail__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  font-family: var(--font-mono);
+}
+
+/* Column headers */
+.sources-detail__th {
+  padding: 0.625rem 0.875rem;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-500);
+  border-bottom: 2px solid var(--color-slate-200);
+  white-space: nowrap;
+  background: var(--color-slate-50);
+}
+
+.sources-detail__th--source-rank,
+.sources-detail__th--consensus-rank,
+.sources-detail__th--delta {
+  text-align: right;
+}
+
+/* Data rows */
+.sources-detail__row {
+  border-bottom: 1px solid var(--color-slate-100);
+  transition: background var(--transition-speed);
+}
+
+.sources-detail__row:hover {
+  background: rgba(245, 158, 11, 0.04);
+}
+
+.sources-detail__row:nth-child(even) {
+  background: rgba(248, 250, 252, 0.6);
+}
+
+.sources-detail__row:nth-child(even):hover {
+  background: rgba(245, 158, 11, 0.05);
+}
+
+/* Highlighted outlier row */
+.sources-detail__row--outlier {
+  background: rgba(245, 158, 11, 0.06) !important;
+  border-left: 3px solid var(--color-accent-amber);
+}
+
+.sources-detail__row--outlier:hover {
+  background: rgba(245, 158, 11, 0.1) !important;
+}
+
+/* Data cells */
+.sources-detail__td {
+  padding: 0.625rem 0.875rem;
+  vertical-align: middle;
+}
+
+.sources-detail__td--source-rank,
+.sources-detail__td--consensus-rank,
+.sources-detail__td--delta {
+  text-align: right;
+}
+
+/* Player link */
+.sources-detail__player-link {
+  color: var(--color-slate-900);
+  text-decoration: none;
+  transition: color var(--transition-speed);
+}
+
+.sources-detail__player-link:hover {
+  color: var(--color-accent-amber);
+}
+
+/* Outlier star badge */
+.sources-detail__outlier-badge {
+  display: inline-block;
+  margin-left: 0.375rem;
+  color: var(--color-accent-amber);
+  font-size: 0.75rem;
+  vertical-align: middle;
+}
+
+/* Delta styling */
+.sources-detail__delta {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 0.8125rem;
+}
+
+.sources-detail__delta--up {
+  color: var(--color-accent-emerald);
+}
+
+.sources-detail__delta--down {
+  color: var(--color-accent-rose);
+}
+
+.sources-detail__delta--flat {
+  color: var(--color-slate-400);
+}
+
+/* Legend */
+.sources-detail__legend {
+  margin-top: 1rem;
+  font-size: 0.78rem;
+  color: var(--color-slate-500);
+  font-family: var(--font-mono);
+  line-height: 1.6;
+}
+
+/* Empty state */
+.sources-detail__empty {
+  padding: 3rem 1rem;
+  text-align: center;
+  border: 1px dashed var(--color-slate-300);
+  border-radius: var(--border-radius);
+  background: var(--color-slate-50);
+}
+
+.sources-detail__empty-msg {
+  color: var(--color-slate-500);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+/* ============================================================================
+   RESPONSIVE
+   ========================================================================= */
+
+@media (max-width: 768px) {
+  .sources-detail__summary-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 540px) {
+  .sources-detail__summary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sources-leaderboard__th--deviation,
+  .sources-leaderboard__td--deviation {
+    display: none;
+  }
+}
+
+/* -- Source detail overlay: player photos + school logos -------------------
+   The Player column shows a small thumbnail, the player name (and outlier
+   star), and a sub-line with the school name + logo. Keeps the overlay
+   visually consistent with the homepage consensus hero. */
+.sources-detail__player-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.sources-detail__photo {
+  width: 32px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #edf2f7;
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.sources-detail__player-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.sources-detail__player-school {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #6b7280);
+}
+
+.sources-detail__school-logo {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .sources-detail__photo {
+    width: 28px;
+    height: 36px;
+  }
+}

@@ -21,7 +21,17 @@ from app.services.news_service import (
     get_sticky_news_item,
     get_trending_players,
 )
+from app.schemas.boards import BoardKind
 from app.schemas.player_content_mentions import ContentType
+from app.services.consensus_read_service import (
+    get_biggest_movers,
+    get_board_freshness,
+    get_consensus_board,
+    get_player_consensus_detail,
+    get_source_detail,
+    get_source_leaderboard,
+    get_source_spotlight,
+)
 from app.services.podcast_service import (
     get_latest_podcast_episodes,
     get_player_podcast_feed,
@@ -36,7 +46,7 @@ from app.services.video_service import (
 )
 from sqlmodel import select
 
-from app.config import settings
+from app.config import get_consensus_board_kind, settings
 from app.models.fields import MetricSource
 from app.schemas.metrics import MetricSnapshot
 from app.schemas.seasons import Season
@@ -89,13 +99,62 @@ def _news_item_to_dict(item: NewsItemRead, *, is_sticky: bool = False) -> dict:
     }
 
 
+# Draft year for the current cycle.  Update each off-season.
+CONSENSUS_DRAFT_YEAR = 2026
+
+
 @router.get("/", response_class=HTMLResponse)
 async def home(
     request: Request,
     db: AsyncSession = Depends(get_session),
 ):
-    """Render the Homepage with expanded trending players, VS arena, and news feed."""
-    # Fetch expanded trending payload (featured cards + compact tail).
+    """Render the Homepage with consensus hero, trending players, VS arena, and news feed."""
+    # --- Consensus hero -------------------------------------------------------
+    # Select the board kind from the draft calendar.  Fall back to BIG_BOARD
+    # when the calendar-selected kind returns no rows (e.g. MOCK_DRAFT data has
+    # not yet been ingested; see ticket notes on that ticket).  This ensures
+    # the hero is never empty even before mock-draft extraction ships.
+    board_kind = get_consensus_board_kind()
+    consensus_rows_raw = await get_consensus_board(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    # `get_consensus_board` returns BIG_BOARD consensus only today (mock-draft
+    # consensus is produced by a later ticket). Any rows we have are therefore
+    # big-board rows, so force the heading to match the data — otherwise a
+    # post-lottery calendar phase would label big-board rows as "Mock Draft".
+    # Once a kind-aware mock read path exists, fetch by `board_kind` here.
+    if consensus_rows_raw:
+        board_kind = BoardKind.BIG_BOARD
+
+    # Derive snapshot_computed_at from the first row's data is not directly
+    # available on ConsensusRow; pass None (template shows nothing when absent).
+    snapshot_computed_at: datetime | None = None
+
+    consensus_rows = [
+        {
+            "player_id": r.player_id,
+            "player_name": r.player_name,
+            "school": r.school,
+            "slug": r.slug,
+            "photo_url": r.photo_url,
+            "school_logo_url": r.school_logo_url,
+            "consensus_rank": r.consensus_rank,
+            "avg_rank": r.avg_rank,
+            "high_rank": r.high_rank,
+            "low_rank": r.low_rank,
+            "num_sources": r.num_sources,
+            # rank_delta: None when no prior snapshot (single-snapshot case).
+            # Positive delta = moved up (lower rank number), negative = moved down.
+            "rank_delta": r.rank_delta,
+            "prev_rank": r.prev_rank,
+        }
+        for r in consensus_rows_raw
+    ]
+
+    # --- Supporting panels: Biggest Movers, Source Spotlight, Board Freshness --
+    biggest_movers = await get_biggest_movers(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    source_spotlight = await get_source_spotlight(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    board_freshness = await get_board_freshness(db, draft_year=CONSENSUS_DRAFT_YEAR)
+
+    # --- Expanded trending payload (featured cards + compact tail) ------------
     expanded = await get_expanded_trending_players(db)
     featured_trending = [
         {
@@ -290,6 +349,16 @@ async def home(
         "home.html",
         {
             "request": request,
+            # Consensus hero
+            "board_kind": board_kind,
+            "consensus_rows": consensus_rows,
+            "snapshot_computed_at": snapshot_computed_at,
+            "draft_year": CONSENSUS_DRAFT_YEAR,
+            # Supporting panels
+            "biggest_movers": biggest_movers,
+            "source_spotlight": source_spotlight,
+            "board_freshness": board_freshness,
+            # Existing sections
             "featured_trending": featured_trending,
             "compact_trending": compact_trending,
             "feed_items": feed_items,
@@ -815,6 +884,43 @@ async def player_detail(
         for row in college_stats_rows
     ]
 
+    # Fetch consensus detail for this player.
+    # Treat a None result (player not on any board) as "omit the section" — do
+    # NOT raise 404; the rest of the page must still render normally.
+    consensus: dict | None = None
+    if player_profile.id is not None:
+        consensus_detail = await get_player_consensus_detail(
+            db,
+            player_id=player_profile.id,
+            draft_year=CONSENSUS_DRAFT_YEAR,
+        )
+        if consensus_detail is not None:
+            consensus = {
+                "current": {
+                    "consensus_rank": consensus_detail.consensus_rank,
+                    "avg_rank": consensus_detail.avg_rank,
+                    "high_rank": consensus_detail.high_rank,
+                    "low_rank": consensus_detail.low_rank,
+                    "num_sources": consensus_detail.num_sources,
+                    "prev_rank": consensus_detail.prev_rank,
+                    "rank_delta": consensus_detail.rank_delta,
+                },
+                "sources": [
+                    {
+                        "source_display_name": s.source_display_name,
+                        "source_rank": s.source_rank,
+                    }
+                    for s in consensus_detail.source_ranks
+                ],
+                "history": [
+                    {
+                        "computed_at": h.computed_at.isoformat(),
+                        "consensus_rank": h.consensus_rank,
+                    }
+                    for h in consensus_detail.rank_history
+                ],
+            }
+
     percentile_data = {
         "anthropometrics": [
             {"metric": "Height", "value": "6'9\"", "percentile": 92, "unit": ""},
@@ -973,6 +1079,7 @@ async def player_detail(
         {
             "request": request,
             "player": player,
+            "consensus": consensus,
             "college_stats": college_stats,
             "percentile_data": percentile_data,
             "comparison_data": comparison_data,
@@ -1031,5 +1138,70 @@ async def cookie_policy(request: Request):
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
             "current_date": datetime.now().strftime("%B %d, %Y"),
+        },
+    )
+
+
+@router.get("/sources", response_class=HTMLResponse)
+async def sources_leaderboard(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+):
+    """Render the Sources leaderboard page.
+
+    Shows all sources ranked by contrarian score for the current snapshot,
+    with avg deviation and biggest-outlier pick called out. Each row links
+    to the source detail page.
+    """
+    board_kind = get_consensus_board_kind()
+    leaderboard = await get_source_leaderboard(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    # Force big-board kind when data exists (same as homepage pattern —
+    # mock-draft source analytics are a later ticket).
+    if leaderboard:
+        board_kind = BoardKind.BIG_BOARD
+
+    return request.app.state.templates.TemplateResponse(
+        "sources/index.html",
+        {
+            "request": request,
+            "leaderboard": leaderboard,
+            "board_kind": board_kind,
+            "draft_year": CONSENSUS_DRAFT_YEAR,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/sources/{slug}", response_class=HTMLResponse)
+async def source_detail(
+    request: Request,
+    slug: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """Render the Source Detail page with its board vs consensus overlay.
+
+    Shows the source's most-recent board side-by-side with the consensus,
+    highlighting their biggest-outlier picks.  Returns 404 when the slug
+    does not match any known source.
+    """
+    board_kind = get_consensus_board_kind()
+    detail = await get_source_detail(
+        db, source_slug=slug, draft_year=CONSENSUS_DRAFT_YEAR
+    )
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    if detail.get("overlay_rows"):
+        board_kind = BoardKind.BIG_BOARD
+
+    return request.app.state.templates.TemplateResponse(
+        "sources/detail.html",
+        {
+            "request": request,
+            "source": detail,
+            "board_kind": board_kind,
+            "draft_year": CONSENSUS_DRAFT_YEAR,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
         },
     )

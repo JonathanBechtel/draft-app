@@ -2,12 +2,418 @@
    HOME.CSS - Homepage-specific styles
    ========================================================================= */
 
+/* ============================================================================
+   CONSENSUS HERO
+   Full-width ranking table: big board (pre-lottery) / mock draft (post-lottery)
+   Retro scoreboard aesthetic: scanlines, pixel corners, tabular data.
+   ========================================================================= */
+
+.consensus-hero__card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--border-radius);
+  border: 1px solid rgba(245, 158, 11, 0.25); /* amber ring */
+  background: var(--color-white);
+}
+
+/* Subtle scanline overlay (reuses .scanlines from card base) */
+.consensus-hero__card .scanlines {
+  pointer-events: none;
+}
+
+.consensus-hero__table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.consensus-hero__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  font-family: var(--font-mono);
+}
+
+/* Column headers */
+.consensus-hero__th {
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-500);
+  border-bottom: 2px solid var(--color-slate-200);
+  white-space: nowrap;
+  background: var(--color-slate-50);
+}
+
+.consensus-hero__th--rank,
+.consensus-hero__th--avg,
+.consensus-hero__th--range,
+.consensus-hero__th--sources {
+  text-align: right;
+}
+
+.consensus-hero__th--delta {
+  width: 2.5rem;
+}
+
+/* Data rows */
+.consensus-hero__row {
+  border-bottom: 1px solid var(--color-slate-100);
+  cursor: pointer;
+  transition: background var(--transition-speed), transform 0.1s ease;
+}
+
+.consensus-hero__row:hover {
+  background: rgba(245, 158, 11, 0.04);
+}
+
+.consensus-hero__row:focus-visible {
+  outline: 2px solid var(--color-accent-amber);
+  outline-offset: -2px;
+}
+
+/* Alternating row shade (light) */
+.consensus-hero__row:nth-child(even) {
+  background: rgba(248, 250, 252, 0.6);
+}
+
+.consensus-hero__row:nth-child(even):hover {
+  background: rgba(245, 158, 11, 0.05);
+}
+
+/* Highlight top-3 picks */
+.consensus-hero__row:nth-child(-n+3) .consensus-hero__td--rank {
+  color: var(--color-accent-amber);
+  font-weight: 700;
+}
+
+/* Data cells */
+.consensus-hero__td {
+  padding: 0.625rem 0.75rem;
+  vertical-align: middle;
+}
+
+.consensus-hero__td--rank {
+  text-align: right;
+  font-weight: 700;
+  color: var(--color-slate-700);
+  width: 2.5rem;
+}
+
+.consensus-hero__td--delta {
+  text-align: center;
+  width: 2.5rem;
+}
+
+.consensus-hero__td--player {
+  font-family: var(--font-heading);
+  font-size: 0.875rem;
+  letter-spacing: 0.01em;
+}
+
+.consensus-hero__td--school {
+  color: var(--color-slate-500);
+  font-size: 0.8125rem;
+}
+
+.consensus-hero__td--avg,
+.consensus-hero__td--range,
+.consensus-hero__td--sources {
+  text-align: right;
+  color: var(--color-slate-600);
+}
+
+.consensus-hero__td--avg {
+  font-weight: 600;
+  color: var(--color-slate-800);
+}
+
+/* Player name link treatment */
+.consensus-hero__player-name {
+  color: var(--color-slate-900);
+  text-decoration: none;
+  transition: color var(--transition-speed);
+}
+
+.consensus-hero__row:hover .consensus-hero__player-name {
+  color: var(--color-accent-amber);
+}
+
+/* Rank-delta arrows */
+.consensus-hero__delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.consensus-hero__delta--up {
+  color: var(--color-accent-emerald);
+}
+
+.consensus-hero__delta--down {
+  color: var(--color-accent-rose);
+}
+
+.consensus-hero__delta--flat {
+  color: var(--color-slate-400);
+  font-size: 0.8rem;
+}
+
+/* Updated-at meta */
+.consensus-hero__updated {
+  font-size: 0.75rem;
+  color: var(--color-slate-400);
+  font-family: var(--font-mono);
+}
+
+/* Empty state */
+.consensus-hero__empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
+  border: 1px dashed var(--color-slate-300);
+  border-radius: var(--border-radius);
+  background: var(--color-slate-50);
+}
+
+.consensus-hero__empty-msg {
+  color: var(--color-slate-500);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+}
+
+/* Responsive: collapse school column on narrow viewports */
+@media (max-width: 640px) {
+  .consensus-hero__th--school,
+  .consensus-hero__td--school {
+    display: none;
+  }
+}
+
 /* --- Wider container to match News page --- */
 .home-container {
   max-width: 1440px;
   width: 95%;
   margin-inline: auto;
   padding: 0 1.5rem;
+}
+
+/* ============================================================================
+   CONSENSUS SUPPORTING PANELS
+   Three-column grid beneath the consensus hero: Biggest Movers,
+   Source Spotlight, Board Freshness.
+   ========================================================================= */
+
+.consensus-panels__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+/* Individual panel card */
+.consensus-panel {
+  padding: 1.25rem 1.25rem 1.5rem;
+  border-radius: var(--border-radius);
+  background: var(--color-white);
+  transition: transform var(--transition-speed), box-shadow var(--transition-speed);
+}
+
+.consensus-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
+}
+
+/* Panel header: icon + title */
+.consensus-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.625rem;
+  border-bottom: 1px solid var(--color-slate-100);
+}
+
+.consensus-panel__icon {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+  color: var(--color-slate-400);
+}
+
+.consensus-panel__title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-600);
+  margin: 0;
+}
+
+/* Mover list (Biggest Movers panel) */
+.consensus-panel__group {
+  margin-bottom: 0.875rem;
+}
+
+.consensus-panel__group:last-child {
+  margin-bottom: 0;
+}
+
+.consensus-panel__group-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-slate-400);
+  display: block;
+  margin-bottom: 0.375rem;
+}
+
+.consensus-panel__mover-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.consensus-panel__mover {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.consensus-panel__mover-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  width: 2.25rem;
+}
+
+.consensus-panel__mover--up .consensus-panel__mover-delta {
+  color: var(--color-accent-emerald);
+}
+
+.consensus-panel__mover--down .consensus-panel__mover-delta {
+  color: var(--color-accent-rose);
+}
+
+.consensus-panel__mover-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-slate-800);
+  text-decoration: none;
+  font-family: var(--font-heading);
+  font-size: 0.8125rem;
+  transition: color var(--transition-speed);
+}
+
+a.consensus-panel__mover-name:hover {
+  color: var(--color-accent-amber);
+}
+
+.consensus-panel__mover-rank {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-slate-400);
+  flex-shrink: 0;
+}
+
+/* Source Spotlight panel */
+.consensus-panel__spotlight {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.consensus-panel__spotlight-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-slate-400);
+  margin: 0;
+}
+
+.consensus-panel__spotlight-source {
+  font-family: var(--font-heading);
+  font-size: 1.125rem;
+  color: var(--color-slate-900);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.consensus-panel__spotlight-stat,
+.consensus-panel__spotlight-score {
+  font-size: 0.8125rem;
+  color: var(--color-slate-600);
+  margin: 0;
+}
+
+.consensus-panel__spotlight-value {
+  color: var(--color-accent-cyan);
+  font-weight: 700;
+}
+
+/* Board Freshness panel */
+.consensus-panel__freshness {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.consensus-panel__freshness-summary,
+.consensus-panel__freshness-date {
+  font-size: 0.875rem;
+  color: var(--color-slate-600);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.consensus-panel__freshness-value {
+  color: var(--color-accent-emerald);
+  font-weight: 700;
+}
+
+/* Empty state (shared across all three panels) */
+.consensus-panel__empty {
+  padding: 1rem 0;
+  text-align: center;
+}
+
+.consensus-panel__empty-msg {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-slate-400);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Responsive: 2-column on medium, 1-column on narrow */
+@media (max-width: 860px) {
+  .consensus-panels__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 540px) {
+  .consensus-panels__grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ============================================================================
@@ -657,5 +1063,54 @@ tbody td {
 
   .vs-badge {
     justify-self: center;
+  }
+}
+
+/* -- Consensus hero: player photos + school logos --------------------------
+   Small inline thumbnails alongside the player name and school name so the
+   board feels visually rich without overflowing the table density. */
+.consensus-hero__player-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.consensus-hero__photo {
+  width: 36px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #edf2f7;
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+}
+
+.consensus-hero__school-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.consensus-hero__school-logo {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.consensus-hero__school-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 640px) {
+  /* Existing breakpoint hides the school column; shrink the photo a touch
+     so the player cell stays comfortable on narrow viewports. */
+  .consensus-hero__photo {
+    width: 32px;
+    height: 42px;
   }
 }

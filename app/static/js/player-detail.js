@@ -1823,11 +1823,129 @@ var CombineScoreModule = {
   }
 };
 
+/**
+ * ============================================================================
+ * CONSENSUS CHART MODULE
+ * Renders a small SVG rank-history line chart from window.consensusHistory.
+ * No external libraries — pure SVG path drawing.
+ * Lower rank numbers (closer to #1) appear higher on the chart (y-axis inverted).
+ * ============================================================================
+ */
+const ConsensusChartModule = {
+  /**
+   * Initialize: render chart when history data is available.
+   */
+  init() {
+    const history = window.consensusHistory;
+    if (!Array.isArray(history) || history.length < 2) return;
+    const svg = document.getElementById('consensusHistoryChart');
+    if (!svg) return;
+    this.render(svg, history);
+  },
+
+  /**
+   * Draw the rank-history SVG line chart.
+   * @param {SVGElement} svg - The SVG container element.
+   * @param {Array<{computed_at: string, consensus_rank: number}>} history - History points (oldest first).
+   */
+  render(svg, history) {
+    const PAD = 24; // padding in SVG user units
+    const W = 400;  // internal SVG width (viewBox)
+    const H = 100;  // internal SVG height (viewBox)
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+    const ranks = history.map((p) => p.consensus_rank);
+    const minR = Math.min(...ranks);
+    const maxR = Math.max(...ranks);
+    const rankSpan = maxR - minR || 1; // avoid divide-by-zero when all ranks equal
+
+    const innerW = W - PAD * 2;
+    const innerH = H - PAD * 2;
+
+    // Map data points to SVG coordinates.
+    // x: evenly spaced; y: lower rank = higher on chart (invert y-axis).
+    const pts = history.map((p, i) => {
+      const x = PAD + (i / (history.length - 1)) * innerW;
+      const y = PAD + ((p.consensus_rank - minR) / rankSpan) * innerH;
+      return { x, y, rank: p.consensus_rank, at: p.computed_at };
+    });
+
+    // Build SVG path string.
+    const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+
+    // Filled area under the line (for a subtle glow effect).
+    const areaD = pathD +
+      ` L${pts[pts.length - 1].x.toFixed(1)},${(H - PAD).toFixed(1)}` +
+      ` L${pts[0].x.toFixed(1)},${(H - PAD).toFixed(1)} Z`;
+
+    const NS = 'http://www.w3.org/2000/svg';
+
+    // Area fill.
+    const area = document.createElementNS(NS, 'path');
+    area.setAttribute('d', areaD);
+    area.setAttribute('fill', 'rgba(245, 158, 11, 0.08)');
+    area.setAttribute('stroke', 'none');
+    svg.appendChild(area);
+
+    // Gridlines at min/max rank (subtle).
+    [minR, maxR].forEach((r) => {
+      const y = PAD + ((r - minR) / rankSpan) * innerH;
+      const line = document.createElementNS(NS, 'line');
+      line.setAttribute('x1', PAD);
+      line.setAttribute('y1', y.toFixed(1));
+      line.setAttribute('x2', W - PAD);
+      line.setAttribute('y2', y.toFixed(1));
+      line.setAttribute('stroke', 'rgba(148, 163, 184, 0.25)');
+      line.setAttribute('stroke-width', '1');
+      line.setAttribute('stroke-dasharray', '3 3');
+      svg.appendChild(line);
+
+      // Rank label.
+      const txt = document.createElementNS(NS, 'text');
+      txt.setAttribute('x', (PAD - 4).toString());
+      txt.setAttribute('y', (y + 4).toFixed(1));
+      txt.setAttribute('text-anchor', 'end');
+      txt.setAttribute('font-size', '9');
+      txt.setAttribute('fill', 'rgba(100,116,139,0.7)');
+      txt.setAttribute('font-family', 'monospace');
+      txt.textContent = `#${r}`;
+      svg.appendChild(txt);
+    });
+
+    // Main line.
+    const path = document.createElementNS(NS, 'path');
+    path.setAttribute('d', pathD);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', 'var(--color-accent-amber, #f59e0b)');
+    path.setAttribute('stroke-width', '2.5');
+    path.setAttribute('stroke-linecap', 'round');
+    path.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(path);
+
+    // Data-point circles with rank tooltips.
+    pts.forEach((p) => {
+      const circle = document.createElementNS(NS, 'circle');
+      circle.setAttribute('cx', p.x.toFixed(1));
+      circle.setAttribute('cy', p.y.toFixed(1));
+      circle.setAttribute('r', '4');
+      circle.setAttribute('fill', 'var(--color-accent-amber, #f59e0b)');
+      circle.setAttribute('stroke', '#fff');
+      circle.setAttribute('stroke-width', '1.5');
+      const title = document.createElementNS(NS, 'title');
+      title.textContent = `#${p.rank} (${p.at.slice(0, 10)})`;
+      circle.appendChild(title);
+      svg.appendChild(circle);
+    });
+  }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
   CombineScoreModule.init();
   ScoreboardModule.init();
   CollegeStatsModule.init();
   PerformanceModule.init();
+  ConsensusChartModule.init();
   PlayerComparisonsModule.init();
 
   // Initialize shared H2H module for player-detail page (Player A fixed)

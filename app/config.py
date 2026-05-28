@@ -1,11 +1,40 @@
 # app/config.py
+from datetime import date
 from pathlib import Path
 from typing import Literal, Optional
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.schemas.boards import BoardKind
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# ---------------------------------------------------------------------------
+# Draft calendar
+# ---------------------------------------------------------------------------
+
+# 2026 NBA Draft Lottery is scheduled for mid-May 2026 (exact date TBD; use
+# a safe placeholder of 2026-05-13, the Tuesday of combine week).  Once the
+# lottery fires, mock-draft consensus becomes the canonical hero view because
+# pick slots are set.  Before the lottery, the Big Board consensus is shown.
+LOTTERY_DATE: date = date(2026, 5, 13)
+
+
+def get_consensus_board_kind(today: date | None = None) -> BoardKind:
+    """Return the calendar-appropriate BoardKind for the consensus hero.
+
+    Args:
+        today: Override the current date (useful in tests; defaults to
+            ``date.today()`` when ``None``).
+
+    Returns:
+        ``BoardKind.MOCK_DRAFT`` when today is on or after ``LOTTERY_DATE``,
+        ``BoardKind.BIG_BOARD`` otherwise.
+    """
+    if today is None:
+        today = date.today()
+    return BoardKind.BIG_BOARD if today < LOTTERY_DATE else BoardKind.MOCK_DRAFT
 
 
 class Settings(BaseSettings):
