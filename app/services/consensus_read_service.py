@@ -476,7 +476,7 @@ async def get_source_detail(
     # --- Source board entries (latest approved board for this source) ----------
     source_board = (
         await db.execute(
-            select(Board).where(Board.id == sa_row.latest_board_id)  # type: ignore[call-overload]  # type: ignore[arg-type]
+            select(Board).where(Board.id == sa_row.latest_board_id)  # type: ignore[call-overload, arg-type]
         )
     ).scalar_one_or_none()
 
