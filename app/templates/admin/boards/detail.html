@@ -20,6 +20,9 @@
     <span class="admin-badge">{{ board.status.value }}</span>
     {% endif %}
     &middot; {{ board.size }} player{{ '' if board.size == 1 else 's' }}
+    {% if unresolved_count and unresolved_count > 0 %}
+    &middot; <span class="admin-badge admin-badge--inactive">{{ unresolved_count }} unresolved</span>
+    {% endif %}
   </p>
 </header>
 
@@ -103,7 +106,9 @@
     <tbody>
       {% for entry in entries %}
       {% set player = players_by_id.get(entry.player_id) %}
-      <tr data-entry-id="{{ entry.id }}" data-board-id="{{ board.id }}">
+      {% set is_unresolved = entry.resolution_method.value == 'UNRESOLVED' %}
+      <tr data-entry-id="{{ entry.id }}" data-board-id="{{ board.id }}"
+          {% if is_unresolved %}class="bb-entry--unresolved"{% endif %}>
         {% if is_pending %}
         <td>
           <form method="post"
@@ -131,7 +136,74 @@
           <strong>{{ entry.position }}</strong>
           {% endif %}
         </td>
-        <td>{{ player.display_name if player else '(unknown player)' }}</td>
+        <td>
+          {# --- Resolution display --- #}
+          {% if entry.raw_name %}
+          <span class="admin-text--small admin-text--muted bb-raw-name">{{ entry.raw_name }}</span>
+          {% endif %}
+          {% if player %}
+            {# Resolved entry: show player name + method badge #}
+            <div>
+              <strong>{{ player.display_name }}</strong>
+              <span class="admin-badge admin-badge--small bb-resolution-badge bb-resolution-badge--{{ entry.resolution_method.value | lower }}">
+                {{ entry.resolution_method.value }}
+              </span>
+            </div>
+          {% elif is_unresolved and is_pending %}
+            {# Unresolved entry in a pending board: show candidate list + free-form search #}
+            <div class="bb-candidates" id="bb-candidates-{{ entry.id }}">
+              {% if entry.vector_candidates %}
+              <p class="admin-text--small admin-text--muted" style="margin: 0.25rem 0;">Candidates:</p>
+              <ul class="bb-candidate-list">
+                {% for c in entry.vector_candidates[:5] %}
+                <li class="bb-candidate-item">
+                  <form method="post"
+                        action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/assign"
+                        class="admin-form--inline">
+                    <input type="hidden" name="player_id" value="{{ c.player_id }}" />
+                    <button type="submit" class="admin-btn admin-btn--small bb-candidate-btn"
+                            title="Assign {{ c.display_name }}">
+                      {{ c.display_name }}
+                      <span class="admin-text--small" style="opacity:0.7;">
+                        &mdash; {{ '%.2f' | format(c.score) }}
+                      </span>
+                    </button>
+                  </form>
+                </li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <p class="admin-text--small admin-text--muted" style="margin: 0.25rem 0;">No candidates available.</p>
+              {% endif %}
+              {# Free-form player search for off-list players #}
+              <div class="bb-player-search" style="position: relative; margin-top: 0.4rem;">
+                <input
+                  type="text"
+                  class="admin-form__input bb-offlist-search"
+                  placeholder="Search player…"
+                  autocomplete="off"
+                  data-entry-id="{{ entry.id }}"
+                  data-board-id="{{ board.id }}"
+                  style="width: 12rem; font-size: 0.8rem;"
+                />
+                <ul class="admin-autocomplete bb-offlist-results" hidden></ul>
+              </div>
+              {# Mint-stub fallback: create a lightweight stub row from the raw name #}
+              <form method="post"
+                    action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/mint-stub"
+                    class="admin-form--inline bb-mint-stub-form"
+                    onsubmit="return confirm('Create a stub player for “{{ entry.raw_name }}”? This cannot be undone without direct DB intervention.');">
+                <button type="submit" class="admin-btn admin-btn--small bb-mint-stub-btn"
+                        title="Mint a stub PlayerMaster row for &quot;{{ entry.raw_name }}&quot;">
+                  Mint stub player
+                </button>
+              </form>
+            </div>
+          {% else %}
+            {# Resolved (non-UNRESOLVED), player_id not yet in players_by_id (edge case) #}
+            <span class="admin-text--muted">(player #{{ entry.player_id }})</span>
+          {% endif %}
+        </td>
         <td>{{ player.school if player else '' }}</td>
         <td>
           {% if is_pending %}
@@ -212,5 +284,93 @@
 {% block admin_js %}
 {% if is_pending %}
 <script src="/static/boards-detail.js"></script>
+<script>
+// Free-form off-list player search for unresolved entries.
+// Each .bb-offlist-search input calls the per-board player-search endpoint
+// and renders results in the sibling .bb-offlist-results <ul>.  Clicking
+// a result submits an assign POST for the entry.
+(function () {
+  function initOfflistSearch() {
+    document.querySelectorAll(".bb-offlist-search").forEach(function (input) {
+      var list = input.parentElement.querySelector(".bb-offlist-results");
+      if (!list) return;
+      var entryId = input.dataset.entryId;
+      var boardId = input.dataset.boardId;
+      var timer = null;
+      var abortCtrl = null;
+
+      function hide() {
+        list.hidden = true;
+        list.replaceChildren();
+      }
+
+      function show(results) {
+        list.replaceChildren();
+        if (!results.length) { hide(); return; }
+        results.forEach(function (r) {
+          var li = document.createElement("li");
+          li.className = "admin-autocomplete__item";
+          var name = document.createElement("strong");
+          name.textContent = r.display_name;
+          li.appendChild(name);
+          if (r.school) {
+            var school = document.createElement("span");
+            school.className = "admin-text--small";
+            school.style.marginLeft = "0.4rem";
+            school.textContent = r.school;
+            li.appendChild(school);
+          }
+          li.addEventListener("mousedown", function (ev) {
+            ev.preventDefault();
+            var form = document.createElement("form");
+            form.method = "post";
+            form.action = "/admin/boards/" + boardId + "/entries/" + entryId + "/assign";
+            var pid = document.createElement("input");
+            pid.type = "hidden";
+            pid.name = "player_id";
+            pid.value = r.id;
+            form.appendChild(pid);
+            document.body.appendChild(form);
+            form.submit();
+          });
+          list.appendChild(li);
+        });
+        list.hidden = false;
+      }
+
+      input.addEventListener("input", function () {
+        var q = input.value.trim();
+        clearTimeout(timer);
+        if (q.length < 2) { hide(); return; }
+        timer = setTimeout(function () {
+          if (abortCtrl) abortCtrl.abort();
+          abortCtrl = new AbortController();
+          fetch(
+            "/admin/boards/" + boardId + "/entries/player-search?q=" + encodeURIComponent(q),
+            { signal: abortCtrl.signal }
+          ).then(function (resp) {
+            if (!resp.ok) return;
+            return resp.json();
+          }).then(function (data) {
+            if (data) show(data);
+          }).catch(function (err) {
+            if (err && err.name !== "AbortError") hide();
+          });
+        }, 180);
+      });
+
+      input.addEventListener("blur", function () {
+        setTimeout(hide, 120);
+      });
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initOfflistSearch);
+  } else {
+    initOfflistSearch();
+  }
+})();
+</script>
 {% endif %}
 {% endblock %}

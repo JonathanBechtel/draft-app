@@ -507,6 +507,103 @@
   text-decoration: underline;
 }
 
+/* === Board entry resolution styles (T7) === */
+
+/* Row highlight for unresolved entries */
+.bb-entry--unresolved {
+  background: var(--color-slate-50);
+}
+
+/* Raw name shown above the resolved/unresolved player cell */
+.bb-raw-name {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--color-slate-400);
+  margin-bottom: 0.15rem;
+}
+
+/* Resolution method badge (EXACT / ALIAS / VECTOR / MANUAL) */
+.admin-badge--small {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  vertical-align: middle;
+}
+
+.bb-resolution-badge--exact {
+  background: var(--color-accent-cyan, #06b6d4);
+  color: var(--color-slate-900);
+}
+
+.bb-resolution-badge--alias {
+  background: var(--color-accent-amber, #f5b800);
+  color: var(--color-slate-900);
+}
+
+.bb-resolution-badge--vector {
+  background: var(--color-accent-fuchsia, #c026d3);
+  color: var(--color-white);
+}
+
+.bb-resolution-badge--manual {
+  background: var(--color-accent-emerald, #10b981);
+  color: var(--color-white);
+}
+
+.bb-resolution-badge--stub {
+  background: var(--color-slate-300);
+  color: var(--color-slate-700);
+}
+
+.bb-resolution-badge--unresolved {
+  background: var(--color-accent-rose, #f43f5e);
+  color: var(--color-white);
+}
+
+/* Candidate list for unresolved entries */
+.bb-candidate-list {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.bb-candidate-item {
+  margin: 0;
+}
+
+.bb-candidate-btn {
+  text-align: left;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  padding: 0.18rem 0.5rem;
+}
+
+.bb-candidate-btn:hover {
+  background: var(--color-accent-fuchsia, #c026d3);
+  color: var(--color-white);
+}
+
+/* Mint-stub action for unresolved entries */
+.bb-mint-stub-form {
+  margin-top: 0.4rem;
+}
+
+.bb-mint-stub-btn {
+  font-size: 0.78rem;
+  padding: 0.18rem 0.5rem;
+  background: var(--color-slate-100, #f1f5f9);
+  border: 1px dashed var(--color-slate-400, #94a3b8);
+  color: var(--color-slate-600, #475569);
+}
+
+.bb-mint-stub-btn:hover {
+  background: var(--color-accent-amber, #f59e0b);
+  border-color: var(--color-accent-amber, #f59e0b);
+  color: var(--color-white);
+}
+
 .admin-link--center {
   display: block;
   text-align: center;

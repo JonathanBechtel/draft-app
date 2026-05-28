@@ -47,6 +47,11 @@ from app.services.admin_combine_service import (
     update_combine_anthro,
     update_combine_shooting,
 )
+from app.services.player_search_service import (
+    Candidate,
+    compare_names,
+    find_candidate_players,
+)
 from app.services.admin_player_service import (
     PlayerFormData,
     PlayerLifecycleFormData,
@@ -351,6 +356,94 @@ async def new_player(
             error=None,
             active_nav="players",
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# T9: Name-comparison tool  (must be registered BEFORE /{player_id} so that
+# FastAPI does not route GET /players/compare to the player-detail handler)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_K = 10
+_COMPARE_NEXT = "/admin/players/compare"
+
+
+@router.get("/compare", response_class=HTMLResponse)
+async def player_compare(
+    request: Request,
+    q: str | None = Query(default=None),
+    name_a: str | None = Query(default=None),
+    name_b: str | None = Query(default=None),
+    k: int = Query(default=_DEFAULT_K, ge=1, le=50),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Admin name-comparison page (T9).
+
+    Two modes — selected by which query params are present:
+
+    * **Find similar** (``?q=<name>``): run the hybrid lexical + vector
+      candidate search and return the top-K matches with their scores. Using
+      the hybrid primitive (rather than vector-only) means ultra-short bare
+      surnames like ``mara`` still surface the right player (Aday Mara).
+    * **Compare two names** (``?name_a=<a>&name_b=<b>``): embed both strings
+      independently and return the cosine similarity between them (no DB
+      lookup beyond the two embed calls).
+
+    Both modes are read-only and share a single GET page.  Auth uses
+    ``require_dataset_access("players", need_edit=False)``.
+
+    Args:
+        request: Incoming FastAPI request.
+        q: Query string for the "find similar to" mode.
+        name_a: First name for the "compare two names" mode.
+        name_b: Second name for the "compare two names" mode.
+        k: Maximum number of neighbours to return in "find similar" mode.
+        db: Injected async database session.
+
+    Returns:
+        Rendered HTML page.
+    """
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=False, next_path=_COMPARE_NEXT
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    similar_results: list[Candidate] | None = None
+    similarity_score: float | None = None
+    compare_error: str | None = None
+
+    if q and q.strip():
+        try:
+            similar_results = await find_candidate_players(db, q.strip(), k=k)
+        except Exception as exc:
+            logger.warning("find_candidate_players failed for query %r: %s", q, exc)
+            compare_error = f"Search failed: {exc}"
+
+    elif name_a and name_b and name_a.strip() and name_b.strip():
+        try:
+            similarity_score = await compare_names(name_a.strip(), name_b.strip())
+        except Exception as exc:
+            logger.warning("compare_names failed for %r vs %r: %s", name_a, name_b, exc)
+            compare_error = f"Comparison failed: {exc}"
+
+    ctx = await base_context_with_permissions(request, db, user)
+    ctx.update(
+        {
+            "active_nav": "players",
+            "q": q or "",
+            "name_a": name_a or "",
+            "name_b": name_b or "",
+            "k": k,
+            "similar_results": similar_results,
+            "similarity_score": similarity_score,
+            "compare_error": compare_error,
+        }
+    )
+    return request.app.state.templates.TemplateResponse(
+        "admin/players/compare.html",
+        ctx,
     )
 
 

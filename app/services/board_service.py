@@ -23,6 +23,7 @@ from app.schemas.boards import (
     BoardStatus,
     ResolutionMethod,
 )
+from app.schemas.players_master import PlayerMaster
 
 
 class BoardError(Exception):
@@ -47,6 +48,15 @@ class DuplicatePositionError(BoardError):
 
 class DuplicatePlayerError(BoardError):
     """Raised when a board already contains the requested player."""
+
+
+class EntryAlreadyResolvedError(BoardError):
+    """Raised when a resolution action targets an already-resolved entry.
+
+    Guards irreversible actions (e.g. minting a stub) against stale pages
+    or double-submits that would otherwise orphan a new row and clobber an
+    existing resolution.
+    """
 
 
 @dataclass(frozen=True)
@@ -238,6 +248,113 @@ async def update_entry(
         entry.position = position
     if tier is not None:
         entry.tier = tier
+    board.updated_at = datetime.utcnow()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        _translate_entry_integrity_error(exc)
+    return entry
+
+
+async def assign_entry(
+    db: AsyncSession,
+    *,
+    entry_id: int,
+    player_id: int,
+) -> BoardEntry:
+    """Manually assign a player to an UNRESOLVED (or any PENDING) entry.
+
+    Sets ``player_id`` to the supplied value and stamps
+    ``resolution_method=MANUAL``.  The board must be PENDING; callers own
+    the transaction.
+
+    Args:
+        db: Async session; caller owns commit.
+        entry_id: PK of the ``board_entries`` row to update.
+        player_id: PK of the ``players_master`` row to assign.
+
+    Returns:
+        The updated :class:`BoardEntry`.
+
+    Raises:
+        EntryNotFoundError: If ``entry_id`` does not resolve to a row.
+        BoardNotEditableError: If the parent board is not PENDING.
+        DuplicatePlayerError: If the board already contains this player on
+            another entry.
+    """
+    entry = await db.get(BoardEntry, entry_id)
+    if entry is None:
+        raise EntryNotFoundError(f"No board entry with id={entry_id}")
+
+    board = await get_board(db, entry.board_id)
+    _require_pending(board)
+
+    entry.player_id = player_id
+    entry.resolution_method = ResolutionMethod.MANUAL
+    board.updated_at = datetime.utcnow()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        _translate_entry_integrity_error(exc)
+    return entry
+
+
+async def mint_stub_for_entry(
+    db: AsyncSession,
+    *,
+    entry_id: int,
+) -> BoardEntry:
+    """Create a stub PlayerMaster from an unresolved entry's raw_name.
+
+    Mints a new ``PlayerMaster`` row with ``is_stub=True`` and
+    ``display_name=raw_name``, then assigns it to the entry with
+    ``resolution_method=STUB``.  The ``before_insert`` listener
+    auto-generates the slug; the ``after_commit`` hook queues an
+    embedding.  The board must be PENDING; callers own the transaction.
+
+    Args:
+        db: Async session; caller owns commit.
+        entry_id: PK of the ``board_entries`` row to resolve.
+
+    Returns:
+        The updated :class:`BoardEntry` (with ``player_id`` and method set).
+
+    Raises:
+        EntryNotFoundError: If ``entry_id`` does not resolve to a row.
+        BoardNotEditableError: If the parent board is not PENDING.
+        EntryAlreadyResolvedError: If the entry is already resolved (guards
+            against stale-page/double-submit minting a duplicate stub).
+        DuplicatePlayerError: If the board already contains a player
+            assigned to this entry (e.g., a concurrent assign raced ahead).
+    """
+    entry = await db.get(BoardEntry, entry_id)
+    if entry is None:
+        raise EntryNotFoundError(f"No board entry with id={entry_id}")
+
+    board = await get_board(db, entry.board_id)
+    _require_pending(board)
+
+    # Reject already-resolved entries: minting is irreversible, so a stale
+    # page or double-submit must not orphan a second stub or clobber an
+    # existing manual/candidate/exact resolution.
+    if entry.player_id is not None or entry.resolution_method != (
+        ResolutionMethod.UNRESOLVED
+    ):
+        raise EntryAlreadyResolvedError(
+            f"Entry {entry_id} is already resolved "
+            f"(method={entry.resolution_method.value}); refusing to mint a stub."
+        )
+
+    stub = PlayerMaster(
+        display_name=entry.raw_name or f"Unknown #{entry_id}",
+        is_stub=True,
+    )
+    db.add(stub)
+    await db.flush()
+    assert stub.id is not None
+
+    entry.player_id = stub.id
+    entry.resolution_method = ResolutionMethod.STUB
     board.updated_at = datetime.utcnow()
     try:
         await db.flush()

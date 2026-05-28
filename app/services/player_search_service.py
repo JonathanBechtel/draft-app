@@ -54,6 +54,7 @@ lexical-only rather than discarding the trigram matches that need no API.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -62,6 +63,35 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.embedding_service import embed_text
 
 logger = logging.getLogger(__name__)
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two equal-length float vectors.
+
+    Returns a value in [0, 1] (or very close, after float clamping).  Both
+    vectors are expected to be non-zero; if either has zero norm the function
+    returns 0.0 rather than raising.
+
+    Args:
+        a: First embedding vector (e.g. 768-dim Gemini output).
+        b: Second embedding vector of the same dimensionality.
+
+    Returns:
+        Cosine similarity in [0, 1], clamped to guard against floating-point
+        noise.
+
+    Raises:
+        ValueError: If ``a`` and ``b`` have different lengths.
+    """
+    if len(a) != len(b):
+        raise ValueError(f"Vector length mismatch: {len(a)} vs {len(b)}")
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    raw = dot / (norm_a * norm_b)
+    return max(0.0, min(1.0, raw))
 
 
 @dataclass(frozen=True, slots=True)
@@ -431,3 +461,29 @@ async def find_candidate_players(
         vector = []
     merged = _merge_candidates(lexical, vector)
     return merged[:k]
+
+
+async def compare_names(name_a: str, name_b: str) -> float:
+    """Embed two name strings and return their cosine similarity.
+
+    Both strings are embedded independently via :func:`embed_text` (Gemini,
+    ``gemini-embedding-001``, 768-dim, ``SEMANTIC_SIMILARITY`` task type) and
+    then compared with :func:`cosine_similarity`.  The same embedding config
+    used elsewhere in the app ensures scores are directly comparable with the
+    values stored in ``player_embeddings``.
+
+    Args:
+        name_a: First player name (e.g. ``"Mara"``).
+        name_b: Second player name (e.g. ``"Aday Mara"``).
+
+    Returns:
+        Cosine similarity in [0, 1].  Values near 1 indicate the two strings
+        are semantically equivalent; values near 0 indicate unrelated names.
+
+    Raises:
+        ValueError: If either name is empty (propagated from ``embed_text``).
+        RuntimeError: If Gemini is unreachable or returns a null vector.
+    """
+    vec_a = await embed_text(name_a)
+    vec_b = await embed_text(name_b)
+    return cosine_similarity(vec_a, vec_b)
