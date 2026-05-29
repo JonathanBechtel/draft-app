@@ -21,6 +21,10 @@ class ConsensusRow(SQLModel):
     photo_url: Optional[str] = None
     school_logo_url: Optional[str] = None
     age: Optional[float] = None
+    # Physical profile (best-effort from PlayerStatus; None when unknown).
+    position: Optional[str] = None  # e.g. "PG/SG", "C"
+    height: Optional[str] = None  # formatted feet'inches", e.g. "6'9\""
+    weight: Optional[int] = None  # pounds
     consensus_rank: int
     avg_rank: float
     median_rank: float

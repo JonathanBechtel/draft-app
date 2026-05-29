@@ -11,7 +11,7 @@ only reads. UI tickets #218–#221 will extend the helpers here.
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional
+from typing import Any, Optional, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,9 +32,12 @@ from app.schemas.consensus import (
 )
 from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import NewsSource
+from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
+from app.schemas.positions import Position
 from app.services.image_assets_service import get_current_image_urls_for_players
 from app.services.school_logo_service import get_logo_urls_for_schools
+from app.utils.combine_formatters import format_height_inches
 
 # Style used for consensus-board thumbnails. Matches the default style the
 # trending and stats lists already use, so we hit the same generated assets.
@@ -168,12 +171,66 @@ async def _recent_ranks_map(
     return {pid: ranks[-limit_per_player:] for pid, ranks in series.items()}
 
 
+def _format_position(code: Optional[str], raw: Optional[str]) -> Optional[str]:
+    """Return a short, display-ready position label.
+
+    Prefers the structured position ``code`` (e.g. ``pg_sg``/``pg-sg`` ->
+    ``PG/SG``, ``c`` -> ``C``); falls back to abbreviating the free-text
+    ``raw_position`` (e.g. ``Guard`` -> ``G``). Returns ``None`` when neither
+    is known.
+    """
+    if code:
+        # Hybrid codes appear with either separator in the data (pg_sg, pg-sg).
+        return code.upper().replace("_", "/").replace("-", "/")
+    if raw:
+        word = raw.strip()
+        return {"guard": "G", "forward": "F", "center": "C"}.get(word.lower(), word)
+    return None
+
+
+async def _player_status_map(
+    db: AsyncSession, player_ids: list[int]
+) -> dict[int, dict[str, Any]]:
+    """Return ``player_id -> {position, height, weight}`` from ``PlayerStatus``.
+
+    Best-effort physical profile for the consensus board. Mirrors the source
+    used by the trending and player-detail surfaces so the board agrees with
+    them. Players without a status row are simply absent from the map.
+    """
+    if not player_ids:
+        return {}
+    stmt = (
+        select(  # type: ignore[call-overload]
+            PlayerStatus.player_id,
+            PlayerStatus.raw_position,
+            PlayerStatus.height_in,
+            PlayerStatus.weight_lb,
+            cast(Any, Position.code).label("position_code"),
+        )
+        .select_from(PlayerStatus)
+        .outerjoin(Position, cast(Any, Position.id) == PlayerStatus.position_id)
+        .where(cast(Any, PlayerStatus.player_id).in_(player_ids))
+    )
+    out: dict[int, dict[str, Any]] = {}
+    for row in (await db.execute(stmt)).mappings().all():
+        pid = row["player_id"]
+        if pid is None:
+            continue
+        out[int(pid)] = {
+            "position": _format_position(row["position_code"], row["raw_position"]),
+            "height": format_height_inches(row["height_in"]),
+            "weight": row["weight_lb"],
+        }
+    return out
+
+
 def _to_consensus_row(
     bbc: BigBoardConsensus,
     player: Optional[PlayerMaster],
     school_logo_url: Optional[str] = None,
     photo_url: Optional[str] = None,
     recent_ranks: Optional[list[int]] = None,
+    status: Optional[dict[str, Any]] = None,
 ) -> ConsensusRow:
     """Map a ``BigBoardConsensus`` ORM row to the ``ConsensusRow`` model.
 
@@ -189,7 +246,11 @@ def _to_consensus_row(
         recent_ranks: Oldest-to-newest series of this player's consensus
             ranks across recent snapshots (caller batch-resolves via
             ``_recent_ranks_map``); rendered as a sparkline.
+        status: Pre-resolved ``{position, height, weight}`` for this player
+            (caller batch-resolves via ``_player_status_map``); all keys
+            optional and absent for players without a status row.
     """
+    status = status or {}
     return ConsensusRow(
         player_id=bbc.player_id,
         player_name=player.display_name if player else None,
@@ -198,6 +259,9 @@ def _to_consensus_row(
         photo_url=photo_url,
         school_logo_url=school_logo_url,
         age=_years_old(player.birthdate) if player else None,
+        position=status.get("position"),
+        height=status.get("height"),
+        weight=status.get("weight"),
         consensus_rank=bbc.consensus_rank,
         avg_rank=bbc.avg_rank,
         median_rank=bbc.median_rank,
@@ -270,6 +334,7 @@ async def get_consensus_board(
         # passing the latest's id is equivalent to no upper bound.
         up_to_snapshot_id=sid,
     )
+    status_map = await _player_status_map(db, [r.player_id for r in bbc_rows])
     return [
         _to_consensus_row(
             r,
@@ -281,6 +346,7 @@ async def get_consensus_board(
             ),
             photo_url=photo_map.get(r.player_id),
             recent_ranks=history_map.get(r.player_id, []),
+            status=status_map.get(r.player_id),
         )
         for r in bbc_rows
     ]

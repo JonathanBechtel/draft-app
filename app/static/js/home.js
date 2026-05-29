@@ -1148,6 +1148,27 @@ const ConsensusHeroModule = {
         }
       }
     });
+
+    this.initExpander();
+  },
+
+  /**
+   * Wire the "show all / show top" expander that collapses the consensus board
+   * to the lottery picks by default and reveals the rest on demand.
+   */
+  initExpander() {
+    const btn = document.getElementById('consensusHeroExpand');
+    const section = document.getElementById('consensusHeroSection');
+    if (!btn || !section) return;
+
+    const label = btn.querySelector('.consensus-hero__expand-label');
+    btn.addEventListener('click', () => {
+      const expanded = section.classList.toggle('is-expanded');
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+      if (label) {
+        label.textContent = expanded ? btn.dataset.less : btn.dataset.more;
+      }
+    });
   },
 };
 
