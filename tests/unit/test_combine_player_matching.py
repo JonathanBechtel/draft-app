@@ -22,7 +22,11 @@ from app.services.player_mention_service import (
     _lookup_from_rows,
     find_existing_player,
 )
-from scripts.ingest_combine import _reorder_leaked_suffix, get_or_create_player
+from scripts.ingest_combine import (
+    _external_id_conflict,
+    _reorder_leaked_suffix,
+    get_or_create_player,
+)
 
 
 def _lookup(
@@ -110,23 +114,28 @@ class TestFindExistingPlayer:
         assert ambiguous is False
         assert match is not None and match.player_id == 42
 
-    @pytest.mark.asyncio
-    async def test_allow_relaxed_false_does_not_match_suffix_variant(self) -> None:
-        """allow_relaxed=False refuses a suffix-variant match (distinct identity).
+class TestExternalIdConflict:
+    """The id-conflict guard that keeps distinct identities from merging."""
 
-        A caller holding a distinct external id must not let "Gary Payton II"
-        attach to an existing "Gary Payton" via the relaxed match.
-        """
-        lookup = _lookup([(30, "Gary Payton")])
-        # Default relaxed behavior matches the suffix-less father.
-        m, _ = await find_existing_player(_NO_DB, "Gary Payton II", lookup=lookup)
-        assert m is not None and m.player_id == 30
-        # Exact-only refuses the cross-identity match → caller creates new.
-        m2, amb2 = await find_existing_player(
-            _NO_DB, "Gary Payton II", lookup=lookup, allow_relaxed=False
-        )
-        assert m2 is None
-        assert amb2 is False
+    def test_no_external_id_never_conflicts(self) -> None:
+        """A row without an external id can always link via name."""
+        assert _external_id_conflict(["1629999"], None) is False
+
+    def test_matched_player_without_ids_does_not_conflict(self) -> None:
+        """Linking a prospect that has no id yet is allowed (the Acuff case)."""
+        assert _external_id_conflict([], "1641722") is False
+
+    def test_same_id_does_not_conflict(self) -> None:
+        """The same id is the same identity — not a conflict."""
+        assert _external_id_conflict(["1641722"], "1641722") is False
+
+    def test_different_id_conflicts(self) -> None:
+        """A different id of the same system marks a distinct identity (Payton)."""
+        assert _external_id_conflict(["1629999"], "1641722") is True
+
+    def test_conflict_if_any_existing_differs(self) -> None:
+        """Any differing id triggers the guard even if another matches."""
+        assert _external_id_conflict(["1641722", "1629999"], "1641722") is True
 
 
 class TestReorderLeakedSuffix:

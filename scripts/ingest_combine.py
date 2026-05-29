@@ -128,6 +128,45 @@ async def find_player_by_external(
     return res.scalar_one_or_none()
 
 
+def _external_id_conflict(existing_ids: List[str], external_id: Optional[str]) -> bool:
+    """Return whether ``external_id`` conflicts with a player's existing ids.
+
+    A conflict means the player already carries an id of the same system that
+    differs from ``external_id`` — a signal the row is a *distinct* identity, so
+    a relaxed name match should not merge them. Pure for easy testing.
+    """
+    if external_id is None:
+        return False
+    return any(eid != external_id for eid in existing_ids)
+
+
+async def _player_external_id_conflicts(
+    session: AsyncSession,
+    *,
+    player_id: int,
+    system: str,
+    external_id: Optional[str],
+) -> bool:
+    """Whether the matched player already has a *different* id of ``system``."""
+    if external_id is None:
+        return False
+    rows = (
+        (
+            await session.execute(
+                select(PlayerExternalId.external_id).where(
+                    and_(
+                        PlayerExternalId.player_id == player_id,
+                        PlayerExternalId.system == system,
+                    )
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return _external_id_conflict(list(rows), external_id)
+
+
 async def get_or_create_player(
     session: AsyncSession,
     prefix: Optional[str],
@@ -190,10 +229,7 @@ async def get_or_create_player(
         if pm:
             return pm
 
-    # 2) Normalized name match (ambiguity-aware). When the row supplies an
-    #    NBA Stats id that did NOT link above, that id is a distinct identity
-    #    signal — restrict to exact matches so a suffix-insensitive match can't
-    #    attach e.g. a new "Gary Payton II" to an existing "Gary Payton".
+    # 2) Normalized name match (suffix/punctuation-insensitive, ambiguity-aware).
     full_name = (
         raw_player_name or _display_name(prefix, first, middle, last, suffix) or ""
     ).strip()
@@ -202,13 +238,24 @@ async def get_or_create_player(
             session,
             full_name,
             lookup=name_lookup,  # type: ignore[arg-type]
-            allow_relaxed=nba_stats_player_id is None,
         )
         if match is not None:
             existing = await session.get(PlayerMaster, match.player_id)
-            if existing is not None:
+            # Guard against merging distinct identities: if this row carries an
+            # external id and the matched player already has a *different* id of
+            # the same system, they are not the same person (e.g. a new
+            # "Gary Payton II" vs an existing "Gary Payton"). Fall through to
+            # create a new record. When the matched player has no conflicting id
+            # (the common case — a prospect not yet linked), link as usual so a
+            # suffix variant like "Darius Acuff" still dedups to "Darius Acuff Jr.".
+            if existing is not None and not await _player_external_id_conflicts(
+                session,
+                player_id=match.player_id,
+                system="nba_stats",
+                external_id=str(nba_stats_player_id) if nba_stats_player_id else None,
+            ):
                 return existing
-        if ambiguous:
+        elif ambiguous:
             logger.warning(
                 "combine.ingest.ambiguous_name name=%r — skipping row to avoid "
                 "creating a duplicate; resolve manually",
