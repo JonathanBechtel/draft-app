@@ -9,6 +9,11 @@ class TestFormatPosition:
         assert _format_position("pg_sg", None) == "PG/SG"
         assert _format_position("pf_c", None) == "PF/C"
 
+    def test_hyphenated_code_normalizes_to_slash(self) -> None:
+        """Hybrid codes seeded with hyphens (pg-sg) also render with a slash."""
+        assert _format_position("pg-sg", None) == "PG/SG"
+        assert _format_position("pf-c", None) == "PF/C"
+
     def test_single_code(self) -> None:
         """A single-token code uppercases cleanly."""
         assert _format_position("c", None) == "C"

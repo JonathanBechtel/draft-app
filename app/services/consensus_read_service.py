@@ -173,12 +173,14 @@ async def _recent_ranks_map(
 def _format_position(code: Optional[str], raw: Optional[str]) -> Optional[str]:
     """Return a short, display-ready position label.
 
-    Prefers the structured position ``code`` (e.g. ``pg_sg`` -> ``PG/SG``,
-    ``c`` -> ``C``); falls back to abbreviating the free-text ``raw_position``
-    (e.g. ``Guard`` -> ``G``). Returns ``None`` when neither is known.
+    Prefers the structured position ``code`` (e.g. ``pg_sg``/``pg-sg`` ->
+    ``PG/SG``, ``c`` -> ``C``); falls back to abbreviating the free-text
+    ``raw_position`` (e.g. ``Guard`` -> ``G``). Returns ``None`` when neither
+    is known.
     """
     if code:
-        return code.upper().replace("_", "/")
+        # Hybrid codes appear with either separator in the data (pg_sg, pg-sg).
+        return code.upper().replace("_", "/").replace("-", "/")
     if raw:
         word = raw.strip()
         return {"guard": "G", "forward": "F", "center": "C"}.get(word.lower(), word)
