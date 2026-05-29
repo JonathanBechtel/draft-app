@@ -236,18 +236,24 @@ def _select_unique_match(
     )
 
 
-async def _build_player_name_lookup(db: AsyncSession) -> _PlayerNameLookup:
-    """Load display and alias names into normalized exact and relaxed maps."""
+def _lookup_from_rows(
+    player_rows: list[tuple[int, Optional[str]]],
+    alias_rows: list[tuple[int, Optional[str], Optional[str]]],
+) -> _PlayerNameLookup:
+    """Build normalized exact/relaxed lookup maps from already-fetched rows.
+
+    Pure (no IO) so the matching behavior can be unit-tested without a DB.
+
+    Args:
+        player_rows: ``(player_id, display_name)`` for every ``PlayerMaster``.
+        alias_rows: ``(player_id, alias_full_name, owner_display_name)`` for
+            every ``PlayerAlias`` joined to its owning player.
+    """
     display_exact: dict[str, dict[int, _LookupEntry]] = {}
     alias_exact: dict[str, dict[int, _LookupEntry]] = {}
     display_relaxed: dict[str, dict[int, _LookupEntry]] = {}
     alias_relaxed: dict[str, dict[int, _LookupEntry]] = {}
 
-    player_rows = (
-        await db.execute(
-            select(PlayerMaster.id, PlayerMaster.display_name)  # type: ignore[call-overload]
-        )
-    ).all()
     for player_id, display_name in player_rows:
         if player_id is None or not display_name:
             continue
@@ -267,13 +273,6 @@ async def _build_player_name_lookup(db: AsyncSession) -> _PlayerNameLookup:
             entry,
         )
 
-    alias_rows = (
-        await db.execute(
-            select(
-                PlayerAlias.player_id, PlayerAlias.full_name, PlayerMaster.display_name
-            ).join(PlayerMaster, PlayerMaster.id == PlayerAlias.player_id)  # type: ignore[call-overload]  # type: ignore[arg-type]
-        )
-    ).all()
     for player_id, full_name, display_name in alias_rows:
         if player_id is None or not full_name:
             continue
@@ -298,6 +297,26 @@ async def _build_player_name_lookup(db: AsyncSession) -> _PlayerNameLookup:
         alias_exact=alias_exact,
         display_relaxed=display_relaxed,
         alias_relaxed=alias_relaxed,
+    )
+
+
+async def _build_player_name_lookup(db: AsyncSession) -> _PlayerNameLookup:
+    """Load display and alias names into normalized exact and relaxed maps."""
+    player_rows = (
+        await db.execute(
+            select(PlayerMaster.id, PlayerMaster.display_name)  # type: ignore[call-overload]
+        )
+    ).all()
+    alias_rows = (
+        await db.execute(
+            select(
+                PlayerAlias.player_id, PlayerAlias.full_name, PlayerMaster.display_name
+            ).join(PlayerMaster, PlayerMaster.id == PlayerAlias.player_id)  # type: ignore[call-overload]  # type: ignore[arg-type]
+        )
+    ).all()
+    return _lookup_from_rows(
+        [(pid, name) for pid, name in player_rows],
+        [(pid, full, disp) for pid, full, disp in alias_rows],
     )
 
 
@@ -515,6 +534,78 @@ async def resolve_player_names_as_map(
         return {}
     pairs = await _resolve_iter(db, names, draft_year, create_stubs)
     return {input_name.lower(): match.player_id for input_name, match in pairs}
+
+
+async def build_player_name_lookup(db: AsyncSession) -> _PlayerNameLookup:
+    """Build the normalized name lookup once, for resolving many names in a loop.
+
+    Callers that resolve a batch of names (e.g. a bulk importer) should build
+    the lookup once and pass it to :func:`find_existing_player` to avoid
+    rebuilding the in-memory maps per name. Register any rows they create with
+    :func:`register_player_in_lookup` so later names in the same batch match.
+    """
+    return await _build_player_name_lookup(db)
+
+
+def register_player_in_lookup(
+    lookup: _PlayerNameLookup,
+    player_id: int,
+    display_name: str,
+) -> None:
+    """Add a newly created player to an existing lookup snapshot.
+
+    Keeps an in-memory lookup consistent after an insert so a later name in the
+    same batch resolves to the just-created player instead of creating a second
+    duplicate.
+    """
+    if not display_name:
+        return
+    entry = _LookupEntry(
+        player_id=player_id,
+        display_name=display_name,
+        matched_via="display_name",
+    )
+    _add_lookup_entry(lookup.display_exact, _normalized_name_key(display_name), entry)
+    _add_lookup_entry(
+        lookup.display_relaxed,
+        _normalized_name_key(
+            display_name,
+            ignore_suffix=True,
+            ignore_middle_initials=True,
+        ),
+        entry,
+    )
+
+
+async def find_existing_player(
+    db: AsyncSession,
+    full_name: str,
+    *,
+    lookup: Optional[_PlayerNameLookup] = None,
+) -> tuple[Optional[PlayerMatch], bool]:
+    """Match a name to an existing player **without creating anything**.
+
+    This is the shared, normalized (suffix- and punctuation-insensitive)
+    matcher that every "mint-on-miss" caller should consult before creating a
+    new ``PlayerMaster`` — so importers do not recreate duplicates of players
+    that already exist under a suffix or punctuation variant.
+
+    Returns ``(match, ambiguous)``:
+      - ``(PlayerMatch, False)`` — a unique existing player matched.
+      - ``(None, True)`` — the name matched **multiple** players; the caller
+        must NOT create a new record (that would add a duplicate) and should
+        route the row to manual review instead.
+      - ``(None, False)`` — no existing player matched; safe to create.
+
+    Args:
+        db: Async session (only used when ``lookup`` is not supplied).
+        full_name: The name string to resolve.
+        lookup: Optional prebuilt lookup from :func:`build_player_name_lookup`
+            for batch resolution; built on demand when omitted.
+    """
+    if lookup is None:
+        lookup = await _build_player_name_lookup(db)
+    return _resolve_from_lookup(lookup, full_name)
 
 
 async def _create_stub_player(

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -35,6 +36,18 @@ from app.schemas.combine_shooting import (
 )
 from app.schemas.positions import Position
 from app.models.position_taxonomy import derive_position_tags, get_parents_for_fine
+from app.services.player_mention_service import (
+    build_player_name_lookup,
+    find_existing_player,
+    parse_player_name,
+    register_player_in_lookup,
+)
+
+logger = logging.getLogger(__name__)
+
+# Suffix tokens (normalized, sans punctuation) used to detect a suffix that
+# leaked into the prefix/first source column.
+_SUFFIX_TOKENS = {"jr", "sr", "ii", "iii", "iv", "v"}
 
 
 # ------------------------------
@@ -51,6 +64,32 @@ def _display_name(
 ) -> str:
     parts = [p for p in [prefix, first, middle, last, suffix] if p]
     return " ".join(parts)
+
+
+def _reorder_leaked_suffix(
+    prefix: Optional[str],
+    first: Optional[str],
+    middle: Optional[str],
+    last: Optional[str],
+    suffix: Optional[str],
+) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
+    """Move a suffix token that leaked into the prefix/first column to the suffix slot.
+
+    A mis-mapped source column once produced display names like "Jr Morez
+    Johnson" (and the mangled slug ``jr-morez-johnson``). If ``prefix`` or
+    ``first`` is itself a recognized suffix token, relocate it to ``suffix`` so
+    the created record's display name and slug are well-formed.
+    """
+    for value in (prefix, first):
+        if value and value.strip().rstrip(".").lower() in _SUFFIX_TOKENS:
+            leaked = value.strip()
+            if prefix and prefix.strip().rstrip(".").lower() in _SUFFIX_TOKENS:
+                prefix = None
+            else:
+                first = None
+            suffix = suffix or leaked
+            break
+    return prefix, first, middle, last, suffix
 
 
 async def get_or_create_season(session: AsyncSession, code: str) -> Season:
@@ -89,18 +128,6 @@ async def find_player_by_external(
     return res.scalar_one_or_none()
 
 
-async def find_player_by_alias(
-    session: AsyncSession, full_name: str
-) -> Optional[PlayerMaster]:
-    stmt = (
-        select(PlayerMaster)
-        .join(PlayerAlias, PlayerAlias.player_id == PlayerMaster.id)
-        .where(PlayerAlias.full_name == full_name)
-    )
-    res = await session.execute(stmt)
-    return res.scalar_one_or_none()
-
-
 async def get_or_create_player(
     session: AsyncSession,
     prefix: Optional[str],
@@ -111,42 +138,104 @@ async def get_or_create_player(
     *,
     nba_stats_player_id: Optional[str] = None,
     raw_player_name: Optional[str] = None,
-) -> PlayerMaster:
-    # 1) Try external id linkage
+    name_lookup: Optional[object] = None,
+) -> Optional[PlayerMaster]:
+    """Resolve a combine row to an existing player, or create one if genuinely new.
+
+    Matching order:
+      1. ``nba_stats`` external id (most reliable).
+      2. Normalized name match via the shared, suffix- and punctuation-aware
+         matcher (:func:`find_existing_player`). This is what prevents
+         re-creating a duplicate of a player that already exists under a
+         suffix/punctuation variant (e.g. "Darius Acuff Jr." vs "Darius Acuff").
+      3. Create a new ``PlayerMaster`` only when no existing player matched.
+
+    Returns ``None`` (and logs) when the name is **ambiguous** (matches more
+    than one player): minting would add a duplicate, so the row is skipped for
+    manual review instead — per the project's "ambiguous → never guess" rule.
+
+    Args:
+        session: Async database session; the caller owns the transaction.
+        prefix: Name prefix from the source row (e.g. a title), if any.
+        first: First-name field from the source row.
+        middle: Middle-name field from the source row.
+        last: Last-name field from the source row.
+        suffix: Suffix field from the source row (e.g. "Jr.").
+        nba_stats_player_id: NBA Stats external id, used for the most reliable
+            match when present.
+        raw_player_name: The source's full name string; preferred over the
+            individual name fields for matching and display.
+        name_lookup: Optional prebuilt lookup (from
+            :func:`build_player_name_lookup`) for batch imports; newly created
+            players are registered back into it so later rows in the same batch
+            match them.
+
+    Returns:
+        The matched or newly created ``PlayerMaster``, or ``None`` when the row
+        is skipped (ambiguous name or no usable name).
+    """
+    # 1) Try external id linkage.
     if nba_stats_player_id:
         pm = await find_player_by_external(
             session, system="nba_stats", external_id=str(nba_stats_player_id)
         )
         if pm:
             return pm
-    # 2) Try alias match
-    alias = _display_name(prefix, first, middle, last, suffix)
-    if alias:
-        pm2 = await find_player_by_alias(session, alias)
-        if pm2:
-            return pm2
-    # 3) Create new player
+
+    # 2) Normalized name match (suffix/punctuation-insensitive, ambiguity-aware).
+    full_name = (
+        raw_player_name or _display_name(prefix, first, middle, last, suffix) or ""
+    ).strip()
+    if full_name:
+        match, ambiguous = await find_existing_player(
+            session,
+            full_name,
+            lookup=name_lookup,  # type: ignore[arg-type]
+        )
+        if match is not None:
+            existing = await session.get(PlayerMaster, match.player_id)
+            if existing is not None:
+                return existing
+        if ambiguous:
+            logger.warning(
+                "combine.ingest.ambiguous_name name=%r — skipping row to avoid "
+                "creating a duplicate; resolve manually",
+                full_name,
+            )
+            return None
+
+    # 3) Create a new player. Re-parse the full name (and relocate any leaked
+    #    suffix) so the display name and slug are well-formed regardless of how
+    #    the source columns were mapped.
+    prefix, first, middle, last, suffix = _reorder_leaked_suffix(
+        prefix, first, middle, last, suffix
+    )
+    display_name = full_name or _display_name(prefix, first, middle, last, suffix)
+    if not display_name:
+        logger.warning("combine.ingest.no_name — skipping row with no usable name")
+        return None
+    parsed = parse_player_name(display_name)
     pm3 = PlayerMaster(
         prefix=prefix,
-        first_name=first,
-        middle_name=middle,
-        last_name=last,
-        suffix=suffix,
-        display_name=alias or raw_player_name,
+        first_name=parsed.first_name or first,
+        middle_name=parsed.middle_name or middle,
+        last_name=parsed.last_name or last,
+        suffix=parsed.suffix or suffix,
+        display_name=display_name,
     )
     session.add(pm3)
     await session.flush()
     # seed alias
-    if alias:
+    if display_name:
         session.add(
             PlayerAlias(
                 player_id=pm3.id,
-                full_name=alias,
+                full_name=display_name,
                 prefix=prefix,
-                first_name=first,
-                middle_name=middle,
-                last_name=last,
-                suffix=suffix,
+                first_name=parsed.first_name or first,
+                middle_name=parsed.middle_name or middle,
+                last_name=parsed.last_name or last,
+                suffix=parsed.suffix or suffix,
                 context="scraper",
             )
         )
@@ -159,6 +248,9 @@ async def get_or_create_player(
                 external_id=str(nba_stats_player_id),
             )
         )
+    # Keep a batch lookup consistent so later rows match this new player.
+    if name_lookup is not None and pm3.id is not None:
+        register_player_in_lookup(name_lookup, pm3.id, display_name)  # type: ignore[arg-type]
     return pm3
 
 
@@ -218,6 +310,7 @@ def _to_opt_int(v: Optional[str]) -> Optional[int]:
 
 async def ingest_anthro(session: AsyncSession, rows: List[Dict[str, str]]) -> int:
     count = 0
+    name_lookup = await build_player_name_lookup(session)
     for row in rows:
         season_code = row.get("season") or ""
         season = await get_or_create_season(session, season_code)
@@ -231,7 +324,10 @@ async def ingest_anthro(session: AsyncSession, rows: List[Dict[str, str]]) -> in
             suffix=row.get("suffix"),
             nba_stats_player_id=row.get("player_id") or row.get("person_id"),
             raw_player_name=row.get("player_name"),
+            name_lookup=name_lookup,
         )
+        if pm is None:
+            continue
 
         stmt = select(CombineAnthro).where(
             and_(CombineAnthro.player_id == pm.id, CombineAnthro.season_id == season.id)
@@ -268,6 +364,7 @@ async def ingest_anthro(session: AsyncSession, rows: List[Dict[str, str]]) -> in
 
 async def ingest_agility(session: AsyncSession, rows: List[Dict[str, str]]) -> int:
     count = 0
+    name_lookup = await build_player_name_lookup(session)
     for row in rows:
         season_code = row.get("season") or ""
         season = await get_or_create_season(session, season_code)
@@ -281,7 +378,10 @@ async def ingest_agility(session: AsyncSession, rows: List[Dict[str, str]]) -> i
             suffix=row.get("suffix"),
             nba_stats_player_id=row.get("player_id") or row.get("person_id"),
             raw_player_name=row.get("player_name"),
+            name_lookup=name_lookup,
         )
+        if pm is None:
+            continue
 
         stmt = select(CombineAgility).where(
             and_(
@@ -329,6 +429,7 @@ SHOOTING_MAP: List[Tuple[str, str]] = [
 
 async def ingest_shooting(session: AsyncSession, rows: List[Dict[str, str]]) -> int:
     count = 0
+    name_lookup = await build_player_name_lookup(session)
     for row in rows:
         season_code = row.get("season") or ""
         if not season_code:
@@ -343,7 +444,10 @@ async def ingest_shooting(session: AsyncSession, rows: List[Dict[str, str]]) -> 
             suffix=row.get("suffix"),
             nba_stats_player_id=row.get("player_id") or row.get("person_id"),
             raw_player_name=row.get("player_name"),
+            name_lookup=name_lookup,
         )
+        if pm is None:
+            continue
         raw_position, position_fine, position_parents = _position_triplet(
             row.get("pos")
         )
