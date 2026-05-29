@@ -300,6 +300,11 @@ async def get_or_create_player(
         logger.warning("combine.ingest.no_name — skipping row with no usable name")
         return None
     parsed = parse_player_name(display_name)
+    # The name string was normalized above, but a suffix token can still sit in
+    # the structured prefix column. Drop it so we don't persist prefix='Jr'
+    # alongside the parsed suffix='Jr.'.
+    if prefix and prefix.strip(".").lower() in _SUFFIX_TOKENS:
+        prefix = None
     pm3 = PlayerMaster(
         prefix=prefix,
         first_name=parsed.first_name or first,

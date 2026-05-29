@@ -258,6 +258,29 @@ class TestGetOrCreatePlayerNaming:
         assert created.last_name == "Johnson"
 
     @pytest.mark.asyncio
+    async def test_leaked_suffix_in_prefix_is_not_persisted(self) -> None:
+        """A suffix token in the `prefix` column is dropped, not stored.
+
+        Otherwise the record would carry prefix='Jr' alongside suffix='Jr.'.
+        """
+        session = _FakeSession()
+        empty_lookup = _lookup_from_rows([], [])
+        created = await get_or_create_player(
+            cast(AsyncSession, session),
+            "Jr",  # prefix  (the leaked suffix token)
+            "Morez",  # first
+            None,
+            "Johnson",  # last
+            None,
+            raw_player_name=None,
+            name_lookup=empty_lookup,
+        )
+        assert created is not None
+        assert created.display_name == "Morez Johnson Jr"
+        assert created.prefix is None
+        assert created.suffix == "Jr."
+
+    @pytest.mark.asyncio
     async def test_name_match_persists_external_id(self) -> None:
         """Linking a row to an existing player by name records its external id.
 
