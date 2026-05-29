@@ -161,15 +161,34 @@ class TestNormalizeLeadingSuffix:
         assert _normalize_leading_suffix("Jr Johnson") == "Jr Johnson"
 
 
-class _FakeSession:
-    """Minimal async-session stub for the get_or_create_player create path.
+class _EmptyResult:
+    """A SQLAlchemy-result stand-in that reports no rows for any query."""
 
-    Only ``add``/``flush`` are exercised when no match and no external id are
-    supplied (find_existing_player resolves against the in-memory lookup).
+    def scalar_one_or_none(self) -> None:
+        return None
+
+    def first(self) -> None:
+        return None
+
+    def scalars(self) -> "_EmptyResult":
+        return self
+
+    def all(self) -> list:
+        return []
+
+
+class _FakeSession:
+    """Minimal async-session stub for get_or_create_player.
+
+    ``add``/``flush`` cover the create path. ``get`` returns a preset matched
+    player and ``execute`` reports no rows, which together exercise the
+    name-match link path (external lookup misses, no conflicting id, no existing
+    external id to upsert).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, matched_player: object = None) -> None:
         self.added: list[object] = []
+        self._matched_player = matched_player
 
     def add(self, obj: object) -> None:
         self.added.append(obj)
@@ -178,6 +197,12 @@ class _FakeSession:
 
     async def flush(self) -> None:
         return None
+
+    async def get(self, model: object, pk: object) -> object:
+        return self._matched_player
+
+    async def execute(self, *args: object, **kwargs: object) -> _EmptyResult:
+        return _EmptyResult()
 
 
 class TestGetOrCreatePlayerNaming:
@@ -231,3 +256,33 @@ class TestGetOrCreatePlayerNaming:
         assert created is not None
         assert created.display_name == "Morez Johnson Jr"
         assert created.last_name == "Johnson"
+
+    @pytest.mark.asyncio
+    async def test_name_match_persists_external_id(self) -> None:
+        """Linking a row to an existing player by name records its external id.
+
+        So a later find_player_by_external resolves directly instead of relying
+        on the name match again.
+        """
+        from app.schemas.player_external_ids import PlayerExternalId
+
+        canonical = PlayerMaster(id=5390, display_name="AJ Dybantsa")
+        session = _FakeSession(matched_player=canonical)
+        lookup = _lookup_from_rows([(5390, "AJ Dybantsa")], [])
+        result = await get_or_create_player(
+            cast(AsyncSession, session),
+            None,
+            None,
+            None,
+            None,
+            None,
+            nba_stats_player_id="1641710",
+            raw_player_name="A.J. Dybantsa",  # punctuation variant -> name match
+            name_lookup=lookup,
+        )
+        assert result is canonical  # linked, not duplicated
+        seeded = [o for o in session.added if isinstance(o, PlayerExternalId)]
+        assert len(seeded) == 1
+        assert seeded[0].player_id == 5390
+        assert seeded[0].external_id == "1641710"
+        assert seeded[0].system == "nba_stats"

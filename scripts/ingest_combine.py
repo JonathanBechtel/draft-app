@@ -158,6 +158,38 @@ async def _player_external_id_conflicts(
     return _external_id_conflict(list(rows), external_id)
 
 
+async def _ensure_external_id(
+    session: AsyncSession,
+    *,
+    player_id: int,
+    system: str,
+    external_id: str,
+) -> None:
+    """Attach ``external_id`` to a player if it isn't already recorded.
+
+    Called when a combine row links to a player by name rather than by id, so
+    the canonical record gains the source id and later ``find_player_by_external``
+    lookups resolve directly instead of falling back to name matching.
+    """
+    already = (
+        await session.execute(
+            select(PlayerExternalId.id).where(
+                and_(
+                    PlayerExternalId.player_id == player_id,
+                    PlayerExternalId.system == system,
+                    PlayerExternalId.external_id == external_id,
+                )
+            )
+        )
+    ).first()
+    if already is None:
+        session.add(
+            PlayerExternalId(
+                player_id=player_id, system=system, external_id=external_id
+            )
+        )
+
+
 async def get_or_create_player(
     session: AsyncSession,
     prefix: Optional[str],
@@ -242,6 +274,16 @@ async def get_or_create_player(
                 system="nba_stats",
                 external_id=str(nba_stats_player_id) if nba_stats_player_id else None,
             ):
+                # Persist the row's external id onto the name-matched player so
+                # future external-id lookups resolve directly (and don't risk a
+                # duplicate if the source name later changes).
+                if nba_stats_player_id:
+                    await _ensure_external_id(
+                        session,
+                        player_id=match.player_id,
+                        system="nba_stats",
+                        external_id=str(nba_stats_player_id),
+                    )
                 return existing
         elif ambiguous:
             logger.warning(
