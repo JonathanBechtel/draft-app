@@ -17,11 +17,12 @@ from typing import Optional, cast
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.players_master import PlayerMaster
 from app.services.player_mention_service import (
     _lookup_from_rows,
     find_existing_player,
 )
-from scripts.ingest_combine import _reorder_leaked_suffix
+from scripts.ingest_combine import _reorder_leaked_suffix, get_or_create_player
 
 
 def _lookup(
@@ -147,3 +148,51 @@ class TestReorderLeakedSuffix:
             "Carter",
             None,
         )
+
+
+class _FakeSession:
+    """Minimal async-session stub for the get_or_create_player create path.
+
+    Only ``add``/``flush`` are exercised when no match and no external id are
+    supplied (find_existing_player resolves against the in-memory lookup).
+    """
+
+    def __init__(self) -> None:
+        self.added: list[object] = []
+
+    def add(self, obj: object) -> None:
+        self.added.append(obj)
+        if isinstance(obj, PlayerMaster) and obj.id is None:
+            obj.id = 9999  # stand in for the DB-assigned id
+
+    async def flush(self) -> None:
+        return None
+
+
+class TestGetOrCreatePlayerNaming:
+    @pytest.mark.asyncio
+    async def test_leaked_suffix_without_raw_name_creates_clean_record(self) -> None:
+        """A suffix leaked into `first` (no raw_player_name) creates a clean name.
+
+        Regression for the bug where the display name was captured before the
+        leaked suffix was relocated, so a new record was minted as
+        "Jr Morez Johnson" (mangling the display name + slug).
+        """
+        session = _FakeSession()
+        empty_lookup = _lookup_from_rows([], [])  # nothing matches -> create path
+        created = await get_or_create_player(
+            cast(AsyncSession, session),
+            None,  # prefix
+            "Jr",  # first  (the leaked suffix token)
+            "Morez",  # middle
+            "Johnson",  # last
+            None,  # suffix
+            raw_player_name=None,
+            name_lookup=empty_lookup,
+        )
+        assert created is not None
+        # Clean, suffix-last name — NOT the mangled "Jr Morez Johnson".
+        assert created.display_name == "Morez Johnson Jr"
+        assert created.suffix == "Jr."  # canonicalized by parse_player_name
+        assert created.first_name == "Morez"
+        assert created.last_name == "Johnson"

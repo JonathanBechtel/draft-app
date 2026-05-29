@@ -174,6 +174,14 @@ async def get_or_create_player(
         The matched or newly created ``PlayerMaster``, or ``None`` when the row
         is skipped (ambiguous name or no usable name).
     """
+    # Relocate a suffix that leaked into the prefix/first source column up front
+    # so BOTH the name match and the created record use well-formed fields — a
+    # mangled "Jr Morez Johnson" would otherwise miss the canonical
+    # "Morez Johnson Jr." and create a duplicate with a mangled slug.
+    prefix, first, middle, last, suffix = _reorder_leaked_suffix(
+        prefix, first, middle, last, suffix
+    )
+
     # 1) Try external id linkage.
     if nba_stats_player_id:
         pm = await find_player_by_external(
@@ -204,12 +212,8 @@ async def get_or_create_player(
             )
             return None
 
-    # 3) Create a new player. Re-parse the full name (and relocate any leaked
-    #    suffix) so the display name and slug are well-formed regardless of how
-    #    the source columns were mapped.
-    prefix, first, middle, last, suffix = _reorder_leaked_suffix(
-        prefix, first, middle, last, suffix
-    )
+    # 3) Create a new player. ``full_name`` was built from the already-corrected
+    #    fields above, so the display name, alias, and slug are well-formed.
     display_name = full_name or _display_name(prefix, first, middle, last, suffix)
     if not display_name:
         logger.warning("combine.ingest.no_name — skipping row with no usable name")
