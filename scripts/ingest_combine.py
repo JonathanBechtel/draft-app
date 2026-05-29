@@ -66,30 +66,21 @@ def _display_name(
     return " ".join(parts)
 
 
-def _reorder_leaked_suffix(
-    prefix: Optional[str],
-    first: Optional[str],
-    middle: Optional[str],
-    last: Optional[str],
-    suffix: Optional[str],
-) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
-    """Move a suffix token that leaked into the prefix/first column to the suffix slot.
+def _normalize_leading_suffix(name: str) -> str:
+    """Move a leading suffix token to the end of a full-name string.
 
-    A mis-mapped source column once produced display names like "Jr Morez
-    Johnson" (and the mangled slug ``jr-morez-johnson``). If ``prefix`` or
-    ``first`` is itself a recognized suffix token, relocate it to ``suffix`` so
-    the created record's display name and slug are well-formed.
+    A mis-mapped source produced suffix-first names like "Jr Morez Johnson"
+    (which then drove the mangled slug ``jr-morez-johnson`` and missed the
+    canonical "Morez Johnson Jr."). Normalizing the *name string* — rather than
+    the structured fields — fixes it regardless of whether the mangled value
+    came from ``player_name`` or the split columns, since this single value
+    drives both matching and the created record. Only fires for 3+ tokens so a
+    two-word name is never reordered. Returns ``name`` unchanged otherwise.
     """
-    for value in (prefix, first):
-        if value and value.strip().rstrip(".").lower() in _SUFFIX_TOKENS:
-            leaked = value.strip()
-            if prefix and prefix.strip().rstrip(".").lower() in _SUFFIX_TOKENS:
-                prefix = None
-            else:
-                first = None
-            suffix = suffix or leaked
-            break
-    return prefix, first, middle, last, suffix
+    tokens = name.split()
+    if len(tokens) >= 3 and tokens[0].strip(".").lower() in _SUFFIX_TOKENS:
+        return " ".join(tokens[1:] + [tokens[0]])
+    return name
 
 
 async def get_or_create_season(session: AsyncSession, code: str) -> Season:
@@ -213,14 +204,6 @@ async def get_or_create_player(
         The matched or newly created ``PlayerMaster``, or ``None`` when the row
         is skipped (ambiguous name or no usable name).
     """
-    # Relocate a suffix that leaked into the prefix/first source column up front
-    # so BOTH the name match and the created record use well-formed fields — a
-    # mangled "Jr Morez Johnson" would otherwise miss the canonical
-    # "Morez Johnson Jr." and create a duplicate with a mangled slug.
-    prefix, first, middle, last, suffix = _reorder_leaked_suffix(
-        prefix, first, middle, last, suffix
-    )
-
     # 1) Try external id linkage.
     if nba_stats_player_id:
         pm = await find_player_by_external(
@@ -230,9 +213,14 @@ async def get_or_create_player(
             return pm
 
     # 2) Normalized name match (suffix/punctuation-insensitive, ambiguity-aware).
-    full_name = (
-        raw_player_name or _display_name(prefix, first, middle, last, suffix) or ""
-    ).strip()
+    #    Normalize a leaked leading suffix on the name string itself so a mangled
+    #    "Jr Morez Johnson" (from either player_name or the split columns) becomes
+    #    "Morez Johnson Jr" for both matching and the created record.
+    full_name = _normalize_leading_suffix(
+        (
+            raw_player_name or _display_name(prefix, first, middle, last, suffix) or ""
+        ).strip()
+    )
     if full_name:
         match, ambiguous = await find_existing_player(
             session,

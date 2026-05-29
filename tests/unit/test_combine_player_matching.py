@@ -24,7 +24,7 @@ from app.services.player_mention_service import (
 )
 from scripts.ingest_combine import (
     _external_id_conflict,
-    _reorder_leaked_suffix,
+    _normalize_leading_suffix,
     get_or_create_player,
 )
 
@@ -138,43 +138,27 @@ class TestExternalIdConflict:
         assert _external_id_conflict(["1641722", "1629999"], "1641722") is True
 
 
-class TestReorderLeakedSuffix:
-    def test_relocates_suffix_leaked_into_first(self) -> None:
-        """A suffix token that landed in the first-name slot moves to suffix."""
-        prefix, first, middle, last, suffix = _reorder_leaked_suffix(
-            None, "Jr.", None, "Morez Johnson", None
-        )
-        assert suffix == "Jr."
-        assert first is None
-        assert last == "Morez Johnson"
+class TestNormalizeLeadingSuffix:
+    def test_moves_leading_suffix_to_end(self) -> None:
+        """A suffix-first name string is reordered to suffix-last."""
+        assert _normalize_leading_suffix("Jr Morez Johnson") == "Morez Johnson Jr"
 
-    def test_relocates_suffix_leaked_into_prefix(self) -> None:
-        """A suffix token in the prefix slot moves to suffix."""
-        prefix, first, middle, last, suffix = _reorder_leaked_suffix(
-            "II", "Robert", None, "Woodard", None
-        )
-        assert suffix == "II"
-        assert prefix is None
+    def test_handles_suffix_with_period(self) -> None:
+        """A leading 'Jr.' (with period) is still recognized and moved."""
+        assert _normalize_leading_suffix("Jr. Morez Johnson") == "Morez Johnson Jr."
 
-    def test_leaves_well_formed_name_untouched(self) -> None:
-        """A normal name with a real suffix is unchanged."""
-        assert _reorder_leaked_suffix(None, "Morez", None, "Johnson", "Jr") == (
-            None,
-            "Morez",
-            None,
-            "Johnson",
-            "Jr",
-        )
+    def test_handles_roman_numeral_suffix(self) -> None:
+        """A leading roman-numeral suffix moves to the end."""
+        assert _normalize_leading_suffix("II Robert Woodard") == "Robert Woodard II"
 
-    def test_does_not_treat_real_first_name_as_suffix(self) -> None:
-        """A first name that is not a suffix token is left in place."""
-        assert _reorder_leaked_suffix(None, "Vince", None, "Carter", None) == (
-            None,
-            "Vince",
-            None,
-            "Carter",
-            None,
-        )
+    def test_well_formed_name_unchanged(self) -> None:
+        """A normal suffix-last name is returned unchanged."""
+        assert _normalize_leading_suffix("Morez Johnson Jr") == "Morez Johnson Jr"
+        assert _normalize_leading_suffix("Darius Acuff") == "Darius Acuff"
+
+    def test_two_token_name_never_reordered(self) -> None:
+        """A two-token name is never reordered (guards short ambiguous names)."""
+        assert _normalize_leading_suffix("Jr Johnson") == "Jr Johnson"
 
 
 class _FakeSession:
@@ -222,4 +206,28 @@ class TestGetOrCreatePlayerNaming:
         assert created.display_name == "Morez Johnson Jr"
         assert created.suffix == "Jr."  # canonicalized by parse_player_name
         assert created.first_name == "Morez"
+        assert created.last_name == "Johnson"
+
+    @pytest.mark.asyncio
+    async def test_mangled_raw_player_name_creates_clean_record(self) -> None:
+        """A suffix-first `raw_player_name` is normalized before match + create.
+
+        Regression for the case where `full_name` preferred the mangled
+        `player_name` column, bypassing the field-level fix and recreating the
+        "Jr Morez Johnson" duplicate.
+        """
+        session = _FakeSession()
+        empty_lookup = _lookup_from_rows([], [])
+        created = await get_or_create_player(
+            cast(AsyncSession, session),
+            None,
+            None,
+            None,
+            None,
+            None,
+            raw_player_name="Jr Morez Johnson",  # mangled source player_name
+            name_lookup=empty_lookup,
+        )
+        assert created is not None
+        assert created.display_name == "Morez Johnson Jr"
         assert created.last_name == "Johnson"
