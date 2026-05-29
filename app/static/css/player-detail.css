@@ -2125,14 +2125,51 @@
   border-bottom: none;
 }
 
-.consensus-sources__row:hover {
+/* Pinstripe: alternating row shade for texture + scan-ability. */
+.consensus-sources__row:nth-child(even) {
   background: var(--color-slate-50);
+}
+
+.consensus-sources__row:hover {
+  background: rgba(245, 158, 11, 0.08);
 }
 
 .consensus-sources__source {
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   color: var(--color-slate-800);
+}
+
+/* Source name links out to the mock article it was extracted from. Styled to
+   match the retro-analytics palette (amber) rather than a default browser link:
+   dark label with a faint amber underline that fills in on hover. */
+.consensus-sources__link {
+  color: var(--color-slate-800);
+  text-decoration: none;
+  font-weight: 600;
+  border-bottom: 1.5px solid rgba(245, 158, 11, 0.4);
+  transition: color var(--transition-speed), border-color var(--transition-speed);
+}
+
+.consensus-sources__link:hover,
+.consensus-sources__link:focus-visible {
+  color: var(--color-accent-amber);
+  border-bottom-color: var(--color-accent-amber);
+}
+
+.consensus-sources__ext {
+  display: inline-block;
+  margin-left: 0.3rem;
+  font-size: 0.72em;
+  font-weight: 700;
+  color: var(--color-accent-amber);
+  vertical-align: baseline;
+  transition: transform var(--transition-speed);
+}
+
+.consensus-sources__link:hover .consensus-sources__ext,
+.consensus-sources__link:focus-visible .consensus-sources__ext {
+  transform: translate(1px, -1px);
 }
 
 .consensus-sources__rank {

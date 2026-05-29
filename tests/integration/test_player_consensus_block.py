@@ -19,10 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.boards import Board, BoardEntry, BoardStatus
 from app.schemas.consensus import ConsensusTrigger
+from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.players_master import PlayerMaster
 from app.services import consensus_service as svc
 from app.services import school_logo_service
+from app.services.consensus_read_service import get_player_consensus_detail
 from tests.integration.conftest import make_player
 
 
@@ -57,17 +59,41 @@ async def _make_source(db: AsyncSession, name: str) -> NewsSource:
     return src
 
 
+async def _make_news_item(
+    db: AsyncSession, *, source: NewsSource, title: str, url: str
+) -> int:
+    """Insert a NewsItem and return its id (the source article for a board)."""
+    assert source.id is not None
+    item = NewsItem(
+        source_id=source.id,
+        external_id=url,
+        title=title,
+        url=url,
+        published_at=_now() - timedelta(hours=25),
+    )
+    db.add(item)
+    await db.flush()
+    assert item.id is not None
+    return item.id
+
+
 async def _make_board(
     db: AsyncSession,
     *,
     source: NewsSource,
     draft_year: int,
     entries: list[tuple[PlayerMaster, int]],
+    news_item_id: int | None = None,
 ) -> Board:
-    """Insert an APPROVED big-board with the given entries."""
+    """Insert an APPROVED big-board with the given entries.
+
+    Pass ``news_item_id`` to back the board with a real source article (so the
+    per-source breakdown can link out to it); omit it for a synthetic board.
+    """
     assert source.id is not None
     board = Board(
         news_source_id=source.id,
+        news_item_id=news_item_id,
         draft_year=draft_year,
         published_at=_now() - timedelta(hours=24),
         size=len(entries),
@@ -216,3 +242,58 @@ async def test_player_without_consensus_omits_section(
 
     # window.consensusHistory injected as null.
     assert "consensusHistory = null" in html
+
+
+@pytest.mark.asyncio
+async def test_source_breakdown_links_to_mock_article(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+    board_player: PlayerMaster,
+) -> None:
+    """A source whose board has a NewsItem exposes the article; synthetic does not.
+
+    Two sources clear MIN_SOURCES=2. One board is backed by a real NewsItem
+    (article-linkable); the other has no ``news_item_id`` (synthetic). The
+    per-source breakdown should carry the article URL/title only for the former,
+    and the player page should render the article URL as a link.
+    """
+    assert board_player.id is not None
+    article_url = "https://example.substack.com/p/2026-big-board"
+    article_title = "2026 NBA Draft Big Board"
+
+    linked_source = await _make_source(db_session, "linked-source")
+    plain_source = await _make_source(db_session, "plain-source")
+    news_item_id = await _make_news_item(
+        db_session, source=linked_source, title=article_title, url=article_url
+    )
+    entries = [(board_player, 4)]
+    await _make_board(
+        db_session,
+        source=linked_source,
+        draft_year=2026,
+        entries=entries,
+        news_item_id=news_item_id,
+    )
+    await _make_board(db_session, source=plain_source, draft_year=2026, entries=entries)
+    await db_session.commit()
+    await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+    detail = await get_player_consensus_detail(
+        db_session, player_id=board_player.id, draft_year=2026
+    )
+    assert detail is not None
+    by_source = {s.source_name: s for s in detail.source_ranks}
+    assert by_source["linked-source"].article_url == article_url
+    assert by_source["linked-source"].article_title == article_title
+    # The synthetic board contributes a rank but no linkable article.
+    assert by_source["plain-source"].article_url is None
+    assert by_source["plain-source"].article_title is None
+
+    # The page renders the article URL as a link.
+    assert board_player.slug is not None
+    resp = await app_client.get(f"/players/{board_player.slug}")
+    assert resp.status_code == 200
+    assert article_url in resp.text
