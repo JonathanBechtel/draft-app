@@ -66,30 +66,21 @@ def _display_name(
     return " ".join(parts)
 
 
-def _reorder_leaked_suffix(
-    prefix: Optional[str],
-    first: Optional[str],
-    middle: Optional[str],
-    last: Optional[str],
-    suffix: Optional[str],
-) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
-    """Move a suffix token that leaked into the prefix/first column to the suffix slot.
+def _normalize_leading_suffix(name: str) -> str:
+    """Move a leading suffix token to the end of a full-name string.
 
-    A mis-mapped source column once produced display names like "Jr Morez
-    Johnson" (and the mangled slug ``jr-morez-johnson``). If ``prefix`` or
-    ``first`` is itself a recognized suffix token, relocate it to ``suffix`` so
-    the created record's display name and slug are well-formed.
+    A mis-mapped source produced suffix-first names like "Jr Morez Johnson"
+    (which then drove the mangled slug ``jr-morez-johnson`` and missed the
+    canonical "Morez Johnson Jr."). Normalizing the *name string* — rather than
+    the structured fields — fixes it regardless of whether the mangled value
+    came from ``player_name`` or the split columns, since this single value
+    drives both matching and the created record. Only fires for 3+ tokens so a
+    two-word name is never reordered. Returns ``name`` unchanged otherwise.
     """
-    for value in (prefix, first):
-        if value and value.strip().rstrip(".").lower() in _SUFFIX_TOKENS:
-            leaked = value.strip()
-            if prefix and prefix.strip().rstrip(".").lower() in _SUFFIX_TOKENS:
-                prefix = None
-            else:
-                first = None
-            suffix = suffix or leaked
-            break
-    return prefix, first, middle, last, suffix
+    tokens = name.split()
+    if len(tokens) >= 3 and tokens[0].strip(".").lower() in _SUFFIX_TOKENS:
+        return " ".join(tokens[1:] + [tokens[0]])
+    return name
 
 
 async def get_or_create_season(session: AsyncSession, code: str) -> Season:
@@ -126,6 +117,77 @@ async def find_player_by_external(
     )
     res = await session.execute(stmt)
     return res.scalar_one_or_none()
+
+
+def _external_id_conflict(existing_ids: List[str], external_id: Optional[str]) -> bool:
+    """Return whether ``external_id`` conflicts with a player's existing ids.
+
+    A conflict means the player already carries an id of the same system that
+    differs from ``external_id`` — a signal the row is a *distinct* identity, so
+    a relaxed name match should not merge them. Pure for easy testing.
+    """
+    if external_id is None:
+        return False
+    return any(eid != external_id for eid in existing_ids)
+
+
+async def _player_external_id_conflicts(
+    session: AsyncSession,
+    *,
+    player_id: int,
+    system: str,
+    external_id: Optional[str],
+) -> bool:
+    """Whether the matched player already has a *different* id of ``system``."""
+    if external_id is None:
+        return False
+    rows = (
+        (
+            await session.execute(
+                select(PlayerExternalId.external_id).where(
+                    and_(
+                        PlayerExternalId.player_id == player_id,
+                        PlayerExternalId.system == system,
+                    )
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return _external_id_conflict(list(rows), external_id)
+
+
+async def _ensure_external_id(
+    session: AsyncSession,
+    *,
+    player_id: int,
+    system: str,
+    external_id: str,
+) -> None:
+    """Attach ``external_id`` to a player if it isn't already recorded.
+
+    Called when a combine row links to a player by name rather than by id, so
+    the canonical record gains the source id and later ``find_player_by_external``
+    lookups resolve directly instead of falling back to name matching.
+    """
+    already = (
+        await session.execute(
+            select(PlayerExternalId.id).where(
+                and_(
+                    PlayerExternalId.player_id == player_id,
+                    PlayerExternalId.system == system,
+                    PlayerExternalId.external_id == external_id,
+                )
+            )
+        )
+    ).first()
+    if already is None:
+        session.add(
+            PlayerExternalId(
+                player_id=player_id, system=system, external_id=external_id
+            )
+        )
 
 
 async def get_or_create_player(
@@ -174,14 +236,6 @@ async def get_or_create_player(
         The matched or newly created ``PlayerMaster``, or ``None`` when the row
         is skipped (ambiguous name or no usable name).
     """
-    # Relocate a suffix that leaked into the prefix/first source column up front
-    # so BOTH the name match and the created record use well-formed fields — a
-    # mangled "Jr Morez Johnson" would otherwise miss the canonical
-    # "Morez Johnson Jr." and create a duplicate with a mangled slug.
-    prefix, first, middle, last, suffix = _reorder_leaked_suffix(
-        prefix, first, middle, last, suffix
-    )
-
     # 1) Try external id linkage.
     if nba_stats_player_id:
         pm = await find_player_by_external(
@@ -190,25 +244,48 @@ async def get_or_create_player(
         if pm:
             return pm
 
-    # 2) Normalized name match (ambiguity-aware). When the row supplies an
-    #    NBA Stats id that did NOT link above, that id is a distinct identity
-    #    signal — restrict to exact matches so a suffix-insensitive match can't
-    #    attach e.g. a new "Gary Payton II" to an existing "Gary Payton".
-    full_name = (
-        raw_player_name or _display_name(prefix, first, middle, last, suffix) or ""
-    ).strip()
+    # 2) Normalized name match (suffix/punctuation-insensitive, ambiguity-aware).
+    #    Normalize a leaked leading suffix on the name string itself so a mangled
+    #    "Jr Morez Johnson" (from either player_name or the split columns) becomes
+    #    "Morez Johnson Jr" for both matching and the created record.
+    full_name = _normalize_leading_suffix(
+        (
+            raw_player_name or _display_name(prefix, first, middle, last, suffix) or ""
+        ).strip()
+    )
     if full_name:
         match, ambiguous = await find_existing_player(
             session,
             full_name,
             lookup=name_lookup,  # type: ignore[arg-type]
-            allow_relaxed=nba_stats_player_id is None,
         )
         if match is not None:
             existing = await session.get(PlayerMaster, match.player_id)
-            if existing is not None:
+            # Guard against merging distinct identities: if this row carries an
+            # external id and the matched player already has a *different* id of
+            # the same system, they are not the same person (e.g. a new
+            # "Gary Payton II" vs an existing "Gary Payton"). Fall through to
+            # create a new record. When the matched player has no conflicting id
+            # (the common case — a prospect not yet linked), link as usual so a
+            # suffix variant like "Darius Acuff" still dedups to "Darius Acuff Jr.".
+            if existing is not None and not await _player_external_id_conflicts(
+                session,
+                player_id=match.player_id,
+                system="nba_stats",
+                external_id=str(nba_stats_player_id) if nba_stats_player_id else None,
+            ):
+                # Persist the row's external id onto the name-matched player so
+                # future external-id lookups resolve directly (and don't risk a
+                # duplicate if the source name later changes).
+                if nba_stats_player_id:
+                    await _ensure_external_id(
+                        session,
+                        player_id=match.player_id,
+                        system="nba_stats",
+                        external_id=str(nba_stats_player_id),
+                    )
                 return existing
-        if ambiguous:
+        elif ambiguous:
             logger.warning(
                 "combine.ingest.ambiguous_name name=%r — skipping row to avoid "
                 "creating a duplicate; resolve manually",
@@ -223,6 +300,11 @@ async def get_or_create_player(
         logger.warning("combine.ingest.no_name — skipping row with no usable name")
         return None
     parsed = parse_player_name(display_name)
+    # The name string was normalized above, but a suffix token can still sit in
+    # the structured prefix column. Drop it so we don't persist prefix='Jr'
+    # alongside the parsed suffix='Jr.'.
+    if prefix and prefix.strip(".").lower() in _SUFFIX_TOKENS:
+        prefix = None
     pm3 = PlayerMaster(
         prefix=prefix,
         first_name=parsed.first_name or first,

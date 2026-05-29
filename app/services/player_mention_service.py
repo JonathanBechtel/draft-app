@@ -323,16 +323,8 @@ async def _build_player_name_lookup(db: AsyncSession) -> _PlayerNameLookup:
 def _resolve_from_lookup(
     lookup: _PlayerNameLookup,
     name: str,
-    *,
-    allow_relaxed: bool = True,
 ) -> tuple[Optional[PlayerMatch], bool]:
-    """Resolve a name via normalized exact and (optionally) relaxed lookups.
-
-    When ``allow_relaxed`` is False only the exact (suffix- and
-    middle-initial-sensitive) maps are consulted — callers holding a stronger
-    identity signal (e.g. a distinct external id) use this to avoid a
-    suffix-insensitive match attaching, say, "Gary Payton II" to "Gary Payton".
-    """
+    """Resolve a name via normalized exact and relaxed lookups."""
     exact_key = _normalized_name_key(name)
     relaxed_key = _normalized_name_key(
         name,
@@ -340,17 +332,12 @@ def _resolve_from_lookup(
         ignore_middle_initials=True,
     )
 
-    candidates = [
+    for candidate_lookup, candidate_key in (
         (lookup.display_exact, exact_key),
         (lookup.alias_exact, exact_key),
-    ]
-    if allow_relaxed:
-        candidates += [
-            (lookup.display_relaxed, relaxed_key),
-            (lookup.alias_relaxed, relaxed_key),
-        ]
-
-    for candidate_lookup, candidate_key in candidates:
+        (lookup.display_relaxed, relaxed_key),
+        (lookup.alias_relaxed, relaxed_key),
+    ):
         match, ambiguous = _select_unique_match(candidate_lookup, candidate_key)
         if match is not None:
             return match, False
@@ -595,7 +582,6 @@ async def find_existing_player(
     full_name: str,
     *,
     lookup: Optional[_PlayerNameLookup] = None,
-    allow_relaxed: bool = True,
 ) -> tuple[Optional[PlayerMatch], bool]:
     """Match a name to an existing player **without creating anything**.
 
@@ -616,14 +602,10 @@ async def find_existing_player(
         full_name: The name string to resolve.
         lookup: Optional prebuilt lookup from :func:`build_player_name_lookup`
             for batch resolution; built on demand when omitted.
-        allow_relaxed: When False, only exact (suffix-/middle-initial-sensitive)
-            matches are returned. Callers with a distinct identity signal (e.g.
-            an unlinked external id) pass False so a suffix variant cannot be
-            silently merged onto a different existing player.
     """
     if lookup is None:
         lookup = await _build_player_name_lookup(db)
-    return _resolve_from_lookup(lookup, full_name, allow_relaxed=allow_relaxed)
+    return _resolve_from_lookup(lookup, full_name)
 
 
 async def _create_stub_player(
