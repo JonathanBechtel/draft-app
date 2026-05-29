@@ -142,7 +142,7 @@
           </thead>
           <tbody id="consensusHeroBody">
             {% for row in consensus_rows %}
-            <tr class="consensus-hero__row"
+            <tr class="consensus-hero__row{% if loop.index > consensus_lottery_picks %} consensus-hero__row--overflow{% endif %}"
                 data-player-id="{{ row.player_id }}"
                 data-slug="{{ row.slug or '' }}"
                 tabindex="0"
@@ -239,6 +239,21 @@
           </tbody>
         </table>
       </div>
+      {% if consensus_rows | length > consensus_lottery_picks %}
+      <button type="button"
+              class="consensus-hero__expand"
+              id="consensusHeroExpand"
+              aria-expanded="false"
+              aria-controls="consensusHeroBody"
+              data-more="Show all {{ consensus_rows | length }} picks"
+              data-less="Show top {{ consensus_lottery_picks }}">
+        <span class="consensus-hero__expand-label">Show all {{ consensus_rows | length }} picks</span>
+        <svg class="consensus-hero__expand-chevron" viewBox="0 0 24 24" width="16" height="16"
+             fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      {% endif %}
     </div>
     {% else %}
     <div class="consensus-hero__empty">

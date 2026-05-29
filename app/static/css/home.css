@@ -101,6 +101,57 @@
   background: rgba(245, 158, 11, 0.05);
 }
 
+/* Overflow rows beyond the lottery cut are collapsed until the expander runs.
+   Hidden by default (CSS in <head>, so no flash); revealed when the hero
+   section carries the .is-expanded class set by the expander button. */
+.consensus-hero__row--overflow {
+  display: none;
+}
+
+.consensus-hero.is-expanded .consensus-hero__row--overflow {
+  display: table-row;
+}
+
+/* Show-all / show-top expander button — a distinct amber footer band so it
+   reads as an actionable control against the near-white table. */
+.consensus-hero__expand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.8rem 1rem;
+  border: none;
+  border-top: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-accent-amber-dark, #b45309);
+  transition: background var(--transition-speed), color var(--transition-speed);
+}
+
+.consensus-hero__expand:hover {
+  background: rgba(245, 158, 11, 0.22);
+  color: #92400e;
+}
+
+.consensus-hero__expand:focus-visible {
+  outline: 2px solid var(--color-accent-amber);
+  outline-offset: -2px;
+}
+
+.consensus-hero__expand-chevron {
+  transition: transform 0.2s ease;
+}
+
+.consensus-hero.is-expanded .consensus-hero__expand-chevron {
+  transform: rotate(180deg);
+}
+
 /* Highlight top-3 picks */
 .consensus-hero__row:nth-child(-n+3) .consensus-hero__td--rank {
   color: var(--color-accent-amber);

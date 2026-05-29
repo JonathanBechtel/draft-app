@@ -103,6 +103,10 @@ def _news_item_to_dict(item: NewsItemRead, *, is_sticky: bool = False) -> dict:
 # Draft year for the current cycle.  Update each off-season.
 CONSENSUS_DRAFT_YEAR = 2026
 
+# Number of consensus rows shown before the "show all" expander on the homepage.
+# 14 = the lottery picks; the rest collapse to save vertical real estate.
+CONSENSUS_LOTTERY_PICKS = 14
+
 
 @router.get("/", response_class=HTMLResponse)
 async def home(
@@ -360,6 +364,7 @@ async def home(
             "consensus_rows": consensus_rows,
             "snapshot_computed_at": snapshot_computed_at,
             "draft_year": CONSENSUS_DRAFT_YEAR,
+            "consensus_lottery_picks": CONSENSUS_LOTTERY_PICKS,
             # Supporting panels
             "biggest_movers": biggest_movers,
             "source_spotlight": source_spotlight,
