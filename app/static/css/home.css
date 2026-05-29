@@ -76,6 +76,18 @@
   width: 3rem;
 }
 
+/* Physical-profile columns: position label + height/weight (right-aligned nums) */
+.consensus-hero__th--ht,
+.consensus-hero__th--wt {
+  text-align: right;
+  width: 3.5rem;
+}
+
+.consensus-hero__th--pos {
+  text-align: left;
+  width: 4.25rem;
+}
+
 /* Data rows */
 .consensus-hero__row {
   border-bottom: 1px solid var(--color-slate-100);
@@ -191,9 +203,19 @@
 .consensus-hero__td--avg,
 .consensus-hero__td--high,
 .consensus-hero__td--low,
-.consensus-hero__td--sources {
+.consensus-hero__td--sources,
+.consensus-hero__td--ht,
+.consensus-hero__td--wt {
   text-align: right;
   color: var(--color-slate-600);
+}
+
+.consensus-hero__td--pos {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-slate-700);
+  white-space: nowrap;
 }
 
 .consensus-hero__td--avg {
@@ -287,7 +309,11 @@
   .consensus-hero__th--trend,
   .consensus-hero__td--trend,
   .consensus-hero__th--sources,
-  .consensus-hero__td--sources {
+  .consensus-hero__td--sources,
+  .consensus-hero__th--ht,
+  .consensus-hero__td--ht,
+  .consensus-hero__th--wt,
+  .consensus-hero__td--wt {
     display: none;
   }
 }
@@ -298,7 +324,9 @@
   .consensus-hero__th--age,
   .consensus-hero__td--age,
   .consensus-hero__th--high,
-  .consensus-hero__td--high {
+  .consensus-hero__td--high,
+  .consensus-hero__th--pos,
+  .consensus-hero__td--pos {
     display: none;
   }
 }

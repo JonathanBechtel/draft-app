@@ -133,6 +133,9 @@
               <th class="consensus-hero__th consensus-hero__th--trend">Trend</th>
               <th class="consensus-hero__th consensus-hero__th--player">Player</th>
               <th class="consensus-hero__th consensus-hero__th--school">School</th>
+              <th class="consensus-hero__th consensus-hero__th--pos">Pos</th>
+              <th class="consensus-hero__th consensus-hero__th--ht">Ht</th>
+              <th class="consensus-hero__th consensus-hero__th--wt">Wt</th>
               <th class="consensus-hero__th consensus-hero__th--age">Age</th>
               <th class="consensus-hero__th consensus-hero__th--avg">Avg</th>
               <th class="consensus-hero__th consensus-hero__th--high">High</th>
@@ -218,6 +221,15 @@
                   {% endif %}
                   <span class="consensus-hero__school-name">{{ row.school or "—" }}</span>
                 </div>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--pos">
+                {% if row.position %}{{ row.position }}{% else %}&ndash;{% endif %}
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--ht tabular-nums">
+                {% if row.height %}{{ row.height }}{% else %}&ndash;{% endif %}
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--wt tabular-nums">
+                {% if row.weight is not none %}{{ row.weight }}{% else %}&ndash;{% endif %}
               </td>
               <td class="consensus-hero__td consensus-hero__td--age tabular-nums">
                 {% if row.age is not none %}{{ "%.1f"|format(row.age) }}{% else %}&ndash;{% endif %}
