@@ -30,6 +30,7 @@ from app.schemas.consensus import (
     ConsensusSnapshot,
     SourceAnalytics,
 )
+from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import NewsSource
 from app.schemas.players_master import PlayerMaster
 from app.services.image_assets_service import get_current_image_urls_for_players
@@ -376,10 +377,36 @@ async def get_player_consensus_detail(
             )
             source_map = {s.id: s for s in source_rows if s.id is not None}
 
+            # Resolve the source article (mock/board) each board was extracted
+            # from so the per-source breakdown can link out to it. Synthetic /
+            # legacy boards carry no ``news_item_id`` and stay unlinked.
+            news_item_ids = [
+                b.news_item_id for b in board_rows if b.news_item_id is not None
+            ]
+            article_map: dict[int, NewsItem] = {}
+            if news_item_ids:
+                article_rows = (
+                    (
+                        await db.execute(
+                            select(NewsItem).where(  # type: ignore[call-overload]
+                                NewsItem.id.in_(news_item_ids)  # type: ignore[union-attr]
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                article_map = {a.id: a for a in article_rows if a.id is not None}
+
             for board in board_rows:
                 if board.id is None:
                     continue
                 src = source_map.get(board.news_source_id)
+                article = (
+                    article_map.get(board.news_item_id)
+                    if board.news_item_id is not None
+                    else None
+                )
                 source_ranks.append(
                     SourceRankEntry(
                         news_source_id=board.news_source_id,
@@ -390,6 +417,8 @@ async def get_player_consensus_detail(
                         if src
                         else f"source_{board.news_source_id}",
                         source_rank=bid_to_rank[board.id],
+                        article_url=article.url if article else None,
+                        article_title=article.title if article else None,
                     )
                 )
         source_ranks.sort(key=lambda e: e.source_rank)

@@ -288,7 +288,19 @@
             <tbody>
               {% for src in consensus.sources %}
               <tr class="consensus-sources__row">
-                <td class="consensus-sources__source">{{ src.source_display_name }}</td>
+                <td class="consensus-sources__source">
+                  {% if src.article_url %}
+                  <a class="consensus-sources__link"
+                     href="{{ src.article_url }}"
+                     target="_blank"
+                     rel="noopener noreferrer"
+                     title="{{ src.article_title or 'View the source mock' }}">
+                    {{ src.source_display_name }}<span class="consensus-sources__ext" aria-hidden="true">↗</span>
+                  </a>
+                  {% else %}
+                  {{ src.source_display_name }}
+                  {% endif %}
+                </td>
                 <td class="consensus-sources__rank mono-font">#{{ src.source_rank }}</td>
               </tr>
               {% endfor %}

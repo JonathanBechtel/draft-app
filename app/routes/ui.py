@@ -915,6 +915,8 @@ async def player_detail(
                     {
                         "source_display_name": s.source_display_name,
                         "source_rank": s.source_rank,
+                        "article_url": s.article_url,
+                        "article_title": s.article_title,
                     }
                     for s in consensus_detail.source_ranks
                 ],

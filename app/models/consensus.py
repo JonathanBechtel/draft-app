@@ -50,6 +50,11 @@ class SourceRankEntry(SQLModel):
     source_name: str
     source_display_name: str
     source_rank: int
+    # The source article (mock/board) this rank was extracted from, when the
+    # contributing board was backed by a real NewsItem. ``None`` for synthetic
+    # or non-extracted boards — the UI renders the source name as plain text.
+    article_url: Optional[str] = None
+    article_title: Optional[str] = None
 
 
 class PlayerConsensusDetail(SQLModel):
