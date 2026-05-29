@@ -110,6 +110,24 @@ class TestFindExistingPlayer:
         assert ambiguous is False
         assert match is not None and match.player_id == 42
 
+    @pytest.mark.asyncio
+    async def test_allow_relaxed_false_does_not_match_suffix_variant(self) -> None:
+        """allow_relaxed=False refuses a suffix-variant match (distinct identity).
+
+        A caller holding a distinct external id must not let "Gary Payton II"
+        attach to an existing "Gary Payton" via the relaxed match.
+        """
+        lookup = _lookup([(30, "Gary Payton")])
+        # Default relaxed behavior matches the suffix-less father.
+        m, _ = await find_existing_player(_NO_DB, "Gary Payton II", lookup=lookup)
+        assert m is not None and m.player_id == 30
+        # Exact-only refuses the cross-identity match → caller creates new.
+        m2, amb2 = await find_existing_player(
+            _NO_DB, "Gary Payton II", lookup=lookup, allow_relaxed=False
+        )
+        assert m2 is None
+        assert amb2 is False
+
 
 class TestReorderLeakedSuffix:
     def test_relocates_suffix_leaked_into_first(self) -> None:

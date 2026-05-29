@@ -190,7 +190,10 @@ async def get_or_create_player(
         if pm:
             return pm
 
-    # 2) Normalized name match (suffix/punctuation-insensitive, ambiguity-aware).
+    # 2) Normalized name match (ambiguity-aware). When the row supplies an
+    #    NBA Stats id that did NOT link above, that id is a distinct identity
+    #    signal — restrict to exact matches so a suffix-insensitive match can't
+    #    attach e.g. a new "Gary Payton II" to an existing "Gary Payton".
     full_name = (
         raw_player_name or _display_name(prefix, first, middle, last, suffix) or ""
     ).strip()
@@ -199,6 +202,7 @@ async def get_or_create_player(
             session,
             full_name,
             lookup=name_lookup,  # type: ignore[arg-type]
+            allow_relaxed=nba_stats_player_id is None,
         )
         if match is not None:
             existing = await session.get(PlayerMaster, match.player_id)
