@@ -73,7 +73,11 @@
       {% endif %}
     {% endfor %}
   {% endfor %}
-  {# Sort is handled by service (series is oldest-first); collect unique in order #}
+  {# rank_trajectories is ordered by consensus rank, not time, and players can
+     have different snapshot sets — so collect-in-encounter-order is NOT
+     chronological. Sort globally before capping so the x-axis stays oldest→newest
+     and [-8:] keeps the most RECENT slots. #}
+  {% set all_times = all_times | sort %}
   {# Cap to last 8 time slots #}
   {% set time_slots = all_times[-8:] if all_times | length > 8 else all_times %}
   {% set n_slots = time_slots | length %}
