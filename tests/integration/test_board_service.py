@@ -106,6 +106,84 @@ async def test_create_board_persists_explicit_kind(
 
 
 @pytest.mark.asyncio
+async def test_create_board_persists_mock_draft_with_num_rounds(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    players: list[PlayerMaster],
+) -> None:
+    """A MOCK_DRAFT board persists with kind + num_rounds; picks are entries.
+
+    Under the unified-ranking model a mock draft is just a ranking whose
+    ``position`` is the pick number, so it stores exactly like a big board
+    plus a ``num_rounds`` tag.
+    """
+    assert news_source.id is not None
+    board = await svc.create_board(
+        db_session,
+        kind=BoardKind.MOCK_DRAFT,
+        num_rounds=1,
+        news_source_id=news_source.id,
+        draft_year=2026,
+        published_at=_published_at(),
+        entries=[
+            svc.EntryInput(player_id=players[0].id, position=1),  # type: ignore[arg-type]
+            svc.EntryInput(player_id=players[1].id, position=2),  # type: ignore[arg-type]
+        ],
+    )
+    await db_session.commit()
+
+    refreshed = await db_session.get(Board, board.id)
+    assert refreshed is not None
+    assert refreshed.kind is BoardKind.MOCK_DRAFT
+    assert refreshed.num_rounds == 1
+    assert refreshed.size == 2
+
+
+@pytest.mark.asyncio
+async def test_create_board_rejects_mock_draft_without_num_rounds(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    players: list[PlayerMaster],
+) -> None:
+    """A MOCK_DRAFT without num_rounds is a clean BoardKindMismatchError.
+
+    The service mirrors the ck_boards_kind_num_rounds CheckConstraint so
+    callers get a business error before any flush, not an IntegrityError.
+    """
+    assert news_source.id is not None
+    with pytest.raises(svc.BoardKindMismatchError):
+        await svc.create_board(
+            db_session,
+            kind=BoardKind.MOCK_DRAFT,
+            num_rounds=None,
+            news_source_id=news_source.id,
+            draft_year=2026,
+            published_at=_published_at(),
+            entries=[svc.EntryInput(player_id=players[0].id, position=1)],  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_board_rejects_big_board_with_num_rounds(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    players: list[PlayerMaster],
+) -> None:
+    """A BIG_BOARD must not carry num_rounds — rejected at the service layer."""
+    assert news_source.id is not None
+    with pytest.raises(svc.BoardKindMismatchError):
+        await svc.create_board(
+            db_session,
+            kind=BoardKind.BIG_BOARD,
+            num_rounds=2,
+            news_source_id=news_source.id,
+            draft_year=2026,
+            published_at=_published_at(),
+            entries=[svc.EntryInput(player_id=players[0].id, position=1)],  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.asyncio
 async def test_create_board_rejects_duplicate_rank(
     db_session: AsyncSession,
     news_source: NewsSource,

@@ -150,6 +150,76 @@ async def test_extract_board_creates_pending_with_resolved_players(
     assert all(e.tier == 1 for e in entries)
 
 
+# --- Mock-draft ingestion (unified ranking model) -------------------------
+
+
+@pytest.mark.asyncio
+async def test_extract_board_mock_draft_persists_ranking(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    monkeypatch,
+) -> None:
+    """A MOCK_DRAFT article is ingested as a ranking (position = pick number).
+
+    Confirms the unified-ranking model: the same extraction path runs for
+    kind=MOCK_DRAFT, persists a PENDING board with derived ``num_rounds``,
+    resolves players, and leaves per-pick team fields unset (pick ownership
+    is sourced from the draft-order reference, not the article).
+    """
+    assert news_source.id is not None
+    item = await _make_news_item(
+        db_session,
+        source_id=news_source.id,
+        url="https://example.substack.com/p/2026-mock-draft",
+        external_id="test-mock-1",
+    )
+    item.tag = NewsItemTag.MOCK_DRAFT
+    await db_session.flush()
+
+    flagg = await _make_player(db_session, display_name="Cooper Flagg")
+    harper = await _make_player(db_session, display_name="Dylan Harper")
+
+    # Extraction returns the same shape as a big board: an ordered player
+    # list. For a mock the "rank" is the pick number; no team is captured.
+    _stub_extraction(
+        monkeypatch,
+        ExtractedBoard(
+            draft_year=2026,
+            published_at=datetime(2026, 6, 1),
+            entries=[
+                ExtractedBoardEntry(player_name="Cooper Flagg", rank=1),
+                ExtractedBoardEntry(player_name="Dylan Harper", rank=2),
+            ],
+        ),
+    )
+
+    assert item.id is not None
+    board = await extract_board(
+        db_session,
+        news_item_id=item.id,
+        kind=BoardKind.MOCK_DRAFT,
+        fetcher=_fake_fetcher("1. ATL — Cooper Flagg. 2. WAS — Dylan Harper."),
+    )
+
+    assert board is not None
+    assert board.status == BoardStatus.PENDING
+    assert board.kind == BoardKind.MOCK_DRAFT
+    # Two picks, both inside round one → single-round mock.
+    assert board.num_rounds == 1
+    assert board.size == 2
+
+    entries_stmt = select(BoardEntry).where(BoardEntry.board_id == board.id)
+    result = await db_session.execute(entries_stmt)
+    entries = sorted(result.scalars().all(), key=lambda e: e.position)
+
+    assert [e.player_id for e in entries] == [flagg.id, harper.id]
+    assert [e.position for e in entries] == [1, 2]
+    # Pick ownership is NOT inferred from the article under the unified model.
+    assert all(e.team_id is None for e in entries)
+    assert all(e.round is None for e in entries)
+    assert all(e.trade_note is None for e in entries)
+
+
 # --- Resolution cascade: ALIAS branch -------------------------------------
 
 
@@ -591,26 +661,6 @@ async def test_extract_board_treats_ambiguous_name_as_unresolved(
     assert entries[1].player_id is None
     assert entries[1].resolution_method == ResolutionMethod.UNRESOLVED
     assert entries[1].raw_name == "Justin Edwards"
-
-
-# --- MOCK_DRAFT extraction is intentionally not supported in this iteration
-
-
-@pytest.mark.asyncio
-async def test_extract_board_rejects_mock_draft_kind(
-    db_session: AsyncSession,
-    news_source: NewsSource,
-) -> None:
-    assert news_source.id is not None
-    item = await _make_news_item(db_session, source_id=news_source.id)
-    assert item.id is not None
-
-    with pytest.raises(NotImplementedError):
-        await extract_board(
-            db_session,
-            news_item_id=item.id,
-            kind=BoardKind.MOCK_DRAFT,
-        )
 
 
 # --- Substack API routing through _default_fetcher ------------------------

@@ -163,8 +163,16 @@ async def extract_board(
     Args:
         db: Async session; caller owns commit.
         news_item_id: The article to extract from.
-        kind: Currently only ``BoardKind.BIG_BOARD`` is supported; mock-draft
-            extraction is a follow-up ticket.
+        kind: Provenance label for the ranking — ``BIG_BOARD`` (talent
+            ranking) or ``MOCK_DRAFT`` (projected pick order). Extraction is
+            identical for both: we pull the analyst's ordered prospect list
+            and store ``position`` as rank / pick number. ``kind`` does not
+            change the extraction or the consensus math (the engine pools
+            every approved board by ``position``); it only records what the
+            source published, and drives the calendar-aware presentation
+            label. Mock-draft pick *ownership* (which team picks at each
+            slot) is canonical public data and lives in a separate
+            draft-order reference, never inferred from the article here.
         fetcher: Optional override for the article-fetch step (used in tests
             to substitute canned HTML without touching the network).
         ai_client: Optional override for the Gemini client (used in tests to
@@ -179,12 +187,6 @@ async def extract_board(
             malformed AI response, no resolvable players, etc.).
         PaywallDetectedError: When the fetched page looks paywalled.
     """
-    if kind != BoardKind.BIG_BOARD:
-        raise NotImplementedError(
-            "MOCK_DRAFT extraction is a follow-up ticket; only BIG_BOARD "
-            "extraction is supported in this iteration."
-        )
-
     news_item = await db.get(NewsItem, news_item_id)
     if news_item is None:
         raise BoardExtractionError(f"NewsItem {news_item_id} not found")
@@ -282,10 +284,20 @@ async def extract_board(
         return None
 
     # 4. Persist via the existing CRUD service.
+    #    For a MOCK_DRAFT the kind-shape constraint requires num_rounds; we
+    #    derive it from the extracted pick positions since the article only
+    #    gives us the ranking (canonical round/team data lives in the
+    #    draft-order reference, not the article). BIG_BOARD passes None.
+    num_rounds = (
+        _derive_num_rounds([e.position for e in entries_in])
+        if kind is BoardKind.MOCK_DRAFT
+        else None
+    )
     published_at = extracted.published_at or news_item.published_at or datetime.utcnow()
     board = await board_service.create_board(
         db,
         kind=kind,
+        num_rounds=num_rounds,
         news_source_id=news_item.source_id,
         draft_year=extracted.draft_year,
         published_at=published_at,
@@ -545,16 +557,17 @@ def _iter_json_ld_blobs(payload: object):
 # --- Gemini extraction ----------------------------------------------------
 
 
-_BIG_BOARD_EXTRACTION_PROMPT = """You are a structured-data extractor for DraftGuru, an NBA Draft analytics site.
+_RANKING_EXTRACTION_PROMPT = """You are a structured-data extractor for DraftGuru, an NBA Draft analytics site.
 
-You will be given the cleaned body text of an NBA Draft analyst's "big board" article — a published, ordered ranking of college / international prospects. Extract the ranking into the structured response schema you have been given.
+You will be given the cleaned body text of an NBA Draft analyst's article that ranks college / international prospects. The article may be framed either as a "big board" (a pure talent ranking) or as a "mock draft" (a projected pick order, often phrased as "Team X selects Player Y" or "1. Team — Player"). Treat both identically: extract the analyst's ORDERED LIST OF PLAYERS into the structured response schema you have been given.
 
 Rules:
-- "rank" is the analyst's position in the ranking (1, 2, 3, ...), not the player's pick projection.
-- "tier" is only present when the analyst explicitly groups players into tiers (Tier 1, Tier 2, ...). Otherwise leave it null.
+- "rank" is the player's position in the ordered list (1, 2, 3, ...). For a big board this is the talent rank; for a mock draft this is the pick number. Either way it is just the 1-based order in which the analyst presents the players.
+- Extract ONLY the player at each position. Ignore the team making the pick, trade notes, and round labels — DraftGuru sources team/pick ownership separately and does not need them from this article.
+- "tier" is only present when the analyst explicitly groups players into tiers (Tier 1, Tier 2, ...). Otherwise leave it null. Do NOT use a mock draft's round (Round 1 / Round 2) as a tier.
 - Extract EVERY ranked position in the list. Use whatever name the analyst writes at that position — partial names like "Mara" or "Bronny James Jr." are acceptable; downstream resolution handles them.
 - Skip honorable-mention sections, "watch list" addenda, NBA veterans referenced for comparison, and analyst self-references.
-- Only include players from the analyst's RANKED LIST, in the order the analyst presents them. Do not include incidental player mentions from the surrounding commentary.
+- Only include players from the analyst's RANKED/PICK LIST, in the order the analyst presents them. Do not include incidental player mentions from the surrounding commentary.
 - If you cannot identify a coherent ordered list of prospects, return an empty entries list.
 - "draft_year" is the draft year the article is ranking for. Infer it from headers, context, or default to the current calendar year if ambiguous.
 - "published_at" should be the article's publication date if discoverable; otherwise null.
@@ -658,7 +671,7 @@ async def _extract_via_gemini(
                 ),
                 config=types.GenerateContentConfig(
                     system_instruction=[
-                        types.Part.from_text(text=_BIG_BOARD_EXTRACTION_PROMPT)
+                        types.Part.from_text(text=_RANKING_EXTRACTION_PROMPT)
                     ],
                     temperature=0.1,
                     response_mime_type="application/json",
@@ -715,6 +728,29 @@ def _build_gemini_client() -> genai.Client:
 
 
 # --- Persistence helpers --------------------------------------------------
+
+
+# NBA drafts run two rounds of ~30 picks. A mock that projects past the first
+# round is a two-round mock; anything that stops at or before pick 30 is a
+# single-round mock. This value is metadata only — the consensus engine never
+# reads it, and canonical round/pick data lives in the draft-order reference —
+# so an approximate derivation from the extracted pick count is sufficient to
+# satisfy the kind-shape constraint.
+_FIRST_ROUND_PICKS = 30
+
+
+def _derive_num_rounds(positions: list[int]) -> int:
+    """Infer a mock draft's round count from its extracted pick positions.
+
+    Returns 2 when any pick projects past the first round, else 1. Defaults
+    to 1 for an empty list (defensive — ``extract_board`` returns before
+    persisting when there are no entries).
+
+    Pure function — unit-tested.
+    """
+    if not positions:
+        return 1
+    return 2 if max(positions) > _FIRST_ROUND_PICKS else 1
 
 
 async def _existing_board_for_news_item(

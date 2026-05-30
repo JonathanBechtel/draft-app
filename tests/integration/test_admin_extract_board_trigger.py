@@ -93,6 +93,28 @@ async def big_board_item(db_session: AsyncSession, news_source: NewsSource) -> N
 
 
 @pytest_asyncio.fixture
+async def mock_draft_item(
+    db_session: AsyncSession, news_source: NewsSource
+) -> NewsItem:
+    """A MOCK_DRAFT-tagged news item suitable for extraction."""
+    assert news_source.id is not None
+    item = NewsItem(
+        source_id=news_source.id,
+        external_id="trigger-test-mock-1",
+        title="2026 NBA Mock Draft",
+        description="Projecting all 30 first-round picks.",
+        url="https://example.substack.com/p/2026-mock-draft-trigger-test",
+        tag=NewsItemTag.MOCK_DRAFT,
+        published_at=datetime(2026, 6, 1),
+    )
+    db_session.add(item)
+    await db_session.commit()
+    await db_session.refresh(item)
+    assert item.id is not None
+    return item
+
+
+@pytest_asyncio.fixture
 async def sample_player(db_session: AsyncSession) -> PlayerMaster:
     """A player whose name the extraction stub will resolve.
 
@@ -247,6 +269,53 @@ async def test_extract_board_creates_pending_board_and_redirects(
     assert board is not None
     assert board.status == BoardStatus.PENDING
     assert board.kind == BoardKind.BIG_BOARD
+
+
+@pytest.mark.asyncio
+async def test_extract_board_mock_tagged_item_persists_as_mock_draft(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_logged_in: None,
+    mock_draft_item: NewsItem,
+    sample_player: PlayerMaster,
+    monkeypatch,
+) -> None:
+    """A MOCK_DRAFT-tagged item is stored as a MOCK_DRAFT board, not BIG_BOARD.
+
+    Regression for the Codex P2: the route must derive ``kind`` from the
+    item's tag so provenance + the dedup key are correct (the wired admin
+    flow previously called extract_board without kind → defaulted to
+    BIG_BOARD).
+    """
+    _stub_fetcher(monkeypatch)
+    _stub_vector_search(monkeypatch)
+    _stub_extraction(
+        monkeypatch,
+        ExtractedBoard(
+            draft_year=2026,
+            published_at=datetime(2026, 6, 1),
+            entries=[ExtractedBoardEntry(player_name="Cooper Flagg", rank=1)],
+        ),
+    )
+
+    assert mock_draft_item.id is not None
+    response = await app_client.post(
+        f"/admin/news-items/{mock_draft_item.id}/extract-board",
+        follow_redirects=False,
+    )
+
+    assert response.status_code in {302, 303}
+    assert "success=extracted" in response.headers.get("location", "")
+
+    result = await db_session.execute(
+        select(Board).where(Board.news_item_id == mock_draft_item.id)  # type: ignore[arg-type]
+    )
+    board = result.scalar_one_or_none()
+    assert board is not None
+    assert board.status == BoardStatus.PENDING
+    assert board.kind == BoardKind.MOCK_DRAFT
+    # A single first-round pick → derived num_rounds=1 (constraint satisfied).
+    assert board.num_rounds == 1
 
 
 # ---------------------------------------------------------------------------
