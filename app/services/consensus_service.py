@@ -111,13 +111,20 @@ async def recompute_consensus(
         # with no child rows. Callers can still query it.
         return snapshot
 
-    # Gather all entries from eligible boards in a single query.
+    # Gather resolved entries from eligible boards in a single query.
+    # UNRESOLVED entries (player_id IS NULL) carry no identity and must not
+    # feed the aggregation — otherwise they collapse under a single NULL key
+    # and, if that pseudo-player clears MIN_SOURCES, produce a consensus row
+    # with a NULL player_id (NOT NULL violation). They simply don't count
+    # until an admin resolves them.
     board_ids = [b.id for b in eligible_boards if b.id is not None]
     entry_rows = (
         await db.execute(
             select(  # type: ignore[call-overload]
                 BoardEntry.board_id, BoardEntry.player_id, BoardEntry.position
-            ).where(BoardEntry.board_id.in_(board_ids))  # type: ignore[attr-defined]
+            )
+            .where(BoardEntry.board_id.in_(board_ids))  # type: ignore[attr-defined]
+            .where(BoardEntry.player_id.is_not(None))  # type: ignore[union-attr]
         )
     ).all()
 

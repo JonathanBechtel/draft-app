@@ -724,6 +724,61 @@ async def test_backfill_replay_anchors_prev_rank_chronologically(
 
 
 @pytest.mark.asyncio
+async def test_unresolved_entries_are_excluded_from_consensus(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """Approved boards may carry UNRESOLVED entries (player_id IS NULL). These
+    must not feed the aggregation — otherwise they collapse under a single NULL
+    key and, if that pseudo-player clears MIN_SOURCES, the recompute tries to
+    write a consensus row with a NULL player_id (NOT NULL violation)."""
+    from app.schemas.boards import ResolutionMethod
+
+    p1, p2, _p3, _p4 = players
+    s1, s2, _s3 = three_sources
+    today = _now()
+
+    # Two sources resolve p1/p2; each also carries an UNRESOLVED entry.
+    for src in (s1, s2):
+        board = await _make_approved_board(
+            db_session,
+            source=src,
+            draft_year=2026,
+            published_at=today,
+            entries=[(p1, 1), (p2, 2)],
+        )
+        assert board.id is not None
+        db_session.add(
+            BoardEntry(
+                board_id=board.id,
+                player_id=None,
+                position=3,
+                raw_name="Some Unresolved Prospect",
+                resolution_method=ResolutionMethod.UNRESOLVED,
+            )
+        )
+    await db_session.commit()
+
+    # Must not raise (the NULL key would otherwise clear MIN_SOURCES=2).
+    snap = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+    rows = (
+        await db_session.execute(
+            select(BigBoardConsensus).where(
+                BigBoardConsensus.snapshot_id == snap.id  # type: ignore[arg-type]
+            )
+        )
+    ).scalars().all()
+    # Only the two resolved players; no NULL-player_id row.
+    assert {r.player_id for r in rows} == {p1.id, p2.id}
+    assert all(r.player_id is not None for r in rows)
+
+
+@pytest.mark.asyncio
 async def test_generate_history_replays_chained_weekly_snapshots(
     db_session: AsyncSession,
     players: list[PlayerMaster],
