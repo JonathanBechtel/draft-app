@@ -10,6 +10,7 @@ only reads. UI tickets #218–#221 will extend the helpers here.
 
 from __future__ import annotations
 
+import statistics
 from datetime import date
 from typing import Any, Optional, cast
 
@@ -865,9 +866,9 @@ async def get_biggest_movers(
 
     Returns:
         ``{"risers": [...], "fallers": [...]}`` where each item is a dict with
-        ``player_id``, ``player_name``, ``slug``, ``consensus_rank``,
-        ``rank_delta``, and ``prev_rank``. Both lists are empty when no prior
-        snapshot exists.
+        ``player_id``, ``player_name``, ``slug``, ``school``, ``photo_url``,
+        ``school_logo_url``, ``consensus_rank``, ``rank_delta``, and
+        ``prev_rank``. Both lists are empty when no prior snapshot exists.
     """
     sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
     if sid is None:
@@ -891,6 +892,12 @@ async def get_biggest_movers(
 
     player_ids = [r.player_id for r in bbc_rows]
     player_map = await _player_name_map(db, player_ids)
+    photo_map = await get_current_image_urls_for_players(
+        db, player_ids=player_ids, style=_CONSENSUS_PHOTO_STYLE
+    )
+    logo_map = await get_logo_urls_for_schools(
+        db, [p.school for p in player_map.values()]
+    )
 
     def _to_mover(bbc: BigBoardConsensus) -> dict:
         player = player_map.get(bbc.player_id)
@@ -898,6 +905,9 @@ async def get_biggest_movers(
             "player_id": bbc.player_id,
             "player_name": player.display_name if player else None,
             "slug": player.slug if player else None,
+            "school": player.school if player else None,
+            "photo_url": photo_map.get(bbc.player_id),
+            "school_logo_url": (logo_map.get(player.school or "") if player else None),
             "consensus_rank": bbc.consensus_rank,
             "rank_delta": bbc.rank_delta,
             "prev_rank": bbc.prev_rank,
@@ -921,58 +931,503 @@ async def get_biggest_movers(
     }
 
 
+async def get_most_controversial(
+    db: AsyncSession,
+    *,
+    draft_year: int,
+    limit: int = 5,
+    min_sources: int = 2,
+) -> list[dict]:
+    """Return the players with the widest spread of source ranks.
+
+    Ranks players for the latest snapshot by ``std_dev`` descending — the
+    larger the standard deviation of the ranks each source assigned, the more
+    the boards disagree about where the player belongs. Only players ranked by
+    at least ``min_sources`` boards are considered, so a single outlier ranking
+    can't masquerade as "controversy".
+
+    Args:
+        db: Async DB session.
+        draft_year: Draft class to query.
+        limit: Maximum number of players to return.
+        min_sources: Minimum number of contributing sources required for a
+            player to be eligible (default 2).
+
+    Returns:
+        A list of dicts (most controversial first), each with ``player_id``,
+        ``player_name``, ``slug``, ``consensus_rank``, ``avg_rank``,
+        ``high_rank``, ``low_rank``, ``std_dev``, ``num_sources``, and
+        ``source_ranks`` (the individual rank each source gave the player, so
+        the UI can plot the distribution). Empty when no snapshot exists or no
+        player clears ``min_sources``.
+    """
+    sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
+    if sid is None:
+        return []
+
+    bbc_rows = (
+        (
+            await db.execute(
+                select(BigBoardConsensus)  # type: ignore[call-overload]
+                .where(BigBoardConsensus.snapshot_id == sid)  # type: ignore[arg-type]
+                .where(BigBoardConsensus.num_sources >= min_sources)  # type: ignore[arg-type]
+                .where(BigBoardConsensus.std_dev > 0)  # type: ignore[arg-type]
+                .order_by(BigBoardConsensus.std_dev.desc())  # type: ignore[attr-defined]
+                .limit(limit)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not bbc_rows:
+        return []
+
+    player_ids = [r.player_id for r in bbc_rows]
+    player_map = await _player_name_map(db, player_ids)
+    photo_map = await get_current_image_urls_for_players(
+        db, player_ids=player_ids, style=_CONSENSUS_PHOTO_STYLE
+    )
+    source_ranks_map = await _source_ranks_for_players(
+        db, snapshot_id=sid, player_ids=player_ids
+    )
+
+    result: list[dict] = []
+    for bbc in bbc_rows:
+        player = player_map.get(bbc.player_id)
+        result.append(
+            {
+                "player_id": bbc.player_id,
+                "player_name": player.display_name if player else None,
+                "slug": player.slug if player else None,
+                "photo_url": photo_map.get(bbc.player_id),
+                "consensus_rank": bbc.consensus_rank,
+                "avg_rank": bbc.avg_rank,
+                "high_rank": bbc.high_rank,
+                "low_rank": bbc.low_rank,
+                "std_dev": bbc.std_dev,
+                "num_sources": bbc.num_sources,
+                "source_ranks": source_ranks_map.get(bbc.player_id, []),
+            }
+        )
+    return result
+
+
+async def _source_ranks_for_players(
+    db: AsyncSession,
+    *,
+    snapshot_id: int,
+    player_ids: list[int],
+) -> dict[int, list[int]]:
+    """Return ``player_id -> [source ranks]`` for one snapshot.
+
+    Gathers the individual rank each contributing board assigned to each
+    player (across the boards that fed the snapshot), so callers can plot the
+    spread of opinion rather than just its min/max.
+    """
+    if not player_ids:
+        return {}
+
+    snapshot = (
+        await db.execute(
+            select(ConsensusSnapshot).where(  # type: ignore[call-overload]
+                ConsensusSnapshot.id == snapshot_id  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one_or_none()
+    if snapshot is None or not snapshot.board_ids:
+        return {}
+
+    entry_rows = (
+        await db.execute(
+            select(  # type: ignore[call-overload]
+                BoardEntry.player_id, BoardEntry.position
+            )
+            .where(BoardEntry.board_id.in_(snapshot.board_ids))  # type: ignore[union-attr, attr-defined]
+            .where(BoardEntry.player_id.in_(player_ids))  # type: ignore[union-attr, attr-defined]
+        )
+    ).all()
+
+    ranks: dict[int, list[int]] = {pid: [] for pid in player_ids}
+    for row in entry_rows:
+        if row.player_id in ranks:
+            ranks[row.player_id].append(row.position)
+    for pid in ranks:
+        ranks[pid].sort()
+    return ranks
+
+
+# Per-award accent colors (CSS custom-property references resolved in the
+# template via ``--slot-accent``). One per axis so paired slots read distinct.
+_AWARD_ACCENTS = {
+    "boldest": "var(--color-accent-rose)",
+    "ahead": "var(--color-accent-amber)",
+    "deepest": "var(--color-accent-cyan)",
+    "freshest": "var(--color-accent-emerald)",
+}
+
+
+def _standout(value: float, values: list[float]) -> float:
+    """Return how far ``value`` stands out from ``values`` (a z-score).
+
+    Used as a cross-award "newsworthiness" score: the more lopsided a winner
+    is versus the field, the higher it ranks for the spotlight. Returns 0 when
+    there's nothing to compare against or the field is uniform (in which case
+    that award isn't differentiating and shouldn't lead).
+    """
+    if len(values) < 2:
+        return 0.0
+    sd = statistics.pstdev(values)
+    if sd == 0:
+        return 0.0
+    return (value - statistics.fmean(values)) / sd
+
+
+async def _build_source_profiles(
+    db: AsyncSession,
+    sa_rows: list[SourceAnalytics],
+    consensus_by_player: dict[int, ConsensusRow],
+) -> dict[int, dict]:
+    """Build a per-source profile for every contributing source.
+
+    Each profile carries the metrics the award engine needs: the source's
+    board overlay vs consensus (reaches/fades), board size, freshness, link to
+    their published board, and the candidate "highlight" picks (biggest
+    outlier, deepest pick, best validated reach).
+    """
+    from app.utils.slug import generate_slug
+
+    board_ids = [sa.latest_board_id for sa in sa_rows if sa.latest_board_id is not None]
+
+    boards = (
+        (
+            await db.execute(
+                select(Board).where(Board.id.in_(board_ids))  # type: ignore[call-overload, union-attr]
+            )
+        )
+        .scalars()
+        .all()
+    )
+    board_by_id = {b.id: b for b in boards if b.id is not None}
+
+    # All entries for those boards (not just consensus players) so board size
+    # reflects the full depth the source actually ranked.
+    entry_rows = (
+        await db.execute(
+            select(  # type: ignore[call-overload]
+                BoardEntry.board_id, BoardEntry.player_id, BoardEntry.position
+            ).where(BoardEntry.board_id.in_(board_ids))  # type: ignore[union-attr, attr-defined]
+        )
+    ).all()
+    entries_by_board: dict[int, list[tuple[int, int]]] = {}
+    for row in entry_rows:
+        entries_by_board.setdefault(row.board_id, []).append(
+            (row.player_id, row.position)
+        )
+
+    sources = (
+        (
+            await db.execute(
+                select(NewsSource).where(  # type: ignore[call-overload]
+                    NewsSource.id.in_([sa.news_source_id for sa in sa_rows])  # type: ignore[union-attr]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    source_by_id = {s.id: s for s in sources if s.id is not None}
+
+    article_ids = [b.news_item_id for b in boards if b.news_item_id is not None]
+    article_by_id: dict[int, NewsItem] = {}
+    if article_ids:
+        article_by_id = {
+            a.id: a
+            for a in (
+                await db.execute(
+                    select(NewsItem).where(  # type: ignore[call-overload]
+                        NewsItem.id.in_(article_ids)  # type: ignore[union-attr]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+            if a.id is not None
+        }
+
+    profiles: dict[int, dict] = {}
+    for sa in sa_rows:
+        src = source_by_id.get(sa.news_source_id)
+        source_name = src.name if src else f"source_{sa.news_source_id}"
+        board = board_by_id.get(sa.latest_board_id) if sa.latest_board_id else None
+        entries = entries_by_board.get(sa.latest_board_id or -1, [])
+
+        # Link out to the producer's own published board when available.
+        work_url: Optional[str] = None
+        work_title: Optional[str] = None
+        if board is not None and board.news_item_id is not None:
+            article = article_by_id.get(board.news_item_id)
+            if article is not None:
+                work_url, work_title = article.url, article.title
+
+        # Overlay vs consensus → reaches/fades + candidate picks.
+        reaches = fades = 0
+        deepest: Optional[dict] = None
+        ahead: Optional[dict] = None
+        for pid, source_rank in entries:
+            crow = consensus_by_player.get(pid)
+            if crow is None:
+                continue
+            delta = crow.consensus_rank - source_rank  # + = source ranks higher
+            if delta > 0:
+                reaches += 1
+            elif delta < 0:
+                fades += 1
+            if deepest is None or source_rank > deepest["source_rank"]:
+                deepest = {"player_id": pid, "source_rank": source_rank}
+            # Validated reach: source is high on a player consensus is rising
+            # toward (positive rank_delta = moved up since the prior snapshot).
+            if delta > 0 and crow.rank_delta is not None and crow.rank_delta > 0:
+                if ahead is None or crow.rank_delta > ahead["value"]:
+                    ahead = {
+                        "player_id": pid,
+                        "source_rank": source_rank,
+                        "consensus_rank": crow.consensus_rank,
+                        "value": crow.rank_delta,
+                    }
+
+        # Biggest outlier (precomputed on the analytics row).
+        outlier: Optional[dict] = None
+        out_pid = sa.biggest_outlier_player_id
+        if out_pid is not None and out_pid in consensus_by_player:
+            crank = consensus_by_player[out_pid].consensus_rank
+            outlier = {
+                "player_id": out_pid,
+                "source_rank": crank - sa.outlier_delta,
+                "consensus_rank": crank,
+            }
+
+        profiles[sa.news_source_id] = {
+            "source_id": sa.news_source_id,
+            "source_display_name": src.display_name if src else source_name,
+            "source_slug": generate_slug(source_name),
+            "work_url": work_url,
+            "work_title": work_title,
+            "avg_deviation": sa.avg_deviation,
+            "board_size": board.size if board is not None else len(entries),
+            "published_at": board.published_at if board is not None else None,
+            "reaches": reaches,
+            "fades": fades,
+            "outlier": outlier,
+            "deepest": deepest,
+            "ahead": ahead,
+        }
+    return profiles
+
+
+def _highlight(
+    consensus_by_player: dict[int, ConsensusRow],
+    player_id: int,
+    *,
+    label: str,
+    detail: str,
+) -> Optional[dict]:
+    """Build a player-highlight payload from a consensus row (photo + name)."""
+    crow = consensus_by_player.get(player_id)
+    if crow is None:
+        return None
+    return {
+        "label": label,
+        "player_name": crow.player_name,
+        "slug": crow.slug,
+        "photo_url": crow.photo_url,
+        "detail": detail,
+    }
+
+
 async def get_source_spotlight(
     db: AsyncSession,
     *,
     draft_year: int,
 ) -> Optional[dict]:
-    """Return the most contrarian source for the latest snapshot.
+    """Return two spotlight-worthy contributors, each with a distinct award.
 
-    Selects the ``SourceAnalytics`` row with the highest ``contrarian_score``
-    and returns a callout-ready dict.
+    Computes a pool of awards on different axes — Boldest Board (divergence),
+    Deepest Board (depth), Ahead of the Curve (foresight, proxy), Freshest Take
+    (recency) — scores each winner by how far it stands out from the field, and
+    picks the two most newsworthy awards that go to *different* contributors.
+    This avoids crowning the same source twice and keeps the spotlight rotating.
 
     Args:
         db: Async DB session.
         draft_year: Draft class to query.
 
     Returns:
-        Dict with ``source_name``, ``source_display_name``,
-        ``avg_deviation``, and ``contrarian_score``, or ``None`` when no
-        source analytics exist for the latest snapshot.
+        ``{"slots": [slot, ...]}`` with one or two slots, or ``None`` when no
+        source analytics exist. Each slot is a render-ready dict.
     """
     sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
     if sid is None:
         return None
 
-    sa_row = (
-        await db.execute(
-            select(SourceAnalytics)  # type: ignore[call-overload]
-            .where(SourceAnalytics.snapshot_id == sid)  # type: ignore[arg-type]
-            .order_by(SourceAnalytics.contrarian_score.desc())  # type: ignore[attr-defined]
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-
-    if sa_row is None:
-        return None
-
-    src = (
-        await db.execute(
-            select(NewsSource).where(  # type: ignore[call-overload]
-                NewsSource.id == sa_row.news_source_id  # type: ignore[arg-type]
+    sa_rows = list(
+        (
+            await db.execute(
+                select(SourceAnalytics).where(  # type: ignore[call-overload]
+                    SourceAnalytics.snapshot_id == sid  # type: ignore[arg-type]
+                )
             )
         )
-    ).scalar_one_or_none()
+        .scalars()
+        .all()
+    )
+    if not sa_rows:
+        return None
 
-    return {
-        "news_source_id": sa_row.news_source_id,
-        "source_name": src.name if src else f"source_{sa_row.news_source_id}",
-        "source_display_name": src.display_name
-        if src
-        else f"source_{sa_row.news_source_id}",
-        "avg_deviation": sa_row.avg_deviation,
-        "contrarian_score": sa_row.contrarian_score,
-    }
+    consensus_rows = await get_consensus_board(
+        db, draft_year=draft_year, snapshot_id=sid
+    )
+    consensus_by_player = {r.player_id: r for r in consensus_rows}
+
+    profiles = await _build_source_profiles(db, sa_rows, consensus_by_player)
+    if not profiles:
+        return None
+    plist = list(profiles.values())
+
+    def _slot(p: dict, *, key: str, label: str, stat_text: str, highlight) -> dict:
+        return {
+            "award_key": key,
+            "award_label": label,
+            "accent_css": _AWARD_ACCENTS[key],
+            "source_display_name": p["source_display_name"],
+            "source_slug": p["source_slug"],
+            "work_url": p["work_url"],
+            "work_title": p["work_title"],
+            "stat_text": stat_text,
+            "reaches": p["reaches"],
+            "fades": p["fades"],
+            "highlight": highlight,
+        }
+
+    awards: list[dict] = []
+
+    # Boldest Board — widest average divergence from consensus.
+    boldest = max(plist, key=lambda p: p["avg_deviation"])
+    awards.append(
+        {
+            "winner_id": boldest["source_id"],
+            "newsworthiness": _standout(
+                boldest["avg_deviation"], [p["avg_deviation"] for p in plist]
+            ),
+            "slot": _slot(
+                boldest,
+                key="boldest",
+                label="Boldest Board",
+                stat_text=f"Avg deviation {boldest['avg_deviation']:.1f} spots",
+                highlight=(
+                    _highlight(
+                        consensus_by_player,
+                        boldest["outlier"]["player_id"],
+                        label="Boldest call",
+                        detail=(
+                            f"#{boldest['outlier']['source_rank']} "
+                            f"· consensus #{boldest['outlier']['consensus_rank']}"
+                        ),
+                    )
+                    if boldest["outlier"]
+                    else None
+                ),
+            ),
+        }
+    )
+
+    # Deepest Board — most prospects ranked.
+    deepest = max(plist, key=lambda p: p["board_size"])
+    awards.append(
+        {
+            "winner_id": deepest["source_id"],
+            "newsworthiness": _standout(
+                deepest["board_size"], [p["board_size"] for p in plist]
+            ),
+            "slot": _slot(
+                deepest,
+                key="deepest",
+                label="Deepest Board",
+                stat_text=f"Ranks {deepest['board_size']} prospects",
+                highlight=(
+                    _highlight(
+                        consensus_by_player,
+                        deepest["deepest"]["player_id"],
+                        label="Deepest pick",
+                        detail=f"#{deepest['deepest']['source_rank']}",
+                    )
+                    if deepest["deepest"]
+                    else None
+                ),
+            ),
+        }
+    )
+
+    # Freshest Take — most recently published board.
+    dated = [p for p in plist if p["published_at"] is not None]
+    if dated:
+        freshest = max(dated, key=lambda p: p["published_at"])
+        awards.append(
+            {
+                "winner_id": freshest["source_id"],
+                "newsworthiness": _standout(
+                    freshest["published_at"].timestamp(),
+                    [p["published_at"].timestamp() for p in dated],
+                ),
+                "slot": _slot(
+                    freshest,
+                    key="freshest",
+                    label="Freshest Take",
+                    stat_text=f"Updated {freshest['published_at'].strftime('%b %-d')}",
+                    highlight=None,
+                ),
+            }
+        )
+
+    # Ahead of the Curve (proxy) — boldest reach the field is moving toward.
+    ahead_cands = [p for p in plist if p["ahead"] is not None]
+    if ahead_cands:
+        ahead_winner = max(ahead_cands, key=lambda p: p["ahead"]["value"])
+        awards.append(
+            {
+                "winner_id": ahead_winner["source_id"],
+                "newsworthiness": _standout(
+                    ahead_winner["ahead"]["value"],
+                    [(p["ahead"]["value"] if p["ahead"] else 0) for p in plist],
+                ),
+                "slot": _slot(
+                    ahead_winner,
+                    key="ahead",
+                    label="Ahead of the Curve",
+                    stat_text="The field is catching up",
+                    highlight=_highlight(
+                        consensus_by_player,
+                        ahead_winner["ahead"]["player_id"],
+                        label="Called early",
+                        detail=(
+                            f"had #{ahead_winner['ahead']['source_rank']} "
+                            f"· consensus #{ahead_winner['ahead']['consensus_rank']} ↑"
+                        ),
+                    ),
+                ),
+            }
+        )
+
+    # Pick the two most newsworthy awards that go to different contributors.
+    awards.sort(key=lambda a: a["newsworthiness"], reverse=True)
+    slots = [awards[0]["slot"]]
+    second = next(
+        (a for a in awards[1:] if a["winner_id"] != awards[0]["winner_id"]), None
+    )
+    if second is not None:
+        slots.append(second["slot"])
+
+    return {"slots": slots}
 
 
 async def get_board_freshness(

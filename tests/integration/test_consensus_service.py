@@ -27,9 +27,11 @@ from app.schemas.consensus import (
     ConsensusTrigger,
     SourceAnalytics,
 )
+from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service as bb_svc
+from app.services import consensus_read_service as read_svc
 from app.services import consensus_service as svc
 from tests.integration.conftest import make_player
 
@@ -61,14 +63,16 @@ async def _make_approved_board(
     draft_year: int,
     published_at: datetime,
     entries: list[tuple[PlayerMaster, int]],  # (player, rank)
+    news_item_id: int | None = None,
 ) -> Board:
     """Insert a board straight into APPROVED state without running the
     full create→approve flow (which would trigger a consensus recompute
-    and complicate test setup)."""
+    and complicate test setup).
+    """
     assert source.id is not None
     board = Board(
         news_source_id=source.id,
-        news_item_id=None,
+        news_item_id=news_item_id,
         draft_year=draft_year,
         published_at=published_at,
         size=len(entries),
@@ -313,10 +317,14 @@ async def test_source_analytics_computes_deviation_and_contrarian_score(
     await db_session.commit()
 
     rows = (
-        await db_session.execute(
-            select(SourceAnalytics).where(SourceAnalytics.snapshot_id == snap.id)  # type: ignore[arg-type]
+        (
+            await db_session.execute(
+                select(SourceAnalytics).where(SourceAnalytics.snapshot_id == snap.id)  # type: ignore[arg-type]
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 3
     by_source = {r.news_source_id: r for r in rows}
     assert s1.id is not None and s2.id is not None and s3.id is not None
@@ -339,7 +347,8 @@ async def test_single_source_still_gets_source_analytics_row(
 ) -> None:
     """With only one approved board, no player clears MIN_SOURCES=2 — but
     the eligible source still gets a SourceAnalytics row so the
-    per-source-per-snapshot invariant holds."""
+    per-source-per-snapshot invariant holds.
+    """
     p1, p2, _p3, _p4 = players
     s1, _s2, _s3 = three_sources
     await _make_approved_board(
@@ -363,10 +372,14 @@ async def test_single_source_still_gets_source_analytics_row(
 
     # But the SourceAnalytics row still exists.
     rows = (
-        await db_session.execute(
-            select(SourceAnalytics).where(SourceAnalytics.snapshot_id == snap.id)  # type: ignore[arg-type]
+        (
+            await db_session.execute(
+                select(SourceAnalytics).where(SourceAnalytics.snapshot_id == snap.id)  # type: ignore[arg-type]
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
     row = rows[0]
     assert row.news_source_id == s1.id
@@ -383,7 +396,8 @@ async def test_eligible_board_selection_is_deterministic_with_id_tiebreak(
 ) -> None:
     """When two boards from one source share published_at, the higher-id
     (later-inserted) board wins reproducibly. Without the id tie-break a
-    re-run could pick either one and produce different consensus."""
+    re-run could pick either one and produce different consensus.
+    """
     p1, p2, _p3, _p4 = players
     s1, s2, _s3 = three_sources
     same_dt = _now()
@@ -527,28 +541,32 @@ async def test_approve_board_triggers_recompute_by_default(
     await db_session.commit()
 
     snapshots_before = (
-        await db_session.execute(select(ConsensusSnapshot))
-    ).scalars().all()
+        (await db_session.execute(select(ConsensusSnapshot))).scalars().all()
+    )
     assert snapshots_before == []
 
     await bb_svc.approve_board(db_session, board_id=pending.id)
     await db_session.commit()
 
     snapshots_after = (
-        await db_session.execute(select(ConsensusSnapshot))
-    ).scalars().all()
+        (await db_session.execute(select(ConsensusSnapshot))).scalars().all()
+    )
     assert len(snapshots_after) == 1
     assert snapshots_after[0].trigger is ConsensusTrigger.BOARD_APPROVED
     assert snapshots_after[0].num_boards == 2
 
     # And the consensus rows actually got written.
     rows = (
-        await db_session.execute(
-            select(BigBoardConsensus).where(
-                BigBoardConsensus.snapshot_id == snapshots_after[0].id  # type: ignore[arg-type]
+        (
+            await db_session.execute(
+                select(BigBoardConsensus).where(
+                    BigBoardConsensus.snapshot_id == snapshots_after[0].id  # type: ignore[arg-type]
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {r.player_id for r in rows} == {p1.id, p2.id}
 
 
@@ -579,7 +597,283 @@ async def test_approve_board_can_skip_recompute(
         db_session, board_id=pending.id, recompute_consensus=False
     )
     await db_session.commit()
-    snapshots = (
-        await db_session.execute(select(ConsensusSnapshot))
-    ).scalars().all()
+    snapshots = (await db_session.execute(select(ConsensusSnapshot))).scalars().all()
     assert snapshots == []
+
+
+# ---------------------------------------------------------------------------
+# get_most_controversial
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_most_controversial_ranks_by_spread(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """Players are ordered by std_dev desc, with high/low spread surfaced.
+
+    Sources disagree sharply on p1 (ranked 1 and 4) and agree on p4 (always 4),
+    so p1 must lead the controversial list and carry a wider high→low spread
+    than p4.
+    """
+    p1, p2, p3, p4 = players
+    s1, s2, s3 = three_sources
+    today = _now()
+    await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=today - timedelta(days=2),
+        entries=[(p1, 1), (p2, 2), (p3, 3), (p4, 4)],
+    )
+    await _make_approved_board(
+        db_session,
+        source=s2,
+        draft_year=2026,
+        published_at=today - timedelta(days=1),
+        entries=[(p2, 1), (p3, 2), (p1, 3), (p4, 4)],
+    )
+    await _make_approved_board(
+        db_session,
+        source=s3,
+        draft_year=2026,
+        published_at=today,
+        entries=[(p2, 1), (p3, 2), (p4, 3), (p1, 4)],
+    )
+    await db_session.commit()
+    await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+    rows = await read_svc.get_most_controversial(db_session, draft_year=2026, limit=5)
+
+    assert rows, "expected at least one controversial player"
+    # Ordered by std_dev descending.
+    sds = [r["std_dev"] for r in rows]
+    assert sds == sorted(sds, reverse=True)
+    # p1 (ranks 1,3,4) is the most divisive — leads the list.
+    assert rows[0]["player_id"] == p1.id
+    top = rows[0]
+    assert top["high_rank"] <= top["consensus_rank"] <= top["low_rank"]
+    assert top["high_rank"] < top["low_rank"]
+    assert top["num_sources"] >= 2
+    # One dot per source rank, sorted, spanning the high→low range.
+    assert sorted(top["source_ranks"]) == [1, 3, 4]
+    assert len(top["source_ranks"]) == top["num_sources"]
+    assert min(top["source_ranks"]) == top["high_rank"]
+    assert max(top["source_ranks"]) == top["low_rank"]
+    # Photo key is always present (URL may be None when no asset exists).
+    assert "photo_url" in top
+
+
+@pytest.mark.asyncio
+async def test_most_controversial_empty_when_sources_agree(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """Identical boards → zero std_dev for every player → empty result."""
+    p1, p2, p3, p4 = players
+    s1, s2, _s3 = three_sources
+    today = _now()
+    entries = [(p1, 1), (p2, 2), (p3, 3), (p4, 4)]
+    await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=today - timedelta(days=1),
+        entries=entries,
+    )
+    await _make_approved_board(
+        db_session, source=s2, draft_year=2026, published_at=today, entries=entries
+    )
+    await db_session.commit()
+    await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+    rows = await read_svc.get_most_controversial(db_session, draft_year=2026)
+    assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_most_controversial_empty_without_snapshot(
+    db_session: AsyncSession,
+) -> None:
+    """No snapshot → empty list, no crash."""
+    rows = await read_svc.get_most_controversial(db_session, draft_year=2026)
+    assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# get_source_spotlight (award engine)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_source_spotlight_picks_two_distinct_award_winners(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """Spotlight returns up to two award slots won by *different* contributors.
+
+    s3 flips the board (most divergent → Boldest Board); s1/s2 hug consensus.
+    The diversity rule must surface two distinct sources across two awards,
+    and each slot must be render-ready (reaches/fades, slug, label).
+    """
+    p1, p2, p3, p4 = players
+    s1, s2, s3 = three_sources
+    today = _now()
+    await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=today - timedelta(days=2),
+        entries=[(p1, 1), (p2, 2), (p3, 3), (p4, 4)],
+    )
+    await _make_approved_board(
+        db_session,
+        source=s2,
+        draft_year=2026,
+        published_at=today - timedelta(days=1),
+        entries=[(p1, 1), (p2, 2), (p3, 3), (p4, 4)],
+    )
+    await _make_approved_board(
+        db_session,
+        source=s3,
+        draft_year=2026,
+        published_at=today,
+        entries=[(p4, 1), (p3, 2), (p2, 3), (p1, 4)],
+    )
+    await db_session.commit()
+    await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+    spotlight = await read_svc.get_source_spotlight(db_session, draft_year=2026)
+
+    assert spotlight is not None
+    slots = spotlight["slots"]
+    assert 1 <= len(slots) <= 2
+
+    keys = [s["award_key"] for s in slots]
+    assert "boldest" in keys
+
+    # The Boldest Board goes to the divergent source.
+    boldest = next(s for s in slots if s["award_key"] == "boldest")
+    assert boldest["source_display_name"] == s3.display_name
+
+    # Diversity rule: distinct winners across slots.
+    names = [s["source_display_name"] for s in slots]
+    assert len(set(names)) == len(slots)
+
+    # Each slot is render-ready.
+    for slot in slots:
+        assert isinstance(slot["reaches"], int)
+        assert isinstance(slot["fades"], int)
+        assert slot["source_slug"]
+        assert slot["award_label"]
+        assert "highlight" in slot
+
+    # Boldest carries its boldest-call highlight with a photo_url key.
+    assert boldest["highlight"] is not None
+    assert boldest["highlight"]["player_name"]
+    assert "photo_url" in boldest["highlight"]
+    # No news item on these boards → no outbound work link.
+    assert boldest["work_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_source_spotlight_single_source_yields_one_slot(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """One contributing source → exactly one slot (no distinct second winner)."""
+    p1, p2, _p3, _p4 = players
+    s1, _s2, _s3 = three_sources
+    await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=_now(),
+        entries=[(p1, 1), (p2, 2)],
+    )
+    await db_session.commit()
+    await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+    spotlight = await read_svc.get_source_spotlight(db_session, draft_year=2026)
+    assert spotlight is not None
+    assert len(spotlight["slots"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_source_spotlight_links_to_published_board(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """When a winner's board is backed by a news item, its slot links out.
+
+    s3 (the divergent source → Boldest Board) publishes a real article-backed
+    board, so its slot must surface that article's URL/title as the work link.
+    """
+    p1, p2, p3, p4 = players
+    s1, s2, s3 = three_sources
+    today = _now()
+    assert s3.id is not None
+
+    article = NewsItem(
+        source_id=s3.id,
+        external_id="board-article-1",
+        title="My 2026 Big Board",
+        url="https://example.com/no-ceilings/big-board",
+        published_at=today,
+    )
+    db_session.add(article)
+    await db_session.flush()
+
+    await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=today - timedelta(days=2),
+        entries=[(p1, 1), (p2, 2), (p3, 3), (p4, 4)],
+    )
+    await _make_approved_board(
+        db_session,
+        source=s2,
+        draft_year=2026,
+        published_at=today - timedelta(days=1),
+        entries=[(p1, 1), (p2, 2), (p3, 3), (p4, 4)],
+    )
+    await _make_approved_board(
+        db_session,
+        source=s3,
+        draft_year=2026,
+        published_at=today,
+        entries=[(p4, 1), (p3, 2), (p2, 3), (p1, 4)],
+        news_item_id=article.id,
+    )
+    await db_session.commit()
+    await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+    spotlight = await read_svc.get_source_spotlight(db_session, draft_year=2026)
+
+    assert spotlight is not None
+    boldest = next(s for s in spotlight["slots"] if s["award_key"] == "boldest")
+    assert boldest["source_display_name"] == s3.display_name
+    assert boldest["work_url"] == "https://example.com/no-ceilings/big-board"
+    assert boldest["work_title"] == "My 2026 Big Board"

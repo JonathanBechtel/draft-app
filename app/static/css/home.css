@@ -347,21 +347,41 @@
 
 .consensus-panels__grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Two equal-height cards on top: Biggest Movers · Most Controversial.
+     Source Spotlight is a full-width banner below the grid. */
+  grid-template-columns: repeat(2, 1fr);
   gap: 1rem;
 }
 
 /* Individual panel card */
 .consensus-panel {
-  padding: 1.25rem 1.25rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+  padding: 1.1rem 1.15rem 1.2rem;
   border-radius: var(--border-radius);
   background: var(--color-white);
   transition: transform var(--transition-speed), box-shadow var(--transition-speed);
 }
 
+/* Full-width Source Spotlight banner beneath the 2-up grid */
+.consensus-panel--wide {
+  margin-top: 1rem;
+}
+
 .consensus-panel:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.07);
+}
+
+/* Keep the scanline texture faint and behind content */
+.consensus-panel .scanlines {
+  opacity: 0.04;
+  border-radius: inherit;
+}
+
+.consensus-panel > *:not(.scanlines) {
+  position: relative;
+  z-index: 1;
 }
 
 /* Panel header: icon + title */
@@ -382,11 +402,97 @@
 }
 
 .consensus-panel__title {
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--color-slate-600);
   margin: 0;
+}
+
+/* Per-panel accent: tint the header icon + underline to match the card ring */
+.card-ring-amber .consensus-panel__icon {
+  color: var(--color-accent-amber);
+}
+.card-ring-fuchsia .consensus-panel__icon {
+  color: var(--color-accent-fuchsia);
+}
+.card-ring-cyan .consensus-panel__icon {
+  color: var(--color-accent-cyan);
+}
+
+.card-ring-amber .consensus-panel__header {
+  border-bottom-color: rgba(245, 158, 11, 0.35);
+}
+.card-ring-fuchsia .consensus-panel__header {
+  border-bottom-color: rgba(217, 70, 239, 0.35);
+}
+.card-ring-cyan .consensus-panel__header {
+  border-bottom-color: rgba(6, 182, 212, 0.35);
+}
+
+/* ---- Shared: player avatar + source monogram --------------------------- */
+.pavatar {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--color-slate-100);
+  border: 1px solid var(--color-slate-200);
+}
+
+.pavatar--xs {
+  width: 1.875rem;
+  height: 1.875rem;
+}
+.pavatar--sm {
+  width: 2.75rem;
+  height: 2.75rem;
+}
+.pavatar--md {
+  width: 3.25rem;
+  height: 3.25rem;
+}
+
+.pavatar__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pavatar__img--logo {
+  object-fit: contain;
+  padding: 2px;
+  background: var(--color-white);
+}
+
+.pavatar__initial {
+  font-family: var(--font-heading);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--color-slate-400);
+}
+
+/* Source monogram tile (sources have no logo of their own) */
+.source-badge {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 8px;
+  font-family: var(--font-heading);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-white);
+}
+
+/* Tinted by the slot's award accent (set via --slot-accent on the item). */
+.source-badge {
+  background: var(--slot-accent, var(--color-slate-400));
 }
 
 /* Mover list (Biggest Movers panel) */
@@ -400,128 +506,471 @@
 
 .consensus-panel__group-label {
   font-family: var(--font-mono);
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-slate-400);
   display: block;
-  margin-bottom: 0.375rem;
+  margin-bottom: 0.45rem;
 }
 
-.consensus-panel__mover-list {
+.mover-list {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
 }
 
-.consensus-panel__mover {
+/* Striped rows, scoreboard-style, like the draft board */
+.mover-row {
   display: flex;
-  align-items: baseline;
-  gap: 0.375rem;
-  font-size: 0.8125rem;
-  line-height: 1.4;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  line-height: 1.3;
+  transition: transform var(--transition-speed),
+    background-color var(--transition-speed);
 }
 
-.consensus-panel__mover-delta {
+.mover-row:nth-child(odd) {
+  background: var(--color-slate-50);
+}
+
+.mover-row--up:nth-child(odd) {
+  background: rgba(16, 185, 129, 0.06);
+}
+
+.mover-row--down:nth-child(odd) {
+  background: rgba(244, 63, 94, 0.06);
+}
+
+/* Hover rules placed after the stripes so they win on odd rows too */
+.mover-row:hover {
+  transform: translateX(2px);
+}
+
+.mover-row--up:hover,
+.mover-row--up:nth-child(odd):hover {
+  background: rgba(16, 185, 129, 0.14);
+}
+
+.mover-row--down:hover,
+.mover-row--down:nth-child(odd):hover {
+  background: rgba(244, 63, 94, 0.14);
+}
+
+.mover-row__pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.15rem;
+  gap: 0.2rem;
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   flex-shrink: 0;
-  width: 2.25rem;
+  min-width: 2.3rem;
+  justify-content: center;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
 }
 
-.consensus-panel__mover--up .consensus-panel__mover-delta {
+.mover-row__pill--up {
   color: var(--color-accent-emerald);
+  background: rgba(16, 185, 129, 0.14);
 }
 
-.consensus-panel__mover--down .consensus-panel__mover-delta {
+.mover-row__pill--down {
   color: var(--color-accent-rose);
+  background: rgba(244, 63, 94, 0.14);
 }
 
-.consensus-panel__mover-name {
+.mover-row__body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.mover-row__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-slate-800);
   text-decoration: none;
   font-family: var(--font-heading);
-  font-size: 0.8125rem;
+  font-size: 1.0625rem;
   transition: color var(--transition-speed);
 }
 
-a.consensus-panel__mover-name:hover {
+a.mover-row__name:hover {
   color: var(--color-accent-amber);
 }
 
-.consensus-panel__mover-rank {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
+.mover-row__school {
+  font-size: 0.78rem;
   color: var(--color-slate-400);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mover-row__rank {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-slate-500);
   flex-shrink: 0;
 }
 
-/* Source Spotlight panel */
-.consensus-panel__spotlight {
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-}
-
-.consensus-panel__spotlight-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+/* Most Controversial panel — rank-spread "tug of war" bars */
+.controversy__caption {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--color-slate-400);
+  margin: 0 0 0.85rem;
+}
+
+.controversy-list {
+  list-style: none;
   margin: 0;
-}
-
-.consensus-panel__spotlight-source {
-  font-family: var(--font-heading);
-  font-size: 1.125rem;
-  color: var(--color-slate-900);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.consensus-panel__spotlight-stat,
-.consensus-panel__spotlight-score {
-  font-size: 0.8125rem;
-  color: var(--color-slate-600);
-  margin: 0;
-}
-
-.consensus-panel__spotlight-value {
-  color: var(--color-accent-cyan);
-  font-weight: 700;
-}
-
-/* Board Freshness panel */
-.consensus-panel__freshness {
+  padding: 0;
   display: flex;
   flex-direction: column;
+  gap: 0.95rem;
+}
+
+.controversy-row__top {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.4rem;
+}
+
+.controversy-row__name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-heading);
+  font-size: 1.0625rem;
+  color: var(--color-slate-800);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color var(--transition-speed);
+}
+
+a.controversy-row__name:hover {
+  color: var(--color-accent-fuchsia);
+}
+
+.controversy-row__sd {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--color-accent-fuchsia);
+  flex-shrink: 0;
+}
+
+.controversy-row__bar {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
 }
 
-.consensus-panel__freshness-summary,
-.consensus-panel__freshness-date {
-  font-size: 0.875rem;
-  color: var(--color-slate-600);
-  margin: 0;
-  line-height: 1.5;
+.controversy-row__edge {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-slate-500);
+  flex-shrink: 0;
+  width: 2.1rem;
+  text-align: center;
 }
 
-.consensus-panel__freshness-value {
-  color: var(--color-accent-emerald);
+.controversy-row__track {
+  position: relative;
+  flex: 1;
+  height: 10px;
+  background: var(--color-slate-100);
+  border-radius: 5px;
+}
+
+.controversy-row__fill {
+  position: absolute;
+  top: 0;
+  z-index: 0;
+  height: 100%;
+  min-width: 5px;
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    rgba(217, 70, 239, 0.3),
+    rgba(217, 70, 239, 0.6)
+  );
+}
+
+/* One dot per source rank — the actual distribution of opinion */
+.controversy-row__dot {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent-fuchsia);
+  transform: translate(-50%, -50%);
+  opacity: 0.85;
+}
+
+.controversy-row__marker {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--color-white);
+  border: 2px solid var(--color-accent-fuchsia);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+/* Marker pulses on hover to draw the eye to the consensus position */
+.controversy-row:hover .controversy-row__marker {
+  animation: controversy-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes controversy-pulse {
+  0%,
+  100% {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 0 0 0 rgba(217, 70, 239, 0.5);
+  }
+  50% {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 0 0 5px rgba(217, 70, 239, 0);
+  }
+}
+
+/* Source Spotlight banner — two award slots side by side */
+.spotlight {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem 2rem;
+}
+
+.spotlight__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-left: 0.75rem;
+  /* Each slot is themed by its award accent (set inline via --slot-accent). */
+  border-left: 3px solid var(--slot-accent, var(--color-slate-200));
+}
+
+/* Stack the two ends on narrow viewports */
+@media (max-width: 640px) {
+  .spotlight {
+    grid-template-columns: 1fr;
+  }
+}
+
+.spotlight__label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-slate-400);
+}
+
+/* Monogram badge + name/deviation, side by side */
+.spotlight__source-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.spotlight__source-wrap {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.spotlight__source {
+  font-family: var(--font-heading);
+  font-size: 1.3rem;
+  color: var(--color-slate-900);
+  text-decoration: none;
+  line-height: 1.2;
+  transition: color var(--transition-speed);
+}
+
+a.spotlight__source:hover {
+  color: var(--color-accent-cyan);
+}
+
+/* External link to the producer's own published board */
+.spotlight__source--external {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.spotlight__external-icon {
+  flex-shrink: 0;
+  color: var(--color-slate-400);
+  transition: color var(--transition-speed);
+}
+
+a.spotlight__source--external:hover .spotlight__external-icon {
+  color: var(--color-accent-cyan);
+}
+
+.spotlight__stat {
+  font-size: 0.875rem;
+  color: var(--color-slate-500);
+}
+
+.spotlight__stat strong {
+  color: var(--color-accent-cyan);
+}
+
+/* Reaches vs Fades — a diverging bar centered on "matches consensus".
+   Left (grey) = players ranked lower than consensus; right (accent) = higher. */
+.rf {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rf__track {
+  display: flex;
+  align-items: stretch;
+  height: 8px;
+}
+
+.rf__half {
+  flex: 1;
+  display: flex;
+  height: 100%;
+  background: var(--color-slate-100);
+  overflow: hidden;
+}
+
+.rf__half--left {
+  justify-content: flex-end;
+  border-radius: 4px 0 0 4px;
+}
+
+.rf__half--right {
+  justify-content: flex-start;
+  border-radius: 0 4px 4px 0;
+}
+
+.rf__axis {
+  width: 2px;
+  background: var(--color-slate-300);
+  flex-shrink: 0;
+}
+
+.rf__fill {
+  height: 100%;
+}
+
+.rf__fill--fade {
+  background: var(--color-slate-400);
+  border-radius: 4px 0 0 4px;
+}
+
+.rf__fill--reach {
+  background: var(--slot-accent, var(--color-accent-cyan));
+  border-radius: 0 4px 4px 0;
+}
+
+.rf__labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--color-slate-400);
+}
+
+.spotlight__outlier {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.spotlight__outlier-text {
+  font-size: 0.875rem;
+  color: var(--color-slate-600);
+  line-height: 1.35;
+}
+
+.spotlight__outlier-label {
+  font-weight: 700;
+  color: var(--color-slate-500);
+}
+
+.spotlight__outlier a {
+  color: var(--color-slate-800);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.spotlight__outlier a:hover {
+  color: var(--color-accent-cyan);
+}
+
+.spotlight__outlier-cons {
+  color: var(--color-slate-400);
+}
+
+/* Call-to-action: go read the featured provider's full board */
+.spotlight__cta {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: transform var(--transition-speed), box-shadow var(--transition-speed),
+    filter var(--transition-speed);
+}
+
+.spotlight__cta svg {
+  flex-shrink: 0;
+}
+
+.spotlight__cta {
+  color: var(--color-white);
+  background: var(--slot-accent, var(--color-accent-cyan));
+}
+
+.spotlight__cta:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+}
+
+/* Board freshness footnote (below the panel grid) */
+.consensus-panels__freshness {
+  margin: 1rem 0 0;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-slate-400);
+}
+
+.consensus-panels__freshness strong {
+  color: var(--color-slate-600);
   font-weight: 700;
 }
 
@@ -539,13 +988,7 @@ a.consensus-panel__mover-name:hover {
   line-height: 1.5;
 }
 
-/* Responsive: 2-column on medium, 1-column on narrow */
-@media (max-width: 860px) {
-  .consensus-panels__grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
+/* Responsive: the 2-up grid collapses to a single column on narrow screens */
 @media (max-width: 540px) {
   .consensus-panels__grid {
     grid-template-columns: 1fr;
