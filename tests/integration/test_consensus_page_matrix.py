@@ -85,37 +85,58 @@ async def _make_approved_board(
 
 @pytest_asyncio.fixture()
 async def matrix_consensus(db_session: AsyncSession) -> dict:
-    """Seed players and sources with deliberate outlier ranks for matrix testing.
+    """Seed players and sources with a deliberate large divergence for the matrix.
 
-    Source Alpha ranks all players conventionally (ranks 1-3).
-    Source Beta diverges on player 2: ranks them at 5 (low outlier vs consensus 2).
-    Source Beta also diverges on player 3: ranks them at 1 (high outlier vs consensus 3).
+    With ``_OUTLIER_THRESHOLD = 5`` and consensus aggregating across sources, a
+    cell is only an outlier when ``|source_rank - consensus_rank| > 5``.  Two
+    sources can never produce that (the mean halves the gap), so we seed THREE
+    sources over twelve players: Alpha and Gamma agree on the conventional order
+    1..12, while Beta reverses the extremes (best player to last, last to first).
+
+    - Alice: Alpha=1, Gamma=1, Beta=12  -> consensus ~1-2, Beta delta large (low).
+    - Liam:  Alpha=12, Gamma=12, Beta=1 -> consensus ~8-12, Beta delta large (high).
 
     Returns the seeded objects so tests can assert on player/source names.
     """
-    p1 = make_player("Alice", "Allstar", school="Duke")
-    p2 = make_player("Bob", "Baller", school="Kansas")
-    p3 = make_player("Carl", "Court", school="UNC")
-    for p in (p1, p2, p3):
+    players = [
+        make_player("Alice", "Allstar", school="Duke"),
+        make_player("Bob", "Baller", school="Kansas"),
+        make_player("Carl", "Court", school="UNC"),
+        make_player("Dana", "Dunk", school="Gonzaga"),
+        make_player("Evan", "Elbow", school="Baylor"),
+        make_player("Fred", "Fadeaway", school="Auburn"),
+        make_player("Gina", "Glass", school="Houston"),
+        make_player("Hugo", "Hook", school="Arizona"),
+        make_player("Iris", "Iso", school="Michigan"),
+        make_player("Jack", "Jumper", school="Texas"),
+        make_player("Kara", "Korner", school="Indiana"),
+        make_player("Liam", "Layup", school="Purdue"),
+    ]
+    for p in players:
         db_session.add(p)
     await db_session.flush()
 
     s1 = await _make_source(db_session, "Matrix Alpha")
     s2 = await _make_source(db_session, "Matrix Beta")
+    s3 = await _make_source(db_session, "Matrix Gamma")
 
-    # Source Alpha: conventional order
+    n = len(players)
+    conventional = [(players[i], i + 1) for i in range(n)]
+
+    # Alpha + Gamma: conventional order (the majority view).
     await _make_approved_board(
-        db_session,
-        source=s1,
-        draft_year=2026,
-        entries=[(p1, 1), (p2, 2), (p3, 3)],
+        db_session, source=s1, draft_year=2026, entries=list(conventional)
     )
-    # Source Beta: p2 ranked 5 (low outlier), p3 ranked 1 (high outlier if threshold met)
     await _make_approved_board(
-        db_session,
-        source=s2,
-        draft_year=2026,
-        entries=[(p1, 1), (p2, 5), (p3, 1)],
+        db_session, source=s3, draft_year=2026, entries=list(conventional)
+    )
+
+    # Beta: swap the extremes -> guaranteed |delta| > threshold on Alice and Liam.
+    beta = [(players[i], i + 1) for i in range(n)]
+    beta[0] = (players[0], n)  # Alice 1 -> 12 (Beta low outlier)
+    beta[n - 1] = (players[n - 1], 1)  # Liam 12 -> 1 (Beta high outlier)
+    await _make_approved_board(
+        db_session, source=s2, draft_year=2026, entries=beta
     )
 
     await db_session.commit()
@@ -125,7 +146,7 @@ async def matrix_consensus(db_session: AsyncSession) -> dict:
     )
     await db_session.commit()
 
-    return {"players": [p1, p2, p3], "sources": [s1, s2]}
+    return {"players": players, "sources": [s1, s2, s3]}
 
 
 # ---------------------------------------------------------------------------

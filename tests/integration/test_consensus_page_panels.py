@@ -67,7 +67,8 @@ async def _make_news_item(
     """Create a NewsItem linked to a source (used as board work_url)."""
     assert source.id is not None
     item = NewsItem(
-        news_source_id=source.id,
+        source_id=source.id,
+        external_id=f"{source.id}-{title}"[:64],
         url=url,
         title=title,
         published_at=_now() - timedelta(hours=12),

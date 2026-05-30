@@ -76,7 +76,7 @@ async def _make_source(
     article: NewsItem | None = None
     if work_url is not None:
         article = NewsItem(
-            news_source_id=src.id,
+            source_id=src.id,
             external_id=f"{name}-board-article",
             title=f"{name.title()} Mock Draft Board",
             url=work_url,

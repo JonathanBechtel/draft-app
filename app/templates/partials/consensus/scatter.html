@@ -17,7 +17,7 @@
 {{ source_overlays | tojson }}
 </script>
 
-<div class="scatter-card" id="scatterCard">
+<div class="scatter-card" id="scatterCard" data-section="scatter">
 
   {# ---- Source picker ---- #}
   <div class="scatter-card__picker" role="tablist" aria-label="Select source to view">
@@ -77,7 +77,7 @@
 
 {% else %}
 
-<div class="scatter-card scatter-card--empty">
+<div class="scatter-card scatter-card--empty" data-section="scatter">
   <p class="scatter-card__empty-msg">No source overlay data available for {{ draft_year }}.</p>
 </div>
 

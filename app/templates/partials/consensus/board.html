@@ -40,7 +40,7 @@
    include the consensus_rank so the marker never falls off the track.
    This mirrors the PR #267 guard used in the homepage controversy panel.
    ---------------------------------------------------------------- #}
-<div class="card card-ring card-ring-amber consensus-hero__card cb-card" id="cbCard" style="margin-top:0.5rem;">
+<div class="card card-ring card-ring-amber consensus-hero__card cb-card" id="cbCard" data-section="board" style="margin-top:0.5rem;">
   <div class="scanlines"></div>
   <div class="consensus-hero__table-wrap">
     <table class="consensus-hero__table cb-table" id="cbTable" aria-label="Consensus {{ 'Big Board' if board_kind.value == 'BIG_BOARD' else 'Mock Draft' }} {{ draft_year }}">
@@ -226,7 +226,7 @@
 
 {% else %}
 {# Empty state: no consensus data for this draft year #}
-<div class="consensus-hero__empty" id="cbEmpty">
+<div class="consensus-hero__empty" id="cbEmpty" data-section="board">
   <p class="consensus-hero__empty-msg">
     No consensus data available for {{ draft_year }}.
   </p>
