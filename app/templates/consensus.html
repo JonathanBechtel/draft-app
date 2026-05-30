@@ -6,6 +6,9 @@
 {% endblock %}
 
 {% block extra_css %}
+{# home.css supplies the shared panel components (consensus-panel / mover-row /
+   controversy-row / spotlight) that the supporting-panels section reuses. #}
+<link rel="stylesheet" href="{{ url_for('static', path='css/home.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/consensus.css') }}">
 {% endblock %}
 
