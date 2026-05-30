@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DraftGuru — Dedicated Consensus Page Mockup</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Reuse the SHIPPED design system + the PR #267 panel components so this
+       mockup is faithful to production. Section tickets reuse these classes;
+       net-new sections are styled in the inline block below (their spec). -->
+  <link rel="stylesheet" href="../app/static/main.css">
+  <link rel="stylesheet" href="../app/static/css/home.css">
+
+  <style>
+    /* ========================================================================
+       MOCKUP-ONLY styles for the NET-NEW sections of the dedicated /consensus
+       page. These define the spec for the section tickets' scoped CSS
+       (consensus-board.css / -scatter / -sources / -matrix / -trajectories /
+       -methodology), which T11 later consolidates into a single consensus.css.
+       Existing components (board table, movers, controversial, spotlight) are
+       intentionally NOT redefined here — they come from home.css.
+       ===================================================================== */
+
+    body { background: var(--color-slate-50); }
+    .mock-note {
+      background: #fff7ed; border: 1px dashed var(--color-accent-amber);
+      color: #7c2d12; padding: 0.6rem 1rem; border-radius: 8px;
+      font-family: var(--font-mono); font-size: 0.8rem; margin: 1rem auto;
+      max-width: 1200px;
+    }
+    .page { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+    .page__title {
+      font-family: var(--font-heading); font-size: 1.9rem;
+      color: var(--color-slate-900); margin: 0.5rem 0 0.25rem;
+    }
+    .section-head {
+      display: flex; align-items: baseline; gap: 0.75rem;
+      margin: 2.25rem 0 1rem; padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--color-slate-200);
+    }
+    .section-head h2 {
+      font-family: var(--font-heading); font-size: 1.15rem;
+      letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--color-slate-800); margin: 0;
+    }
+    .section-head .sub {
+      font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-400);
+    }
+
+    /* --- Board toggle + freshness ------------------------------------------ */
+    .board-bar { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin: 0.75rem 0; }
+    .board-controls { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .board-controls input, .board-controls select {
+      font-family: var(--font-mono); font-size: 0.8rem; padding: 0.4rem 0.6rem;
+      border: 1px solid var(--color-slate-200); border-radius: 6px;
+    }
+    .freshness-line { font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-400); }
+
+    /* --- Methodology -------------------------------------------------------- */
+    .methodology { background: var(--color-white); border-radius: var(--border-radius); padding: 1.25rem 1.5rem; }
+    .methodology h3 { font-family: var(--font-heading); font-size: 0.95rem; margin: 0 0 0.5rem; color: var(--color-slate-800); }
+    .methodology p { font-size: 0.9rem; color: var(--color-slate-600); line-height: 1.6; max-width: 70ch; }
+    .methodology dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1rem; margin-top: 0.75rem; font-size: 0.85rem; }
+    .methodology dt { font-family: var(--font-mono); font-weight: 700; color: var(--color-slate-700); }
+    .methodology dd { color: var(--color-slate-500); margin: 0; }
+    .mph { /* methodology-placeholder: a formula not yet finalized */
+      background: #fef9c3; border-bottom: 1px dashed #ca8a04; padding: 0 2px;
+    }
+    .mph::after { content: " ⚠"; font-size: 0.7em; }
+
+    /* --- Source analytics grid --------------------------------------------- */
+    .analytics-grid { display: grid; grid-template-columns: 320px 1fr; gap: 1rem; align-items: start; }
+    @media (max-width: 860px) { .analytics-grid { grid-template-columns: 1fr; } }
+
+    /* Agreement scatter */
+    .scatter-card, .deviation-card, .matrix-card, .trajectory-card {
+      background: var(--color-white); border-radius: var(--border-radius); padding: 1.1rem 1.15rem;
+    }
+    .scatter-card__picker { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .scatter-card__picker button {
+      font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; padding: 0.25rem 0.6rem;
+      border: 1px solid var(--color-slate-200); border-radius: 999px; background: #fff;
+      color: var(--color-slate-500); cursor: pointer;
+    }
+    .scatter-card__picker button.is-active { background: var(--color-accent-rose); border-color: var(--color-accent-rose); color: #fff; }
+    .scatter svg { width: 100%; height: auto; display: block; }
+    .scatter__axis { stroke: var(--color-slate-300); stroke-width: 1; }
+    .scatter__diagonal { stroke: var(--color-slate-300); stroke-width: 1.5; stroke-dasharray: 4 3; }
+    .scatter__dot { fill: var(--color-accent-rose); opacity: 0.8; cursor: pointer; transition: opacity .12s; }
+    .scatter__dot:hover { opacity: 1; stroke: var(--color-slate-700); stroke-width: 2; }
+    .scatter__dot--bold { fill: var(--color-accent-fuchsia); }
+    /* Always link out to the creator wherever a source is named. */
+    .src-link { color: var(--color-slate-700); text-decoration: none; font-weight: 700; }
+    .src-link:hover { color: var(--color-accent-cyan); }
+    .src-link::after { content: " \2197"; font-size: .8em; color: var(--color-slate-400); }
+    .matrix th .src-link::after { content: ""; }
+    .scatter__label { font-family: var(--font-mono); font-size: 9px; fill: var(--color-slate-400); }
+    .scatter__caption { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-slate-400); margin-top: 0.5rem; }
+
+    /* Source deviation table */
+    .dev-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .dev-table th { font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-slate-400); text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--color-slate-200); }
+    .dev-table td { padding: 0.5rem; border-bottom: 1px solid var(--color-slate-100); vertical-align: middle; }
+    .dev-bar { height: 7px; border-radius: 4px; background: var(--color-slate-100); position: relative; min-width: 80px; }
+    .dev-bar__fill { position: absolute; left: 0; top: 0; height: 100%; border-radius: 4px; background: linear-gradient(90deg, rgba(244,63,94,.4), var(--color-accent-rose)); }
+
+    /* Contrarian percentile scale */
+    .percentile { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--color-slate-100); }
+    .percentile__track { position: relative; height: 8px; border-radius: 4px;
+      background: linear-gradient(90deg, var(--color-accent-emerald), var(--color-slate-200) 50%, var(--color-accent-rose)); margin: 1.5rem 0 0.5rem; }
+    .percentile__dot { position: absolute; top: 50%; width: 9px; height: 9px; border-radius: 50%; background: var(--color-slate-400); transform: translate(-50%,-50%); }
+    .percentile__dot--active { width: 13px; height: 13px; background: #fff; border: 3px solid var(--color-accent-rose); }
+    .percentile__pin { position: absolute; bottom: 14px; transform: translateX(-50%); font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; color: var(--color-slate-700); white-space: nowrap; }
+    .percentile__ends { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.68rem; color: var(--color-slate-400); }
+
+    /* Source breakdown matrix */
+    .matrix { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 0.8rem; }
+    .matrix th, .matrix td { padding: 0.35rem 0.5rem; text-align: center; border-bottom: 1px solid var(--color-slate-100); }
+    .matrix th { font-size: 0.65rem; text-transform: uppercase; color: var(--color-slate-400); }
+    .matrix td.player { text-align: left; font-family: var(--font-heading); font-size: 0.85rem; color: var(--color-slate-800); }
+    .matrix td.cons { font-weight: 700; color: var(--color-slate-700); background: var(--color-slate-50); }
+    .matrix .out-high { background: rgba(16,185,129,.16); color: #047857; font-weight: 700; }  /* ranks notably higher than consensus */
+    .matrix .out-low { background: rgba(244,63,94,.14); color: #be123c; font-weight: 700; }    /* notably lower */
+
+    /* Rank trajectories */
+    .trajectory svg { width: 100%; height: auto; display: block; }
+    .trajectory__line { fill: none; stroke-width: 2; }
+    .trajectory__grid { stroke: var(--color-slate-100); stroke-width: 1; }
+    .trajectory__axis-label { font-family: var(--font-mono); font-size: 9px; fill: var(--color-slate-400); }
+    .trajectory__legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; margin-top: 0.5rem; font-family: var(--font-mono); font-size: 0.72rem; }
+    .trajectory__legend span::before { content: "—"; font-weight: 700; margin-right: 0.3rem; }
+  </style>
+</head>
+<body>
+
+  <div class="mock-note">
+    MOCKUP — design target for the dedicated <code>/consensus</code> page. Board + supporting panels reuse the
+    <strong>shipped</strong> components from <code>home.css</code> (PR #267); net-new sections are styled inline as
+    the spec for their tickets. Every source name links out to the creator's published board (↗); scatter dots are hoverable.
+  </div>
+
+  <div class="page">
+
+    <!-- ====================================================================
+         PAGE HEADER + BOARD TOGGLE (T1 scaffold + T3 board)
+         ==================================================================== -->
+    <!-- Heading reflects the calendar-determined kind (Big Board pre-lottery,
+         Mock Draft post-lottery) via get_consensus_board_kind() — NOT a user
+         toggle. The kind is internal state, not a control. -->
+    <h1 class="page__title">2026 Consensus Big Board</h1>
+    <div class="board-bar">
+      <div class="board-controls">
+        <input type="search" placeholder="Search player / school…">
+        <select><option>All positions</option><option>PG</option><option>SG</option><option>SF</option><option>PF</option><option>C</option></select>
+      </div>
+    </div>
+    <div class="freshness-line">Based on <strong>7 boards</strong> from <strong>7 sources</strong> · updated May 30, 2026</div>
+
+    <!-- ====================================================================
+         1. FULL BOARD TABLE (T3) — reuses the shipped consensus-hero table
+            styling; full board (all players), adds a range bar column.
+         ==================================================================== -->
+    <div class="card card-ring card-ring-amber consensus-hero__card" style="margin-top:1rem;">
+      <div class="scanlines"></div>
+      <div class="consensus-hero__table-wrap">
+        <table class="consensus-hero__table">
+          <thead>
+            <tr>
+              <th class="consensus-hero__th">#</th>
+              <th class="consensus-hero__th">Δ</th>
+              <th class="consensus-hero__th">Trend</th>
+              <th class="consensus-hero__th">Player</th>
+              <th class="consensus-hero__th">School</th>
+              <th class="consensus-hero__th">Pos</th>
+              <th class="consensus-hero__th">Avg</th>
+              <th class="consensus-hero__th">Range</th>
+              <th class="consensus-hero__th">Src</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="consensus-hero__row">
+              <td class="consensus-hero__td tabular-nums">1</td>
+              <td class="consensus-hero__td"><span class="consensus-hero__delta consensus-hero__delta--flat">–</span></td>
+              <td class="consensus-hero__td"><svg viewBox="0 0 80 18" width="80" height="18" preserveAspectRatio="none"><path d="M0,9 L20,9 L40,8 L60,9 L80,9" fill="none" stroke="#94a3b8" stroke-width="1.5"/></svg></td>
+              <td class="consensus-hero__td consensus-hero__td--player">Cooper Flagg</td>
+              <td class="consensus-hero__td consensus-hero__school">Duke</td>
+              <td class="consensus-hero__td">PF</td>
+              <td class="consensus-hero__td tabular-nums">1.0</td>
+              <td class="consensus-hero__td">
+                <!-- Range bar: high→low with consensus marker (reuse controversy bar language) -->
+                <div style="display:flex;align-items:center;gap:.4rem;">
+                  <span class="tabular-nums" style="font-family:var(--font-mono);font-size:.7rem;color:#64748b;width:1.6rem;text-align:right;">1</span>
+                  <div style="position:relative;flex:1;height:8px;background:#f1f5f9;border-radius:4px;min-width:90px;">
+                    <div style="position:absolute;left:0%;width:3%;height:100%;border-radius:4px;background:linear-gradient(90deg,rgba(217,70,239,.3),rgba(217,70,239,.6));"></div>
+                    <div style="position:absolute;left:0%;top:50%;width:11px;height:11px;border-radius:50%;background:#fff;border:2px solid var(--color-accent-fuchsia);transform:translate(-50%,-50%);"></div>
+                  </div>
+                  <span class="tabular-nums" style="font-family:var(--font-mono);font-size:.7rem;color:#64748b;width:1.6rem;">1</span>
+                </div>
+              </td>
+              <td class="consensus-hero__td tabular-nums">7</td>
+            </tr>
+            <tr class="consensus-hero__row">
+              <td class="consensus-hero__td tabular-nums">2</td>
+              <td class="consensus-hero__td"><span class="consensus-hero__delta consensus-hero__delta--up">▲1</span></td>
+              <td class="consensus-hero__td"><svg viewBox="0 0 80 18" width="80" height="18" preserveAspectRatio="none"><path d="M0,12 L20,11 L40,9 L60,7 L80,6" fill="none" stroke="#10b981" stroke-width="1.5"/></svg></td>
+              <td class="consensus-hero__td consensus-hero__td--player">Dylan Harper</td>
+              <td class="consensus-hero__td consensus-hero__school">Rutgers</td>
+              <td class="consensus-hero__td">SG</td>
+              <td class="consensus-hero__td tabular-nums">2.6</td>
+              <td class="consensus-hero__td">
+                <div style="display:flex;align-items:center;gap:.4rem;">
+                  <span class="tabular-nums" style="font-family:var(--font-mono);font-size:.7rem;color:#64748b;width:1.6rem;text-align:right;">2</span>
+                  <div style="position:relative;flex:1;height:8px;background:#f1f5f9;border-radius:4px;min-width:90px;">
+                    <div style="position:absolute;left:2%;width:10%;height:100%;border-radius:4px;background:linear-gradient(90deg,rgba(217,70,239,.3),rgba(217,70,239,.6));"></div>
+                    <div style="position:absolute;left:5%;top:50%;width:11px;height:11px;border-radius:50%;background:#fff;border:2px solid var(--color-accent-fuchsia);transform:translate(-50%,-50%);"></div>
+                  </div>
+                  <span class="tabular-nums" style="font-family:var(--font-mono);font-size:.7rem;color:#64748b;width:1.6rem;">5</span>
+                </div>
+              </td>
+              <td class="consensus-hero__td tabular-nums">7</td>
+            </tr>
+            <tr class="consensus-hero__row">
+              <td class="consensus-hero__td tabular-nums">3</td>
+              <td class="consensus-hero__td"><span class="consensus-hero__delta consensus-hero__delta--down">▼1</span></td>
+              <td class="consensus-hero__td"><svg viewBox="0 0 80 18" width="80" height="18" preserveAspectRatio="none"><path d="M0,6 L20,7 L40,8 L60,10 L80,11" fill="none" stroke="#f43f5e" stroke-width="1.5"/></svg></td>
+              <td class="consensus-hero__td consensus-hero__td--player">Ace Bailey</td>
+              <td class="consensus-hero__td consensus-hero__school">Rutgers</td>
+              <td class="consensus-hero__td">SF</td>
+              <td class="consensus-hero__td tabular-nums">3.1</td>
+              <td class="consensus-hero__td">
+                <div style="display:flex;align-items:center;gap:.4rem;">
+                  <span class="tabular-nums" style="font-family:var(--font-mono);font-size:.7rem;color:#64748b;width:1.6rem;text-align:right;">2</span>
+                  <div style="position:relative;flex:1;height:8px;background:#f1f5f9;border-radius:4px;min-width:90px;">
+                    <div style="position:absolute;left:2%;width:14%;height:100%;border-radius:4px;background:linear-gradient(90deg,rgba(217,70,239,.3),rgba(217,70,239,.6));"></div>
+                    <div style="position:absolute;left:8%;top:50%;width:11px;height:11px;border-radius:50%;background:#fff;border:2px solid var(--color-accent-fuchsia);transform:translate(-50%,-50%);"></div>
+                  </div>
+                  <span class="tabular-nums" style="font-family:var(--font-mono);font-size:.7rem;color:#64748b;width:1.6rem;">6</span>
+                </div>
+              </td>
+              <td class="consensus-hero__td tabular-nums">7</td>
+            </tr>
+            <tr class="consensus-hero__row"><td class="consensus-hero__td" colspan="9" style="text-align:center;color:#94a3b8;font-family:var(--font-mono);font-size:.75rem;padding:.6rem;">… full board continues (all ranked players, sortable / filterable) …</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ====================================================================
+         2. SOURCE ANALYTICS (scatter, deviation+percentile, matrix)
+         ==================================================================== -->
+    <div class="section-head"><h2>Source analytics</h2><span class="sub">how each board compares to consensus</span></div>
+    <div class="analytics-grid">
+
+      <!-- 3a. Agreement scatter (T5) -->
+      <div class="scatter-card">
+        <div class="scatter-card__picker">
+          <button class="is-active">Ersin Demir</button>
+          <button>Draft Stack</button>
+          <button>No Ceilings</button>
+          <button>Dizzle Dynasty</button>
+        </div>
+        <div class="scatter">
+          <svg viewBox="0 0 260 260">
+            <!-- axes -->
+            <line class="scatter__axis" x1="40" y1="10" x2="40" y2="230"/>
+            <line class="scatter__axis" x1="40" y1="230" x2="250" y2="230"/>
+            <!-- 45° agreement diagonal -->
+            <line class="scatter__diagonal" x1="40" y1="230" x2="250" y2="20"/>
+            <!-- dots: on-diagonal = agreement, off = bold calls.
+                 Each carries a native <title> (hover tooltip) — the real page
+                 wires a styled tooltip showing player + their rank vs consensus. -->
+            <circle class="scatter__dot" cx="55" cy="218" r="4"><title>Cooper Flagg — their #1 · consensus #1</title></circle>
+            <circle class="scatter__dot" cx="80" cy="190" r="4"><title>Dylan Harper — their #3 · consensus #2</title></circle>
+            <circle class="scatter__dot" cx="100" cy="172" r="4"><title>VJ Edgecombe — their #4 · consensus #4</title></circle>
+            <circle class="scatter__dot" cx="130" cy="150" r="4"><title>Kon Knueppel — their #7 · consensus #8</title></circle>
+            <circle class="scatter__dot--bold scatter__dot" cx="150" cy="90" r="5"><title>Tre Acuff — their #5 · consensus #12 (bold call)</title></circle>
+            <circle class="scatter__dot" cx="175" cy="95" r="4"><title>Karim Lopez — their #14 · consensus #16</title></circle>
+            <circle class="scatter__dot--bold scatter__dot" cx="120" cy="200" r="5"><title>Ace Bailey — their #6 · consensus #3 (bold fade)</title></circle>
+            <circle class="scatter__dot" cx="205" cy="55" r="4"><title>Meleek Thomas — their #40 · consensus #29</title></circle>
+            <circle class="scatter__dot" cx="225" cy="40" r="4"><title>Aday Mara — their #22 · consensus #24</title></circle>
+            <text class="scatter__label" x="40" y="245" text-anchor="middle">consensus rank →</text>
+            <text class="scatter__label" x="14" y="120" transform="rotate(-90 14 120)" text-anchor="middle">their rank →</text>
+          </svg>
+        </div>
+        <p class="scatter__caption">Viewing <a class="src-link" href="#" target="_blank" rel="noopener">Ersin Demir</a> · hover a dot for the pick. ● fuchsia = biggest disagreements.</p>
+      </div>
+
+      <!-- 3b. Source deviation table + 3c. contrarian percentile (T6) -->
+      <div class="deviation-card">
+        <table class="dev-table">
+          <thead><tr><th>Source</th><th>Avg dev</th><th>Spread</th><th>Biggest outlier</th></tr></thead>
+          <tbody>
+            <tr><td><a class="src-link" href="#" target="_blank" rel="noopener">Ersin Demir</a></td><td class="tabular-nums">4.1</td><td><div class="dev-bar"><div class="dev-bar__fill" style="width:92%"></div></div></td><td>Meleek Thomas #40 (cons #29)</td></tr>
+            <tr><td><a class="src-link" href="#" target="_blank" rel="noopener">No Ceilings</a></td><td class="tabular-nums">3.4</td><td><div class="dev-bar"><div class="dev-bar__fill" style="width:76%"></div></div></td><td>Tre Acuff #5 (cons #12)</td></tr>
+            <tr><td><a class="src-link" href="#" target="_blank" rel="noopener">Draft Stack</a></td><td class="tabular-nums">2.2</td><td><div class="dev-bar"><div class="dev-bar__fill" style="width:49%"></div></div></td><td>Dailyn Swain #18 (cons #21)</td></tr>
+            <tr><td><a class="src-link" href="#" target="_blank" rel="noopener">Dizzle Dynasty</a></td><td class="tabular-nums">0.9</td><td><div class="dev-bar"><div class="dev-bar__fill" style="width:20%"></div></div></td><td>—</td></tr>
+          </tbody>
+        </table>
+
+        <div class="percentile">
+          <div style="font-family:var(--font-mono);font-size:.7rem;color:#64748b;font-weight:700;">Contrarian percentile — where each source sits in the field</div>
+          <div class="percentile__track">
+            <div class="percentile__dot" style="left:14%"></div>
+            <div class="percentile__dot" style="left:38%"></div>
+            <div class="percentile__dot" style="left:70%"></div>
+            <div class="percentile__dot percentile__dot--active" style="left:91%"></div>
+            <div class="percentile__pin" style="left:91%"><a class="src-link" href="#" target="_blank" rel="noopener">Ersin Demir</a> · 92nd</div>
+          </div>
+          <div class="percentile__ends"><span>most aligned</span><span>most contrarian</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3d. Source breakdown matrix (T7) -->
+    <div class="matrix-card" style="margin-top:1rem;">
+      <div style="font-family:var(--font-mono);font-size:.7rem;color:#64748b;font-weight:700;margin-bottom:.5rem;">Source breakdown — top prospects (cells = each source's rank; highlighted = outliers)</div>
+      <table class="matrix">
+        <thead><tr><th class="player" style="text-align:left;">Player</th><th>Cons</th>
+          <th><a class="src-link" href="#" target="_blank" rel="noopener" title="Ersin Demir">ED</a></th>
+          <th><a class="src-link" href="#" target="_blank" rel="noopener" title="Draft Stack">DS</a></th>
+          <th><a class="src-link" href="#" target="_blank" rel="noopener" title="No Ceilings">NC</a></th>
+          <th><a class="src-link" href="#" target="_blank" rel="noopener" title="Dizzle Dynasty">DD</a></th>
+          <th><a class="src-link" href="#" target="_blank" rel="noopener" title="Floor &amp; Ceiling">FC</a></th></tr></thead>
+        <tbody>
+          <tr><td class="player">Cooper Flagg</td><td class="cons">1</td><td>1</td><td>1</td><td>1</td><td>1</td><td>1</td></tr>
+          <tr><td class="player">Dylan Harper</td><td class="cons">2</td><td>3</td><td>2</td><td class="out-high">1</td><td>2</td><td>4</td></tr>
+          <tr><td class="player">Ace Bailey</td><td class="cons">3</td><td class="out-low">6</td><td>3</td><td>2</td><td>3</td><td>2</td></tr>
+          <tr><td class="player">VJ Edgecombe</td><td class="cons">4</td><td>4</td><td class="out-high">2</td><td>5</td><td>4</td><td>5</td></tr>
+          <tr><td class="player">Meleek Thomas</td><td class="cons">29</td><td class="out-low">40</td><td>27</td><td>25</td><td>28</td><td>30</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ====================================================================
+         4. PLAYER RANK TRAJECTORIES (T8)
+         ==================================================================== -->
+    <div class="section-head"><h2>Rank trajectories</h2><span class="sub">consensus rank over recent snapshots</span></div>
+    <div class="trajectory-card">
+      <div class="trajectory">
+        <svg viewBox="0 0 620 220">
+          <!-- gridlines -->
+          <line class="trajectory__grid" x1="50" y1="20" x2="600" y2="20"/>
+          <line class="trajectory__grid" x1="50" y1="70" x2="600" y2="70"/>
+          <line class="trajectory__grid" x1="50" y1="120" x2="600" y2="120"/>
+          <line class="trajectory__grid" x1="50" y1="170" x2="600" y2="170"/>
+          <text class="trajectory__axis-label" x="44" y="24" text-anchor="end">#1</text>
+          <text class="trajectory__axis-label" x="44" y="124" text-anchor="end">#10</text>
+          <text class="trajectory__axis-label" x="44" y="174" text-anchor="end">#15</text>
+          <text class="trajectory__axis-label" x="50" y="210">5w ago</text>
+          <text class="trajectory__axis-label" x="600" y="210" text-anchor="end">now</text>
+          <!-- lines -->
+          <polyline class="trajectory__line" style="stroke:#94a3b8" points="50,20 187,20 324,20 461,20 600,20"/>
+          <polyline class="trajectory__line" style="stroke:#10b981" points="50,90 187,80 324,60 461,45 600,30"/>
+          <polyline class="trajectory__line" style="stroke:#f43f5e" points="50,40 187,55 324,70 461,85 600,95"/>
+          <polyline class="trajectory__line" style="stroke:#06b6d4" points="50,150 187,140 324,150 461,130 600,120"/>
+          <polyline class="trajectory__line" style="stroke:#d946ef" points="50,120 187,160 324,150 461,170 600,140"/>
+        </svg>
+      </div>
+      <div class="trajectory__legend">
+        <span style="color:#94a3b8">Cooper Flagg</span>
+        <span style="color:#10b981">Dylan Harper ↑</span>
+        <span style="color:#f43f5e">Ace Bailey ↓</span>
+        <span style="color:#06b6d4">VJ Edgecombe</span>
+        <span style="color:#d946ef">Dailyn Swain</span>
+      </div>
+    </div>
+
+    <!-- ====================================================================
+         5. SUPPORTING PANELS (T9) — reuse shipped home.css components,
+            full-length. Shown here as a placeholder note; the real section
+            renders Biggest Movers / Most Controversial / award Source
+            Spotlight exactly as on the homepage, unbounded.
+         ==================================================================== -->
+    <div class="section-head"><h2>Movers, controversy &amp; source spotlight</h2><span class="sub">full-length · reuses shipped panels</span></div>
+    <div class="mock-note" style="margin:0;">
+      Renders the <code>consensus-panel</code> / <code>mover-row</code> / <code>controversy-row</code> /
+      <code>spotlight</code> components shipped in PR #267 — full-length lists here (not the homepage 3/3 slice),
+      with the award-based Source Spotlight and reaches/fades bars unchanged.
+    </div>
+
+  </div>
+</body>
+</html>
