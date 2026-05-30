@@ -1,0 +1,13 @@
+{# ============================================================
+   SECTION 1 — FULL BOARD TABLE
+   Context keys: consensus_rows, board_kind, draft_year, board_freshness
+   Filled by ticket #272. Owns: consensus-board.css, consensus-board.js
+   ============================================================ #}
+<div class="consensus-board-placeholder consensus-placeholder" data-section="board">
+  <p class="consensus-placeholder__label">Full board table — ticket #272</p>
+  {% if consensus_rows %}
+  <p class="consensus-placeholder__count">{{ consensus_rows | length }} players available</p>
+  {% else %}
+  <p class="consensus-placeholder__empty">No consensus data for {{ draft_year }}.</p>
+  {% endif %}
+</div>

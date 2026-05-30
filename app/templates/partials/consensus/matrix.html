@@ -1,0 +1,15 @@
+{# ============================================================
+   SECTION 4 — SOURCE BREAKDOWN MATRIX
+   Context keys: source_matrix (keys: players, sources, cells)
+   Filled by ticket #275. Owns: consensus-matrix.css
+   ============================================================ #}
+<div class="consensus-matrix-placeholder consensus-placeholder" data-section="matrix">
+  <p class="consensus-placeholder__label">Source breakdown matrix — ticket #275</p>
+  {% if source_matrix and source_matrix.players %}
+  <p class="consensus-placeholder__count">
+    {{ source_matrix.players | length }} players &times; {{ source_matrix.sources | length }} sources
+  </p>
+  {% else %}
+  <p class="consensus-placeholder__empty">No matrix data available.</p>
+  {% endif %}
+</div>

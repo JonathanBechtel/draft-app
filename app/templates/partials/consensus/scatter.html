@@ -1,0 +1,13 @@
+{# ============================================================
+   SECTION 2 — AGREEMENT SCATTER + SOURCE PICKER
+   Context keys: source_overlays, source_leaderboard, draft_year
+   Filled by ticket #273. Owns: consensus-scatter.css, consensus-scatter.js
+   ============================================================ #}
+<div class="consensus-scatter-placeholder consensus-placeholder" data-section="scatter">
+  <p class="consensus-placeholder__label">Agreement scatter + source picker — ticket #273</p>
+  {% if source_overlays %}
+  <p class="consensus-placeholder__count">{{ source_overlays | length }} source overlays available</p>
+  {% else %}
+  <p class="consensus-placeholder__empty">No source overlay data available.</p>
+  {% endif %}
+</div>

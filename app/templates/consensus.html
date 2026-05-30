@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}{{ draft_year }} Consensus
+  {% if board_kind.value == 'BIG_BOARD' %}Big Board{% else %}Mock Draft{% endif %}
+  — DraftGuru
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/consensus.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-board.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-scatter.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-sources.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-matrix.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-trajectories.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-panels.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="consensus-page mt-28">
+
+  {# ============================================================
+     PAGE HEADER
+     ============================================================ #}
+  <div class="consensus-page__header">
+    <h1 class="consensus-page__title">
+      {{ draft_year }}
+      {% if board_kind.value == 'BIG_BOARD' %}
+        Consensus Big Board
+      {% else %}
+        Consensus Mock Draft
+      {% endif %}
+    </h1>
+
+    {% if board_freshness %}
+    <p class="consensus-page__freshness">
+      Based on
+      <strong>{{ board_freshness.num_boards }}
+        board{% if board_freshness.num_boards != 1 %}s{% endif %}</strong>
+      from
+      <strong>{{ board_freshness.num_sources }}
+        source{% if board_freshness.num_sources != 1 %}s{% endif %}</strong>
+      {% if board_freshness.last_updated %}
+      &middot; updated {{ board_freshness.last_updated.strftime('%b %-d, %Y') }}
+      {% endif %}
+    </p>
+    {% endif %}
+  </div>
+
+  {# ============================================================
+     SECTION 1 — FULL BOARD TABLE
+     Filled by ticket #272 (consensus-board.css / consensus-board.js)
+     ============================================================ #}
+  <section class="consensus-section" id="consensusBoardSection" aria-label="Full consensus board">
+    {% include "partials/consensus/board.html" %}
+  </section>
+
+  {# ============================================================
+     SECTION 2 — AGREEMENT SCATTER + SOURCE PICKER
+     Filled by ticket #273 (consensus-scatter.css / consensus-scatter.js)
+     ============================================================ #}
+  <section class="consensus-section" id="consensusScatterSection" aria-label="Agreement scatter">
+    {% include "partials/consensus/scatter.html" %}
+  </section>
+
+  {# ============================================================
+     SECTION 3 — SOURCE DEVIATION TABLE + PERCENTILE
+     Filled by ticket #274 (consensus-sources.css)
+     ============================================================ #}
+  <section class="consensus-section" id="consensusSourcesSection" aria-label="Source deviation table">
+    {% include "partials/consensus/sources.html" %}
+  </section>
+
+  {# ============================================================
+     SECTION 4 — SOURCE BREAKDOWN MATRIX
+     Filled by ticket #275 (consensus-matrix.css)
+     ============================================================ #}
+  <section class="consensus-section" id="consensusMatrixSection" aria-label="Source breakdown matrix">
+    {% include "partials/consensus/matrix.html" %}
+  </section>
+
+  {# ============================================================
+     SECTION 5 — PLAYER RANK TRAJECTORIES
+     Filled by ticket #276 (consensus-trajectories.css / consensus-trajectories.js)
+     ============================================================ #}
+  <section class="consensus-section" id="consensusTrajectoriesSection" aria-label="Player rank trajectories">
+    {% include "partials/consensus/trajectories.html" %}
+  </section>
+
+  {# ============================================================
+     SECTION 6 — SUPPORTING PANELS (Movers, Controversial, Spotlight)
+     Filled by ticket #277 (consensus-panels.css)
+     ============================================================ #}
+  <section class="consensus-section" id="consensusPanelsSection" aria-label="Supporting panels">
+    {% include "partials/consensus/panels.html" %}
+  </section>
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='js/consensus.js') }}"></script>
+<script src="{{ url_for('static', path='js/consensus-board.js') }}"></script>
+<script src="{{ url_for('static', path='js/consensus-scatter.js') }}"></script>
+<script src="{{ url_for('static', path='js/consensus-trajectories.js') }}"></script>
+{% endblock %}

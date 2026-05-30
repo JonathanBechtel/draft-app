@@ -29,6 +29,8 @@ from app.services.consensus_read_service import (
     get_consensus_board,
     get_most_controversial,
     get_player_consensus_detail,
+    get_rank_trajectories,
+    get_source_breakdown_matrix,
     get_source_detail,
     get_source_leaderboard,
     get_source_spotlight,
@@ -1118,6 +1120,114 @@ async def player_detail(
             "current_year": datetime.now().year,
             "image_style": requested_style,  # Current image style for JS
             "s3_image_base_url": get_s3_image_base_url(),  # S3 base URL for images
+        },
+    )
+
+
+@router.get("/consensus", response_class=HTMLResponse)
+async def consensus_page(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+):
+    """Render the dedicated Consensus page with full board, scatter, sources, matrix, and trajectories.
+
+    Fetches the complete context for all sections in a single route handler so
+    downstream partial-section templates receive a fully-populated context dict.
+    The board kind is calendar-determined; when big-board rows exist the heading
+    is forced to BIG_BOARD (same post-lottery fallback as the homepage hero).
+    """
+    # --- Board kind (calendar-determined; forced to data kind when rows exist) -
+    board_kind = get_consensus_board_kind()
+
+    # --- Full consensus board --------------------------------------------------
+    consensus_rows_raw = await get_consensus_board(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    if consensus_rows_raw:
+        board_kind = BoardKind.BIG_BOARD
+
+    consensus_rows = [
+        {
+            "player_id": r.player_id,
+            "player_name": r.player_name,
+            "school": r.school,
+            "slug": r.slug,
+            "photo_url": r.photo_url,
+            "school_logo_url": r.school_logo_url,
+            "age": r.age,
+            "position": r.position,
+            "height": r.height,
+            "weight": r.weight,
+            "consensus_rank": r.consensus_rank,
+            "avg_rank": r.avg_rank,
+            "high_rank": r.high_rank,
+            "low_rank": r.low_rank,
+            "num_sources": r.num_sources,
+            "rank_delta": r.rank_delta,
+            "prev_rank": r.prev_rank,
+            "recent_ranks": r.recent_ranks,
+            "sparkline_path": build_sparkline_path(r.recent_ranks),
+            "sparkline_direction": sparkline_direction(r.recent_ranks),
+        }
+        for r in consensus_rows_raw
+    ]
+
+    # --- Supporting panels: freshness, movers, controversial, spotlight --------
+    board_freshness = await get_board_freshness(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    biggest_movers = await get_biggest_movers(db, draft_year=CONSENSUS_DRAFT_YEAR, k=5)
+    most_controversial = await get_most_controversial(
+        db, draft_year=CONSENSUS_DRAFT_YEAR, limit=5
+    )
+    source_spotlight = await get_source_spotlight(db, draft_year=CONSENSUS_DRAFT_YEAR)
+
+    # --- Source leaderboard + per-source overlays -----------------------------
+    source_leaderboard = await get_source_leaderboard(
+        db, draft_year=CONSENSUS_DRAFT_YEAR
+    )
+
+    # Per-source overlays: fetch detail for each source in the leaderboard.
+    # These power the agreement scatter and source-detail section.
+    source_overlays: list[dict] = []
+    for src_row in source_leaderboard:
+        slug = src_row.get("source_slug", "")
+        if slug:
+            detail = await get_source_detail(
+                db, source_slug=slug, draft_year=CONSENSUS_DRAFT_YEAR
+            )
+            if detail is not None:
+                source_overlays.append(detail)
+
+    # --- Matrix + trajectories (ticket #270 additions) ------------------------
+    source_matrix = await get_source_breakdown_matrix(
+        db, draft_year=CONSENSUS_DRAFT_YEAR, top_n=10
+    )
+    rank_trajectories = await get_rank_trajectories(
+        db, draft_year=CONSENSUS_DRAFT_YEAR, top_n=10
+    )
+
+    return request.app.state.templates.TemplateResponse(
+        "consensus.html",
+        {
+            "request": request,
+            # Board heading
+            "board_kind": board_kind,
+            "draft_year": CONSENSUS_DRAFT_YEAR,
+            # Full consensus board
+            "consensus_rows": consensus_rows,
+            # Board freshness footnote
+            "board_freshness": board_freshness,
+            # Supporting panels
+            "biggest_movers": biggest_movers,
+            "most_controversial": most_controversial,
+            "source_spotlight": source_spotlight,
+            # Source leaderboard + per-source overlays (scatter / source section)
+            "source_leaderboard": source_leaderboard,
+            "source_overlays": source_overlays,
+            # Source breakdown matrix (ticket #270)
+            "source_matrix": source_matrix,
+            # Player rank trajectories (ticket #270)
+            "rank_trajectories": rank_trajectories,
+            # Footer / global
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
         },
     )
 

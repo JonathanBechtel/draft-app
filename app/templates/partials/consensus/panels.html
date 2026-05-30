@@ -1,0 +1,19 @@
+{# ============================================================
+   SECTION 6 — SUPPORTING PANELS (Biggest Movers, Most Controversial, Source Spotlight)
+   Context keys: biggest_movers, most_controversial, source_spotlight
+   Filled by ticket #277. Owns: consensus-panels.css
+   ============================================================ #}
+<div class="consensus-panels-placeholder consensus-placeholder" data-section="panels">
+  <p class="consensus-placeholder__label">Supporting panels (movers, controversial, spotlight) — ticket #277</p>
+  {% if biggest_movers and (biggest_movers.risers or biggest_movers.fallers) %}
+  <p class="consensus-placeholder__count">
+    {{ biggest_movers.risers | length }} risers, {{ biggest_movers.fallers | length }} fallers
+  </p>
+  {% endif %}
+  {% if most_controversial %}
+  <p class="consensus-placeholder__count">{{ most_controversial | length }} controversial players</p>
+  {% endif %}
+  {% if not biggest_movers and not most_controversial and not source_spotlight %}
+  <p class="consensus-placeholder__empty">No supporting panel data available.</p>
+  {% endif %}
+</div>

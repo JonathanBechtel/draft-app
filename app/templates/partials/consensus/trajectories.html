@@ -1,0 +1,13 @@
+{# ============================================================
+   SECTION 5 — PLAYER RANK TRAJECTORIES
+   Context keys: rank_trajectories (list of {player_id, player_name, slug, series})
+   Filled by ticket #276. Owns: consensus-trajectories.css, consensus-trajectories.js
+   ============================================================ #}
+<div class="consensus-trajectories-placeholder consensus-placeholder" data-section="trajectories">
+  <p class="consensus-placeholder__label">Player rank trajectories — ticket #276</p>
+  {% if rank_trajectories %}
+  <p class="consensus-placeholder__count">{{ rank_trajectories | length }} player trajectories available</p>
+  {% else %}
+  <p class="consensus-placeholder__empty">No trajectory data available.</p>
+  {% endif %}
+</div>

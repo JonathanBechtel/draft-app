@@ -1,0 +1,13 @@
+{# ============================================================
+   SECTION 3 — SOURCE DEVIATION TABLE + PERCENTILE
+   Context keys: source_leaderboard, draft_year
+   Filled by ticket #274. Owns: consensus-sources.css
+   ============================================================ #}
+<div class="consensus-sources-placeholder consensus-placeholder" data-section="sources">
+  <p class="consensus-placeholder__label">Source deviation table + percentile — ticket #274</p>
+  {% if source_leaderboard %}
+  <p class="consensus-placeholder__count">{{ source_leaderboard | length }} sources in leaderboard</p>
+  {% else %}
+  <p class="consensus-placeholder__empty">No source analytics data available.</p>
+  {% endif %}
+</div>

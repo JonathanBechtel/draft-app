@@ -1,0 +1,86 @@
+/* ==========================================================================
+   consensus.css — Global page-level styles for /consensus
+   Scoped per-section styles live in consensus-board.css, consensus-scatter.css,
+   consensus-sources.css, consensus-matrix.css, consensus-trajectories.css,
+   consensus-panels.css. Ticket #278 consolidates them all back here.
+   ========================================================================== */
+
+.consensus-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem 1rem 3rem;
+}
+
+/* Page header: title + freshness line */
+.consensus-page__header {
+  margin-bottom: 1.5rem;
+}
+
+.consensus-page__title {
+  font-family: var(--font-heading);
+  font-size: 1.9rem;
+  color: var(--color-slate-900);
+  margin: 0 0 0.25rem;
+}
+
+.consensus-page__freshness {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-400);
+  margin: 0;
+}
+
+/* Section wrapper — consistent spacing between all six sections */
+.consensus-section {
+  margin-bottom: 2.5rem;
+}
+
+/* Placeholder containers rendered by the scaffold partials.
+   Section tickets replace these with real content.
+   Kept intentionally minimal so they don't visually dominate. */
+.consensus-placeholder {
+  background: var(--color-white);
+  border: 1px dashed var(--color-slate-200);
+  border-radius: var(--border-radius);
+  padding: 1.25rem 1.5rem;
+}
+
+.consensus-placeholder__label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-slate-400);
+  margin: 0 0 0.25rem;
+}
+
+.consensus-placeholder__count {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-500);
+  margin: 0;
+}
+
+.consensus-placeholder__empty {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-400);
+  margin: 0;
+  font-style: italic;
+}
+
+/* "View full board" link on homepage consensus hero */
+.consensus-hero__view-full {
+  text-align: right;
+  padding: 0.6rem 0.5rem 0;
+}
+
+.consensus-hero__view-full-link {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-accent-amber);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.consensus-hero__view-full-link:hover {
+  color: var(--color-slate-700);
+}
