@@ -1,19 +1,306 @@
 {# ============================================================
    SECTION 6 — SUPPORTING PANELS (Biggest Movers, Most Controversial, Source Spotlight)
    Context keys: biggest_movers, most_controversial, source_spotlight
-   Filled by ticket #277. Owns: consensus-panels.css
+   Owned by ticket #277. CSS: consensus-panels.css
    ============================================================ #}
-<div class="consensus-panels-placeholder consensus-placeholder" data-section="panels">
-  <p class="consensus-placeholder__label">Supporting panels (movers, controversial, spotlight) — ticket #277</p>
-  {% if biggest_movers and (biggest_movers.risers or biggest_movers.fallers) %}
-  <p class="consensus-placeholder__count">
-    {{ biggest_movers.risers | length }} risers, {{ biggest_movers.fallers | length }} fallers
-  </p>
+
+{# Player avatar: headshot, falling back to school logo, then an initial. #}
+{% macro player_avatar(photo_url, name, logo_url=None, size="md") %}
+<span class="pavatar pavatar--{{ size }}">
+  {% if photo_url %}
+  <img class="pavatar__img" src="{{ photo_url }}" alt="" loading="lazy">
+  {% elif logo_url %}
+  <img class="pavatar__img pavatar__img--logo" src="{{ logo_url }}" alt="" loading="lazy">
+  {% else %}
+  <span class="pavatar__initial">{{ (name or "?")[0] | upper }}</span>
   {% endif %}
-  {% if most_controversial %}
-  <p class="consensus-placeholder__count">{{ most_controversial | length }} controversial players</p>
+</span>
+{% endmacro %}
+
+{# Source monogram tile, tinted by --slot-accent on the parent item. #}
+{% macro source_badge(name) %}
+{% set initials = (name.split() | map('first') | join)[:2] | upper %}
+<span class="source-badge">{{ initials or "?" }}</span>
+{% endmacro %}
+
+{# ============================================================
+   Spotlight item macro (mirrors home.html's version).
+   Links out to work_url (external, new tab) first; falls back to /sources/{slug}.
+   ============================================================ #}
+{% macro spotlight_item(slot) %}
+{% set rf_max = [slot.reaches, slot.fades, 1] | max %}
+<div class="spotlight__item" style="--slot-accent: {{ slot.accent_css }}">
+  <span class="spotlight__label mono-font uppercase">{{ slot.award_label }}</span>
+  <div class="spotlight__source-row">
+    {{ source_badge(slot.source_display_name) }}
+    <div class="spotlight__source-wrap">
+      {% if slot.work_url %}
+      <a class="spotlight__source spotlight__source--external"
+         href="{{ slot.work_url }}" target="_blank" rel="noopener noreferrer"
+         title="{{ slot.work_title or slot.source_display_name }} (opens in a new tab)">
+        {{ slot.source_display_name }}
+        <svg class="spotlight__external-icon" viewBox="0 0 24 24" width="12" height="12"
+             fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+          <path d="M7 17 L17 7 M9 7 h8 v8"/>
+        </svg>
+      </a>
+      {% elif slot.source_slug %}
+      <a class="spotlight__source" href="/sources/{{ slot.source_slug }}">{{ slot.source_display_name }}</a>
+      {% else %}
+      <span class="spotlight__source">{{ slot.source_display_name }}</span>
+      {% endif %}
+      <span class="spotlight__stat mono-font">{{ slot.stat_text }}</span>
+    </div>
+  </div>
+
+  {# Reaches vs Fades: diverging bar showing board personality #}
+  <div class="rf" title="Players ranked higher (reaches) vs lower (fades) than consensus">
+    <div class="rf__track">
+      <div class="rf__half rf__half--left">
+        <div class="rf__fill rf__fill--fade"
+             style="width: {{ (slot.fades / rf_max * 100) | round(1) }}%"></div>
+      </div>
+      <div class="rf__axis"></div>
+      <div class="rf__half rf__half--right">
+        <div class="rf__fill rf__fill--reach"
+             style="width: {{ (slot.reaches / rf_max * 100) | round(1) }}%"></div>
+      </div>
+    </div>
+    <div class="rf__labels mono-font">
+      <span>&#9664; {{ slot.fades }} fades</span>
+      <span>{{ slot.reaches }} reaches &#9654;</span>
+    </div>
+  </div>
+
+  {% if slot.highlight %}
+  <div class="spotlight__outlier">
+    {{ player_avatar(slot.highlight.photo_url, slot.highlight.player_name, None, "xs") }}
+    <span class="spotlight__outlier-text">
+      <span class="spotlight__outlier-label">{{ slot.highlight.label }}</span>
+      {% if slot.highlight.slug %}<a href="/players/{{ slot.highlight.slug }}">{{ slot.highlight.player_name }}</a>{% else %}<strong>{{ slot.highlight.player_name }}</strong>{% endif %}
+      <span class="spotlight__outlier-cons tabular-nums">{{ slot.highlight.detail }}</span>
+    </span>
+  </div>
   {% endif %}
-  {% if not biggest_movers and not most_controversial and not source_spotlight %}
-  <p class="consensus-placeholder__empty">No supporting panel data available.</p>
+
+  {# CTA: read the featured provider's full board #}
+  {% if slot.work_url %}
+  <a class="spotlight__cta"
+     href="{{ slot.work_url }}" target="_blank" rel="noopener noreferrer">
+    Read {{ slot.source_display_name }}'s full board
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+         stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+      <path d="M7 17 L17 7 M9 7 h8 v8"/>
+    </svg>
+  </a>
+  {% elif slot.source_slug %}
+  <a class="spotlight__cta"
+     href="/sources/{{ slot.source_slug }}">
+    See {{ slot.source_display_name }}'s board on DraftGuru
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+         stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+      <path d="M5 12 h14 M13 6 l6 6 -6 6"/>
+    </svg>
+  </a>
   {% endif %}
 </div>
+{% endmacro %}
+
+{# ============================================================
+   Panels wrapper — carries data-section for integration-test assertions.
+   ============================================================ #}
+<div class="cp-panels" data-section="panels">
+
+  <div class="cp-panels__grid">
+
+    {# ---- Biggest Movers ---- #}
+    <div class="consensus-panel card card-ring card-ring-amber cp-panels__movers"
+         id="cpBiggestMoversPanel"
+         aria-label="Biggest movers">
+      <div class="scanlines"></div>
+      <div class="consensus-panel__header">
+        <svg class="consensus-panel__icon" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2">
+          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+          <polyline points="16 7 22 7 22 13"></polyline>
+        </svg>
+        <h2 class="consensus-panel__title mono-font uppercase">Biggest Movers</h2>
+      </div>
+
+      {% if biggest_movers and (biggest_movers.risers or biggest_movers.fallers) %}
+        {% if biggest_movers.risers %}
+        <div class="consensus-panel__group">
+          <span class="consensus-panel__group-label">Risers</span>
+          <ul class="mover-list">
+            {% for mover in biggest_movers.risers %}
+            <li class="mover-row mover-row--up">
+              <span class="mover-row__pill mover-row__pill--up">
+                <svg viewBox="0 0 10 10" width="9" height="9" fill="currentColor">
+                  <path d="M5 1 L9 9 L1 9 Z"/>
+                </svg>
+                {{ mover.rank_delta }}
+              </span>
+              {{ player_avatar(mover.photo_url, mover.player_name, mover.school_logo_url, "sm") }}
+              <div class="mover-row__body">
+                {% if mover.slug %}
+                <a class="mover-row__name"
+                   href="/players/{{ mover.slug }}">{{ mover.player_name or "—" }}</a>
+                {% else %}
+                <span class="mover-row__name">{{ mover.player_name or "—" }}</span>
+                {% endif %}
+                {% if mover.school %}<span class="mover-row__school">{{ mover.school }}</span>{% endif %}
+              </div>
+              <span class="mover-row__rank tabular-nums">#{{ mover.consensus_rank }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        {% if biggest_movers.fallers %}
+        <div class="consensus-panel__group">
+          <span class="consensus-panel__group-label">Fallers</span>
+          <ul class="mover-list">
+            {% for mover in biggest_movers.fallers %}
+            <li class="mover-row mover-row--down">
+              <span class="mover-row__pill mover-row__pill--down">
+                <svg viewBox="0 0 10 10" width="9" height="9" fill="currentColor">
+                  <path d="M5 9 L9 1 L1 1 Z"/>
+                </svg>
+                {{ mover.rank_delta | abs }}
+              </span>
+              {{ player_avatar(mover.photo_url, mover.player_name, mover.school_logo_url, "sm") }}
+              <div class="mover-row__body">
+                {% if mover.slug %}
+                <a class="mover-row__name"
+                   href="/players/{{ mover.slug }}">{{ mover.player_name or "—" }}</a>
+                {% else %}
+                <span class="mover-row__name">{{ mover.player_name or "—" }}</span>
+                {% endif %}
+                {% if mover.school %}<span class="mover-row__school">{{ mover.school }}</span>{% endif %}
+              </div>
+              <span class="mover-row__rank tabular-nums">#{{ mover.consensus_rank }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+      {% else %}
+      <div class="consensus-panel__empty" aria-live="polite">
+        <p class="consensus-panel__empty-msg">
+          Movement data available once a second snapshot is computed.
+        </p>
+      </div>
+      {% endif %}
+    </div>
+
+    {# ---- Most Controversial ---- #}
+    <div class="consensus-panel card card-ring card-ring-fuchsia cp-panels__controversial"
+         id="cpMostControversialPanel"
+         aria-label="Most controversial players">
+      <div class="scanlines"></div>
+      <div class="consensus-panel__header">
+        <svg class="consensus-panel__icon" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2">
+          <path d="M12 20V10"></path>
+          <path d="M18 20V4"></path>
+          <path d="M6 20v-4"></path>
+        </svg>
+        <h2 class="consensus-panel__title mono-font uppercase">Most Controversial</h2>
+      </div>
+
+      {% if most_controversial %}
+      {# Shared scale across all shown players so the bar lengths are comparable.
+         Fold consensus_rank into bounds so the marker never falls off the track. #}
+      {% set scale_min = [
+           most_controversial | map(attribute='high_rank') | min,
+           most_controversial | map(attribute='consensus_rank') | min
+         ] | min %}
+      {% set scale_max = [
+           most_controversial | map(attribute='low_rank') | max,
+           most_controversial | map(attribute='consensus_rank') | max
+         ] | max %}
+      {% set span = (scale_max - scale_min) or 1 %}
+      <p class="controversy__caption mono-font">Widest spread of source ranks</p>
+      <ul class="controversy-list">
+        {% for p in most_controversial %}
+        {% set left_pct = ((p.high_rank - scale_min) / span * 100) | round(1) %}
+        {% set width_pct = ((p.low_rank - p.high_rank) / span * 100) | round(1) %}
+        {% set marker_pct = ((p.consensus_rank - scale_min) / span * 100) | round(1) %}
+        <li class="controversy-row">
+          <div class="controversy-row__top">
+            {{ player_avatar(p.photo_url, p.player_name, None, "sm") }}
+            {% if p.slug %}
+            <a class="controversy-row__name" href="/players/{{ p.slug }}">{{ p.player_name or "—" }}</a>
+            {% else %}
+            <span class="controversy-row__name">{{ p.player_name or "—" }}</span>
+            {% endif %}
+            <span class="controversy-row__sd tabular-nums" title="Standard deviation of source ranks">
+              σ {{ "%.1f"|format(p.std_dev) }}
+            </span>
+          </div>
+          <div class="controversy-row__bar">
+            <span class="controversy-row__edge tabular-nums">#{{ p.high_rank }}</span>
+            <div class="controversy-row__track">
+              <div class="controversy-row__fill"
+                   style="left: {{ left_pct }}%; width: {{ width_pct }}%;"></div>
+              {# One dot per source rank so the full distribution is visible #}
+              {% for r in p.source_ranks %}
+              <span class="controversy-row__dot"
+                    style="left: {{ ((r - scale_min) / span * 100) | round(1) }}%;"
+                    title="A source ranked {{ p.player_name or 'this player' }} #{{ r }}"></span>
+              {% endfor %}
+              <div class="controversy-row__marker"
+                   style="left: {{ marker_pct }}%;"
+                   title="Consensus #{{ p.consensus_rank }}"></div>
+            </div>
+            <span class="controversy-row__edge tabular-nums">#{{ p.low_rank }}</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="consensus-panel__empty" aria-live="polite">
+        <p class="consensus-panel__empty-msg">
+          Disagreement data needs at least two sources ranking a player.
+        </p>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+  {# /2-up grid (Biggest Movers · Most Controversial) #}
+
+  {# ---- Source Spotlight (full-width banner) ---- #}
+  <div class="consensus-panel card card-ring card-ring-cyan consensus-panel--wide cp-panels__spotlight"
+       id="cpSourceSpotlightPanel"
+       aria-label="Source spotlight">
+    <div class="scanlines"></div>
+    <div class="consensus-panel__header">
+      <svg class="consensus-panel__icon" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <h2 class="consensus-panel__title mono-font uppercase">Source Spotlight</h2>
+    </div>
+
+    {% if source_spotlight and source_spotlight.slots %}
+    <div class="spotlight">
+      {% for slot in source_spotlight.slots %}
+      {{ spotlight_item(slot) }}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="consensus-panel__empty" aria-live="polite">
+      <p class="consensus-panel__empty-msg">
+        Source analytics are not yet available.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{# /cp-panels #}

@@ -1,4 +1,66 @@
 /* ==========================================================================
-   consensus-panels.css — Supporting panels (movers, controversial, spotlight) styles for /consensus
+   consensus-panels.css — Supporting panels (movers, controversial, spotlight)
+   for the /consensus page.
    Owned by ticket #277. Consolidated into consensus.css by ticket #278.
+
+   Component classes (pavatar, mover-row, controversy-row, spotlight, rf, etc.)
+   are defined in home.css and reused here via the shared stylesheet. This file
+   adds only the layout wrapper and consensus-page-specific overrides that make
+   the full-length panels fit the wider /consensus real estate.
    ========================================================================== */
+
+/* ---- Outer wrapper --------------------------------------------------------
+   cp-panels wraps all three panels (movers, controversial, spotlight).
+   It sits inside .consensus-section so the standard section padding applies.
+   The data-section="panels" attribute on this element is used by integration
+   tests to confirm the partial was rendered without errors.
+   -------------------------------------------------------------------------- */
+.cp-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ---- 2-up grid: Biggest Movers + Most Controversial ----------------------- */
+.cp-panels__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+/* On very narrow screens the grid collapses to a single column */
+@media (max-width: 600px) {
+  .cp-panels__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Full-width spotlight banner ----------------------------------------- */
+.cp-panels__spotlight {
+  /* consensus-panel--wide already adds margin-top; this removes the double gap */
+  margin-top: 0 !important;
+}
+
+/* ---- Movers panel: allow unlimited rows at full length ------------------- */
+.cp-panels__movers .mover-list {
+  /* No max-height clamp — full-length list, unlike the homepage 3-row version */
+  max-height: none;
+  overflow: visible;
+}
+
+/* ---- Controversial panel: no row-count cap ------------------------------- */
+.cp-panels__controversial .controversy-list {
+  max-height: none;
+  overflow: visible;
+}
+
+/* ---- Section heading: h2 inside the panel header inherits panel styles --- */
+.cp-panels .consensus-panel__title {
+  /* Ensure the h2 (not h3 as on homepage) renders identically */
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-600);
+  margin: 0;
+}
