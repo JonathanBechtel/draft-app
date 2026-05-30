@@ -409,19 +409,29 @@ async def extract_board_from_news_item(
             if item is None:
                 raise HTTPException(status_code=404, detail="News item not found")
 
+            # Derive board kind from the item's tag so a MOCK_DRAFT article is
+            # extracted and stored as a mock (correct provenance + dedup key),
+            # not silently under the default BIG_BOARD. Extraction itself is
+            # identical for both; kind only affects persistence/dedup.
+            board_kind = (
+                BoardKind.MOCK_DRAFT
+                if item.tag == NewsItemTag.MOCK_DRAFT
+                else BoardKind.BIG_BOARD
+            )
+
             # Snapshot whether a board already existed so we can distinguish
             # "just created" from "already there" without a second DB round-trip.
             pre_stmt = (
                 sm_select(Board)
                 .where(Board.news_item_id == item_id)  # type: ignore[arg-type]
-                .where(Board.kind == BoardKind.BIG_BOARD)  # type: ignore[arg-type]
+                .where(Board.kind == board_kind)  # type: ignore[arg-type]
                 .limit(1)
             )
             pre_result = await db.execute(pre_stmt)
             pre_existing_board = pre_result.scalar_one_or_none()
 
             board = await board_extraction_service.extract_board(
-                db, news_item_id=item_id
+                db, news_item_id=item_id, kind=board_kind
             )
     except HTTPException:
         raise
@@ -441,7 +451,7 @@ async def extract_board_from_news_item(
         # Gemini returned no ranked entries — nothing to review.
         return _back_with_error(
             "No ranked entries were found in this article. "
-            "The article may not contain a big board, or extraction failed to "
+            "The article may not contain a board, or extraction failed to "
             "identify any players."
         )
 
