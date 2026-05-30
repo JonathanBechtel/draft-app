@@ -15,14 +15,14 @@ actually resolves to.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 
 MANIFEST = "docs/consensus_backfill_manifest.json"
-OUT = "docs/consensus_backfill_candidates.json"
 
-_REQUIRE = re.compile(r"\bbig board\b", re.IGNORECASE)
 _NOISE = re.compile(
     r"\b(recruit|recruitment|juco|dynasty (rank|basketball)|top\s*450|top\s*60|"
     r"rookie ranking|sophomore|college (basketball )?teams|power ranking|"
@@ -31,32 +31,69 @@ _NOISE = re.compile(
 )
 # Titles that contain "big board" but describe methodology, not an actual board.
 _NOT_A_BOARD = re.compile(r"from scratch", re.IGNORECASE)
+# In May 2026 the archives also carry way-too-early 2027 (and stale 2025/2024)
+# mocks. Exclude other-cycle titles so we only ingest 2026 boards; the
+# post-bulk draft_year audit is the backstop for anything that slips through.
+_OTHER_CYCLE = re.compile(r"\b(2024|2025|2027|2028)\b")
 
 
-def is_candidate(title: str, is_free: bool) -> bool:
+@dataclass(frozen=True)
+class KindConfig:
+    """Per-kind curation config (require term, output path, cycle guard)."""
+
+    require: re.Pattern[str]
+    out: str
+    drop_other_cycle: bool
+
+
+_KIND_CONFIG: dict[str, KindConfig] = {
+    "big_board": KindConfig(
+        require=re.compile(r"\bbig board\b", re.IGNORECASE),
+        out="docs/consensus_backfill_candidates.json",
+        drop_other_cycle=False,
+    ),
+    "mock_draft": KindConfig(
+        require=re.compile(r"\bmock draft\b", re.IGNORECASE),
+        out="docs/consensus_backfill_mock_candidates.json",
+        drop_other_cycle=True,
+    ),
+}
+
+
+def is_candidate(title: str, is_free: bool, cfg: KindConfig) -> bool:
     if not is_free:
         return False
-    if not _REQUIRE.search(title):
+    if not cfg.require.search(title):
         return False
     if _NOISE.search(title):
         return False
     if _NOT_A_BOARD.search(title):
         return False
+    if cfg.drop_other_cycle and _OTHER_CYCLE.search(title):
+        return False
     return True
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--kind", choices=sorted(_KIND_CONFIG), default="big_board")
+    args = ap.parse_args()
+    cfg = _KIND_CONFIG[args.kind]
+    OUT = cfg.out
     m = json.load(open(MANIFEST))
     candidates: list[dict] = []
     flagged: list[dict] = []
     for s in m["sources"]:
         for p in s["posts"]:
             title = p["title"]
-            if is_candidate(title, p["is_free"]):
+            if is_candidate(title, p["is_free"], cfg):
                 candidates.append(p)
-            elif p["is_free"] and _REQUIRE.search(title) and not _NOISE.search(title):
-                # "big board" + free but dropped by _NOT_A_BOARD — surface for
-                # a human eyeball rather than silently discarding.
+            elif (
+                p["is_free"] and cfg.require.search(title) and not _NOISE.search(title)
+            ):
+                # Matches the kind term + free but dropped by a guard
+                # (methodology / other-cycle) — surface for a human eyeball
+                # rather than silently discarding.
                 flagged.append(p)
 
     candidates.sort(key=lambda p: (p["source_name"].lower(), p["post_date"] or ""))
@@ -70,7 +107,7 @@ def main() -> None:
     for c in candidates:
         by_source[c["source_name"]].append(c)
 
-    print(f"=== curated NBA-draft big-board candidates: {len(candidates)} ===\n")
+    print(f"=== curated NBA-draft {args.kind} candidates: {len(candidates)} ===\n")
     for name in sorted(by_source, key=str.lower):
         rows = by_source[name]
         print(f"### {name}  ({len(rows)})")

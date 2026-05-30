@@ -53,7 +53,17 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-CANDIDATES_PATH = "docs/consensus_backfill_candidates.json"
+# Make the co-located app package (this worktree/repo) win over any editable
+# install, so `python scripts/...` imports the same code the tests do. Without
+# this, `python scripts/foo.py` puts scripts/ on sys.path[0] (not the repo
+# root), and `import app` falls through to a pip -e install elsewhere.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Default curated-candidate file per kind (override with --candidates).
+_DEFAULT_CANDIDATES = {
+    "big_board": "docs/consensus_backfill_candidates.json",
+    "mock_draft": "docs/consensus_backfill_mock_candidates.json",
+}
 
 
 def _load_all_schemas() -> None:
@@ -71,9 +81,21 @@ def _load_all_schemas() -> None:
         importlib.import_module(f"app.schemas.{mod.name}")
 
 
-def _load_candidates() -> list[dict]:
-    with open(CANDIDATES_PATH) as fh:
+def _load_candidates(path: str) -> list[dict]:
+    with open(path) as fh:
         return json.load(fh)["candidates"]
+
+
+def _board_kind(kind: str):  # -> BoardKind
+    from app.schemas.boards import BoardKind
+
+    return BoardKind.MOCK_DRAFT if kind == "mock_draft" else BoardKind.BIG_BOARD
+
+
+def _news_item_tag(kind: str):  # -> NewsItemTag
+    from app.schemas.news_items import NewsItemTag
+
+    return NewsItemTag.MOCK_DRAFT if kind == "mock_draft" else NewsItemTag.BIG_BOARD
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -85,8 +107,10 @@ def _parse_dt(value: str | None) -> datetime | None:
         return None
 
 
-async def _find_or_create_news_item(db: AsyncSession, cand: dict) -> "object":
-    from app.schemas.news_items import NewsItem, NewsItemTag
+async def _find_or_create_news_item(
+    db: AsyncSession, cand: dict, *, kind: str
+) -> "object":
+    from app.schemas.news_items import NewsItem
 
     slug = cand["slug"]
     sid = cand["source_id"]
@@ -108,7 +132,7 @@ async def _find_or_create_news_item(db: AsyncSession, cand: dict) -> "object":
         title=cand["title"][:500],
         url=cand["canonical_url"],
         published_at=published_at,
-        tag=NewsItemTag.BIG_BOARD,
+        tag=_news_item_tag(kind),
     )
     db.add(item)
     await db.flush()
@@ -116,10 +140,10 @@ async def _find_or_create_news_item(db: AsyncSession, cand: dict) -> "object":
 
 
 async def _board_exists_for_date(
-    db: AsyncSession, *, source_id: int, when: datetime
+    db: AsyncSession, *, source_id: int, when: datetime, kind: str
 ) -> bool:
-    """True if a big board already exists for this source on this calendar day."""
-    from app.schemas.boards import Board, BoardKind
+    """True if a board of this kind already exists for this source on this day."""
+    from app.schemas.boards import Board
 
     day_start = datetime(when.year, when.month, when.day)
     day_end = day_start + timedelta(days=1)
@@ -127,7 +151,7 @@ async def _board_exists_for_date(
         await db.execute(
             select(Board.id)  # type: ignore[call-overload]
             .where(Board.news_source_id == source_id)  # type: ignore[arg-type]
-            .where(Board.kind == BoardKind.BIG_BOARD)  # type: ignore[arg-type]
+            .where(Board.kind == _board_kind(kind))  # type: ignore[arg-type]
             .where(Board.published_at >= day_start)  # type: ignore[arg-type]
             .where(Board.published_at < day_end)  # type: ignore[arg-type]
             .limit(1)
@@ -136,7 +160,7 @@ async def _board_exists_for_date(
     return existing is not None
 
 
-async def _ingest_one(db: AsyncSession, cand: dict) -> tuple[str, str]:
+async def _ingest_one(db: AsyncSession, cand: dict, *, kind: str) -> tuple[str, str]:
     """Ingest a single candidate. Returns (status, detail)."""
     from app.schemas.boards import BoardEntry
     from app.services.board_extraction_service import (
@@ -149,14 +173,16 @@ async def _ingest_one(db: AsyncSession, cand: dict) -> tuple[str, str]:
     if post_dt is None:
         return ("skipped", "no parseable post_date")
 
-    if await _board_exists_for_date(db, source_id=cand["source_id"], when=post_dt):
-        return ("skipped", f"board already exists for {cand['post_date'][:10]}")
+    if await _board_exists_for_date(
+        db, source_id=cand["source_id"], when=post_dt, kind=kind
+    ):
+        return ("skipped", f"{kind} board already exists for {cand['post_date'][:10]}")
 
-    item = await _find_or_create_news_item(db, cand)
+    item = await _find_or_create_news_item(db, cand, kind=kind)
     item_id = item.id  # type: ignore[attr-defined]
 
     try:
-        board = await extract_board(db, news_item_id=item_id)
+        board = await extract_board(db, news_item_id=item_id, kind=_board_kind(kind))
     except PaywallDetectedError as exc:
         await db.rollback()
         return ("paywalled", str(exc)[:120])
@@ -207,8 +233,10 @@ def _select_candidates(args: argparse.Namespace, cands: list[dict]) -> list[dict
 
 async def _run(args: argparse.Namespace) -> None:
     _load_all_schemas()
-    cands = _load_candidates()
+    candidates_path = args.candidates or _DEFAULT_CANDIDATES[args.kind]
+    cands = _load_candidates(candidates_path)
     selected = _select_candidates(args, cands)
+    print(f"kind={args.kind} candidates={candidates_path}")
 
     if args.list or args.dry_run:
         print(f"{len(selected)} candidate(s) selected:")
@@ -242,7 +270,7 @@ async def _run(args: argparse.Namespace) -> None:
         for c in selected:
             try:
                 async with session_factory() as db:
-                    status, detail = await _ingest_one(db, c)
+                    status, detail = await _ingest_one(db, c, kind=args.kind)
             except Exception as exc:  # noqa: BLE001 — keep going on transient errors
                 status, detail = (
                     "failed",
@@ -263,6 +291,16 @@ async def _run(args: argparse.Namespace) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--kind",
+        choices=("big_board", "mock_draft"),
+        default="big_board",
+        help="board kind to ingest (selects the default candidate file)",
+    )
+    ap.add_argument(
+        "--candidates",
+        help="path to a curated candidate JSON (overrides --kind default)",
+    )
     ap.add_argument("--source", help="limit to one source by exact name")
     ap.add_argument("--slug", help="ingest a single candidate by slug")
     ap.add_argument("--limit", type=int, help="cap number of boards (oldest first)")

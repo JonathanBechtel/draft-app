@@ -41,6 +41,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+# Make the co-located app package (this worktree/repo) win over any editable
+# install, so `python scripts/...` imports this worktree's code — including the
+# as_of-aware recompute_consensus this driver depends on.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 def _load_all_schemas() -> None:
     """Import every app.schemas submodule so FK metadata resolves."""
