@@ -412,9 +412,18 @@
 
         {% if most_controversial %}
         {# Shared scale across the shown players so a wider rank spread visibly
-           fills more of the track — the bar length IS the disagreement. #}
-        {% set scale_min = most_controversial | map(attribute='high_rank') | min %}
-        {% set scale_max = most_controversial | map(attribute='low_rank') | max %}
+           fills more of the track — the bar length IS the disagreement. The
+           scale also folds in consensus_rank: it's an ordinal (sorted by avg)
+           and isn't guaranteed to fall within a player's own high/low range,
+           so without this the consensus marker could render off the track. #}
+        {% set scale_min = [
+             most_controversial | map(attribute='high_rank') | min,
+             most_controversial | map(attribute='consensus_rank') | min
+           ] | min %}
+        {% set scale_max = [
+             most_controversial | map(attribute='low_rank') | max,
+             most_controversial | map(attribute='consensus_rank') | max
+           ] | max %}
         {% set span = (scale_max - scale_min) or 1 %}
         <p class="controversy__caption mono-font">Widest spread of source ranks</p>
         <ul class="controversy-list">
