@@ -35,30 +35,30 @@ This checklist defines product-level behaviors QA should verify before consideri
   - Expected: rows filter/sort without a page reload; clearing restores the full board.
   - Evidence: row set changes on interaction.
 
-- A visitor can switch between Big Board and Mock Draft.
-  - Verify: toggle to Mock Draft.
-  - Expected: big board shows data; mock draft shows the "mock data not yet available" empty state (no error). Toggling back restores the board. `?kind=mock_draft` deep-links to the mock view.
-  - Evidence: empty-state copy on mock; data on big board.
+- The board heading reflects the calendar-determined kind — there is no user toggle.
+  - Verify: load `/consensus`; inspect the heading.
+  - Expected: heading is "Consensus Big Board" or "Consensus Mock Draft" per `get_consensus_board_kind()` (no toggle control present). When the calendar kind is mock and no mock data exists, the board shows the empty state.
+  - Evidence: heading text matches the calendar phase; no toggle in the DOM.
 
-- A visitor can understand how the consensus is computed.
-  - Verify: open the methodology section.
-  - Expected: explains aggregation, the min-sources floor, avg/median/high/low/std-dev, consensus_rank vs. the rank range, snapshot cadence, and reaches/fades + contrarian score; shows live source/board counts.
-  - Evidence: rendered copy + live freshness values matching `get_board_freshness`.
-
-- A visitor can see how an individual source agrees with consensus (agreement scatter).
-  - Verify: in source analytics, pick a source.
-  - Expected: a scatter plots that source's rank (y) vs consensus rank (x) with a 45° agreement diagonal; off-diagonal points reflect that source's bold calls; switching sources re-renders.
-  - Evidence: scatter for ≥2 different sources.
+- A visitor can see how an individual source agrees with consensus (agreement scatter), and probe each pick.
+  - Verify: in source analytics, pick a source; hover a dot.
+  - Expected: a scatter plots that source's rank (y) vs consensus rank (x) with a 45° agreement diagonal; off-diagonal points reflect that source's bold calls; switching sources re-renders; hovering a dot shows a tooltip with the player + their rank vs consensus.
+  - Evidence: scatter for ≥2 different sources; tooltip on hover.
 
 - A visitor can compare all sources' deviation and contrarianism.
   - Verify: view the source deviation table + contrarian percentile scale.
-  - Expected: every contributing source appears, ranked by avg deviation / contrarian score, with its biggest outlier; the percentile scale plots each source and labels the selected/active one's percentile.
+  - Expected: every contributing source appears, ranked by avg deviation / contrarian score, with its biggest outlier; the percentile scale plots each source and labels the active one's percentile.
   - Evidence: table row per source; percentile marker.
 
 - A visitor can read the source-breakdown matrix and spot outliers.
   - Verify: view the top-N × sources matrix.
   - Expected: each cell is a source's rank for that player; cells that deviate beyond the outlier threshold are visually highlighted.
   - Evidence: matrix rendered; ≥1 highlighted outlier cell when divergence exists.
+
+- Every source/creator mention links out to their work.
+  - Verify: across the scatter (active source), deviation table, percentile pin, matrix column headers, and the spotlight, inspect each source name.
+  - Expected: each links to the producer's published board (external, `target="_blank"` + `rel="noopener"`), falling back to `/sources/{slug}` when no external article exists.
+  - Evidence: anchor attributes on every source mention.
 
 - A visitor can see how players are trending across snapshots.
   - Verify: view the rank-trajectories chart.
@@ -109,20 +109,20 @@ This checklist defines product-level behaviors QA should verify before consideri
 
 ## Final Browser QA
 
-- Anonymous Playwright pass over `/consensus` (and `?kind=mock_draft`):
-  - Board renders with all rows; markers on-track; toggle/filter/search/sort work.
-  - Each analytics sub-section renders (scatter for ≥2 sources, deviation table, percentile, matrix with an outlier highlight).
+After seeding the demo state (`scripts/seed_synthetic_consensus_history.py`), anonymous Playwright pass over `/consensus`, with each section checked against `mockups/draftguru_consensus_page.html`:
+  - Board renders with all rows; markers on-track; filter/search/sort work; heading matches the calendar kind (no toggle).
+  - Each analytics sub-section renders (scatter for ≥2 sources with hover tooltips, deviation table, percentile, matrix with an outlier highlight).
   - Trajectories render (or flat-state on single snapshot).
-  - Panels render; external link-out attributes correct.
+  - Panels render; every source mention links out (external attributes correct).
   - Desktop + mobile screenshots saved under `tests/visual/screenshots/`.
 
 ## Completion Bar
 
 The feature is product-complete when QA can demonstrate:
-1. `/consensus` is reachable from nav + homepage hero and renders the full board (all players) with correct columns and on-track range markers.
-2. Toggle (Big Board/Mock Draft), filter, search, and sort all work client-side, with a clean mock-draft empty state.
-3. The methodology section explains the computation with live counts.
-4. The source-analytics suite — agreement scatter (source picker), deviation table, contrarian percentile, and outlier-highlighted breakdown matrix — all render and agree with `/api/consensus` / source data.
-5. Player rank trajectories render (or show the flat/single-snapshot state).
-6. The richer movers/controversial/spotlight panels render with correct source link-outs.
-7. All sections degrade gracefully (no-snapshot, single-snapshot, mock-empty, missing photos) and the page is responsive at desktop + mobile.
+1. `/consensus` is reachable from nav + homepage hero and renders the full board (all players) with correct columns and on-track range markers; the heading reflects the calendar kind with no toggle.
+2. Filter, search, and sort all work client-side; the calendar-mock-with-no-data case shows a clean empty state.
+3. The source-analytics suite — agreement scatter (source picker + hover tooltips), deviation table, contrarian percentile, and outlier-highlighted breakdown matrix — all render and agree with `/api/consensus` / source data.
+4. Player rank trajectories render (or show the flat/single-snapshot state).
+5. The richer movers/controversial/spotlight panels render.
+6. Every source/creator mention links out to their published board (external, with internal `/sources/{slug}` fallback).
+7. All sections degrade gracefully (no-snapshot, single-snapshot, mock-empty, missing photos), match the mockup, and the page is responsive at desktop + mobile.
