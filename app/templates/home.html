@@ -284,18 +284,40 @@
 
   <!-- ==========================================================================
        CONSENSUS SUPPORTING PANELS
-       Biggest Movers · Source Spotlight · Board Freshness
-       Three cards in a responsive 3-column grid beneath the consensus hero.
-       Each panel degrades gracefully when data is absent.
+       Biggest Movers · Most Controversial · Source Spotlight
+       Three cards in a responsive 3-column grid beneath the consensus hero,
+       with a board-freshness footnote underneath. Each panel degrades
+       gracefully when data is absent.
        ========================================================================== -->
   <section class="section consensus-panels" id="consensusPanelsSection"
            aria-label="Consensus supporting panels">
+
+    {# Player avatar: headshot, falling back to school logo, then an initial. #}
+    {% macro player_avatar(photo_url, name, logo_url=None, size="md") %}
+    <span class="pavatar pavatar--{{ size }}">
+      {% if photo_url %}
+      <img class="pavatar__img" src="{{ photo_url }}" alt="" loading="lazy">
+      {% elif logo_url %}
+      <img class="pavatar__img pavatar__img--logo" src="{{ logo_url }}" alt="" loading="lazy">
+      {% else %}
+      <span class="pavatar__initial">{{ (name or "?")[0] | upper }}</span>
+      {% endif %}
+    </span>
+    {% endmacro %}
+
+    {# Source monogram: the source's initials in a tile tinted by --slot-accent. #}
+    {% macro source_badge(name) %}
+    {% set initials = (name.split() | map('first') | join)[:2] | upper %}
+    <span class="source-badge">{{ initials or "?" }}</span>
+    {% endmacro %}
+
     <div class="consensus-panels__grid">
 
       <!-- ---- Biggest Movers ---- -->
       <div class="consensus-panel card card-ring card-ring-amber"
            id="biggestMoversPanel"
            aria-label="Biggest movers">
+        <div class="scanlines"></div>
         <div class="consensus-panel__header">
           <svg class="consensus-panel__icon" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2">
@@ -309,22 +331,26 @@
           {% if biggest_movers.risers %}
           <div class="consensus-panel__group">
             <span class="consensus-panel__group-label">Risers</span>
-            <ul class="consensus-panel__mover-list">
+            <ul class="mover-list">
               {% for mover in biggest_movers.risers %}
-              <li class="consensus-panel__mover consensus-panel__mover--up">
-                <span class="consensus-panel__mover-delta">
-                  <svg viewBox="0 0 10 10" width="8" height="8" fill="currentColor">
+              <li class="mover-row mover-row--up">
+                <span class="mover-row__pill mover-row__pill--up">
+                  <svg viewBox="0 0 10 10" width="9" height="9" fill="currentColor">
                     <path d="M5 1 L9 9 L1 9 Z"/>
                   </svg>
                   {{ mover.rank_delta }}
                 </span>
-                {% if mover.slug %}
-                <a class="consensus-panel__mover-name"
-                   href="/players/{{ mover.slug }}">{{ mover.player_name or "—" }}</a>
-                {% else %}
-                <span class="consensus-panel__mover-name">{{ mover.player_name or "—" }}</span>
-                {% endif %}
-                <span class="consensus-panel__mover-rank tabular-nums">#{{ mover.consensus_rank }}</span>
+                {{ player_avatar(mover.photo_url, mover.player_name, mover.school_logo_url, "sm") }}
+                <div class="mover-row__body">
+                  {% if mover.slug %}
+                  <a class="mover-row__name"
+                     href="/players/{{ mover.slug }}">{{ mover.player_name or "—" }}</a>
+                  {% else %}
+                  <span class="mover-row__name">{{ mover.player_name or "—" }}</span>
+                  {% endif %}
+                  {% if mover.school %}<span class="mover-row__school">{{ mover.school }}</span>{% endif %}
+                </div>
+                <span class="mover-row__rank tabular-nums">#{{ mover.consensus_rank }}</span>
               </li>
               {% endfor %}
             </ul>
@@ -334,22 +360,26 @@
           {% if biggest_movers.fallers %}
           <div class="consensus-panel__group">
             <span class="consensus-panel__group-label">Fallers</span>
-            <ul class="consensus-panel__mover-list">
+            <ul class="mover-list">
               {% for mover in biggest_movers.fallers %}
-              <li class="consensus-panel__mover consensus-panel__mover--down">
-                <span class="consensus-panel__mover-delta">
-                  <svg viewBox="0 0 10 10" width="8" height="8" fill="currentColor">
+              <li class="mover-row mover-row--down">
+                <span class="mover-row__pill mover-row__pill--down">
+                  <svg viewBox="0 0 10 10" width="9" height="9" fill="currentColor">
                     <path d="M5 9 L9 1 L1 1 Z"/>
                   </svg>
                   {{ mover.rank_delta | abs }}
                 </span>
-                {% if mover.slug %}
-                <a class="consensus-panel__mover-name"
-                   href="/players/{{ mover.slug }}">{{ mover.player_name or "—" }}</a>
-                {% else %}
-                <span class="consensus-panel__mover-name">{{ mover.player_name or "—" }}</span>
-                {% endif %}
-                <span class="consensus-panel__mover-rank tabular-nums">#{{ mover.consensus_rank }}</span>
+                {{ player_avatar(mover.photo_url, mover.player_name, mover.school_logo_url, "sm") }}
+                <div class="mover-row__body">
+                  {% if mover.slug %}
+                  <a class="mover-row__name"
+                     href="/players/{{ mover.slug }}">{{ mover.player_name or "—" }}</a>
+                  {% else %}
+                  <span class="mover-row__name">{{ mover.player_name or "—" }}</span>
+                  {% endif %}
+                  {% if mover.school %}<span class="mover-row__school">{{ mover.school }}</span>{% endif %}
+                </div>
+                <span class="mover-row__rank tabular-nums">#{{ mover.consensus_rank }}</span>
               </li>
               {% endfor %}
             </ul>
@@ -365,10 +395,83 @@
         {% endif %}
       </div>
 
-      <!-- ---- Source Spotlight ---- -->
-      <div class="consensus-panel card card-ring card-ring-cyan"
-           id="sourceSpotlightPanel"
-           aria-label="Source spotlight">
+      <!-- ---- Most Controversial ---- -->
+      <div class="consensus-panel card card-ring card-ring-fuchsia"
+           id="mostControversialPanel"
+           aria-label="Most controversial players">
+        <div class="scanlines"></div>
+        <div class="consensus-panel__header">
+          <svg class="consensus-panel__icon" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2">
+            <path d="M12 20V10"></path>
+            <path d="M18 20V4"></path>
+            <path d="M6 20v-4"></path>
+          </svg>
+          <h3 class="consensus-panel__title mono-font uppercase">Most Controversial</h3>
+        </div>
+
+        {% if most_controversial %}
+        {# Shared scale across the shown players so a wider rank spread visibly
+           fills more of the track — the bar length IS the disagreement. #}
+        {% set scale_min = most_controversial | map(attribute='high_rank') | min %}
+        {% set scale_max = most_controversial | map(attribute='low_rank') | max %}
+        {% set span = (scale_max - scale_min) or 1 %}
+        <p class="controversy__caption mono-font">Widest spread of source ranks</p>
+        <ul class="controversy-list">
+          {% for p in most_controversial %}
+          {% set left_pct = ((p.high_rank - scale_min) / span * 100) | round(1) %}
+          {% set width_pct = ((p.low_rank - p.high_rank) / span * 100) | round(1) %}
+          {% set marker_pct = ((p.consensus_rank - scale_min) / span * 100) | round(1) %}
+          <li class="controversy-row">
+            <div class="controversy-row__top">
+              {{ player_avatar(p.photo_url, p.player_name, None, "sm") }}
+              {% if p.slug %}
+              <a class="controversy-row__name" href="/players/{{ p.slug }}">{{ p.player_name or "—" }}</a>
+              {% else %}
+              <span class="controversy-row__name">{{ p.player_name or "—" }}</span>
+              {% endif %}
+              <span class="controversy-row__sd tabular-nums" title="Standard deviation of source ranks">
+                σ {{ "%.1f"|format(p.std_dev) }}
+              </span>
+            </div>
+            <div class="controversy-row__bar">
+              <span class="controversy-row__edge tabular-nums">#{{ p.high_rank }}</span>
+              <div class="controversy-row__track">
+                <div class="controversy-row__fill"
+                     style="left: {{ left_pct }}%; width: {{ width_pct }}%;"></div>
+                {# One dot per source rank, plotted on the shared scale, so the
+                   spread of opinion is visible — not just its min/max. #}
+                {% for r in p.source_ranks %}
+                <span class="controversy-row__dot"
+                      style="left: {{ ((r - scale_min) / span * 100) | round(1) }}%;"
+                      title="A source ranked {{ p.player_name or 'this player' }} #{{ r }}"></span>
+                {% endfor %}
+                <div class="controversy-row__marker"
+                     style="left: {{ marker_pct }}%;"
+                     title="Consensus #{{ p.consensus_rank }}"></div>
+              </div>
+              <span class="controversy-row__edge tabular-nums">#{{ p.low_rank }}</span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="consensus-panel__empty" aria-live="polite">
+          <p class="consensus-panel__empty-msg">
+            Disagreement data needs at least two sources ranking a player.
+          </p>
+        </div>
+        {% endif %}
+      </div>
+
+    </div>
+    <!-- /2-up grid (Movers · Most Controversial) -->
+
+    <!-- ---- Source Spotlight (full-width banner) ---- -->
+    <div class="consensus-panel card card-ring card-ring-cyan consensus-panel--wide"
+         id="sourceSpotlightPanel"
+         aria-label="Source spotlight">
+        <div class="scanlines"></div>
         <div class="consensus-panel__header">
           <svg class="consensus-panel__icon" viewBox="0 0 24 24" fill="none"
                stroke="currentColor" stroke-width="2">
@@ -379,23 +482,95 @@
           <h3 class="consensus-panel__title mono-font uppercase">Source Spotlight</h3>
         </div>
 
-        {% if source_spotlight %}
-        <div class="consensus-panel__spotlight">
-          <p class="consensus-panel__spotlight-label mono-font">Most contrarian source this week</p>
-          <p class="consensus-panel__spotlight-source">
-            {{ source_spotlight.source_display_name }}
-          </p>
-          <p class="consensus-panel__spotlight-stat mono-font">
-            Avg deviation
-            <strong class="consensus-panel__spotlight-value">
-              {{ "%.1f"|format(source_spotlight.avg_deviation) }}
-            </strong>
-            picks from consensus
-          </p>
-          <p class="consensus-panel__spotlight-score mono-font">
-            Contrarian score:
-            <strong>{{ "%.2f"|format(source_spotlight.contrarian_score) }}</strong>
-          </p>
+        {# Render one award slot. Each slot is themed by its award accent
+           (--slot-accent) and links out to the producer's own published board
+           when available; otherwise to our internal source-analytics page. #}
+        {% macro spotlight_item(slot) %}
+        {% set rf_max = [slot.reaches, slot.fades, 1] | max %}
+        <div class="spotlight__item" style="--slot-accent: {{ slot.accent_css }}">
+          <span class="spotlight__label mono-font uppercase">{{ slot.award_label }}</span>
+          <div class="spotlight__source-row">
+            {{ source_badge(slot.source_display_name) }}
+            <div class="spotlight__source-wrap">
+              {% if slot.work_url %}
+              <a class="spotlight__source spotlight__source--external"
+                 href="{{ slot.work_url }}" target="_blank" rel="noopener noreferrer"
+                 title="{{ slot.work_title or slot.source_display_name }} (opens in a new tab)">
+                {{ slot.source_display_name }}
+                <svg class="spotlight__external-icon" viewBox="0 0 24 24" width="12" height="12"
+                     fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                  <path d="M7 17 L17 7 M9 7 h8 v8"/>
+                </svg>
+              </a>
+              {% elif slot.source_slug %}
+              <a class="spotlight__source" href="/sources/{{ slot.source_slug }}">{{ slot.source_display_name }}</a>
+              {% else %}
+              <span class="spotlight__source">{{ slot.source_display_name }}</span>
+              {% endif %}
+              <span class="spotlight__stat mono-font">{{ slot.stat_text }}</span>
+            </div>
+          </div>
+
+          {# Reaches vs Fades — how many players this board ranks higher (reaches)
+             vs lower (fades) than consensus. The asymmetry is the board's
+             personality: believer vs skeptic. #}
+          <div class="rf" title="Players ranked higher (reaches) vs lower (fades) than consensus">
+            <div class="rf__track">
+              <div class="rf__half rf__half--left">
+                <div class="rf__fill rf__fill--fade"
+                     style="width: {{ (slot.fades / rf_max * 100) | round(1) }}%"></div>
+              </div>
+              <div class="rf__axis"></div>
+              <div class="rf__half rf__half--right">
+                <div class="rf__fill rf__fill--reach"
+                     style="width: {{ (slot.reaches / rf_max * 100) | round(1) }}%"></div>
+              </div>
+            </div>
+            <div class="rf__labels mono-font">
+              <span>&#9664; {{ slot.fades }} fades</span>
+              <span>{{ slot.reaches }} reaches &#9654;</span>
+            </div>
+          </div>
+
+          {% if slot.highlight %}
+          <div class="spotlight__outlier">
+            {{ player_avatar(slot.highlight.photo_url, slot.highlight.player_name, None, "xs") }}
+            <span class="spotlight__outlier-text">
+              <span class="spotlight__outlier-label">{{ slot.highlight.label }}</span>
+              {% if slot.highlight.slug %}<a href="/players/{{ slot.highlight.slug }}">{{ slot.highlight.player_name }}</a>{% else %}<strong>{{ slot.highlight.player_name }}</strong>{% endif %}
+              <span class="spotlight__outlier-cons tabular-nums">{{ slot.highlight.detail }}</span>
+            </span>
+          </div>
+          {% endif %}
+
+          {# CTA so readers can go consume the featured provider's big board. #}
+          {% if slot.work_url %}
+          <a class="spotlight__cta"
+             href="{{ slot.work_url }}" target="_blank" rel="noopener noreferrer">
+            Read {{ slot.source_display_name }}'s full board
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+                 stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+              <path d="M7 17 L17 7 M9 7 h8 v8"/>
+            </svg>
+          </a>
+          {% elif slot.source_slug %}
+          <a class="spotlight__cta"
+             href="/sources/{{ slot.source_slug }}">
+            See {{ slot.source_display_name }}'s board on DraftGuru
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+                 stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+              <path d="M5 12 h14 M13 6 l6 6 -6 6"/>
+            </svg>
+          </a>
+          {% endif %}
+        </div>
+        {% endmacro %}
+
+        {% if source_spotlight and source_spotlight.slots %}
+        <div class="spotlight">
+          {% for slot in source_spotlight.slots %}
+          {{ spotlight_item(slot) }}
+          {% endfor %}
         </div>
         {% else %}
         <div class="consensus-panel__empty" aria-live="polite">
@@ -404,48 +579,19 @@
           </p>
         </div>
         {% endif %}
-      </div>
-
-      <!-- ---- Board Freshness ---- -->
-      <div class="consensus-panel card card-ring card-ring-emerald"
-           id="boardFreshnessPanel"
-           aria-label="Board freshness">
-        <div class="consensus-panel__header">
-          <svg class="consensus-panel__icon" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" stroke-width="2">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-          </svg>
-          <h3 class="consensus-panel__title mono-font uppercase">Board Freshness</h3>
-        </div>
-
-        {% if board_freshness %}
-        <div class="consensus-panel__freshness">
-          <p class="consensus-panel__freshness-summary mono-font">
-            Based on
-            <strong class="consensus-panel__freshness-value">{{ board_freshness.num_boards }}</strong>
-            board{{ "s" if board_freshness.num_boards != 1 else "" }}
-            from
-            <strong class="consensus-panel__freshness-value">{{ board_freshness.num_sources }}</strong>
-            source{{ "s" if board_freshness.num_sources != 1 else "" }}
-          </p>
-          <p class="consensus-panel__freshness-date mono-font">
-            Last updated
-            <strong>{{ board_freshness.last_updated.strftime('%b %-d, %Y') }}</strong>
-          </p>
-        </div>
-        {% else %}
-        <div class="consensus-panel__empty" aria-live="polite">
-          <p class="consensus-panel__empty-msg">
-            No approved boards available yet.
-          </p>
-        </div>
-        {% endif %}
-      </div>
-
     </div>
+
+    {% if board_freshness %}
+    <p class="consensus-panels__freshness mono-font">
+      Based on
+      <strong>{{ board_freshness.num_boards }}</strong>
+      board{{ "s" if board_freshness.num_boards != 1 else "" }}
+      from
+      <strong>{{ board_freshness.num_sources }}</strong>
+      source{{ "s" if board_freshness.num_sources != 1 else "" }}
+      · updated {{ board_freshness.last_updated.strftime('%b %-d, %Y') }}
+    </p>
+    {% endif %}
   </section>
 
   <div class="section-divider"></div>

@@ -27,6 +27,7 @@ from app.services.consensus_read_service import (
     get_biggest_movers,
     get_board_freshness,
     get_consensus_board,
+    get_most_controversial,
     get_player_consensus_detail,
     get_source_detail,
     get_source_leaderboard,
@@ -162,8 +163,13 @@ async def home(
         for r in consensus_rows_raw
     ]
 
-    # --- Supporting panels: Biggest Movers, Source Spotlight, Board Freshness --
-    biggest_movers = await get_biggest_movers(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    # --- Supporting panels: Biggest Movers, Most Controversial, Source Spotlight
+    # Movers are trimmed to 3-up per direction so the panel reads at a glance;
+    # Board Freshness is rendered as a footnote rather than its own card.
+    biggest_movers = await get_biggest_movers(db, draft_year=CONSENSUS_DRAFT_YEAR, k=3)
+    most_controversial = await get_most_controversial(
+        db, draft_year=CONSENSUS_DRAFT_YEAR, limit=5
+    )
     source_spotlight = await get_source_spotlight(db, draft_year=CONSENSUS_DRAFT_YEAR)
     board_freshness = await get_board_freshness(db, draft_year=CONSENSUS_DRAFT_YEAR)
 
@@ -370,6 +376,7 @@ async def home(
             "consensus_lottery_picks": CONSENSUS_LOTTERY_PICKS,
             # Supporting panels
             "biggest_movers": biggest_movers,
+            "most_controversial": most_controversial,
             "source_spotlight": source_spotlight,
             "board_freshness": board_freshness,
             # Existing sections

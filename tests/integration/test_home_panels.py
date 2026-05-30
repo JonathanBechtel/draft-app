@@ -1,9 +1,10 @@
 """Integration tests for the homepage supporting panels (#219).
 
-Panels:
-- Biggest Movers: top risers/fallers by rank delta.
-- Source Spotlight: most contrarian source callout.
-- Board Freshness: boards/sources/last-updated summary.
+Panels (redesigned):
+- Biggest Movers: top-3 risers/fallers by rank delta, striped rows.
+- Most Controversial: players with the widest spread of source ranks.
+- Source Spotlight: most contrarian + most aligned source callouts.
+- Board Freshness: rendered as a footnote beneath the panel grid.
 
 Each panel has two test scenarios:
 1. Data present → panel content rendered.
@@ -13,14 +14,13 @@ Each panel has two test scenarios:
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus
+from app.schemas.boards import Board, BoardEntry, BoardStatus
 from app.schemas.consensus import ConsensusTrigger
 from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.players_master import PlayerMaster
@@ -123,10 +123,18 @@ async def two_snapshot_board(
     # Snapshot 1: Alpha first
     entries_v1 = [(alpha, 1), (beta, 2), (gamma, 3)]
     await _make_board(
-        db_session, source=source1, draft_year=2026, entries=entries_v1, published_offset_hours=48
+        db_session,
+        source=source1,
+        draft_year=2026,
+        entries=entries_v1,
+        published_offset_hours=48,
     )
     await _make_board(
-        db_session, source=source2, draft_year=2026, entries=entries_v1, published_offset_hours=48
+        db_session,
+        source=source2,
+        draft_year=2026,
+        entries=entries_v1,
+        published_offset_hours=48,
     )
     await db_session.commit()
     await svc.recompute_consensus(
@@ -137,10 +145,18 @@ async def two_snapshot_board(
     # Snapshot 2: Gamma jumps to first, Alpha drops to third
     entries_v2 = [(gamma, 1), (beta, 2), (alpha, 3)]
     await _make_board(
-        db_session, source=source1, draft_year=2026, entries=entries_v2, published_offset_hours=2
+        db_session,
+        source=source1,
+        draft_year=2026,
+        entries=entries_v2,
+        published_offset_hours=2,
     )
     await _make_board(
-        db_session, source=source2, draft_year=2026, entries=entries_v2, published_offset_hours=2
+        db_session,
+        source=source2,
+        draft_year=2026,
+        entries=entries_v2,
+        published_offset_hours=2,
     )
     await db_session.commit()
     await svc.recompute_consensus(
@@ -177,6 +193,43 @@ async def single_snapshot_board(
 
 
 # ---------------------------------------------------------------------------
+# Disagreement fixture (for Most Controversial)
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture()
+async def disagreement_board(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+) -> None:
+    """Seed a snapshot where two sources rank the players very differently.
+
+    Every player is ranked by both sources, so std_dev > 0 and the Most
+    Controversial panel has data to show.
+    """
+    source1 = await _make_source(db_session, "panels-disagree-src-1")
+    source2 = await _make_source(db_session, "panels-disagree-src-2")
+    alpha, beta, gamma = players
+    await _make_board(
+        db_session,
+        source=source1,
+        draft_year=2026,
+        entries=[(alpha, 1), (beta, 2), (gamma, 3)],
+    )
+    await _make_board(
+        db_session,
+        source=source2,
+        draft_year=2026,
+        entries=[(gamma, 1), (alpha, 2), (beta, 3)],
+    )
+    await db_session.commit()
+    await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.MANUAL
+    )
+    await db_session.commit()
+
+
+# ---------------------------------------------------------------------------
 # Biggest Movers tests
 # ---------------------------------------------------------------------------
 
@@ -199,10 +252,8 @@ async def test_biggest_movers_populated(
     assert "biggestMoversPanel" in html
     # The panel should show riser or faller entries (not the empty-state message)
     assert "Movement data available once a second snapshot is computed." not in html
-    # At least one delta arrow class must be present
-    assert (
-        "consensus-panel__mover--up" in html or "consensus-panel__mover--down" in html
-    )
+    # At least one striped mover row must be present
+    assert "mover-row--up" in html or "mover-row--down" in html
 
 
 @pytest.mark.asyncio
@@ -250,15 +301,23 @@ async def test_source_spotlight_populated(
 ) -> None:
     """Single snapshot with SourceAnalytics → Source Spotlight panel renders.
 
-    The panel should display the contrarian source name and deviation figure.
+    The panel should award at least one contributor and render the supporting
+    graphics (monogram, reaches/fades bar, board CTA).
     """
     resp = await app_client.get("/")
     assert resp.status_code == 200
     html = resp.text
 
     assert "sourceSpotlightPanel" in html
-    # The callout text must be present (not the empty state)
-    assert "Most contrarian source this week" in html
+    # An award label is shown (Boldest Board is always in the pool).
+    assert "Boldest Board" in html
+    # Reaches-vs-fades diverging bar renders.
+    assert "rf__fill" in html
+    assert "reaches" in html and "fades" in html
+    # Source monogram badge gives each source a visual cue.
+    assert "source-badge" in html
+    # A call-to-action links readers to the featured provider's board.
+    assert "spotlight__cta" in html
     # Should not show the empty-state message
     assert "Source analytics are not yet available." not in html
 
@@ -277,42 +336,82 @@ async def test_source_spotlight_empty_no_snapshot(
 
 
 # ---------------------------------------------------------------------------
-# Board Freshness tests
+# Most Controversial tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_board_freshness_populated(
+async def test_most_controversial_populated(
     app_client: AsyncClient,
-    single_snapshot_board: None,
+    disagreement_board: None,
 ) -> None:
-    """Single snapshot with approved boards → Board Freshness panel renders.
+    """Sources disagree → Most Controversial panel renders spread bars.
 
-    Should display a boards/sources count and a last-updated date.
+    The panel must show the caption and at least one std-dev (σ) figure, not
+    the empty-state message.
     """
     resp = await app_client.get("/")
     assert resp.status_code == 200
     html = resp.text
 
-    assert "boardFreshnessPanel" in html
-    # The summary text must be present (not the empty state)
-    assert "Based on" in html
-    assert "Last updated" in html
-    # Should not show the empty-state message
-    assert "No approved boards available yet." not in html
+    assert "mostControversialPanel" in html
+    assert "Widest spread of source ranks" in html
+    assert "controversy-row__track" in html
+    # Per-source rank dots plot the distribution along each track.
+    assert "controversy-row__dot" in html
+    # Each row carries a player avatar graphic.
+    assert "pavatar" in html
+    assert "Disagreement data needs at least two sources" not in html
 
 
 @pytest.mark.asyncio
-async def test_board_freshness_empty_no_snapshot(
+async def test_most_controversial_empty_when_sources_agree(
     app_client: AsyncClient,
+    single_snapshot_board: None,
 ) -> None:
-    """No snapshot → Board Freshness shows graceful empty state without crashing."""
+    """Identical boards → zero spread → graceful empty state, no crash."""
     resp = await app_client.get("/")
     assert resp.status_code == 200
     html = resp.text
 
-    assert "boardFreshnessPanel" in html
-    assert "No approved boards available yet." in html
+    assert "mostControversialPanel" in html
+    assert "Disagreement data needs at least two sources" in html
+
+
+# ---------------------------------------------------------------------------
+# Board Freshness footnote tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_board_freshness_footnote_populated(
+    app_client: AsyncClient,
+    single_snapshot_board: None,
+) -> None:
+    """Approved boards → freshness footnote renders beneath the panel grid.
+
+    The footnote shows a boards/sources count and an updated date; it is no
+    longer a dedicated card.
+    """
+    resp = await app_client.get("/")
+    assert resp.status_code == 200
+    html = resp.text
+
+    assert "consensus-panels__freshness" in html
+    assert "Based on" in html
+    assert "updated" in html
+
+
+@pytest.mark.asyncio
+async def test_board_freshness_footnote_absent_no_snapshot(
+    app_client: AsyncClient,
+) -> None:
+    """No snapshot → no freshness footnote, and the page still renders."""
+    resp = await app_client.get("/")
+    assert resp.status_code == 200
+    html = resp.text
+
+    assert "consensus-panels__freshness" not in html
 
 
 # ---------------------------------------------------------------------------
@@ -340,5 +439,5 @@ async def test_panels_do_not_break_consensus_hero(
     assert players[0].display_name in html or players[2].display_name in html
     # All three panel IDs must also be present
     assert "biggestMoversPanel" in html
+    assert "mostControversialPanel" in html
     assert "sourceSpotlightPanel" in html
-    assert "boardFreshnessPanel" in html
