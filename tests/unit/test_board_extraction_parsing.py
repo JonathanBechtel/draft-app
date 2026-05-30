@@ -16,6 +16,7 @@ from app.services.board_extraction_service import (
     ExtractedBoard,
     PaywallDetectedError,
     _build_extraction_schema,
+    _derive_num_rounds,
     _fetch_substack_api,
     _substack_api_url,
     extract_article_text,
@@ -692,3 +693,27 @@ def test_build_extraction_schema_tier_is_nullable() -> None:
     schema = _build_extraction_schema()
     tier_field = schema.properties["entries"].items.properties["tier"]
     assert tier_field.nullable is True
+
+
+# --- _derive_num_rounds (mock-draft round inference) --------------------
+
+
+def test_derive_num_rounds_single_round_when_within_first_round() -> None:
+    """A mock that stops at or before pick 30 is a one-round mock."""
+    assert _derive_num_rounds([1, 2, 3, 14, 30]) == 1
+
+
+def test_derive_num_rounds_two_rounds_when_past_first_round() -> None:
+    """A mock that projects past pick 30 is a two-round mock."""
+    assert _derive_num_rounds([1, 15, 31]) == 2
+
+
+def test_derive_num_rounds_boundary_at_thirty() -> None:
+    """Pick 30 is the last first-round slot; 31 tips into round two."""
+    assert _derive_num_rounds([30]) == 1
+    assert _derive_num_rounds([31]) == 2
+
+
+def test_derive_num_rounds_empty_defaults_to_one() -> None:
+    """Defensive default: no picks → 1 (never returns 0/None for the constraint)."""
+    assert _derive_num_rounds([]) == 1

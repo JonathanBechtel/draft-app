@@ -50,6 +50,16 @@ class DuplicatePlayerError(BoardError):
     """Raised when a board already contains the requested player."""
 
 
+class BoardKindMismatchError(BoardError):
+    """Raised when ``kind`` and ``num_rounds`` violate the kind-shape rule.
+
+    Mirrors the ``ck_boards_kind_num_rounds`` DB CheckConstraint at the
+    service layer so callers get a clean business error instead of an
+    opaque ``IntegrityError`` on flush: a ``MOCK_DRAFT`` board must carry
+    ``num_rounds``; a ``BIG_BOARD`` must not.
+    """
+
+
 class EntryAlreadyResolvedError(BoardError):
     """Raised when a resolution action targets an already-resolved entry.
 
@@ -88,6 +98,7 @@ async def create_board(
     entries: Sequence[EntryInput],
     news_item_id: Optional[int] = None,
     kind: BoardKind = BoardKind.BIG_BOARD,
+    num_rounds: Optional[int] = None,
 ) -> Board:
     """Create a PENDING board with its initial entries.
 
@@ -103,16 +114,26 @@ async def create_board(
             is the only kind with an active write path today; the column's
             server_default matches, so this is also a defense-in-depth
             against environments where the default isn't applied.
+        num_rounds: Number of draft rounds a ``MOCK_DRAFT`` projects. Must
+            be ``None`` for a ``BIG_BOARD`` and non-``None`` for a
+            ``MOCK_DRAFT`` — see :class:`BoardKindMismatchError`. Note that
+            the consensus engine ignores this field entirely; ``position``
+            is the only ranking signal it reads, so a mock draft feeds the
+            same consensus pool as a big board regardless of ``num_rounds``.
 
     Returns:
         The persisted Board (with ``id``, ``status`` defaulted to PENDING).
 
     Raises:
+        BoardKindMismatchError: If ``kind`` and ``num_rounds`` violate the
+            kind-shape rule (checked before any write).
         DuplicatePositionError / DuplicatePlayerError: If ``entries`` violates
             the per-board uniqueness constraints.
     """
+    _validate_kind_num_rounds(kind, num_rounds)
     board = Board(
         kind=kind,
+        num_rounds=num_rounds,
         news_source_id=news_source_id,
         news_item_id=news_item_id,
         draft_year=draft_year,
@@ -596,6 +617,23 @@ async def latest_entry_tier(db: AsyncSession, *, board_id: int) -> Optional[int]
     )
     row = result.first()
     return row[0] if row else None
+
+
+def _validate_kind_num_rounds(kind: BoardKind, num_rounds: Optional[int]) -> None:
+    """Enforce the kind-shape rule before persisting (see CheckConstraint).
+
+    A ``MOCK_DRAFT`` must carry ``num_rounds``; a ``BIG_BOARD`` must not.
+    Raising here turns an opaque DB ``IntegrityError`` into a clear,
+    catchable business error for routes and the extraction service.
+    """
+    if kind is BoardKind.MOCK_DRAFT and num_rounds is None:
+        raise BoardKindMismatchError(
+            "A MOCK_DRAFT board requires num_rounds (got None)."
+        )
+    if kind is BoardKind.BIG_BOARD and num_rounds is not None:
+        raise BoardKindMismatchError(
+            f"A BIG_BOARD board must not set num_rounds (got {num_rounds})."
+        )
 
 
 def _require_pending(board: Board) -> None:
