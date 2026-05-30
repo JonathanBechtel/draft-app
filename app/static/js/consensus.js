@@ -54,9 +54,20 @@ document.addEventListener("DOMContentLoaded", function () {
   // Helpers
   // -------------------------------------------------------------------------
 
+  // Map a sortable header's data-col value to the row's compact data-*
+  // attribute name. Header cols use semantic names (consensus_rank, avg_rank,
+  // num_sources) while rows carry shorter dataset keys (rank, avg, sources).
+  const SORT_COL_TO_ATTR = {
+    consensus_rank: "rank",
+    avg_rank: "avg",
+    num_sources: "sources",
+    age: "age",
+  };
+
   /** Return parsed numeric value from a data-* attribute, or Infinity when absent. */
   function numAttr(row, attr) {
-    const v = row.dataset[attr];
+    const key = SORT_COL_TO_ATTR[attr] || attr;
+    const v = row.dataset[key];
     if (v === "" || v === undefined || v === null) return Infinity;
     const n = parseFloat(v);
     return isNaN(n) ? Infinity : n;
