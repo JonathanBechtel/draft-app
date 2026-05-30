@@ -1,13 +1,224 @@
 {# ============================================================
    SECTION 5 — PLAYER RANK TRAJECTORIES
    Context keys: rank_trajectories (list of {player_id, player_name, slug, series})
-   Filled by ticket #276. Owns: consensus-trajectories.css, consensus-trajectories.js
+   Owned by ticket #276.
    ============================================================ #}
-<div class="consensus-trajectories-placeholder consensus-placeholder" data-section="trajectories">
-  <p class="consensus-placeholder__label">Player rank trajectories — ticket #276</p>
-  {% if rank_trajectories %}
-  <p class="consensus-placeholder__count">{{ rank_trajectories | length }} player trajectories available</p>
+
+<div class="traj-section">
+  <div class="traj-section__head">
+    <h2 class="traj-section__title">Rank trajectories</h2>
+    <span class="traj-section__sub">consensus rank over recent snapshots</span>
+  </div>
+
+  {% set ns = namespace(has_multi_snapshot=false) %}
+  {% for p in rank_trajectories %}
+    {% if p.series | length >= 2 %}
+      {% set ns.has_multi_snapshot = true %}
+    {% endif %}
+  {% endfor %}
+
+  {% if not rank_trajectories %}
+  {# ---- Empty state: no data at all ---- #}
+  <div class="traj-card traj-card--empty" data-section="trajectories">
+    <p class="traj-card__empty-msg">
+      No consensus data yet — trajectories appear once multiple snapshots exist.
+    </p>
+  </div>
+
+  {% elif not ns.has_multi_snapshot %}
+  {# ---- Flat state: only one snapshot exists ---- #}
+  <div class="traj-card" data-section="trajectories">
+    <p class="traj-card__flat-msg">
+      Trajectories appear once multiple snapshots exist — check back after the next update.
+    </p>
+    {# Render flat dots to show the players are present, without a full chart #}
+    <div class="traj-flat-list">
+      {% for p in rank_trajectories %}
+      <span class="traj-flat-item">
+        {% if p.slug %}
+        <a href="/players/{{ p.slug }}" class="traj-flat-item__link">{{ p.player_name or "—" }}</a>
+        {% else %}
+        {{ p.player_name or "—" }}
+        {% endif %}
+        {% if p.series %}
+          <span class="traj-flat-item__rank">#{{ p.series[-1].consensus_rank }}</span>
+        {% endif %}
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+
   {% else %}
-  <p class="consensus-placeholder__empty">No trajectory data available.</p>
+  {# ---- Full chart: 2+ snapshots ---- #}
+  {#
+     Build the chart server-side in Jinja using the same coordinate math as
+     app/utils/sparkline.py:
+       - SVG viewBox 0 0 620 220; plot area x 50–600, y 20–190
+       - x: distribute snapshot slots evenly across the plot width (50→600)
+       - y: lower rank (better) plots higher (smaller y); rank 1 at y=20
+         y = 20 + ((rank - 1) / (max_rank - 1)) * 170   where max_rank = top_n
+         Clamp so stray outlier ranks (rank > top_n) still land on-screen.
+     Each player line is a <polyline>; color assigned from a fixed palette
+     matching the mockup plus the existing CSS accent variables.
+     The legend shows name + arrow if the player moved.
+  #}
+
+  {# Determine snapshot time axis — all unique computed_at values across all players,
+     sorted oldest-first, capped to 8 for readability. #}
+  {% set all_times = [] %}
+  {% for p in rank_trajectories %}
+    {% for pt in p.series %}
+      {% if pt.computed_at not in all_times %}
+        {% set _ = all_times.append(pt.computed_at) %}
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+  {# Sort is handled by service (series is oldest-first); collect unique in order #}
+  {# Cap to last 8 time slots #}
+  {% set time_slots = all_times[-8:] if all_times | length > 8 else all_times %}
+  {% set n_slots = time_slots | length %}
+
+  {# Plot area constants #}
+  {% set x_left = 50 %}
+  {% set x_right = 600 %}
+  {% set y_top = 20 %}
+  {% set y_bottom = 190 %}
+  {% set plot_w = x_right - x_left %}
+  {% set plot_h = y_bottom - y_top %}
+  {% set top_n = rank_trajectories | length %}
+
+  {# Color palette: matches mockup + existing CSS accent vars.
+     Slot 0=flat slate, 1=emerald, 2=rose, 3=cyan, 4=fuchsia,
+     then repeat with slightly different shades for more players. #}
+  {% set palette = [
+    "#94a3b8",
+    "#10b981",
+    "#f43f5e",
+    "#06b6d4",
+    "#d946ef",
+    "#f59e0b",
+    "#6366f1",
+    "#84cc16",
+    "#fb923c",
+    "#a78bfa"
+  ] %}
+
+  <div class="traj-card" data-section="trajectories">
+    <div class="traj-chart">
+      <svg class="traj-svg" viewBox="0 0 620 220" aria-label="Player rank trajectories chart" role="img">
+
+        {# Grid lines at approximate rank milestones #}
+        <line class="traj__grid" x1="{{ x_left }}" y1="{{ y_top }}" x2="{{ x_right }}" y2="{{ y_top }}"/>
+        {% if top_n >= 5 %}
+        <line class="traj__grid" x1="{{ x_left }}" y1="{{ y_top + (plot_h * 4 / [top_n - 1, 1] | max) | round(1) }}"
+              x2="{{ x_right }}" y2="{{ y_top + (plot_h * 4 / [top_n - 1, 1] | max) | round(1) }}"/>
+        {% endif %}
+        {% if top_n >= 10 %}
+        <line class="traj__grid" x1="{{ x_left }}" y1="{{ y_top + (plot_h * 9 / [top_n - 1, 1] | max) | round(1) }}"
+              x2="{{ x_right }}" y2="{{ y_top + (plot_h * 9 / [top_n - 1, 1] | max) | round(1) }}"/>
+        {% endif %}
+        <line class="traj__grid" x1="{{ x_left }}" y1="{{ y_bottom }}" x2="{{ x_right }}" y2="{{ y_bottom }}"/>
+
+        {# Y-axis labels (rank numbers) #}
+        <text class="traj__axis-label" x="{{ x_left - 6 }}" y="{{ y_top + 4 }}" text-anchor="end">#1</text>
+        {% if top_n >= 5 %}
+        <text class="traj__axis-label"
+              x="{{ x_left - 6 }}"
+              y="{{ (y_top + (plot_h * 4 / [top_n - 1, 1] | max)) | round(1) + 4 }}"
+              text-anchor="end">#5</text>
+        {% endif %}
+        {% if top_n >= 10 %}
+        <text class="traj__axis-label"
+              x="{{ x_left - 6 }}"
+              y="{{ (y_top + (plot_h * 9 / [top_n - 1, 1] | max)) | round(1) + 4 }}"
+              text-anchor="end">#10</text>
+        {% endif %}
+
+        {# X-axis time labels: "oldest" left, "now" right #}
+        <text class="traj__axis-label" x="{{ x_left }}" y="210">oldest</text>
+        <text class="traj__axis-label" x="{{ x_right }}" y="210" text-anchor="end">now</text>
+        {% if n_slots >= 3 %}
+        {% set mid_x = ((x_left + x_right) / 2) | round(1) %}
+        <text class="traj__axis-label" x="{{ mid_x }}" y="210" text-anchor="middle">mid</text>
+        {% endif %}
+
+        {# Player lines #}
+        {% for p in rank_trajectories %}
+          {% set color = palette[loop.index0 % (palette | length)] %}
+          {# Build point list for this player using time_slots as x axis #}
+          {% set pts = [] %}
+          {% for ts in time_slots %}
+            {% set found_rank = namespace(val=none) %}
+            {% for pt in p.series %}
+              {% if pt.computed_at == ts %}
+                {% set found_rank.val = pt.consensus_rank %}
+              {% endif %}
+            {% endfor %}
+            {% if found_rank.val is not none %}
+              {# x: position in time_slots #}
+              {% if n_slots > 1 %}
+                {% set xi = x_left + (loop.index0 / (n_slots - 1)) * plot_w %}
+              {% else %}
+                {% set xi = (x_left + x_right) / 2 %}
+              {% endif %}
+              {# y: rank 1 = y_top, rank top_n = y_bottom; clamp #}
+              {% set clamped = [1, [found_rank.val, top_n] | min] | max %}
+              {% if top_n > 1 %}
+                {% set yi = y_top + ((clamped - 1) / (top_n - 1)) * plot_h %}
+              {% else %}
+                {% set yi = (y_top + y_bottom) / 2 %}
+              {% endif %}
+              {% set _ = pts.append(xi | round(1) ~ "," ~ yi | round(1)) %}
+            {% endif %}
+          {% endfor %}
+          {% if pts | length >= 2 %}
+          <polyline class="traj__line"
+                    style="stroke:{{ color }}"
+                    points="{{ pts | join(' ') }}"
+                    aria-label="{{ p.player_name or 'Player' }} rank trajectory"/>
+          {# Endpoint dot #}
+          {% set last_pt = pts[-1].split(',') %}
+          <circle class="traj__dot" cx="{{ last_pt[0] }}" cy="{{ last_pt[1] }}" r="3"
+                  style="fill:{{ color }}" aria-hidden="true"/>
+          {% elif pts | length == 1 %}
+          {# Single point within the slot window — render a dot #}
+          {% set only_pt = pts[0].split(',') %}
+          <circle class="traj__dot" cx="{{ only_pt[0] }}" cy="{{ only_pt[1] }}" r="3"
+                  style="fill:{{ color }}" aria-hidden="true"/>
+          {% endif %}
+        {% endfor %}
+
+      </svg>
+    </div>{# /.traj-chart #}
+
+    {# Legend #}
+    <div class="traj__legend">
+      {% for p in rank_trajectories %}
+        {% set color = palette[loop.index0 % (palette | length)] %}
+        {# Determine direction for the arrow indicator #}
+        {% set direction = "flat" %}
+        {% if p.series | length >= 2 %}
+          {% if p.series[-1].consensus_rank < p.series[0].consensus_rank %}
+            {% set direction = "up" %}
+          {% elif p.series[-1].consensus_rank > p.series[0].consensus_rank %}
+            {% set direction = "down" %}
+          {% endif %}
+        {% endif %}
+        <span class="traj__legend-item traj__legend-item--{{ direction }}" style="color:{{ color }}">
+          {% if p.slug %}
+          <a href="/players/{{ p.slug }}" class="traj__legend-link" style="color:{{ color }}">
+            {{ p.player_name or "—" }}
+          </a>
+          {% else %}
+          {{ p.player_name or "—" }}
+          {% endif %}
+          {% if direction == "up" %}<span class="traj__legend-arrow" aria-label="rising">&#8593;</span>{% endif %}
+          {% if direction == "down" %}<span class="traj__legend-arrow" aria-label="falling">&#8595;</span>{% endif %}
+        </span>
+      {% endfor %}
+    </div>{# /.traj__legend #}
+
+  </div>{# /.traj-card #}
   {% endif %}
-</div>
+
+</div>{# /.traj-section #}
