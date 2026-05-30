@@ -7,12 +7,6 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/consensus.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-board.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-scatter.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-sources.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-matrix.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-trajectories.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-panels.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -99,7 +93,4 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', path='js/consensus.js') }}"></script>
-<script src="{{ url_for('static', path='js/consensus-board.js') }}"></script>
-<script src="{{ url_for('static', path='js/consensus-scatter.js') }}"></script>
-<script src="{{ url_for('static', path='js/consensus-trajectories.js') }}"></script>
 {% endblock %}

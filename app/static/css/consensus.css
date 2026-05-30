@@ -1,8 +1,17 @@
 /* ==========================================================================
-   consensus.css — Global page-level styles for /consensus
-   Scoped per-section styles live in consensus-board.css, consensus-scatter.css,
-   consensus-sources.css, consensus-matrix.css, consensus-trajectories.css,
-   consensus-panels.css. Ticket #278 consolidates them all back here.
+   consensus.css — All styles for the /consensus page.
+   Consolidated by ticket #278 from the following per-section files:
+     consensus-board.css        (ticket #272)
+     consensus-scatter.css      (ticket #273)
+     consensus-sources.css      (ticket #274)
+     consensus-matrix.css       (ticket #275)
+     consensus-trajectories.css (ticket #276)
+     consensus-panels.css       (ticket #277)
+   ========================================================================== */
+
+/* ==========================================================================
+   SECTION 0 — PAGE SHELL
+   (formerly consensus.css page-level styles)
    ========================================================================== */
 
 .consensus-page {
@@ -83,4 +92,1051 @@
 
 .consensus-hero__view-full-link:hover {
   color: var(--color-slate-700);
+}
+
+/* ==========================================================================
+   SECTION 1 — FULL BOARD TABLE
+   (formerly consensus-board.css — ticket #272)
+   ========================================================================== */
+
+/* --- Controls bar: search + position filter -------------------------------- */
+.cb-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0 0.5rem;
+}
+
+.cb-controls__search,
+.cb-controls__pos {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--color-slate-200);
+  border-radius: 6px;
+  background: var(--color-white);
+  color: var(--color-slate-700);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.cb-controls__search {
+  flex: 1 1 200px;
+  min-width: 180px;
+  max-width: 340px;
+}
+
+.cb-controls__search:focus,
+.cb-controls__pos:focus {
+  outline: none;
+  border-color: var(--color-accent-amber);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+}
+
+/* --- Freshness footnote ---------------------------------------------------- */
+.cb-freshness {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-400);
+  margin: 0 0 0.4rem;
+}
+
+/* --- Board card ------------------------------------------------------------ */
+.cb-card {
+  margin-top: 0.5rem;
+}
+
+/* --- Table: inherit consensus-hero__table; narrow overrides ---------------- */
+.cb-table {
+  /* The board table is wider than the homepage hero — let it scroll
+     horizontally on small viewports rather than collapse columns too early. */
+  min-width: 780px;
+}
+
+/* Sortable column headers */
+.cb-th[data-col] {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.cb-th[data-col]:hover {
+  color: var(--color-accent-amber);
+}
+
+.cb-th[data-col]::after {
+  content: " ↕";
+  font-size: 0.65em;
+  opacity: 0.45;
+}
+
+.cb-th[aria-sort="ascending"]::after {
+  content: " ↑";
+  opacity: 1;
+  color: var(--color-accent-amber);
+}
+
+.cb-th[aria-sort="descending"]::after {
+  content: " ↓";
+  opacity: 1;
+  color: var(--color-accent-amber);
+}
+
+/* Range column: wider than numeric cols so the bar has room */
+.cb-th--range {
+  min-width: 160px;
+}
+
+/* --- Player cell: photo + name inline -------------------------------------- */
+.cb-player-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+
+.cb-player-photo {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--color-slate-200);
+}
+
+.cb-player-photo--placeholder {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-slate-100);
+  border: 1px solid var(--color-slate-200);
+  flex-shrink: 0;
+}
+
+/* --- School cell: logo + name inline --------------------------------------- */
+.cb-school-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.cb-school-logo {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* --- Range bar: reuses controversy tug-of-war visual language -------------- */
+.cb-range {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 160px;
+}
+
+.cb-range__edge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-slate-500);
+  width: 1.8rem;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.cb-range__track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  background: var(--color-slate-100);
+  border-radius: 4px;
+  min-width: 80px;
+}
+
+/* Filled region spanning [high_rank, low_rank] on the scaled track */
+.cb-range__fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    rgba(217, 70, 239, 0.3),
+    rgba(217, 70, 239, 0.6)
+  );
+  min-width: 3px;
+}
+
+/* Consensus-position marker: white circle with fuchsia border */
+.cb-range__marker {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--color-white);
+  border: 2px solid var(--color-accent-fuchsia, #d946ef);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: box-shadow 0.15s;
+}
+
+.consensus-hero__row:hover .cb-range__marker {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 0 0 3px rgba(217, 70, 239, 0.2);
+}
+
+/* --- Status badge ---------------------------------------------------------- */
+.cb-td--status {
+  white-space: nowrap;
+}
+
+.cb-status {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+}
+
+.cb-status--lottery {
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+}
+
+.cb-status--first {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.cb-status--second {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--color-slate-600);
+}
+
+.cb-status--fringe {
+  background: rgba(100, 116, 139, 0.08);
+  color: var(--color-slate-500);
+}
+
+/* --- Empty state ----------------------------------------------------------- */
+.cb-empty {
+  padding: 1.25rem 1rem;
+  text-align: center;
+  border-top: 1px solid var(--color-slate-100);
+}
+
+.cb-empty__msg {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-slate-400);
+  margin: 0;
+}
+
+/* --- Filtered-out rows (hidden by JS) -------------------------------------- */
+.cb-row--hidden {
+  display: none;
+}
+
+/* --- Responsive: collapse low-priority columns at narrow widths ------------ */
+@media (max-width: 860px) {
+  .cb-th--range,
+  .cb-td--range,
+  .consensus-hero__th--ht,
+  .consensus-hero__td--ht,
+  .consensus-hero__th--wt,
+  .consensus-hero__td--wt {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .consensus-hero__th--age,
+  .consensus-hero__td--age,
+  .cb-td--status,
+  .cb-th:last-child {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   SECTION 2 — AGREEMENT SCATTER + SOURCE PICKER
+   (formerly consensus-scatter.css — ticket #273)
+   ========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   Scatter card container
+   --------------------------------------------------------------------------- */
+.scatter-card {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--border-radius);
+  padding: 1.25rem 1.5rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.scatter-card--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 6rem;
+  border-style: dashed;
+  color: var(--color-slate-400);
+}
+
+.scatter-card__empty-msg {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-400);
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Source picker (tab-style button strip)
+   --------------------------------------------------------------------------- */
+.scatter-card__picker {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.scatter-card__picker-btn {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--color-slate-300);
+  border-radius: 3px;
+  background: var(--color-slate-50, #f8fafc);
+  color: var(--color-slate-600);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.scatter-card__picker-btn:hover {
+  background: var(--color-slate-100, #f1f5f9);
+  border-color: var(--color-slate-400);
+  color: var(--color-slate-800);
+}
+
+.scatter-card__picker-btn.is-active {
+  background: var(--color-accent-rose);
+  border-color: var(--color-accent-rose);
+  color: #fff;
+}
+
+/* ---------------------------------------------------------------------------
+   SVG scatter plot
+   --------------------------------------------------------------------------- */
+.scatter {
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+.scatter svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Axes */
+.scatter__axis {
+  stroke: var(--color-slate-300);
+  stroke-width: 1;
+}
+
+/* 45° perfect-agreement diagonal */
+.scatter__diagonal {
+  stroke: var(--color-slate-300);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+/* Standard dot */
+.scatter__dot {
+  fill: var(--color-accent-rose);
+  opacity: 0.8;
+  cursor: pointer;
+  transition: opacity 0.12s, r 0.12s;
+}
+
+.scatter__dot:hover {
+  opacity: 1;
+  stroke: var(--color-slate-700);
+  stroke-width: 2;
+}
+
+/* Bold/contrarian dot (biggest disagreements) */
+.scatter__dot--bold {
+  fill: var(--color-accent-fuchsia);
+}
+
+/* Axis text labels */
+.scatter__label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--color-slate-400);
+}
+
+/* ---------------------------------------------------------------------------
+   Caption below the chart
+   --------------------------------------------------------------------------- */
+.scatter__caption {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-slate-400);
+  margin-top: 0.5rem;
+  line-height: 1.5;
+}
+
+.scatter__legend--bold {
+  color: var(--color-accent-fuchsia);
+}
+
+/* ==========================================================================
+   SECTION 3 — SOURCE DEVIATION TABLE + CONTRARIAN PERCENTILE
+   (formerly consensus-sources.css — ticket #274)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Section heading (shared pattern with mockup .section-head)
+   -------------------------------------------------------------------------- */
+.deviation-card .section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--color-slate-200);
+}
+
+/* --------------------------------------------------------------------------
+   Card shell
+   -------------------------------------------------------------------------- */
+.deviation-card {
+  background: var(--color-white);
+  border-radius: var(--border-radius);
+  padding: 1.1rem 1.15rem;
+}
+
+.deviation-card--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 6rem;
+}
+
+.deviation-card__empty-msg {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-slate-400);
+  text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   Source link (arrow indicator; matrix headers suppress arrow via the
+   .matrix-table__src-link class which overrides the ::after content)
+   -------------------------------------------------------------------------- */
+.src-link {
+  color: var(--color-slate-700);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.src-link:hover {
+  color: var(--color-accent-cyan);
+}
+
+.src-link::after {
+  content: " \2197";
+  font-size: 0.8em;
+  color: var(--color-slate-400);
+}
+
+/* --------------------------------------------------------------------------
+   Deviation table
+   -------------------------------------------------------------------------- */
+.dev-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.dev-table th {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-slate-400);
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--color-slate-200);
+}
+
+.dev-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-slate-100);
+  vertical-align: middle;
+}
+
+.dev-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Deviation bar */
+.dev-bar {
+  height: 7px;
+  border-radius: 4px;
+  background: var(--color-slate-100);
+  position: relative;
+  min-width: 80px;
+}
+
+.dev-bar__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(244, 63, 94, 0.4), var(--color-accent-rose));
+}
+
+/* Outlier cell */
+.dev-table__outlier {
+  font-size: 0.82rem;
+}
+
+.dev-table__player-link {
+  color: var(--color-slate-700);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.dev-table__player-link:hover {
+  color: var(--color-accent-cyan);
+  text-decoration: underline;
+}
+
+.dev-table__delta {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  margin-left: 0.3rem;
+  color: var(--color-slate-500);
+}
+
+.dev-table__delta--up {
+  color: #047857; /* green — source is high on the player vs consensus */
+}
+
+.dev-table__delta--down {
+  color: #be123c; /* rose — source is low on the player vs consensus */
+}
+
+.dev-table__empty {
+  color: var(--color-slate-400);
+}
+
+/* --------------------------------------------------------------------------
+   Contrarian percentile scale
+   -------------------------------------------------------------------------- */
+.percentile {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-slate-100);
+}
+
+.percentile__label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-slate-500);
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+/* The gradient track: emerald (aligned) → slate midpoint → rose (contrarian) */
+.percentile__track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--color-accent-emerald),
+    var(--color-slate-200) 50%,
+    var(--color-accent-rose)
+  );
+  margin: 1.5rem 0 0.5rem;
+}
+
+/* Generic source dot */
+.percentile__dot {
+  position: absolute;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--color-slate-400);
+  transform: translate(-50%, -50%);
+}
+
+/* Active (most contrarian) source dot */
+.percentile__dot--active {
+  width: 13px;
+  height: 13px;
+  background: #fff;
+  border: 3px solid var(--color-accent-rose);
+}
+
+/* Label pinned above the active dot */
+.percentile__pin {
+  position: absolute;
+  bottom: 14px;
+  transform: translateX(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-slate-700);
+  white-space: nowrap;
+}
+
+/* Suppress the arrow on the percentile pin link so it doesn't crowd the label */
+.percentile__src-link::after {
+  content: "";
+}
+
+/* "most aligned" / "most contrarian" end labels */
+.percentile__ends {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--color-slate-400);
+  margin-top: 0.25rem;
+}
+
+/* ==========================================================================
+   SECTION 4 — SOURCE BREAKDOWN MATRIX
+   (formerly consensus-matrix.css — ticket #275)
+   ========================================================================== */
+
+/* Section wrapper */
+.matrix-section {
+  background: var(--color-white, #fff);
+  border: 1px solid var(--color-slate-100, #f1f5f9);
+  border-radius: var(--border-radius, 8px);
+  padding: 1.25rem 1.5rem;
+}
+
+.matrix-section--empty {
+  color: var(--color-slate-400, #94a3b8);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+}
+
+.matrix-section__empty-msg {
+  margin: 0;
+}
+
+/* Caption bar above the table */
+.matrix-section__caption {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  color: var(--color-slate-500, #64748b);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.matrix-section__caption-sub {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-slate-400, #94a3b8);
+}
+
+/* Horizontal scroll container for narrow viewports */
+.matrix-section__scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Core table */
+.matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+/* Header row */
+.matrix-table__th {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-slate-400, #94a3b8);
+  padding: 0.35rem 0.5rem;
+  text-align: center;
+  border-bottom: 1px solid var(--color-slate-200, #e2e8f0);
+  font-weight: 600;
+}
+
+.matrix-table__th--player {
+  text-align: left;
+}
+
+.matrix-table__th--cons {
+  color: var(--color-slate-600, #475569);
+  font-weight: 700;
+}
+
+/* Source link in column header — suppresses the global .src-link arrow */
+.matrix-table__src-link {
+  color: var(--color-slate-700, #334155);
+  text-decoration: none;
+  font-weight: 700;
+  transition: color 0.12s;
+}
+
+.matrix-table__src-link:hover {
+  color: var(--color-accent-cyan, #06b6d4);
+}
+
+.matrix-table__src-link::after {
+  content: "";
+}
+
+/* Body rows */
+.matrix-table__row:hover .matrix-table__td {
+  background-color: var(--color-slate-50, #f8fafc);
+}
+
+.matrix-table__row:hover .matrix-table__td--cons {
+  background-color: var(--color-slate-100, #f1f5f9);
+}
+
+/* Individual cells */
+.matrix-table__td {
+  padding: 0.35rem 0.5rem;
+  text-align: center;
+  border-bottom: 1px solid var(--color-slate-100, #f1f5f9);
+  color: var(--color-slate-700, #334155);
+  transition: background-color 0.1s;
+}
+
+/* Player name cell */
+.matrix-table__td--player {
+  text-align: left;
+  font-family: var(--font-heading, sans-serif);
+  font-size: 0.85rem;
+  color: var(--color-slate-800, #1e293b);
+  white-space: nowrap;
+}
+
+.matrix-table__player-link {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.12s;
+}
+
+.matrix-table__player-link:hover {
+  color: var(--color-accent-cyan, #06b6d4);
+}
+
+/* Consensus column */
+.matrix-table__td--cons {
+  font-weight: 700;
+  color: var(--color-slate-700, #334155);
+  background-color: var(--color-slate-50, #f8fafc);
+}
+
+/* Missing rank (player not on this source's board) */
+.matrix-table__td--missing {
+  color: var(--color-slate-300, #cbd5e1);
+}
+
+/* Outlier — source ranks this player notably higher than consensus (bullish) */
+.matrix-table__td--out-high {
+  background-color: rgba(16, 185, 129, 0.16);
+  color: #047857;
+  font-weight: 700;
+}
+
+/* Outlier — source ranks this player notably lower than consensus (bearish) */
+.matrix-table__td--out-low {
+  background-color: rgba(244, 63, 94, 0.14);
+  color: #be123c;
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   SECTION 5 — PLAYER RANK TRAJECTORIES
+   (formerly consensus-trajectories.css — ticket #276)
+   ========================================================================== */
+
+/* Section wrapper ---------------------------------------------------------- */
+.traj-section {
+  /* inherits .consensus-section spacing */
+}
+
+.traj-section__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.traj-section__title {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  color: var(--color-slate-900);
+  margin: 0;
+}
+
+.traj-section__sub {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-slate-400);
+  text-transform: lowercase;
+}
+
+/* Card --------------------------------------------------------------------- */
+.traj-card {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--border-radius);
+  padding: 1.25rem 1.5rem;
+}
+
+.traj-card--empty {
+  border-style: dashed;
+}
+
+/* Empty / flat state copy -------------------------------------------------- */
+.traj-card__empty-msg,
+.traj-card__flat-msg {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--color-slate-400);
+  margin: 0 0 0.75rem;
+  font-style: italic;
+}
+
+.traj-card__empty-msg {
+  margin-bottom: 0;
+}
+
+/* Flat list (single-snapshot pill row) ------------------------------------- */
+.traj-flat-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.traj-flat-item {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-600);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.traj-flat-item__link {
+  color: var(--color-accent-indigo);
+  text-decoration: none;
+}
+
+.traj-flat-item__link:hover {
+  text-decoration: underline;
+}
+
+.traj-flat-item__rank {
+  color: var(--color-slate-400);
+}
+
+/* Chart container ---------------------------------------------------------- */
+.traj-chart {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.traj-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  min-width: 280px;
+}
+
+/* SVG elements ------------------------------------------------------------- */
+.traj__grid {
+  stroke: var(--color-slate-100);
+  stroke-width: 1;
+  fill: none;
+}
+
+.traj__axis-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--color-slate-400);
+}
+
+.traj__line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: opacity 0.15s ease;
+}
+
+.traj__line:hover {
+  stroke-width: 3;
+}
+
+.traj__dot {
+  stroke: var(--color-white);
+  stroke-width: 1.5;
+  transition: r 0.15s ease;
+}
+
+/* Legend ------------------------------------------------------------------- */
+.traj__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-top: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.traj__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.traj__legend-item::before {
+  content: "—";
+  font-weight: 700;
+  margin-right: 0.25rem;
+  /* color is set via inline style matching the line color */
+}
+
+.traj__legend-link {
+  text-decoration: none;
+}
+
+.traj__legend-link:hover {
+  text-decoration: underline;
+}
+
+.traj__legend-arrow {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+/* Riser (improving / lower rank number) gets a subtle indicator */
+.traj__legend-item--up .traj__legend-arrow {
+  color: var(--color-accent-emerald);
+}
+
+/* Faller (worsening / higher rank number) */
+.traj__legend-item--down .traj__legend-arrow {
+  color: var(--color-accent-rose);
+}
+
+/* Responsive: on narrow screens reduce left-axis padding and font */
+@media (max-width: 480px) {
+  .traj-card {
+    padding: 0.875rem 0.875rem;
+  }
+
+  .traj__axis-label {
+    font-size: 7.5px;
+  }
+
+  .traj__legend {
+    font-size: 0.66rem;
+    gap: 0.4rem 0.75rem;
+  }
+}
+
+/* ==========================================================================
+   SECTION 6 — SUPPORTING PANELS (Movers, Controversial, Spotlight)
+   (formerly consensus-panels.css — ticket #277)
+
+   Component classes (pavatar, mover-row, controversy-row, spotlight, rf, etc.)
+   are defined in home.css and reused here via the shared stylesheet. This file
+   adds only the layout wrapper and consensus-page-specific overrides that make
+   the full-length panels fit the wider /consensus real estate.
+   ========================================================================== */
+
+/* ---- Outer wrapper --------------------------------------------------------
+   cp-panels wraps all three panels (movers, controversial, spotlight).
+   It sits inside .consensus-section so the standard section padding applies.
+   The data-section="panels" attribute on this element is used by integration
+   tests to confirm the partial was rendered without errors.
+   -------------------------------------------------------------------------- */
+.cp-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ---- 2-up grid: Biggest Movers + Most Controversial ----------------------- */
+.cp-panels__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+/* On very narrow screens the grid collapses to a single column */
+@media (max-width: 600px) {
+  .cp-panels__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Full-width spotlight banner ----------------------------------------- */
+.cp-panels__spotlight {
+  /* consensus-panel--wide already adds margin-top; this removes the double gap */
+  margin-top: 0 !important;
+}
+
+/* ---- Movers panel: allow unlimited rows at full length ------------------- */
+.cp-panels__movers .mover-list {
+  /* No max-height clamp — full-length list, unlike the homepage 3-row version */
+  max-height: none;
+  overflow: visible;
+}
+
+/* ---- Controversial panel: no row-count cap ------------------------------- */
+.cp-panels__controversial .controversy-list {
+  max-height: none;
+  overflow: visible;
+}
+
+/* ---- Section heading: h2 inside the panel header inherits panel styles --- */
+.cp-panels .consensus-panel__title {
+  /* Ensure the h2 (not h3 as on homepage) renders identically */
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-600);
+  margin: 0;
 }
