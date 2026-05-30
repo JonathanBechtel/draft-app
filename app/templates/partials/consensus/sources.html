@@ -1,13 +1,134 @@
 {# ============================================================
-   SECTION 3 — SOURCE DEVIATION TABLE + PERCENTILE
-   Context keys: source_leaderboard, draft_year
-   Filled by ticket #274. Owns: consensus-sources.css
+   SECTION 3 — SOURCE DEVIATION TABLE + CONTRARIAN PERCENTILE
+   Context keys: source_leaderboard
+   Owns: consensus-sources.css
    ============================================================ #}
-<div class="consensus-sources-placeholder consensus-placeholder" data-section="sources">
-  <p class="consensus-placeholder__label">Source deviation table + percentile — ticket #274</p>
-  {% if source_leaderboard %}
-  <p class="consensus-placeholder__count">{{ source_leaderboard | length }} sources in leaderboard</p>
-  {% else %}
-  <p class="consensus-placeholder__empty">No source analytics data available.</p>
-  {% endif %}
+
+{# Section head #}
+<div class="section-head">
+  <h2>Source analytics</h2>
+  <span class="sub">deviation from consensus — how contrarian is each board?</span>
 </div>
+
+{% if source_leaderboard %}
+
+{# Compute max avg_deviation for bar widths (Jinja namespace trick) #}
+{% set ns = namespace(max_dev=0.0001) %}
+{% for row in source_leaderboard %}
+  {% if row.avg_deviation and row.avg_deviation > ns.max_dev %}
+    {% set ns.max_dev = row.avg_deviation %}
+  {% endif %}
+{% endfor %}
+
+<div class="deviation-card">
+
+  {# -----------------------------------------------------------------
+     Source deviation table
+     ----------------------------------------------------------------- #}
+  <table class="dev-table" aria-label="Source deviation table">
+    <thead>
+      <tr>
+        <th scope="col">Source</th>
+        <th scope="col">Avg dev</th>
+        <th scope="col">Spread</th>
+        <th scope="col">Biggest outlier</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in source_leaderboard %}
+      {% set bar_pct = ((row.avg_deviation or 0) / ns.max_dev * 100) | round(1) %}
+      <tr>
+        <td>
+          {# Link out to internal /sources/{slug} — external work_url not in this
+             context; the /sources detail page already provides the external link. #}
+          <a class="src-link"
+             href="/sources/{{ row.source_slug }}">{{ row.source_display_name }}</a>
+        </td>
+        <td class="tabular-nums">
+          {% if row.avg_deviation is not none %}
+            {{ "%.1f"|format(row.avg_deviation) }}
+          {% else %}
+            —
+          {% endif %}
+        </td>
+        <td>
+          <div class="dev-bar" aria-hidden="true">
+            <div class="dev-bar__fill" style="width:{{ bar_pct }}%"></div>
+          </div>
+        </td>
+        <td class="dev-table__outlier">
+          {% if row.biggest_outlier_player_name %}
+            {% if row.biggest_outlier_player_slug %}
+              <a class="dev-table__player-link"
+                 href="/players/{{ row.biggest_outlier_player_slug }}">{{ row.biggest_outlier_player_name }}</a>
+            {% else %}
+              {{ row.biggest_outlier_player_name }}
+            {% endif %}
+            {% if row.outlier_delta is not none %}
+              <span class="dev-table__delta {% if row.outlier_delta > 0 %}dev-table__delta--down{% elif row.outlier_delta < 0 %}dev-table__delta--up{% endif %}">
+                {% if row.outlier_delta > 0 %}+{% endif %}{{ row.outlier_delta }}
+              </span>
+            {% endif %}
+          {% else %}
+            <span class="dev-table__empty">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {# -----------------------------------------------------------------
+     Contrarian percentile scale
+     Sources are ordered by contrarian_score DESC (most contrarian last
+     in ascending order; leaderboard is already desc, so index=0 is
+     the most contrarian).  We map rank to a 0–100 left% position:
+       rank 0 (most contrarian) → ~95% (rightmost)
+       rank N-1 (most aligned)  → ~5%  (leftmost)
+     ----------------------------------------------------------------- #}
+  {% set n_sources = source_leaderboard | length %}
+  {% if n_sources > 0 %}
+  <div class="percentile" aria-label="Contrarian percentile scale">
+    <div class="percentile__label">Contrarian percentile — where each source sits in the field</div>
+    <div class="percentile__track">
+      {# Render all source dots; leaderboard[0] = most contrarian (highest score) #}
+      {% for row in source_leaderboard %}
+        {# Position: most contrarian (index 0) → right; most aligned (last) → left
+           left_pct = 95 - (index / (n_sources - 1)) * 90  when n_sources > 1
+           For n_sources == 1, place at 50% #}
+        {% if n_sources > 1 %}
+          {% set left_pct = (95 - (loop.index0 / (n_sources - 1)) * 90) | round(1) %}
+        {% else %}
+          {% set left_pct = 50 %}
+        {% endif %}
+        {# Percentile label: rank 1 (most contrarian) = high percentile #}
+        {% set pct_label = ((n_sources - loop.index0) / n_sources * 100) | round(0) | int %}
+        <div class="percentile__dot{% if loop.first %} percentile__dot--active{% endif %}"
+             style="left:{{ left_pct }}%"
+             title="{{ row.source_display_name }} — {{ pct_label }}th percentile"></div>
+        {% if loop.first %}
+        <div class="percentile__pin" style="left:{{ left_pct }}%">
+          <a class="src-link percentile__src-link"
+             href="/sources/{{ row.source_slug }}">{{ row.source_display_name }}</a>
+          &middot; {{ pct_label }}th
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="percentile__ends">
+      <span>most aligned</span>
+      <span>most contrarian</span>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+{% else %}
+
+{# Empty state #}
+<div class="deviation-card deviation-card--empty" data-section="sources">
+  <p class="deviation-card__empty-msg">No source analytics available for {{ draft_year }}.</p>
+</div>
+
+{% endif %}
