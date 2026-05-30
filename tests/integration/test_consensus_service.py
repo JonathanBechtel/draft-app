@@ -571,6 +571,234 @@ async def test_approve_board_triggers_recompute_by_default(
 
 
 @pytest.mark.asyncio
+async def test_as_of_excludes_boards_published_after_the_ceiling(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """recompute_consensus(as_of=T) only counts boards published at or before T
+    and stamps the snapshot's computed_at with T."""
+    p1, p2, _p3, _p4 = players
+    s1, s2, _s3 = three_sources
+    today = _now()
+    day1 = today - timedelta(days=10)
+    day3 = today - timedelta(days=8)
+
+    # s1 publishes early; s2 publishes two days later.
+    await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=day1,
+        entries=[(p1, 1), (p2, 2)],
+    )
+    await _make_approved_board(
+        db_session,
+        source=s2,
+        draft_year=2026,
+        published_at=day3,
+        entries=[(p1, 1), (p2, 2)],
+    )
+    await db_session.commit()
+
+    # As of day2 (between the two), only s1 is eligible — one board, so no
+    # player clears MIN_SOURCES=2 and the consensus is empty.
+    day2 = today - timedelta(days=9)
+    snap_mid = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.SCHEDULED, as_of=day2
+    )
+    await db_session.commit()
+    assert snap_mid.num_boards == 1
+    assert snap_mid.computed_at == day2
+    assert await svc.get_latest_consensus(db_session, draft_year=2026) == []
+
+    # As of day3, both boards are eligible and the consensus fills in.
+    snap_after = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.SCHEDULED, as_of=day3
+    )
+    await db_session.commit()
+    assert snap_after.num_boards == 2
+    assert snap_after.computed_at == day3
+    consensus = await svc.get_latest_consensus(db_session, draft_year=2026)
+    assert {c.player_id for c in consensus} == {p1.id, p2.id}
+
+
+@pytest.mark.asyncio
+async def test_backfill_replay_anchors_prev_rank_chronologically(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """A backfilled earlier snapshot must take prev_rank from the snapshot
+    chronologically before it — never from an already-existing later-dated
+    one. This is the invariant that lets the driver replay history in any
+    order and still get correct deltas."""
+    p1, p2, _p3, _p4 = players
+    s1, s2, _s3 = three_sources
+    today = _now()
+    day1 = today - timedelta(days=30)
+    day20 = today - timedelta(days=10)
+
+    # Early state (day1): both sources rank p1 #1, p2 #2.
+    await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=day1,
+        entries=[(p1, 1), (p2, 2)],
+    )
+    await _make_approved_board(
+        db_session,
+        source=s2,
+        draft_year=2026,
+        published_at=day1,
+        entries=[(p1, 1), (p2, 2)],
+    )
+    # s1 flips the order in a later board (day20).
+    await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=day20,
+        entries=[(p2, 1), (p1, 2)],
+    )
+    await db_session.commit()
+
+    # Write the LATER snapshot first (simulating a live snapshot that
+    # already exists), then backfill the earlier one out of order.
+    day25 = today - timedelta(days=5)
+    snap_late = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.SCHEDULED, as_of=day25
+    )
+    await db_session.commit()
+
+    day5 = today - timedelta(days=25)
+    snap_early = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.SCHEDULED, as_of=day5
+    )
+    await db_session.commit()
+
+    # snap_early has no chronological predecessor, so its rows carry no
+    # prev_rank — even though snap_late (a later date) was inserted first.
+    early_rows = (
+        await db_session.execute(
+            select(BigBoardConsensus).where(
+                BigBoardConsensus.snapshot_id == snap_early.id  # type: ignore[arg-type]
+            )
+        )
+    ).scalars().all()
+    assert early_rows  # consensus populated (two sources agree)
+    assert all(r.prev_rank is None for r in early_rows)
+    assert all(r.rank_delta is None for r in early_rows)
+
+    # Now a third snapshot AFTER both: its prev_rank comes from snap_late
+    # (the most recent snapshot at or before it), not snap_early.
+    day30 = today
+    snap_newest = await svc.recompute_consensus(
+        db_session, draft_year=2026, trigger=ConsensusTrigger.SCHEDULED, as_of=day30
+    )
+    await db_session.commit()
+    assert snap_newest.id != snap_late.id
+
+    late_rows = {
+        r.player_id: r.consensus_rank
+        for r in (
+            await db_session.execute(
+                select(BigBoardConsensus).where(
+                    BigBoardConsensus.snapshot_id == snap_late.id  # type: ignore[arg-type]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    }
+    newest_rows = (
+        await db_session.execute(
+            select(BigBoardConsensus).where(
+                BigBoardConsensus.snapshot_id == snap_newest.id  # type: ignore[arg-type]
+            )
+        )
+    ).scalars().all()
+    for r in newest_rows:
+        assert r.prev_rank == late_rows.get(r.player_id)
+
+
+@pytest.mark.asyncio
+async def test_generate_history_replays_chained_weekly_snapshots(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """The Phase 4 driver produces one snapshot per weekly ceiling, oldest-first,
+    with deltas chained between consecutive snapshots."""
+    from scripts.generate_consensus_history import (
+        _weekly_ceilings,
+        generate_history,
+    )
+
+    p1, p2, _p3, _p4 = players
+    s1, s2, _s3 = three_sources
+    base = datetime(2026, 1, 1)
+
+    await _make_approved_board(
+        db_session,
+        source=s1,
+        draft_year=2026,
+        published_at=base,
+        entries=[(p1, 1), (p2, 2)],
+    )
+    await _make_approved_board(
+        db_session,
+        source=s2,
+        draft_year=2026,
+        published_at=base,
+        entries=[(p1, 1), (p2, 2)],
+    )
+    await db_session.commit()
+
+    end = base + timedelta(days=28)
+    snaps = await generate_history(
+        db_session, draft_year=2026, start=base, end=end, interval_days=7
+    )
+    await db_session.commit()
+
+    # Ceilings: base, +7, +14, +21, +28 -> 5 snapshots, stamped with the ceiling.
+    expected = _weekly_ceilings(base, end, 7)
+    assert len(snaps) == 5
+    assert [s.computed_at for s in snaps] == expected
+    assert all(s.num_boards == 2 for s in snaps)
+
+    # First snapshot has no chronological predecessor -> no deltas.
+    first_rows = (
+        await db_session.execute(
+            select(BigBoardConsensus).where(
+                BigBoardConsensus.snapshot_id == snaps[0].id  # type: ignore[arg-type]
+            )
+        )
+    ).scalars().all()
+    assert first_rows
+    assert all(r.rank_delta is None for r in first_rows)
+
+    # The last snapshot chains off its predecessor (prev_rank populated).
+    last_rows = (
+        await db_session.execute(
+            select(BigBoardConsensus).where(
+                BigBoardConsensus.snapshot_id == snaps[-1].id  # type: ignore[arg-type]
+            )
+        )
+    ).scalars().all()
+    assert last_rows
+    assert all(r.prev_rank is not None for r in last_rows)
+
+    # Player history reads back one row per generated snapshot.
+    assert p1.id is not None
+    history = await svc.get_player_rank_history(
+        db_session, player_id=p1.id, draft_year=2026
+    )
+    assert len(history) == 5
+
+
+@pytest.mark.asyncio
 async def test_approve_board_can_skip_recompute(
     db_session: AsyncSession,
     players: list[PlayerMaster],
