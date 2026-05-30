@@ -60,6 +60,7 @@ async def recompute_consensus(
     *,
     draft_year: int,
     trigger: ConsensusTrigger,
+    as_of: Optional[datetime] = None,
 ) -> ConsensusSnapshot:
     """Run a full recompute for one draft year and persist a new snapshot.
 
@@ -67,6 +68,13 @@ async def recompute_consensus(
         db: Async session; caller owns the surrounding transaction.
         draft_year: Year to aggregate APPROVED boards for.
         trigger: What caused this recompute, stored on the snapshot.
+        as_of: Optional point-in-time ceiling. When set, only boards
+            published at or before this instant are eligible, and the
+            snapshot's ``computed_at`` is stamped with it. This lets a
+            backfill driver reconstruct what the consensus looked like
+            on a past date by replaying snapshots oldest-first. When
+            ``None`` (the live path) the recompute uses all current
+            boards and stamps ``computed_at`` with now.
 
     Returns:
         The newly-inserted ``ConsensusSnapshot``. Its ``id`` is
@@ -75,18 +83,21 @@ async def recompute_consensus(
 
     Notes:
         Eligible boards = the most recent APPROVED board per source for
-        the draft year. Earlier boards from the same source are not
-        counted (so a source that publishes weekly doesn't get extra
-        weight). ``MIN_SOURCES`` gates inclusion in the consensus
-        output, not in the analytics math (sources still get analytics
-        for any player they ranked, even if that player didn't clear
-        the floor).
+        the draft year (and, with ``as_of``, published at or before that
+        instant). Earlier boards from the same source are not counted
+        (so a source that publishes weekly doesn't get extra weight).
+        ``MIN_SOURCES`` gates inclusion in the consensus output, not in
+        the analytics math (sources still get analytics for any player
+        they ranked, even if that player didn't clear the floor).
     """
-    eligible_boards = await _select_eligible_boards(db, draft_year=draft_year)
+    computed_at = as_of if as_of is not None else datetime.utcnow()
+    eligible_boards = await _select_eligible_boards(
+        db, draft_year=draft_year, as_of=as_of
+    )
 
     snapshot = ConsensusSnapshot(
         draft_year=draft_year,
-        computed_at=datetime.utcnow(),
+        computed_at=computed_at,
         num_boards=len(eligible_boards),
         board_ids=[b.id for b in eligible_boards if b.id is not None],
         trigger=trigger,
@@ -120,7 +131,10 @@ async def recompute_consensus(
     sorted_aggregates = sorted(included, key=_consensus_sort_key)
 
     prev_ranks = await _previous_snapshot_ranks(
-        db, draft_year=draft_year, exclude_snapshot_id=snapshot.id
+        db,
+        draft_year=draft_year,
+        before=computed_at,
+        exclude_snapshot_id=snapshot.id,
     )
 
     for consensus_rank, agg in enumerate(sorted_aggregates, start=1):
@@ -207,8 +221,14 @@ async def get_player_rank_history(
     return list(rows.scalars().all())
 
 
-async def _select_eligible_boards(db: AsyncSession, *, draft_year: int) -> list[Board]:
+async def _select_eligible_boards(
+    db: AsyncSession, *, draft_year: int, as_of: Optional[datetime] = None
+) -> list[Board]:
     """Return the most recent APPROVED board per source for the year.
+
+    When ``as_of`` is set, only boards published at or before that
+    instant are considered, so the result reconstructs the eligible set
+    as it stood on that date (used by the historical backfill driver).
 
     Tie-breakers on identical ``published_at`` are deterministic so a
     re-run over unchanged data produces the same eligible-board set
@@ -223,12 +243,14 @@ async def _select_eligible_boards(db: AsyncSession, *, draft_year: int) -> list[
         .where(Board.status == BoardStatus.APPROVED)  # type: ignore[arg-type]
         .where(Board.draft_year == draft_year)  # type: ignore[arg-type]
         .distinct(Board.news_source_id)  # type: ignore[arg-type]
-        .order_by(
-            Board.news_source_id,  # type: ignore[arg-type]
-            Board.published_at.desc(),  # type: ignore[attr-defined]
-            Board.approved_at.desc(),  # type: ignore[union-attr]
-            Board.id.desc(),  # type: ignore[union-attr]
-        )
+    )
+    if as_of is not None:
+        stmt = stmt.where(Board.published_at <= as_of)  # type: ignore[arg-type]
+    stmt = stmt.order_by(
+        Board.news_source_id,  # type: ignore[arg-type]
+        Board.published_at.desc(),  # type: ignore[attr-defined]
+        Board.approved_at.desc(),  # type: ignore[union-attr]
+        Board.id.desc(),  # type: ignore[union-attr]
     )
     rows = await db.execute(stmt)
     return list(rows.scalars().all())
@@ -268,19 +290,32 @@ async def _previous_snapshot_ranks(
     db: AsyncSession,
     *,
     draft_year: int,
+    before: datetime,
     exclude_snapshot_id: int,
 ) -> dict[int, int]:
     """Return ``player_id -> consensus_rank`` from the prior snapshot.
 
-    Used to populate ``prev_rank`` and ``rank_delta`` so the
-    trajectory chart and rising/falling badges fall out of a simple
-    SELECT in Phase 3.
+    The "prior" snapshot is the most recent one for the year whose
+    ``computed_at`` is at or before ``before`` (the current snapshot's
+    own timestamp), excluding the current snapshot itself. Anchoring on
+    ``before`` rather than "the most recent other snapshot" keeps deltas
+    correct when snapshots are written out of insertion order — e.g. the
+    backfill driver replaying history oldest-first, where a later-dated
+    snapshot may already exist. On the live append path (``before`` =
+    now) this resolves to the immediately-preceding snapshot, unchanged.
+
+    Used to populate ``prev_rank`` and ``rank_delta`` so the trajectory
+    chart and rising/falling badges fall out of a simple SELECT.
     """
     prior_id = await db.scalar(
         select(ConsensusSnapshot.id)  # type: ignore[call-overload]
         .where(ConsensusSnapshot.draft_year == draft_year)  # type: ignore[arg-type]
         .where(ConsensusSnapshot.id != exclude_snapshot_id)  # type: ignore[arg-type]
-        .order_by(ConsensusSnapshot.computed_at.desc())  # type: ignore[attr-defined]
+        .where(ConsensusSnapshot.computed_at <= before)  # type: ignore[arg-type]
+        .order_by(
+            ConsensusSnapshot.computed_at.desc(),  # type: ignore[attr-defined]
+            ConsensusSnapshot.id.desc(),  # type: ignore[union-attr]
+        )
         .limit(1)
     )
     if prior_id is None:

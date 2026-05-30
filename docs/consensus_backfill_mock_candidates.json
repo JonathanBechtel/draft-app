@@ -1,0 +1,236 @@
+{
+  "count": 21,
+  "candidates": [
+    {
+      "source_id": 7,
+      "source_name": "Assisted Development",
+      "title": "2026 NBA Mock Draft",
+      "slug": "2026-nba-mock-draft",
+      "canonical_url": "https://assisteddevelopment.substack.com/p/2026-nba-mock-draft",
+      "post_date": "2025-11-04T13:51:34.491000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 7,
+      "source_name": "Assisted Development",
+      "title": "Post Trade Deadline Mock Draft",
+      "slug": "post-trade-deadline-mock-draft",
+      "canonical_url": "https://assisteddevelopment.substack.com/p/post-trade-deadline-mock-draft",
+      "post_date": "2026-02-07T13:07:29.495000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 10,
+      "source_name": "Dizzle Dynasty",
+      "title": "Dizzle Dynasty 2026 Mock Draft 1.0",
+      "slug": "dizzle-dynasty-2026-mock-draft-10",
+      "canonical_url": "https://dizzledynasty.substack.com/p/dizzle-dynasty-2026-mock-draft-10",
+      "post_date": "2025-12-11T17:03:04.174000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 10,
+      "source_name": "Dizzle Dynasty",
+      "title": "Dizzle Dynasty 2026 NBA Mock Draft 2.0",
+      "slug": "dizzle-dynasty-mock-draft-20",
+      "canonical_url": "https://dizzledynasty.substack.com/p/dizzle-dynasty-mock-draft-20",
+      "post_date": "2026-03-27T19:01:49.068000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 10,
+      "source_name": "Dizzle Dynasty",
+      "title": "2026 Portsmouth Invitational Tournament Mock Draft",
+      "slug": "2026-portsmouth-invitational-tournament",
+      "canonical_url": "https://dizzledynasty.substack.com/p/2026-portsmouth-invitational-tournament",
+      "post_date": "2026-04-14T16:02:51.350000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 10,
+      "source_name": "Dizzle Dynasty",
+      "title": "Dizzle Dynasty 2026 NBA Mock Draft 3.0",
+      "slug": "dizzle-dynasty-2026-nba-mock-draft",
+      "canonical_url": "https://dizzledynasty.substack.com/p/dizzle-dynasty-2026-nba-mock-draft",
+      "post_date": "2026-05-08T16:01:45.257000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 10,
+      "source_name": "Dizzle Dynasty",
+      "title": "Mock Draft Monday, Part I (2026 NBA Mock Draft)",
+      "slug": "mock-draft-monday-part-i-2026-nba",
+      "canonical_url": "https://dizzledynasty.substack.com/p/mock-draft-monday-part-i-2026-nba",
+      "post_date": "2026-05-11T22:02:18.129000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 10,
+      "source_name": "Dizzle Dynasty",
+      "title": "Mock Monday, Part II (2026 NBA Mock Draft)",
+      "slug": "mock-monday-part-ii-2026-nba-mock",
+      "canonical_url": "https://dizzledynasty.substack.com/p/mock-monday-part-ii-2026-nba-mock",
+      "post_date": "2026-05-18T16:02:16.942000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 10,
+      "source_name": "Dizzle Dynasty",
+      "title": "Mock Monday, Part III (2026 NBA Mock Draft)",
+      "slug": "mock-monday-part-iii-2026-nba-mock",
+      "canonical_url": "https://dizzledynasty.substack.com/p/mock-monday-part-iii-2026-nba-mock",
+      "post_date": "2026-05-25T18:57:06.676000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 5,
+      "source_name": "Draft Stack",
+      "title": "2026 Mock Draft Part I",
+      "slug": "2026-mock-draft-part-i",
+      "canonical_url": "https://draftstack.substack.com/p/2026-mock-draft-part-i",
+      "post_date": "2025-12-05T00:27:13.830000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 5,
+      "source_name": "Draft Stack",
+      "title": "2026 Mock Draft Part II",
+      "slug": "2026-mock-draft-part-ii",
+      "canonical_url": "https://draftstack.substack.com/p/2026-mock-draft-part-ii",
+      "post_date": "2025-12-05T22:36:46.679000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 5,
+      "source_name": "Draft Stack",
+      "title": "2026 DraftStack Mock Draft",
+      "slug": "2026-draftstack-mock-draft",
+      "canonical_url": "https://draftstack.substack.com/p/2026-draftstack-mock-draft",
+      "post_date": "2026-04-03T21:24:37.472000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 6,
+      "source_name": "Ersin Demir",
+      "title": "2026 NBA Mock Draft 1.0",
+      "slug": "2026-nba-mock-draft-10",
+      "canonical_url": "https://edemirnba.substack.com/p/2026-nba-mock-draft-10",
+      "post_date": "2026-01-09T11:58:00.934000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 6,
+      "source_name": "Ersin Demir",
+      "title": "2026 NBA Mock Draft 2.0",
+      "slug": "2026-nba-mock-draft-20",
+      "canonical_url": "https://edemirnba.substack.com/p/2026-nba-mock-draft-20",
+      "post_date": "2026-03-28T13:07:02.964000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 2,
+      "source_name": "No Ceilings",
+      "title": "2026 NBA Mock Draft V.1",
+      "slug": "2026-nba-mock-draft-v1",
+      "canonical_url": "https://www.noceilingsnba.com/p/2026-nba-mock-draft-v1",
+      "post_date": "2025-11-05T16:01:18.074000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 2,
+      "source_name": "No Ceilings",
+      "title": "2026 NBA Mock Draft V.2",
+      "slug": "2026-nba-mock-draft-v2",
+      "canonical_url": "https://www.noceilingsnba.com/p/2026-nba-mock-draft-v2",
+      "post_date": "2025-12-10T14:03:27.218000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 2,
+      "source_name": "No Ceilings",
+      "title": "2026 NBA Mock Draft V.3",
+      "slug": "2026-nba-mock-draft-v3",
+      "canonical_url": "https://www.noceilingsnba.com/p/2026-nba-mock-draft-v3",
+      "post_date": "2026-01-14T14:02:51.145000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 2,
+      "source_name": "No Ceilings",
+      "title": "2026 NBA Mock Draft V.4",
+      "slug": "2026-nba-mock-draft-v4",
+      "canonical_url": "https://www.noceilingsnba.com/p/2026-nba-mock-draft-v4",
+      "post_date": "2026-02-11T15:00:37.023000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 2,
+      "source_name": "No Ceilings",
+      "title": "2026 NBA Mock Draft V.5",
+      "slug": "2026-nba-mock-draft-v5",
+      "canonical_url": "https://www.noceilingsnba.com/p/2026-nba-mock-draft-v5",
+      "post_date": "2026-03-11T15:02:27.829000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 2,
+      "source_name": "No Ceilings",
+      "title": "2026 NBA Mock Draft V.6",
+      "slug": "2026-nba-mock-draft-v6",
+      "canonical_url": "https://www.noceilingsnba.com/p/2026-nba-mock-draft-v6",
+      "post_date": "2026-04-07T15:01:37.622000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    },
+    {
+      "source_id": 11,
+      "source_name": "Prospects & Concepts",
+      "title": "2026 NBA Mock Draft: Post-Lottery Edition",
+      "slug": "2026-nba-mock-draft-post-lottery",
+      "canonical_url": "https://loganadamsnba.substack.com/p/2026-nba-mock-draft-post-lottery",
+      "post_date": "2026-05-10T23:47:57.542000",
+      "audience": "everyone",
+      "is_free": true,
+      "classification": "mock_draft"
+    }
+  ]
+}
