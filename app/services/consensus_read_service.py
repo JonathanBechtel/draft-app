@@ -1489,3 +1489,323 @@ async def get_board_freshness(
         "num_sources": unique_sources,
         "last_updated": last_updated,
     }
+
+
+# ---------------------------------------------------------------------------
+# Consensus-page helpers (ticket #270)
+# ---------------------------------------------------------------------------
+
+# Outlier threshold: a source's rank for a player is flagged when it deviates
+# from that player's consensus_rank by more than this many positions.
+# A threshold of 5 keeps noise-free while catching meaningful divergences (e.g.
+# a source has a player at #2 while consensus has them at #9).  Callers that
+# want a different sensitivity can pass their own value via a future parameter
+# — keeping it a named constant here makes it visible and easy to adjust.
+_OUTLIER_THRESHOLD = 5
+
+
+async def get_source_breakdown_matrix(
+    db: AsyncSession,
+    *,
+    draft_year: int,
+    top_n: int = 10,
+) -> dict:
+    """Return the top-N players × contributing sources rank matrix with outlier flags.
+
+    Each cell records the rank a source assigned to a player and whether that
+    rank diverges from consensus beyond ``_OUTLIER_THRESHOLD`` positions.
+
+    Outlier flag definition:
+        ``delta = source_rank − consensus_rank``
+        - ``"high"``  → source ranks the player *better* than consensus
+          (delta < −_OUTLIER_THRESHOLD, i.e. source is high on the player)
+        - ``"low"``   → source ranks the player *worse* than consensus
+          (delta > +_OUTLIER_THRESHOLD)
+        - ``None``    → within the threshold or player absent from that source
+
+    Args:
+        db: Async DB session.
+        draft_year: Draft class to query.
+        top_n: Number of top consensus players to include as matrix rows.
+
+    Returns:
+        A dict with three keys::
+
+            {
+                "players": [
+                    {"player_id": int, "player_name": str|None,
+                     "slug": str|None, "consensus_rank": int},
+                    ...
+                ],
+                "sources": [
+                    {"source_id": int, "name": str, "slug": str},
+                    ...
+                ],
+                "cells": {
+                    (player_id, source_id): {
+                        "rank": int,
+                        "outlier": "high" | "low" | None,
+                    },
+                    ...
+                },
+            }
+
+        Returns ``{"players": [], "sources": [], "cells": {}}`` when no
+        snapshot exists for ``draft_year`` or the board is empty.
+    """
+    from app.utils.slug import generate_slug
+
+    _empty: dict = {"players": [], "sources": [], "cells": {}}
+
+    sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
+    if sid is None:
+        return _empty
+
+    # --- Top-N consensus rows (ordered by consensus_rank) ---------------------
+    bbc_rows = (
+        (
+            await db.execute(
+                select(BigBoardConsensus)  # type: ignore[call-overload]
+                .where(BigBoardConsensus.snapshot_id == sid)  # type: ignore[arg-type]
+                .order_by(BigBoardConsensus.consensus_rank)  # type: ignore[arg-type]
+                .limit(top_n)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not bbc_rows:
+        return _empty
+
+    consensus_rank_map: dict[int, int] = {
+        r.player_id: r.consensus_rank for r in bbc_rows
+    }
+    top_player_ids = [r.player_id for r in bbc_rows]
+
+    # --- Snapshot board_ids → per-source latest boards ------------------------
+    snapshot = (
+        await db.execute(
+            select(ConsensusSnapshot).where(  # type: ignore[call-overload]
+                ConsensusSnapshot.id == sid  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one_or_none()
+    if snapshot is None or not snapshot.board_ids:
+        return _empty
+
+    board_rows = (
+        (
+            await db.execute(
+                select(Board).where(  # type: ignore[call-overload]
+                    Board.id.in_(snapshot.board_ids)  # type: ignore[union-attr]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not board_rows:
+        return _empty
+
+    # One board per source (last one wins when a source has multiple boards in
+    # the snapshot — unlikely in practice but safe to handle).
+    board_by_source: dict[int, Board] = {}
+    for board in board_rows:
+        if board.news_source_id is not None and board.id is not None:
+            board_by_source[board.news_source_id] = board
+
+    source_ids = list(board_by_source.keys())
+    source_rows = (
+        (
+            await db.execute(
+                select(NewsSource).where(  # type: ignore[call-overload]
+                    NewsSource.id.in_(source_ids)  # type: ignore[union-attr]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    source_map: dict[int, NewsSource] = {
+        s.id: s for s in source_rows if s.id is not None
+    }
+
+    # --- Board entries for the top-N players, across all snapshot boards ------
+    entry_rows = (
+        await db.execute(
+            select(  # type: ignore[call-overload]
+                BoardEntry.board_id,
+                BoardEntry.player_id,
+                BoardEntry.position,
+            )
+            .where(BoardEntry.board_id.in_(snapshot.board_ids))  # type: ignore[union-attr, attr-defined]
+            .where(BoardEntry.player_id.in_(top_player_ids))  # type: ignore[union-attr, attr-defined]
+        )
+    ).all()
+
+    # board_id → source_id lookup (reverse of board_by_source)
+    board_to_source: dict[int, int] = {
+        b.id: sid_  # type: ignore[misc]
+        for sid_, b in board_by_source.items()
+        if b.id is not None
+    }
+
+    # Build cells: (player_id, source_id) → rank
+    raw_cells: dict[tuple[int, int], int] = {}
+    for row in entry_rows:
+        src_id = board_to_source.get(row.board_id)
+        if src_id is None or row.player_id is None:
+            continue
+        raw_cells[(row.player_id, src_id)] = row.position
+
+    # --- Player metadata ------------------------------------------------------
+    player_map = await _player_name_map(db, top_player_ids)
+
+    # --- Assemble output ------------------------------------------------------
+    players_out = [
+        {
+            "player_id": r.player_id,
+            "player_name": player_map[r.player_id].display_name
+            if r.player_id in player_map
+            else None,
+            "slug": player_map[r.player_id].slug if r.player_id in player_map else None,
+            "consensus_rank": r.consensus_rank,
+        }
+        for r in bbc_rows
+    ]
+
+    sources_out = [
+        {
+            "source_id": src_id,
+            "name": source_map[src_id].name
+            if src_id in source_map
+            else f"source_{src_id}",
+            "slug": generate_slug(
+                source_map[src_id].name if src_id in source_map else f"source_{src_id}"
+            ),
+        }
+        for src_id in source_ids
+    ]
+
+    cells_out: dict[tuple[int, int], dict] = {}
+    for (pid, src_id), source_rank in raw_cells.items():
+        consensus_rank = consensus_rank_map.get(pid)
+        outlier: Optional[str] = None
+        if consensus_rank is not None:
+            delta = source_rank - consensus_rank
+            if delta < -_OUTLIER_THRESHOLD:
+                outlier = "high"  # source likes the player more than consensus
+            elif delta > _OUTLIER_THRESHOLD:
+                outlier = "low"  # source is cooler on the player than consensus
+        cells_out[(pid, src_id)] = {"rank": source_rank, "outlier": outlier}
+
+    return {"players": players_out, "sources": sources_out, "cells": cells_out}
+
+
+async def get_rank_trajectories(
+    db: AsyncSession,
+    *,
+    draft_year: int,
+    top_n: int = 10,
+) -> list[dict]:
+    """Return each top-N player's consensus-rank-over-time series, batched.
+
+    Mirrors ``_recent_ranks_map`` but returns the full time series (not just
+    a sparkline window) and includes the ``computed_at`` timestamp per point so
+    the UI can plot meaningful x-axis labels.
+
+    The series for each player is ordered oldest-first.  A player with only one
+    snapshot yields a single-element ``series`` list (flat trajectory).
+
+    Args:
+        db: Async DB session.
+        draft_year: Draft class to query.
+        top_n: Number of top consensus players (by latest snapshot) to include.
+
+    Returns:
+        A list of dicts, one per player, ordered by current consensus rank::
+
+            [
+                {
+                    "player_id": int,
+                    "player_name": str | None,
+                    "slug": str | None,
+                    "series": [
+                        {"computed_at": datetime, "consensus_rank": int},
+                        ...  # oldest → newest
+                    ],
+                },
+                ...
+            ]
+
+        Returns ``[]`` when no snapshot exists for ``draft_year`` or the board
+        is empty.
+    """
+    sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
+    if sid is None:
+        return []
+
+    # Top-N from the latest snapshot (defines which players appear).
+    bbc_latest = (
+        (
+            await db.execute(
+                select(BigBoardConsensus)  # type: ignore[call-overload]
+                .where(BigBoardConsensus.snapshot_id == sid)  # type: ignore[arg-type]
+                .order_by(BigBoardConsensus.consensus_rank)  # type: ignore[arg-type]
+                .limit(top_n)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not bbc_latest:
+        return []
+
+    top_player_ids = [r.player_id for r in bbc_latest]
+
+    # One batched query for all snapshots for these players, oldest-first.
+    stmt = (
+        select(  # type: ignore[call-overload]
+            BigBoardConsensus.player_id,
+            BigBoardConsensus.consensus_rank,
+            ConsensusSnapshot.computed_at,
+        )
+        .join(
+            ConsensusSnapshot,
+            ConsensusSnapshot.id == BigBoardConsensus.snapshot_id,  # type: ignore[arg-type]
+        )
+        .where(BigBoardConsensus.draft_year == draft_year)  # type: ignore[arg-type]
+        .where(
+            BigBoardConsensus.player_id.in_(top_player_ids)  # type: ignore[attr-defined]
+        )
+        .order_by(
+            BigBoardConsensus.player_id,  # type: ignore[arg-type]
+            ConsensusSnapshot.computed_at,  # type: ignore[arg-type]
+        )
+    )
+    history_rows = (await db.execute(stmt)).all()
+
+    # Group into per-player series (already ordered oldest-first within each
+    # player group because we sort by player_id, computed_at).
+    series_map: dict[int, list[dict]] = {pid: [] for pid in top_player_ids}
+    for pid, consensus_rank, computed_at in history_rows:
+        if pid in series_map:
+            series_map[pid].append(
+                {"computed_at": computed_at, "consensus_rank": consensus_rank}
+            )
+
+    # Player metadata
+    player_map = await _player_name_map(db, top_player_ids)
+
+    # Return in the same order as the latest snapshot (consensus_rank asc).
+    return [
+        {
+            "player_id": r.player_id,
+            "player_name": player_map[r.player_id].display_name
+            if r.player_id in player_map
+            else None,
+            "slug": player_map[r.player_id].slug if r.player_id in player_map else None,
+            "series": series_map.get(r.player_id, []),
+        }
+        for r in bbc_latest
+    ]
