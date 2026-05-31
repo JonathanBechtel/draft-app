@@ -23,8 +23,10 @@ from app.routes.admin.helpers import (
     base_context_with_permissions,
     require_dataset_access,
 )
-from app.schemas.boards import BoardStatus, ResolutionMethod
+from app.schemas.boards import BoardKind, BoardStatus, ResolutionMethod
+from app.schemas.news_items import NewsItem
 from app.schemas.news_sources import NewsSource
+from app.schemas.nba_teams import NbaTeam
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service as svc
 from app.services.player_search_service import find_lexical_players
@@ -55,10 +57,11 @@ _SUCCESS_MESSAGES: dict[str, str] = {
 async def list_big_boards(
     request: Request,
     status: str | None = Query(default=None),
+    kind: str | None = Query(default=None),
     success: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """List big boards, optionally filtered by status."""
+    """List boards, optionally filtered by status and/or kind."""
     redirect, user = await require_dataset_access(
         request, db, "boards", need_edit=False, next_path="/admin/boards"
     )
@@ -73,7 +76,14 @@ async def list_big_boards(
         except ValueError:
             status_filter = None
 
-    boards = await svc.list_boards(db, status=status_filter)
+    kind_filter: BoardKind | None = None
+    if kind:
+        try:
+            kind_filter = BoardKind(kind.upper())
+        except ValueError:
+            kind_filter = None
+
+    boards = await svc.list_boards(db, status=status_filter, kind=kind_filter)
 
     source_ids = {b.news_source_id for b in boards}
     sources_by_id: dict[int, NewsSource] = {}
@@ -92,7 +102,9 @@ async def list_big_boards(
             boards=boards,
             sources_by_id=sources_by_id,
             status_filter=status_filter.value if status_filter else None,
+            kind_filter=kind_filter.value if kind_filter else None,
             statuses=[s.value for s in BoardStatus],
+            kinds=[k.value for k in BoardKind],
             success=_SUCCESS_MESSAGES.get(success) if success else None,
         ),
     )
@@ -209,6 +221,11 @@ async def big_board_detail(
 
     source = await db.get(NewsSource, board.news_source_id)
 
+    # Fetch source article for side-by-side display.
+    news_item: NewsItem | None = None
+    if board.news_item_id is not None:
+        news_item = await db.get(NewsItem, board.news_item_id)
+
     player_ids = [e.player_id for e in entries if e.player_id is not None]
     players_by_id: dict[int, PlayerMaster] = {}
     if player_ids:
@@ -216,6 +233,27 @@ async def big_board_detail(
             select(PlayerMaster).where(PlayerMaster.id.in_(player_ids))  # type: ignore[union-attr]
         )
         players_by_id = {p.id: p for p in rows.scalars().all() if p.id is not None}
+
+    # Fetch NBA teams for mock-draft entry display.
+    team_ids: set[int] = set()
+    for e in entries:
+        if e.team_id is not None:
+            team_ids.add(e.team_id)
+        if e.original_team_id is not None:
+            team_ids.add(e.original_team_id)
+    teams_by_id: dict[int, NbaTeam] = {}
+    if team_ids:
+        team_rows = await db.execute(
+            select(NbaTeam).where(NbaTeam.id.in_(team_ids))  # type: ignore[union-attr]
+        )
+        teams_by_id = {t.id: t for t in team_rows.scalars().all() if t.id is not None}
+
+    # All active teams for the mock-draft entry add/edit dropdowns.
+    all_teams: list[NbaTeam] = []
+    if board.kind is BoardKind.MOCK_DRAFT:
+        all_teams = list(
+            (await db.execute(select(NbaTeam).order_by(NbaTeam.name))).scalars().all()
+        )
 
     unresolved_count = sum(
         1 for e in entries if e.resolution_method is ResolutionMethod.UNRESOLVED
@@ -260,7 +298,10 @@ async def big_board_detail(
             board=board,
             entries=entries,
             source=source,
+            news_item=news_item,
             players_by_id=players_by_id,
+            teams_by_id=teams_by_id,
+            all_teams=all_teams,
             unresolved_count=unresolved_count,
             is_pending=is_pending,
             default_tier=default_tier,
@@ -279,9 +320,20 @@ async def add_board_entry(
     player_id: int = Form(...),
     position: int = Form(...),
     tier: str | None = Form(default=None),
+    round: str | None = Form(default=None),
+    team_id: str | None = Form(default=None),
+    original_team_id: str | None = Form(default=None),
+    trade_note: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Append an entry to a PENDING board."""
+    """Append an entry to a PENDING board.
+
+    Accepts both BIG_BOARD fields (``tier``) and MOCK_DRAFT fields
+    (``round``, ``team_id``, ``original_team_id``, ``trade_note``).
+    Extra fields submitted for the wrong board kind are silently ignored
+    by the service — the schema columns are nullable so there is no DB
+    error.
+    """
     redirect, user = await require_dataset_access(
         request,
         db,
@@ -294,6 +346,10 @@ async def add_board_entry(
     assert user is not None
 
     tier_int = _parse_optional_int(tier)
+    round_int = _parse_optional_int(round)
+    team_id_int = _parse_optional_int(team_id)
+    orig_team_id_int = _parse_optional_int(original_team_id)
+    trade_note_str = (trade_note or "").strip() or None
     try:
         async with db.begin():
             await svc.add_entry(
@@ -302,6 +358,10 @@ async def add_board_entry(
                 player_id=player_id,
                 position=position,
                 tier=tier_int,
+                round=round_int,
+                team_id=team_id_int,
+                original_team_id=orig_team_id_int,
+                trade_note=trade_note_str,
             )
     except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
@@ -318,9 +378,13 @@ async def update_board_entry(
     entry_id: int,
     position: int = Form(...),
     tier: str | None = Form(default=None),
+    round: str | None = Form(default=None),
+    team_id: str | None = Form(default=None),
+    original_team_id: str | None = Form(default=None),
+    trade_note: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Edit rank/tier on a PENDING board's entry."""
+    """Edit rank/tier (big board) or pick/team/round (mock draft) on a PENDING entry."""
     redirect, user = await require_dataset_access(
         request,
         db,
@@ -333,10 +397,21 @@ async def update_board_entry(
     assert user is not None
 
     tier_int = _parse_optional_int(tier)
+    round_int = _parse_optional_int(round)
+    team_id_int = _parse_optional_int(team_id)
+    orig_team_id_int = _parse_optional_int(original_team_id)
+    trade_note_str = (trade_note or "").strip() or None
     try:
         async with db.begin():
             await svc.update_entry(
-                db, entry_id=entry_id, position=position, tier=tier_int
+                db,
+                entry_id=entry_id,
+                position=position,
+                tier=tier_int,
+                round=round_int,
+                team_id=team_id_int,
+                original_team_id=orig_team_id_int,
+                trade_note=trade_note_str,
             )
     except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))

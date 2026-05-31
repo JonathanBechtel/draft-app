@@ -10,7 +10,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.boards import Board, BoardEntry, BoardStatus
+from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus
+from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.players_master import PlayerMaster
 from tests.integration.auth_helpers import create_auth_user, login_staff
@@ -689,3 +690,396 @@ class TestBigBoardListing:
         pending_resp = await app_client.get("/admin/boards?status=PENDING")
         assert pending_resp.status_code == 200
         assert "Big Board Test Source" in pending_resp.text
+
+
+@pytest.mark.asyncio
+class TestBoardKindFilter:
+    """The ?kind= filter isolates BIG_BOARD vs MOCK_DRAFT rows."""
+
+    async def test_kind_filter_returns_only_mock_drafts(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+        sample_players: list[PlayerMaster],
+    ):
+        """GET /admin/boards?kind=MOCK_DRAFT only lists MOCK_DRAFT rows.
+
+        Creates one BIG_BOARD and one MOCK_DRAFT board; verifies that the
+        kind filter selects only the latter.
+        """
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+        published = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+
+        big_board = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=published,
+            size=0,
+            status=BoardStatus.PENDING,
+            kind=BoardKind.BIG_BOARD,
+        )
+        mock_draft = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=published,
+            size=0,
+            status=BoardStatus.PENDING,
+            kind=BoardKind.MOCK_DRAFT,
+            num_rounds=1,
+        )
+        db_session.add(big_board)
+        db_session.add(mock_draft)
+        await db_session.commit()
+        await db_session.refresh(big_board)
+        await db_session.refresh(mock_draft)
+
+        resp = await app_client.get("/admin/boards?kind=MOCK_DRAFT")
+        assert resp.status_code == 200
+        assert "MOCK_DRAFT" in resp.text
+
+        # The mock draft board ID should appear; confirm the big board's id
+        # does NOT appear in the ID links (coarser check: the table has the
+        # right board id attribute).
+        assert f"/admin/boards/{mock_draft.id}" in resp.text
+        assert f"/admin/boards/{big_board.id}" not in resp.text
+
+    async def test_kind_filter_returns_only_big_boards(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+        sample_players: list[PlayerMaster],
+    ):
+        """GET /admin/boards?kind=BIG_BOARD excludes MOCK_DRAFT rows.
+
+        Mirrors the mock-draft test; ensures the filter is bidirectional.
+        """
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+        published = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=2)
+
+        big_board = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=published,
+            size=0,
+            status=BoardStatus.PENDING,
+            kind=BoardKind.BIG_BOARD,
+        )
+        mock_draft = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=published,
+            size=0,
+            status=BoardStatus.PENDING,
+            kind=BoardKind.MOCK_DRAFT,
+            num_rounds=1,
+        )
+        db_session.add(big_board)
+        db_session.add(mock_draft)
+        await db_session.commit()
+        await db_session.refresh(big_board)
+        await db_session.refresh(mock_draft)
+
+        resp = await app_client.get("/admin/boards?kind=BIG_BOARD")
+        assert resp.status_code == 200
+        assert f"/admin/boards/{big_board.id}" in resp.text
+        assert f"/admin/boards/{mock_draft.id}" not in resp.text
+
+
+@pytest.mark.asyncio
+class TestBoardSortOrder:
+    """Pending list sorts by published_at DESC (proxy for review priority).
+
+    ``confidence_score`` is not yet a column on Board; this test documents
+    the current sort behaviour and will be updated when that column lands.
+    """
+
+    async def test_pending_list_sorted_by_published_at_desc(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+    ):
+        """PENDING boards appear newest-first on the list page.
+
+        Seeds three PENDING boards with distinct published_at timestamps and
+        asserts the list renders them in descending published_at order (most
+        recent first), which is the current proxy for review priority.
+        """
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        oldest = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=now - timedelta(days=10),
+            size=0,
+            status=BoardStatus.PENDING,
+        )
+        middle = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=now - timedelta(days=5),
+            size=0,
+            status=BoardStatus.PENDING,
+        )
+        newest = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=now - timedelta(days=1),
+            size=0,
+            status=BoardStatus.PENDING,
+        )
+        for b in (oldest, middle, newest):
+            db_session.add(b)
+        await db_session.commit()
+        for b in (oldest, middle, newest):
+            await db_session.refresh(b)
+
+        resp = await app_client.get("/admin/boards?status=PENDING")
+        assert resp.status_code == 200
+
+        assert newest.id is not None
+        assert middle.id is not None
+        assert oldest.id is not None
+
+        text = resp.text
+        pos_newest = text.find(f"/admin/boards/{newest.id}")
+        pos_middle = text.find(f"/admin/boards/{middle.id}")
+        pos_oldest = text.find(f"/admin/boards/{oldest.id}")
+
+        assert pos_newest < pos_middle < pos_oldest, (
+            "Boards should render newest-first; got positions: "
+            f"newest={pos_newest}, middle={pos_middle}, oldest={pos_oldest}"
+        )
+
+
+@pytest.mark.asyncio
+class TestMockDraftEntryFields:
+    """Mock-draft entry add/update accepts round, team_id, trade_note."""
+
+    async def _make_mock_board(
+        self,
+        db_session: AsyncSession,
+        source: NewsSource,
+    ) -> Board:
+        """Helper: persist a PENDING MOCK_DRAFT board."""
+        published = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+        board = Board(
+            news_source_id=source.id,
+            draft_year=2026,
+            published_at=published,
+            size=0,
+            status=BoardStatus.PENDING,
+            kind=BoardKind.MOCK_DRAFT,
+            num_rounds=1,
+        )
+        db_session.add(board)
+        await db_session.commit()
+        await db_session.refresh(board)
+        return board
+
+    async def test_add_mock_entry_persists_mock_fields(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+        sample_players: list[PlayerMaster],
+    ):
+        """POST /entries on a MOCK_DRAFT board stores round and trade_note.
+
+        team_id is not provided (no NBA teams seeded); asserts that round=1
+        and trade_note are stored correctly regardless.
+        """
+        _ = admin_logged_in
+        board = await self._make_mock_board(db_session, big_board_source)
+        player = sample_players[0]
+        assert player.id is not None
+
+        resp = await app_client.post(
+            f"/admin/boards/{board.id}/entries",
+            data={
+                "player_id": str(player.id),
+                "position": "5",
+                "round": "1",
+                "trade_note": "via trade with PHX",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "success=entry_added" in resp.headers["location"]
+
+        entries = (
+            await db_session.execute(
+                select(BoardEntry)  # type: ignore[call-overload]
+                .where(BoardEntry.board_id == board.id)  # type: ignore[arg-type]
+            )
+        ).scalars().all()
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry.position == 5
+        assert entry.round == 1
+        assert entry.trade_note == "via trade with PHX"
+
+    async def test_update_mock_entry_persists_mock_fields(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+        sample_players: list[PlayerMaster],
+    ):
+        """POST /entries/{id}/update on a MOCK_DRAFT board updates mock fields.
+
+        Seeds an entry, then patches round and trade_note via the update
+        endpoint; asserts DB state reflects the change.
+        """
+        _ = admin_logged_in
+        board = await self._make_mock_board(db_session, big_board_source)
+        player = sample_players[0]
+        assert player.id is not None
+
+        # Seed an entry directly
+        entry = BoardEntry(
+            board_id=board.id,
+            player_id=player.id,
+            position=3,
+            round=None,
+            trade_note=None,
+        )
+        db_session.add(entry)
+        await db_session.commit()
+        await db_session.refresh(entry)
+        assert entry.id is not None
+
+        resp = await app_client.post(
+            f"/admin/boards/{board.id}/entries/{entry.id}/update",
+            data={
+                "position": "3",
+                "round": "2",
+                "trade_note": "via trade with GSW",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "success=entry_updated" in resp.headers["location"]
+
+        updated = await db_session.get(BoardEntry, entry.id, populate_existing=True)
+        assert updated is not None
+        assert updated.round == 2
+        assert updated.trade_note == "via trade with GSW"
+
+    async def test_mock_draft_detail_page_renders(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+        sample_players: list[PlayerMaster],
+    ):
+        """GET /admin/boards/{id} renders correctly for a MOCK_DRAFT board.
+
+        Verifies the detail page returns 200 and includes mock-draft UI
+        indicators (the kind badge and pick column header).
+        """
+        _ = admin_logged_in
+        board = await self._make_mock_board(db_session, big_board_source)
+
+        resp = await app_client.get(f"/admin/boards/{board.id}")
+        assert resp.status_code == 200
+        assert "MOCK_DRAFT" in resp.text
+        # The detail page switches the column header from "Rank" to "Pick"
+        assert "Pick" in resp.text
+
+
+@pytest.mark.asyncio
+class TestBoardDetailArticlePanel:
+    """Side-by-side article panel renders when a news_item_id is set."""
+
+    async def test_detail_shows_article_excerpt_when_linked(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+    ):
+        """GET /admin/boards/{id} shows the linked article title and summary.
+
+        Seeds a NewsItem, links it to a Board, then asserts the detail page
+        renders both the article title and summary in the sidebar.
+        """
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        # Seed a news item with a summary.
+        item = NewsItem(
+            source_id=big_board_source.id,
+            external_id="test-article-001",
+            title="Top 30 Mock Draft 2026",
+            url="https://example.com/mock-draft-2026",
+            published_at=datetime.now(timezone.utc).replace(tzinfo=None),
+            tag=NewsItemTag.MOCK_DRAFT,
+            summary="Cooper Flagg goes #1 to the Spurs in this latest projection.",
+        )
+        db_session.add(item)
+        await db_session.flush()
+        await db_session.refresh(item)
+        assert item.id is not None
+
+        published = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+        board = Board(
+            news_source_id=big_board_source.id,
+            news_item_id=item.id,
+            draft_year=2026,
+            published_at=published,
+            size=0,
+            status=BoardStatus.PENDING,
+        )
+        db_session.add(board)
+        await db_session.commit()
+        await db_session.refresh(board)
+
+        resp = await app_client.get(f"/admin/boards/{board.id}")
+        assert resp.status_code == 200
+        assert "Top 30 Mock Draft 2026" in resp.text
+        assert "Cooper Flagg goes #1" in resp.text
+
+    async def test_detail_shows_no_article_message_when_unlinked(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+    ):
+        """GET /admin/boards/{id} shows a placeholder when news_item_id is None.
+
+        A manually created board with no linked article should render a
+        graceful 'no article' message in the sidebar rather than erroring.
+        """
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        published = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+        board = Board(
+            news_source_id=big_board_source.id,
+            news_item_id=None,
+            draft_year=2026,
+            published_at=published,
+            size=0,
+            status=BoardStatus.PENDING,
+        )
+        db_session.add(board)
+        await db_session.commit()
+        await db_session.refresh(board)
+
+        resp = await app_client.get(f"/admin/boards/{board.id}")
+        assert resp.status_code == 200
+        assert "No source article linked" in resp.text
