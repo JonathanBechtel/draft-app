@@ -13,12 +13,17 @@
 {% endblock %}
 
 {% block content %}
-<main class="consensus-page mt-28">
+<main class="consensus-page">
 
   {# ============================================================
      PAGE HEADER
      ============================================================ #}
-  <div class="consensus-page__header">
+  <header class="consensus-page__header">
+    <p class="consensus-page__eyebrow">
+      Consensus &middot;
+      {% if board_kind.value == 'BIG_BOARD' %}Big Board{% else %}Mock Draft{% endif %}
+    </p>
+
     <h1 class="consensus-page__title">
       {{ draft_year }}
       {% if board_kind.value == 'BIG_BOARD' %}
@@ -36,19 +41,25 @@
     </p>
 
     {% if board_freshness %}
-    <p class="consensus-page__freshness">
-      Based on
-      <strong>{{ board_freshness.num_boards }}
-        board{% if board_freshness.num_boards != 1 %}s{% endif %}</strong>
-      from
-      <strong>{{ board_freshness.num_sources }}
-        source{% if board_freshness.num_sources != 1 %}s{% endif %}</strong>
+    <div class="consensus-page__meta">
+      <span class="consensus-page__meta-stat">
+        <strong>{{ board_freshness.num_boards }}</strong>
+        board{% if board_freshness.num_boards != 1 %}s{% endif %}
+      </span>
+      <span class="consensus-page__meta-sep">&middot;</span>
+      <span class="consensus-page__meta-stat">
+        <strong>{{ board_freshness.num_sources }}</strong>
+        source{% if board_freshness.num_sources != 1 %}s{% endif %}
+      </span>
       {% if board_freshness.last_updated %}
-      &middot; updated {{ board_freshness.last_updated.strftime('%b %-d, %Y') }}
+      <span class="consensus-page__meta-sep">&middot;</span>
+      <span class="consensus-page__meta-updated">
+        updated {{ board_freshness.last_updated.strftime('%b %-d, %Y') }}
+      </span>
       {% endif %}
-    </p>
+    </div>
     {% endif %}
-  </div>
+  </header>
 
   {# Aggregation / content-rights attribution — credits the analysts. #}
   {% include "partials/consensus/attribution.html" %}
