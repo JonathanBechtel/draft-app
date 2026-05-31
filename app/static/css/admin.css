@@ -1337,6 +1337,71 @@
   background: var(--color-slate-100, #f1f5f9);
 }
 
+/* === Board detail: side-by-side layout === */
+.bb-detail-layout {
+  display: grid;
+  grid-template-columns: 1fr 22rem;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.bb-detail-main {
+  min-width: 0; /* prevent overflow in narrow cells */
+}
+
+.bb-detail-sidebar {
+  position: sticky;
+  top: 1rem;
+}
+
+.bb-article-card {
+  /* Inherits .admin-card styles; constrain max height so it scrolls
+     independently of the entry table on long boards. */
+  max-height: calc(100vh - 8rem);
+  overflow-y: auto;
+}
+
+.bb-article-body {
+  padding: 0.75rem 0;
+}
+
+.bb-article-title {
+  font-family: var(--font-heading, sans-serif);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  margin: 0 0 0.4rem;
+}
+
+.bb-article-meta {
+  margin: 0 0 0.6rem;
+}
+
+.bb-article-summary {
+  border-left: 3px solid var(--color-slate-200, #e2e8f0);
+  padding-left: 0.6rem;
+  margin: 0.5rem 0;
+  color: var(--color-slate-600, #475569);
+}
+
+.bb-article-empty {
+  font-style: italic;
+}
+
+/* Secondary badge variant (mock draft) */
+.admin-badge--secondary {
+  background: var(--color-slate-200, #e2e8f0);
+  color: var(--color-slate-700, #334155);
+}
+
+@media (max-width: 1100px) {
+  .bb-detail-layout {
+    grid-template-columns: 1fr;
+  }
+  .bb-detail-sidebar {
+    position: static;
+  }
+}
+
 @media (max-width: 768px) {
   .admin-combine-header {
     flex-direction: column;

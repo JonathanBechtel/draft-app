@@ -1,6 +1,6 @@
 {% extends "admin/base.html" %}
 
-{% set page_title = "Big Board" %}
+{% set page_title = "Board Detail" %}
 {% set active_nav = "boards" %}
 
 {% block admin_content %}
@@ -8,6 +8,9 @@
   <h1 class="admin-main__title">
     {{ source.display_name if source else board.news_source_id }}
     <span class="admin-text--muted">&middot; {{ board.draft_year }}</span>
+    <span class="admin-badge {% if board.kind.value == 'MOCK_DRAFT' %}admin-badge--secondary{% endif %}" style="font-size:0.75rem; vertical-align: middle;">
+      {{ board.kind.value }}
+    </span>
   </h1>
   <p class="admin-main__subtitle">
     Published {{ board.published_at.strftime('%Y-%m-%d') }} &middot;
@@ -25,6 +28,13 @@
     {% endif %}
   </p>
 </header>
+
+{% if success %}
+<div class="admin-alert admin-alert--success">{{ success }}</div>
+{% endif %}
+{% if error %}
+<div class="admin-alert admin-alert--error">{{ error }}</div>
+{% endif %}
 
 {% if is_pending %}
 <div class="admin-card admin-card--medium" style="margin-bottom: 1rem;">
@@ -63,222 +73,385 @@
 </div>
 {% endif %}
 
-<div class="admin-card">
-  <div class="admin-card__header">
-    <h2 class="admin-card__title">Entries</h2>
-    <div style="display: flex; gap: 0.5rem;">
-      {% if is_pending %}
-      <form method="post" action="/admin/boards/{{ board.id }}/approve" class="admin-form--inline">
-        <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Approve</button>
-      </form>
-      <form method="post" action="/admin/boards/{{ board.id }}/reject" class="admin-form--inline"
-            onsubmit="return confirm('Reject this board? It will be locked but kept for audit.');">
-        <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small">Reject</button>
-      </form>
-      <form method="post" action="/admin/boards/{{ board.id }}/delete" class="admin-form--inline"
-            onsubmit="return confirm('Permanently delete this board and all entries? No audit record will be kept.');">
-        <button type="submit" class="admin-btn admin-btn--small">Delete</button>
-      </form>
-      {% elif board.status.value == 'APPROVED' %}
-      <form method="post" action="/admin/boards/{{ board.id }}/reopen" class="admin-form--inline"
-            onsubmit="return confirm('Reopen this board for editing? Its approved_at timestamp will be cleared until you re-approve.');">
-        <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small">Reopen</button>
-      </form>
-      {% endif %}
-      <form method="post" action="/admin/boards/{{ board.id }}/clone" class="admin-form--inline">
-        <button type="submit" class="admin-btn admin-btn--small">Clone</button>
-      </form>
-    </div>
-  </div>
+{# ── Side-by-side layout: entries left, article right ── #}
+<div class="bb-detail-layout">
 
-  {% if entries %}
-  <table class="admin-table" id="big-board-entries">
-    <thead>
-      <tr>
-        {% if is_pending %}<th style="width: 5rem;">Move</th>{% endif %}
-        <th style="width: 6rem;">Rank</th>
-        <th>Player</th>
-        <th>School</th>
-        <th style="width: 6rem;">Tier</th>
-        {% if is_pending %}<th style="width: 6rem;">Remove</th>{% endif %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for entry in entries %}
-      {% set player = players_by_id.get(entry.player_id) %}
-      {% set is_unresolved = entry.resolution_method.value == 'UNRESOLVED' %}
-      <tr data-entry-id="{{ entry.id }}" data-board-id="{{ board.id }}"
-          {% if is_unresolved %}class="bb-entry--unresolved"{% endif %}>
-        {% if is_pending %}
-        <td>
-          <form method="post"
-                action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/move-up"
-                class="admin-form--inline">
-            <button type="submit" class="admin-btn admin-btn--small"
-                    {% if loop.first %}disabled aria-disabled="true"{% endif %}
-                    title="Move up">&uarr;</button>
-          </form>
-          <form method="post"
-                action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/move-down"
-                class="admin-form--inline">
-            <button type="submit" class="admin-btn admin-btn--small"
-                    {% if loop.last %}disabled aria-disabled="true"{% endif %}
-                    title="Move down">&darr;</button>
-          </form>
-        </td>
-        {% endif %}
-        <td>
+  {# ── LEFT: Entries + controls ── #}
+  <div class="bb-detail-main">
+    <div class="admin-card">
+      <div class="admin-card__header">
+        <h2 class="admin-card__title">Entries</h2>
+        <div style="display: flex; gap: 0.5rem;">
           {% if is_pending %}
-          <input class="admin-form__input bb-autosave" type="number" name="position"
-                 data-field="position" value="{{ entry.position }}"
-                 min="1" required style="width: 4.5rem;" />
-          {% else %}
-          <strong>{{ entry.position }}</strong>
+          <form method="post" action="/admin/boards/{{ board.id }}/approve" class="admin-form--inline">
+            <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Approve</button>
+          </form>
+          <form method="post" action="/admin/boards/{{ board.id }}/reject" class="admin-form--inline"
+                onsubmit="return confirm('Reject this board? It will be locked but kept for audit.');">
+            <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small">Reject</button>
+          </form>
+          <form method="post" action="/admin/boards/{{ board.id }}/delete" class="admin-form--inline"
+                onsubmit="return confirm('Permanently delete this board and all entries? No audit record will be kept.');">
+            <button type="submit" class="admin-btn admin-btn--small">Delete</button>
+          </form>
+          {% elif board.status.value == 'APPROVED' %}
+          <form method="post" action="/admin/boards/{{ board.id }}/reopen" class="admin-form--inline"
+                onsubmit="return confirm('Reopen this board for editing? Its approved_at timestamp will be cleared until you re-approve.');">
+            <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small">Reopen</button>
+          </form>
           {% endif %}
-        </td>
-        <td>
-          {# --- Resolution display --- #}
-          {% if entry.raw_name %}
-          <span class="admin-text--small admin-text--muted bb-raw-name">{{ entry.raw_name }}</span>
-          {% endif %}
-          {% if player %}
-            {# Resolved entry: show player name + method badge #}
-            <div>
-              <strong>{{ player.display_name }}</strong>
-              <span class="admin-badge admin-badge--small bb-resolution-badge bb-resolution-badge--{{ entry.resolution_method.value | lower }}">
-                {{ entry.resolution_method.value }}
-              </span>
-            </div>
-          {% elif is_unresolved and is_pending %}
-            {# Unresolved entry in a pending board: show candidate list + free-form search #}
-            <div class="bb-candidates" id="bb-candidates-{{ entry.id }}">
-              {% if entry.vector_candidates %}
-              <p class="admin-text--small admin-text--muted" style="margin: 0.25rem 0;">Candidates:</p>
-              <ul class="bb-candidate-list">
-                {% for c in entry.vector_candidates[:5] %}
-                <li class="bb-candidate-item">
+          <form method="post" action="/admin/boards/{{ board.id }}/clone" class="admin-form--inline">
+            <button type="submit" class="admin-btn admin-btn--small">Clone</button>
+          </form>
+        </div>
+      </div>
+
+      {% if entries %}
+      <table class="admin-table" id="big-board-entries">
+        <thead>
+          <tr>
+            {% if is_pending %}<th style="width: 5rem;">Move</th>{% endif %}
+            <th style="width: 6rem;">
+              {% if board.kind.value == 'MOCK_DRAFT' %}Pick{% else %}Rank{% endif %}
+            </th>
+            <th>Player</th>
+            {% if board.kind.value == 'MOCK_DRAFT' %}
+            <th>Team</th>
+            <th>Rnd</th>
+            <th>Trade Note</th>
+            {% else %}
+            <th>School</th>
+            <th style="width: 6rem;">Tier</th>
+            {% endif %}
+            {% if is_pending %}<th style="width: 6rem;">Remove</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for entry in entries %}
+          {% set player = players_by_id.get(entry.player_id) %}
+          {% set is_unresolved = entry.resolution_method.value == 'UNRESOLVED' %}
+          <tr data-entry-id="{{ entry.id }}" data-board-id="{{ board.id }}"
+              {% if is_unresolved %}class="bb-entry--unresolved"{% endif %}>
+            {% if is_pending %}
+            <td>
+              <form method="post"
+                    action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/move-up"
+                    class="admin-form--inline">
+                <button type="submit" class="admin-btn admin-btn--small"
+                        {% if loop.first %}disabled aria-disabled="true"{% endif %}
+                        title="Move up">&uarr;</button>
+              </form>
+              <form method="post"
+                    action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/move-down"
+                    class="admin-form--inline">
+                <button type="submit" class="admin-btn admin-btn--small"
+                        {% if loop.last %}disabled aria-disabled="true"{% endif %}
+                        title="Move down">&darr;</button>
+              </form>
+            </td>
+            {% endif %}
+            <td>
+              {% if is_pending %}
+              <input class="admin-form__input bb-autosave" type="number" name="position"
+                     data-field="position" value="{{ entry.position }}"
+                     min="1" required style="width: 4.5rem;" />
+              {% else %}
+              <strong>{{ entry.position }}</strong>
+              {% endif %}
+            </td>
+            <td>
+              {# --- Resolution display --- #}
+              {% if entry.raw_name %}
+              <span class="admin-text--small admin-text--muted bb-raw-name">{{ entry.raw_name }}</span>
+              {% endif %}
+              {% if player %}
+                {# Resolved entry: show player name + method badge #}
+                <div>
+                  <strong>{{ player.display_name }}</strong>
+                  <span class="admin-badge admin-badge--small bb-resolution-badge bb-resolution-badge--{{ entry.resolution_method.value | lower }}">
+                    {{ entry.resolution_method.value }}
+                  </span>
+                </div>
+              {% elif is_unresolved and is_pending %}
+                {# Unresolved entry in a pending board: show candidate list + free-form search #}
+                <div class="bb-candidates" id="bb-candidates-{{ entry.id }}">
+                  {% if entry.vector_candidates %}
+                  <p class="admin-text--small admin-text--muted" style="margin: 0.25rem 0;">Candidates:</p>
+                  <ul class="bb-candidate-list">
+                    {% for c in entry.vector_candidates[:5] %}
+                    <li class="bb-candidate-item">
+                      <form method="post"
+                            action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/assign"
+                            class="admin-form--inline">
+                        <input type="hidden" name="player_id" value="{{ c.player_id }}" />
+                        <button type="submit" class="admin-btn admin-btn--small bb-candidate-btn"
+                                title="Assign {{ c.display_name }}">
+                          {{ c.display_name }}
+                          <span class="admin-text--small" style="opacity:0.7;">
+                            &mdash; {{ '%.2f' | format(c.score) }}
+                          </span>
+                        </button>
+                      </form>
+                    </li>
+                    {% endfor %}
+                  </ul>
+                  {% else %}
+                  <p class="admin-text--small admin-text--muted" style="margin: 0.25rem 0;">No candidates available.</p>
+                  {% endif %}
+                  {# Free-form player search for off-list players #}
+                  <div class="bb-player-search" style="position: relative; margin-top: 0.4rem;">
+                    <input
+                      type="text"
+                      class="admin-form__input bb-offlist-search"
+                      placeholder="Search player…"
+                      autocomplete="off"
+                      data-entry-id="{{ entry.id }}"
+                      data-board-id="{{ board.id }}"
+                      style="width: 12rem; font-size: 0.8rem;"
+                    />
+                    <ul class="admin-autocomplete bb-offlist-results" hidden></ul>
+                  </div>
+                  {# Mint-stub fallback: create a lightweight stub row from the raw name #}
                   <form method="post"
-                        action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/assign"
-                        class="admin-form--inline">
-                    <input type="hidden" name="player_id" value="{{ c.player_id }}" />
-                    <button type="submit" class="admin-btn admin-btn--small bb-candidate-btn"
-                            title="Assign {{ c.display_name }}">
-                      {{ c.display_name }}
-                      <span class="admin-text--small" style="opacity:0.7;">
-                        &mdash; {{ '%.2f' | format(c.score) }}
-                      </span>
+                        action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/mint-stub"
+                        class="admin-form--inline bb-mint-stub-form"
+                        onsubmit="return confirm('Create a stub player for &quot;{{ entry.raw_name }}&quot;? This cannot be undone without direct DB intervention.');">
+                    <button type="submit" class="admin-btn admin-btn--small bb-mint-stub-btn"
+                            title="Mint a stub PlayerMaster row for &quot;{{ entry.raw_name }}&quot;">
+                      Mint stub player
                     </button>
                   </form>
-                </li>
-                {% endfor %}
-              </ul>
+                </div>
               {% else %}
-              <p class="admin-text--small admin-text--muted" style="margin: 0.25rem 0;">No candidates available.</p>
+                {# Resolved (non-UNRESOLVED), player_id not yet in players_by_id (edge case) #}
+                <span class="admin-text--muted">(player #{{ entry.player_id }})</span>
               {% endif %}
-              {# Free-form player search for off-list players #}
-              <div class="bb-player-search" style="position: relative; margin-top: 0.4rem;">
-                <input
-                  type="text"
-                  class="admin-form__input bb-offlist-search"
-                  placeholder="Search player…"
-                  autocomplete="off"
-                  data-entry-id="{{ entry.id }}"
-                  data-board-id="{{ board.id }}"
-                  style="width: 12rem; font-size: 0.8rem;"
-                />
-                <ul class="admin-autocomplete bb-offlist-results" hidden></ul>
-              </div>
-              {# Mint-stub fallback: create a lightweight stub row from the raw name #}
+            </td>
+            {% if board.kind.value == 'MOCK_DRAFT' %}
+            <td>
+              {% set team = teams_by_id.get(entry.team_id) %}
+              {% set orig_team = teams_by_id.get(entry.original_team_id) %}
+              {% if is_pending %}
+              <select class="admin-form__select bb-autosave" name="team_id"
+                      data-field="team_id" style="width: 6rem; font-size: 0.8rem;">
+                <option value="">—</option>
+                {% for t in all_teams %}
+                <option value="{{ t.id }}" {% if t.id == entry.team_id %}selected{% endif %}>
+                  {{ t.abbreviation }}
+                </option>
+                {% endfor %}
+              </select>
+              {% if orig_team %}
+              <span class="admin-text--small admin-text--muted">(orig: {{ orig_team.abbreviation }})</span>
+              {% endif %}
+              {% else %}
+              {% if team %}{{ team.abbreviation }}{% else %}&mdash;{% endif %}
+              {% if orig_team %}
+              <span class="admin-text--small admin-text--muted">(orig: {{ orig_team.abbreviation }})</span>
+              {% endif %}
+              {% endif %}
+            </td>
+            <td>
+              {% if is_pending %}
+              <input class="admin-form__input bb-autosave" type="number" name="round"
+                     data-field="round"
+                     value="{{ entry.round if entry.round is not none else '' }}"
+                     placeholder="1" min="1" max="2" style="width: 3.5rem;" />
+              {% else %}
+              {{ entry.round if entry.round is not none else '—' }}
+              {% endif %}
+            </td>
+            <td>
+              {% if is_pending %}
+              <input class="admin-form__input bb-autosave" type="text" name="trade_note"
+                     data-field="trade_note"
+                     value="{{ entry.trade_note or '' }}"
+                     placeholder="via trade…" style="width: 9rem; font-size: 0.8rem;" />
+              {% else %}
+              {{ entry.trade_note or '—' }}
+              {% endif %}
+            </td>
+            {% else %}
+            <td>{{ player.school if player else '' }}</td>
+            <td>
+              {% if is_pending %}
+              <input class="admin-form__input bb-autosave" type="number" name="tier"
+                     data-field="tier"
+                     value="{{ entry.tier if entry.tier is not none else '' }}"
+                     placeholder="tier" style="width: 4.5rem;" />
+              {% else %}
+              {{ entry.tier if entry.tier is not none else '—' }}
+              {% endif %}
+            </td>
+            {% endif %}
+            {% if is_pending %}
+            <td>
               <form method="post"
-                    action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/mint-stub"
-                    class="admin-form--inline bb-mint-stub-form"
-                    onsubmit="return confirm('Create a stub player for “{{ entry.raw_name }}”? This cannot be undone without direct DB intervention.');">
-                <button type="submit" class="admin-btn admin-btn--small bb-mint-stub-btn"
-                        title="Mint a stub PlayerMaster row for &quot;{{ entry.raw_name }}&quot;">
-                  Mint stub player
-                </button>
+                    action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/delete"
+                    class="admin-form--inline"
+                    onsubmit="return confirm('Delete this entry?');">
+                <button type="submit" class="admin-btn admin-btn--small">Remove</button>
               </form>
-            </div>
-          {% else %}
-            {# Resolved (non-UNRESOLVED), player_id not yet in players_by_id (edge case) #}
-            <span class="admin-text--muted">(player #{{ entry.player_id }})</span>
-          {% endif %}
-        </td>
-        <td>{{ player.school if player else '' }}</td>
-        <td>
-          {% if is_pending %}
-          <input class="admin-form__input bb-autosave" type="number" name="tier"
-                 data-field="tier"
-                 value="{{ entry.tier if entry.tier is not none else '' }}"
-                 placeholder="tier" style="width: 4.5rem;" />
-          {% else %}
-          {{ entry.tier if entry.tier is not none else '—' }}
-          {% endif %}
-        </td>
-        {% if is_pending %}
-        <td>
-          <form method="post"
-                action="/admin/boards/{{ board.id }}/entries/{{ entry.id }}/delete"
-                class="admin-form--inline"
-                onsubmit="return confirm('Delete this entry?');">
-            <button type="submit" class="admin-btn admin-btn--small">Remove</button>
-          </form>
-        </td>
-        {% endif %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <p class="admin-text--muted admin-text--small" id="bb-autosave-hint"
-     {% if not is_pending %}hidden{% endif %}>
-    Rank and tier auto-save when you tab out of a field.
-    <span id="bb-autosave-status" aria-live="polite"></span>
-  </p>
-  {% else %}
-  <p class="admin-text--muted">No entries yet.</p>
-  {% endif %}
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="admin-text--muted admin-text--small" id="bb-autosave-hint"
+         {% if not is_pending %}hidden{% endif %}>
+        Rank{% if board.kind.value == 'MOCK_DRAFT' %}, team, round, and trade note{% else %} and tier{% endif %} auto-save when you tab out of a field.
+        <span id="bb-autosave-status" aria-live="polite"></span>
+      </p>
+      {% else %}
+      <p class="admin-text--muted">No entries yet.</p>
+      {% endif %}
 
-  {% if is_pending %}
-  <div class="admin-card__header" style="margin-top: 1.5rem;">
-    <h3 class="admin-card__title">Add Entry</h3>
-  </div>
-  <form
-    id="big-board-add-entry"
-    class="admin-form"
-    method="post"
-    action="/admin/boards/{{ board.id }}/entries"
-    style="display: grid; grid-template-columns: 5rem 1fr 5rem auto; gap: 0.75rem; align-items: end;"
-  >
-    <div class="admin-form__field" style="margin: 0;">
-      <label class="admin-form__label" for="position">Rank</label>
-      <input class="admin-form__input" id="position" name="position" type="number"
-             value="{{ default_next_rank }}" min="1" required />
+      {% if is_pending %}
+      <div class="admin-card__header" style="margin-top: 1.5rem;">
+        <h3 class="admin-card__title">Add Entry</h3>
+      </div>
+      {% if board.kind.value == 'MOCK_DRAFT' %}
+      {# Mock-draft add form: pick + player + team + round + trade_note #}
+      <form
+        id="big-board-add-entry"
+        class="admin-form"
+        method="post"
+        action="/admin/boards/{{ board.id }}/entries"
+        style="display: grid; grid-template-columns: 4rem 1fr 6rem 4rem 1fr auto; gap: 0.75rem; align-items: end;"
+      >
+        <div class="admin-form__field" style="margin: 0;">
+          <label class="admin-form__label" for="position">Pick</label>
+          <input class="admin-form__input" id="position" name="position" type="number"
+                 value="{{ default_next_rank }}" min="1" required />
+        </div>
+        <div class="admin-form__field" style="margin: 0; position: relative;">
+          <label class="admin-form__label" for="player-search">Player</label>
+          <input
+            class="admin-form__input"
+            id="player-search"
+            type="text"
+            placeholder="Type a player name..."
+            autocomplete="off"
+            required
+          />
+          <input type="hidden" id="player_id" name="player_id" required />
+          <ul id="player-autocomplete" class="admin-autocomplete" hidden></ul>
+        </div>
+        <div class="admin-form__field" style="margin: 0;">
+          <label class="admin-form__label" for="team_id">Team</label>
+          <select class="admin-form__select" id="team_id" name="team_id">
+            <option value="">—</option>
+            {% for t in all_teams %}
+            <option value="{{ t.id }}">{{ t.abbreviation }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="admin-form__field" style="margin: 0;">
+          <label class="admin-form__label" for="round">Round</label>
+          <input class="admin-form__input" id="round" name="round" type="number"
+                 min="1" max="2" placeholder="1" />
+        </div>
+        <div class="admin-form__field" style="margin: 0;">
+          <label class="admin-form__label" for="trade_note">Trade Note</label>
+          <input class="admin-form__input" id="trade_note" name="trade_note"
+                 type="text" placeholder="via trade with PHX" />
+        </div>
+        <div class="admin-form__field" style="margin: 0;">
+          <button type="submit" class="admin-btn admin-btn--primary">Add</button>
+        </div>
+      </form>
+      {% else %}
+      {# Big-board add form: rank + player + tier #}
+      <form
+        id="big-board-add-entry"
+        class="admin-form"
+        method="post"
+        action="/admin/boards/{{ board.id }}/entries"
+        style="display: grid; grid-template-columns: 5rem 1fr 5rem auto; gap: 0.75rem; align-items: end;"
+      >
+        <div class="admin-form__field" style="margin: 0;">
+          <label class="admin-form__label" for="position">Rank</label>
+          <input class="admin-form__input" id="position" name="position" type="number"
+                 value="{{ default_next_rank }}" min="1" required />
+        </div>
+        <div class="admin-form__field" style="margin: 0; position: relative;">
+          <label class="admin-form__label" for="player-search">Player</label>
+          <input
+            class="admin-form__input"
+            id="player-search"
+            type="text"
+            placeholder="Type a player name..."
+            autocomplete="off"
+            required
+          />
+          <input type="hidden" id="player_id" name="player_id" required />
+          <ul id="player-autocomplete" class="admin-autocomplete" hidden></ul>
+        </div>
+        <div class="admin-form__field" style="margin: 0;">
+          <label class="admin-form__label" for="tier">Tier</label>
+          <input class="admin-form__input" id="tier" name="tier" type="number"
+                 value="{{ default_tier if default_tier is not none else '' }}"
+                 placeholder="optional" />
+        </div>
+        <div class="admin-form__field" style="margin: 0;">
+          <button type="submit" class="admin-btn admin-btn--primary">Add</button>
+        </div>
+      </form>
+      {% endif %}
+      {% endif %}
     </div>
-    <div class="admin-form__field" style="margin: 0; position: relative;">
-      <label class="admin-form__label" for="player-search">Player</label>
-      <input
-        class="admin-form__input"
-        id="player-search"
-        type="text"
-        placeholder="Type a player name..."
-        autocomplete="off"
-        required
-      />
-      <input type="hidden" id="player_id" name="player_id" required />
-      <ul id="player-autocomplete" class="admin-autocomplete" hidden></ul>
+  </div>{# end .bb-detail-main #}
+
+  {# ── RIGHT: Source article reference ── #}
+  <aside class="bb-detail-sidebar">
+    <div class="admin-card bb-article-card">
+      <div class="admin-card__header">
+        <h2 class="admin-card__title">Source Article</h2>
+      </div>
+      {% if news_item %}
+      <div class="bb-article-body">
+        <p class="bb-article-title">
+          <a href="{{ news_item.url }}" target="_blank" rel="noopener noreferrer"
+             class="admin-link">{{ news_item.title }}</a>
+        </p>
+        <p class="bb-article-meta admin-text--small admin-text--muted">
+          Published {{ news_item.published_at.strftime('%Y-%m-%d') }}
+          &middot; <span class="admin-badge admin-badge--small">{{ news_item.tag.value if news_item.tag else '—' }}</span>
+        </p>
+        {% if news_item.summary %}
+        <div class="bb-article-summary">
+          <p class="admin-text--small">{{ news_item.summary }}</p>
+        </div>
+        {% elif news_item.description %}
+        <div class="bb-article-summary">
+          <p class="admin-text--small">{{ news_item.description | truncate(400) }}</p>
+        </div>
+        {% endif %}
+        <a href="{{ news_item.url }}" target="_blank" rel="noopener noreferrer"
+           class="admin-btn admin-btn--small" style="margin-top: 0.75rem; display: inline-block;">
+          Open Article &rarr;
+        </a>
+        <a href="/admin/news-items/{{ news_item.id }}" class="admin-btn admin-btn--small"
+           style="margin-top: 0.5rem; display: inline-block;">
+          Edit News Item
+        </a>
+      </div>
+      {% else %}
+      <p class="admin-text--muted bb-article-empty">
+        No source article linked to this board.
+        {% if board.news_item_id %}
+        (news_item_id={{ board.news_item_id }} not found)
+        {% else %}
+        The board was created manually or the article link is not set.
+        {% endif %}
+      </p>
+      {% endif %}
     </div>
-    <div class="admin-form__field" style="margin: 0;">
-      <label class="admin-form__label" for="tier">Tier</label>
-      <input class="admin-form__input" id="tier" name="tier" type="number"
-             value="{{ default_tier if default_tier is not none else '' }}"
-             placeholder="optional" />
-    </div>
-    <div class="admin-form__field" style="margin: 0;">
-      <button type="submit" class="admin-btn admin-btn--primary">Add</button>
-    </div>
-  </form>
-  {% endif %}
-</div>
+  </aside>
+
+</div>{# end .bb-detail-layout #}
+
 {% endblock %}
 
 {% block admin_js %}
