@@ -9,6 +9,10 @@ env:
   # Set these to your Fly.io organization and preferred region.
   FLY_REGION: ewr
   FLY_ORG: personal
+  # Neon project that hosts the per-PR ephemeral database branches.
+  NEON_PROJECT_ID: lingering-tree-42020349
+  # Parent Neon branch each PR database is forked from (matches ENV=dev).
+  NEON_PARENT_BRANCH: development
 
 jobs:
   review_app:
@@ -29,6 +33,39 @@ jobs:
       - name: Get code
         uses: actions/checkout@v4
 
+      # Give each PR its own isolated Neon database branch, forked from the
+      # development branch. Previously every review app shared one database, so
+      # a migration from one PR (e.g. an alembic revision only on that branch)
+      # left the shared DB at a revision other PRs could not `alembic upgrade
+      # head` past — failing the deploy on PRs that changed nothing. A per-PR
+      # branch always migrates cleanly from a known parent. The action is
+      # idempotent: on `synchronize` it returns the PR's existing branch.
+      - name: Create Neon branch
+        if: github.event.action != 'closed'
+        id: neon
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ env.NEON_PROJECT_ID }}
+          parent_branch: ${{ env.NEON_PARENT_BRANCH }}
+          branch_name: pr-${{ github.event.number }}
+          database: draft_guru
+          role: neondb_owner
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      # The Neon action emits a libpq URL (postgresql://...?sslmode=...). The
+      # app needs the asyncpg driver prefix, and asyncpg rejects the libpq-only
+      # sslmode/channel_binding query params, so strip them. Mask the result so
+      # the credentialed URL never appears in logs.
+      - name: Build asyncpg DATABASE_URL
+        if: github.event.action != 'closed'
+        id: dburl
+        run: |
+          raw='${{ steps.neon.outputs.db_url }}'
+          async="postgresql+asyncpg://${raw#*://}"
+          async="${async%%\?*}"
+          echo "::add-mask::$async"
+          echo "value=$async" >> "$GITHUB_OUTPUT"
+
       - name: Deploy PR app to Fly.io
         id: deploy
         uses: superfly/fly-pr-review-apps@1.2.1
@@ -40,6 +77,15 @@ jobs:
             ENV=dev
             LOG_LEVEL=INFO
             ACCESS_LOG=true
-            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            DATABASE_URL=${{ steps.dburl.outputs.value }}
             SECRET_KEY=${{ secrets.SECRET_KEY }}
 
+      # Tear down the PR's Neon branch when the PR closes. The fly action above
+      # already destroys the review app itself on a `closed` event.
+      - name: Delete Neon branch
+        if: github.event.action == 'closed'
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ env.NEON_PROJECT_ID }}
+          branch: pr-${{ github.event.number }}
+          api_key: ${{ secrets.NEON_API_KEY }}
