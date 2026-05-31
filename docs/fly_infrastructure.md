@@ -85,6 +85,25 @@ The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, 
   4. Deploy via `flyctl deploy --config fly.prod.toml --remote-only --app draft-app-prod`
   5. Update cron machine with latest app image
 
+### Review Apps (`.github/workflows/fly-deploy-review.yml`)
+
+- **Trigger**: PR `opened` / `reopened` / `synchronize` / `closed`
+- **Per-PR database**: each PR gets its own ephemeral Neon branch (`pr-<number>`)
+  forked from the `production` branch via `neondatabase/create-branch-action`.
+  (Production is the only branch whose alembic state stays consistent with its
+  schema; `development` carries drift from the old shared-review-DB era.)
+  The branch's connection string is converted to an asyncpg URL and passed to
+  the review app as `DATABASE_URL`, so each preview migrates its own isolated
+  database. On PR close, `neondatabase/delete-branch-action` tears the branch
+  down (the Fly review app is destroyed by the deploy action on the same event).
+- **Why**: review apps previously shared one database. A migration introduced on
+  one PR's branch left the shared DB at a revision other PRs couldn't
+  `alembic upgrade head` past, so unrelated PRs failed the deploy. Per-PR
+  branches eliminate the collision.
+- **Required secret**: `NEON_API_KEY` must be available to the `draft-app-dev`
+  environment (Neon → project `lingering-tree-42020349` → personal API key).
+  Without it the Create/Delete Neon branch steps fail.
+
 ---
 
 ## Cron Machine Management
