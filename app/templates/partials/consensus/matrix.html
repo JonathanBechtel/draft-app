@@ -1,0 +1,76 @@
+{# ============================================================
+   SECTION 4 — SOURCE BREAKDOWN MATRIX
+   Context keys: source_matrix (keys: players, sources, cells)
+   Filled by ticket #275. Owns: consensus-matrix.css
+   ============================================================ #}
+{% if source_matrix and source_matrix.players %}
+<div class="matrix-section" data-section="matrix">
+  <div class="matrix-section__caption">
+    Source breakdown — top prospects
+    <span class="matrix-section__caption-sub">cells = each source's rank; highlighted = outliers</span>
+  </div>
+  <div class="matrix-section__scroll">
+    <table class="matrix-table" aria-label="Source breakdown matrix">
+      <thead>
+        <tr>
+          <th class="matrix-table__th matrix-table__th--player" scope="col">Player</th>
+          <th class="matrix-table__th matrix-table__th--cons" scope="col">Cons</th>
+          {% for src in source_matrix.sources %}
+          <th class="matrix-table__th" scope="col">
+            {%- set abbr_words = src.name.replace("-", " ").split() -%}
+            <a class="matrix-table__src-link src-link"
+               href="/sources/{{ src.slug }}"
+               title="{{ src.name }}"
+               rel="noopener">
+              {%- for w in abbr_words -%}{{ w[0] | upper }}{%- endfor -%}
+            </a>
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for player in source_matrix.players %}
+        <tr class="matrix-table__row">
+          <td class="matrix-table__td matrix-table__td--player">
+            {% if player.slug %}
+            <a href="/players/{{ player.slug }}" class="matrix-table__player-link">
+              {{ player.player_name or "Unknown" }}
+            </a>
+            {% else %}
+            {{ player.player_name or "Unknown" }}
+            {% endif %}
+          </td>
+          <td class="matrix-table__td matrix-table__td--cons">
+            {{ player.consensus_rank }}
+          </td>
+          {% for src in source_matrix.sources %}
+          {% set cell = source_matrix.cells.get((player.player_id, src.source_id)) %}
+          {% if cell %}
+            {% if cell.outlier == "high" %}
+            <td class="matrix-table__td matrix-table__td--out-high" title="Source ranks this player higher than consensus">
+              {{ cell.rank }}
+            </td>
+            {% elif cell.outlier == "low" %}
+            <td class="matrix-table__td matrix-table__td--out-low" title="Source ranks this player lower than consensus">
+              {{ cell.rank }}
+            </td>
+            {% else %}
+            <td class="matrix-table__td">
+              {{ cell.rank }}
+            </td>
+            {% endif %}
+          {% else %}
+          <td class="matrix-table__td matrix-table__td--missing" title="Not ranked by this source">—</td>
+          {% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="matrix-section matrix-section--empty" data-section="matrix">
+  <p class="matrix-section__empty-msg">No source matrix data available.</p>
+</div>
+{% endif %}

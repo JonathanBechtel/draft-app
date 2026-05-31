@@ -1,0 +1,234 @@
+{# ============================================================
+   SECTION 1 — FULL BOARD TABLE
+   Context keys: consensus_rows, board_kind, draft_year, board_freshness
+   Owned by ticket #272. CSS: consensus-board.css  JS: consensus-board.js
+   ============================================================ #}
+
+{# Controls: search + position filter #}
+<div class="cb-controls" id="cbControls">
+  <input
+    class="cb-controls__search"
+    type="search"
+    id="cbSearch"
+    placeholder="Search player / school…"
+    autocomplete="off"
+    aria-label="Search players or schools"
+  >
+  <select class="cb-controls__pos" id="cbPosFilter" aria-label="Filter by position">
+    <option value="">All positions</option>
+    <option value="PG">PG</option>
+    <option value="SG">SG</option>
+    <option value="SF">SF</option>
+    <option value="PF">PF</option>
+    <option value="C">C</option>
+    <option value="G">G</option>
+    <option value="F">F</option>
+  </select>
+</div>
+
+{% if board_freshness %}
+<p class="cb-freshness">
+  Based on <strong>{{ board_freshness.num_boards }}</strong> board{{ 's' if board_freshness.num_boards != 1 else '' }}
+  from <strong>{{ board_freshness.num_sources }}</strong> source{{ 's' if board_freshness.num_sources != 1 else '' }}
+  · updated {{ board_freshness.last_updated.strftime('%b %-d, %Y') }}
+</p>
+{% endif %}
+
+{% if consensus_rows %}
+{# ----------------------------------------------------------------
+   Per-row range-bar scale: each row uses its own high/low clamped to
+   include the consensus_rank so the marker never falls off the track.
+   This mirrors the PR #267 guard used in the homepage controversy panel.
+   ---------------------------------------------------------------- #}
+<div class="card card-ring card-ring-amber consensus-hero__card cb-card" id="cbCard" data-section="board" style="margin-top:0.5rem;">
+  <div class="scanlines"></div>
+  <div class="consensus-hero__table-wrap">
+    <table class="consensus-hero__table cb-table" id="cbTable" aria-label="Consensus {{ 'Big Board' if board_kind.value == 'BIG_BOARD' else 'Mock Draft' }} {{ draft_year }}">
+      <thead>
+        <tr>
+          <th class="consensus-hero__th consensus-hero__th--rank cb-th"
+              data-col="consensus_rank" aria-sort="ascending" tabindex="0">#</th>
+          <th class="consensus-hero__th consensus-hero__th--delta cb-th cb-th--nosort">Δ</th>
+          <th class="consensus-hero__th consensus-hero__th--trend cb-th cb-th--nosort">Trend</th>
+          <th class="consensus-hero__th cb-th cb-th--nosort">Player</th>
+          <th class="consensus-hero__th cb-th cb-th--nosort">School</th>
+          <th class="consensus-hero__th consensus-hero__th--pos cb-th cb-th--nosort">Pos</th>
+          <th class="consensus-hero__th consensus-hero__th--ht cb-th cb-th--nosort">Ht</th>
+          <th class="consensus-hero__th consensus-hero__th--wt cb-th cb-th--nosort">Wt</th>
+          <th class="consensus-hero__th consensus-hero__th--age cb-th"
+              data-col="age">Age</th>
+          <th class="consensus-hero__th consensus-hero__th--avg cb-th"
+              data-col="avg_rank">Avg</th>
+          <th class="consensus-hero__th cb-th cb-th--nosort cb-th--range">Range</th>
+          <th class="consensus-hero__th consensus-hero__th--sources cb-th"
+              data-col="num_sources">Src</th>
+          <th class="consensus-hero__th cb-th cb-th--nosort">Status</th>
+        </tr>
+      </thead>
+      <tbody id="cbBody">
+        {% for row in consensus_rows %}
+        {# Per-row scale: fold consensus_rank into [high_rank, low_rank] so the
+           marker never renders outside the track — mirrors the PR #267 guard. #}
+        {% set row_scale_min = [row.high_rank, row.consensus_rank] | min %}
+        {% set row_scale_max = [row.low_rank, row.consensus_rank] | max %}
+        {% set row_span = (row_scale_max - row_scale_min) or 1 %}
+        {% set fill_left   = ((row.high_rank - row_scale_min) / row_span * 100) | round(1) %}
+        {% set fill_width  = ((row.low_rank  - row.high_rank) / row_span * 100) | round(1) %}
+        {% set marker_pct  = ((row.consensus_rank - row_scale_min) / row_span * 100) | round(1) %}
+        <tr class="consensus-hero__row cb-row"
+            data-player="{{ (row.player_name or '') | lower }}"
+            data-school="{{ (row.school or '') | lower }}"
+            data-pos="{{ (row.position or '') | upper }}"
+            data-rank="{{ row.consensus_rank }}"
+            data-avg="{{ row.avg_rank }}"
+            data-age="{{ row.age or '' }}"
+            data-sources="{{ row.num_sources }}"
+            {% if row.slug %}
+            onclick="window.location='/players/{{ row.slug }}'"
+            tabindex="0"
+            role="link"
+            aria-label="{{ row.player_name }} — consensus #{{ row.consensus_rank }}"
+            {% endif %}
+        >
+          {# # — consensus rank #}
+          <td class="consensus-hero__td consensus-hero__td--rank tabular-nums">{{ row.consensus_rank }}</td>
+
+          {# Δ — rank delta vs previous snapshot #}
+          <td class="consensus-hero__td consensus-hero__td--delta">
+            {% if row.rank_delta is not none and row.rank_delta != 0 %}
+              {% if row.rank_delta > 0 %}
+              <span class="consensus-hero__delta consensus-hero__delta--up">▲{{ row.rank_delta }}</span>
+              {% else %}
+              <span class="consensus-hero__delta consensus-hero__delta--down">▼{{ row.rank_delta | abs }}</span>
+              {% endif %}
+            {% else %}
+            <span class="consensus-hero__delta consensus-hero__delta--flat">–</span>
+            {% endif %}
+          </td>
+
+          {# Trend sparkline #}
+          <td class="consensus-hero__td consensus-hero__td--trend">
+            {% if row.sparkline_path %}
+            <svg class="consensus-hero__sparkline consensus-hero__sparkline--{{ row.sparkline_direction }}"
+                 viewBox="0 0 80 18" width="80" height="18" preserveAspectRatio="none"
+                 aria-hidden="true">
+              <path d="{{ row.sparkline_path }}" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+            {% else %}
+            <span class="consensus-hero__sparkline-empty" aria-hidden="true">–</span>
+            {% endif %}
+          </td>
+
+          {# Player name + optional photo thumbnail #}
+          <td class="consensus-hero__td consensus-hero__td--player">
+            <div class="cb-player-cell">
+              {% if row.photo_url %}
+              <img class="cb-player-photo"
+                   src="{{ row.photo_url }}"
+                   alt="{{ row.player_name or '' }}"
+                   width="28" height="28"
+                   loading="lazy">
+              {% else %}
+              <span class="cb-player-photo cb-player-photo--placeholder" aria-hidden="true"></span>
+              {% endif %}
+              {% if row.slug %}
+              <a class="consensus-hero__player-name"
+                 href="/players/{{ row.slug }}"
+                 onclick="event.stopPropagation()">{{ row.player_name or "—" }}</a>
+              {% else %}
+              <span class="consensus-hero__player-name">{{ row.player_name or "—" }}</span>
+              {% endif %}
+            </div>
+          </td>
+
+          {# School + optional logo #}
+          <td class="consensus-hero__td consensus-hero__td--school">
+            <div class="cb-school-cell">
+              {% if row.school_logo_url %}
+              <img class="cb-school-logo"
+                   src="{{ row.school_logo_url }}"
+                   alt=""
+                   width="16" height="16"
+                   loading="lazy"
+                   aria-hidden="true">
+              {% endif %}
+              <span>{{ row.school or "—" }}</span>
+            </div>
+          </td>
+
+          {# Position #}
+          <td class="consensus-hero__td consensus-hero__td--pos">{{ row.position or "—" }}</td>
+
+          {# Height #}
+          <td class="consensus-hero__td consensus-hero__td--ht tabular-nums">{{ row.height or "—" }}</td>
+
+          {# Weight #}
+          <td class="consensus-hero__td consensus-hero__td--wt tabular-nums">
+            {% if row.weight %}{{ row.weight }} lb{% else %}—{% endif %}
+          </td>
+
+          {# Age #}
+          <td class="consensus-hero__td consensus-hero__td--age tabular-nums">
+            {% if row.age is not none %}{{ "%.1f"|format(row.age) }}{% else %}—{% endif %}
+          </td>
+
+          {# Avg rank #}
+          <td class="consensus-hero__td consensus-hero__td--avg tabular-nums">
+            {{ "%.1f"|format(row.avg_rank) }}
+          </td>
+
+          {# Range bar — high → low with consensus marker.
+             Scale: [row_scale_min, row_scale_max] folds consensus_rank in so
+             the marker stays within 0–100 % even when consensus_rank falls
+             outside the source-rank spread (PR #267 marker-scale guard). #}
+          <td class="consensus-hero__td cb-td--range">
+            <div class="cb-range">
+              <span class="cb-range__edge tabular-nums" title="Best rank">#{{ row.high_rank }}</span>
+              <div class="cb-range__track"
+                   title="Range #{{ row.high_rank }}–#{{ row.low_rank }} · consensus #{{ row.consensus_rank }}">
+                {# Filled region spanning high→low within the scaled track #}
+                <div class="cb-range__fill"
+                     style="left: {{ fill_left }}%; width: {{ [fill_width, 3] | max }}%;"></div>
+                {# Consensus-position marker — white circle with fuchsia border #}
+                <div class="cb-range__marker"
+                     style="left: {{ marker_pct }}%;"
+                     title="Consensus #{{ row.consensus_rank }}"></div>
+              </div>
+              <span class="cb-range__edge tabular-nums" title="Worst rank">#{{ row.low_rank }}</span>
+            </div>
+          </td>
+
+          {# Number of contributing sources #}
+          <td class="consensus-hero__td consensus-hero__td--sources tabular-nums">{{ row.num_sources }}</td>
+
+          {# Status badge — lottery / 2nd round / undrafted territory (rank-based proxy) #}
+          <td class="consensus-hero__td cb-td--status">
+            {% if row.consensus_rank <= 14 %}
+            <span class="cb-status cb-status--lottery">Lottery</span>
+            {% elif row.consensus_rank <= 30 %}
+            <span class="cb-status cb-status--first">1st Rd</span>
+            {% elif row.consensus_rank <= 60 %}
+            <span class="cb-status cb-status--second">2nd Rd</span>
+            {% else %}
+            <span class="cb-status cb-status--fringe">Fringe</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {# No-results row (hidden until JS reveals it) #}
+  <div class="cb-empty" id="cbEmpty" hidden aria-live="polite">
+    <p class="cb-empty__msg">No players match your filter.</p>
+  </div>
+</div>
+
+{% else %}
+{# Empty state: no consensus data for this draft year #}
+<div class="consensus-hero__empty" id="cbEmpty" data-section="board">
+  <p class="consensus-hero__empty-msg">
+    No consensus data available for {{ draft_year }}.
+  </p>
+</div>
+{% endif %}
