@@ -259,6 +259,14 @@ def classify(
         case.correct_slug = exact[0]
         case.correct_name = bios[exact[0]].full_name
         case.classification = "resolvable"
+        # Purge every other attached id, including any whose snapshot is
+        # missing ("unknown"). The exact display_name match is authoritative,
+        # and leaving an unverified id attached would let the follow-up college
+        # rescrape re-pull a namesake's stats via _find_eligible_players (which
+        # iterates every bbr id still on the player).
+        if unknown:
+            case.wrong_slugs = sorted(set(case.wrong_slugs) | set(unknown))
+            case.notes.append(f"purging unknown-snapshot ids: {unknown}")
     elif len(exact) > 1:
         case.classification = "ambiguous"
         case.correct_name = ", ".join(bios[s].full_name for s in exact)
@@ -372,12 +380,8 @@ async def repair(
 async def _purge_bad_aliases(
     db, pid: int, name_norm: str, case: PlayerCase, apply: bool
 ) -> None:
-    alias_rows = (
-        (await db.execute(select(PlayerAlias).where(PlayerAlias.player_id == pid)))
-          # type: ignore[arg-type]
-        .scalars()
-        .all()
-    )
+    stmt = select(PlayerAlias).where(PlayerAlias.player_id == pid)  # type: ignore[arg-type]
+    alias_rows = (await db.execute(stmt)).scalars().all()
     bad = [
         a.id
         for a in alias_rows

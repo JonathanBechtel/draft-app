@@ -27,15 +27,25 @@ from app.utils.db_async import SessionLocal, dispose_engine  # noqa: E402
 DEFAULT_REPORT = REPO_ROOT / "scripts" / "data" / "namesake_contamination_report.json"
 
 
-def _resolvable_ids(report_path: Path) -> list[int]:
+def _resolvable_ids(report_path: Path, allow_unapplied: bool) -> list[int]:
     data = json.loads(report_path.read_text(encoding="utf-8"))
+    # Guard against rescraping before the repair was actually applied. A
+    # dry-run writes the same default report path with ``applied: false``; if
+    # the contaminated BBRef ids are still attached, the sweep would re-pull
+    # the namesakes' stats. Require an applied report unless explicitly forced.
+    if not data.get("applied") and not allow_unapplied:
+        raise SystemExit(
+            f"Report {report_path} has applied=false. Run "
+            "fix_namesake_contamination.py --apply first, or pass "
+            "--allow-unapplied to override."
+        )
     return sorted(
         c["player_id"] for c in data["cases"] if c["classification"] == "resolvable"
     )
 
 
 async def _main(args: argparse.Namespace) -> int:
-    ids = _resolvable_ids(args.report)
+    ids = _resolvable_ids(args.report, args.allow_unapplied)
     print(f"Re-scraping college stats for {len(ids)} repaired players...")
     attempted = scraped = skipped = failed = seasons = 0
     errors: list[str] = []
@@ -74,6 +84,11 @@ def main() -> None:
     ap.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     ap.add_argument(
         "--throttle", type=float, default=3.0, help="Seconds between requests"
+    )
+    ap.add_argument(
+        "--allow-unapplied",
+        action="store_true",
+        help="Permit a report with applied=false (skips the safety guard)",
     )
     args = ap.parse_args()
     raise SystemExit(asyncio.run(_main(args)))
