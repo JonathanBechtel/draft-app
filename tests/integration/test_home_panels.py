@@ -251,7 +251,7 @@ async def test_biggest_movers_populated(
 
     assert "biggestMoversPanel" in html
     # The panel should show riser or faller entries (not the empty-state message)
-    assert "Movement data available once a second snapshot is computed." not in html
+    assert "Rankings shift as new boards are published." not in html
     # At least one striped mover row must be present
     assert "mover-row--up" in html or "mover-row--down" in html
 
@@ -270,7 +270,7 @@ async def test_biggest_movers_empty_single_snapshot(
     html = resp.text
 
     assert "biggestMoversPanel" in html
-    assert "Movement data available once a second snapshot is computed." in html
+    assert "Rankings shift as new boards are published." in html
 
 
 @pytest.mark.asyncio
@@ -286,7 +286,7 @@ async def test_biggest_movers_empty_no_snapshot(
     html = resp.text
 
     assert "biggestMoversPanel" in html
-    assert "Movement data available once a second snapshot is computed." in html
+    assert "Rankings shift as new boards are published." in html
 
 
 # ---------------------------------------------------------------------------
