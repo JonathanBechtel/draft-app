@@ -11,8 +11,13 @@ env:
   FLY_ORG: personal
   # Neon project that hosts the per-PR ephemeral database branches.
   NEON_PROJECT_ID: lingering-tree-42020349
-  # Parent Neon branch each PR database is forked from (matches ENV=dev).
-  NEON_PARENT_BRANCH: development
+  # Parent Neon branch each PR database is forked from. We fork from
+  # production (not development) because production is the only branch whose
+  # alembic state is always consistent with its schema — it's mutated solely
+  # by controlled prod deploys, never by review apps. (development carries
+  # drift from the old shared-review-DB era: schema ahead of alembic_version.)
+  # DraftGuru's data is public, so prod data in previews is acceptable.
+  NEON_PARENT_BRANCH: production
 
 jobs:
   review_app:

@@ -89,7 +89,9 @@ The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, 
 
 - **Trigger**: PR `opened` / `reopened` / `synchronize` / `closed`
 - **Per-PR database**: each PR gets its own ephemeral Neon branch (`pr-<number>`)
-  forked from the `development` branch via `neondatabase/create-branch-action`.
+  forked from the `production` branch via `neondatabase/create-branch-action`.
+  (Production is the only branch whose alembic state stays consistent with its
+  schema; `development` carries drift from the old shared-review-DB era.)
   The branch's connection string is converted to an asyncpg URL and passed to
   the review app as `DATABASE_URL`, so each preview migrates its own isolated
   database. On PR close, `neondatabase/delete-branch-action` tears the branch
