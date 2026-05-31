@@ -184,8 +184,9 @@ async def test_board_column_headers_present(
 ) -> None:
     """GET /consensus board renders all required column headers.
 
-    The spec requires: # · Δ · Trend · Player · School · Pos · Ht · Wt ·
-    Age · Avg · Range · Src · Status.
+    The board shows: # · Δ · Trend · Player · School · Pos · Ht · Wt ·
+    Age · Avg · Range · Src. (The Status column was removed — it overflowed
+    the card and the range bar already conveys tier.)
     """
     with patch(
         "app.routes.ui.get_consensus_board_kind",
@@ -196,19 +197,19 @@ async def test_board_column_headers_present(
     assert resp.status_code == 200
     html = resp.text
 
-    for header in ("Trend", "School", "Pos", "Avg", "Range", "Src", "Status"):
+    for header in ("Trend", "School", "Pos", "Avg", "Range", "Src"):
         assert header in html, f"Column header '{header}' not found in rendered board"
 
 
 @pytest.mark.asyncio
-async def test_board_status_badges_present(
+async def test_board_status_column_removed(
     app_client: AsyncClient,
     board_data: dict,
 ) -> None:
-    """GET /consensus board includes at least one status badge.
+    """The Status column/badge is intentionally absent from the board.
 
-    With three players in the top 3 (all lottery territory), the Lottery
-    badge class must appear.
+    It was dropped because it overflowed the card edge; the range bar
+    already conveys draft tier. This guards against it being reintroduced.
     """
     with patch(
         "app.routes.ui.get_consensus_board_kind",
@@ -218,8 +219,7 @@ async def test_board_status_badges_present(
 
     assert resp.status_code == 200
     html = resp.text
-    assert "cb-status" in html, "Status badge class not found in board"
-    assert "Lottery" in html, "Lottery status badge not found (top-3 players expected)"
+    assert "cb-status" not in html, "Status badge class should have been removed"
 
 
 @pytest.mark.asyncio

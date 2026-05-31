@@ -155,20 +155,16 @@ def _deterministic_match(
     candidates = last_name_idx.get(_norm(last_name), [])
     if not candidates:
         return None
-    # Tier 2: last exact + first exact
+    # Last exact + first exact only. We deliberately do NOT fall back to a
+    # first-initial match: distinct first names that share an initial (e.g.
+    # "Derek" vs "Dylan" Harper) are different people, and guessing across
+    # them silently merges one player's bio/stats onto another. Ambiguous
+    # names must resolve to "unmatched" (create a new record / leave for
+    # manual review) rather than be assigned to a same-initial namesake.
     for pid in candidates:
         p = pm_by_id.get(pid)
         if p and p.first_name and _norm(p.first_name) == _norm(first_name or ""):
             return pid
-    # Tier 3: last exact + first initial
-    finitial = (first_name or "").strip().lower()[:1]
-    hits = []
-    for pid in candidates:
-        p = pm_by_id.get(pid)
-        if p and p.first_name and p.first_name.strip().lower().startswith(finitial):
-            hits.append(pid)
-    if len(hits) == 1:
-        return hits[0]
     return None
 
 
