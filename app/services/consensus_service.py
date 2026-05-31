@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import statistics
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
@@ -284,6 +285,54 @@ def _build_aggregates(
     return out
 
 
+def _rankdata(values: list[float]) -> list[float]:
+    """Return 1-based ranks of ``values``, averaging ties.
+
+    Mirrors ``scipy.stats.rankdata`` (average method) without the dependency.
+    """
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks = [0.0] * len(values)
+    i = 0
+    while i < len(values):
+        j = i
+        while j + 1 < len(values) and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        avg_rank = (i + j) / 2.0 + 1.0  # 1-based average rank for the tie group
+        for k in range(i, j + 1):
+            ranks[order[k]] = avg_rank
+        i = j + 1
+    return ranks
+
+
+def _pearson(xs: list[float], ys: list[float]) -> Optional[float]:
+    """Pearson correlation of two equal-length sequences, or None if undefined."""
+    n = len(xs)
+    if n < 2:
+        return None
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    var_y = sum((y - mean_y) ** 2 for y in ys)
+    if var_x <= 0 or var_y <= 0:
+        return None  # one variable is constant → correlation undefined
+    return cov / ((var_x**0.5) * (var_y**0.5))
+
+
+def _spearman(pairs: Sequence[tuple[float, float]]) -> Optional[float]:
+    """Spearman rank correlation for (x, y) pairs.
+
+    Computed as Pearson on the rank-transformed values — the correct measure
+    for comparing two orderings (a source's board vs. the consensus). Returns
+    None when fewer than 3 shared points exist (too small to be meaningful).
+    """
+    if len(pairs) < 3:
+        return None
+    xs = [p[0] for p in pairs]
+    ys = [p[1] for p in pairs]
+    return _pearson(_rankdata(xs), _rankdata(ys))
+
+
 def _consensus_sort_key(agg: _PlayerAggregate) -> tuple[float, float, int, int]:
     """Tie-breaker order: avg → median → high (best individual) → player_id.
 
@@ -391,7 +440,9 @@ async def _write_source_analytics(
     # First pass: compute avg_deviation + biggest_outlier per source.
     # Iterate over source_to_board so every eligible source is included,
     # not just those that contributed to consensus.
-    raw_by_source: dict[int, tuple[float, int, Optional[int], int]] = {}
+    raw_by_source: dict[
+        int, tuple[float, int, Optional[int], int, Optional[float]]
+    ] = {}
     for source_id, latest_board_id in source_to_board.items():
         triples = per_source.get(source_id, [])
         deviations = [abs(src - cons) for _, src, cons in triples]
@@ -408,11 +459,17 @@ async def _write_source_analytics(
             outlier_pid = outlier_player_id
             outlier_delta = outlier_cons - outlier_src
 
+        # Alignment: Spearman correlation of (source_rank, consensus_rank) over
+        # the players this source shares with the consensus. Captures how well
+        # the source's *ordering* tracks the field, independent of avg_deviation.
+        alignment = _spearman([(src, cons) for _, src, cons in triples])
+
         raw_by_source[source_id] = (
             avg_dev,
             latest_board_id,
             outlier_pid,
             outlier_delta,
+            alignment,
         )
 
     # Second pass: normalize avg_deviation into a contrarian z-score
@@ -428,6 +485,7 @@ async def _write_source_analytics(
         latest_board_id,
         outlier_pid,
         outlier_delta,
+        alignment,
     ) in raw_by_source.items():
         score = (avg_dev - mean_avg) / stdev_avg if stdev_avg > 0 else 0.0
         db.add(
@@ -439,6 +497,7 @@ async def _write_source_analytics(
                 contrarian_score=score,
                 biggest_outlier_player_id=outlier_pid,
                 outlier_delta=outlier_delta,
+                alignment=alignment,
             )
         )
 
