@@ -1,0 +1,35 @@
+{# ============================================================
+   AGGREGATION / CONTENT-RIGHTS ATTRIBUTION
+   Rendered on the homepage and the dedicated consensus page.
+   Credits the independent analysts whose published boards feed the
+   consensus and points readers back to their work — DraftGuru
+   aggregates, it does not author these rankings.
+
+   Optional context:
+     attribution_sources: list of dicts with
+       - source_display_name
+       - source_slug   (links to the internal /sources/{slug} page,
+                         which in turn links out to the author's board)
+   ============================================================ #}
+<aside class="consensus-attribution" aria-label="About the consensus sources">
+  <svg class="consensus-attribution__icon" viewBox="0 0 24 24" width="20" height="20"
+       fill="none" stroke="currentColor" stroke-width="2"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 1 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"/>
+  </svg>
+  <div class="consensus-attribution__body">
+    <p class="consensus-attribution__lead">
+      <strong>The boards behind this consensus are built by independent draft analysts — not DraftGuru.</strong>
+      We just blend their published rankings into one view. If you like what you see, go read the
+      originals and support the people doing the work — every source links straight back to its author's page.
+    </p>
+    {% if attribution_sources %}
+    <p class="consensus-attribution__sources">
+      <span class="consensus-attribution__sources-label">Boards by</span>
+      {% for s in attribution_sources -%}
+      <a class="consensus-attribution__source-link" href="/sources/{{ s.source_slug }}">{{ s.source_display_name }}</a>{%- if not loop.last %} · {% endif -%}
+      {%- endfor %}
+    </p>
+    {% endif %}
+  </div>
+</aside>
