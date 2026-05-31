@@ -29,6 +29,7 @@
     <thead>
       <tr>
         <th scope="col">Source</th>
+        <th scope="col" title="0–100 Spearman alignment: how closely this source's ordering tracks the consensus ordering">Alignment</th>
         <th scope="col">Avg dev</th>
         <th scope="col">Spread</th>
         <th scope="col">Biggest outlier</th>
@@ -43,6 +44,16 @@
              context; the /sources detail page already provides the external link. #}
           <a class="src-link"
              href="/sources/{{ row.source_slug }}">{{ row.source_display_name }}</a>
+        </td>
+        <td class="dev-table__alignment">
+          {% if row.alignment_score is not none %}
+            <span class="dev-table__align-meter" aria-hidden="true">
+              <span class="dev-table__align-fill" style="width: {{ row.alignment_score }}%"></span>
+            </span>
+            <span class="dev-table__align-score tabular-nums">{{ row.alignment_score }}</span>
+          {% else %}
+            <span class="dev-table__empty">—</span>
+          {% endif %}
         </td>
         <td class="tabular-nums">
           {% if row.avg_deviation is not none %}

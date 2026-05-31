@@ -213,3 +213,12 @@ class SourceAnalytics(SQLModel, table=True):  # type: ignore[call-arg]
             "consensus_rank - source_rank (positive = source higher)."
         ),
     )
+    alignment: Optional[float] = Field(
+        default=None,
+        description=(
+            "Spearman rank correlation (−1..1) between this source's ranks "
+            "and the consensus ranks over the players they share. NULL when "
+            "the source ranked fewer than 3 consensus players (not "
+            "meaningful). Presented to users as a 0–100 'alignment score'."
+        ),
+    )

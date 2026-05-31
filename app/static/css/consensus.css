@@ -472,8 +472,64 @@
   line-height: 1.5;
 }
 
+.scatter__caption strong {
+  color: var(--color-slate-600);
+  font-weight: 700;
+}
+
+.scatter__caption em {
+  font-style: normal;
+  color: var(--color-slate-600);
+}
+
 .scatter__legend--bold {
   color: var(--color-accent-fuchsia);
+}
+
+/* Alignment-score readout above the caption */
+.scatter__alignment {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--color-accent-emerald, #10b981);
+  background: var(--color-slate-50);
+  border-radius: 6px;
+}
+
+.scatter__alignment[hidden] {
+  display: none;
+}
+
+.scatter__alignment-label {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--color-slate-500);
+}
+
+.scatter__alignment-score {
+  font-family: var(--font-heading, sans-serif);
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-accent-emerald-dark, #047857);
+}
+
+.scatter__alignment-max {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-400);
+}
+
+.scatter__alignment-hint {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--color-slate-400);
 }
 
 /* ==========================================================================
@@ -582,6 +638,36 @@
   height: 100%;
   border-radius: 4px;
   background: linear-gradient(90deg, rgba(244, 63, 94, 0.4), var(--color-accent-rose));
+}
+
+/* Alignment cell — 0–100 Spearman score with a small meter */
+.dev-table__alignment {
+  white-space: nowrap;
+}
+
+.dev-table__align-meter {
+  display: inline-block;
+  width: 54px;
+  height: 7px;
+  border-radius: 4px;
+  background: var(--color-slate-100);
+  vertical-align: middle;
+  overflow: hidden;
+}
+
+.dev-table__align-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.45), var(--color-accent-emerald, #10b981));
+}
+
+.dev-table__align-score {
+  display: inline-block;
+  margin-left: 0.45rem;
+  font-weight: 700;
+  color: var(--color-slate-700);
+  vertical-align: middle;
 }
 
 /* Outlier cell */

@@ -52,10 +52,20 @@
     </svg>
   </div>
 
-  {# ---- Caption with active source link-out ---- #}
+  {% set first = source_overlays[0] %}
+
+  {# ---- Alignment score for the active source ---- #}
+  <div class="scatter__alignment" id="scatterAlignment"
+       {% if first.alignment_score is none %}hidden{% endif %}>
+    <span class="scatter__alignment-label">Consensus alignment</span>
+    <span class="scatter__alignment-score" id="scatterAlignmentScore">{{ first.alignment_score if first.alignment_score is not none else "—" }}</span>
+    <span class="scatter__alignment-max">/ 100</span>
+    <span class="scatter__alignment-hint">how closely their ordering tracks the field</span>
+  </div>
+
+  {# ---- Caption: teaches the axes + active source link-out ---- #}
   <p class="scatter__caption" id="scatterCaption">
     Viewing
-    {% set first = source_overlays[0] %}
     {% if first.work_url %}
     <a class="src-link"
        id="scatterSourceLink"
@@ -68,8 +78,9 @@
        id="scatterSourceLink"
        href="/sources/{{ first.source_slug }}"
        title="{{ first.source_display_name }} on DraftGuru">{{ first.source_display_name }}</a>
-    {% endif %}
-    &middot; hover a dot for the pick.
+    {% endif %}.
+    Each dot is a prospect — <strong>below the dashed line</strong> means this source ranks them
+    <em>higher</em> than consensus, <strong>above</strong> means <em>lower</em>, on the line means they agree. Hover a dot for the pick.
     <span class="scatter__legend scatter__legend--bold">&#9679;</span> fuchsia = biggest disagreements.
   </p>
 

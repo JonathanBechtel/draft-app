@@ -597,9 +597,23 @@ async def get_source_analytics(
                 contrarian_score=row.contrarian_score,
                 biggest_outlier_player_id=row.biggest_outlier_player_id,
                 outlier_delta=row.outlier_delta,
+                alignment=row.alignment,
             )
         )
     return out
+
+
+def _alignment_score(rho: Optional[float]) -> Optional[int]:
+    """Map a Spearman correlation (−1..1) to a friendly 0–100 alignment score.
+
+    100 = ranks players exactly like consensus; 50 = no correlation; 0 = ranks
+    them in the opposite order. Returns None when ``rho`` is None (the source
+    ranked too few shared players for the statistic to be meaningful).
+    """
+    if rho is None:
+        return None
+    score = round((rho + 1.0) / 2.0 * 100.0)
+    return max(0, min(100, score))
 
 
 async def get_source_leaderboard(
@@ -655,6 +669,8 @@ async def get_source_leaderboard(
                 if outlier_player
                 else None,
                 "outlier_delta": row.outlier_delta,
+                "alignment": row.alignment,
+                "alignment_score": _alignment_score(row.alignment),
             }
         )
     return out
@@ -801,6 +817,8 @@ async def get_source_detail(
         "contrarian_score": sa_row.contrarian_score,
         "outlier_delta": sa_row.outlier_delta,
         "biggest_outlier_player_id": biggest_outlier_player_id,
+        "alignment": sa_row.alignment,
+        "alignment_score": _alignment_score(sa_row.alignment),
         "overlay_rows": overlay_rows,
         "draft_year": draft_year,
     }
