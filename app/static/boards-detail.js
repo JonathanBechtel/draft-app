@@ -120,20 +120,29 @@
       const boardId = row.dataset.boardId;
       if (!entryId || !boardId) return;
 
-      const positionEl = row.querySelector('[data-field="position"]');
-      const tierEl = row.querySelector('[data-field="tier"]');
-      const positionVal = positionEl ? positionEl.value.trim() : "";
-      const tierVal = tierEl ? tierEl.value.trim() : "";
+      // Serialize every autosave control in the row by its `name`, so
+      // mock-draft fields (team_id, round, trade_note) are persisted too —
+      // not just position/tier. The update route accepts all of them.
+      const fieldEls = row.querySelectorAll(".bb-autosave[name]");
+      const body = new URLSearchParams();
+      let positionVal = "";
+      let positionEl = null;
+      fieldEls.forEach((f) => {
+        const name = f.getAttribute("name");
+        if (!name) return;
+        const val = f.value.trim();
+        if (name === "position") {
+          positionVal = val;
+          positionEl = f;
+        }
+        body.append(name, val);
+      });
 
       if (positionVal === "") {
         setStatus("Rank is required.", true);
         if (positionEl) positionEl.focus();
         return;
       }
-
-      const body = new URLSearchParams();
-      body.append("position", positionVal);
-      body.append("tier", tierVal);
 
       setStatus("Saving…", false);
       try {

@@ -96,6 +96,13 @@ async def main(*, lookback_days: int, dry_run: bool) -> None:
 
     async with session_factory() as db:
         report = await run_auto_ingest(db, lookback_days=lookback_days, dry_run=dry_run)
+        # run_auto_ingest follows the repo convention of caller-owns-commit and
+        # only flushes. Without this commit the created PENDING boards, entries,
+        # and extraction-memory updates roll back when the session closes — even
+        # though the report counts them as extracted. dry_run writes nothing, so
+        # skip the commit there.
+        if not dry_run:
+            await db.commit()
 
     await engine.dispose()
 

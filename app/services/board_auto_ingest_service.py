@@ -32,11 +32,13 @@ still passes these through so the dedup counters in the report reflect reality.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Optional
 
+import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -357,9 +359,18 @@ async def run_auto_ingest(
             logger.info("board.auto_ingest.paywalled news_item_id=%s: %s", item.id, exc)
 
         except BoardExtractionError as exc:
-            # Non-retryable extraction errors (bad HTML, no body, malformed AI
-            # response, etc.).  Classify as UNRESOLVABLE.
-            extraction_result = BoardExtractionResult.UNRESOLVABLE
+            # board_extraction_service wraps transient fetch/Gemini failures
+            # (httpx network/5xx at _http_get, asyncio.TimeoutError at the Gemini
+            # call) in BoardExtractionError via ``raise ... from exc``. Treat
+            # those as TRANSIENT_ERROR so the retry-throttle re-attempts them
+            # after the cooldown, rather than permanently blacklisting an article
+            # over a temporary outage. Genuinely non-retryable errors (not a
+            # Substack URL, empty body, malformed AI response — raised without a
+            # transient cause) stay UNRESOLVABLE.
+            if isinstance(exc.__cause__, (httpx.HTTPError, asyncio.TimeoutError)):
+                extraction_result = BoardExtractionResult.TRANSIENT_ERROR
+            else:
+                extraction_result = BoardExtractionResult.UNRESOLVABLE
             report.errors.append(
                 {
                     "news_item_id": item.id,
@@ -368,9 +379,10 @@ async def run_auto_ingest(
                 }
             )
             logger.warning(
-                "board.auto_ingest.error news_item_id=%s kind=%s error=%s: %s",
+                "board.auto_ingest.error news_item_id=%s kind=%s result=%s error=%s: %s",
                 item.id,
                 kind.value,
+                extraction_result.value,
                 type(exc).__name__,
                 exc,
             )
