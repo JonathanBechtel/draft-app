@@ -32,6 +32,18 @@
   margin: 0 0 0.25rem;
 }
 
+.consensus-page__byline {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--color-slate-600);
+  max-width: 64ch;
+  margin: 0 0 0.5rem;
+}
+
+.consensus-page__byline strong {
+  color: var(--color-slate-800);
+}
+
 .consensus-page__freshness {
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -288,42 +300,6 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25), 0 0 0 3px rgba(217, 70, 239, 0.2);
 }
 
-/* --- Status badge ---------------------------------------------------------- */
-.cb-td--status {
-  white-space: nowrap;
-}
-
-.cb-status {
-  display: inline-block;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  padding: 0.15rem 0.45rem;
-  border-radius: 999px;
-}
-
-.cb-status--lottery {
-  background: rgba(245, 158, 11, 0.15);
-  color: #b45309;
-}
-
-.cb-status--first {
-  background: rgba(16, 185, 129, 0.12);
-  color: #047857;
-}
-
-.cb-status--second {
-  background: rgba(100, 116, 139, 0.12);
-  color: var(--color-slate-600);
-}
-
-.cb-status--fringe {
-  background: rgba(100, 116, 139, 0.08);
-  color: var(--color-slate-500);
-}
-
 /* --- Empty state ----------------------------------------------------------- */
 .cb-empty {
   padding: 1.25rem 1rem;
@@ -357,9 +333,7 @@
 
 @media (max-width: 640px) {
   .consensus-hero__th--age,
-  .consensus-hero__td--age,
-  .cb-td--status,
-  .cb-th:last-child {
+  .consensus-hero__td--age {
     display: none;
   }
 }
