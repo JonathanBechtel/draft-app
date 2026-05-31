@@ -597,9 +597,23 @@ async def get_source_analytics(
                 contrarian_score=row.contrarian_score,
                 biggest_outlier_player_id=row.biggest_outlier_player_id,
                 outlier_delta=row.outlier_delta,
+                alignment=row.alignment,
             )
         )
     return out
+
+
+def _alignment_score(rho: Optional[float]) -> Optional[int]:
+    """Map a Spearman correlation (−1..1) to a friendly 0–100 alignment score.
+
+    100 = ranks players exactly like consensus; 50 = no correlation; 0 = ranks
+    them in the opposite order. Returns None when ``rho`` is None (the source
+    ranked too few shared players for the statistic to be meaningful).
+    """
+    if rho is None:
+        return None
+    score = round((rho + 1.0) / 2.0 * 100.0)
+    return max(0, min(100, score))
 
 
 async def get_source_leaderboard(
@@ -655,6 +669,8 @@ async def get_source_leaderboard(
                 if outlier_player
                 else None,
                 "outlier_delta": row.outlier_delta,
+                "alignment": row.alignment,
+                "alignment_score": _alignment_score(row.alignment),
             }
         )
     return out
@@ -801,6 +817,8 @@ async def get_source_detail(
         "contrarian_score": sa_row.contrarian_score,
         "outlier_delta": sa_row.outlier_delta,
         "biggest_outlier_player_id": biggest_outlier_player_id,
+        "alignment": sa_row.alignment,
+        "alignment_score": _alignment_score(sa_row.alignment),
         "overlay_rows": overlay_rows,
         "draft_year": draft_year,
     }
@@ -1630,6 +1648,36 @@ async def get_source_breakdown_matrix(
         s.id: s for s in source_rows if s.id is not None
     }
 
+    # --- Per-source article URL (links each cell back to the original mock) ---
+    # Resolve Board.news_item_id → NewsItem.url so every rank in the matrix can
+    # link out to the board it came from. Legacy boards with no news_item carry
+    # no URL and stay unlinked.
+    article_news_item_ids = [
+        b.news_item_id for b in board_by_source.values() if b.news_item_id is not None
+    ]
+    matrix_article_map: dict[int, NewsItem] = {}
+    if article_news_item_ids:
+        matrix_article_rows = (
+            (
+                await db.execute(
+                    select(NewsItem).where(  # type: ignore[call-overload]
+                        NewsItem.id.in_(article_news_item_ids)  # type: ignore[union-attr]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        matrix_article_map = {a.id: a for a in matrix_article_rows if a.id is not None}
+    source_work_url: dict[int, Optional[str]] = {}
+    for sid_key, board in board_by_source.items():
+        article = (
+            matrix_article_map.get(board.news_item_id)
+            if board.news_item_id is not None
+            else None
+        )
+        source_work_url[sid_key] = article.url if article else None
+
     # --- Board entries for the top-N players, across all snapshot boards ------
     entry_rows = (
         await db.execute(
@@ -1683,6 +1731,9 @@ async def get_source_breakdown_matrix(
             "slug": generate_slug(
                 source_map[src_id].name if src_id in source_map else f"source_{src_id}"
             ),
+            # External board URL when the source's board links to an article;
+            # None for legacy boards with no news_item.
+            "work_url": source_work_url.get(src_id),
         }
         for src_id in source_ids
     ]
@@ -1691,13 +1742,21 @@ async def get_source_breakdown_matrix(
     for (pid, src_id), source_rank in raw_cells.items():
         consensus_rank = consensus_rank_map.get(pid)
         outlier: Optional[str] = None
+        delta: Optional[int] = None
         if consensus_rank is not None:
+            # delta = source_rank − consensus_rank.
+            #   negative → source ranks the player higher (better) than consensus
+            #   positive → source ranks the player lower (worse) than consensus
             delta = source_rank - consensus_rank
             if delta < -_OUTLIER_THRESHOLD:
                 outlier = "high"  # source likes the player more than consensus
             elif delta > _OUTLIER_THRESHOLD:
                 outlier = "low"  # source is cooler on the player than consensus
-        cells_out[(pid, src_id)] = {"rank": source_rank, "outlier": outlier}
+        cells_out[(pid, src_id)] = {
+            "rank": source_rank,
+            "outlier": outlier,
+            "delta": delta,
+        }
 
     return {"players": players_out, "sources": sources_out, "cells": cells_out}
 

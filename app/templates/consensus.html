@@ -28,6 +28,13 @@
       {% endif %}
     </h1>
 
+    <p class="consensus-page__byline">
+      This board blends the most recent big boards from
+      {% if board_freshness and board_freshness.num_sources %}<strong>{{ board_freshness.num_sources }}</strong>{% endif %}
+      independent draft analysts into one consensus ranking. Each prospect's spot
+      reflects where the field collectively places them — not any single source's take.
+    </p>
+
     {% if board_freshness %}
     <p class="consensus-page__freshness">
       Based on
@@ -42,6 +49,9 @@
     </p>
     {% endif %}
   </div>
+
+  {# Aggregation / content-rights attribution — credits the analysts. #}
+  {% include "partials/consensus/attribution.html" %}
 
   {# ============================================================
      SECTION 1 — FULL BOARD TABLE

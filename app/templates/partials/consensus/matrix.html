@@ -7,7 +7,7 @@
 <div class="matrix-section" data-section="matrix">
   <div class="matrix-section__caption">
     Source breakdown — top prospects
-    <span class="matrix-section__caption-sub">cells = each source's rank; highlighted = outliers</span>
+    <span class="matrix-section__caption-sub">each cell is a source's rank · <span class="matrix-legend__swatch matrix-legend__swatch--high"></span> above consensus · <span class="matrix-legend__swatch matrix-legend__swatch--low"></span> below · click a rank to open that board</span>
   </div>
   <div class="matrix-section__scroll">
     <table class="matrix-table" aria-label="Source breakdown matrix">
@@ -46,19 +46,32 @@
           {% for src in source_matrix.sources %}
           {% set cell = source_matrix.cells.get((player.player_id, src.source_id)) %}
           {% if cell %}
-            {% if cell.outlier == "high" %}
-            <td class="matrix-table__td matrix-table__td--out-high" title="Source ranks this player higher than consensus">
-              {{ cell.rank }}
+            {# Continuous heatmap: tint each cell by how far the source's rank
+               sits from consensus (delta = source_rank − consensus_rank,
+               clamped to ±10). Green = ranks the player above consensus,
+               red = below. Outlier cells (|delta| > 5) keep the bold class. #}
+            {%- set d = cell.delta -%}
+            {%- set out_cls = " matrix-table__td--out-high" if cell.outlier == "high" else (" matrix-table__td--out-low" if cell.outlier == "low" else "") -%}
+            {%- set heat_style = "" -%}
+            {%- if d is not none and d != 0 -%}
+              {%- set capped = [d | abs, 10] | min -%}
+              {%- if d < 0 -%}
+                {%- set heat_style = "background-color: rgba(16,185,129," ~ (capped / 10 * 0.30) | round(3) ~ ");" -%}
+              {%- else -%}
+                {%- set heat_style = "background-color: rgba(244,63,94," ~ (capped / 10 * 0.28) | round(3) ~ ");" -%}
+              {%- endif -%}
+            {%- endif -%}
+            {%- set cell_title = "Source ranked this player #" ~ cell.rank ~ " · consensus #" ~ player.consensus_rank -%}
+            <td class="matrix-table__td{{ out_cls }}" style="{{ heat_style }}" title="{{ cell_title }}">
+              {% if src.work_url %}
+              <a class="matrix-table__cell-link" href="{{ src.work_url }}"
+                 target="_blank" rel="noopener noreferrer"
+                 title="Open {{ src.name }}'s board (opens in a new tab)">{{ cell.rank }}</a>
+              {% else %}
+              <a class="matrix-table__cell-link" href="/sources/{{ src.slug }}"
+                 title="See {{ src.name }} on DraftGuru">{{ cell.rank }}</a>
+              {% endif %}
             </td>
-            {% elif cell.outlier == "low" %}
-            <td class="matrix-table__td matrix-table__td--out-low" title="Source ranks this player lower than consensus">
-              {{ cell.rank }}
-            </td>
-            {% else %}
-            <td class="matrix-table__td">
-              {{ cell.rank }}
-            </td>
-            {% endif %}
           {% else %}
           <td class="matrix-table__td matrix-table__td--missing" title="Not ranked by this source">—</td>
           {% endif %}

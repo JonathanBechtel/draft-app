@@ -976,16 +976,140 @@ a.spotlight__source--external:hover .spotlight__external-icon {
 
 /* Empty state (shared across all three panels) */
 .consensus-panel__empty {
-  padding: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.25rem 1rem;
   text-align: center;
+}
+
+.consensus-panel__empty-icon {
+  color: var(--color-accent-amber);
+  opacity: 0.8;
 }
 
 .consensus-panel__empty-msg {
   font-family: var(--font-mono);
   font-size: 0.8125rem;
-  color: var(--color-slate-400);
+  color: var(--color-slate-500);
   margin: 0;
-  line-height: 1.5;
+  line-height: 1.55;
+  max-width: 30ch;
+}
+
+/* A panel whose only body is an empty-state shouldn't stretch to match a
+   data-filled sibling in the 2-up grid (that's what made the empty Movers
+   card read as a giant void). Pin it to the top instead. */
+.consensus-panel:has(.consensus-panel__empty) {
+  align-self: start;
+}
+
+/* "View full board" pill on the homepage consensus hero — matches the
+   monospace amber CTA treatment used elsewhere on the page. */
+.consensus-hero__view-full {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.75rem 0.25rem 0;
+}
+
+.consensus-hero__view-full-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.95rem;
+  border: 1.5px solid var(--color-accent-amber);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-accent-amber-dark, #b45309);
+  background: color-mix(in srgb, var(--color-accent-amber) 10%, #fff);
+  text-decoration: none;
+  transition: transform var(--transition-speed), box-shadow var(--transition-speed),
+    background var(--transition-speed), color var(--transition-speed);
+}
+
+.consensus-hero__view-full-link svg {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--transition-speed);
+}
+
+.consensus-hero__view-full-link:hover {
+  color: var(--color-white);
+  background: var(--color-accent-amber);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.28);
+}
+
+.consensus-hero__view-full-link:hover svg {
+  transform: translateX(3px);
+}
+
+/* Aggregation / content-rights attribution (homepage + consensus page) */
+.consensus-attribution {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border-left: 3px solid var(--color-accent-cyan, #06b6d4);
+  border-radius: var(--border-radius, 8px);
+  background: var(--color-slate-50, #f8fafc);
+}
+
+.consensus-attribution__icon {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+  color: var(--color-accent-cyan, #06b6d4);
+}
+
+.consensus-attribution__body {
+  min-width: 0;
+}
+
+.consensus-attribution__lead {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--color-slate-600, #475569);
+}
+
+.consensus-attribution__lead strong {
+  color: var(--color-slate-800, #1e293b);
+}
+
+.consensus-attribution__sources {
+  margin: 0.55rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: var(--color-slate-500, #64748b);
+}
+
+.consensus-attribution__sources-label {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--color-slate-400, #94a3b8);
+  margin-right: 0.35rem;
+}
+
+.consensus-attribution__source-link {
+  color: var(--color-accent-cyan-dark, #0e7490);
+  text-decoration: none;
+  font-weight: 600;
+  transition: color var(--transition-speed);
+}
+
+.consensus-attribution__source-link:hover {
+  color: var(--color-accent-amber-dark, #b45309);
+  text-decoration: underline;
 }
 
 /* Responsive: the 2-up grid collapses to a single column on narrow screens */

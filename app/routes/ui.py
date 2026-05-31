@@ -174,6 +174,10 @@ async def home(
     )
     source_spotlight = await get_source_spotlight(db, draft_year=CONSENSUS_DRAFT_YEAR)
     board_freshness = await get_board_freshness(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    # Analysts whose boards feed the consensus — credited in the attribution note.
+    attribution_sources = await get_source_leaderboard(
+        db, draft_year=CONSENSUS_DRAFT_YEAR
+    )
 
     # --- Expanded trending payload (featured cards + compact tail) ------------
     expanded = await get_expanded_trending_players(db)
@@ -381,6 +385,7 @@ async def home(
             "most_controversial": most_controversial,
             "source_spotlight": source_spotlight,
             "board_freshness": board_freshness,
+            "attribution_sources": attribution_sources,
             # Existing sections
             "featured_trending": featured_trending,
             "compact_trending": compact_trending,
@@ -1221,6 +1226,8 @@ async def consensus_page(
             # Source leaderboard + per-source overlays (scatter / source section)
             "source_leaderboard": source_leaderboard,
             "source_overlays": source_overlays,
+            # Aggregation attribution — analysts whose boards feed the consensus.
+            "attribution_sources": source_leaderboard,
             # Source breakdown matrix (ticket #270)
             "source_matrix": source_matrix,
             # Player rank trajectories (ticket #270)

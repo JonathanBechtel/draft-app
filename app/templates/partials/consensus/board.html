@@ -62,7 +62,6 @@
           <th class="consensus-hero__th cb-th cb-th--nosort cb-th--range">Range</th>
           <th class="consensus-hero__th consensus-hero__th--sources cb-th"
               data-col="num_sources">Src</th>
-          <th class="consensus-hero__th cb-th cb-th--nosort">Status</th>
         </tr>
       </thead>
       <tbody id="cbBody">
@@ -200,19 +199,6 @@
 
           {# Number of contributing sources #}
           <td class="consensus-hero__td consensus-hero__td--sources tabular-nums">{{ row.num_sources }}</td>
-
-          {# Status badge — lottery / 2nd round / undrafted territory (rank-based proxy) #}
-          <td class="consensus-hero__td cb-td--status">
-            {% if row.consensus_rank <= 14 %}
-            <span class="cb-status cb-status--lottery">Lottery</span>
-            {% elif row.consensus_rank <= 30 %}
-            <span class="cb-status cb-status--first">1st Rd</span>
-            {% elif row.consensus_rank <= 60 %}
-            <span class="cb-status cb-status--second">2nd Rd</span>
-            {% else %}
-            <span class="cb-status cb-status--fringe">Fringe</span>
-            {% endif %}
-          </td>
         </tr>
         {% endfor %}
       </tbody>

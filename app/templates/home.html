@@ -268,8 +268,16 @@
       {% endif %}
     </div>
     <div class="consensus-hero__view-full">
-      <a href="/consensus" class="consensus-hero__view-full-link">View full board &rarr;</a>
+      <a href="/consensus" class="consensus-hero__view-full-link">
+        View full board
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14M13 6l6 6-6 6"/>
+        </svg>
+      </a>
     </div>
+    {# Aggregation / content-rights attribution — credits the analysts. #}
+    {% include "partials/consensus/attribution.html" %}
     {% else %}
     <div class="consensus-hero__empty">
       <p class="consensus-hero__empty-msg">
@@ -391,8 +399,14 @@
 
         {% else %}
         <div class="consensus-panel__empty" aria-live="polite">
+          <svg class="consensus-panel__empty-icon" viewBox="0 0 24 24" width="22" height="22"
+               fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+            <polyline points="16 7 22 7 22 13"></polyline>
+          </svg>
           <p class="consensus-panel__empty-msg">
-            Movement data available once a second snapshot is computed.
+            Rankings shift as new boards are published. The biggest risers and
+            fallers will show up here once the next board is approved.
           </p>
         </div>
         {% endif %}
