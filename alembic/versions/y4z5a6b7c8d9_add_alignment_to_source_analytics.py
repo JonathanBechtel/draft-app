@@ -8,7 +8,7 @@ consensus page. NULL when a source ranked fewer than 3 consensus players.
 Mirrors ``app/schemas/consensus.py`` (``SourceAnalytics.alignment``).
 
 Revision ID: y4z5a6b7c8d9
-Revises: x3y4z5a6b7c8
+Revises: w2x3y4z5a6b7
 Create Date: 2026-05-31
 """
 
@@ -19,7 +19,7 @@ from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
 revision: str = "y4z5a6b7c8d9"
-down_revision: Union[str, None] = "x3y4z5a6b7c8"
+down_revision: Union[str, None] = "w2x3y4z5a6b7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
