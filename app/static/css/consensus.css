@@ -855,6 +855,41 @@
   font-weight: 700;
 }
 
+/* Each rank links back to the board it came from. The link fills the cell so
+   the whole tinted area is clickable; color is inherited so the heatmap +
+   outlier text colors still read. */
+.matrix-table__cell-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 3px;
+  transition: color 0.12s;
+}
+
+.matrix-table__cell-link:hover,
+.matrix-table__cell-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Inline legend swatches in the caption */
+.matrix-legend__swatch {
+  display: inline-block;
+  width: 0.72em;
+  height: 0.72em;
+  border-radius: 2px;
+  vertical-align: middle;
+  margin: 0 0.05em;
+}
+
+.matrix-legend__swatch--high {
+  background-color: rgba(16, 185, 129, 0.55);
+}
+
+.matrix-legend__swatch--low {
+  background-color: rgba(244, 63, 94, 0.5);
+}
+
 /* ==========================================================================
    SECTION 5 — PLAYER RANK TRAJECTORIES
    (formerly consensus-trajectories.css — ticket #276)
