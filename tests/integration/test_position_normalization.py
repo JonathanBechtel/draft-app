@@ -86,3 +86,30 @@ async def test_ingest_combine_position_resolution(db_session):
     # Get again
     pos_id2 = await get_or_create_position_id(db_session, "sf")
     assert pos_id == pos_id2
+
+
+@pytest.mark.asyncio
+async def test_cbb_enrich_resolves_position_id(db_session):
+    """CBB enrichment must resolve a position_id from free-text raw_position.
+
+    Regression for the bug where ``cbb_enrich`` wrote ``raw_position`` but left
+    ``position_id`` NULL, silently disabling same-position similarity comps.
+    """
+    from scripts.top100.cbb_enrich import _resolve_position_id
+
+    conn = await db_session.connection()
+
+    forward_id = await _resolve_position_id(conn, "Forward")
+    assert forward_id is not None
+    pos = (
+        await db_session.execute(select(Position).where(Position.id == forward_id))
+    ).scalar_one()
+    assert pos.code == "f"
+    assert "forward" in pos.parents
+
+    # Existing rows are reused, not duplicated.
+    assert await _resolve_position_id(conn, "Forward") == forward_id
+
+    # Unmappable / empty labels resolve to None rather than minting junk.
+    assert await _resolve_position_id(conn, "Wing") is None
+    assert await _resolve_position_id(conn, None) is None
