@@ -30,6 +30,9 @@ async def test_derive_position_tags():
     )
     assert derive_position_tags("Center/Forward") == ("c_f", ["big", "forward"])
     assert derive_position_tags("Guard/Forward") == ("g_f", ["forward", "guard"])
+    # Parent-level labels emitted by sports_reference_cbb resolve to broad codes.
+    assert derive_position_tags("Wing") == ("w", ["wing"])
+    assert derive_position_tags("Big") == ("b", ["big"])
 
 
 @pytest.mark.asyncio
@@ -110,6 +113,15 @@ async def test_cbb_enrich_resolves_position_id(db_session):
     # Existing rows are reused, not duplicated.
     assert await _resolve_position_id(conn, "Forward") == forward_id
 
-    # Unmappable / empty labels resolve to None rather than minting junk.
-    assert await _resolve_position_id(conn, "Wing") is None
+    # Parent-level labels resolve to broad codes (no longer dropped).
+    wing_id = await _resolve_position_id(conn, "Wing")
+    assert wing_id is not None
+    wing_pos = (
+        await db_session.execute(select(Position).where(Position.id == wing_id))
+    ).scalar_one()
+    assert wing_pos.code == "w"
+    assert wing_pos.parents == ["wing"]
+
+    # Truly unmappable / empty labels resolve to None rather than minting junk.
+    assert await _resolve_position_id(conn, "Combo Guard") is None
     assert await _resolve_position_id(conn, None) is None

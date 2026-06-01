@@ -26,7 +26,7 @@ _PARENT_ALIASES = {
     "b": "big",
 }
 
-_BASE_ORDER = ["PG", "SG", "SF", "PF", "C", "G", "F"]
+_BASE_ORDER = ["PG", "SG", "SF", "PF", "C", "G", "F", "W", "B"]
 _BASE_NORMALIZATION = {
     "PG": "PG",
     "POINT": "PG",
@@ -46,6 +46,12 @@ _BASE_NORMALIZATION = {
     "GUARD": "G",
     "F": "F",
     "FORWARD": "F",
+    # Parent-level labels with no fine position (mirror the broad G/F codes):
+    # used by sources like sports_reference_cbb that list "Wing"/"Big".
+    "W": "W",
+    "WING": "W",
+    "B": "B",
+    "BIG": "B",
 }
 
 _BASE_PARENT_MAP = {
@@ -56,6 +62,8 @@ _BASE_PARENT_MAP = {
     "PF": {"forward", "big"},
     "F": {"forward"},
     "C": {"big"},
+    "W": {"wing"},
+    "B": {"big"},
 }
 
 PARENT_SCOPE_PRESET: List[str] = ["guard", "wing", "forward", "big"]
