@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import json
 import os
 import re
 import sys
@@ -41,6 +42,7 @@ from app.services.canonical_resolution_service import (  # noqa: E402
     normalize_player_name,
     resolve_affiliation,
 )
+from app.models.position_taxonomy import derive_position_tags  # noqa: E402
 from app.services.player_mention_service import parse_player_name  # noqa: E402
 from scripts.top100.audit import resolve_rows  # noqa: E402
 from scripts.top100.refresh import OUTPUT_DIR, TOP100_ROWS, _prepare_connection  # noqa: E402
@@ -402,6 +404,43 @@ async def _ensure_alias(conn: Any, player_id: int, full_name: str) -> None:
     )
 
 
+async def _resolve_position_id(conn: Any, raw_position: str | None) -> int | None:
+    """Resolve a ``positions.id`` from a free-text position label.
+
+    Mirrors the bio-ingest resolution in :mod:`scripts.ingest_player_bios` so
+    CBB-enriched statuses carry a usable ``position_id``. The same-position
+    similarity filter keys off ``player_status.position_id`` (not the free-text
+    ``raw_position``), so omitting it silently disables position-adjusted comps.
+
+    Args:
+        conn: Async SQLAlchemy connection (raw ``text()`` execution).
+        raw_position: Source label such as "Guard", "Forward", "Guard-Forward".
+
+    Returns:
+        The matching ``positions.id``, creating the row if the taxonomy resolves
+        a fine code that does not yet exist; ``None`` when the label is empty or
+        not mappable (e.g. "Wing", "Combo Guard").
+    """
+    fine, parents = derive_position_tags(raw_position)
+    if not fine:
+        return None
+    existing = await conn.execute(
+        text("SELECT id FROM positions WHERE code = :code"),
+        {"code": fine},
+    )
+    row = existing.first()
+    if row is not None:
+        return int(row[0])
+    created = await conn.execute(
+        text(
+            "INSERT INTO positions (code, parents) "
+            "VALUES (:code, CAST(:parents AS jsonb)) RETURNING id"
+        ),
+        {"code": fine, "parents": json.dumps(parents)},
+    )
+    return int(created.scalar_one())
+
+
 async def _update_identity_status(
     conn: Any,
     *,
@@ -413,6 +452,7 @@ async def _update_identity_status(
 ) -> None:
     parsed = parse_player_name(source_name)
     now = datetime.now(UTC).replace(tzinfo=None)
+    position_id = await _resolve_position_id(conn, profile.position)
     await conn.execute(
         text(
             """
@@ -450,11 +490,12 @@ async def _update_identity_status(
         text(
             """
             INSERT INTO player_status
-                (player_id, raw_position, height_in, weight_lb, source, updated_at)
+                (player_id, raw_position, position_id, height_in, weight_lb, source, updated_at)
             VALUES
-                (:player_id, :raw_position, :height_in, :weight_lb, :source, :now)
+                (:player_id, :raw_position, :position_id, :height_in, :weight_lb, :source, :now)
             ON CONFLICT (player_id) DO UPDATE
             SET raw_position = coalesce(EXCLUDED.raw_position, player_status.raw_position),
+                position_id = coalesce(EXCLUDED.position_id, player_status.position_id),
                 height_in = coalesce(EXCLUDED.height_in, player_status.height_in),
                 weight_lb = coalesce(EXCLUDED.weight_lb, player_status.weight_lb),
                 source = :source,
@@ -464,6 +505,7 @@ async def _update_identity_status(
         {
             "player_id": player_id,
             "raw_position": profile.position or None,
+            "position_id": position_id,
             "height_in": profile.height_in,
             "weight_lb": profile.weight_lb,
             "source": CBB_SOURCE,
