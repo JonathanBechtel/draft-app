@@ -112,6 +112,12 @@ class Settings(BaseSettings):
     email_from_address: str = "noreply@draftguru.dev"
     app_base_url: str = "http://localhost:8000"
 
+    # Board auto-ingest worker settings.
+    # Feature flag: ships dormant (False) so the worker only runs when explicitly
+    # enabled via environment variable or .env.
+    board_auto_ingest_enabled: bool = False
+    board_auto_ingest_lookback_days: int = 7
+
     # Post-lottery mock-draft team overlay.
     # When enabled (and the calendar is past LOTTERY_DATE), the consensus board
     # renders as a mock draft: each consensus row is shown with the team that

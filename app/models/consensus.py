@@ -125,6 +125,7 @@ class SourceAnalyticsRow(SQLModel):
     contrarian_score: float
     biggest_outlier_player_id: Optional[int] = None
     outlier_delta: int
+    alignment: Optional[float] = None
 
 
 class SnapshotSummary(SQLModel):

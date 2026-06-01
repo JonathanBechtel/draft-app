@@ -274,7 +274,7 @@ async def test_panels_empty_state_no_data(
     assert 'data-section="panels"' in html
 
     # Empty-state messages for each panel
-    assert "Movement data available" in html
+    assert "Rankings shift as new boards are published." in html
     assert "Disagreement data" in html
     assert "Source analytics are not yet available" in html
 

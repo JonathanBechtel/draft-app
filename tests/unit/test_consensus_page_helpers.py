@@ -52,11 +52,22 @@ def _bbc(
     return row
 
 
-def _board(bid: int, source_id: int) -> MagicMock:
+def _board(bid: int, source_id: int, news_item_id: int | None = None) -> MagicMock:
     b = MagicMock()
     b.id = bid
     b.news_source_id = source_id
+    # Explicitly None by default so the matrix helper's article-URL lookup is
+    # skipped (legacy boards carry no news_item); set to wire up work_url.
+    b.news_item_id = news_item_id
     return b
+
+
+def _article(aid: int, url: str, title: str = "Mock Board") -> MagicMock:
+    a = MagicMock()
+    a.id = aid
+    a.url = url
+    a.title = title
+    return a
 
 
 def _board_entry(board_id: int, player_id: int, position: int) -> MagicMock:
@@ -154,6 +165,7 @@ def _make_matrix_db(
     entries: list[MagicMock],
     sources: list[MagicMock],
     players: list[MagicMock],
+    articles: list[MagicMock] | None = None,
 ) -> MagicMock:
     """Build a mock AsyncSession for the matrix helper.
 
@@ -163,8 +175,12 @@ def _make_matrix_db(
     3. execute → ConsensusSnapshot                      (.scalar_one_or_none())
     4. execute → Board rows                             (.scalars().all())
     5. execute → NewsSource rows                        (.scalars().all())
-    6. execute → BoardEntry rows                        (.all())
-    7. execute → PlayerMaster rows (via _player_name_map) (.scalars().all())
+    6. execute → NewsItem rows (only when a board has news_item_id) (.scalars().all())
+    7. execute → BoardEntry rows                        (.all())
+    8. execute → PlayerMaster rows (via _player_name_map) (.scalars().all())
+
+    The NewsItem query (step 6) is only issued when at least one board carries
+    a ``news_item_id``; pass ``articles`` to supply its rows and reflect that.
     """
     db = MagicMock()
 
@@ -188,12 +204,17 @@ def _make_matrix_db(
 
     # db.execute → ordered returns
     execute_returns = [
-        _scalars_result(bbc_rows),              # top-N BigBoardConsensus
-        _scalar_one_or_none_result(snapshot),   # ConsensusSnapshot (.scalar_one_or_none)
-        _scalars_result(boards),                # Board rows
-        _scalars_result(sources),               # NewsSource rows
-        _all_result(entries),                   # BoardEntry rows
-        _scalars_result(players),               # PlayerMaster (_player_name_map)
+        _scalars_result(bbc_rows),  # top-N BigBoardConsensus
+        _scalar_one_or_none_result(snapshot),  # ConsensusSnapshot (.scalar_one_or_none)
+        _scalars_result(boards),  # Board rows
+        _scalars_result(sources),  # NewsSource rows
+    ]
+    # The article-URL lookup only runs when a board references a news_item.
+    if any(b.news_item_id is not None for b in boards):
+        execute_returns.append(_scalars_result(articles or []))  # NewsItem rows
+    execute_returns += [
+        _all_result(entries),  # BoardEntry rows
+        _scalars_result(players),  # PlayerMaster (_player_name_map)
     ]
     db.execute = AsyncMock(side_effect=execute_returns)
 
@@ -301,6 +322,60 @@ class TestGetSourceBreakdownMatrix:
         assert result["cells"][(1, 100)]["outlier"] == "low"
 
     @pytest.mark.asyncio
+    async def test_cells_carry_signed_delta(self) -> None:
+        """Each cell exposes the signed delta (source_rank − consensus_rank)."""
+        from app.services.consensus_read_service import get_source_breakdown_matrix
+
+        snap = _snapshot(sid=1, board_ids=[10])
+        p1 = _player(pid=1, display_name="Player A", slug="player-a")
+        bbc1 = _bbc(player_id=1, consensus_rank=4)
+        board = _board(bid=10, source_id=100)
+        src = _source(sid=100, name="source-one")
+        entry = _board_entry(board_id=10, player_id=1, position=2)  # delta = 2 - 4
+
+        db = _make_matrix_db(
+            snapshot=snap,
+            bbc_rows=[bbc1],
+            boards=[board],
+            entries=[entry],
+            sources=[src],
+            players=[p1],
+        )
+
+        with patch("app.utils.slug.generate_slug", side_effect=lambda s: s.lower()):
+            result = await get_source_breakdown_matrix(db, draft_year=2026, top_n=10)
+
+        assert result["cells"][(1, 100)]["delta"] == -2
+
+    @pytest.mark.asyncio
+    async def test_source_carries_article_url_when_board_linked(self) -> None:
+        """A board with a news_item resolves to a work_url on its source entry."""
+        from app.services.consensus_read_service import get_source_breakdown_matrix
+
+        snap = _snapshot(sid=1, board_ids=[10])
+        p1 = _player(pid=1, display_name="Player A", slug="player-a")
+        bbc1 = _bbc(player_id=1, consensus_rank=1)
+        board = _board(bid=10, source_id=100, news_item_id=500)
+        src = _source(sid=100, name="source-one")
+        entry = _board_entry(board_id=10, player_id=1, position=1)
+        article = _article(aid=500, url="https://example.com/board")
+
+        db = _make_matrix_db(
+            snapshot=snap,
+            bbc_rows=[bbc1],
+            boards=[board],
+            entries=[entry],
+            sources=[src],
+            players=[p1],
+            articles=[article],
+        )
+
+        with patch("app.utils.slug.generate_slug", side_effect=lambda s: s.lower()):
+            result = await get_source_breakdown_matrix(db, draft_year=2026, top_n=10)
+
+        assert result["sources"][0]["work_url"] == "https://example.com/board"
+
+    @pytest.mark.asyncio
     async def test_multiple_players_multiple_sources(self) -> None:
         """Matrix with two players × two sources produces the expected cells."""
         from app.services.consensus_read_service import get_source_breakdown_matrix
@@ -373,8 +448,10 @@ class TestGetSourceBreakdownMatrix:
         db.scalar = AsyncMock(return_value=snap_empty.id)
         db.execute = AsyncMock(
             side_effect=[
-                _scalars_result([bbc1]),             # top-N BigBoardConsensus
-                _scalar_one_or_none_result(snap_empty),  # ConsensusSnapshot with empty board_ids
+                _scalars_result([bbc1]),  # top-N BigBoardConsensus
+                _scalar_one_or_none_result(
+                    snap_empty
+                ),  # ConsensusSnapshot with empty board_ids
             ]
         )
 
@@ -417,9 +494,9 @@ def _make_trajectories_db(
 
     db.execute = AsyncMock(
         side_effect=[
-            _scalars_result(bbc_latest),    # top-N from latest snapshot
-            _all_result(history_rows),       # full history
-            _scalars_result(players),        # PlayerMaster
+            _scalars_result(bbc_latest),  # top-N from latest snapshot
+            _all_result(history_rows),  # full history
+            _scalars_result(players),  # PlayerMaster
         ]
     )
     return db

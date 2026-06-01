@@ -33,29 +33,68 @@
     {% endfor %}
   </div>
 
-  {# ---- SVG scatter plot ---- #}
-  <div class="scatter" aria-label="Agreement scatter plot">
-    <svg id="scatterSvg" viewBox="0 0 260 260" aria-hidden="true" focusable="false">
-      {# Axes #}
-      <line class="scatter__axis" x1="40" y1="10" x2="40" y2="230"/>
-      <line class="scatter__axis" x1="40" y1="230" x2="250" y2="230"/>
+  {% set first = source_overlays[0] %}
 
-      {# 45° agreement diagonal — dots on this line = perfect agreement #}
-      <line class="scatter__diagonal" x1="40" y1="230" x2="250" y2="20"/>
+  {# ---- Plot + alignment readout side-by-side; the score fills the
+         whitespace beside the (narrow) chart on wide screens ---- #}
+  <div class="scatter-card__body">
 
-      {# Axis labels #}
-      <text class="scatter__label" x="145" y="250" text-anchor="middle">consensus rank →</text>
-      <text class="scatter__label" x="14" y="120" transform="rotate(-90 14 120)" text-anchor="middle">their rank →</text>
+    {# ---- SVG scatter plot ---- #}
+    <div class="scatter" aria-label="Agreement scatter plot">
+      <svg id="scatterSvg" viewBox="0 0 260 260" aria-hidden="true" focusable="false">
+        {# Axes #}
+        <line class="scatter__axis" x1="40" y1="10" x2="40" y2="230"/>
+        <line class="scatter__axis" x1="40" y1="230" x2="250" y2="230"/>
 
-      {# Dot group — populated by JS on source switch #}
-      <g id="scatterDots"></g>
-    </svg>
+        {# 45° agreement diagonal — dots on this line = perfect agreement #}
+        <line class="scatter__diagonal" x1="40" y1="230" x2="250" y2="20"/>
+
+        {# Axis labels #}
+        <text class="scatter__label" x="145" y="250" text-anchor="middle">consensus rank →</text>
+        <text class="scatter__label" x="14" y="120" transform="rotate(-90 14 120)" text-anchor="middle">their rank →</text>
+
+        {# Dot group — populated by JS on source switch #}
+        <g id="scatterDots"></g>
+      </svg>
+    </div>
+
+    {# ---- Alignment score for the active source ---- #}
+    <aside class="scatter__alignment" id="scatterAlignment"
+           {% if first.alignment_score is none %}hidden{% endif %}>
+      <div class="scatter__alignment-top">
+        <span class="scatter__alignment-label">Consensus alignment</span>
+        <span class="scatter__alignment-info"
+              tabindex="0"
+              role="note"
+              aria-label="How the consensus alignment score is calculated">
+          <span class="scatter__alignment-info-mark" aria-hidden="true">?</span>
+          <span class="scatter__alignment-tip" role="tooltip">
+            <strong>Consensus alignment</strong> is the Spearman rank correlation
+            between this analyst's board order and the blended consensus order,
+            rescaled to a 0–100 scale.
+            <span class="scatter__alignment-tip-scale">
+              <span><strong>100</strong> — ranks players just like consensus</span>
+              <span><strong>50</strong> — no relationship to consensus</span>
+              <span><strong>0</strong> — ranks them in the opposite order</span>
+            </span>
+            It rewards matching the <em>ordering</em> of prospects, not their exact slots.
+          </span>
+        </span>
+      </div>
+
+      <div class="scatter__alignment-readout">
+        <span class="scatter__alignment-score" id="scatterAlignmentScore">{{ first.alignment_score if first.alignment_score is not none else "—" }}</span>
+        <span class="scatter__alignment-max">/ 100</span>
+      </div>
+
+      <span class="scatter__alignment-hint">how closely their ordering tracks the field</span>
+    </aside>
+
   </div>
 
-  {# ---- Caption with active source link-out ---- #}
+  {# ---- Caption: teaches the axes + active source link-out ---- #}
   <p class="scatter__caption" id="scatterCaption">
     Viewing
-    {% set first = source_overlays[0] %}
     {% if first.work_url %}
     <a class="src-link"
        id="scatterSourceLink"
@@ -68,8 +107,9 @@
        id="scatterSourceLink"
        href="/sources/{{ first.source_slug }}"
        title="{{ first.source_display_name }} on DraftGuru">{{ first.source_display_name }}</a>
-    {% endif %}
-    &middot; hover a dot for the pick.
+    {% endif %}.
+    Each dot is a prospect — <strong>below the dashed line</strong> means this source ranks them
+    <em>higher</em> than consensus, <strong>above</strong> means <em>lower</em>, on the line means they agree. Hover a dot for the pick.
     <span class="scatter__legend scatter__legend--bold">&#9679;</span> fuchsia = biggest disagreements.
   </p>
 

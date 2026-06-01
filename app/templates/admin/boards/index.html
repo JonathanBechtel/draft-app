@@ -1,27 +1,36 @@
 {% extends "admin/base.html" %}
 
-{% set page_title = "Big Boards" %}
+{% set page_title = "Boards" %}
 {% set active_nav = "boards" %}
 
 {% block admin_content %}
 <header class="admin-main__header">
-  <h1 class="admin-main__title">Big Boards</h1>
+  <h1 class="admin-main__title">Boards</h1>
   <p class="admin-main__subtitle">
-    Per-source talent rankings. Approved boards feed the consensus.
+    Per-source big boards and mock drafts. Approved boards feed the consensus.
   </p>
 </header>
 
 <div class="admin-card">
   <div class="admin-card__header">
     <h2 class="admin-card__title">All Boards</h2>
-    <div style="display: flex; gap: 0.5rem; align-items: center;">
-      <form method="get" action="/admin/boards" class="admin-form--inline">
+    <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+      <form method="get" action="/admin/boards" class="admin-form--inline" id="boards-filter-form">
         <select class="admin-form__select" name="status" onchange="this.form.submit()">
           <option value="">All statuses</option>
           {% for s in statuses %}
           <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
           {% endfor %}
         </select>
+        <select class="admin-form__select" name="kind" onchange="this.form.submit()" style="margin-left: 0.25rem;">
+          <option value="">All kinds</option>
+          {% for k in kinds %}
+          <option value="{{ k }}" {% if kind_filter == k %}selected{% endif %}>{{ k }}</option>
+          {% endfor %}
+        </select>
+        {% if status_filter or kind_filter %}
+        <a href="/admin/boards" class="admin-btn admin-btn--small" style="margin-left: 0.25rem;">Clear</a>
+        {% endif %}
       </form>
       <a href="/admin/boards/new" class="admin-btn admin-btn--primary admin-btn--small">
         New Board
@@ -34,6 +43,7 @@
     <thead>
       <tr>
         <th>Source</th>
+        <th>Kind</th>
         <th>Year</th>
         <th>Published</th>
         <th>Size</th>
@@ -48,6 +58,11 @@
         <td>
           {% set src = sources_by_id.get(board.news_source_id) %}
           <strong>{{ src.display_name if src else board.news_source_id }}</strong>
+        </td>
+        <td>
+          <span class="admin-badge {% if board.kind.value == 'MOCK_DRAFT' %}admin-badge--secondary{% endif %}">
+            {{ board.kind.value }}
+          </span>
         </td>
         <td>{{ board.draft_year }}</td>
         <td>{{ board.published_at.strftime('%Y-%m-%d') }}</td>
@@ -78,7 +93,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="admin-text--muted">No big boards yet. Create one to get started.</p>
+  <p class="admin-text--muted">No boards match the current filters.</p>
   {% endif %}
 </div>
 {% endblock %}

@@ -190,17 +190,23 @@ async def list_boards(
     db: AsyncSession,
     *,
     status: Optional[BoardStatus] = None,
+    kind: Optional[BoardKind] = None,
     news_source_id: Optional[int] = None,
     draft_year: Optional[int] = None,
 ) -> list[Board]:
-    """List boards filtered by any combination of status, source, year.
+    """List boards filtered by any combination of status, kind, source, year.
 
-    Results ordered by ``published_at`` desc so the most recent boards
-    appear first.
+    Ordering for PENDING boards: ``published_at`` DESC so the most recently
+    published boards (which are also the ones admins should review first)
+    appear at the top.  Non-PENDING boards also order by ``published_at``
+    DESC.  (``confidence_score`` is not yet a column on ``Board``; this
+    comment documents the intended future sort key for the approval queue.)
     """
     stmt = select(Board)  # type: ignore[call-overload]
     if status is not None:
         stmt = stmt.where(Board.status == status)  # type: ignore[arg-type]
+    if kind is not None:
+        stmt = stmt.where(Board.kind == kind)  # type: ignore[arg-type]
     if news_source_id is not None:
         stmt = stmt.where(Board.news_source_id == news_source_id)  # type: ignore[arg-type]
     if draft_year is not None:
@@ -219,8 +225,26 @@ async def add_entry(
     raw_name: str = "",
     resolution_method: ResolutionMethod = ResolutionMethod.MANUAL,
     tier: Optional[int] = None,
+    round: Optional[int] = None,
+    team_id: Optional[int] = None,
+    original_team_id: Optional[int] = None,
+    trade_note: Optional[str] = None,
 ) -> BoardEntry:
-    """Append an entry to a PENDING board and bump ``size``."""
+    """Append an entry to a PENDING board and bump ``size``.
+
+    Args:
+        db: Async session; caller owns commit.
+        board_id: PK of the parent :class:`Board`.
+        player_id: Resolved player; may be ``None`` for unresolved entries.
+        position: Rank (big board) or overall pick number (mock draft).
+        raw_name: Verbatim analyst name before resolution.
+        resolution_method: How the name was (or was not) resolved.
+        tier: BIG_BOARD only — optional tier grouping.
+        round: MOCK_DRAFT only — draft round (1 or 2).
+        team_id: MOCK_DRAFT only — selecting team FK.
+        original_team_id: MOCK_DRAFT only — original pick owner if traded.
+        trade_note: MOCK_DRAFT only — free-text trade note.
+    """
     board = await get_board(db, board_id)
     _require_pending(board)
 
@@ -231,6 +255,10 @@ async def add_entry(
         raw_name=raw_name,
         resolution_method=resolution_method,
         tier=tier,
+        round=round,
+        team_id=team_id,
+        original_team_id=original_team_id,
+        trade_note=trade_note,
     )
     db.add(entry)
     board.size = board.size + 1
@@ -249,12 +277,20 @@ async def update_entry(
     player_id: Optional[int] = None,
     position: Optional[int] = None,
     tier: Optional[int] = None,
+    round: Optional[int] = None,
+    team_id: Optional[int] = None,
+    original_team_id: Optional[int] = None,
+    trade_note: Optional[str] = None,
 ) -> BoardEntry:
     """Patch a single entry on a PENDING board.
 
     Pass ``None`` to leave a field unchanged. ``tier`` is set verbatim,
     including to ``None`` if explicitly cleared via ``update_entry(...,
     tier=None)`` — callers that mean "don't touch tier" should omit it.
+    Mock-draft fields (``round``, ``team_id``, ``original_team_id``,
+    ``trade_note``) follow the same pass-``None``-to-leave-unchanged
+    semantics; pass the sentinel string ``""`` at the call site if you
+    want to explicitly clear ``trade_note``.
     """
     entry = await db.get(BoardEntry, entry_id)
     if entry is None:
@@ -269,6 +305,14 @@ async def update_entry(
         entry.position = position
     if tier is not None:
         entry.tier = tier
+    if round is not None:
+        entry.round = round
+    if team_id is not None:
+        entry.team_id = team_id
+    if original_team_id is not None:
+        entry.original_team_id = original_team_id
+    if trade_note is not None:
+        entry.trade_note = trade_note or None  # collapse "" → None
     board.updated_at = datetime.utcnow()
     try:
         await db.flush()

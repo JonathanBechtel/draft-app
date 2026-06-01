@@ -345,6 +345,26 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   /**
+   * Update the alignment-score readout for the active source. Hides the block
+   * when the source has no alignment score (ranked too few shared players).
+   *
+   * @param {Object} overlay - The currently active source overlay.
+   */
+  function updateAlignment(overlay) {
+    const wrap = document.getElementById("scatterAlignment");
+    const scoreEl = document.getElementById("scatterAlignmentScore");
+    if (!wrap || !scoreEl) return;
+
+    const score = overlay.alignment_score;
+    if (score == null) {
+      wrap.hidden = true;
+      return;
+    }
+    wrap.hidden = false;
+    scoreEl.textContent = score;
+  }
+
+  /**
    * Activate the picker button for the given index (aria + CSS class).
    *
    * @param {NodeList} buttons - All picker buttons.
@@ -387,6 +407,7 @@ document.addEventListener("DOMContentLoaded", function () {
         activateButton(buttons, idx);
         renderDots(overlay);
         updateCaptionLink(overlay);
+        updateAlignment(overlay);
       });
     });
   });

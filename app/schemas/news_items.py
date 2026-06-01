@@ -9,6 +9,29 @@ from sqlalchemy import Column, Enum as SAEnum, Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
+class BoardExtractionResult(str, Enum):
+    """Outcome recorded on a ``NewsItem`` after a board-extraction attempt.
+
+    Used by the auto-ingest worker to decide whether to retry an article.
+
+    Values:
+        SUCCESS: Extraction produced a valid board persisted to ``boards``.
+        PAYWALLED: Article is behind a paywall; re-try after 30 days.
+        NO_ENTRIES: Article was fetched but the AI found no ranked entries.
+            Permanent — do not retry.
+        UNRESOLVABLE: Article body could not be fetched or parsed.
+            Permanent — do not retry.
+        TRANSIENT_ERROR: Transient failure (network timeout, Gemini timeout).
+            Re-try after 1 hour.
+    """
+
+    SUCCESS = "SUCCESS"
+    PAYWALLED = "PAYWALLED"
+    NO_ENTRIES = "NO_ENTRIES"
+    UNRESOLVABLE = "UNRESOLVABLE"
+    TRANSIENT_ERROR = "TRANSIENT_ERROR"
+
+
 class NewsItemTag(str, Enum):
     """Classification tags for news items."""
 
@@ -108,5 +131,16 @@ class NewsItem(SQLModel, table=True):  # type: ignore[call-arg]
             sa.Boolean(),
             nullable=False,
             server_default=sa.text("false"),
+        ),
+    )
+
+    # Extraction memory: set by the board auto-ingest worker after each attempt.
+    # Used to avoid retrying permanent failures and to throttle transient ones.
+    last_extraction_attempted_at: Optional[datetime] = Field(default=None)
+    last_extraction_result: Optional[BoardExtractionResult] = Field(
+        default=None,
+        sa_column=Column(
+            SAEnum(BoardExtractionResult, name="board_extraction_result_enum"),
+            nullable=True,
         ),
     )
