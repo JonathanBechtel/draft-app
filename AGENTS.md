@@ -53,7 +53,8 @@ Whenever a change could influence monetization, growth, or user retention, refer
    - Type changes can break files you didn't directly modify
    - This command must exit cleanly with no errors
 3. **Run relevant tests** — `pytest tests/unit -q` at minimum; `pytest tests/integration -q` if touching DB/routes
-4. **For UI changes** — run `make visual` and visually verify screenshots (see [Visual Testing](#visual-testing))
+4. **Run `make coverage.diff`** — ensure ≥80% patch coverage on changed `app/` lines (CI enforces this; PRs below 80% fail; add `TESTS=tests/unit` for a quick DB-free check)
+5. **For UI changes** — run `make visual` and visually verify screenshots (see [Visual Testing](#visual-testing))
 
 **All checks must be run via Conda:** use `conda run -n draftguru <command>` for every lint, type, and test command.
 

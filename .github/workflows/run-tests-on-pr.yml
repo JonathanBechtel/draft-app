@@ -48,6 +48,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history so diff-cover can compare against the PR base branch.
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -100,6 +103,11 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
+      - name: Patch coverage gate (diff-cover)
+        # Fail the PR if fewer than 80% of newly changed app/ lines are covered.
+        # Compares the working tree against the PR base branch (merge-base).
+        run: diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=80
+
   tests-secrets:
     # Same-repo PRs: use environment secrets from draft-app-stage
     if: ${{ github.event.pull_request.head.repo.fork == false }}
@@ -136,6 +144,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history so diff-cover can compare against the PR base branch.
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -193,3 +204,8 @@ jobs:
           flags: tests-secrets
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Patch coverage gate (diff-cover)
+        # Fail the PR if fewer than 80% of newly changed app/ lines are covered.
+        # Compares the working tree against the PR base branch (merge-base).
+        run: diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=80
