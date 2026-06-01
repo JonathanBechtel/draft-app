@@ -137,6 +137,24 @@ precommit:
 test:
 	pytest tests/unit -q
 
+# Run per-route query-count budgets (catches N+1s / waterfall growth).
+# Loads .env for the test DB and sets the integration opt-in. See the
+# analyze-page-perf skill and tests/integration/perf/.
+perf:
+	PYTEST_ALLOW_DB=1 scripts/with-db-env.sh conda run -n draftguru env PYTEST_ALLOW_DB=1 pytest tests/integration/perf -q
+
+# EXPLAIN ANALYZE every query a route fires — use when adding/changing a query
+# to confirm it is properly indexed. Set EXPLAIN_DATABASE_URL in .env to a Neon
+# prod read-branch for faithful plans (dev volume Seq-Scans even with a good
+# index); it falls back to DATABASE_URL otherwise. See the analyze-page-perf skill.
+# Usage:
+#   make explain ROUTE=/
+#   make explain ROUTE=/consensus ARGS="--top 5"
+#   make explain ROUTE=/news ARGS="--no-plans"
+ROUTE ?= /
+explain:
+	scripts/with-db-env.sh conda run -n draftguru python scripts/explain_route.py $(ROUTE) $(ARGS)
+
 # Run tests with coverage report (terminal + HTML)
 # Usage:
 #   make coverage              # unit + integration with terminal + HTML report

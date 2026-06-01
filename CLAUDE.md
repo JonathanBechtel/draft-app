@@ -55,6 +55,10 @@ Whenever a change could influence monetization, growth, or user retention, refer
 3. **Run relevant tests** — `pytest tests/unit -q` at minimum; `pytest tests/integration -q` if touching DB/routes
 4. **Run `make coverage.diff`** — ensure ≥80% patch coverage on changed `app/` lines (CI enforces this; PRs below 80% fail; add `TESTS=tests/unit` for a quick DB-free check)
 5. **For UI changes** — run `make visual` and visually verify screenshots (see [Visual Testing](#visual-testing))
+6. **For page data-loading changes** — if you added/changed the queries a public page issues ("new plumbing"):
+   - Run `make perf` to confirm the route's query count stays within budget (or consciously bump it in `tests/integration/perf/budgets.py`).
+   - For each **new/changed query**, run `make explain ROUTE=<page>` against a prod-like DB and confirm it is properly indexed (Index Scan, not a Seq Scan on a large table); add the index + migration in the same change if missing.
+   See the `analyze-page-perf` skill for both.
 
 **All checks must be run via Conda:** use `conda run -n draftguru <command>` for every lint, type, and test command.
 
@@ -124,6 +128,7 @@ Do not ask if the user wants you to run these checks — run them proactively af
 - Services live in `app/services/` and contain business logic: query building, validation, parsing, and CRUD operations.
 - Service functions are stateless: take `AsyncSession` as first parameter and let routes handle commits.
 - Use dataclasses for internal DTOs (form data, query results); reserve Pydantic models for API request/response boundaries.
+- **When you add or change a query, verify it is indexed.** Run `make explain ROUTE=<page that uses it>` (pointed at a Neon prod read-branch via `EXPLAIN_DATABASE_URL` — dev volume Seq-Scans even with a good index) and confirm the new query uses an Index Scan, not a Seq Scan on a large table. If an index is missing, add it to the SQLModel table in `app/schemas/` and ship the Alembic migration in the same change. See the `analyze-page-perf` skill.
 
 ## Testing Guidelines
 - Write pytest cases under `tests/` using filenames like `test_players.py`; group async client checks with `pytest.mark.asyncio`.
