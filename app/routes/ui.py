@@ -2,7 +2,7 @@
 
 from collections import Counter
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -21,12 +21,14 @@ from app.services.news_service import (
     get_sticky_news_item,
     get_trending_players,
 )
+from app.models.consensus import ConsensusRow
 from app.schemas.boards import BoardKind
 from app.schemas.player_content_mentions import ContentType
 from app.services.consensus_read_service import (
     get_biggest_movers,
     get_board_freshness,
     get_consensus_board,
+    get_mock_consensus_board,
     get_most_controversial,
     get_player_consensus_detail,
     get_rank_trajectories,
@@ -1139,10 +1141,27 @@ async def consensus_page(
     # --- Board kind (calendar-determined; forced to data kind when rows exist) -
     board_kind = get_consensus_board_kind()
 
+    # Post-lottery mock-draft view: when the team-overlay flag is enabled and
+    # the calendar is past the lottery, render the unified consensus as a mock
+    # draft with each row's owning team. Otherwise keep the big-board view
+    # (and the post-lottery fallback that forces the BIG_BOARD heading when
+    # rows exist, since the consensus data itself is kind-agnostic).
+    mock_overlay = (
+        settings.mock_draft_team_overlay_enabled and board_kind == BoardKind.MOCK_DRAFT
+    )
+
     # --- Full consensus board --------------------------------------------------
-    consensus_rows_raw = await get_consensus_board(db, draft_year=CONSENSUS_DRAFT_YEAR)
-    if consensus_rows_raw:
-        board_kind = BoardKind.BIG_BOARD
+    consensus_rows_raw: Sequence[ConsensusRow]
+    if mock_overlay:
+        consensus_rows_raw = await get_mock_consensus_board(
+            db, draft_year=CONSENSUS_DRAFT_YEAR
+        )
+    else:
+        consensus_rows_raw = await get_consensus_board(
+            db, draft_year=CONSENSUS_DRAFT_YEAR
+        )
+        if consensus_rows_raw:
+            board_kind = BoardKind.BIG_BOARD
 
     consensus_rows = [
         {
@@ -1166,6 +1185,16 @@ async def consensus_page(
             "recent_ranks": r.recent_ranks,
             "sparkline_path": build_sparkline_path(r.recent_ranks),
             "sparkline_direction": sparkline_direction(r.recent_ranks),
+            # Team overlay (mock-draft view only; None on the big-board view).
+            "team_name": getattr(r, "team_name", None),
+            "team_abbreviation": getattr(r, "team_abbreviation", None),
+            "team_slug": getattr(r, "team_slug", None),
+            "team_logo_url": getattr(r, "team_logo_url", None),
+            "team_primary_color": getattr(r, "team_primary_color", None),
+            "original_team_abbreviation": getattr(
+                r, "original_team_abbreviation", None
+            ),
+            "trade_note": getattr(r, "trade_note", None),
         }
         for r in consensus_rows_raw
     ]
