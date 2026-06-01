@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.consensus import (
     ConsensusRow,
+    MockConsensusRow,
     PlayerConsensusDetail,
     RankHistoryPoint,
     SnapshotSummary,
@@ -26,6 +27,7 @@ from app.models.consensus import (
     SourceRankEntry,
 )
 from app.schemas.boards import Board, BoardEntry, BoardStatus
+from app.schemas.nba_teams import NbaTeam
 from app.schemas.consensus import (
     BigBoardConsensus,
     ConsensusSnapshot,
@@ -351,6 +353,93 @@ async def get_consensus_board(
         )
         for r in bbc_rows
     ]
+
+
+async def get_mock_consensus_board(
+    db: AsyncSession,
+    *,
+    draft_year: int,
+    snapshot_id: Optional[int] = None,
+) -> list[MockConsensusRow]:
+    """Return the consensus board with each row's draft-slot team overlaid.
+
+    The ranking is the unified consensus (``get_consensus_board``) unchanged.
+    Each player at ``consensus_rank`` N is mapped onto overall pick N of the
+    draft-order reference, so the post-lottery view reads as a mock draft:
+    "team that owns pick N is projected to take the consensus-N player".
+
+    Rows whose ``consensus_rank`` has no matching pick slot (consensus runs
+    deeper than the seeded order, or the order isn't seeded) keep all team
+    fields ``None`` — the template omits the team chip for them.
+
+    Args:
+        db: Async DB session.
+        draft_year: The draft class to query.
+        snapshot_id: Specific snapshot; defaults to the most recent.
+
+    Returns:
+        Rows ordered by ``consensus_rank`` asc. Empty list when no snapshot
+        exists for the year.
+    """
+    from app.services.draft_order_service import get_draft_order
+
+    base_rows = await get_consensus_board(
+        db, draft_year=draft_year, snapshot_id=snapshot_id
+    )
+    if not base_rows:
+        return []
+
+    slots = await get_draft_order(db, draft_year=draft_year)
+    slot_by_pick = {s.overall_pick: s for s in slots}
+
+    # Batch-resolve every team referenced by the order (owners + original
+    # owners) in one query.
+    team_ids: set[int] = set()
+    for s in slots:
+        team_ids.add(s.team_id)
+        if s.original_team_id is not None:
+            team_ids.add(s.original_team_id)
+    team_map: dict[int, NbaTeam] = {}
+    if team_ids:
+        team_rows = (
+            (
+                await db.execute(
+                    select(NbaTeam).where(  # type: ignore[call-overload]
+                        NbaTeam.id.in_(team_ids)  # type: ignore[union-attr]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        team_map = {t.id: t for t in team_rows if t.id is not None}
+
+    out: list[MockConsensusRow] = []
+    for row in base_rows:
+        data = row.model_dump()
+        slot = slot_by_pick.get(row.consensus_rank)
+        team = team_map.get(slot.team_id) if slot is not None else None
+        if slot is not None and team is not None:
+            original = (
+                team_map.get(slot.original_team_id)
+                if slot.original_team_id is not None
+                else None
+            )
+            data.update(
+                overall_pick=slot.overall_pick,
+                round=slot.round,
+                team_name=team.name,
+                team_abbreviation=team.abbreviation,
+                team_slug=team.slug,
+                team_logo_url=team.logo_url,
+                team_primary_color=team.primary_color,
+                original_team_abbreviation=(
+                    original.abbreviation if original is not None else None
+                ),
+                trade_note=slot.trade_note,
+            )
+        out.append(MockConsensusRow(**data))
+    return out
 
 
 async def get_player_consensus_detail(

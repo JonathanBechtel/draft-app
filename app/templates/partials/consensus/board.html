@@ -50,6 +50,9 @@
               data-col="consensus_rank" aria-sort="ascending" tabindex="0">#</th>
           <th class="consensus-hero__th consensus-hero__th--delta cb-th cb-th--nosort">Δ</th>
           <th class="consensus-hero__th consensus-hero__th--trend cb-th cb-th--nosort">Trend</th>
+          {% if board_kind.value == 'MOCK_DRAFT' %}
+          <th class="consensus-hero__th consensus-hero__th--team cb-th cb-th--nosort">Team</th>
+          {% endif %}
           <th class="consensus-hero__th cb-th cb-th--nosort">Player</th>
           <th class="consensus-hero__th cb-th cb-th--nosort">School</th>
           <th class="consensus-hero__th consensus-hero__th--pos cb-th cb-th--nosort">Pos</th>
@@ -117,6 +120,31 @@
             <span class="consensus-hero__sparkline-empty" aria-hidden="true">–</span>
             {% endif %}
           </td>
+
+          {# Team that owns this pick (mock-draft view only) — owner bold,
+             traded-from shown as a small "via" subscript. #}
+          {% if board_kind.value == 'MOCK_DRAFT' %}
+          <td class="consensus-hero__td cb-td--team">
+            {% if row.team_abbreviation %}
+            <span class="cb-team">
+              {% if row.team_logo_url %}
+              <img class="cb-team-logo"
+                   src="{{ row.team_logo_url }}"
+                   alt=""
+                   width="18" height="18"
+                   loading="lazy"
+                   aria-hidden="true">
+              {% endif %}
+              <strong class="cb-team-abbr">{{ row.team_abbreviation }}</strong>
+              {% if row.original_team_abbreviation %}
+              <sub class="cb-team-via">via {{ row.original_team_abbreviation }}</sub>
+              {% endif %}
+            </span>
+            {% else %}
+            <span class="cb-team cb-team--empty" aria-hidden="true">—</span>
+            {% endif %}
+          </td>
+          {% endif %}
 
           {# Player name + optional photo thumbnail #}
           <td class="consensus-hero__td consensus-hero__td--player">

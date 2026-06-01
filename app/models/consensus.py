@@ -39,6 +39,31 @@ class ConsensusRow(SQLModel):
     recent_ranks: list[int] = []
 
 
+class MockConsensusRow(ConsensusRow):
+    """A consensus row with its draft slot's owning team overlaid.
+
+    Used by the post-lottery mock-draft presentation: the player at
+    ``consensus_rank`` N is shown alongside the team that owns overall pick N.
+    The ranking is unchanged — this only attaches the team at each slot.
+
+    Team fields are ``None`` when the consensus rank has no matching pick slot
+    (the consensus runs deeper than the seeded order, or the order is not
+    seeded for the year); the UI renders those rows without a team chip.
+    """
+
+    overall_pick: Optional[int] = None
+    round: Optional[int] = None
+    team_name: Optional[str] = None
+    team_abbreviation: Optional[str] = None
+    team_slug: Optional[str] = None
+    team_logo_url: Optional[str] = None
+    team_primary_color: Optional[str] = None
+    # The pick's original owner when acquired via trade; rendered as a small
+    # "via {abbr}" subscript next to the (bold) current owner.
+    original_team_abbreviation: Optional[str] = None
+    trade_note: Optional[str] = None
+
+
 class RankHistoryPoint(SQLModel):
     """One snapshot's rank for a single player — used in trajectory charts."""
 

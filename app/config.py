@@ -118,6 +118,13 @@ class Settings(BaseSettings):
     board_auto_ingest_enabled: bool = False
     board_auto_ingest_lookback_days: int = 7
 
+    # Post-lottery mock-draft team overlay.
+    # When enabled (and the calendar is past LOTTERY_DATE), the consensus board
+    # renders as a mock draft: each consensus row is shown with the team that
+    # owns that pick slot (from the DraftPickSlot reference). Ships dormant
+    # (False) so it only goes live once the draft order is seeded and reviewed.
+    mock_draft_team_overlay_enabled: bool = False
+
     @property
     def is_dev(self) -> bool:
         return self.env == "dev" or self.debug is True
