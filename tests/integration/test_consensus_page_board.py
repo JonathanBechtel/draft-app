@@ -283,6 +283,66 @@ async def test_board_empty_state_no_500(
 
 
 @pytest.mark.asyncio
+async def test_board_source_breakdown_toggle_markup(
+    app_client: AsyncClient,
+    board_data: dict,
+) -> None:
+    """Each board row exposes the expand toggle + a paired detail row.
+
+    The per-analyst source breakdown (lazy-loaded by consensus.js) needs:
+    - a ``.cb-toggle`` button per row,
+    - an empty ``cbDetail-{player_id}`` sibling row carrying the player id,
+    - ``data-draft-year`` / ``data-board-kind`` on the table for the API call.
+    """
+    with patch(
+        "app.routes.ui.get_consensus_board_kind",
+        return_value=BoardKind.BIG_BOARD,
+    ):
+        resp = await app_client.get("/consensus")
+
+    assert resp.status_code == 200
+    html = resp.text
+
+    assert 'class="cb-toggle"' in html, "Expand toggle button not rendered"
+    assert 'data-draft-year="2026"' in html, "draft_year data attr missing on table"
+    assert 'data-board-kind="BIG_BOARD"' in html, "board_kind data attr missing on table"
+
+    # Every seeded player gets a detail shell keyed by player id.
+    for p in board_data["players"]:
+        assert p.id is not None
+        assert f'id="cbDetail-{p.id}"' in html, f"detail row missing for player {p.id}"
+        assert f'data-player-id="{p.id}"' in html, f"data-player-id missing for {p.id}"
+
+
+@pytest.mark.asyncio
+async def test_player_consensus_api_returns_source_ranks(
+    app_client: AsyncClient,
+    board_data: dict,
+) -> None:
+    """GET /api/consensus/player/{id} returns the per-source rank breakdown.
+
+    This is the endpoint the inline expander hydrates from; each contributing
+    source must appear in ``source_ranks`` with its individual rank.
+    """
+    p2 = board_data["players"][1]  # Dylan Harper — ranked 2 and 3 by the two sources
+    assert p2.id is not None
+
+    resp = await app_client.get(
+        f"/api/consensus/player/{p2.id}",
+        params={"draft_year": 2026, "kind": "BIG_BOARD"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["player_id"] == p2.id
+    source_ranks = body["source_ranks"]
+    assert len(source_ranks) == 2, "expected one entry per contributing source"
+    assert {e["source_rank"] for e in source_ranks} == {2, 3}
+    for entry in source_ranks:
+        assert "source_display_name" in entry
+        assert "source_rank" in entry
+
+
+@pytest.mark.asyncio
 async def test_board_section_anchor_present(
     app_client: AsyncClient,
     board_data: dict,

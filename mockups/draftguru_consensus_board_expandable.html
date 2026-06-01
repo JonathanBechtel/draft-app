@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DraftGuru — Consensus Board · Expandable Source Rows (Mockup)</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Reuse the SHIPPED design system + board table styling so this mockup is
+       faithful to the live /consensus page. The NEW expandable-row component is
+       styled inline below — this block is the spec for the eventual scoped CSS
+       (consensus-board.css) and JS (consensus-board.js). -->
+  <link rel="stylesheet" href="../app/static/main.css">
+  <link rel="stylesheet" href="../app/static/css/home.css">
+  <link rel="stylesheet" href="../app/static/css/consensus.css">
+
+  <style>
+    body { background: var(--color-slate-50); }
+    .mock-note {
+      background: #fff7ed; border: 1px dashed var(--color-accent-amber);
+      color: #7c2d12; padding: 0.6rem 1rem; border-radius: 8px;
+      font-family: var(--font-mono); font-size: 0.8rem; margin: 1rem auto;
+      max-width: 1100px; line-height: 1.5;
+    }
+    .page { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+    .page__title {
+      font-family: var(--font-heading); font-size: 1.9rem;
+      color: var(--color-slate-900); margin: 0.5rem 0 0.25rem;
+    }
+    .freshness-line { font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-500); margin: 0.25rem 0 0.75rem; }
+
+    /* ====================================================================
+       NEW: per-row expand toggle (lives in a leading column)
+       ==================================================================== */
+    .consensus-hero__th--toggle,
+    .consensus-hero__td--toggle { width: 30px; padding-left: 0.35rem; padding-right: 0.15rem; text-align: center; }
+
+    .cb-toggle {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; padding: 0; cursor: pointer;
+      background: transparent; border: 1px solid var(--color-slate-200);
+      border-radius: 6px; color: var(--color-slate-500);
+      transition: background var(--transition-speed), color var(--transition-speed),
+                  border-color var(--transition-speed), transform var(--transition-speed);
+    }
+    .cb-toggle:hover { background: var(--color-slate-50); color: var(--color-slate-700); border-color: var(--color-slate-300); }
+    .cb-toggle:focus-visible { outline: none; border-color: var(--color-accent-amber); box-shadow: 0 0 0 3px rgba(245,158,11,.18); }
+    .cb-toggle__chevron { transition: transform var(--transition-speed); font-size: 0.7rem; line-height: 1; }
+    .cb-row.is-expanded .cb-toggle { background: var(--color-accent-amber); border-color: var(--color-accent-amber); color: #fff; }
+    .cb-row.is-expanded .cb-toggle__chevron { transform: rotate(90deg); }
+
+    /* ====================================================================
+       NEW: expanded detail row — "where each analyst ranked them"
+       ==================================================================== */
+    .cb-detail-row > td { padding: 0; border-bottom: 1px solid var(--color-slate-200); }
+    .cb-detail-row[hidden] { display: none; }
+
+    .cb-detail {
+      background: var(--color-slate-50);
+      border-left: 3px solid var(--color-accent-amber);
+      padding: 0.9rem 1.1rem 1rem 1.25rem;
+      animation: cb-detail-in 0.18s ease-out;
+    }
+    @keyframes cb-detail-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+    .cb-detail__head {
+      display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+    .cb-detail__title {
+      font-family: var(--font-heading); font-size: 0.82rem; letter-spacing: 0.03em;
+      text-transform: uppercase; color: var(--color-slate-800);
+    }
+    .cb-detail__summary {
+      font-family: var(--font-mono); font-size: 0.72rem; color: var(--color-slate-500);
+    }
+
+    /* Slim scale strip: reuses the range-bar visual language. Each source is a
+       tick; the consensus position is the fuchsia marker. Clustering = agreement. */
+    .cb-detail__scale {
+      display: flex; align-items: center; gap: 0.5rem; margin: 0.25rem 0 0.95rem;
+      max-width: 640px;
+    }
+    .cb-detail__scale-edge {
+      font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-slate-500);
+      width: 1.8rem; flex: none;
+    }
+    .cb-detail__scale-edge:last-child { text-align: left; }
+    .cb-detail__scale-edge:first-child { text-align: right; }
+    .cb-detail__scale-track {
+      position: relative; flex: 1; height: 8px;
+      background: var(--color-slate-100); border-radius: 4px;
+    }
+    .cb-detail__tick {
+      position: absolute; top: 50%; width: 9px; height: 9px; border-radius: 50%;
+      background: var(--color-slate-400); border: 1px solid var(--color-white);
+      transform: translate(-50%, -50%); opacity: 0.85;
+    }
+    .cb-detail__consensus {
+      position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%;
+      background: var(--color-white); border: 2px solid var(--color-accent-fuchsia);
+      transform: translate(-50%, -50%); z-index: 2;
+    }
+
+    /* Per-source grid: every named source links OUT to its published board (↗). */
+    .cb-detail__sources {
+      list-style: none; margin: 0; padding: 0;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+      gap: 0.4rem 0.85rem;
+    }
+    .cb-source {
+      display: flex; align-items: center; gap: 0.55rem;
+      padding: 0.4rem 0.55rem; border-radius: 7px;
+      background: var(--color-white); border: 1px solid var(--color-slate-200);
+    }
+    .cb-source__rank {
+      font-family: var(--font-mono); font-weight: 700; font-size: 0.82rem;
+      color: var(--color-slate-800); width: 2.1rem; flex: none;
+      font-variant-numeric: tabular-nums;
+    }
+    .cb-source__main { display: flex; flex-direction: column; gap: 0.05rem; min-width: 0; flex: 1; }
+    .cb-source__name {
+      font-family: var(--font-body); font-size: 0.82rem; font-weight: 600;
+      color: var(--color-accent-indigo); text-decoration: none;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cb-source__name:hover { text-decoration: underline; color: var(--color-accent-cyan); }
+    .cb-source__name::after { content: " \2197"; font-size: 0.72em; color: var(--color-slate-400); }
+    .cb-source__board {
+      font-family: var(--font-mono); font-size: 0.66rem; color: var(--color-slate-500);
+      text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .cb-source__board:hover { color: var(--color-slate-700); text-decoration: underline; }
+    .cb-source__delta {
+      font-family: var(--font-mono); font-weight: 700; font-size: 0.72rem;
+      width: 2.3rem; flex: none; text-align: right; font-variant-numeric: tabular-nums;
+    }
+    .cb-source__delta--up   { color: #15803d; }   /* ranked HIGHER than consensus (better) */
+    .cb-source__delta--down { color: #be123c; }   /* ranked LOWER than consensus (worse)   */
+    .cb-source__delta--flat { color: var(--color-slate-400); }
+    /* highlight the outlier card subtly */
+    .cb-source.is-outlier { border-color: rgba(217,70,239,.45); box-shadow: 0 0 0 2px rgba(217,70,239,.08); }
+
+    .cb-detail__foot {
+      margin-top: 0.85rem; font-family: var(--font-mono); font-size: 0.68rem;
+      color: var(--color-slate-400);
+    }
+    .cb-detail__foot a { color: var(--color-slate-500); }
+  </style>
+</head>
+<body>
+
+  <div class="mock-note">
+    MOCKUP — proposed enhancement to the live <code>/consensus</code> board: a <strong>per-row toggle</strong> (▸ in the
+    leading column) expands a panel beneath the pick showing <strong>where each analyst ranked the player</strong>, with an
+    outbound link (↗) to every source's published board. Rows #2 and #3 are pre-expanded to show the feature; click any ▸ to
+    toggle. Board table + tokens come from shipped <code>consensus.css</code>; the new <code>.cb-detail</code> /
+    <code>.cb-toggle</code> components are styled inline as the spec.
+  </div>
+
+  <div class="page">
+
+    <h1 class="page__title">2026 Consensus Big Board</h1>
+    <p class="freshness-line">Based on <strong>7 boards</strong> from <strong>7 sources</strong> · updated May 30, 2026</p>
+
+    <div class="card card-ring card-ring-amber consensus-hero__card cb-card" style="margin-top:0.5rem;">
+      <div class="scanlines"></div>
+      <div class="consensus-hero__table-wrap">
+        <table class="consensus-hero__table cb-table" aria-label="Consensus Big Board 2026">
+          <thead>
+            <tr>
+              <th class="consensus-hero__th consensus-hero__th--toggle cb-th cb-th--nosort" aria-label="Expand sources"></th>
+              <th class="consensus-hero__th consensus-hero__th--rank cb-th" aria-sort="ascending">#</th>
+              <th class="consensus-hero__th consensus-hero__th--delta cb-th cb-th--nosort">Δ</th>
+              <th class="consensus-hero__th consensus-hero__th--trend cb-th cb-th--nosort">Trend</th>
+              <th class="consensus-hero__th cb-th cb-th--nosort">Player</th>
+              <th class="consensus-hero__th cb-th cb-th--nosort">School</th>
+              <th class="consensus-hero__th consensus-hero__th--pos cb-th cb-th--nosort">Pos</th>
+              <th class="consensus-hero__th consensus-hero__th--avg cb-th">Avg</th>
+              <th class="consensus-hero__th cb-th cb-th--nosort cb-th--range">Range</th>
+              <th class="consensus-hero__th consensus-hero__th--sources cb-th">Src</th>
+            </tr>
+          </thead>
+          <tbody>
+
+            <!-- ============ ROW 1 — Cooper Flagg (unanimous) ============ -->
+            <tr class="consensus-hero__row cb-row" data-player="cooper flagg">
+              <td class="consensus-hero__td consensus-hero__td--toggle">
+                <button class="cb-toggle" type="button" aria-expanded="false" aria-controls="d-1" title="Show source ranks">
+                  <span class="cb-toggle__chevron">▸</span>
+                </button>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--rank tabular-nums">1</td>
+              <td class="consensus-hero__td consensus-hero__td--delta"><span class="consensus-hero__delta consensus-hero__delta--flat">–</span></td>
+              <td class="consensus-hero__td consensus-hero__td--trend"><svg viewBox="0 0 80 18" width="80" height="18" preserveAspectRatio="none" aria-hidden="true"><path d="M0,9 L20,9 L40,8 L60,9 L80,9" fill="none" stroke="#94a3b8" stroke-width="1.5"/></svg></td>
+              <td class="consensus-hero__td consensus-hero__td--player"><div class="cb-player-cell"><span class="cb-player-photo cb-player-photo--placeholder" aria-hidden="true"></span><a class="consensus-hero__player-name" href="#">Cooper Flagg</a></div></td>
+              <td class="consensus-hero__td consensus-hero__td--school">Duke</td>
+              <td class="consensus-hero__td consensus-hero__td--pos">PF</td>
+              <td class="consensus-hero__td consensus-hero__td--avg tabular-nums">1.0</td>
+              <td class="consensus-hero__td cb-td--range">
+                <div class="cb-range">
+                  <span class="cb-range__edge tabular-nums" title="Best rank">#1</span>
+                  <div class="cb-range__track"><div class="cb-range__fill" style="left:0%;width:3%;"></div><div class="cb-range__marker" style="left:0%;"></div></div>
+                  <span class="cb-range__edge tabular-nums" title="Worst rank">#1</span>
+                </div>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--sources tabular-nums">7</td>
+            </tr>
+            <tr class="cb-detail-row" id="d-1" hidden>
+              <td colspan="10">
+                <div class="cb-detail">
+                  <div class="cb-detail__head">
+                    <span class="cb-detail__title">Where analysts ranked Cooper Flagg</span>
+                    <span class="cb-detail__summary">7 of 7 boards · range #1–#1 · consensus #1</span>
+                  </div>
+                  <div class="cb-detail__scale">
+                    <span class="cb-detail__scale-edge">#1</span>
+                    <div class="cb-detail__scale-track">
+                      <span class="cb-detail__tick" style="left:0%"></span>
+                      <span class="cb-detail__consensus" title="Consensus #1" style="left:0%"></span>
+                    </div>
+                    <span class="cb-detail__scale-edge">#1</span>
+                  </div>
+                  <ul class="cb-detail__sources">
+                    <li class="cb-source"><span class="cb-source__rank">#1</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Ersin Demir</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">2026 Big Board ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#1</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Draft Stack</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Top 60 ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#1</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">No Ceilings</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Big Board v4 ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#1</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Dizzle Dynasty</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">2026 Board ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#1</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Floor &amp; Ceiling</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Big Board ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#1</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Two-Way Player</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Mock 5.0 ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#1</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Swish Theory</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Draft Board ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                  </ul>
+                  <p class="cb-detail__foot">Ranks link to each creator's original board. DraftGuru aggregates — it doesn't reproduce — their work.</p>
+                </div>
+              </td>
+            </tr>
+
+            <!-- ============ ROW 2 — Dylan Harper (pre-expanded) ============ -->
+            <tr class="consensus-hero__row cb-row is-expanded" data-player="dylan harper">
+              <td class="consensus-hero__td consensus-hero__td--toggle">
+                <button class="cb-toggle" type="button" aria-expanded="true" aria-controls="d-2" title="Hide source ranks">
+                  <span class="cb-toggle__chevron">▸</span>
+                </button>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--rank tabular-nums">2</td>
+              <td class="consensus-hero__td consensus-hero__td--delta"><span class="consensus-hero__delta consensus-hero__delta--up">▲1</span></td>
+              <td class="consensus-hero__td consensus-hero__td--trend"><svg viewBox="0 0 80 18" width="80" height="18" preserveAspectRatio="none" aria-hidden="true"><path d="M0,12 L20,11 L40,9 L60,7 L80,6" fill="none" stroke="#10b981" stroke-width="1.5"/></svg></td>
+              <td class="consensus-hero__td consensus-hero__td--player"><div class="cb-player-cell"><span class="cb-player-photo cb-player-photo--placeholder" aria-hidden="true"></span><a class="consensus-hero__player-name" href="#">Dylan Harper</a></div></td>
+              <td class="consensus-hero__td consensus-hero__td--school">Rutgers</td>
+              <td class="consensus-hero__td consensus-hero__td--pos">SG</td>
+              <td class="consensus-hero__td consensus-hero__td--avg tabular-nums">2.6</td>
+              <td class="consensus-hero__td cb-td--range">
+                <div class="cb-range">
+                  <span class="cb-range__edge tabular-nums" title="Best rank">#2</span>
+                  <div class="cb-range__track"><div class="cb-range__fill" style="left:0%;width:100%;"></div><div class="cb-range__marker" style="left:0%;"></div></div>
+                  <span class="cb-range__edge tabular-nums" title="Worst rank">#5</span>
+                </div>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--sources tabular-nums">7</td>
+            </tr>
+            <tr class="cb-detail-row" id="d-2">
+              <td colspan="10">
+                <div class="cb-detail">
+                  <div class="cb-detail__head">
+                    <span class="cb-detail__title">Where analysts ranked Dylan Harper</span>
+                    <span class="cb-detail__summary">7 of 7 boards · range #2–#5 · consensus #2</span>
+                  </div>
+                  <div class="cb-detail__scale">
+                    <span class="cb-detail__scale-edge">#2</span>
+                    <div class="cb-detail__scale-track">
+                      <span class="cb-detail__tick" style="left:0%"></span>
+                      <span class="cb-detail__tick" style="left:0%"></span>
+                      <span class="cb-detail__tick" style="left:0%"></span>
+                      <span class="cb-detail__tick" style="left:0%"></span>
+                      <span class="cb-detail__tick" style="left:33%"></span>
+                      <span class="cb-detail__tick" style="left:33%"></span>
+                      <span class="cb-detail__tick" style="left:100%"></span>
+                      <span class="cb-detail__consensus" title="Consensus #2" style="left:0%"></span>
+                    </div>
+                    <span class="cb-detail__scale-edge">#5</span>
+                  </div>
+                  <ul class="cb-detail__sources">
+                    <li class="cb-source"><span class="cb-source__rank">#2</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">No Ceilings</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Big Board v4 ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#2</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Draft Stack</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Top 60 ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#2</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Dizzle Dynasty</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">2026 Board ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#2</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Two-Way Player</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Mock 5.0 ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#3</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Ersin Demir</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">2026 Big Board ↗</a></span><span class="cb-source__delta cb-source__delta--down">▼1</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#3</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Swish Theory</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Draft Board ↗</a></span><span class="cb-source__delta cb-source__delta--down">▼1</span></li>
+                    <li class="cb-source is-outlier"><span class="cb-source__rank">#5</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Floor &amp; Ceiling</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Big Board ↗</a></span><span class="cb-source__delta cb-source__delta--down">▼3</span></li>
+                  </ul>
+                  <p class="cb-detail__foot">Ranks link to each creator's original board. DraftGuru aggregates — it doesn't reproduce — their work.</p>
+                </div>
+              </td>
+            </tr>
+
+            <!-- ============ ROW 3 — Ace Bailey (polarizing, pre-expanded) ============ -->
+            <tr class="consensus-hero__row cb-row is-expanded" data-player="ace bailey">
+              <td class="consensus-hero__td consensus-hero__td--toggle">
+                <button class="cb-toggle" type="button" aria-expanded="true" aria-controls="d-3" title="Hide source ranks">
+                  <span class="cb-toggle__chevron">▸</span>
+                </button>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--rank tabular-nums">3</td>
+              <td class="consensus-hero__td consensus-hero__td--delta"><span class="consensus-hero__delta consensus-hero__delta--down">▼1</span></td>
+              <td class="consensus-hero__td consensus-hero__td--trend"><svg viewBox="0 0 80 18" width="80" height="18" preserveAspectRatio="none" aria-hidden="true"><path d="M0,6 L20,7 L40,8 L60,10 L80,11" fill="none" stroke="#f43f5e" stroke-width="1.5"/></svg></td>
+              <td class="consensus-hero__td consensus-hero__td--player"><div class="cb-player-cell"><span class="cb-player-photo cb-player-photo--placeholder" aria-hidden="true"></span><a class="consensus-hero__player-name" href="#">Ace Bailey</a></div></td>
+              <td class="consensus-hero__td consensus-hero__td--school">Rutgers</td>
+              <td class="consensus-hero__td consensus-hero__td--pos">SF</td>
+              <td class="consensus-hero__td consensus-hero__td--avg tabular-nums">3.4</td>
+              <td class="consensus-hero__td cb-td--range">
+                <div class="cb-range">
+                  <span class="cb-range__edge tabular-nums" title="Best rank">#2</span>
+                  <div class="cb-range__track"><div class="cb-range__fill" style="left:0%;width:100%;"></div><div class="cb-range__marker" style="left:25%;"></div></div>
+                  <span class="cb-range__edge tabular-nums" title="Worst rank">#6</span>
+                </div>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--sources tabular-nums">7</td>
+            </tr>
+            <tr class="cb-detail-row" id="d-3">
+              <td colspan="10">
+                <div class="cb-detail">
+                  <div class="cb-detail__head">
+                    <span class="cb-detail__title">Where analysts ranked Ace Bailey</span>
+                    <span class="cb-detail__summary">7 of 7 boards · range #2–#6 · consensus #3 · most polarizing in the top 5</span>
+                  </div>
+                  <div class="cb-detail__scale">
+                    <span class="cb-detail__scale-edge">#2</span>
+                    <div class="cb-detail__scale-track">
+                      <span class="cb-detail__tick" style="left:0%"></span>
+                      <span class="cb-detail__tick" style="left:0%"></span>
+                      <span class="cb-detail__tick" style="left:25%"></span>
+                      <span class="cb-detail__tick" style="left:25%"></span>
+                      <span class="cb-detail__tick" style="left:75%"></span>
+                      <span class="cb-detail__tick" style="left:100%"></span>
+                      <span class="cb-detail__consensus" title="Consensus #3" style="left:25%"></span>
+                    </div>
+                    <span class="cb-detail__scale-edge">#6</span>
+                  </div>
+                  <ul class="cb-detail__sources">
+                    <li class="cb-source is-outlier"><span class="cb-source__rank">#2</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">No Ceilings</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Big Board v4 ↗</a></span><span class="cb-source__delta cb-source__delta--up">▲1</span></li>
+                    <li class="cb-source is-outlier"><span class="cb-source__rank">#2</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Dizzle Dynasty</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">2026 Board ↗</a></span><span class="cb-source__delta cb-source__delta--up">▲1</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#3</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Draft Stack</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Top 60 ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#3</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Swish Theory</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Draft Board ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#4</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Two-Way Player</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Mock 5.0 ↗</a></span><span class="cb-source__delta cb-source__delta--down">▼1</span></li>
+                    <li class="cb-source is-outlier"><span class="cb-source__rank">#6</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Ersin Demir</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">2026 Big Board ↗</a></span><span class="cb-source__delta cb-source__delta--down">▼3</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#3</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Floor &amp; Ceiling</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Big Board ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                  </ul>
+                  <p class="cb-detail__foot">Ranks link to each creator's original board. DraftGuru aggregates — it doesn't reproduce — their work.</p>
+                </div>
+              </td>
+            </tr>
+
+            <!-- ============ ROW 4 — VJ Edgecombe (collapsed) ============ -->
+            <tr class="consensus-hero__row cb-row" data-player="vj edgecombe">
+              <td class="consensus-hero__td consensus-hero__td--toggle">
+                <button class="cb-toggle" type="button" aria-expanded="false" aria-controls="d-4" title="Show source ranks">
+                  <span class="cb-toggle__chevron">▸</span>
+                </button>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--rank tabular-nums">4</td>
+              <td class="consensus-hero__td consensus-hero__td--delta"><span class="consensus-hero__delta consensus-hero__delta--flat">–</span></td>
+              <td class="consensus-hero__td consensus-hero__td--trend"><svg viewBox="0 0 80 18" width="80" height="18" preserveAspectRatio="none" aria-hidden="true"><path d="M0,9 L20,8 L40,9 L60,9 L80,9" fill="none" stroke="#94a3b8" stroke-width="1.5"/></svg></td>
+              <td class="consensus-hero__td consensus-hero__td--player"><div class="cb-player-cell"><span class="cb-player-photo cb-player-photo--placeholder" aria-hidden="true"></span><a class="consensus-hero__player-name" href="#">VJ Edgecombe</a></div></td>
+              <td class="consensus-hero__td consensus-hero__td--school">Baylor</td>
+              <td class="consensus-hero__td consensus-hero__td--pos">SG</td>
+              <td class="consensus-hero__td consensus-hero__td--avg tabular-nums">4.3</td>
+              <td class="consensus-hero__td cb-td--range">
+                <div class="cb-range">
+                  <span class="cb-range__edge tabular-nums" title="Best rank">#2</span>
+                  <div class="cb-range__track"><div class="cb-range__fill" style="left:0%;width:100%;"></div><div class="cb-range__marker" style="left:50%;"></div></div>
+                  <span class="cb-range__edge tabular-nums" title="Worst rank">#6</span>
+                </div>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--sources tabular-nums">7</td>
+            </tr>
+            <tr class="cb-detail-row" id="d-4" hidden>
+              <td colspan="10">
+                <div class="cb-detail">
+                  <div class="cb-detail__head">
+                    <span class="cb-detail__title">Where analysts ranked VJ Edgecombe</span>
+                    <span class="cb-detail__summary">7 of 7 boards · range #2–#6 · consensus #4</span>
+                  </div>
+                  <div class="cb-detail__scale">
+                    <span class="cb-detail__scale-edge">#2</span>
+                    <div class="cb-detail__scale-track">
+                      <span class="cb-detail__tick" style="left:0%"></span>
+                      <span class="cb-detail__tick" style="left:25%"></span>
+                      <span class="cb-detail__tick" style="left:50%"></span>
+                      <span class="cb-detail__tick" style="left:50%"></span>
+                      <span class="cb-detail__tick" style="left:75%"></span>
+                      <span class="cb-detail__tick" style="left:100%"></span>
+                      <span class="cb-detail__consensus" title="Consensus #4" style="left:50%"></span>
+                    </div>
+                    <span class="cb-detail__scale-edge">#6</span>
+                  </div>
+                  <ul class="cb-detail__sources">
+                    <li class="cb-source"><span class="cb-source__rank">#2</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Draft Stack</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Top 60 ↗</a></span><span class="cb-source__delta cb-source__delta--up">▲2</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#3</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Two-Way Player</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Mock 5.0 ↗</a></span><span class="cb-source__delta cb-source__delta--up">▲1</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#4</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Ersin Demir</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">2026 Big Board ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#4</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">No Ceilings</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Big Board v4 ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#5</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Swish Theory</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Draft Board ↗</a></span><span class="cb-source__delta cb-source__delta--down">▼1</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#6</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Dizzle Dynasty</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">2026 Board ↗</a></span><span class="cb-source__delta cb-source__delta--down">▼2</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#5</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Floor &amp; Ceiling</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Big Board ↗</a></span><span class="cb-source__delta cb-source__delta--down">▼1</span></li>
+                  </ul>
+                  <p class="cb-detail__foot">Ranks link to each creator's original board. DraftGuru aggregates — it doesn't reproduce — their work.</p>
+                </div>
+              </td>
+            </tr>
+
+            <!-- ============ ROW 5 — collapsed placeholder ============ -->
+            <tr class="consensus-hero__row cb-row" data-player="kon knueppel">
+              <td class="consensus-hero__td consensus-hero__td--toggle">
+                <button class="cb-toggle" type="button" aria-expanded="false" aria-controls="d-5" title="Show source ranks">
+                  <span class="cb-toggle__chevron">▸</span>
+                </button>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--rank tabular-nums">5</td>
+              <td class="consensus-hero__td consensus-hero__td--delta"><span class="consensus-hero__delta consensus-hero__delta--up">▲2</span></td>
+              <td class="consensus-hero__td consensus-hero__td--trend"><svg viewBox="0 0 80 18" width="80" height="18" preserveAspectRatio="none" aria-hidden="true"><path d="M0,11 L20,10 L40,9 L60,8 L80,7" fill="none" stroke="#10b981" stroke-width="1.5"/></svg></td>
+              <td class="consensus-hero__td consensus-hero__td--player"><div class="cb-player-cell"><span class="cb-player-photo cb-player-photo--placeholder" aria-hidden="true"></span><a class="consensus-hero__player-name" href="#">Kon Knueppel</a></div></td>
+              <td class="consensus-hero__td consensus-hero__td--school">Duke</td>
+              <td class="consensus-hero__td consensus-hero__td--pos">SF</td>
+              <td class="consensus-hero__td consensus-hero__td--avg tabular-nums">6.0</td>
+              <td class="consensus-hero__td cb-td--range">
+                <div class="cb-range">
+                  <span class="cb-range__edge tabular-nums" title="Best rank">#4</span>
+                  <div class="cb-range__track"><div class="cb-range__fill" style="left:0%;width:100%;"></div><div class="cb-range__marker" style="left:40%;"></div></div>
+                  <span class="cb-range__edge tabular-nums" title="Worst rank">#9</span>
+                </div>
+              </td>
+              <td class="consensus-hero__td consensus-hero__td--sources tabular-nums">7</td>
+            </tr>
+            <tr class="cb-detail-row" id="d-5" hidden>
+              <td colspan="10">
+                <div class="cb-detail">
+                  <div class="cb-detail__head">
+                    <span class="cb-detail__title">Where analysts ranked Kon Knueppel</span>
+                    <span class="cb-detail__summary">7 of 7 boards · range #4–#9 · consensus #5</span>
+                  </div>
+                  <ul class="cb-detail__sources">
+                    <li class="cb-source"><span class="cb-source__rank">#4</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">No Ceilings</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Big Board v4 ↗</a></span><span class="cb-source__delta cb-source__delta--up">▲1</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#5</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Draft Stack</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">Top 60 ↗</a></span><span class="cb-source__delta cb-source__delta--flat">–</span></li>
+                    <li class="cb-source"><span class="cb-source__rank">#9</span><span class="cb-source__main"><a class="cb-source__name" href="#" target="_blank" rel="noopener">Ersin Demir</a><a class="cb-source__board" href="#" target="_blank" rel="noopener">2026 Big Board ↗</a></span><span class="cb-source__delta cb-source__delta--down">▼4</span></li>
+                  </ul>
+                  <p class="cb-detail__foot">Showing 3 of 7 sources in this mockup row. Ranks link to each creator's original board.</p>
+                </div>
+              </td>
+            </tr>
+
+            <tr class="consensus-hero__row"><td class="consensus-hero__td" colspan="10" style="text-align:center;color:#94a3b8;font-family:var(--font-mono);font-size:.75rem;padding:.6rem;">… full board continues (every ranked player gets the same expandable ▸ row) …</td></tr>
+
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Mockup-only toggle behavior. In production this lives in consensus-board.js
+    // and the detail row's source list is rendered server-side or hydrated from
+    // GET /api/consensus/player/{id} (PlayerConsensusDetail.source_ranks).
+    document.querySelectorAll('.cb-toggle').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var row = btn.closest('.cb-row');
+        var detail = document.getElementById(btn.getAttribute('aria-controls'));
+        var open = row.classList.toggle('is-expanded');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        btn.title = open ? 'Hide source ranks' : 'Show source ranks';
+        if (detail) detail.hidden = !open;
+      });
+    });
+  </script>
+</body>
+</html>
