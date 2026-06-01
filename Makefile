@@ -120,7 +120,7 @@ bio.ingest:
 	$(PYTHON) scripts/ingest_player_bios.py --file $(BBIO) --cache-dir $(CACHE) $(if $(DRY),--dry-run,) $(if $(VERBOSE),--verbose,) $(if $(OVERWRITE_MASTER),--overwrite-master,) $(if $(CREATE_MISSING),--create-missing,) $(if $(FIX),--fix-ambiguities $(FIX),)
 
 # Lint & format
-.PHONY: fmt lint fix precommit test coverage visual visual.headed
+.PHONY: fmt lint fix precommit test coverage coverage.diff visual visual.headed
 fmt:
 	ruff format .
 
@@ -145,6 +145,19 @@ TESTS ?= tests/unit tests/integration
 coverage:
 	pytest $(TESTS) -q --cov=app --cov-report=term-missing --cov-report=html
 	@echo "HTML report: open htmlcov/index.html"
+
+# Patch (diff) coverage gate: fail if <80% of newly changed lines are covered.
+# Mirrors the CI gate. Runs a coverage pass to refresh coverage.xml, then
+# compares the working tree against COMPARE_BRANCH (merge-base).
+# Usage:
+#   make coverage.diff                          # gate against origin/main
+#   make coverage.diff COMPARE_BRANCH=origin/foo # different base
+#   make coverage.diff TESTS=tests/unit          # narrower scope (DB-free)
+COMPARE_BRANCH ?= origin/main
+DIFF_COVER_FAIL_UNDER ?= 80
+coverage.diff:
+	pytest $(TESTS) -q --cov=app --cov-report=xml
+	diff-cover coverage.xml --compare-branch=$(COMPARE_BRANCH) --fail-under=$(DIFF_COVER_FAIL_UNDER)
 
 # Run visual tests (requires server running on TEST_BASE_URL or localhost:8000)
 # Usage:
