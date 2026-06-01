@@ -43,9 +43,15 @@
 <div class="card card-ring card-ring-amber consensus-hero__card cb-card" id="cbCard" data-section="board" style="margin-top:0.5rem;">
   <div class="scanlines"></div>
   <div class="consensus-hero__table-wrap">
-    <table class="consensus-hero__table cb-table" id="cbTable" aria-label="Consensus {{ 'Big Board' if board_kind.value == 'BIG_BOARD' else 'Mock Draft' }} {{ draft_year }}">
+    <table class="consensus-hero__table cb-table" id="cbTable"
+           data-draft-year="{{ draft_year }}"
+           data-board-kind="{{ board_kind.value }}"
+           aria-label="Consensus {{ 'Big Board' if board_kind.value == 'BIG_BOARD' else 'Mock Draft' }} {{ draft_year }}">
       <thead>
         <tr>
+          {# Expand toggle — opens per-analyst source breakdown beneath the row #}
+          <th class="consensus-hero__th consensus-hero__th--toggle cb-th cb-th--nosort"
+              aria-label="Expand source ranks"></th>
           <th class="consensus-hero__th consensus-hero__th--rank cb-th"
               data-col="consensus_rank" aria-sort="ascending" tabindex="0">#</th>
           <th class="consensus-hero__th consensus-hero__th--delta cb-th cb-th--nosort">Δ</th>
@@ -85,6 +91,7 @@
             data-avg="{{ row.avg_rank }}"
             data-age="{{ row.age or '' }}"
             data-sources="{{ row.num_sources }}"
+            data-player-id="{{ row.player_id }}"
             {% if row.slug %}
             onclick="window.location='/players/{{ row.slug }}'"
             tabindex="0"
@@ -92,6 +99,17 @@
             aria-label="{{ row.player_name }} — consensus #{{ row.consensus_rank }}"
             {% endif %}
         >
+          {# Expand toggle — reveals the per-analyst source breakdown row below #}
+          <td class="consensus-hero__td consensus-hero__td--toggle">
+            <button type="button" class="cb-toggle"
+                    aria-expanded="false"
+                    aria-controls="cbDetail-{{ row.player_id }}"
+                    title="Show source ranks">
+              <span class="cb-toggle__chevron" aria-hidden="true">▸</span>
+              <span class="cb-toggle__sr">Show where each analyst ranked {{ row.player_name or 'this player' }}</span>
+            </button>
+          </td>
+
           {# # — consensus rank #}
           <td class="consensus-hero__td consensus-hero__td--rank tabular-nums">{{ row.consensus_rank }}</td>
 
@@ -227,6 +245,15 @@
 
           {# Number of contributing sources #}
           <td class="consensus-hero__td consensus-hero__td--sources tabular-nums">{{ row.num_sources }}</td>
+        </tr>
+
+        {# Per-analyst source breakdown — empty shell hydrated lazily on first
+           expand via GET /api/consensus/player/{id} (see consensus.js). Kept as
+           a sibling row so sort/filter can keep it paired with its player. #}
+        <tr class="cb-detail-row" id="cbDetail-{{ row.player_id }}" hidden>
+          <td colspan="13">
+            <div class="cb-detail" data-loaded="false"></div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
