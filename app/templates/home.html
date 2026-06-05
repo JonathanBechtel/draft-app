@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/news-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/podcasts.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/film-room.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-detail.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -125,9 +126,12 @@
     <div class="card card-ring card-ring-amber consensus-hero__card">
       <div class="scanlines"></div>
       <div class="consensus-hero__table-wrap">
-        <table class="consensus-hero__table" id="consensusHeroTable">
+        <table class="consensus-hero__table" id="consensusHeroTable"
+               data-draft-year="{{ draft_year }}"
+               data-board-kind="{{ board_kind.value }}">
           <thead>
             <tr>
+              <th class="consensus-hero__th consensus-hero__th--toggle" aria-label="Expand source ranks"></th>
               <th class="consensus-hero__th consensus-hero__th--rank">#</th>
               <th class="consensus-hero__th consensus-hero__th--delta">Δ</th>
               <th class="consensus-hero__th consensus-hero__th--trend">Trend</th>
@@ -145,12 +149,21 @@
           </thead>
           <tbody id="consensusHeroBody">
             {% for row in consensus_rows %}
-            <tr class="consensus-hero__row{% if loop.index > consensus_lottery_picks %} consensus-hero__row--overflow{% endif %}"
+            <tr class="consensus-hero__row cb-row{% if loop.index > consensus_lottery_picks %} consensus-hero__row--overflow{% endif %}"
                 data-player-id="{{ row.player_id }}"
                 data-slug="{{ row.slug or '' }}"
                 tabindex="0"
                 role="button"
                 aria-label="View {{ row.player_name or 'Player' }} details">
+              <td class="consensus-hero__td consensus-hero__td--toggle">
+                <button type="button" class="cb-toggle"
+                        aria-expanded="false"
+                        aria-controls="cbDetail-{{ row.player_id }}"
+                        title="Show source ranks">
+                  <span class="cb-toggle__chevron" aria-hidden="true">▸</span>
+                  <span class="cb-toggle__sr">Show where each analyst ranked {{ row.player_name or 'this player' }}</span>
+                </button>
+              </td>
               <td class="consensus-hero__td consensus-hero__td--rank tabular-nums">
                 {{ row.consensus_rank }}
               </td>
@@ -245,6 +258,11 @@
               </td>
               <td class="consensus-hero__td consensus-hero__td--sources tabular-nums">
                 {{ row.num_sources }}
+              </td>
+            </tr>
+            <tr class="cb-detail-row" id="cbDetail-{{ row.player_id }}" hidden>
+              <td colspan="14">
+                <div class="cb-detail" data-loaded="false"></div>
               </td>
             </tr>
             {% endfor %}
@@ -812,4 +830,5 @@
 </script>
 <script src="{{ url_for('static', path='js/home.js') }}"></script>
 <script src="{{ url_for('static', path='js/film-room.js') }}"></script>
+<script src="{{ url_for('static', path='js/consensus-detail.js') }}"></script>
 {% endblock %}
