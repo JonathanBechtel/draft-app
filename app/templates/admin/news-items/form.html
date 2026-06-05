@@ -135,10 +135,14 @@
       or non-ranking articles.
     </p>
     <form method="post" action="/admin/news-items/{{ item.id }}/extract-board"
-          onsubmit="return confirm('Run board extraction? This will fetch the article and call the AI — it may take up to 60 seconds.');">
-      <button type="submit" class="admin-btn admin-btn--secondary">
+          id="extract-board-form">
+      <button type="submit" class="admin-btn admin-btn--secondary" id="extract-board-btn">
         Extract Board
       </button>
+      <span class="admin-form__help extract-board-status" id="extract-board-status" role="status" aria-live="polite" hidden>
+        <span class="extract-board-spinner" aria-hidden="true"></span>
+        Fetching the article and calling the AI… this can take up to 60 seconds. Please keep this tab open.
+      </span>
     </form>
   </div>
 </div>
@@ -233,6 +237,25 @@
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  // Board extraction: confirm, then show an in-flight state since the POST
+  // fetches the article + calls the AI synchronously (up to ~60s) before the
+  // page redirects to the new board.
+  const extractForm = document.getElementById('extract-board-form');
+  if (extractForm) {
+    const extractBtn = document.getElementById('extract-board-btn');
+    const extractStatus = document.getElementById('extract-board-status');
+    extractForm.addEventListener('submit', function(e) {
+      if (!confirm('Run board extraction? This will fetch the article and call the AI — it may take up to 60 seconds.')) {
+        e.preventDefault();
+        return;
+      }
+      extractBtn.disabled = true;
+      extractBtn.setAttribute('aria-busy', 'true');
+      extractBtn.textContent = 'Extracting…';
+      if (extractStatus) extractStatus.hidden = false;
+    });
   }
 })();
 </script>

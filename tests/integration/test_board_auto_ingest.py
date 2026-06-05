@@ -25,7 +25,11 @@ from app.services.board_auto_ingest_service import AutoIngestReport, run_auto_in
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
 
-_NOW = datetime(2026, 5, 31, 12, 0, 0)
+# Anchored to the real clock: run_auto_ingest derives its lookback cutoff from
+# the live clock, so a hardcoded date eventually ages out of the window and the
+# fixtures stop being "recent". Relative dates keep _RECENT inside the default
+# 7-day window and _OLD outside it regardless of when the suite runs.
+_NOW = datetime.utcnow()
 _RECENT = _NOW - timedelta(days=2)
 _OLD = _NOW - timedelta(days=30)  # outside the default 7-day window
 

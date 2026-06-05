@@ -1083,3 +1083,181 @@ class TestBoardDetailArticlePanel:
         resp = await app_client.get(f"/admin/boards/{board.id}")
         assert resp.status_code == 200
         assert "No source article linked" in resp.text
+
+
+@pytest.mark.asyncio
+class TestBoardConsensusFilter:
+    """The ?consensus= filter and per-row badge reflect the live snapshot."""
+
+    async def test_live_and_superseded_split_by_snapshot(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+        sample_players: list[PlayerMaster],
+    ):
+        """Two approved boards from one source: newest is live, older superseded.
+
+        Approving both boards recomputes the snapshot, which keeps only the
+        most-recent board per source. ``?consensus=live`` must surface only
+        that board; ``?consensus=superseded`` only the replaced one; and the
+        unfiltered list must badge each accordingly.
+        """
+        from app.services import board_service as board_svc
+
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+        base = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=10)
+
+        older = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=base,
+            size=1,
+            status=BoardStatus.PENDING,
+        )
+        newer = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=base + timedelta(days=5),
+            size=1,
+            status=BoardStatus.PENDING,
+        )
+        db_session.add(older)
+        db_session.add(newer)
+        await db_session.flush()
+        for b in (older, newer):
+            db_session.add(
+                BoardEntry(
+                    board_id=b.id,
+                    player_id=sample_players[0].id,
+                    position=1,
+                )
+            )
+        await db_session.commit()
+
+        # Approve both (recompute runs each time; final snapshot keeps newest).
+        for b in (older, newer):
+            assert b.id is not None
+            await board_svc.approve_board(db_session, board_id=b.id)
+        await db_session.commit()
+
+        live_resp = await app_client.get("/admin/boards?consensus=live")
+        assert live_resp.status_code == 200
+        assert f"/admin/boards/{newer.id}" in live_resp.text
+        assert f"/admin/boards/{older.id}" not in live_resp.text
+
+        superseded_resp = await app_client.get("/admin/boards?consensus=superseded")
+        assert superseded_resp.status_code == 200
+        assert f"/admin/boards/{older.id}" in superseded_resp.text
+        assert f"/admin/boards/{newer.id}" not in superseded_resp.text
+
+        # Unfiltered list badges both roles.
+        all_resp = await app_client.get("/admin/boards")
+        assert "In consensus" in all_resp.text
+        assert "Superseded" in all_resp.text
+
+
+@pytest.mark.asyncio
+class TestBoardSourceFilter:
+    """The ?source= filter isolates one contributor; the dropdown lists all."""
+
+    async def test_source_filter_isolates_one_contributor(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+    ):
+        """GET /admin/boards?source=<id> shows only that source's boards.
+
+        Seeds two sources with one board each; the filter must keep the
+        selected source's board and drop the other, while the dropdown still
+        offers both contributors.
+        """
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+
+        other = NewsSource(
+            name="other-board-source",
+            display_name="Other Board Source",
+            feed_type=FeedType.RSS,
+            feed_url="https://example.com/other-feed.xml",
+            is_active=True,
+            fetch_interval_minutes=30,
+        )
+        db_session.add(other)
+        await db_session.flush()
+        assert other.id is not None
+
+        published = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+        board_a = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=published,
+            size=0,
+            status=BoardStatus.PENDING,
+        )
+        board_b = Board(
+            news_source_id=other.id,
+            draft_year=2026,
+            published_at=published,
+            size=0,
+            status=BoardStatus.PENDING,
+        )
+        db_session.add(board_a)
+        db_session.add(board_b)
+        await db_session.commit()
+        await db_session.refresh(board_a)
+        await db_session.refresh(board_b)
+
+        resp = await app_client.get(f"/admin/boards?source={big_board_source.id}")
+        assert resp.status_code == 200
+        assert f"/admin/boards/{board_a.id}" in resp.text
+        assert f"/admin/boards/{board_b.id}" not in resp.text
+
+        # The dropdown lists every contributing source regardless of the filter.
+        assert "Big Board Test Source" in resp.text
+        assert "Other Board Source" in resp.text
+
+
+@pytest.mark.asyncio
+class TestAddEntryEmptyPlayer:
+    """Submitting the add-entry form without a selected player is graceful."""
+
+    async def test_empty_player_id_redirects_with_error_not_422(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        big_board_source: NewsSource,
+    ):
+        """POST /entries with an empty player_id 303-redirects with an error.
+
+        Regression: the hidden player_id field is only set when an autocomplete
+        suggestion is clicked, so submitting without one sent "" and FastAPI
+        raised a raw 422. It must now redirect back with a friendly message.
+        """
+        _ = admin_logged_in
+        assert big_board_source.id is not None
+        published = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+        board = Board(
+            news_source_id=big_board_source.id,
+            draft_year=2026,
+            published_at=published,
+            size=0,
+            status=BoardStatus.PENDING,
+        )
+        db_session.add(board)
+        await db_session.commit()
+        await db_session.refresh(board)
+
+        resp = await app_client.post(
+            f"/admin/boards/{board.id}/entries",
+            data={"player_id": "", "position": "1"},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 303
+        assert "error=" in resp.headers["location"]
+        assert f"/admin/boards/{board.id}" in resp.headers["location"]

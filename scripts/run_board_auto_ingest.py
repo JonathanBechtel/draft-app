@@ -46,6 +46,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings  # noqa: E402
 from app.services.board_auto_ingest_service import run_auto_ingest  # noqa: E402
+from app.utils.db_async import load_schema_modules  # noqa: E402
+
+# Register every SQLModel table so cross-table foreign keys (e.g.
+# boards.news_source_id -> news_sources.id) resolve when the mappers
+# configure on first flush. Without this, a standalone run that only imports
+# the board services leaves news_sources unregistered and the first write
+# raises "could not find table 'news_sources'".
+load_schema_modules()
 
 logging.basicConfig(
     level=logging.INFO,

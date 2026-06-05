@@ -83,6 +83,24 @@
     input.addEventListener("blur", function () {
       setTimeout(hide, 120);
     });
+
+    // Block submit when no suggestion was picked: the hidden player_id is only
+    // set on click, so typing a name and pressing Add/Enter would otherwise
+    // POST an empty player_id and hit a 422. Surface a native prompt instead.
+    const form = input.closest("form");
+    if (form) {
+      form.addEventListener("submit", function (ev) {
+        if (!hidden.value) {
+          ev.preventDefault();
+          input.setCustomValidity("Pick a player from the dropdown list.");
+          input.reportValidity();
+          input.focus();
+        }
+      });
+      input.addEventListener("input", function () {
+        input.setCustomValidity("");
+      });
+    }
   }
 
   function initAutosave() {
