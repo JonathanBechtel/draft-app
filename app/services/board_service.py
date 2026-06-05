@@ -216,6 +216,70 @@ async def list_boards(
     return list(result.scalars().all())
 
 
+async def list_source_ids_with_boards(db: AsyncSession) -> list[int]:
+    """Return the distinct ``news_source_id`` values that have at least one board.
+
+    Used to populate the admin source filter with only contributing sources
+    (rather than every active feed), so the dropdown doubles as the roster of
+    board contributors.
+
+    Args:
+        db: Async DB session.
+
+    Returns:
+        Distinct source ids, order unspecified (the caller sorts by display
+        name once the ``NewsSource`` rows are loaded).
+    """
+    rows = await db.execute(
+        select(Board.news_source_id).distinct()  # type: ignore[call-overload]
+    )
+    return list(rows.scalars().all())
+
+
+def normalize_consensus_role(raw: str | None) -> str | None:
+    """Coerce a raw ``?consensus=`` query value to a known role or ``None``.
+
+    Args:
+        raw: The query-string value; anything other than ``"live"`` or
+            ``"superseded"`` (including ``None`` or an empty string) is
+            treated as "no filter".
+
+    Returns:
+        ``"live"``, ``"superseded"``, or ``None``.
+    """
+    return raw if raw in {"live", "superseded"} else None
+
+
+def filter_boards_by_consensus_role(
+    boards: Sequence[Board],
+    *,
+    live_board_ids: set[int],
+    role: str | None,
+) -> list[Board]:
+    """Narrow a board list by its role in the current consensus snapshot.
+
+    Args:
+        boards: Boards to filter (any status).
+        live_board_ids: IDs feeding the current snapshot (see
+            ``consensus_read_service.get_live_board_ids``).
+        role: ``"live"`` keeps only boards in the snapshot; ``"superseded"``
+            keeps APPROVED boards replaced by a newer board from the same
+            source; ``None`` returns the list unchanged.
+
+    Returns:
+        The filtered list (a new list; the input is not mutated).
+    """
+    if role == "live":
+        return [b for b in boards if b.id in live_board_ids]
+    if role == "superseded":
+        return [
+            b
+            for b in boards
+            if b.status is BoardStatus.APPROVED and b.id not in live_board_ids
+        ]
+    return list(boards)
+
+
 async def add_entry(
     db: AsyncSession,
     *,

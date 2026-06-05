@@ -5,10 +5,10 @@
 
 {% block admin_content %}
 <header class="admin-main__header">
-  <h1 class="admin-main__title">
+  <h1 class="admin-main__title" style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
     {{ source.display_name if source else board.news_source_id }}
     <span class="admin-text--muted">&middot; {{ board.draft_year }}</span>
-    <span class="admin-badge {% if board.kind.value == 'MOCK_DRAFT' %}admin-badge--secondary{% endif %}" style="font-size:0.75rem; vertical-align: middle;">
+    <span class="admin-badge {% if board.kind.value == 'MOCK_DRAFT' %}admin-badge--secondary{% endif %}" style="font-size:0.75rem;">
       {{ board.kind.value }}
     </span>
   </h1>

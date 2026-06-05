@@ -16,7 +16,13 @@
     <h2 class="admin-card__title">All Boards</h2>
     <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
       <form method="get" action="/admin/boards" class="admin-form--inline" id="boards-filter-form">
-        <select class="admin-form__select" name="status" onchange="this.form.submit()">
+        <select class="admin-form__select" name="source" onchange="this.form.submit()">
+          <option value="">All sources</option>
+          {% for s in source_options %}
+          <option value="{{ s.id }}" {% if source_filter == s.id %}selected{% endif %}>{{ s.display_name }}</option>
+          {% endfor %}
+        </select>
+        <select class="admin-form__select" name="status" onchange="this.form.submit()" style="margin-left: 0.25rem;">
           <option value="">All statuses</option>
           {% for s in statuses %}
           <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s }}</option>
@@ -28,7 +34,12 @@
           <option value="{{ k }}" {% if kind_filter == k %}selected{% endif %}>{{ k }}</option>
           {% endfor %}
         </select>
-        {% if status_filter or kind_filter %}
+        <select class="admin-form__select" name="consensus" onchange="this.form.submit()" style="margin-left: 0.25rem;">
+          <option value="">All consensus roles</option>
+          <option value="live" {% if consensus_filter == 'live' %}selected{% endif %}>In consensus</option>
+          <option value="superseded" {% if consensus_filter == 'superseded' %}selected{% endif %}>Superseded</option>
+        </select>
+        {% if status_filter or kind_filter or source_filter or consensus_filter %}
         <a href="/admin/boards" class="admin-btn admin-btn--small" style="margin-left: 0.25rem;">Clear</a>
         {% endif %}
       </form>
@@ -48,6 +59,7 @@
         <th>Published</th>
         <th>Size</th>
         <th>Status</th>
+        <th>Consensus</th>
         <th>Approved</th>
         <th>Actions</th>
       </tr>
@@ -74,6 +86,15 @@
           <span class="admin-badge admin-badge--inactive">{{ board.status.value }}</span>
           {% else %}
           <span class="admin-badge">{{ board.status.value }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if board.id in live_board_ids %}
+          <span class="admin-badge admin-badge--active" title="Feeds the current consensus snapshot">In consensus</span>
+          {% elif board.status.value == 'APPROVED' %}
+          <span class="admin-badge admin-badge--inactive" title="Approved but replaced by a newer board from this source">Superseded</span>
+          {% else %}
+          &mdash;
           {% endif %}
         </td>
         <td>

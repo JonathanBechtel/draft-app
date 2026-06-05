@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import statistics
 from datetime import date
+from collections.abc import Iterable
 from typing import Any, Optional, cast
 
 from sqlalchemy import select
@@ -1535,6 +1536,42 @@ async def get_source_spotlight(
         slots.append(second["slot"])
 
     return {"slots": slots}
+
+
+async def get_live_board_ids(
+    db: AsyncSession,
+    *,
+    draft_years: Iterable[int],
+) -> set[int]:
+    """Return the board IDs feeding the latest snapshot for each draft year.
+
+    A board is "live" in the consensus when its id appears in the
+    ``board_ids`` of the most recent snapshot for its draft year. Approved
+    boards superseded by a newer board from the same source are absent from
+    the set, as are pending/rejected boards.
+
+    Args:
+        db: Async DB session.
+        draft_years: Draft years to resolve snapshots for; duplicates are
+            collapsed.
+
+    Returns:
+        The union of ``board_ids`` across the latest snapshot of each
+        requested draft year. Empty when no snapshots exist.
+    """
+    live: set[int] = set()
+    for year in set(draft_years):
+        sid = await _resolve_snapshot_id(db, draft_year=year, snapshot_id=None)
+        if sid is None:
+            continue
+        board_ids = await db.scalar(
+            select(ConsensusSnapshot.board_ids).where(  # type: ignore[call-overload]
+                ConsensusSnapshot.id == sid  # type: ignore[arg-type]
+            )
+        )
+        if board_ids:
+            live.update(board_ids)
+    return live
 
 
 async def get_board_freshness(

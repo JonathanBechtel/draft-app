@@ -29,6 +29,7 @@ from app.schemas.news_sources import NewsSource
 from app.schemas.nba_teams import NbaTeam
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service as svc
+from app.services import consensus_read_service
 from app.services.player_search_service import find_lexical_players
 from app.utils.db_async import get_session
 
@@ -58,10 +59,19 @@ async def list_big_boards(
     request: Request,
     status: str | None = Query(default=None),
     kind: str | None = Query(default=None),
+    source: str | None = Query(default=None),
+    consensus: str | None = Query(default=None),
     success: str | None = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """List boards, optionally filtered by status and/or kind."""
+    """List boards, optionally filtered by status, kind, source, and role.
+
+    The ``source`` filter narrows to a single contributing news source; the
+    ``consensus`` filter narrows APPROVED boards by whether they feed the
+    latest consensus snapshot: ``live`` keeps only the most-recent board per
+    source (those actually in the snapshot), ``superseded`` keeps the approved
+    boards a newer board has replaced.
+    """
     redirect, user = await require_dataset_access(
         request, db, "boards", need_edit=False, next_path="/admin/boards"
     )
@@ -83,15 +93,34 @@ async def list_big_boards(
         except ValueError:
             kind_filter = None
 
-    boards = await svc.list_boards(db, status=status_filter, kind=kind_filter)
+    consensus_filter = svc.normalize_consensus_role(consensus)
+    source_filter = _parse_optional_int(source)
 
-    source_ids = {b.news_source_id for b in boards}
+    boards = await svc.list_boards(
+        db, status=status_filter, kind=kind_filter, news_source_id=source_filter
+    )
+
+    # Resolve which boards actually feed the current consensus snapshot so the
+    # list can badge each row and support the live/superseded filter.
+    live_board_ids = await consensus_read_service.get_live_board_ids(
+        db, draft_years={b.draft_year for b in boards}
+    )
+    boards = svc.filter_boards_by_consensus_role(
+        boards, live_board_ids=live_board_ids, role=consensus_filter
+    )
+
+    # Sources that have any board — both for the row labels below and for the
+    # source-filter dropdown (so it lists only contributing sources).
+    source_option_ids = await svc.list_source_ids_with_boards(db)
     sources_by_id: dict[int, NewsSource] = {}
-    if source_ids:
+    if source_option_ids:
         rows = await db.execute(
-            select(NewsSource).where(NewsSource.id.in_(source_ids))  # type: ignore[union-attr]
+            select(NewsSource).where(NewsSource.id.in_(source_option_ids))  # type: ignore[union-attr]
         )
         sources_by_id = {s.id: s for s in rows.scalars().all() if s.id is not None}
+    source_options = sorted(
+        sources_by_id.values(), key=lambda s: (s.display_name or "").lower()
+    )
 
     return request.app.state.templates.TemplateResponse(
         "admin/boards/index.html",
@@ -101,8 +130,12 @@ async def list_big_boards(
             user,
             boards=boards,
             sources_by_id=sources_by_id,
+            source_options=source_options,
+            live_board_ids=live_board_ids,
             status_filter=status_filter.value if status_filter else None,
             kind_filter=kind_filter.value if kind_filter else None,
+            source_filter=source_filter,
+            consensus_filter=consensus_filter,
             statuses=[s.value for s in BoardStatus],
             kinds=[k.value for k in BoardKind],
             success=_SUCCESS_MESSAGES.get(success) if success else None,
@@ -317,7 +350,7 @@ async def big_board_detail(
 async def add_board_entry(
     request: Request,
     board_id: int,
-    player_id: int = Form(...),
+    player_id: str = Form(default=""),
     position: int = Form(...),
     tier: str | None = Form(default=None),
     round: str | None = Form(default=None),
@@ -345,6 +378,16 @@ async def add_board_entry(
         return redirect
     assert user is not None
 
+    # player_id arrives as a hidden field the autocomplete populates only when a
+    # suggestion is clicked; submitting without picking one sends "". Handle it
+    # as a friendly error instead of letting FastAPI raise a raw 422.
+    player_id_int = _parse_optional_int(player_id)
+    if player_id_int is None:
+        return _redirect_with_error(
+            board_id,
+            "Select a player from the dropdown before adding the entry.",
+        )
+
     tier_int = _parse_optional_int(tier)
     round_int = _parse_optional_int(round)
     team_id_int = _parse_optional_int(team_id)
@@ -355,7 +398,7 @@ async def add_board_entry(
             await svc.add_entry(
                 db,
                 board_id=board_id,
-                player_id=player_id,
+                player_id=player_id_int,
                 position=position,
                 tier=tier_int,
                 round=round_int,
@@ -714,7 +757,7 @@ async def assign_board_entry(
     request: Request,
     board_id: int,
     entry_id: int,
-    player_id: int = Form(...),
+    player_id: str = Form(default=""),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """Manually assign a player to an unresolved entry.
@@ -734,9 +777,18 @@ async def assign_board_entry(
         return redirect
     assert user is not None
 
+    # Empty when submitted without choosing a search result — surface a friendly
+    # message rather than a raw 422 (the hidden field is only set on click).
+    player_id_int = _parse_optional_int(player_id)
+    if player_id_int is None:
+        return _redirect_with_error(
+            board_id,
+            "Select a player from the search results before assigning.",
+        )
+
     try:
         async with db.begin():
-            await svc.assign_entry(db, entry_id=entry_id, player_id=player_id)
+            await svc.assign_entry(db, entry_id=entry_id, player_id=player_id_int)
     except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
