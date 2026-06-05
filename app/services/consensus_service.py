@@ -264,6 +264,32 @@ async def _select_eligible_boards(
     return list(rows.scalars().all())
 
 
+async def is_board_in_consensus(db: AsyncSession, *, board: Board) -> bool:
+    """Return True when ``board`` actually feeds the consensus snapshot.
+
+    A board feeds the consensus only when it is the most-recent APPROVED
+    board for its source/draft_year (the row ``_select_eligible_boards``
+    keeps). Approving a board that a newer board from the same source has
+    already superseded does not change the eligible set, so the caller can
+    skip the recompute — otherwise it writes a no-op snapshot whose
+    ``rank_delta``s are all zero, which empties the movers panel.
+
+    Note this is kind-agnostic: big boards and mocks both compete for the
+    one most-recent slot per source, by design.
+
+    Args:
+        db: Async DB session.
+        board: An already-APPROVED, flushed board.
+
+    Returns:
+        ``True`` if the board is the live board for its source.
+    """
+    if board.id is None:
+        return False
+    eligible = await _select_eligible_boards(db, draft_year=board.draft_year)
+    return any(b.id == board.id for b in eligible)
+
+
 def _build_aggregates(
     ranks_by_player: dict[int, list[tuple[int, int]]],
 ) -> list[_PlayerAggregate]:

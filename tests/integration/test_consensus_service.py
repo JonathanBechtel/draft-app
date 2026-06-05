@@ -1160,3 +1160,57 @@ async def test_source_spotlight_links_to_published_board(
     assert boldest["source_display_name"] == s3.display_name
     assert boldest["work_url"] == "https://example.com/no-ceilings/big-board"
     assert boldest["work_title"] == "My 2026 Big Board"
+
+
+@pytest.mark.asyncio
+async def test_approve_superseded_board_skips_recompute(
+    db_session: AsyncSession,
+    players: list[PlayerMaster],
+    three_sources: list[NewsSource],
+) -> None:
+    """Approving an older board a newer one supersedes writes no new snapshot.
+
+    Regression: every approval used to recompute, so approving a superseded
+    board (common when backfilling old mocks/boards) wrote a no-op snapshot
+    whose zero rank_deltas emptied the movers panel. Only in-consensus
+    (most-recent-per-source) approvals should recompute. Kind-agnostic.
+    """
+    p1, p2, _p3, _p4 = players
+    s1, _s2, _s3 = three_sources
+    today = _now()
+
+    def _pending(pub: datetime) -> Board:
+        return Board(
+            news_source_id=s1.id,
+            news_item_id=None,
+            draft_year=2026,
+            published_at=pub,
+            size=2,
+            status=BoardStatus.PENDING,
+        )
+
+    newer = _pending(today)
+    older = _pending(today - timedelta(days=7))
+    db_session.add(newer)
+    db_session.add(older)
+    await db_session.flush()
+    for b in (newer, older):
+        assert b.id is not None
+        db_session.add(BoardEntry(board_id=b.id, player_id=p1.id, position=1))
+        db_session.add(BoardEntry(board_id=b.id, player_id=p2.id, position=2))
+    await db_session.flush()
+
+    async def _snapshot_count() -> int:
+        rows = (await db_session.execute(select(ConsensusSnapshot))).scalars().all()
+        return len(rows)
+
+    # Most-recent board feeds the consensus -> recompute fires.
+    assert newer.id is not None
+    await bb_svc.approve_board(db_session, board_id=newer.id)
+    after_newer = await _snapshot_count()
+    assert after_newer >= 1
+
+    # Superseded older board is not the live board -> recompute skipped.
+    assert older.id is not None
+    await bb_svc.approve_board(db_session, board_id=older.id)
+    assert await _snapshot_count() == after_newer

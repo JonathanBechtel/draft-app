@@ -548,12 +548,21 @@ async def approve_board(
         # already imports the Board schema).
         from app.services.consensus_service import (
             ConsensusTrigger,
+            is_board_in_consensus,
             recompute_consensus as _recompute,
         )
 
-        await _recompute(
-            db, draft_year=board.draft_year, trigger=ConsensusTrigger.BOARD_APPROVED
-        )
+        # Only recompute when this board actually feeds the consensus (the
+        # most-recent board for its source). Approving an older/superseded
+        # board — common when backfilling historical mocks and boards — leaves
+        # the eligible set unchanged, so a recompute would only write a no-op
+        # snapshot that zeroes every rank_delta and empties the movers panel.
+        if await is_board_in_consensus(db, board=board):
+            await _recompute(
+                db,
+                draft_year=board.draft_year,
+                trigger=ConsensusTrigger.BOARD_APPROVED,
+            )
 
     return board
 
