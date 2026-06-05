@@ -1168,6 +1168,25 @@ const ConsensusHeroModule = {
       if (label) {
         label.textContent = expanded ? btn.dataset.less : btn.dataset.more;
       }
+      if (!expanded) {
+        // Collapsing back to the top picks: close any source-rank panels on
+        // now-hidden overflow rows so a detail panel isn't left orphaned
+        // below the shortened table.
+        section
+          .querySelectorAll('.consensus-hero__row--overflow.cb-row.is-expanded')
+          .forEach((row) => {
+            row.classList.remove('is-expanded');
+            const toggle = row.querySelector('.cb-toggle');
+            if (toggle) {
+              toggle.setAttribute('aria-expanded', 'false');
+              toggle.title = 'Show source ranks';
+            }
+            const detail = row.nextElementSibling;
+            if (detail && detail.classList.contains('cb-detail-row')) {
+              detail.hidden = true;
+            }
+          });
+      }
     });
   },
 };

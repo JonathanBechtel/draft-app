@@ -10,6 +10,7 @@
    controversy-row / spotlight) that the supporting-panels section reuses. #}
 <link rel="stylesheet" href="{{ url_for('static', path='css/home.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/consensus.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/consensus-detail.css') }}">
 {% endblock %}
 
 {% block content %}
@@ -117,4 +118,5 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', path='js/consensus.js') }}"></script>
+<script src="{{ url_for('static', path='js/consensus-detail.js') }}"></script>
 {% endblock %}
