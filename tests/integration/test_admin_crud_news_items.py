@@ -350,6 +350,37 @@ class TestNewsItemsList:
         assert "Scouting Report Article" in response.text
         assert "Mock Draft Article" not in response.text
 
+    async def test_non_numeric_source_id_is_ignored(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_user_id: int,
+        sample_source_id: int,
+    ):
+        """A non-numeric source_id is treated as no source filter, not a 500.
+
+        Guards the defensive ``int()`` coercion: junk query values must fall
+        back to "all sources" rather than raising.
+        """
+        _ = admin_user_id
+
+        item = NewsItem(
+            source_id=sample_source_id,
+            external_id="non-numeric-source-1",
+            title="Garbage Source Article",
+            url="https://example.com/garbage-source",
+            tag=NewsItemTag.GAME_RECAP,
+            published_at=datetime(2025, 1, 15, 12, 0, 0),
+        )
+        db_session.add(item)
+        await db_session.commit()
+
+        await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
+
+        response = await app_client.get("/admin/news-items?source_id=not-a-number")
+        assert response.status_code == 200
+        assert "Garbage Source Article" in response.text
+
 
 @pytest.mark.asyncio
 class TestNewsItemsEdit:
