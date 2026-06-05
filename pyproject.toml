@@ -68,6 +68,10 @@ convention = "google"
 [tool.coverage.run]
 source = ["app"]
 branch = true
+# Integration tests exercise route handlers through async request paths that
+# SQLAlchemy runs under greenlets; without these concurrency modes coverage
+# never traces the handler bodies and diff-cover under-reports route changes.
+concurrency = ["thread", "greenlet"]
 omit = [
     "app/__init__.py",
     "app/*/__init__.py",
