@@ -209,6 +209,16 @@
 
   /** Wire one toggle button: expand/collapse its detail row, lazy-load once. */
   function wireToggle(btn) {
+    // Keyboard users focus the ▸ and press Enter/Space: the row's delegated
+    // keydown navigation would otherwise fire and route to the player page.
+    // Stop the keydown here — the button's native activation still emits the
+    // click below, which does the expand.
+    btn.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") {
+        e.stopPropagation();
+      }
+    });
+
     btn.addEventListener("click", function (e) {
       // Attached to the button itself so this fires before (and stops) the
       // row's navigate-to-player handler on the ancestor.
