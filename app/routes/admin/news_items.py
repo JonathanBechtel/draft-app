@@ -44,7 +44,7 @@ async def list_news_items(
     success: str | None = Query(default=None),
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
-    source_id: int | None = Query(default=None),
+    source_id: str | None = Query(default=None),
     tag: str | None = Query(default=None),
     date_from: str | None = Query(default=None),
     date_to: str | None = Query(default=None),
@@ -63,9 +63,18 @@ async def list_news_items(
     count_query = select(func.count(NewsItem.id))  # type: ignore[arg-type]
 
     # Apply filters
-    if source_id is not None:
-        query = query.where(NewsItem.source_id == source_id)  # type: ignore[arg-type]
-        count_query = count_query.where(NewsItem.source_id == source_id)  # type: ignore[arg-type]
+    # The filter form always submits source_id (possibly empty for "All Sources"),
+    # so coerce defensively: blank or non-numeric values mean "no source filter".
+    source_id_value: int | None = None
+    if source_id:
+        try:
+            source_id_value = int(source_id)
+        except ValueError:
+            source_id_value = None
+
+    if source_id_value is not None:
+        query = query.where(NewsItem.source_id == source_id_value)  # type: ignore[arg-type]
+        count_query = count_query.where(NewsItem.source_id == source_id_value)  # type: ignore[arg-type]
 
     if tag:
         try:
@@ -154,7 +163,7 @@ async def list_news_items(
             offset=offset,
             pages=pages,
             current_page=current_page,
-            source_id=source_id,
+            source_id=source_id_value,
             tag=tag,
             date_from=date_from,
             date_to=date_to,

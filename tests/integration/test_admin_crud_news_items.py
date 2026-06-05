@@ -306,6 +306,50 @@ class TestNewsItemsList:
         assert "Mock Draft Article" in response.text
         assert "Scouting Report Article" not in response.text
 
+    async def test_filter_by_tag_with_blank_source_id(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_user_id: int,
+        sample_source_id: int,
+    ):
+        """Blank source_id (as the filter form submits) does not 422.
+
+        The filter form always submits an empty ``source_id`` when "All
+        Sources" is selected, so the route must tolerate a blank value and
+        still apply the tag filter.
+        """
+        _ = admin_user_id
+
+        item1 = NewsItem(
+            source_id=sample_source_id,
+            external_id="blank-source-1",
+            title="Scouting Report Article",
+            url="https://example.com/scouting-blank",
+            tag=NewsItemTag.SCOUTING_REPORT,
+            published_at=datetime(2025, 1, 15, 12, 0, 0),
+        )
+        item2 = NewsItem(
+            source_id=sample_source_id,
+            external_id="blank-source-2",
+            title="Mock Draft Article",
+            url="https://example.com/mock-blank",
+            tag=NewsItemTag.MOCK_DRAFT,
+            published_at=datetime(2025, 1, 15, 13, 0, 0),
+        )
+        db_session.add_all([item1, item2])
+        await db_session.commit()
+
+        await login_staff(app_client, email=ADMIN_EMAIL, password=ADMIN_PASSWORD)
+
+        response = await app_client.get(
+            f"/admin/news-items?source_id=&tag={NewsItemTag.SCOUTING_REPORT.value}"
+            "&date_from=&date_to="
+        )
+        assert response.status_code == 200
+        assert "Scouting Report Article" in response.text
+        assert "Mock Draft Article" not in response.text
+
 
 @pytest.mark.asyncio
 class TestNewsItemsEdit:
