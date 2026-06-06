@@ -1,0 +1,914 @@
+"""Integration tests for player_merge_service.
+
+MANDATORY gate tests for ticket #304.  These tests exercise the full FK set
+against a real Postgres test schema (using the shared conftest fixtures) and
+assert:
+
+1. Full-FK test: survivor owns all reassignable rows post-merge; discard row
+   is gone; no orphaned FKs; alias created; survivor slug unchanged.
+2. Conflict resolution: discard's conflicting rows are deleted, not reassigned.
+3. Singleton resolution: survivor's row wins; discard's row deleted.
+4. player_similarity: self-links deleted; both columns reassigned.
+5. preview_merge fidelity: counts match what merge_players then performs.
+6. Atomicity / rollback: mid-merge failure → full rollback, DB left clean.
+7. keep_id == discard_id rejection.
+8. find_duplicate_candidates excludes the player itself.
+9. count_inbound_references returns correct counts.
+
+Requires TEST_DATABASE_URL and PYTEST_ALLOW_DB=1.
+"""
+
+from __future__ import annotations
+
+import secrets
+
+import pytest
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus
+from app.schemas.combine_agility import CombineAgility
+from app.schemas.combine_anthro import CombineAnthro
+from app.schemas.combine_shooting import CombineShooting
+from app.schemas.consensus import BigBoardConsensus, ConsensusSnapshot, ConsensusTrigger
+from app.schemas.news_items import NewsItem, NewsItemTag
+from app.schemas.news_sources import FeedType, NewsSource
+from app.schemas.player_aliases import PlayerAlias
+from app.schemas.player_bio_snapshots import PlayerBioSnapshot
+from app.schemas.player_college_stats import PlayerCollegeStats
+from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
+from app.schemas.player_external_ids import PlayerExternalId
+from app.schemas.player_lifecycle import PlayerLifecycle
+from app.schemas.player_status import PlayerStatus
+from app.schemas.players_master import PlayerMaster
+from app.schemas.podcast_episodes import PodcastEpisode, PodcastEpisodeTag
+from app.schemas.podcast_shows import PodcastShow
+from app.schemas.seasons import Season
+from app.services.player_merge_service import (
+    count_inbound_references,
+    find_duplicate_candidates,
+    merge_players,
+    preview_merge,
+)
+
+
+# ---------------------------------------------------------------------------
+# Seed helpers
+# ---------------------------------------------------------------------------
+
+
+async def _player(db: AsyncSession, display_name: str, is_stub: bool = True) -> PlayerMaster:
+    """Insert and flush a minimal PlayerMaster."""
+    p = PlayerMaster(display_name=display_name, is_stub=is_stub)
+    db.add(p)
+    await db.flush()
+    return p
+
+
+async def _season(db: AsyncSession, code: str = "2025-26") -> Season:
+    """Insert and flush a Season row."""
+    s = Season(code=code, start_year=2025, end_year=2026)
+    db.add(s)
+    await db.flush()
+    return s
+
+
+async def _news_source(db: AsyncSession) -> NewsSource:
+    """Insert and flush a NewsSource row with a unique feed URL."""
+    token = secrets.token_hex(4)
+    src = NewsSource(
+        name=f"Test Source {token}",
+        display_name=f"Test Source {token}",
+        feed_type=FeedType.RSS,
+        feed_url=f"https://example.com/feed-{token}.rss",
+    )
+    db.add(src)
+    await db.flush()
+    return src
+
+
+async def _podcast_show(db: AsyncSession) -> PodcastShow:
+    """Insert and flush a PodcastShow row with a unique feed URL."""
+    token = secrets.token_hex(4)
+    show = PodcastShow(
+        name=f"Test Podcast {token}",
+        display_name=f"Test Podcast {token}",
+        feed_url=f"https://example.com/podcast-{token}.rss",
+    )
+    db.add(show)
+    await db.flush()
+    return show
+
+
+async def _board(db: AsyncSession, source: NewsSource) -> Board:
+    """Insert and flush a Board row."""
+    from datetime import datetime
+
+    b = Board(
+        news_source_id=source.id,  # type: ignore[arg-type]
+        draft_year=2026,
+        published_at=datetime.utcnow(),
+        size=10,
+        status=BoardStatus.PENDING,
+        kind=BoardKind.BIG_BOARD,
+    )
+    db.add(b)
+    await db.flush()
+    return b
+
+
+# ---------------------------------------------------------------------------
+# Full-FK seeder
+# ---------------------------------------------------------------------------
+
+
+async def _seed_full_fk(
+    db: AsyncSession,
+    keep: PlayerMaster,
+    discard: PlayerMaster,
+) -> dict[str, object]:
+    """Seed one row per FK table on the discard player.
+
+    Returns a mapping of table label → entity id for later assertions.
+    """
+    assert discard.id is not None
+    assert keep.id is not None
+
+    meta: dict[str, object] = {}
+
+    season = await _season(db)
+    meta["season_id"] = season.id
+
+    # --- player_aliases ---
+    alias = PlayerAlias(player_id=discard.id, full_name="D. Alias Name")
+    db.add(alias)
+    await db.flush()
+    meta["alias_id"] = alias.id
+
+    # --- player_lifecycle ---
+    lc = PlayerLifecycle(player_id=discard.id)
+    db.add(lc)
+    await db.flush()
+    meta["lifecycle_id"] = lc.id
+
+    # --- player_status ---
+    st = PlayerStatus(player_id=discard.id)
+    db.add(st)
+    await db.flush()
+    meta["status_id"] = st.id
+
+    # --- player_bio_snapshots ---
+    snap = PlayerBioSnapshot(player_id=discard.id, source="bbr")
+    db.add(snap)
+    await db.flush()
+    meta["bio_snap_id"] = snap.id
+
+    # --- player_external_ids ---
+    ext = PlayerExternalId(player_id=discard.id, system="bbr", external_id="testplayer01")
+    db.add(ext)
+    await db.flush()
+    meta["ext_id"] = ext.id
+
+    # --- player_college_stats ---
+    cs = PlayerCollegeStats(player_id=discard.id, season="2024-25")
+    db.add(cs)
+    await db.flush()
+    meta["college_stats_id"] = cs.id
+
+    # --- combine_anthro ---
+    anthro = CombineAnthro(player_id=discard.id, season_id=season.id)
+    db.add(anthro)
+    await db.flush()
+    meta["anthro_id"] = anthro.id
+
+    # --- combine_agility ---
+    agility = CombineAgility(player_id=discard.id, season_id=season.id)
+    db.add(agility)
+    await db.flush()
+    meta["agility_id"] = agility.id
+
+    # --- combine_shooting_results ---
+    shooting = CombineShooting(player_id=discard.id, season_id=season.id)
+    db.add(shooting)
+    await db.flush()
+    meta["shooting_id"] = shooting.id
+
+    # --- news_items ---
+    news_source = await _news_source(db)
+    meta["news_source_id"] = news_source.id
+    from datetime import datetime
+
+    news = NewsItem(
+        source_id=news_source.id,  # type: ignore[arg-type]
+        external_id="test-article-001",
+        title="Test Article",
+        url="https://example.com/article",
+        published_at=datetime.utcnow(),
+        player_id=discard.id,
+        tag=NewsItemTag.SCOUTING_REPORT,
+    )
+    db.add(news)
+    await db.flush()
+    meta["news_id"] = news.id
+
+    # --- podcast_episodes ---
+    podcast_show = await _podcast_show(db)
+    meta["podcast_show_id"] = podcast_show.id
+    episode = PodcastEpisode(
+        show_id=podcast_show.id,  # type: ignore[arg-type]
+        external_id="ep-001",
+        title="Test Episode",
+        audio_url="https://example.com/ep001.mp3",
+        published_at=datetime.utcnow(),
+        player_id=discard.id,
+        tag=PodcastEpisodeTag.DRAFT_ANALYSIS,
+    )
+    db.add(episode)
+    await db.flush()
+    meta["episode_id"] = episode.id
+
+    # --- player_content_mentions ---
+    mention = PlayerContentMention(
+        player_id=discard.id,
+        content_type=ContentType.NEWS,
+        content_id=news.id,  # type: ignore[arg-type]
+        source=MentionSource.AI,
+    )
+    db.add(mention)
+    await db.flush()
+    meta["mention_id"] = mention.id
+
+    # --- board_entries (nullable player_id) ---
+    board_src = await _news_source(db)
+    b = await _board(db, board_src)
+    meta["board_id"] = b.id
+    entry = BoardEntry(
+        board_id=b.id,  # type: ignore[arg-type]
+        player_id=discard.id,
+        position=1,
+        raw_name=discard.display_name or "Test Discard",
+    )
+    db.add(entry)
+    await db.flush()
+    meta["entry_id"] = entry.id
+
+    # --- big_board_consensus ---
+    consensus_snap = ConsensusSnapshot(
+        draft_year=2026,
+        num_boards=1,
+        board_ids=[b.id],
+        trigger=ConsensusTrigger.MANUAL,
+    )
+    db.add(consensus_snap)
+    await db.flush()
+    meta["consensus_snap_id"] = consensus_snap.id
+
+    bbc = BigBoardConsensus(
+        snapshot_id=consensus_snap.id,  # type: ignore[arg-type]
+        draft_year=2026,
+        player_id=discard.id,
+        consensus_rank=1,
+        avg_rank=1.0,
+        median_rank=1.0,
+        high_rank=1,
+        low_rank=1,
+        std_dev=0.0,
+        num_sources=1,
+    )
+    db.add(bbc)
+    await db.flush()
+    meta["bbc_id"] = bbc.id
+
+    return meta
+
+
+# ---------------------------------------------------------------------------
+# Full FK integration test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_full_fk(db_session: AsyncSession) -> None:
+    """merge_players reassigns all FK rows from discard to survivor.
+
+    Asserts:
+    - survivor owns all reassignable rows post-merge.
+    - discard row is gone from players_master.
+    - No orphaned FKs (all child rows point to survivor).
+    - Alias is added on survivor.
+    - Survivor slug is unchanged.
+    """
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Player", is_stub=False)
+        discard = await _player(db_session, "Discard Player", is_stub=True)
+
+    keep_slug_before = keep.slug
+
+    async with db_session.begin_nested():
+        await _seed_full_fk(db_session, keep, discard)
+
+    async with db_session.begin_nested():
+        report = await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    assert report.keep_id == keep.id
+    assert report.discard_id == discard.id
+    assert report.alias_added == "Discard Player"
+
+    # Discard row must be gone
+    gone = (
+        await db_session.execute(
+            select(PlayerMaster).where(PlayerMaster.id == discard.id)  # type: ignore[arg-type]
+        )
+    ).scalar_one_or_none()
+    assert gone is None, "Discard player row must be deleted"
+
+    # Survivor still exists
+    survivor = (
+        await db_session.execute(
+            select(PlayerMaster).where(PlayerMaster.id == keep.id)  # type: ignore[arg-type]
+        )
+    ).scalar_one()
+    assert survivor.slug == keep_slug_before, "Survivor slug must be unchanged"
+
+    # Alias added on survivor
+    alias_rows = (
+        await db_session.execute(
+            select(PlayerAlias).where(PlayerAlias.player_id == keep.id)  # type: ignore[arg-type]
+        )
+    ).scalars().all()
+    alias_names = {a.full_name for a in alias_rows}
+    assert "Discard Player" in alias_names, "Alias for discard name must exist on survivor"
+
+    # No orphaned FKs — check a sample of child tables
+    for table, col in [
+        ("player_lifecycle", "player_id"),
+        ("player_status", "player_id"),
+        ("player_bio_snapshots", "player_id"),
+        ("player_college_stats", "player_id"),
+        ("player_external_ids", "player_id"),
+        ("combine_anthro", "player_id"),
+        ("combine_agility", "player_id"),
+        ("combine_shooting_results", "player_id"),
+        ("board_entries", "player_id"),
+        ("big_board_consensus", "player_id"),
+        ("player_content_mentions", "player_id"),
+        ("news_items", "player_id"),
+        ("podcast_episodes", "player_id"),
+    ]:
+        orphan_count = (
+            await db_session.execute(
+                text(
+                    f"SELECT count(*) FROM {table} WHERE {col} = :discard_id"
+                ),
+                {"discard_id": discard.id},
+            )
+        ).scalar()
+        assert orphan_count == 0, (
+            f"Orphaned FK in {table}.{col} for discard_id={discard.id}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Singleton conflict test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_singleton_conflict(db_session: AsyncSession) -> None:
+    """When survivor already has a lifecycle/status row, discard's is deleted."""
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Player")
+        discard = await _player(db_session, "Discard Player")
+
+    async with db_session.begin_nested():
+        # Both players have a lifecycle row — discard's should be deleted.
+        db_session.add(PlayerLifecycle(player_id=keep.id))
+        db_session.add(PlayerLifecycle(player_id=discard.id))
+        await db_session.flush()
+
+    async with db_session.begin_nested():
+        report = await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    # Discard's lifecycle row should have been deleted
+    lc_for_discard = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_lifecycle WHERE player_id = :pid"),
+            {"pid": discard.id},
+        )
+    ).scalar()
+    assert lc_for_discard == 0
+
+    # Survivor still has exactly one lifecycle row
+    lc_for_keep = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_lifecycle WHERE player_id = :pid"),
+            {"pid": keep.id},
+        )
+    ).scalar()
+    assert lc_for_keep == 1
+
+    # Report reflects deleted_conflict
+    if "player_lifecycle.player_id" in report.per_table:
+        assert report.per_table["player_lifecycle.player_id"]["deleted_conflict"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_merge_singleton_no_conflict(db_session: AsyncSession) -> None:
+    """When survivor has no lifecycle row, discard's is reassigned."""
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Player")
+        discard = await _player(db_session, "Discard Player")
+
+    async with db_session.begin_nested():
+        # Only discard has a lifecycle row.
+        db_session.add(PlayerLifecycle(player_id=discard.id))
+        await db_session.flush()
+
+    async with db_session.begin_nested():
+        report = await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    # Discard's lifecycle row should now be owned by keep
+    lc_for_keep = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_lifecycle WHERE player_id = :pid"),
+            {"pid": keep.id},
+        )
+    ).scalar()
+    assert lc_for_keep == 1
+
+    assert report.per_table.get("player_lifecycle.player_id", {}).get("reassigned", 0) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Unique conflict test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_unique_conflict_college_stats(db_session: AsyncSession) -> None:
+    """Discard's college_stats row is deleted if survivor already has same season."""
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Player")
+        discard = await _player(db_session, "Discard Player")
+
+    async with db_session.begin_nested():
+        # Both have stats for the same season — unique conflict.
+        db_session.add(PlayerCollegeStats(player_id=keep.id, season="2024-25"))
+        db_session.add(PlayerCollegeStats(player_id=discard.id, season="2024-25"))
+        # Discard also has a different season — should be reassigned.
+        db_session.add(PlayerCollegeStats(player_id=discard.id, season="2023-24"))
+        await db_session.flush()
+
+    async with db_session.begin_nested():
+        report = await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    # No orphans for discard
+    orphans = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_college_stats WHERE player_id = :pid"),
+            {"pid": discard.id},
+        )
+    ).scalar()
+    assert orphans == 0
+
+    # Survivor has two seasons
+    kept_count = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_college_stats WHERE player_id = :pid"),
+            {"pid": keep.id},
+        )
+    ).scalar()
+    assert kept_count == 2
+
+    tbl = report.per_table.get("player_college_stats.player_id", {})
+    assert tbl.get("deleted_conflict", 0) == 1
+    assert tbl.get("reassigned", 0) == 1
+
+
+# ---------------------------------------------------------------------------
+# player_similarity self-link + both columns
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_similarity_self_links_deleted(db_session: AsyncSession) -> None:
+    """player_similarity rows that would become self-links are deleted."""
+    from app.schemas.metrics import MetricSnapshot, PlayerSimilarity
+    from app.models.fields import CohortType, MetricSource, SimilarityDimension
+
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Player")
+        discard = await _player(db_session, "Discard Player")
+        third = await _player(db_session, "Third Player")
+
+    async with db_session.begin_nested():
+        snap = MetricSnapshot(
+            run_key="test_run",
+            cohort=CohortType.current_draft,
+            source=MetricSource.combine_anthro,
+            population_size=3,
+            version=1,
+        )
+        db_session.add(snap)
+        await db_session.flush()
+
+        # Self-link candidate: discard → keep (would become keep → keep)
+        db_session.add(
+            PlayerSimilarity(
+                snapshot_id=snap.id,
+                dimension=SimilarityDimension.composite,
+                anchor_player_id=discard.id,
+                comparison_player_id=keep.id,
+                similarity_score=90.0,
+            )
+        )
+        # Self-link candidate: keep → discard (would become keep → keep)
+        db_session.add(
+            PlayerSimilarity(
+                snapshot_id=snap.id,
+                dimension=SimilarityDimension.composite,
+                anchor_player_id=keep.id,
+                comparison_player_id=discard.id,
+                similarity_score=90.0,
+            )
+        )
+        # Normal row on discard → third (should be reassigned to keep)
+        db_session.add(
+            PlayerSimilarity(
+                snapshot_id=snap.id,
+                dimension=SimilarityDimension.composite,
+                anchor_player_id=discard.id,
+                comparison_player_id=third.id,
+                similarity_score=75.0,
+            )
+        )
+        await db_session.flush()
+
+    async with db_session.begin_nested():
+        await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    # No orphans for discard
+    orphan_anchor = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_similarity WHERE anchor_player_id = :pid"),
+            {"pid": discard.id},
+        )
+    ).scalar()
+    orphan_comp = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_similarity WHERE comparison_player_id = :pid"),
+            {"pid": discard.id},
+        )
+    ).scalar()
+    assert orphan_anchor == 0
+    assert orphan_comp == 0
+
+    # The keep→third row should exist now (reassigned from discard→third)
+    keep_to_third = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM player_similarity "
+                "WHERE anchor_player_id = :keep AND comparison_player_id = :third"
+            ),
+            {"keep": keep.id, "third": third.id},
+        )
+    ).scalar()
+    assert keep_to_third == 1
+
+
+# ---------------------------------------------------------------------------
+# preview_merge fidelity
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_preview_merge_matches_execute(db_session: AsyncSession) -> None:
+    """preview_merge counts match what merge_players actually performs."""
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Player")
+        discard = await _player(db_session, "Discard Player")
+
+    async with db_session.begin_nested():
+        # Seed: lifecycle (singleton), two college stats seasons (one conflict)
+        db_session.add(PlayerLifecycle(player_id=keep.id))
+        db_session.add(PlayerLifecycle(player_id=discard.id))
+        db_session.add(PlayerCollegeStats(player_id=keep.id, season="2024-25"))
+        db_session.add(PlayerCollegeStats(player_id=discard.id, season="2024-25"))
+        db_session.add(PlayerCollegeStats(player_id=discard.id, season="2023-24"))
+        await db_session.flush()
+
+    # Preview (no writes)
+    preview = await preview_merge(
+        db_session,
+        keep_id=keep.id,  # type: ignore[arg-type]
+        discard_id=discard.id,  # type: ignore[arg-type]
+    )
+
+    # Execute the actual merge
+    async with db_session.begin_nested():
+        executed = await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    # Per-table counts from preview should match executed
+    for key in preview.per_table:
+        if key in executed.per_table:
+            assert preview.per_table[key]["reassigned"] == executed.per_table[key]["reassigned"], (
+                f"{key}: preview reassigned != executed reassigned"
+            )
+            assert preview.per_table[key]["deleted_conflict"] == executed.per_table[key]["deleted_conflict"], (
+                f"{key}: preview deleted_conflict != executed deleted_conflict"
+            )
+
+    # Both should report the alias
+    assert preview.alias_added == executed.alias_added
+
+
+# ---------------------------------------------------------------------------
+# Atomicity / rollback
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_rollback_on_failure(db_session: AsyncSession) -> None:
+    """A failure mid-merge rolls back all changes.
+
+    We verify this by:
+    1. Seeding keep + discard with lifecycle rows (one row each).
+    2. Starting a savepoint, running merge_players, then raising an exception.
+    3. Rolling back the savepoint.
+    4. Asserting both players still exist and discard still has its lifecycle row.
+    """
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Player")
+        discard = await _player(db_session, "Discard Player")
+
+    async with db_session.begin_nested():
+        db_session.add(PlayerLifecycle(player_id=discard.id))
+        db_session.add(PlayerAlias(player_id=discard.id, full_name="Alt Discard Name"))
+        await db_session.flush()
+
+    # Record pre-merge row counts
+    pre_discard_lc = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_lifecycle WHERE player_id = :pid"),
+            {"pid": discard.id},
+        )
+    ).scalar()
+    assert pre_discard_lc == 1
+
+    # Attempt merge inside a savepoint, then roll it back
+    try:
+        async with db_session.begin_nested():
+            await merge_players(
+                db_session,
+                keep_id=keep.id,  # type: ignore[arg-type]
+                discard_id=discard.id,  # type: ignore[arg-type]
+            )
+            # Simulate a mid-merge failure
+            raise RuntimeError("Simulated failure")
+    except RuntimeError:
+        pass  # Expected — savepoint was rolled back
+
+    # Discard player must still exist
+    still_there = (
+        await db_session.execute(
+            select(PlayerMaster).where(PlayerMaster.id == discard.id)  # type: ignore[arg-type]
+        )
+    ).scalar_one_or_none()
+    assert still_there is not None, "Discard player must still exist after rollback"
+
+    # Discard's lifecycle row must still be on the discard (not on keep)
+    lc_on_discard = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_lifecycle WHERE player_id = :pid"),
+            {"pid": discard.id},
+        )
+    ).scalar()
+    assert lc_on_discard == 1, "Discard's lifecycle row must be restored after rollback"
+
+    # No lifecycle row on keep (it had none before)
+    lc_on_keep = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_lifecycle WHERE player_id = :pid"),
+            {"pid": keep.id},
+        )
+    ).scalar()
+    assert lc_on_keep == 0, "Keep should have no lifecycle row after rollback"
+
+
+# ---------------------------------------------------------------------------
+# keep_id == discard_id
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_same_id_raises(db_session: AsyncSession) -> None:
+    """merge_players raises ValueError when keep_id == discard_id."""
+    async with db_session.begin_nested():
+        player = await _player(db_session, "Some Player")
+
+    with pytest.raises(ValueError, match="must be different"):
+        await merge_players(
+            db_session,
+            keep_id=player.id,  # type: ignore[arg-type]
+            discard_id=player.id,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.asyncio
+async def test_preview_same_id_raises(db_session: AsyncSession) -> None:
+    """preview_merge raises ValueError when keep_id == discard_id."""
+    async with db_session.begin_nested():
+        player = await _player(db_session, "Some Player")
+
+    with pytest.raises(ValueError, match="must be different"):
+        await preview_merge(
+            db_session,
+            keep_id=player.id,  # type: ignore[arg-type]
+            discard_id=player.id,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.asyncio
+async def test_merge_missing_discard_raises(
+    session_factory: async_sessionmaker[AsyncSession],
+    test_schema: str,
+) -> None:
+    """merge_players raises ValueError when discard player does not exist.
+
+    Uses a fresh session (via session_factory) to avoid connection-state
+    contamination from prior tests that used savepoints.
+    """
+    async with session_factory() as db:
+        await db.execute(text(f'SET search_path TO "{test_schema}"'))
+        await db.commit()
+
+        async with db.begin():
+            keep = await _player(db, "Keep Player For Missing Discard Test")
+
+        with pytest.raises(ValueError, match="not found"):
+            await merge_players(
+                db,
+                keep_id=keep.id,  # type: ignore[arg-type]
+                discard_id=999999,
+            )
+
+
+@pytest.mark.asyncio
+async def test_merge_missing_keep_raises(
+    session_factory: async_sessionmaker[AsyncSession],
+    test_schema: str,
+) -> None:
+    """merge_players raises ValueError when keep player does not exist.
+
+    Uses a fresh session (via session_factory) to avoid connection-state
+    contamination from prior tests that used savepoints.
+    """
+    async with session_factory() as db:
+        await db.execute(text(f'SET search_path TO "{test_schema}"'))
+        await db.commit()
+
+        async with db.begin():
+            discard = await _player(db, "Discard Player For Missing Keep Test")
+
+        with pytest.raises(ValueError, match="not found"):
+            await merge_players(
+                db,
+                keep_id=999999,
+                discard_id=discard.id,  # type: ignore[arg-type]
+            )
+
+
+# ---------------------------------------------------------------------------
+# count_inbound_references
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_count_inbound_references_empty(
+    session_factory: async_sessionmaker[AsyncSession],
+    test_schema: str,
+) -> None:
+    """count_inbound_references returns empty dict for a player with no child rows.
+
+    Uses a fresh session to avoid stale connections from prior long-running tests.
+    """
+    async with session_factory() as db:
+        await db.execute(text(f'SET search_path TO "{test_schema}"'))
+        await db.commit()
+
+        async with db.begin():
+            player = await _player(db, "Lonely Player Ref Count")
+
+        refs = await count_inbound_references(db, player.id)  # type: ignore[arg-type]
+        assert refs == {}
+
+
+@pytest.mark.asyncio
+async def test_count_inbound_references_with_data(db_session: AsyncSession) -> None:
+    """count_inbound_references counts rows in each child table."""
+    async with db_session.begin_nested():
+        player = await _player(db_session, "Player With Data")
+
+    async with db_session.begin_nested():
+        db_session.add(PlayerLifecycle(player_id=player.id))
+        db_session.add(PlayerAlias(player_id=player.id, full_name="Alternate Name"))
+        await db_session.flush()
+
+    refs = await count_inbound_references(db_session, player.id)  # type: ignore[arg-type]
+    assert refs.get("player_lifecycle.player_id", 0) == 1
+    assert refs.get("player_aliases.player_id", 0) == 1
+
+
+# ---------------------------------------------------------------------------
+# find_duplicate_candidates excludes self
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_find_duplicate_candidates_excludes_self(db_session: AsyncSession) -> None:
+    """find_duplicate_candidates never returns the player itself."""
+    async with db_session.begin_nested():
+        player = await _player(db_session, "John Smith")
+        # Add a similar player to have something to match against.
+        _other = await _player(db_session, "John Smith Jr.")
+
+    candidates = await find_duplicate_candidates(db_session, player.id)  # type: ignore[arg-type]
+    player_ids = {c.player_id for c in candidates}
+    assert player.id not in player_ids, (
+        "find_duplicate_candidates must not include the query player itself"
+    )
+
+
+@pytest.mark.asyncio
+async def test_find_duplicate_candidates_missing_player_raises(
+    db_session: AsyncSession,
+) -> None:
+    """find_duplicate_candidates raises ValueError for an absent player."""
+    with pytest.raises(ValueError, match="not found"):
+        await find_duplicate_candidates(db_session, 999999)
+
+
+# ---------------------------------------------------------------------------
+# Alias idempotency (ON CONFLICT DO NOTHING)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_alias_idempotent(db_session: AsyncSession) -> None:
+    """If discard's display_name already exists as an alias on survivor, no error."""
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Player")
+        discard = await _player(db_session, "Discard Player")
+
+    async with db_session.begin_nested():
+        # Pre-create the alias that merge_players would insert.
+        db_session.add(
+            PlayerAlias(player_id=keep.id, full_name="Discard Player", context="pre_existing")
+        )
+        await db_session.flush()
+
+    async with db_session.begin_nested():
+        # Should not raise even though the alias already exists.
+        report = await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    assert report.alias_added == "Discard Player"
+
+    # Exactly one alias row with that name (no duplicate)
+    count = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM player_aliases "
+                "WHERE player_id = :pid AND full_name = :name"
+            ),
+            {"pid": keep.id, "name": "Discard Player"},
+        )
+    ).scalar()
+    assert count == 1
