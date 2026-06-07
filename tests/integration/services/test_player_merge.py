@@ -27,6 +27,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus
+from app.schemas.player_enrichment_jobs import PlayerEnrichmentJob
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.combine_shooting import CombineShooting
@@ -912,3 +913,191 @@ async def test_merge_alias_idempotent(db_session: AsyncSession) -> None:
         )
     ).scalar()
     assert count == 1
+
+
+# ---------------------------------------------------------------------------
+# Regression: player_enrichment_jobs FK (non-cascade) — added in PR #311
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_enrichment_job_reassigned(db_session: AsyncSession) -> None:
+    """merge_players reassigns PlayerEnrichmentJob rows from discard to survivor.
+
+    Before the fix, player_enrichment_jobs had no entry in _CHILD_TABLES, so
+    the final DELETE players_master raised a ForeignKeyViolation because the
+    job's non-cascade FK still pointed at the discard row.
+
+    Asserts:
+    - merge_players completes without error.
+    - The job row is now owned by the survivor (player_id == keep.id).
+    - No orphan job row remains for the discard player.
+    """
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Player Enrichment")
+        discard = await _player(db_session, "Discard Player Enrichment")
+
+    async with db_session.begin_nested():
+        job = PlayerEnrichmentJob(
+            player_id=discard.id,  # type: ignore[arg-type]
+            state="queued",
+            source="admin_single",
+        )
+        db_session.add(job)
+        await db_session.flush()
+        job_id = job.id
+
+    async with db_session.begin_nested():
+        report = await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    assert report.keep_id == keep.id
+    assert report.discard_id == discard.id
+
+    # No orphan for the discard player
+    orphan_count = (
+        await db_session.execute(
+            text("SELECT count(*) FROM player_enrichment_jobs WHERE player_id = :pid"),
+            {"pid": discard.id},
+        )
+    ).scalar()
+    assert orphan_count == 0, "No enrichment job should reference the deleted discard player"
+
+    # The job should now point to the survivor
+    survivor_count = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM player_enrichment_jobs "
+                "WHERE player_id = :pid AND id = :job_id"
+            ),
+            {"pid": keep.id, "job_id": job_id},
+        )
+    ).scalar()
+    assert survivor_count == 1, "Enrichment job must be reassigned to the survivor"
+
+
+# ---------------------------------------------------------------------------
+# Regression: board_entries same-board conflict — added in PR #311
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_merge_board_entries_same_board_conflict(db_session: AsyncSession) -> None:
+    """Discard's board entry is deleted when survivor is on the same board.
+
+    Before the fix, board_entries had no conflict_columns spec, so reassigning
+    the discard's entry would violate uq_board_entries_board_player when both
+    players already sit on the same board.
+
+    Asserts:
+    - merge_players completes without error.
+    - The survivor's entry remains on the shared board.
+    - The discard's conflicting entry is deleted (no duplicate board/player pair).
+    - An entry on a different board (only the discard had it) is reassigned to
+      the survivor.
+    """
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Player Board")
+        discard = await _player(db_session, "Discard Player Board")
+
+    async with db_session.begin_nested():
+        # Two boards: both players share board_a; only discard is on board_b.
+        src_a = await _news_source(db_session)
+        board_a = await _board(db_session, src_a)
+
+        src_b = await _news_source(db_session)
+        board_b = await _board(db_session, src_b)
+
+        # Survivor on board_a at position 1
+        keep_entry_a = BoardEntry(
+            board_id=board_a.id,  # type: ignore[arg-type]
+            player_id=keep.id,
+            position=1,
+            raw_name=keep.display_name or "Keep Player Board",
+        )
+        # Discard on board_a at position 2 — will conflict during merge
+        discard_entry_a = BoardEntry(
+            board_id=board_a.id,  # type: ignore[arg-type]
+            player_id=discard.id,
+            position=2,
+            raw_name=discard.display_name or "Discard Player Board",
+        )
+        # Discard on board_b — no conflict; should be reassigned to survivor
+        discard_entry_b = BoardEntry(
+            board_id=board_b.id,  # type: ignore[arg-type]
+            player_id=discard.id,
+            position=3,
+            raw_name=discard.display_name or "Discard Player Board",
+        )
+        db_session.add(keep_entry_a)
+        db_session.add(discard_entry_a)
+        db_session.add(discard_entry_b)
+        await db_session.flush()
+        keep_entry_a_id = keep_entry_a.id
+        discard_entry_b_id = discard_entry_b.id
+
+    async with db_session.begin_nested():
+        report = await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    assert report.keep_id == keep.id
+
+    # No entry for the discard player on any board
+    orphan_count = (
+        await db_session.execute(
+            text("SELECT count(*) FROM board_entries WHERE player_id = :pid"),
+            {"pid": discard.id},
+        )
+    ).scalar()
+    assert orphan_count == 0, "No board entries should reference the deleted discard player"
+
+    # Survivor's original entry on board_a must be intact (not overwritten)
+    keep_a_exists = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM board_entries "
+                "WHERE player_id = :pid AND board_id = :bid AND id = :eid"
+            ),
+            {"pid": keep.id, "bid": board_a.id, "eid": keep_entry_a_id},
+        )
+    ).scalar()
+    assert keep_a_exists == 1, "Survivor's original board_a entry must survive the merge"
+
+    # No duplicate (board_a, keep.id) entries
+    dup_count = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM board_entries "
+                "WHERE player_id = :pid AND board_id = :bid"
+            ),
+            {"pid": keep.id, "bid": board_a.id},
+        )
+    ).scalar()
+    assert dup_count == 1, "Exactly one entry for survivor on board_a after merge"
+
+    # The board_b entry was reassigned from discard to survivor
+    reassigned_b = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM board_entries "
+                "WHERE player_id = :pid AND board_id = :bid AND id = :eid"
+            ),
+            {"pid": keep.id, "bid": board_b.id, "eid": discard_entry_b_id},
+        )
+    ).scalar()
+    assert reassigned_b == 1, "Discard's board_b entry must be reassigned to survivor"
+
+    # Report should note the deleted conflict and the reassigned row
+    board_stats = report.per_table.get("board_entries.player_id", {})
+    assert board_stats.get("deleted_conflict", 0) == 1, (
+        "Report must show 1 deleted_conflict for board_entries"
+    )
+    assert board_stats.get("reassigned", 0) == 1, (
+        "Report must show 1 reassigned for board_entries (the board_b entry)"
+    )

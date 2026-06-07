@@ -101,10 +101,16 @@ _CHILD_TABLES: tuple[_ChildTable, ...] = (
     _ChildTable("combine_agility", "player_id", ("season_id",)),
     _ChildTable("combine_shooting_results", "player_id", ("season_id",)),
     _ChildTable("big_board_consensus", "player_id", ("snapshot_id",)),
-    _ChildTable("board_entries", "player_id"),
+    # board_entries has uq_board_entries_board_player (board_id, player_id):
+    # if both players sit on the same board, drop the discard's row instead of
+    # reassigning into a uniqueness violation.
+    _ChildTable("board_entries", "player_id", ("board_id",)),
     _ChildTable("news_items", "player_id"),
     _ChildTable("podcast_episodes", "player_id"),
     _ChildTable("player_image_assets", "player_id", ("snapshot_id",)),
+    # player_enrichment_jobs FK -> players_master is non-cascade; reassign the
+    # discard's queue rows so the final DELETE players_master does not violate it.
+    _ChildTable("player_enrichment_jobs", "player_id"),
     # source_analytics.biggest_outlier_player_id is nullable — just NULL it out
     # for the discard rather than reassigning (it is not the primary FK column).
     _ChildTable("source_analytics_outlier", "biggest_outlier_player_id"),
