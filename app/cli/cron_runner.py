@@ -25,6 +25,7 @@ from app.services.podcast_ingestion_service import (
     run_ingestion_cycle as run_podcast_ingestion_cycle,
 )
 from app.services.college_stats_service import run_college_stats_sweep
+from app.services.enrichment_queue_service import drain_enrichment_queue
 from app.services.player_enrichment_service import run_enrichment_sweep
 from app.services.video_ingestion_service import (
     run_ingestion_cycle as run_video_ingestion_cycle,
@@ -98,6 +99,25 @@ async def _run_enrichment_job() -> None:
         logger.warning("Enrichment error: %s", error)
 
 
+async def _run_drain_queue_job() -> None:
+    """Drain any queued on-demand enrichment jobs (cron backstop).
+
+    This runs after the sweep so stragglers queued by the admin UI are
+    always processed even if the web machine restarted mid-drain.
+    """
+    result = await drain_enrichment_queue(SessionLocal)
+
+    logger.info(
+        "Enrichment queue drain: %d claimed, %d succeeded, %d failed, %d stale reclaimed",
+        result.claimed,
+        result.succeeded,
+        result.failed,
+        result.reclaimed_stale,
+    )
+    for error in result.errors:
+        logger.warning("Enrichment queue error: %s", error)
+
+
 async def _run_college_stats_job() -> None:
     """Scrape BBRef college stats for players missing authoritative data."""
     result = await run_college_stats_sweep(
@@ -153,6 +173,12 @@ async def main() -> int:
             await _run_enrichment_job()
         except Exception as exc:
             logger.error("Enrichment failed: %s", exc, exc_info=True)
+
+        # Drain on-demand enrichment queue (cron backstop for admin-triggered jobs)
+        try:
+            await _run_drain_queue_job()
+        except Exception as exc:
+            logger.error("Enrichment queue drain failed: %s", exc, exc_info=True)
 
         # College stats backfill — scrapes BBRef for newly enriched players
         try:

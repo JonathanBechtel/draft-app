@@ -6,7 +6,7 @@ import re
 from typing import Any, Optional
 from datetime import datetime, date
 from sqlmodel import SQLModel, Field
-from sqlalchemy import event
+from sqlalchemy import Index, event
 from sqlalchemy.orm import Session
 
 from app.utils.slug import generate_unique_slug_from_connection
@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 
 class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
     __tablename__ = "players_master"
+    __table_args__ = (
+        # Backing index for the Stubs admin tab: WHERE is_stub = true ORDER BY created_at DESC
+        Index("ix_players_master_is_stub_created", "is_stub", "created_at"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     slug: Optional[str] = Field(default=None, unique=True, index=True)

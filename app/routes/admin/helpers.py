@@ -182,13 +182,14 @@ async def require_dataset_access(
     if user.id is None:
         return RedirectResponse(url="/admin", status_code=303), None
 
-    result = await db.execute(
-        select(AuthDatasetPermission).where(
-            AuthDatasetPermission.user_id == user.id,  # type: ignore[arg-type]
-            AuthDatasetPermission.dataset == dataset,  # type: ignore[arg-type]
+    async with db.begin():
+        result = await db.execute(
+            select(AuthDatasetPermission).where(
+                AuthDatasetPermission.user_id == user.id,  # type: ignore[arg-type]
+                AuthDatasetPermission.dataset == dataset,  # type: ignore[arg-type]
+            )
         )
-    )
-    permission = result.scalar_one_or_none()
+        permission = result.scalar_one_or_none()
 
     if permission is None:
         return RedirectResponse(url="/admin", status_code=303), None

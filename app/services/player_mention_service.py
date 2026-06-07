@@ -60,6 +60,27 @@ class PlayerMatch:
     matched_via: str  # "display_name", "alias", or "stub_created"
 
 
+@dataclass(slots=True)
+class StubCreateResult:
+    """Result of a public create_stub_player call.
+
+    Attributes:
+        outcome: One of "created", "blocked_existing", "ambiguous", or
+            "rejected_guard".
+        player_id: Set when outcome is "created".
+        match: The matched player when outcome is "blocked_existing".
+        candidates: Candidate matches when outcome is "ambiguous".
+        reason: Human-readable rejection message when outcome is
+            "rejected_guard".
+    """
+
+    outcome: str  # "created" | "blocked_existing" | "ambiguous" | "rejected_guard"
+    player_id: int | None = None
+    match: PlayerMatch | None = None
+    candidates: list[PlayerMatch] | None = None
+    reason: str | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class ParsedPlayerName:
     """Structured player name fields derived from a freeform full name."""
@@ -644,3 +665,94 @@ async def _create_stub_player(
         display_name=display_name,
         matched_via="stub_created",
     )
+
+
+async def create_stub_player(
+    db: AsyncSession,
+    full_name: str,
+    *,
+    draft_year: Optional[int] = None,
+) -> StubCreateResult:
+    """Create a stub player by name with deduplication safety.
+
+    Runs ``_can_create_stub_player`` then ``find_existing_player`` before
+    minting anything, so callers (e.g. admin surfaces) cannot accidentally
+    create duplicates of players that already exist under a punctuation or
+    suffix variant.
+
+    Args:
+        db: Async database session (caller manages transaction/flush scope).
+        full_name: The intended display name for the new stub player.
+        draft_year: Optional expected draft year to record on the lifecycle row.
+
+    Returns:
+        A :class:`StubCreateResult` describing one of four outcomes:
+
+        - ``"created"`` — stub minted; ``player_id`` is set.
+        - ``"blocked_existing"`` — a unique matching player already exists;
+          ``match`` is set.  No new record was created.
+        - ``"ambiguous"`` — multiple players matched the name; ``candidates``
+          lists them.  No new record was created.
+        - ``"rejected_guard"`` — the name failed the specificity guard (e.g.
+          single token); ``reason`` explains why.
+    """
+    # Token-guard: refuse single-token or empty names early.
+    if not _can_create_stub_player(full_name):
+        collapsed = _collapse_whitespace(full_name)
+        if not collapsed:
+            reason = "Name is empty."
+        else:
+            reason = (
+                f"Name '{collapsed}' is too vague — at least two distinct name"
+                " tokens are required to create a stub player."
+            )
+        return StubCreateResult(outcome="rejected_guard", reason=reason)
+
+    # Dedup pre-check: resolve against the full player + alias lookup.
+    lookup = await _build_player_name_lookup(db)
+    existing_match, is_ambiguous = _resolve_from_lookup(lookup, full_name)
+
+    if is_ambiguous:
+        # Collect all candidates that match the relaxed key so callers can
+        # present them to the admin for disambiguation.
+        relaxed_key = _normalized_name_key(
+            full_name,
+            ignore_suffix=True,
+            ignore_middle_initials=True,
+        )
+        exact_key = _normalized_name_key(full_name)
+        candidates: list[PlayerMatch] = []
+        seen_ids: set[int] = set()
+        for candidate_lookup, candidate_key in (
+            (lookup.display_exact, exact_key),
+            (lookup.alias_exact, exact_key),
+            (lookup.display_relaxed, relaxed_key),
+            (lookup.alias_relaxed, relaxed_key),
+        ):
+            for entry in candidate_lookup.get(candidate_key, {}).values():
+                if entry.player_id not in seen_ids:
+                    seen_ids.add(entry.player_id)
+                    candidates.append(
+                        PlayerMatch(
+                            player_id=entry.player_id,
+                            display_name=entry.display_name,
+                            matched_via=entry.matched_via,
+                        )
+                    )
+        return StubCreateResult(outcome="ambiguous", candidates=candidates or None)
+
+    if existing_match is not None:
+        return StubCreateResult(outcome="blocked_existing", match=existing_match)
+
+    # Safe to mint — delegate to the internal creator so the logic stays in
+    # one place and existing ingestion callers are unaffected.
+    player_match = await _create_stub_player(db, full_name, draft_year=draft_year)
+    if player_match is None:
+        # _create_stub_player only returns None on unexpected DB errors; treat
+        # as a guard rejection so callers always get a well-typed result.
+        return StubCreateResult(
+            outcome="rejected_guard",
+            reason="Stub creation failed unexpectedly.",
+        )
+
+    return StubCreateResult(outcome="created", player_id=player_match.player_id)

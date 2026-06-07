@@ -140,6 +140,7 @@ async def async_engine(
     from app.schemas import player_embeddings  # noqa: F401
     from app.schemas import college_schools  # noqa: F401
     from app.schemas import draft_pick_slots  # noqa: F401
+    from app.schemas import player_enrichment_jobs  # noqa: F401
 
     connect_args = {
         # Disable prepared statement caching to avoid type OID/cache issues after DDL.

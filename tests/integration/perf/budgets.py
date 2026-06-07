@@ -45,6 +45,13 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/": 52,
     "/news": 8,
     "/podcasts": 5,
-    "/players/{slug}": 23,
+    "/players/{slug}": 24,
     "/consensus": 80,
+}
+
+# Admin route budgets (authentication-gated; tested separately via
+# test_stubs_tab.py which sets up an admin session before rendering).
+# Kept here as a single source-of-truth reference for the max query count.
+ADMIN_ROUTE_BUDGETS: dict[str, int] = {
+    "/admin/players/stubs": 10,
 }

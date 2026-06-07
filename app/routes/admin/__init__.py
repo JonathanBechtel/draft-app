@@ -5,6 +5,7 @@ This module provides the admin UI routes organized into sub-routers:
 - account: Account view, password change (authenticated routes)
 - news_sources: News source CRUD (admin-only routes)
 - news_items: News item CRUD (admin-only routes)
+- stubs: Stub player management (players permission-gated)
 """
 
 from fastapi import APIRouter, Depends, Request
@@ -22,6 +23,7 @@ from app.routes.admin.news_sources import router as news_sources_router
 from app.routes.admin.players import router as players_router
 from app.routes.admin.podcast_episodes import router as podcast_episodes_router
 from app.routes.admin.podcast_shows import router as podcast_shows_router
+from app.routes.admin.stubs import router as stubs_router
 from app.routes.admin.youtube_channels import router as youtube_channels_router
 from app.routes.admin.youtube_videos import router as youtube_videos_router
 from app.routes.admin.users import router as users_router
@@ -46,11 +48,15 @@ async def admin_home(
     )
 
 
-# Include sub-routers
+# Include sub-routers.
+# NOTE: stubs_router MUST be included before players_router so that
+# /admin/players/stubs/* routes are matched before the players /{player_id}
+# wildcard catches "stubs" as a player ID string and returns 422.
 router.include_router(auth_router)
 router.include_router(account_router)
 router.include_router(news_sources_router)
 router.include_router(news_items_router)
+router.include_router(stubs_router)
 router.include_router(players_router)
 router.include_router(images_router)
 router.include_router(podcast_shows_router)

@@ -40,6 +40,14 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class SingleEnrichmentResult:
+    """Result of enriching a single player."""
+
+    enriched: bool = False
+    error: Optional[str] = None
+
+
+@dataclass
 class EnrichmentResult:
     """Summary of an enrichment run."""
 
@@ -595,6 +603,144 @@ async def _apply_enrichment(
 
 
 # ---------------------------------------------------------------------------
+# Internal single-player core (session_factory-based)
+# ---------------------------------------------------------------------------
+
+
+async def _enrich_player_with_factory(
+    session_factory: async_sessionmaker[AsyncSession],
+    player_id: int,
+    name: str,
+    client: genai.Client,
+) -> SingleEnrichmentResult:
+    """Core enrichment logic operating on per-player short-lived sessions.
+
+    Used by both ``run_enrichment_sweep`` (batch) and ``enrich_player``
+    (public API).  Fetches external data then writes in short transactions,
+    preserving the original three-phase transaction boundary pattern.
+
+    Args:
+        session_factory: Factory for opening independent DB sessions.
+        player_id: Primary key of the ``PlayerMaster`` row.
+        name: ``display_name`` of the player (used for API queries).
+        client: Initialized Gemini client.
+
+    Returns:
+        ``SingleEnrichmentResult`` with ``enriched=True`` if at least
+        one field was written.
+    """
+    # Phase 1: Fetch external data — no DB transaction held open
+    fetched = await _fetch_external_data(client, name)
+
+    enriched = False
+    try:
+        # Phase 2: Short write transaction
+        async with session_factory() as write_db:
+            async with write_db.begin():
+                fresh_player = await write_db.get(PlayerMaster, player_id)
+                if fresh_player is None:
+                    return SingleEnrichmentResult(
+                        error=f"Player id={player_id} disappeared"
+                    )
+                enriched = await _apply_enrichment(write_db, fresh_player, fetched)
+
+        # Phase 3: Portrait in its own transaction (optional)
+        if enriched:
+            try:
+                async with session_factory() as portrait_db:
+                    async with portrait_db.begin():
+                        portrait_player = await portrait_db.get(PlayerMaster, player_id)
+                        if portrait_player is not None:
+                            await _generate_portrait(portrait_db, portrait_player)
+            except Exception:
+                logger.exception("Portrait generation failed for %s", name)
+
+    except Exception as exc:
+        error_msg = str(exc)
+        logger.error("Enrichment failed for %s: %s", name, error_msg, exc_info=True)
+        # Stamp enrichment_attempted_at even on failure so sweep skips next time
+        try:
+            async with session_factory() as stamp_db:
+                async with stamp_db.begin():
+                    stamp_player = await stamp_db.get(PlayerMaster, player_id)
+                    if stamp_player is not None:
+                        stamp_player.enrichment_attempted_at = datetime.now(
+                            timezone.utc
+                        ).replace(tzinfo=None)
+        except Exception:
+            logger.exception(
+                "Failed to stamp enrichment_attempted_at for id=%s", player_id
+            )
+        return SingleEnrichmentResult(error=error_msg)
+
+    return SingleEnrichmentResult(enriched=enriched)
+
+
+# ---------------------------------------------------------------------------
+# Single-player public entry point
+# ---------------------------------------------------------------------------
+
+
+async def enrich_player(
+    db: AsyncSession,
+    player: PlayerMaster,
+    *,
+    _session_factory: Optional[async_sessionmaker[AsyncSession]] = None,
+) -> SingleEnrichmentResult:
+    """Enrich a single stub player using Gemini + Wikimedia.
+
+    Fetches bio/stats and reference image outside a transaction, then
+    applies the changes inside a short transaction.  Portrait generation
+    runs in a separate transaction if enrichment succeeded.
+
+    This is the core used by both ``run_enrichment_sweep`` (batch loop)
+    and ``drain_enrichment_queue`` (on-demand jobs).
+
+    Args:
+        db: Active async session (used only to associate with a session
+            factory).  The session itself is **not** written to directly;
+            independent short-lived sessions are opened for writes.
+        player: The stub ``PlayerMaster`` record.
+        _session_factory: Optional session factory override (for testing).
+            If not supplied, ``SessionLocal`` from ``app.utils.db_async``
+            is used.
+
+    Returns:
+        ``SingleEnrichmentResult`` with ``enriched=True`` if at least
+        one field was updated.
+    """
+    if not settings.gemini_api_key:
+        logger.warning(
+            "GEMINI_API_KEY not configured, skipping enrichment for %s",
+            player.display_name,
+        )
+        return SingleEnrichmentResult(error="GEMINI_API_KEY not configured")
+
+    player_id = player.id
+    if player_id is None:
+        return SingleEnrichmentResult(error="Player has no id")
+
+    name = player.display_name or ""
+    if not name:
+        return SingleEnrichmentResult(error="Player has no display_name")
+
+    client = genai.Client(api_key=settings.gemini_api_key)
+    logger.info("Enriching stub player: %s (id=%s)", name, player_id)
+
+    # Use the provided factory (tests pass the test schema factory) or fall
+    # back to the module-level SessionLocal so production calls don't need
+    # to supply one explicitly.
+    if _session_factory is not None:
+        sf = _session_factory
+    else:
+        from app.utils.db_async import SessionLocal
+
+        sf = SessionLocal  # type: ignore[assignment]
+
+    return await _enrich_player_with_factory(sf, player_id, name, client)
+
+
+# ---------------------------------------------------------------------------
 # Cron entry point
 # ---------------------------------------------------------------------------
 
@@ -642,8 +788,7 @@ async def run_enrichment_sweep(
     for player_id, display_name in player_refs:
         result.players_attempted += 1
         try:
-            # Phase 1: Fetch external data (no DB transaction held open)
-            # Re-read current display_name to avoid stale snapshot data
+            # Re-read the current display_name to avoid stale snapshot data
             # if the player was renamed/merged since the initial query.
             async with session_factory() as db:
                 player = await db.get(PlayerMaster, player_id)
@@ -653,49 +798,23 @@ async def run_enrichment_sweep(
             if not name:
                 logger.warning("Player id=%s has no display_name, skipping", player_id)
                 continue
-            logger.info("Enriching stub player: %s (id=%s)", name, player_id)
-            fetched = await _fetch_external_data(client, name)
 
-            # Phase 2: Short transaction for DB writes only
-            async with session_factory() as db:
-                async with db.begin():
-                    player = await db.get(PlayerMaster, player_id)
-                    if player is None:
-                        continue
-                    enriched = await _apply_enrichment(db, player, fetched)
-                    if enriched:
-                        result.players_enriched += 1
-
-            # Phase 3: Portrait generation in its own transaction
-            # (also involves external API calls to Gemini + S3)
-            if enriched:
-                try:
-                    async with session_factory() as db:
-                        async with db.begin():
-                            player = await db.get(PlayerMaster, player_id)
-                            if player is not None:
-                                await _generate_portrait(db, player)
-                except Exception:
-                    logger.exception("Portrait generation failed for %s", display_name)
+            single = await _enrich_player_with_factory(
+                session_factory,
+                player_id,  # type: ignore[arg-type]
+                name,
+                client,  # type: ignore[arg-type]
+            )
+            if single.error:
+                result.players_failed += 1
+                result.errors.append(f"Failed to enrich {display_name}: {single.error}")
+            elif single.enriched:
+                result.players_enriched += 1
 
         except Exception as exc:
             result.players_failed += 1
             error_msg = f"Failed to enrich {display_name}: {exc}"
             result.errors.append(error_msg)
             logger.error(error_msg, exc_info=True)
-            # Stamp enrichment_attempted_at even on failure to prevent retries
-            try:
-                async with session_factory() as db:
-                    async with db.begin():
-                        player = await db.get(PlayerMaster, player_id)
-                        if player is not None:
-                            player.enrichment_attempted_at = datetime.now(
-                                timezone.utc
-                            ).replace(tzinfo=None)
-            except Exception:
-                logger.exception(
-                    "Failed to stamp enrichment_attempted_at for %s",
-                    display_name,
-                )
 
     return result
