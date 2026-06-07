@@ -13,6 +13,13 @@
   <p class="admin-main__subtitle">Lightweight placeholder records pending enrichment</p>
 </header>
 
+{% if success %}
+<div class="admin-alert admin-alert--success" role="status">{{ success }}</div>
+{% endif %}
+{% if error %}
+<div class="admin-alert admin-alert--error" role="alert">{{ error }}</div>
+{% endif %}
+
 <div class="admin-card">
   <div class="admin-card__header">
     <h2 class="admin-card__title">Stubs ({{ total }})</h2>

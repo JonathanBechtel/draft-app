@@ -204,7 +204,7 @@ async def list_stubs(
         draft_year=draft_year_int,
         enrichment_status=enrichment_status,
         error=None,
-        success=SUCCESS_MESSAGES.get(success) if success else None,
+        success=(SUCCESS_MESSAGES.get(success, success) if success else None),
     )
 
 
