@@ -110,12 +110,17 @@ def test_combine_anthro_conflict_column() -> None:
     assert spec.conflict_columns == ("season_id",)
 
 
-def test_board_entries_no_conflict_columns() -> None:
-    """board_entries has no unique conflict columns (nullable player_id)."""
+def test_board_entries_conflict_on_board_id() -> None:
+    """board_entries must conflict on board_id.
+
+    uq_board_entries_board_player (board_id, player_id) means that if the
+    survivor and discard are both on the same board, reassigning the discard
+    would violate the constraint; the merge drops the discard's conflicting
+    entry instead.
+    """
     spec = next(s for s in _CHILD_TABLES if s.table == "board_entries")
     assert not spec.singleton_per_player
-    # conflict_columns may be None or empty for nullable-player tables
-    assert spec.conflict_columns is None or len(spec.conflict_columns) == 0
+    assert spec.conflict_columns == ("board_id",)
 
 
 def test_news_items_no_conflict_columns() -> None:
