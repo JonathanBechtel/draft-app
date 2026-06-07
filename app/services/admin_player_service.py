@@ -455,12 +455,19 @@ def parse_player_form(data: PlayerFormData) -> ParsedPlayerData | str:
     )
 
 
-async def create_player(db: AsyncSession, data: ParsedPlayerData) -> PlayerMaster:
+async def create_player(
+    db: AsyncSession,
+    data: ParsedPlayerData,
+    *,
+    is_stub: bool = False,
+) -> PlayerMaster:
     """Create a new player in the database.
 
     Args:
         db: Async database session
         data: Parsed and validated player data
+        is_stub: When True, marks the new player as a stub record awaiting
+            enrichment.
 
     Returns:
         The created PlayerMaster instance
@@ -487,6 +494,7 @@ async def create_player(db: AsyncSession, data: ParsedPlayerData) -> PlayerMaste
         nba_debut_season=data.nba_debut_season,
         reference_image_url=data.reference_image_url,
         reference_image_s3_key=data.reference_image_s3_key,
+        is_stub=is_stub,
     )
     db.add(player)
     await db.flush()

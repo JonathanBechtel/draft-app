@@ -2,6 +2,9 @@
 //
 // Two responsibilities:
 //   1. Player autocomplete on the "Add Entry" form (calls /players/search).
+//      When the search returns no results for a typed name, the dropdown
+//      surfaces an inline "Create stub for '<name>'" affordance that mints a
+//      stub and adds the entry in one POST, then reloads the page.
 //   2. Per-row auto-save: when the admin tabs out of a rank or tier input
 //      whose value has changed, POST the new values to the existing
 //      /admin/boards/{board}/entries/{entry}/update route.
@@ -15,18 +18,45 @@
 
     let abortCtrl = null;
     let debounceTimer = null;
+    // Track whether the last search returned zero matches so the submit
+    // handler can offer stub creation instead of the pick-from-dropdown prompt.
+    let lastQueryHadNoResults = false;
+    let lastQueryText = "";
 
     function hide() {
       list.hidden = true;
       list.replaceChildren();
+      lastQueryHadNoResults = false;
     }
 
-    function show(results) {
-      list.replaceChildren();
-      if (!results.length) {
+    function showStubOption(q) {
+      // Append a special "Create stub for '<name>'" item at the bottom of an
+      // empty dropdown (or after existing results).
+      const li = document.createElement("li");
+      li.className = "admin-autocomplete__item admin-autocomplete__item--stub";
+      li.style.borderTop = list.children.length
+        ? "1px solid var(--color-border, #e5e7eb)"
+        : "";
+      li.style.fontStyle = "italic";
+      li.style.color = "var(--color-accent-blue, #3b82f6)";
+      li.textContent = "Create stub for “" + q + "”";
+      li.addEventListener("mousedown", function (ev) {
+        ev.preventDefault();
+        hidden.value = "__stub__";
+        input.dataset.stubName = q;
         hide();
-        return;
-      }
+        // Programmatically submit the form to trigger the stub path.
+        const form = input.closest("form");
+        if (form) form.requestSubmit();
+      });
+      list.appendChild(li);
+      list.hidden = false;
+    }
+
+    function show(results, q) {
+      list.replaceChildren();
+      lastQueryHadNoResults = results.length === 0;
+      lastQueryText = q;
       for (const r of results) {
         const li = document.createElement("li");
         li.className = "admin-autocomplete__item";
@@ -48,7 +78,14 @@
         });
         list.appendChild(li);
       }
-      list.hidden = false;
+      // Always append the stub option so the admin can create a new stub even
+      // when some fuzzy matches exist (the name might be genuinely new).
+      if (q.length >= 2) {
+        showStubOption(q);
+      }
+      if (list.children.length) {
+        list.hidden = false;
+      }
     }
 
     async function query(q) {
@@ -61,7 +98,7 @@
         );
         if (!resp.ok) return;
         const results = await resp.json();
-        show(results);
+        show(results, q);
       } catch (err) {
         if (err && err.name !== "AbortError") {
           hide();
@@ -71,6 +108,7 @@
 
     input.addEventListener("input", function () {
       hidden.value = "";
+      delete input.dataset.stubName;
       const q = input.value.trim();
       clearTimeout(debounceTimer);
       if (q.length < 2) {
@@ -84,15 +122,76 @@
       setTimeout(hide, 120);
     });
 
-    // Block submit when no suggestion was picked: the hidden player_id is only
-    // set on click, so typing a name and pressing Add/Enter would otherwise
-    // POST an empty player_id and hit a 422. Surface a native prompt instead.
+    // Submit handler: intercept the form to route stub creation through the
+    // dedicated endpoint instead of the normal add-entry POST.
     const form = input.closest("form");
     if (form) {
-      form.addEventListener("submit", function (ev) {
-        if (!hidden.value) {
+      form.addEventListener("submit", async function (ev) {
+        const stubName = input.dataset.stubName;
+        if (hidden.value === "__stub__" && stubName) {
+          // Stub creation path: POST to the inline-stub endpoint.
           ev.preventDefault();
-          input.setCustomValidity("Pick a player from the dropdown list.");
+          const boardId = form.action.match(/\/boards\/(\d+)\//)?.[1];
+          if (!boardId) return;
+
+          // Collect sibling form fields (position, tier, round, team_id, etc.)
+          const body = new URLSearchParams();
+          body.set("name", stubName);
+          form.querySelectorAll("[name]").forEach(function (el) {
+            const n = el.getAttribute("name");
+            if (!n || n === "player_id") return;
+            body.set(n, el.value);
+          });
+
+          const submitBtn = form.querySelector("[type=submit]");
+          if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Creating…";
+          }
+
+          try {
+            const resp = await fetch(
+              "/admin/boards/" + boardId + "/entries/inline-stub",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: body.toString(),
+                credentials: "same-origin",
+              }
+            );
+            const data = await resp.json();
+            if (data.outcome === "created") {
+              // Success: reload the board page with a flash message.
+              window.location.href =
+                "/admin/boards/" + boardId + "?success=stub_minted_inline";
+            } else {
+              // Show the server error inline near the input.
+              let msg = data.message || "Stub creation failed.";
+              if (data.outcome === "blocked_existing" && data.player_id) {
+                msg += " You can select them from the autocomplete.";
+              }
+              alert(msg);
+              if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "Add";
+              }
+              hidden.value = "";
+              delete input.dataset.stubName;
+            }
+          } catch (err) {
+            alert("Stub creation failed: " + err.message);
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = "Add";
+            }
+          }
+          return;
+        }
+
+        // Normal path: player must have been selected from autocomplete.
+        if (!hidden.value || hidden.value === "__stub__") {
+          ev.preventDefault();
+          input.setCustomValidity("Pick a player from the dropdown list, or choose 'Create stub for...' to add a new name.");
           input.reportValidity();
           input.focus();
         }
