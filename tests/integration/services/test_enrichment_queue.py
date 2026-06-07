@@ -29,6 +29,7 @@ import pytest_asyncio
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import settings
 from app.schemas.player_enrichment_jobs import PlayerEnrichmentJob
 from app.schemas.player_lifecycle import PlayerLifecycle
 from app.schemas.player_status import PlayerStatus
@@ -176,6 +177,19 @@ PATCH_FIND_IMAGE = "app.services.player_enrichment_service._find_reference_image
 PATCH_GENERATE_PORTRAIT = "app.services.player_enrichment_service._generate_portrait"
 PATCH_GEMINI_CLIENT = "app.services.player_enrichment_service.genai.Client"
 PATCH_GEMINI_CLIENT_QUEUE = "app.services.enrichment_queue_service.genai.Client"
+
+
+@pytest.fixture(autouse=True)
+def _configured_gemini_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Satisfy the GEMINI_API_KEY gate so the mocked Gemini client is exercised.
+
+    The enrichment paths (enrich_player, run_enrichment_sweep,
+    drain_enrichment_queue) short-circuit when ``settings.gemini_api_key`` is
+    unset. CI has no key configured, so without this the orchestration under
+    test never runs and the patched ``genai.Client`` is never reached. Every
+    test in this module mocks the actual Gemini calls, so a dummy key is safe.
+    """
+    monkeypatch.setattr(settings, "gemini_api_key", "test-gemini-key")
 
 
 # ---------------------------------------------------------------------------
