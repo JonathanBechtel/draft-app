@@ -656,3 +656,47 @@ async def test_enrichment_status_service_empty_input(db_session: AsyncSession) -
     """enrichment_status returns empty dict for empty input."""
     result = await enrichment_status(db_session, [])
     assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Regression: stubs list surfaces queued/running job state immediately
+# (so the JS poller can start without a manual refresh)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stubs_list_shows_enriching_badge_after_enqueue(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_logged_in: None,
+    stub_player: PlayerMaster,
+) -> None:
+    """After POST /enrich, GET /stubs lists the player with 'Enriching…' badge.
+
+    This is a regression test for the codex finding: the template previously
+    hardcoded ``latest_job_state = none``, so queued/running rows always
+    rendered as 'Not Attempted'.  The fix propagates the real job state from
+    the service layer so the badge is correct on initial page load — allowing
+    the JS poller to start without requiring a manual refresh.
+
+    Steps:
+    1. Seed a stub player (no enrichment job).
+    2. POST /enrich to create a queued job.
+    3. GET /admin/players/stubs and assert the player's badge shows 'Enriching…'.
+    """
+    # Step 2: enqueue
+    resp = await app_client.post(
+        "/admin/players/stubs/enrich",
+        data={"player_id": str(stub_player.id)},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+    # Step 3: fetch the list page and assert the badge is 'Enriching…'
+    list_resp = await app_client.get("/admin/players/stubs")
+    assert list_resp.status_code == 200
+    assert "Enriching" in list_resp.text, (
+        "Expected 'Enriching…' badge for a player with a queued enrichment job, "
+        "but the list page showed a different status. "
+        "Check that list_players() populates latest_job_state and the template uses it."
+    )

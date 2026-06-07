@@ -158,7 +158,7 @@
         </td>
         <td class="stubs-col--enrichment" data-player-id="{{ p.player.id }}">
           {# enrichment_status_label is a callable passed in context #}
-          {% set latest_job_state = none %}
+          {% set latest_job_state = p.latest_job_state %}
           {% set es = enrichment_status_label(p.player.enrichment_attempted_at, latest_job_state) %}
           {% if es == 'Enriched' %}
           <span class="admin-badge admin-badge--enriched stubs-enrich-badge">Enriched</span>

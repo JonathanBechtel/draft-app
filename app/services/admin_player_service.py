@@ -53,6 +53,7 @@ class PlayerWithStatus:
     current_team: str | None = None
     career_status: CareerStatus | None = None
     draft_status: DraftStatus | None = None
+    latest_job_state: str | None = None
 
     @property
     def career_status_label(self) -> str:
@@ -412,6 +413,30 @@ async def list_players(
         )
         for row in rows
     ]
+
+    # Fetch latest enrichment job state for the listed players so the template
+    # can render queued/running rows as "Enriching…" immediately (without
+    # waiting for the JS poller to fire).
+    if players:
+        from sqlalchemy import text as sa_text
+
+        player_ids_in_page = [p.player.id for p in players if p.player.id is not None]
+        if player_ids_in_page:
+            job_rows = (
+                await db.execute(
+                    sa_text("""
+                        SELECT DISTINCT ON (player_id) player_id, state
+                        FROM player_enrichment_jobs
+                        WHERE player_id = ANY(:ids)
+                        ORDER BY player_id, created_at DESC
+                    """),
+                    {"ids": player_ids_in_page},
+                )
+            ).all()
+            job_state_map: dict[int, str] = {row[0]: row[1] for row in job_rows}
+            for p in players:
+                if p.player.id is not None:
+                    p.latest_job_state = job_state_map.get(p.player.id)
 
     # Get distinct draft years for filter dropdown
     years_result = await db.execute(
