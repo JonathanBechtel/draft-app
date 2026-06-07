@@ -180,6 +180,12 @@
               <button type="submit"
                       class="admin-btn admin-btn--secondary admin-btn--small">Enrich</button>
             </form>
+            <button type="button"
+                    class="admin-btn admin-btn--secondary admin-btn--small stub-find-dups-btn"
+                    data-player-id="{{ p.player.id }}"
+                    data-player-name="{{ p.player.display_name | e }}">
+              Find Dups
+            </button>
             <form method="post"
                   action="/admin/players/stubs/{{ p.player.id }}/promote"
                   class="admin-form--inline"
@@ -242,6 +248,56 @@
     {% endif %}
   </div>
   {% endif %}
+</div>
+
+<!-- Duplicates Modal -->
+<div class="stubs-modal" id="dups-modal" role="dialog" aria-modal="true"
+     aria-labelledby="dups-modal-title" style="display:none;">
+  <div class="stubs-modal__backdrop"></div>
+  <div class="stubs-modal__box">
+    <div class="stubs-modal__header">
+      <h2 class="stubs-modal__title" id="dups-modal-title">
+        Near-Duplicate Candidates for <span id="dups-modal-player-name"></span>
+      </h2>
+      <button class="stubs-modal__close" id="dups-modal-close" type="button"
+              aria-label="Close">&times;</button>
+    </div>
+    <div class="stubs-modal__body" id="dups-modal-body">
+      <p class="admin-text--muted">Loading candidates…</p>
+    </div>
+  </div>
+</div>
+
+<!-- Merge Preview / Confirm Modal -->
+<div class="stubs-modal" id="merge-preview-modal" role="dialog" aria-modal="true"
+     aria-labelledby="merge-preview-modal-title" style="display:none;">
+  <div class="stubs-modal__backdrop"></div>
+  <div class="stubs-modal__box">
+    <div class="stubs-modal__header">
+      <h2 class="stubs-modal__title" id="merge-preview-modal-title">Confirm Merge</h2>
+      <button class="stubs-modal__close" id="merge-preview-close" type="button"
+              aria-label="Close">&times;</button>
+    </div>
+    <div class="stubs-modal__body" id="merge-preview-body">
+      <p class="admin-text--muted">Loading preview…</p>
+    </div>
+    <div class="stubs-modal__footer" id="merge-preview-footer" style="display:none;">
+      <form method="post" action="/admin/players/stubs/merge" id="merge-confirm-form">
+        <input type="hidden" name="keep_id" id="merge-keep-id" value="">
+        <input type="hidden" name="discard_id" id="merge-discard-id" value="">
+        <input type="hidden" name="confirm" value="yes">
+        <div class="stubs-merge-direction" id="merge-direction-controls">
+          <!-- Populated by JS with survivor/discard names and a flip button -->
+        </div>
+        <div class="stubs-modal__footer-actions">
+          <button type="button" class="admin-btn admin-btn--secondary"
+                  id="merge-preview-cancel">Cancel</button>
+          <button type="submit" class="admin-btn admin-btn--danger"
+                  id="merge-confirm-btn">Merge (Irreversible)</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 
 <!-- Quick-Add Modal -->

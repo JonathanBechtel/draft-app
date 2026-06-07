@@ -41,6 +41,11 @@ from app.services.enrichment_queue_service import (
     enqueue_enrichment,
     enrichment_status as svc_enrichment_status,
 )
+from app.services.player_merge_service import (
+    find_duplicate_candidates,
+    merge_players as svc_merge_players,
+    preview_merge as svc_preview_merge,
+)
 from app.services.player_mention_service import create_stub_player
 from app.utils.db_async import SessionLocal, get_session
 
@@ -508,6 +513,158 @@ async def enrichment_status_endpoint(
         for pid, js in status_map.items()
     }
     return JSONResponse(content=payload)
+
+
+@router.get("/{player_id}/duplicates", response_class=JSONResponse)
+async def find_stub_duplicates(
+    request: Request,
+    player_id: int,
+    k: int = Query(default=5, ge=1, le=20),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Return near-duplicate candidates for a stub player.
+
+    Calls ``find_duplicate_candidates`` (hybrid trigram + vector search) with the
+    player's display_name as the query string, excludes the player itself, and
+    returns up to *k* ranked candidates.
+
+    Args:
+        request: Incoming FastAPI request.
+        player_id: The stub player to find duplicates for.
+        k: Maximum number of candidates to return (1–20, default 5).
+        db: Injected database session.
+
+    Returns:
+        JSON list of candidates with player_id, display_name, school, score.
+    """
+    redirect, _user = await require_dataset_access(
+        request, db, "players", need_edit=False, next_path=_NEXT_PATH
+    )
+    if redirect:
+        return JSONResponse(status_code=403, content={"error": "Forbidden"})
+
+    try:
+        candidates = await find_duplicate_candidates(db, player_id, k=k)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    payload = [
+        {
+            "player_id": c.player_id,
+            "display_name": c.display_name,
+            "school": c.school,
+            "score": round(c.score, 4),
+        }
+        for c in candidates
+    ]
+    return JSONResponse(content=payload)
+
+
+@router.get("/merge/preview", response_class=JSONResponse)
+async def merge_preview(
+    request: Request,
+    keep_id: int = Query(...),
+    discard_id: int = Query(...),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Return a dry-run merge report without modifying any data.
+
+    Calls ``preview_merge`` and returns per-table row counts, the alias that
+    would be created, and the survivor/discard names.  No data is written.
+
+    Args:
+        request: Incoming FastAPI request.
+        keep_id: Primary key of the player to keep (survivor).
+        discard_id: Primary key of the player to discard.
+        db: Injected database session.
+
+    Returns:
+        JSON with per_table counts, alias_added, keep_id, discard_id.
+    """
+    redirect, _user = await require_dataset_access(
+        request, db, "players", need_edit=False, next_path=_NEXT_PATH
+    )
+    if redirect:
+        return JSONResponse(status_code=403, content={"error": "Forbidden"})
+
+    try:
+        report = await svc_preview_merge(db, keep_id=keep_id, discard_id=discard_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return JSONResponse(
+        content={
+            "keep_id": report.keep_id,
+            "discard_id": report.discard_id,
+            "per_table": report.per_table,
+            "alias_added": report.alias_added,
+        }
+    )
+
+
+@router.post("/merge", response_class=HTMLResponse)
+async def execute_merge(
+    request: Request,
+    keep_id: int = Form(...),
+    discard_id: int = Form(...),
+    confirm: str = Form(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Execute an atomic player merge after explicit admin confirmation.
+
+    Requires the ``confirm`` field to be the string ``"yes"`` as a guard
+    against accidental or replayed form submissions.  Calls
+    ``merge_players`` inside a transaction and flashes the report summary
+    on success.
+
+    Args:
+        request: Incoming FastAPI request.
+        keep_id: Primary key of the player to keep (survivor).
+        discard_id: Primary key of the player to discard.
+        confirm: Must equal ``"yes"``; rejects merge otherwise.
+        db: Injected database session.
+
+    Returns:
+        Redirect to the stubs list with a summary flash, or 400 on bad input.
+    """
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=True, next_path=_NEXT_PATH
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    if confirm.strip().lower() != "yes":
+        raise HTTPException(
+            status_code=400,
+            detail="Merge requires explicit confirmation (confirm=yes).",
+        )
+
+    user_id: int | None = user.id  # type: ignore[union-attr]
+
+    try:
+        async with db.begin():
+            report = await svc_merge_players(
+                db,
+                keep_id=keep_id,
+                discard_id=discard_id,
+                performed_by=user_id,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    total_reassigned = sum(v.get("reassigned", 0) for v in report.per_table.values())
+    total_deleted = sum(v.get("deleted_conflict", 0) for v in report.per_table.values())
+    flash = (
+        f"Merged player {report.discard_id} into {report.keep_id}. "
+        f"{total_reassigned} rows reassigned, {total_deleted} conflict rows removed. "
+        f"Alias '{report.alias_added}' added."
+    )
+
+    return RedirectResponse(
+        url=f"{_NEXT_PATH}?success={flash}",
+        status_code=303,
+    )
 
 
 @router.post("/bulk-delete", response_class=HTMLResponse)
