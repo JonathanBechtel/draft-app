@@ -800,8 +800,11 @@ async def run_enrichment_sweep(
                 continue
 
             single = await _enrich_player_with_factory(
-                session_factory, player_id, name, client
-            )  # type: ignore[arg-type]
+                session_factory,
+                player_id,
+                name,
+                client,  # type: ignore[arg-type]
+            )
             if single.error:
                 result.players_failed += 1
                 result.errors.append(f"Failed to enrich {display_name}: {single.error}")

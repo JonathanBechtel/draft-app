@@ -1,0 +1,271 @@
+{% extends "admin/base.html" %}
+
+{% set page_title = "Stub Players" %}
+{% set active_nav = "stubs" %}
+
+{% block admin_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='stubs-admin.css') }}">
+{% endblock %}
+
+{% block admin_content %}
+<header class="admin-main__header">
+  <h1 class="admin-main__title">Stub Players</h1>
+  <p class="admin-main__subtitle">Lightweight placeholder records pending enrichment</p>
+</header>
+
+<div class="admin-card">
+  <div class="admin-card__header">
+    <h2 class="admin-card__title">Stubs ({{ total }})</h2>
+    {% set can_edit_players = (user and user.role == 'admin') or (permissions and permissions.players.can_edit) %}
+    {% if can_edit_players %}
+    <button class="admin-btn admin-btn--primary" id="quick-add-btn" type="button">
+      Add Stub
+    </button>
+    {% endif %}
+  </div>
+
+  <!-- Filters -->
+  <form class="admin-filters" method="get" action="/admin/players/stubs" id="stubs-filter-form">
+    <input type="hidden" name="limit" value="{{ limit }}">
+
+    <div class="admin-filters__row">
+      <div class="admin-filters__field admin-filters__field--wide">
+        <label class="admin-filters__label" for="q">Search</label>
+        <input class="admin-form__input" type="text" id="q" name="q"
+               value="{{ q or '' }}" placeholder="Name...">
+      </div>
+
+      <div class="admin-filters__field">
+        <label class="admin-filters__label" for="draft_year">Draft Year</label>
+        <select class="admin-form__select" id="draft_year" name="draft_year">
+          <option value="">All Years</option>
+          {% for year in draft_years %}
+          <option value="{{ year }}" {% if draft_year == year %}selected{% endif %}>
+            {{ year }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="admin-filters__field">
+        <label class="admin-filters__label" for="enrichment_status">Enrichment</label>
+        <select class="admin-form__select" id="enrichment_status" name="enrichment_status">
+          <option value="">All</option>
+          <option value="not_attempted" {% if enrichment_status == 'not_attempted' %}selected{% endif %}>Not Attempted</option>
+          <option value="enriching" {% if enrichment_status == 'enriching' %}selected{% endif %}>Enriching…</option>
+          <option value="enriched" {% if enrichment_status == 'enriched' %}selected{% endif %}>Enriched</option>
+          <option value="failed" {% if enrichment_status == 'failed' %}selected{% endif %}>Failed</option>
+        </select>
+      </div>
+
+      <div class="admin-filters__actions">
+        <button type="submit" class="admin-btn admin-btn--primary admin-btn--small">Filter</button>
+        <a href="/admin/players/stubs" class="admin-btn admin-btn--secondary admin-btn--small">Reset</a>
+      </div>
+    </div>
+  </form>
+
+  {% if players %}
+
+  <!-- Bulk toolbar -->
+  {% if can_edit_players %}
+  <div class="stubs-bulk-toolbar" id="bulk-toolbar" style="display:none;">
+    <span class="stubs-bulk-toolbar__count" id="bulk-count">0 selected</span>
+    <form method="post" action="/admin/players/stubs/bulk-delete"
+          id="bulk-delete-form"
+          onsubmit="return confirm('Delete selected stub players? This cannot be undone.');">
+      <!-- Hidden inputs for selected IDs are injected by JS -->
+      <button type="submit" class="admin-btn admin-btn--danger admin-btn--small">
+        Delete Selected
+      </button>
+    </form>
+  </div>
+  {% endif %}
+
+  <table class="admin-table">
+    <thead>
+      <tr>
+        {% if can_edit_players %}
+        <th class="stubs-col--check">
+          <input type="checkbox" id="select-all" title="Select all">
+        </th>
+        {% endif %}
+        <th>Name</th>
+        <th>School</th>
+        <th>Draft Year</th>
+        <th>Pos / Ht / Wt</th>
+        <th>Enrichment</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in players %}
+      <tr class="stubs-row" data-player-id="{{ p.player.id }}">
+        {% if can_edit_players %}
+        <td class="stubs-col--check">
+          <input type="checkbox" class="stub-select-checkbox" value="{{ p.player.id }}" name="player_ids[]">
+        </td>
+        {% endif %}
+        <td>
+          <a href="/admin/players/{{ p.player.id }}" class="admin-link">
+            {{ p.player.display_name or '—' }}
+          </a>
+        </td>
+        <td>
+          {% if p.player.school %}
+          {{ p.player.school }}
+          {% else %}
+          <span class="admin-text--placeholder">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if p.player.draft_year %}
+          {{ p.player.draft_year }}
+          {% else %}
+          <span class="admin-text--placeholder">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {# position from PlayerStatus via the PlayerWithStatus wrapper #}
+          {% set pos = p.player.shoots %}
+          {% set ht = none %}
+          {% set wt = none %}
+          {# Note: height/weight are on PlayerStatus, surfaced via the join #}
+          {% if pos or ht or wt %}
+          <span class="admin-text--data">
+            {% if pos %}{{ pos }}{% else %}—{% endif %} /
+            {% if ht %}{{ ht }}"{% else %}—{% endif %} /
+            {% if wt %}{{ wt }} lb{% else %}—{% endif %}
+          </span>
+          {% else %}
+          <span class="admin-text--placeholder">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {# enrichment_status_label is a callable passed in context #}
+          {% set latest_job_state = none %}
+          {% set es = enrichment_status_label(p.player.enrichment_attempted_at, latest_job_state) %}
+          {% if es == 'Enriched' %}
+          <span class="admin-badge admin-badge--enriched">Enriched</span>
+          {% elif es == 'Enriching…' %}
+          <span class="admin-badge admin-badge--enriching">Enriching…</span>
+          {% elif es == 'Failed' %}
+          <span class="admin-badge admin-badge--failed">Failed</span>
+          {% else %}
+          <span class="admin-badge admin-badge--unknown">Not Attempted</span>
+          {% endif %}
+        </td>
+        <td>
+          <span class="admin-text--data" title="{{ p.player.created_at }}">
+            {{ p.player.created_at.strftime('%Y-%m-%d') if p.player.created_at else '—' }}
+          </span>
+        </td>
+        <td>
+          <div class="admin-table__actions">
+            <a href="/admin/players/{{ p.player.id }}"
+               class="admin-btn admin-btn--secondary admin-btn--small">Edit</a>
+            {% if can_edit_players %}
+            <form method="post"
+                  action="/admin/players/stubs/{{ p.player.id }}/promote"
+                  class="admin-form--inline"
+                  onsubmit="return confirm('Promote \'{{ p.player.display_name }}\' to a full player?');">
+              <button type="submit"
+                      class="admin-btn admin-btn--secondary admin-btn--small">Promote</button>
+            </form>
+            <form method="post"
+                  action="/admin/players/stubs/{{ p.player.id }}/delete"
+                  class="admin-form--inline"
+                  onsubmit="return confirm('Delete stub \'{{ p.player.display_name }}\'? This cannot be undone.');">
+              <button type="submit"
+                      class="admin-btn admin-btn--danger admin-btn--small">Delete</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Pagination -->
+  {% if pages > 1 %}
+  <nav class="admin-pagination">
+    <div class="admin-pagination__info">
+      Showing {{ offset + 1 }}-{{ [offset + limit, total] | min }} of {{ total }}
+    </div>
+    <div class="admin-pagination__controls">
+      {% if current_page > 1 %}
+      <a href="/admin/players/stubs?limit={{ limit }}&offset={{ (current_page - 2) * limit }}{% if q %}&q={{ q }}{% endif %}{% if draft_year %}&draft_year={{ draft_year }}{% endif %}{% if enrichment_status %}&enrichment_status={{ enrichment_status }}{% endif %}"
+         class="admin-btn admin-btn--secondary admin-btn--small">Previous</a>
+      {% endif %}
+
+      <span class="admin-pagination__pages">
+        Page {{ current_page }} of {{ pages }}
+      </span>
+
+      {% if current_page < pages %}
+      <a href="/admin/players/stubs?limit={{ limit }}&offset={{ current_page * limit }}{% if q %}&q={{ q }}{% endif %}{% if draft_year %}&draft_year={{ draft_year }}{% endif %}{% if enrichment_status %}&enrichment_status={{ enrichment_status }}{% endif %}"
+         class="admin-btn admin-btn--secondary admin-btn--small">Next</a>
+      {% endif %}
+    </div>
+  </nav>
+  {% endif %}
+
+  {% else %}
+  <div class="admin-empty">
+    <div class="admin-empty__icon">&#127936;</div>
+    <h3 class="admin-empty__title">No Stub Players</h3>
+    <p class="admin-empty__text">
+      {% if q or draft_year or enrichment_status %}
+      No stubs match your filters. Try adjusting the criteria.
+      {% else %}
+      No stub player records exist yet.
+      {% endif %}
+    </p>
+    {% if q or draft_year or enrichment_status %}
+    <a href="/admin/players/stubs" class="admin-btn admin-btn--secondary">Clear Filters</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<!-- Quick-Add Modal -->
+{% set can_edit_players = (user and user.role == 'admin') or (permissions and permissions.players.can_edit) %}
+{% if can_edit_players %}
+<div class="stubs-modal" id="quick-add-modal" role="dialog" aria-modal="true"
+     aria-labelledby="quick-add-modal-title" style="display:none;">
+  <div class="stubs-modal__backdrop"></div>
+  <div class="stubs-modal__box">
+    <div class="stubs-modal__header">
+      <h2 class="stubs-modal__title" id="quick-add-modal-title">Add Stub Player</h2>
+      <button class="stubs-modal__close" id="quick-add-close" type="button"
+              aria-label="Close">&times;</button>
+    </div>
+    <form method="post" action="/admin/players/stubs/quick-add" class="stubs-modal__form">
+      <div class="admin-form__group">
+        <label class="admin-form__label" for="quick-add-name">Full Name <span class="admin-form__required">*</span></label>
+        <input class="admin-form__input" type="text" id="quick-add-name"
+               name="display_name" required placeholder="e.g. Cooper Flagg">
+        <p class="admin-form__hint">Must include at least a first and last name.</p>
+      </div>
+      <div class="admin-form__group">
+        <label class="admin-form__label" for="quick-add-year">Draft Year (optional)</label>
+        <input class="admin-form__input" type="number" id="quick-add-year"
+               name="draft_year" placeholder="e.g. 2026" min="1950" max="2040">
+      </div>
+      <div class="stubs-modal__footer">
+        <button type="button" class="admin-btn admin-btn--secondary"
+                id="quick-add-cancel">Cancel</button>
+        <button type="submit" class="admin-btn admin-btn--primary">Create Stub</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block admin_js %}
+<script src="{{ url_for('static', path='stubs-admin.js') }}"></script>
+{% endblock %}

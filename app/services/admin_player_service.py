@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.position_taxonomy import derive_position_tags
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
+from app.schemas.player_enrichment_jobs import PlayerEnrichmentJob
 from app.schemas.combine_shooting import CombineShooting
 from app.schemas.image_snapshots import PlayerImageAsset
 from app.schemas.metrics import PlayerMetricValue, PlayerSimilarity
@@ -205,6 +206,8 @@ async def list_players(
     draft_status: str | None,
     limit: int,
     offset: int,
+    is_stub: bool | None = None,
+    enrichment_status: str | None = None,
 ) -> PlayerListResult:
     """List players with filters and pagination.
 
@@ -217,6 +220,9 @@ async def list_players(
         draft_status: Filter by explicit draft status
         limit: Maximum results to return
         offset: Number of results to skip
+        is_stub: If True/False, filter by stub flag; None returns all
+        enrichment_status: Filter by enrichment status label
+            (not_attempted, enriching, enriched, failed)
 
     Returns:
         PlayerListResult with players, total count, and available draft years
@@ -247,6 +253,76 @@ async def list_players(
             PlayerLifecycle.player_id == PlayerMaster.id,  # type: ignore[arg-type]
         )
     )
+
+    # Apply stub filter
+    if is_stub is not None:
+        stub_filter = (
+            PlayerMaster.is_stub == is_stub  # type: ignore[arg-type]
+        )
+        query = query.where(stub_filter)  # type: ignore[arg-type]
+        count_query = count_query.where(stub_filter)  # type: ignore[arg-type]
+
+    # Apply enrichment_status filter (requires a sub-query on PlayerEnrichmentJob)
+    if enrichment_status and enrichment_status.strip():
+        es_val = enrichment_status.strip().lower()
+        if es_val == "not_attempted":
+            es_filter = PlayerMaster.enrichment_attempted_at.is_(None)  # type: ignore[union-attr]
+            query = query.where(es_filter)
+            count_query = count_query.where(es_filter)
+        elif es_val == "enriched":
+            es_filter_e = PlayerMaster.enrichment_attempted_at.isnot(None)  # type: ignore[union-attr]
+            # No active job
+            active_job_sq = (
+                select(PlayerEnrichmentJob.player_id)  # type: ignore[call-overload]
+                .where(
+                    PlayerEnrichmentJob.state.in_(["queued", "running"])  # type: ignore[union-attr,attr-defined]
+                )
+                .scalar_subquery()
+            )
+            query = query.where(
+                es_filter_e,
+                PlayerMaster.id.notin_(active_job_sq),  # type: ignore[union-attr]
+            )
+            count_query = count_query.where(
+                es_filter_e,
+                PlayerMaster.id.notin_(active_job_sq),  # type: ignore[union-attr]
+            )
+        elif es_val == "enriching":
+            active_job_sq2 = (
+                select(PlayerEnrichmentJob.player_id)  # type: ignore[call-overload]
+                .where(
+                    PlayerEnrichmentJob.state.in_(["queued", "running"])  # type: ignore[union-attr,attr-defined]
+                )
+                .scalar_subquery()
+            )
+            query = query.where(
+                PlayerMaster.id.in_(active_job_sq2)  # type: ignore[union-attr]
+            )
+            count_query = count_query.where(
+                PlayerMaster.id.in_(active_job_sq2)  # type: ignore[union-attr]
+            )
+        elif es_val == "failed":
+            # Has a failed job and no in-flight job
+            failed_job_sq = (
+                select(PlayerEnrichmentJob.player_id)  # type: ignore[call-overload]
+                .where(PlayerEnrichmentJob.state == "failed")  # type: ignore[arg-type]
+                .scalar_subquery()
+            )
+            active_job_sq3 = (
+                select(PlayerEnrichmentJob.player_id)  # type: ignore[call-overload]
+                .where(
+                    PlayerEnrichmentJob.state.in_(["queued", "running"])  # type: ignore[union-attr,attr-defined]
+                )
+                .scalar_subquery()
+            )
+            query = query.where(
+                PlayerMaster.id.in_(failed_job_sq),  # type: ignore[union-attr]
+                PlayerMaster.id.notin_(active_job_sq3),  # type: ignore[union-attr]
+            )
+            count_query = count_query.where(
+                PlayerMaster.id.in_(failed_job_sq),  # type: ignore[union-attr]
+                PlayerMaster.id.notin_(active_job_sq3),  # type: ignore[union-attr]
+            )
 
     # Apply search filter
     if q and q.strip():
@@ -314,7 +390,12 @@ async def list_players(
     total = await db.scalar(count_query)
     total = total or 0
 
-    # Apply pagination
+    # Apply pagination and default-sort stubs by created_at desc when filtering stubs
+    if is_stub is True:
+        query = query.order_by(None).order_by(  # type: ignore[arg-type]
+            PlayerMaster.created_at.desc()  # type: ignore[union-attr,attr-defined]
+        )
+
     query = query.limit(limit).offset(offset)
 
     result = await db.execute(query)
@@ -342,6 +423,106 @@ async def list_players(
     draft_years = [y for y in years_result.scalars().all() if y is not None]
 
     return PlayerListResult(players=players, total=total, draft_years=draft_years)
+
+
+async def promote_stub_to_full(
+    db: AsyncSession,
+    player_id: int,
+) -> PlayerMaster:
+    """Promote a stub player to a full player by clearing the is_stub flag.
+
+    Args:
+        db: Async database session (caller owns the transaction)
+        player_id: ID of the stub player to promote
+
+    Returns:
+        The updated PlayerMaster instance
+
+    Raises:
+        ValueError: If the player is not found
+    """
+    player = await get_player_by_id(db, player_id)
+    if player is None:
+        raise ValueError(f"Player {player_id} not found")
+    player.is_stub = False
+    player.updated_at = datetime.now(UTC).replace(tzinfo=None)
+    await db.flush()
+    return player
+
+
+async def delete_stub(
+    db: AsyncSession,
+    player_id: int,
+) -> None:
+    """Delete a stub player, refusing if it has inbound references.
+
+    Uses :func:`~app.services.player_merge_service.count_inbound_references`
+    to guard against deleting players that have attached data rows.  Stubs
+    with *only* lifecycle/alias rows (auto-created alongside the stub) are
+    treated as orphans and deleted along with those child rows.
+
+    Args:
+        db: Async database session (caller owns the transaction)
+        player_id: ID of the stub player to delete
+
+    Raises:
+        ValueError: If the player is not found, is not a stub, or has
+            non-trivial inbound references that would block deletion.
+    """
+    from app.services.player_merge_service import count_inbound_references
+
+    player = await get_player_by_id(db, player_id)
+    if player is None:
+        raise ValueError(f"Player {player_id} not found")
+    if not player.is_stub:
+        raise ValueError(
+            f"Player {player_id} is not a stub and cannot be deleted via this action"
+        )
+
+    refs = await count_inbound_references(db, player_id)
+
+    # Lifecycle and alias rows are auto-created with the stub and not
+    # considered "meaningful" blockers — remove them so they don't prevent
+    # deletion of otherwise-orphaned stubs.
+    non_blocking = {
+        "player_lifecycle.player_id",
+        "player_aliases.player_id",
+        "player_status.player_id",
+        "player_enrichment_jobs.player_id",
+    }
+    # PlayerEnrichmentJob is not in count_inbound_references but check anyway
+    blocking_refs = {k: v for k, v in refs.items() if k not in non_blocking}
+
+    if blocking_refs:
+        detail = ", ".join(f"{k}: {v}" for k, v in blocking_refs.items())
+        raise ValueError(
+            f"Cannot delete stub {player_id}: has inbound references — {detail}"
+        )
+
+    # Safe to delete — clean up auto-created child rows first
+    await db.execute(
+        sa_delete(PlayerAlias).where(
+            PlayerAlias.player_id == player_id  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(PlayerLifecycle).where(
+            PlayerLifecycle.player_id == player_id  # type: ignore[arg-type]
+        )
+    )
+    await db.execute(
+        sa_delete(PlayerStatus).where(
+            PlayerStatus.player_id == player_id  # type: ignore[arg-type]
+        )
+    )
+    # Delete any enrichment jobs
+    await db.execute(
+        sa_delete(PlayerEnrichmentJob).where(
+            PlayerEnrichmentJob.player_id == player_id  # type: ignore[arg-type]
+        )
+    )
+    await db.delete(player)
+    await db.flush()
 
 
 async def get_player_by_id(db: AsyncSession, player_id: int) -> PlayerMaster | None:
