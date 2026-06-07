@@ -1,7 +1,7 @@
 /**
  * stubs-admin.js
- * Bulk-select, quick-add modal, and filter wiring for the Stubs admin tab.
- * Initialised on DOMContentLoaded.
+ * Bulk-select, quick-add modal, filter wiring, and enrichment polling for the
+ * Stubs admin tab.  Initialised on DOMContentLoaded.
  */
 
 (function () {
@@ -56,6 +56,7 @@
     var toolbar = document.getElementById("bulk-toolbar");
     var bulkCountEl = document.getElementById("bulk-count");
     var bulkDeleteForm = document.getElementById("bulk-delete-form");
+    var bulkEnrichForm = document.getElementById("bulk-enrich-form");
     var checkboxes = document.querySelectorAll(".stub-select-checkbox");
 
     if (!selectAll || !toolbar || !checkboxes.length) return;
@@ -91,10 +92,10 @@
       }
     }
 
-    function injectSelectedIds() {
-      if (!bulkDeleteForm) return;
+    function injectSelectedIdsInto(form) {
+      if (!form) return;
       // Remove previous hidden inputs
-      var old = bulkDeleteForm.querySelectorAll('input[type="hidden"][name="player_ids[]"]');
+      var old = form.querySelectorAll('input[type="hidden"][name="player_ids[]"]');
       old.forEach(function (el) { el.remove(); });
 
       getChecked().forEach(function (cb) {
@@ -102,7 +103,7 @@
         hidden.type = "hidden";
         hidden.name = "player_ids[]";
         hidden.value = cb.value;
-        bulkDeleteForm.appendChild(hidden);
+        form.appendChild(hidden);
       });
     }
 
@@ -118,7 +119,15 @@
     });
 
     if (bulkDeleteForm) {
-      bulkDeleteForm.addEventListener("submit", injectSelectedIds);
+      bulkDeleteForm.addEventListener("submit", function () {
+        injectSelectedIdsInto(bulkDeleteForm);
+      });
+    }
+
+    if (bulkEnrichForm) {
+      bulkEnrichForm.addEventListener("submit", function () {
+        injectSelectedIdsInto(bulkEnrichForm);
+      });
     }
   }
 
@@ -139,6 +148,111 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Enrichment status polling
+  //
+  // Looks for rows with enrichment badge cells (data-player-id on
+  // .stubs-col--enrichment td).  If any badge shows "Enriching…", starts a
+  // debounced poll loop against /admin/players/stubs/enrichment-status?ids=…
+  // and updates badges in place.  Stops when no in-flight jobs remain.
+  // ---------------------------------------------------------------------------
+
+  var POLL_INTERVAL_MS = 3000;
+  var pollTimer = null;
+
+  function getEnrichmentCells() {
+    return Array.prototype.slice.call(
+      document.querySelectorAll(".stubs-col--enrichment[data-player-id]")
+    );
+  }
+
+  function getInFlightIds() {
+    return getEnrichmentCells()
+      .filter(function (td) {
+        var badge = td.querySelector(".stubs-enrich-badge");
+        return badge && badge.textContent.trim() === "Enriching…";
+      })
+      .map(function (td) {
+        return td.getAttribute("data-player-id");
+      });
+  }
+
+  function badgeClassForState(state) {
+    if (state === "succeeded") return "admin-badge--enriched";
+    if (state === "failed") return "admin-badge--failed";
+    if (state === "queued" || state === "running") return "admin-badge--enriching";
+    return "admin-badge--unknown";
+  }
+
+  function badgeLabelForState(state) {
+    if (state === "succeeded") return "Enriched";
+    if (state === "failed") return "Failed";
+    if (state === "queued" || state === "running") return "Enriching…";
+    return "Not Attempted";
+  }
+
+  function applyStatusUpdate(statusMap) {
+    getEnrichmentCells().forEach(function (td) {
+      var pid = td.getAttribute("data-player-id");
+      if (!statusMap[pid]) return;
+
+      var info = statusMap[pid];
+      var badge = td.querySelector(".stubs-enrich-badge");
+      if (!badge) return;
+
+      var newClass = badgeClassForState(info.state);
+      var newLabel = badgeLabelForState(info.state);
+
+      // Only update DOM if something changed
+      if (badge.textContent.trim() !== newLabel) {
+        badge.className = "admin-badge " + newClass + " stubs-enrich-badge";
+        badge.textContent = newLabel;
+        if (info.error) {
+          badge.title = info.error;
+        }
+      }
+    });
+  }
+
+  function pollEnrichmentStatus() {
+    var ids = getInFlightIds();
+    if (ids.length === 0) {
+      // Nothing in flight — stop polling
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+        pollTimer = null;
+      }
+      return;
+    }
+
+    fetch("/admin/players/stubs/enrichment-status?ids=" + ids.join(","))
+      .then(function (resp) {
+        if (!resp.ok) return null;
+        return resp.json();
+      })
+      .then(function (data) {
+        if (data) {
+          applyStatusUpdate(data);
+        }
+        // Schedule next poll only if still in-flight
+        var still = getInFlightIds();
+        if (still.length > 0) {
+          pollTimer = setTimeout(pollEnrichmentStatus, POLL_INTERVAL_MS);
+        }
+      })
+      .catch(function () {
+        // Network error — retry after interval
+        pollTimer = setTimeout(pollEnrichmentStatus, POLL_INTERVAL_MS);
+      });
+  }
+
+  function initEnrichmentPolling() {
+    var inFlight = getInFlightIds();
+    if (inFlight.length > 0) {
+      pollTimer = setTimeout(pollEnrichmentStatus, POLL_INTERVAL_MS);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Init
   // ---------------------------------------------------------------------------
 
@@ -146,5 +260,6 @@
     initQuickAddModal();
     initBulkSelect();
     initFilterWiring();
+    initEnrichmentPolling();
   });
 })();

@@ -71,6 +71,13 @@
   {% if can_edit_players %}
   <div class="stubs-bulk-toolbar" id="bulk-toolbar" style="display:none;">
     <span class="stubs-bulk-toolbar__count" id="bulk-count">0 selected</span>
+    <form method="post" action="/admin/players/stubs/enrich"
+          id="bulk-enrich-form">
+      <!-- Hidden inputs for selected IDs are injected by JS -->
+      <button type="submit" class="admin-btn admin-btn--secondary admin-btn--small">
+        Enrich Selected
+      </button>
+    </form>
     <form method="post" action="/admin/players/stubs/bulk-delete"
           id="bulk-delete-form"
           onsubmit="return confirm('Delete selected stub players? This cannot be undone.');">
@@ -142,18 +149,18 @@
           <span class="admin-text--placeholder">—</span>
           {% endif %}
         </td>
-        <td>
+        <td class="stubs-col--enrichment" data-player-id="{{ p.player.id }}">
           {# enrichment_status_label is a callable passed in context #}
           {% set latest_job_state = none %}
           {% set es = enrichment_status_label(p.player.enrichment_attempted_at, latest_job_state) %}
           {% if es == 'Enriched' %}
-          <span class="admin-badge admin-badge--enriched">Enriched</span>
+          <span class="admin-badge admin-badge--enriched stubs-enrich-badge">Enriched</span>
           {% elif es == 'Enriching…' %}
-          <span class="admin-badge admin-badge--enriching">Enriching…</span>
+          <span class="admin-badge admin-badge--enriching stubs-enrich-badge">Enriching…</span>
           {% elif es == 'Failed' %}
-          <span class="admin-badge admin-badge--failed">Failed</span>
+          <span class="admin-badge admin-badge--failed stubs-enrich-badge">Failed</span>
           {% else %}
-          <span class="admin-badge admin-badge--unknown">Not Attempted</span>
+          <span class="admin-badge admin-badge--unknown stubs-enrich-badge">Not Attempted</span>
           {% endif %}
         </td>
         <td>
@@ -166,6 +173,13 @@
             <a href="/admin/players/{{ p.player.id }}"
                class="admin-btn admin-btn--secondary admin-btn--small">Edit</a>
             {% if can_edit_players %}
+            <form method="post"
+                  action="/admin/players/stubs/enrich"
+                  class="admin-form--inline">
+              <input type="hidden" name="player_id" value="{{ p.player.id }}">
+              <button type="submit"
+                      class="admin-btn admin-btn--secondary admin-btn--small">Enrich</button>
+            </form>
             <form method="post"
                   action="/admin/players/stubs/{{ p.player.id }}/promote"
                   class="admin-form--inline"

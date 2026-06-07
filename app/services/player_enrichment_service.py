@@ -801,7 +801,7 @@ async def run_enrichment_sweep(
 
             single = await _enrich_player_with_factory(
                 session_factory,
-                player_id,
+                player_id,  # type: ignore[arg-type]
                 name,
                 client,  # type: ignore[arg-type]
             )

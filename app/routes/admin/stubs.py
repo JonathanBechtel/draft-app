@@ -11,8 +11,16 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+)
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
@@ -27,8 +35,14 @@ from app.services.admin_player_service import (
     list_players as svc_list_players,
     promote_stub_to_full as svc_promote_stub,
 )
+from app.services.enrichment_queue_service import (
+    MAX_ENQUEUE_PER_REQUEST,
+    drain_enrichment_queue,
+    enqueue_enrichment,
+    enrichment_status as svc_enrichment_status,
+)
 from app.services.player_mention_service import create_stub_player
-from app.utils.db_async import get_session
+from app.utils.db_async import SessionLocal, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +57,7 @@ SUCCESS_MESSAGES = {
     "quick_added": "Stub player created successfully.",
     "promoted": "Player promoted to full record.",
     "deleted": "Stub player deleted.",
+    "enqueued": "Enrichment job queued.",
 }
 
 
@@ -363,6 +378,136 @@ async def delete_stub(
             )
 
     return RedirectResponse(url=f"{_NEXT_PATH}?success=deleted", status_code=303)
+
+
+@router.post("/enrich", response_class=HTMLResponse)
+async def enrich_stubs(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Enqueue on-demand enrichment for one or many stub players.
+
+    Reads ``player_id`` (single) or ``player_ids[]`` (bulk) from the form body.
+    Creates ``PlayerEnrichmentJob`` rows for each eligible player (dedup: skips
+    those that already have an in-flight job), then schedules
+    ``drain_enrichment_queue`` as a background task so processing begins
+    immediately without blocking the response.
+
+    The per-request cap (``MAX_ENQUEUE_PER_REQUEST``) is surfaced in the flash
+    message when the selection exceeds it.
+
+    Args:
+        request: Incoming FastAPI request.
+        background_tasks: FastAPI background task queue.
+        db: Injected database session.
+
+    Returns:
+        Redirect to the stubs list with a flash message.
+    """
+    redirect, user = await require_dataset_access(
+        request, db, "players", need_edit=True, next_path=_NEXT_PATH
+    )
+    if redirect:
+        return redirect
+    assert user is not None
+
+    user_id: int | None = user.id  # type: ignore[union-attr]
+
+    form = await request.form()
+
+    # Support both single ``player_id`` and bulk ``player_ids[]``
+    raw_ids: list[str] = []
+    single = form.get("player_id")
+    if single:
+        raw_ids.append(str(single))
+    bulk = form.getlist("player_ids[]")
+    raw_ids.extend(str(v) for v in bulk)
+
+    player_ids: list[int] = []
+    for raw in raw_ids:
+        try:
+            player_ids.append(int(raw))
+        except ValueError:
+            pass
+
+    if not player_ids:
+        return RedirectResponse(url=_NEXT_PATH, status_code=303)
+
+    original_count = len(player_ids)
+    source = "admin_single" if original_count == 1 else "admin_bulk"
+
+    async with db.begin():
+        enqueued = await enqueue_enrichment(
+            db, player_ids, source=source, user_id=user_id
+        )
+
+    background_tasks.add_task(
+        drain_enrichment_queue, SessionLocal, limit=MAX_ENQUEUE_PER_REQUEST
+    )
+
+    queued_count = len(enqueued)
+    if queued_count == 0:
+        flash = "No new enrichment jobs created (all selected players already have in-flight jobs)."
+    else:
+        flash = f"Queued {queued_count} stub(s) for enrichment."
+        if original_count > MAX_ENQUEUE_PER_REQUEST:
+            flash += (
+                f" Note: only the first {MAX_ENQUEUE_PER_REQUEST} of {original_count} selected"
+                " were enqueued (per-request cap)."
+            )
+        elif queued_count < original_count:
+            skipped = original_count - queued_count
+            flash += f" ({skipped} skipped — already in flight)."
+
+    return RedirectResponse(
+        url=f"{_NEXT_PATH}?success={flash}",
+        status_code=303,
+    )
+
+
+@router.get("/enrichment-status", response_class=JSONResponse)
+async def enrichment_status_endpoint(
+    request: Request,
+    ids: str = Query(default=""),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Return enrichment job state for the given player IDs.
+
+    Accepts a comma-separated ``ids`` query param and returns JSON mapping each
+    player ID to its most-recent job state and error message.  Players with no
+    job record are omitted.
+
+    Args:
+        request: Incoming FastAPI request.
+        ids: Comma-separated player IDs to poll, e.g. ``?ids=1,2,3``.
+        db: Injected database session.
+
+    Returns:
+        JSON ``{"<player_id>": {"state": "...", "error": null|"..."}, ...}``.
+    """
+    redirect, _user = await require_dataset_access(
+        request, db, "players", need_edit=False, next_path=_NEXT_PATH
+    )
+    if redirect:
+        return JSONResponse(status_code=403, content={"error": "Forbidden"})
+
+    player_ids: list[int] = []
+    for part in ids.split(","):
+        part = part.strip()
+        if part:
+            try:
+                player_ids.append(int(part))
+            except ValueError:
+                pass
+
+    status_map = await svc_enrichment_status(db, player_ids)
+
+    payload: dict[str, dict[str, object]] = {
+        str(pid): {"state": js.state, "error": js.error}
+        for pid, js in status_map.items()
+    }
+    return JSONResponse(content=payload)
 
 
 @router.post("/bulk-delete", response_class=HTMLResponse)
