@@ -6,9 +6,12 @@ import json
 from pathlib import Path
 from typing import Mapping
 
+import pytest
+
 from app.services.summer_league.raw_ingestion import (
     GAME_ENDPOINTS,
     RawIngestionOptions,
+    SummerLeagueRequiredGamelogError,
     SummerLeagueRawIngestor,
     extract_game_ids,
 )
@@ -31,7 +34,13 @@ class FakeNBAStatsClient:
         clean_params = dict(params)
         self.calls.append((endpoint, clean_params))
         game_id = clean_params.get("GameID")
-        if (endpoint, game_id) in self.failures or (endpoint, None) in self.failures:
+        failure_keys = {
+            (endpoint, game_id),
+            (endpoint, None),
+        }
+        if endpoint == "leaguegamelog":
+            failure_keys.add((endpoint, clean_params.get("PlayerOrTeam")))
+        if self.failures.intersection(failure_keys):
             raise RuntimeError(f"simulated {endpoint} failure")
         if endpoint == "leaguegamelog":
             if clean_params["PlayerOrTeam"] == "T":
@@ -225,6 +234,52 @@ def test_fetch_year_league_records_partial_game_endpoint_failures(
         / "1522400002"
         / "boxscorescoringv2.json"
     ).exists()
+
+
+def test_fetch_year_league_fails_when_required_team_gamelog_fails(
+    tmp_path: Path,
+) -> None:
+    """A missing team gamelog fails the run because it indexes game IDs."""
+    client = FakeNBAStatsClient(failures={("leaguegamelog", "T")})
+    store = SummerLeagueRawStore(tmp_path)
+    ingestor = SummerLeagueRawIngestor(client=client, store=store, sleep=lambda _: None)
+
+    with pytest.raises(
+        SummerLeagueRequiredGamelogError,
+        match=r"Required team leaguegamelog failed for 2024/15",
+    ):
+        ingestor.fetch_year_league(RawIngestionOptions(year=2024, league_id="15"))
+
+    manifest_payload = json.loads((tmp_path / "2024" / "15" / "manifest.json").read_text())
+    assert manifest_payload["game_count"] == 0
+    assert manifest_payload["team_gamelog_rows"] == 0
+    assert manifest_payload["errors"][0]["endpoint"] == "leaguegamelog"
+    assert [endpoint for endpoint, _ in client.calls] == ["leaguegamelog"]
+
+
+def test_fetch_year_league_fails_when_required_player_gamelog_fails(
+    tmp_path: Path,
+) -> None:
+    """A missing player gamelog fails before optional per-game endpoints run."""
+    client = FakeNBAStatsClient(failures={("leaguegamelog", "P")})
+    store = SummerLeagueRawStore(tmp_path)
+    ingestor = SummerLeagueRawIngestor(client=client, store=store, sleep=lambda _: None)
+
+    with pytest.raises(
+        SummerLeagueRequiredGamelogError,
+        match=r"Required player leaguegamelog failed for 2024/15",
+    ):
+        ingestor.fetch_year_league(RawIngestionOptions(year=2024, league_id="15"))
+
+    manifest_payload = json.loads((tmp_path / "2024" / "15" / "manifest.json").read_text())
+    assert manifest_payload["game_count"] == 2
+    assert manifest_payload["team_gamelog_rows"] == 4
+    assert manifest_payload["player_gamelog_rows"] == 0
+    assert manifest_payload["errors"][0]["endpoint"] == "leaguegamelog"
+    assert [endpoint for endpoint, _ in client.calls] == [
+        "leaguegamelog",
+        "leaguegamelog",
+    ]
 
 
 def test_fetch_year_league_uses_force_when_writing_existing_snapshots(

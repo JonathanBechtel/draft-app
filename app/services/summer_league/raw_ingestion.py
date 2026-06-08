@@ -28,6 +28,10 @@ GAME_ENDPOINTS = (
 )
 
 
+class SummerLeagueRequiredGamelogError(RuntimeError):
+    """Raised when a required season gamelog cannot be collected."""
+
+
 class NBAStatsJSONClient(Protocol):
     """Protocol for the NBA Stats client behavior used by raw ingestion."""
 
@@ -88,9 +92,13 @@ class SummerLeagueRawIngestor:
             player_or_team="T",
             filename="leaguegamelog_team",
         )
-        if team_payload is not None:
-            manifest.team_gamelog_rows = _first_result_set_row_count(team_payload)
-            manifest.game_ids = extract_game_ids(team_payload)
+        if team_payload is None:
+            self._finish_manifest(manifest)
+            raise SummerLeagueRequiredGamelogError(
+                f"Required team leaguegamelog failed for {options.year}/{league_id}"
+            )
+        manifest.team_gamelog_rows = _first_result_set_row_count(team_payload)
+        manifest.game_ids = extract_game_ids(team_payload)
 
         player_payload = self._fetch_season_gamelog(
             options=options,
@@ -99,8 +107,12 @@ class SummerLeagueRawIngestor:
             player_or_team="P",
             filename="leaguegamelog_player",
         )
-        if player_payload is not None:
-            manifest.player_gamelog_rows = _first_result_set_row_count(player_payload)
+        if player_payload is None:
+            self._finish_manifest(manifest)
+            raise SummerLeagueRequiredGamelogError(
+                f"Required player leaguegamelog failed for {options.year}/{league_id}"
+            )
+        manifest.player_gamelog_rows = _first_result_set_row_count(player_payload)
 
         game_ids_to_fetch = manifest.game_ids
         if options.limit_games is not None:
@@ -124,13 +136,7 @@ class SummerLeagueRawIngestor:
                     endpoint=endpoint,
                 )
 
-        manifest.finish()
-        self.store.write_manifest(manifest, force=True)
-        self._progress(
-            f"finish {options.year}/{league_id}: games={manifest.game_count} "
-            f"written={len(manifest.files_written)} "
-            f"skipped={len(manifest.files_skipped)} errors={len(manifest.errors)}"
-        )
+        self._finish_manifest(manifest)
         return manifest
 
     def _fetch_season_gamelog(
@@ -255,6 +261,15 @@ class SummerLeagueRawIngestor:
     def _progress(self, message: str) -> None:
         if self.progress is not None:
             self.progress(message)
+
+    def _finish_manifest(self, manifest: SummerLeagueRawManifest) -> None:
+        manifest.finish()
+        self.store.write_manifest(manifest, force=True)
+        self._progress(
+            f"finish {manifest.year}/{manifest.league_id}: games={manifest.game_count} "
+            f"written={len(manifest.files_written)} "
+            f"skipped={len(manifest.files_skipped)} errors={len(manifest.errors)}"
+        )
 
 
 def extract_game_ids(payload: Payload) -> list[str]:
