@@ -191,8 +191,35 @@ async def validate_raw_audit_integrity(
             )
         )
 
+    findings.extend(_validate_raw_file_duplicates(raw_files))
     for raw_file in raw_files:
         findings.extend(_validate_raw_file(raw_file))
+    return findings
+
+
+def _validate_raw_file_duplicates(
+    raw_files: list[SummerLeagueRawFile],
+) -> list[SummerLeagueQAFinding]:
+    grouped: dict[tuple[str, str | None], list[SummerLeagueRawFile]] = {}
+    for raw_file in raw_files:
+        grouped.setdefault((raw_file.endpoint, raw_file.game_id), []).append(raw_file)
+
+    findings: list[SummerLeagueQAFinding] = []
+    for (endpoint, game_id), files in grouped.items():
+        if len(files) <= 1:
+            continue
+        findings.append(
+            _finding(
+                SummerLeagueQASeverity.ERROR,
+                "RAW_FILE_DUPLICATE_ENDPOINT",
+                "Raw audit contains duplicate endpoint rows for the same scope.",
+                endpoint=endpoint,
+                game_id=game_id,
+                count=len(files),
+                raw_file_ids=[file.id for file in files],
+                relative_paths=[file.relative_path for file in files],
+            )
+        )
     return findings
 
 

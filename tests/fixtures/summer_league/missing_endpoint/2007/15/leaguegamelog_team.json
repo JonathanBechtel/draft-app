@@ -1,0 +1,12 @@
+{
+  "resultSets": [
+    {
+      "name": "LeagueGameLog",
+      "headers": ["TEAM_ID", "TEAM_ABBREVIATION", "TEAM_NAME", "GAME_ID", "GAME_DATE", "MATCHUP", "PTS"],
+      "rowSet": [
+        [1610612757, "POR", "Portland Trail Blazers", "1520700001", "2007-07-07", "POR vs. SEA", 74],
+        [1610612760, "SEA", "Seattle SuperSonics", "1520700001", "2007-07-07", "SEA @ POR", 70]
+      ]
+    }
+  ]
+}

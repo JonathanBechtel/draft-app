@@ -1,0 +1,12 @@
+{
+  "resultSets": [
+    {
+      "name": "LeagueGameLog",
+      "headers": ["TEAM_ID", "TEAM_ABBREVIATION", "TEAM_NAME", "GAME_ID", "GAME_DATE", "MATCHUP", "PTS"],
+      "rowSet": [
+        [1610612738, "BOS", "Boston Celtics", "1421000001", "2010-07-05", "BOS vs. OKC", 82],
+        [1610612760, "OKC", "Oklahoma City Thunder", "1421000001", "2010-07-05", "OKC @ BOS", 76]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "resultSets": [
+    {"name": "PlayerStats", "headers": ["GAME_ID", "TEAM_ID", "PLAYER_ID"], "rowSet": []},
+    {"name": "TeamStats", "headers": ["GAME_ID", "TEAM_ID"], "rowSet": []}
+  ]
+}

@@ -159,6 +159,41 @@ def test_compare_idempotency_snapshots_returns_no_findings_for_stable_counts() -
     assert compare_idempotency_snapshots(snapshot, snapshot) == []
 
 
+def test_raw_file_duplicate_validator_reports_duplicate_endpoint_scope() -> None:
+    """Duplicate raw file rows for one endpoint/game scope are named findings."""
+    findings = service._validate_raw_file_duplicates(
+        [
+            _raw_file(
+                SummerLeagueRawFileStatus.PARSED,
+                id=20,
+                endpoint="leaguegamelog_player",
+                game_id=None,
+                relative_path="2024/15/leaguegamelog_player.json",
+            ),
+            _raw_file(
+                SummerLeagueRawFileStatus.PARSED,
+                id=21,
+                endpoint="leaguegamelog_player",
+                game_id=None,
+                relative_path="2024/15/leaguegamelog_player-copy.json",
+            ),
+        ]
+    )
+
+    assert len(findings) == 1
+    assert findings[0].code == "RAW_FILE_DUPLICATE_ENDPOINT"
+    assert findings[0].evidence == {
+        "endpoint": "leaguegamelog_player",
+        "game_id": None,
+        "count": 2,
+        "raw_file_ids": [20, 21],
+        "relative_paths": [
+            "2024/15/leaguegamelog_player.json",
+            "2024/15/leaguegamelog_player-copy.json",
+        ],
+    }
+
+
 def _raw_run(**overrides: object) -> SummerLeagueRawRun:
     data: dict[str, object] = {
         "id": 10,

@@ -1,0 +1,21 @@
+{
+  "duplicate_raw_files": {
+    "year": 2024,
+    "league_id": "15",
+    "venue_slug": "las_vegas",
+    "endpoint": "leaguegamelog_player",
+    "relative_paths": [
+      "2024/15/leaguegamelog_player.json",
+      "2024/15/leaguegamelog_player-copy.json"
+    ]
+  },
+  "orphan_competition": {
+    "year": 2024,
+    "league_id": "13",
+    "venue_slug": "california_classic"
+  },
+  "unresolved_player": {
+    "nba_stats_person_id": "1649999",
+    "raw_player_name": "Unresolved Fixture Prospect"
+  }
+}
