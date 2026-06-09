@@ -109,6 +109,47 @@ data/raw/nba_stats/summer_league/2024/15/
 
 `data/raw/` is ignored by Git.
 
+## Durable Archive
+
+After a raw scrape completes, archive the local files to durable S3 storage while
+preserving the exact relative layout under the raw root. The recommended
+destination shape is:
+
+```text
+s3://<bucket>/raw/nba_stats/summer_league/{year}/{league_id}/...
+```
+
+Plan an archive run without S3 reads or writes:
+
+```bash
+conda run -n draftguru python scripts/archive_summer_league_raw.py \
+  --raw-root data/raw/nba_stats/summer_league \
+  --s3-prefix s3://<bucket>/raw/nba_stats/summer_league \
+  --dry-run \
+  --report-path docs/qa/summer-league-raw-archive-dry-run.json
+```
+
+Upload the same tree:
+
+```bash
+conda run -n draftguru python scripts/archive_summer_league_raw.py \
+  --raw-root data/raw/nba_stats/summer_league \
+  --s3-prefix s3://<bucket>/raw/nba_stats/summer_league \
+  --report-path docs/qa/summer-league-raw-archive.json
+```
+
+Useful options:
+
+- `--dry-run` reports every planned S3 key without touching S3.
+- `--force` uploads even when destination metadata already matches.
+- `--report-path PATH` writes a JSON report with per-file status, checksum,
+  byte size, S3 key, and S3 URI.
+
+Upload mode stores `sha256` and `byte_size` object metadata. On rerun, unchanged
+objects with matching metadata are skipped where practical; changed or missing
+objects are uploaded. The command exits nonzero if any file reports an archive
+error.
+
 ## Manifest
 
 Each `(year, league_id)` run writes `manifest.json`. The manifest records:
