@@ -1,0 +1,568 @@
+"""Unit tests for Summer League player-resolution helper behavior."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from app.schemas.players_master import PlayerMaster
+from app.schemas.summer_league import SummerLeagueResolutionStatus
+from app.schemas.summer_league import SummerLeagueSourcePlayer
+from app.services.summer_league import player_resolution as service
+from app.services.summer_league.player_resolution import (
+    SummerLeagueResolutionCandidate,
+    SummerLeagueResolutionResult,
+    _build_report,
+    _candidate_payloads,
+    _collapse_whitespace,
+    _create_stub_player,
+    _ensure_nba_stats_external_id,
+    _find_external_id_player,
+    _find_unique_normalized_alias_match,
+    _find_unique_normalized_display_match,
+    _has_serious_candidate,
+    _load_source_players,
+    _serialize_search_candidates,
+    _backfill_player_game_logs,
+    normalize_player_name,
+    resolve_source_player,
+    resolve_summer_league_players,
+)
+
+
+class _FakeResult:
+    def __init__(
+        self,
+        *,
+        scalar: Any = None,
+        rows: list[tuple[Any, ...]] | None = None,
+        scalars: list[Any] | None = None,
+        rowcount: int | None = None,
+    ) -> None:
+        self._scalar = scalar
+        self._rows = rows or []
+        self._scalars = scalars or []
+        self.rowcount = rowcount
+
+    def scalar_one_or_none(self) -> Any:
+        return self._scalar
+
+    def all(self) -> list[tuple[Any, ...]]:
+        return self._rows
+
+    def scalars(self) -> "_FakeScalarResult":
+        return _FakeScalarResult(self._scalars)
+
+
+class _FakeScalarResult:
+    def __init__(self, values: list[Any]) -> None:
+        self._values = values
+
+    def all(self) -> list[Any]:
+        return self._values
+
+
+class _FakeDb:
+    def __init__(self, results: list[_FakeResult] | None = None) -> None:
+        self.results = results or []
+        self.added: list[Any] = []
+        self.flushed = 0
+        self.executed = 0
+
+    async def execute(self, stmt: Any) -> _FakeResult:
+        self.executed += 1
+        if not self.results:
+            return _FakeResult()
+        return self.results.pop(0)
+
+    def add(self, obj: Any) -> None:
+        self.added.append(obj)
+
+    async def flush(self) -> None:
+        self.flushed += 1
+        for obj in self.added:
+            if isinstance(obj, PlayerMaster) and obj.id is None:
+                obj.id = 99
+
+
+class _SearchHit:
+    def __init__(self, player_id: int, display_name: str | None, score: float) -> None:
+        self.player_id = player_id
+        self.display_name = display_name
+        self.score = score
+
+
+def _source(
+    *,
+    person_id: str = "1640001",
+    name: str = "Source Prospect",
+    canonical_player_id: int | None = None,
+    status: SummerLeagueResolutionStatus = SummerLeagueResolutionStatus.UNRESOLVED,
+) -> SummerLeagueSourcePlayer:
+    return SummerLeagueSourcePlayer(
+        id=5,
+        nba_stats_person_id=person_id,
+        raw_player_name=name,
+        normalized_name=normalize_player_name(name),
+        canonical_player_id=canonical_player_id,
+        resolution_status=status,
+    )
+
+
+def test_collapse_whitespace_trims_repeated_spacing() -> None:
+    """Stub display names are normalized without altering source spelling."""
+    assert _collapse_whitespace("  Two   Way\tProspect  ") == "Two Way Prospect"
+
+
+def test_normalize_player_name_folds_diacritics_and_suffixes() -> None:
+    """Summer League exact matching mirrors board-name normalization rules."""
+    assert normalize_player_name(" José   García Jr. ") == "jose garcia"
+
+
+def test_candidate_payloads_round_scores_for_json_storage() -> None:
+    """Candidate DTOs serialize to compact JSONB-safe dictionaries."""
+    candidates = [
+        SummerLeagueResolutionCandidate(
+            player_id=7,
+            display_name="Candidate Player",
+            score=0.87654321,
+        )
+    ]
+
+    assert _candidate_payloads(candidates) == [
+        {
+            "player_id": 7,
+            "display_name": "Candidate Player",
+            "score": 0.876543,
+            "method": "HYBRID",
+        }
+    ]
+
+
+def test_serious_candidate_threshold_blocks_speculative_stubs() -> None:
+    """Only candidates at or above the service threshold block stub creation."""
+    assert (
+        _has_serious_candidate(
+            [
+                SummerLeagueResolutionCandidate(
+                    player_id=1,
+                    display_name="Weak Candidate",
+                    score=0.299,
+                )
+            ]
+        )
+        is False
+    )
+    assert (
+        _has_serious_candidate(
+            [
+                SummerLeagueResolutionCandidate(
+                    player_id=2,
+                    display_name="Serious Candidate",
+                    score=0.3,
+                )
+            ]
+        )
+        is True
+    )
+
+
+def test_report_counts_methods_candidates_stubs_and_backfills() -> None:
+    """Batch reports aggregate resolution outcomes from individual results."""
+    results = [
+        SummerLeagueResolutionResult(
+            source_player_id=1,
+            nba_stats_person_id="100",
+            raw_player_name="External Player",
+            player_id=10,
+            status=SummerLeagueResolutionStatus.EXTERNAL_ID,
+            method="EXTERNAL_ID",
+            logs_backfilled=2,
+        ),
+        SummerLeagueResolutionResult(
+            source_player_id=2,
+            nba_stats_person_id="200",
+            raw_player_name="Candidate Player",
+            player_id=None,
+            status=SummerLeagueResolutionStatus.VECTOR_CANDIDATE,
+            method="VECTOR_CANDIDATE",
+            candidates=[
+                SummerLeagueResolutionCandidate(
+                    player_id=20,
+                    display_name="Candidate Player",
+                    score=0.72,
+                )
+            ],
+        ),
+        SummerLeagueResolutionResult(
+            source_player_id=3,
+            nba_stats_person_id="300",
+            raw_player_name="Stub Player",
+            player_id=30,
+            status=SummerLeagueResolutionStatus.STUB,
+            method="STUB",
+            stub_created=True,
+            logs_backfilled=1,
+        ),
+    ]
+
+    report = _build_report(year=2024, league_id="15", results=results)
+
+    assert report.total_source_players == 3
+    assert report.resolved_source_players == 2
+    assert report.unresolved_source_players == 1
+    assert report.external_id_resolutions == 1
+    assert report.candidate_source_players == 1
+    assert report.stubs_created == 1
+    assert report.player_game_logs_backfilled == 3
+
+
+def test_serialize_search_candidates_clamps_scores() -> None:
+    """Search candidates are clamped before persistence."""
+    payload = _serialize_search_candidates(
+        [
+            _SearchHit(1, "Low", -0.2),
+            _SearchHit(2, "High", 1.2),
+        ]
+    )
+
+    assert [candidate.score for candidate in payload] == [0.0, 1.0]
+
+
+@pytest.mark.asyncio
+async def test_find_external_id_player_reads_scalar_result() -> None:
+    """External-ID lookup returns an integer player id when present."""
+    db = _FakeDb([_FakeResult(scalar=42)])
+
+    assert await _find_external_id_player(db, "1640001") == 42  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_ensure_external_id_handles_existing_conflict_and_create(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """External-ID ensure respects uniqueness and inserts only when missing."""
+    db = _FakeDb()
+
+    async def same_player(db_arg: Any, person_id: str) -> int:
+        return 7
+
+    monkeypatch.setattr(service, "_find_external_id_player", same_player)
+    assert (
+        await _ensure_nba_stats_external_id(  # type: ignore[arg-type]
+            db, player_id=7, nba_stats_person_id="1640001"
+        )
+        is False
+    )
+
+    async def other_player(db_arg: Any, person_id: str) -> int:
+        return 8
+
+    monkeypatch.setattr(service, "_find_external_id_player", other_player)
+    with pytest.raises(ValueError):
+        await _ensure_nba_stats_external_id(  # type: ignore[arg-type]
+            db, player_id=7, nba_stats_person_id="1640001"
+        )
+
+    async def no_player(db_arg: Any, person_id: str) -> None:
+        return None
+
+    monkeypatch.setattr(service, "_find_external_id_player", no_player)
+    assert (
+        await _ensure_nba_stats_external_id(  # type: ignore[arg-type]
+            db, player_id=7, nba_stats_person_id="1640001"
+        )
+        is True
+    )
+    assert db.flushed == 1
+
+
+@pytest.mark.asyncio
+async def test_backfill_player_game_logs_returns_update_rowcount() -> None:
+    """Backfill reports the number of updated Summer League logs."""
+    db = _FakeDb([_FakeResult(rowcount=3)])
+
+    assert (
+        await _backfill_player_game_logs(  # type: ignore[arg-type]
+            db, source_player_id=5, player_id=7
+        )
+        == 3
+    )
+    assert (
+        await _backfill_player_game_logs(  # type: ignore[arg-type]
+            db, source_player_id=None, player_id=7
+        )
+        == 0
+    )
+
+
+@pytest.mark.asyncio
+async def test_unique_normalized_display_and_alias_matches() -> None:
+    """Name lookup helpers return only unique normalized matches."""
+    display_db = _FakeDb([_FakeResult(rows=[(1, "José García Jr.")])])
+    alias_db = _FakeDb([_FakeResult(rows=[(2, "Source Alias Jr.")])])
+    ambiguous_db = _FakeDb([_FakeResult(rows=[(1, "Same Name"), (2, "Same Name")])])
+
+    assert (
+        await _find_unique_normalized_display_match(  # type: ignore[arg-type]
+            display_db, "Jose Garcia"
+        )
+        == 1
+    )
+    assert (
+        await _find_unique_normalized_alias_match(  # type: ignore[arg-type]
+            alias_db, "Source Alias"
+        )
+        == 2
+    )
+    assert (
+        await _find_unique_normalized_display_match(  # type: ignore[arg-type]
+            ambiguous_db, "Same Name"
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_stub_player_populates_stub_fields() -> None:
+    """Stub creation writes the minimal PlayerMaster fields expected by ingest."""
+    db = _FakeDb()
+
+    player_id = await _create_stub_player(db, _source(name="New Stub Jr."))  # type: ignore[arg-type]
+
+    assert player_id == 99
+    stub = db.added[0]
+    assert isinstance(stub, PlayerMaster)
+    assert stub.display_name == "New Stub Jr."
+    assert stub.first_name == "New"
+    assert stub.last_name == "Stub"
+    assert stub.suffix == "Jr."
+    assert stub.is_stub is True
+    assert stub.bio_source == service.STUB_BIO_SOURCE
+
+
+@pytest.mark.asyncio
+async def test_resolve_source_player_external_id_cascade(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """External-ID resolution updates source state and backfills logs."""
+
+    async def external(db: Any, person_id: str) -> int:
+        return 10
+
+    async def ensure(db: Any, player_id: int, nba_stats_person_id: str) -> bool:
+        return False
+
+    async def backfill(db: Any, source_player_id: int | None, player_id: int) -> int:
+        return 2
+
+    monkeypatch.setattr(service, "_find_external_id_player", external)
+    monkeypatch.setattr(service, "_ensure_nba_stats_external_id", ensure)
+    monkeypatch.setattr(service, "_backfill_player_game_logs", backfill)
+
+    source = _source()
+    result = await resolve_source_player(_FakeDb(), source)  # type: ignore[arg-type]
+
+    assert result.player_id == 10
+    assert result.status == SummerLeagueResolutionStatus.EXTERNAL_ID
+    assert result.logs_backfilled == 2
+    assert source.canonical_player_id == 10
+
+
+@pytest.mark.asyncio
+async def test_resolve_source_player_existing_exact_alias_candidate_and_stub(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cascade branches reuse links, resolve exact/alias, store candidates, and stub."""
+
+    async def no_external(db: Any, person_id: str) -> None:
+        return None
+
+    async def ensure(db: Any, player_id: int, nba_stats_person_id: str) -> bool:
+        return True
+
+    async def backfill(db: Any, source_player_id: int | None, player_id: int) -> int:
+        return 1
+
+    monkeypatch.setattr(service, "_find_external_id_player", no_external)
+    monkeypatch.setattr(service, "_ensure_nba_stats_external_id", ensure)
+    monkeypatch.setattr(service, "_backfill_player_game_logs", backfill)
+
+    existing = await resolve_source_player(  # type: ignore[arg-type]
+        _FakeDb(), _source(canonical_player_id=11)
+    )
+    assert existing.method == "EXISTING_SOURCE"
+    assert existing.status == SummerLeagueResolutionStatus.MANUAL
+
+    async def exact(db: Any, source_name: str) -> int:
+        return 12
+
+    async def no_alias(db: Any, source_name: str) -> None:
+        return None
+
+    monkeypatch.setattr(service, "_find_unique_normalized_display_match", exact)
+    monkeypatch.setattr(service, "_find_unique_normalized_alias_match", no_alias)
+    exact_result = await resolve_source_player(_FakeDb(), _source())  # type: ignore[arg-type]
+    assert exact_result.status == SummerLeagueResolutionStatus.EXACT
+    assert exact_result.player_id == 12
+
+    async def no_exact(db: Any, source_name: str) -> None:
+        return None
+
+    async def alias(db: Any, source_name: str) -> int:
+        return 13
+
+    monkeypatch.setattr(service, "_find_unique_normalized_display_match", no_exact)
+    monkeypatch.setattr(service, "_find_unique_normalized_alias_match", alias)
+    alias_result = await resolve_source_player(_FakeDb(), _source())  # type: ignore[arg-type]
+    assert alias_result.status == SummerLeagueResolutionStatus.ALIAS
+    assert alias_result.player_id == 13
+
+    async def candidates(
+        db: Any, source_player: SummerLeagueSourcePlayer
+    ) -> list[SummerLeagueResolutionCandidate]:
+        return [
+            SummerLeagueResolutionCandidate(
+                player_id=14, display_name="Candidate", score=0.7
+            )
+        ]
+
+    monkeypatch.setattr(service, "_find_unique_normalized_alias_match", no_alias)
+    monkeypatch.setattr(service, "_collect_candidates", candidates)
+    candidate_source = _source()
+    candidate_result = await resolve_source_player(  # type: ignore[arg-type]
+        _FakeDb(), candidate_source
+    )
+    assert candidate_result.status == SummerLeagueResolutionStatus.VECTOR_CANDIDATE
+    assert candidate_source.resolution_candidates == [
+        {
+            "player_id": 14,
+            "display_name": "Candidate",
+            "score": 0.7,
+            "method": "HYBRID",
+        }
+    ]
+
+    async def weak_candidates(
+        db: Any, source_player: SummerLeagueSourcePlayer
+    ) -> list[SummerLeagueResolutionCandidate]:
+        return [
+            SummerLeagueResolutionCandidate(player_id=15, display_name="Weak", score=0.1)
+        ]
+
+    async def stub(db: Any, source_player: SummerLeagueSourcePlayer) -> int:
+        return 16
+
+    monkeypatch.setattr(service, "_collect_candidates", weak_candidates)
+    monkeypatch.setattr(service, "_create_stub_player", stub)
+    stub_result = await resolve_source_player(  # type: ignore[arg-type]
+        _FakeDb(), _source(), create_stub=True
+    )
+    assert stub_result.status == SummerLeagueResolutionStatus.STUB
+    assert stub_result.stub_created is True
+    assert stub_result.player_id == 16
+
+
+@pytest.mark.asyncio
+async def test_resolve_source_player_unresolved_stores_weak_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Weak candidates remain unresolved when stub mode is disabled."""
+
+    async def no_external(db: Any, person_id: str) -> None:
+        return None
+
+    async def no_match(db: Any, source_name: str) -> None:
+        return None
+
+    async def weak_candidates(
+        db: Any, source_player: SummerLeagueSourcePlayer
+    ) -> list[SummerLeagueResolutionCandidate]:
+        return [
+            SummerLeagueResolutionCandidate(player_id=15, display_name="Weak", score=0.1)
+        ]
+
+    monkeypatch.setattr(service, "_find_external_id_player", no_external)
+    monkeypatch.setattr(service, "_find_unique_normalized_display_match", no_match)
+    monkeypatch.setattr(service, "_find_unique_normalized_alias_match", no_match)
+    monkeypatch.setattr(service, "_collect_candidates", weak_candidates)
+
+    source = _source()
+    result = await resolve_source_player(_FakeDb(), source)  # type: ignore[arg-type]
+
+    assert result.status == SummerLeagueResolutionStatus.UNRESOLVED
+    assert result.player_id is None
+    assert source.resolution_confidence == 0.1
+    assert source.resolution_candidates is not None
+
+
+@pytest.mark.asyncio
+async def test_collect_candidates_success_and_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Candidate collection serializes hits and degrades to empty on failure."""
+
+    async def fake_search(db: Any, query: str, k: int = 5) -> list[_SearchHit]:
+        return [_SearchHit(1, "Candidate", 0.44)]
+
+    monkeypatch.setattr(service, "find_candidate_players", fake_search)
+    hits = await service._collect_candidates(_FakeDb(), _source())  # type: ignore[arg-type]
+    assert hits == [
+        SummerLeagueResolutionCandidate(
+            player_id=1,
+            display_name="Candidate",
+            score=0.44,
+        )
+    ]
+
+    async def broken_search(db: Any, query: str, k: int = 5) -> list[_SearchHit]:
+        raise RuntimeError("offline")
+
+    monkeypatch.setattr(service, "find_candidate_players", broken_search)
+    assert await service._collect_candidates(_FakeDb(), _source()) == []  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_load_source_players_and_batch_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch loading and resolution report wiring use the selected scope."""
+    source = _source()
+    db = _FakeDb([_FakeResult(scalars=[source])])
+
+    assert await _load_source_players(db, year=None, league_id=None) == [source]  # type: ignore[arg-type]
+    filtered_db = _FakeDb([_FakeResult(scalars=[source])])
+    assert await _load_source_players(filtered_db, year=2024, league_id="15") == [  # type: ignore[arg-type]
+        source
+    ]
+
+    async def fake_load(db_arg: Any, year: int | None, league_id: str | None) -> list[
+        SummerLeagueSourcePlayer
+    ]:
+        return [source]
+
+    async def fake_resolve(
+        db_arg: Any, source_player: SummerLeagueSourcePlayer, create_stub: bool = False
+    ) -> SummerLeagueResolutionResult:
+        return SummerLeagueResolutionResult(
+            source_player_id=source_player.id,
+            nba_stats_person_id=source_player.nba_stats_person_id,
+            raw_player_name=source_player.raw_player_name,
+            player_id=7,
+            status=SummerLeagueResolutionStatus.EXACT,
+            method="EXACT",
+            logs_backfilled=1,
+        )
+
+    monkeypatch.setattr(service, "_load_source_players", fake_load)
+    monkeypatch.setattr(service, "resolve_source_player", fake_resolve)
+
+    report = await resolve_summer_league_players(  # type: ignore[arg-type]
+        _FakeDb(), year=2024, league_id="15"
+    )
+
+    assert report.total_source_players == 1
+    assert report.resolved_source_players == 1
+    assert report.exact_resolutions == 1
+    assert report.player_game_logs_backfilled == 1
