@@ -30,6 +30,7 @@ from app.schemas.nba_teams import NbaTeam
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service as svc
 from app.services import consensus_read_service
+from app.services.player_mention_service import create_stub_player
 from app.services.player_search_service import find_lexical_players
 from app.utils.db_async import get_session
 
@@ -43,6 +44,7 @@ _SUCCESS_MESSAGES: dict[str, str] = {
     "entry_updated": "Entry updated.",
     "entry_deleted": "Entry removed.",
     "stub_minted": "Stub player created and entry resolved.",
+    "stub_minted_inline": "Stub player created and entry added.",
     "approved": "Board approved.",
     "rejected": "Board rejected.",
     "deleted": "Board deleted.",
@@ -411,6 +413,145 @@ async def add_board_entry(
 
     return RedirectResponse(
         url=f"/admin/boards/{board_id}?success=entry_added", status_code=303
+    )
+
+
+@router.post("/{board_id}/entries/inline-stub", response_class=JSONResponse)
+async def add_entry_with_inline_stub(
+    request: Request,
+    board_id: int,
+    name: str = Form(...),
+    position: int = Form(...),
+    tier: str | None = Form(default=None),
+    round: str | None = Form(default=None),
+    team_id: str | None = Form(default=None),
+    original_team_id: str | None = Form(default=None),
+    trade_note: str | None = Form(default=None),
+    draft_year: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Mint a stub player from a typed name and add it as a new board entry.
+
+    When the add-entry autocomplete finds no matching player, the admin can
+    request inline stub creation.  This route:
+
+    1. Runs ``create_stub_player`` (includes dedup pre-check).
+    2. On success, adds the entry pointing to the new stub player.
+    3. On ``blocked_existing`` / ``ambiguous`` / ``rejected_guard``, returns a
+       JSON error payload so the JS can surface a targeted message without a
+       full page reload.
+
+    Returns JSON ``{outcome, player_id, display_name}`` on creation, or
+    ``{outcome, message, candidates}`` for blocked/ambiguous outcomes.
+    """
+    redirect, user = await require_dataset_access(
+        request,
+        db,
+        "boards",
+        need_edit=True,
+        next_path=f"/admin/boards/{board_id}",
+    )
+    if redirect:
+        return JSONResponse(
+            content={"outcome": "error", "message": "Unauthorized"}, status_code=401
+        )
+    assert user is not None
+
+    name_stripped = (name or "").strip()
+    if not name_stripped:
+        return JSONResponse(
+            content={"outcome": "error", "message": "Name is required."},
+            status_code=422,
+        )
+
+    # Parse optional draft year for stub lifecycle
+    draft_year_int: int | None = None
+    if draft_year and draft_year.strip():
+        try:
+            draft_year_int = int(draft_year.strip())
+        except ValueError:
+            pass
+
+    tier_int = _parse_optional_int(tier)
+    round_int = _parse_optional_int(round)
+    team_id_int = _parse_optional_int(team_id)
+    orig_team_id_int = _parse_optional_int(original_team_id)
+    trade_note_str = (trade_note or "").strip() or None
+
+    async with db.begin():
+        result = await create_stub_player(db, name_stripped, draft_year=draft_year_int)
+
+        if result.outcome == "blocked_existing" and result.match is not None:
+            return JSONResponse(
+                content={
+                    "outcome": "blocked_existing",
+                    "message": (
+                        f"A player named '{result.match.display_name}' already exists"
+                        f" (matched via {result.match.matched_via})."
+                        " Use the autocomplete to select them instead."
+                    ),
+                    "player_id": result.match.player_id,
+                    "display_name": result.match.display_name,
+                },
+                status_code=409,
+            )
+
+        if result.outcome == "ambiguous":
+            candidates = [
+                {"player_id": c.player_id, "display_name": c.display_name}
+                for c in (result.candidates or [])
+            ]
+            return JSONResponse(
+                content={
+                    "outcome": "ambiguous",
+                    "message": (
+                        f"The name '{name_stripped}' matches multiple existing players."
+                        " Select one from the autocomplete instead."
+                    ),
+                    "candidates": candidates,
+                },
+                status_code=409,
+            )
+
+        if result.outcome == "rejected_guard":
+            return JSONResponse(
+                content={
+                    "outcome": "rejected_guard",
+                    "message": result.reason or "Name is too vague to create a stub.",
+                },
+                status_code=422,
+            )
+
+        # outcome == "created"
+        assert result.player_id is not None
+        try:
+            entry = await svc.add_entry(
+                db,
+                board_id=board_id,
+                player_id=result.player_id,
+                position=position,
+                raw_name=name_stripped,
+                resolution_method=ResolutionMethod.STUB,
+                tier=tier_int,
+                round=round_int,
+                team_id=team_id_int,
+                original_team_id=orig_team_id_int,
+                trade_note=trade_note_str,
+            )
+        except svc.BoardError as exc:
+            return JSONResponse(
+                content={"outcome": "error", "message": str(exc)},
+                status_code=400,
+            )
+
+    return JSONResponse(
+        content={
+            "outcome": "created",
+            "player_id": result.player_id,
+            "display_name": name_stripped,
+            "entry_id": entry.id,
+        },
+        status_code=201,
     )
 
 

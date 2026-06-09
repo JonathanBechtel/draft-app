@@ -48,6 +48,11 @@
             Players
           </a>
         </li>
+        <li class="admin-sidebar__nav-item">
+          <a href="/admin/players/stubs" class="admin-sidebar__nav-link{% if active_nav == 'stubs' %} admin-sidebar__nav-link--active{% endif %}">
+            Stubs
+          </a>
+        </li>
         {% endif %}
         {% if can_view_news_sources %}
         <li class="admin-sidebar__nav-item">

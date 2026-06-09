@@ -478,6 +478,7 @@ async def create_player(
     current_affiliation_name: str | None = Form(default=None),
     current_affiliation_type: str | None = Form(default=None),
     is_draft_prospect: str | None = Form(default=None),
+    is_stub: str | None = Form(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> Response:
     """Create a new player."""
@@ -528,8 +529,11 @@ async def create_player(
     if isinstance(parsed, str):
         return await _render_form_error(request, db, user, None, parsed)
 
+    # Interpret the checkbox: present → stub, absent → full player
+    is_stub_bool: bool = bool(is_stub)
+
     async with db.begin():
-        player = await svc_create_player(db, parsed)
+        player = await svc_create_player(db, parsed, is_stub=is_stub_bool)
         assert player.id is not None
         await svc_update_player_lifecycle(
             db,
