@@ -150,6 +150,36 @@ objects with matching metadata are skipped where practical; changed or missing
 objects are uploaded. The command exits nonzero if any file reports an archive
 error.
 
+## Raw Audit Scanner
+
+After raw files exist locally, audit them into `summer_league_raw_runs` and
+`summer_league_raw_files` so downstream normalization can work from explicit
+metadata instead of reinterpreting the directory tree.
+
+Audit all local raw manifests:
+
+```bash
+conda run -n draftguru python scripts/audit_summer_league_raw.py \
+  --raw-root data/raw/nba_stats/summer_league \
+  --s3-prefix s3://<bucket>/raw/nba_stats/summer_league \
+  --report-path docs/qa/summer-league-raw-audit.json
+```
+
+Audit a single slice:
+
+```bash
+conda run -n draftguru python scripts/audit_summer_league_raw.py \
+  --raw-root data/raw/nba_stats/summer_league \
+  --year 2024 \
+  --league-id 15
+```
+
+The scanner reads each `manifest.json`, expects the season gamelog files plus
+the standard game endpoints for every manifest-listed game, computes checksums
+and byte sizes, parses NBA.com result sets for row counts, and upserts audit
+rows idempotently. Missing, empty, and corrupt files are recorded with explicit
+`parse_status` values rather than being silently skipped.
+
 ## Manifest
 
 Each `(year, league_id)` run writes `manifest.json`. The manifest records:
