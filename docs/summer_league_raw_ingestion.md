@@ -180,6 +180,23 @@ and byte sizes, parses NBA.com result sets for row counts, and upserts audit
 rows idempotently. Missing, empty, and corrupt files are recorded with explicit
 `parse_status` values rather than being silently skipped.
 
+## Normalize Competitions, Teams, And Games
+
+After a slice has been audited, normalize competition, team, game, and team
+box-score facts:
+
+```bash
+conda run -n draftguru python scripts/normalize_summer_league.py \
+  --year 2024 \
+  --league-id 15 \
+  --raw-root data/raw/nba_stats/summer_league
+```
+
+This stage creates or updates `summer_league_competitions`,
+`summer_league_team_entries`, `summer_league_games`, and
+`summer_league_team_game_logs`. It does not resolve source players or write
+player game logs; that is handled by the next pipeline stage.
+
 ## Manifest
 
 Each `(year, league_id)` run writes `manifest.json`. The manifest records:
