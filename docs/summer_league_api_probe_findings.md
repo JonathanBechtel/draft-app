@@ -144,3 +144,7 @@ Reads:
 conda run -n draftguru python scripts/probe_summer_league_api.py --verbose --timeout 20
 ```
 Raw JSON → `scripts/data/sl_probe/`; coverage matrix + tier summary → stdout.
+
+For production raw snapshot collection, use
+`scripts/fetch_summer_league_raw.py` instead of the probe. See
+`docs/summer_league_raw_ingestion.md`.
