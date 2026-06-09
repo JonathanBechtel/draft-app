@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from dataclasses import dataclass
 
 import pytest
@@ -224,12 +224,18 @@ async def test_existing_source_link_is_reused_and_gets_external_id(
         game=game,
         canonical_player_id=player.id,
     )
+    manual_resolved_at = datetime(2024, 7, 1, 12, 0, 0)
+    source_player.resolution_status = SummerLeagueResolutionStatus.MANUAL
+    source_player.resolved_at = manual_resolved_at
+    source_player.resolved_by = "admin@example.test"
 
     result = await resolve_source_player(db_session, source_player)
 
     assert result.player_id == player.id
     assert result.method == "EXISTING_SOURCE"
     assert source_player.resolution_status == SummerLeagueResolutionStatus.MANUAL
+    assert source_player.resolved_at == manual_resolved_at
+    assert source_player.resolved_by == "admin@example.test"
     assert await _log_player_id(db_session, person_id="1641002") == player.id
     assert await _external_id_count(db_session, person_id="1641002") == 1
 

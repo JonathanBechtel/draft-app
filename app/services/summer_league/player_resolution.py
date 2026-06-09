@@ -29,6 +29,7 @@ NBA_STATS_SYSTEM = "nba_stats"
 STUB_BIO_SOURCE = "summer_league_ingest"
 SERIOUS_CANDIDATE_SCORE = 0.3
 MAX_CANDIDATES = 5
+CANDIDATE_SEARCH_FAILED_METHOD = "CANDIDATE_SEARCH_FAILED"
 
 
 class _SearchCandidate(Protocol):
@@ -37,6 +38,10 @@ class _SearchCandidate(Protocol):
     player_id: int
     display_name: str | None
     score: float
+
+
+class SummerLeagueCandidateSearchError(RuntimeError):
+    """Raised when candidate search fails during player resolution."""
 
 
 async def find_candidate_players(
@@ -256,6 +261,7 @@ async def _confirm_resolution(
     status: SummerLeagueResolutionStatus,
     method: str,
     stub_created: bool = False,
+    preserve_existing_attribution: bool = False,
 ) -> SummerLeagueResolutionResult:
     """Persist a confirmed resolution and backfill dependent game logs."""
     external_id_created = await _ensure_nba_stats_external_id(
@@ -268,8 +274,9 @@ async def _confirm_resolution(
     source_player.resolution_status = status
     source_player.resolution_confidence = 1.0
     source_player.resolution_candidates = None
-    source_player.resolved_at = now
-    source_player.resolved_by = "system"
+    if not preserve_existing_attribution:
+        source_player.resolved_at = now
+        source_player.resolved_by = "system"
     source_player.updated_at = now
     db.add(source_player)
     logs_backfilled = await _backfill_player_game_logs(
@@ -371,7 +378,10 @@ async def _collect_candidates(
             source_player.id,
             source_player.nba_stats_person_id,
         )
-        return []
+        raise SummerLeagueCandidateSearchError(
+            "Candidate search failed for Summer League source player "
+            f"{source_player.nba_stats_person_id}."
+        )
     return _serialize_search_candidates(search_hits)
 
 
@@ -416,6 +426,7 @@ async def resolve_source_player(
             player_id=source_player.canonical_player_id,
             status=existing_status,
             method="EXISTING_SOURCE",
+            preserve_existing_attribution=True,
         )
 
     exact_player_id = await _find_unique_normalized_display_match(
@@ -444,7 +455,23 @@ async def resolve_source_player(
             method=SummerLeagueResolutionStatus.ALIAS.value,
         )
 
-    candidates = await _collect_candidates(db, source_player)
+    try:
+        candidates = await _collect_candidates(db, source_player)
+    except SummerLeagueCandidateSearchError:
+        now = datetime.utcnow()
+        source_player.resolution_status = SummerLeagueResolutionStatus.UNRESOLVED
+        source_player.resolution_confidence = None
+        source_player.resolution_candidates = None
+        source_player.updated_at = now
+        db.add(source_player)
+        return SummerLeagueResolutionResult(
+            source_player_id=source_player.id,
+            nba_stats_person_id=source_player.nba_stats_person_id,
+            raw_player_name=source_player.raw_player_name,
+            player_id=None,
+            status=SummerLeagueResolutionStatus.UNRESOLVED,
+            method=CANDIDATE_SEARCH_FAILED_METHOD,
+        )
     if candidates and _has_serious_candidate(candidates):
         now = datetime.utcnow()
         source_player.resolution_status = SummerLeagueResolutionStatus.VECTOR_CANDIDATE

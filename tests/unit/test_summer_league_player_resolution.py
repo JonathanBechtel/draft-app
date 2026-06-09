@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 import pytest
@@ -13,6 +14,7 @@ from app.services.summer_league import player_resolution as service
 from app.services.summer_league.player_resolution import (
     SummerLeagueResolutionCandidate,
     SummerLeagueResolutionResult,
+    SummerLeagueCandidateSearchError,
     _build_report,
     _candidate_payloads,
     _collapse_whitespace,
@@ -99,6 +101,8 @@ def _source(
     name: str = "Source Prospect",
     canonical_player_id: int | None = None,
     status: SummerLeagueResolutionStatus = SummerLeagueResolutionStatus.UNRESOLVED,
+    resolved_at: datetime | None = None,
+    resolved_by: str | None = None,
 ) -> SummerLeagueSourcePlayer:
     return SummerLeagueSourcePlayer(
         id=5,
@@ -107,6 +111,8 @@ def _source(
         normalized_name=normalize_player_name(name),
         canonical_player_id=canonical_player_id,
         resolution_status=status,
+        resolved_at=resolved_at,
+        resolved_by=resolved_by,
     )
 
 
@@ -389,11 +395,18 @@ async def test_resolve_source_player_existing_exact_alias_candidate_and_stub(
     monkeypatch.setattr(service, "_ensure_nba_stats_external_id", ensure)
     monkeypatch.setattr(service, "_backfill_player_game_logs", backfill)
 
-    existing = await resolve_source_player(  # type: ignore[arg-type]
-        _FakeDb(), _source(canonical_player_id=11)
+    manual_resolved_at = datetime(2024, 7, 1, 12, 0, 0)
+    existing_source = _source(
+        canonical_player_id=11,
+        status=SummerLeagueResolutionStatus.MANUAL,
+        resolved_at=manual_resolved_at,
+        resolved_by="admin@example.test",
     )
+    existing = await resolve_source_player(_FakeDb(), existing_source)  # type: ignore[arg-type]
     assert existing.method == "EXISTING_SOURCE"
     assert existing.status == SummerLeagueResolutionStatus.MANUAL
+    assert existing_source.resolved_at == manual_resolved_at
+    assert existing_source.resolved_by == "admin@example.test"
 
     async def exact(db: Any, source_name: str) -> int:
         return 12
@@ -520,7 +533,45 @@ async def test_collect_candidates_success_and_failure(
         raise RuntimeError("offline")
 
     monkeypatch.setattr(service, "find_candidate_players", broken_search)
-    assert await service._collect_candidates(_FakeDb(), _source()) == []  # type: ignore[arg-type]
+    with pytest.raises(SummerLeagueCandidateSearchError):
+        await service._collect_candidates(_FakeDb(), _source())  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_resolve_source_player_search_failure_does_not_create_stub(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stub mode treats candidate-search outages as unresolved, not no-match."""
+
+    async def no_external(db: Any, person_id: str) -> None:
+        return None
+
+    async def no_match(db: Any, source_name: str) -> None:
+        return None
+
+    async def broken_candidates(
+        db: Any, source_player: SummerLeagueSourcePlayer
+    ) -> list[SummerLeagueResolutionCandidate]:
+        raise SummerLeagueCandidateSearchError("offline")
+
+    async def create_stub(db: Any, source_player: SummerLeagueSourcePlayer) -> int:
+        raise AssertionError("stub creation should not run after search failure")
+
+    monkeypatch.setattr(service, "_find_external_id_player", no_external)
+    monkeypatch.setattr(service, "_find_unique_normalized_display_match", no_match)
+    monkeypatch.setattr(service, "_find_unique_normalized_alias_match", no_match)
+    monkeypatch.setattr(service, "_collect_candidates", broken_candidates)
+    monkeypatch.setattr(service, "_create_stub_player", create_stub)
+
+    source = _source()
+    result = await resolve_source_player(  # type: ignore[arg-type]
+        _FakeDb(), source, create_stub=True
+    )
+
+    assert result.player_id is None
+    assert result.status == SummerLeagueResolutionStatus.UNRESOLVED
+    assert result.method == service.CANDIDATE_SEARCH_FAILED_METHOD
+    assert source.canonical_player_id is None
 
 
 @pytest.mark.asyncio
