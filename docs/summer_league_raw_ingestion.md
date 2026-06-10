@@ -10,6 +10,8 @@ writes local files only. It does not write to the database, create
 - Planning spec: `docs/plans/summer-league-raw-ingestion-workflow.md`
 - Feature plan: `docs/summer_league_stats_plan.md`
 - API probe findings: `docs/summer_league_api_probe_findings.md`
+- Full backbone runbook: `docs/summer_league_backbone_runbook.md`
+- Final QA report: `docs/qa/summer-league-backbone-qa-2026-06-10.md`
 - Probe script retained for exploration: `scripts/probe_summer_league_api.py`
 
 ## NBA.com Access Caveat
