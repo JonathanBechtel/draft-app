@@ -302,8 +302,14 @@ async def test_ambiguous_exact_match_collects_candidates_without_resolution(
 ) -> None:
     """Ambiguous name matches stay unresolved and store review candidates."""
     competition, team, game = await _seed_game_context(db_session)
-    player_one = PlayerMaster(display_name="Duplicate Prospect")
-    player_two = PlayerMaster(display_name="Duplicate Prospect")
+    player_one = PlayerMaster(
+        slug="duplicate-prospect-one",
+        display_name="Duplicate Prospect",
+    )
+    player_two = PlayerMaster(
+        slug="duplicate-prospect-two",
+        display_name="Duplicate Prospect",
+    )
     db_session.add_all([player_one, player_two])
     await db_session.flush()
     assert player_one.id is not None

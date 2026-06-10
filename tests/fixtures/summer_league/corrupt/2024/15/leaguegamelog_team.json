@@ -1,0 +1,12 @@
+{
+  "resultSets": [
+    {
+      "name": "LeagueGameLog",
+      "headers": ["TEAM_ID", "TEAM_ABBREVIATION", "TEAM_NAME", "GAME_ID", "GAME_DATE", "MATCHUP", "PTS"],
+      "rowSet": [
+        [1610612753, "ORL", "Orlando Magic", "1522400002", "2024-07-13", "ORL vs. CLE", 88],
+        [1610612739, "CLE", "Cleveland Cavaliers", "1522400002", "2024-07-13", "CLE @ ORL", 84]
+      ]
+    }
+  ]
+}

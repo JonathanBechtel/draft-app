@@ -1,0 +1,10 @@
+{
+  "year": 2024,
+  "league_id": "13",
+  "venue": "california_classic",
+  "team_gamelog_rows": 2,
+  "player_gamelog_rows": 1,
+  "game_ids": ["1322400001"],
+  "game_count": 1,
+  "errors": []
+}

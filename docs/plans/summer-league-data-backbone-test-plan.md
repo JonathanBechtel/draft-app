@@ -141,6 +141,21 @@ Instead, add compact fixtures under `tests/fixtures/summer_league/` that model:
 The full raw scrape under `data/raw/nba_stats/summer_league/` is reserved for
 operator runs and final QA evidence, not ordinary unit or integration fixtures.
 
+### Committed Fixture Inventory
+
+Ticket `#332` adds the compact fixture roots below. Each tree contains a minimal
+manifest, season team/player gamelogs, and only the endpoint files needed to
+exercise the scenario.
+
+| Fixture root | Slice | Purpose |
+|---|---:|---|
+| `tests/fixtures/summer_league/modern` | `2024/15` | Complete modern Las Vegas-style slice with box, play-by-play, and shot chart endpoints. |
+| `tests/fixtures/summer_league/satellite` | `2024/13` | Complete satellite-venue slice with smaller payloads. |
+| `tests/fixtures/summer_league/partial` | `2010/14` | Partial historical slice with missing play-by-play and shot chart endpoints. |
+| `tests/fixtures/summer_league/corrupt` | `2024/15` | Corrupt endpoint payload for parse-failure QA coverage. |
+| `tests/fixtures/summer_league/missing_endpoint` | `2007/15` | Historical slice with one expected endpoint absent. |
+| `tests/fixtures/summer_league/db_negative_cases.json` | n/a | Seed metadata for duplicate raw rows, orphaned normalized rows, and unresolved-player negative tests. |
+
 ## Ticket Injection Notes
 
 - Schema tickets must update `tests/integration/conftest.py` so SQLModel

@@ -1,0 +1,19 @@
+{
+  "resultSets": [
+    {
+      "name": "PlayerStats",
+      "headers": ["GAME_ID", "TEAM_ID", "PLAYER_ID", "PLAYER_NAME", "START_POSITION", "COMMENT", "MIN", "FGM", "FGA", "PTS", "PLUS_MINUS"],
+      "rowSet": [
+        ["1522400001", 1610612753, 1640001, "Fixture Prospect", "G", "", "21:30", 5, 9, 14, 6]
+      ]
+    },
+    {
+      "name": "TeamStats",
+      "headers": ["GAME_ID", "TEAM_ID", "TEAM_NAME", "TEAM_ABBREVIATION", "MIN", "PTS"],
+      "rowSet": [
+        ["1522400001", 1610612753, "Magic", "ORL", "200:00", 106],
+        ["1522400001", 1610612739, "Cavaliers", "CLE", "200:00", 79]
+      ]
+    }
+  ]
+}

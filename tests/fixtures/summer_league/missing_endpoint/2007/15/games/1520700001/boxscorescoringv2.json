@@ -1,0 +1,5 @@
+{
+  "resultSets": [
+    {"name": "sqlPlayersScoring", "headers": ["GAME_ID", "TEAM_ID", "PLAYER_ID"], "rowSet": []}
+  ]
+}

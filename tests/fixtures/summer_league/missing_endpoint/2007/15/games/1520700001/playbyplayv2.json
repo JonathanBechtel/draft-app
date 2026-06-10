@@ -1,0 +1,5 @@
+{
+  "resultSets": [
+    {"name": "PlayByPlay", "headers": ["GAME_ID", "EVENTNUM"], "rowSet": []}
+  ]
+}

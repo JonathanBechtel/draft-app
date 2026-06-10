@@ -1,0 +1,10 @@
+{
+  "year": 2010,
+  "league_id": "14",
+  "venue": "orlando",
+  "team_gamelog_rows": 2,
+  "player_gamelog_rows": 1,
+  "game_ids": ["1421000001"],
+  "game_count": 1,
+  "errors": ["shot chart endpoint unavailable"]
+}

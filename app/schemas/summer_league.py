@@ -15,6 +15,7 @@ from sqlalchemy import (
     Integer,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -68,6 +69,15 @@ class SummerLeagueResolutionStatus(str, Enum):
     VECTOR_CANDIDATE = "VECTOR_CANDIDATE"
     MANUAL = "MANUAL"
     STUB = "STUB"
+
+
+class SummerLeagueReviewStatus(str, Enum):
+    """Lifecycle status for Summer League player-resolution review rows."""
+
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    STUB_CREATED = "STUB_CREATED"
 
 
 class SummerLeagueRawRun(SQLModel, table=True):  # type: ignore[call-arg]
@@ -492,3 +502,55 @@ class SummerLeaguePlayerGameLog(SQLModel, table=True):  # type: ignore[call-arg]
     source_endpoint: str = Field(default="boxscoretraditionalv2", nullable=False)
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+
+
+class SummerLeaguePlayerResolutionReview(SQLModel, table=True):  # type: ignore[call-arg]
+    """Pending or completed review for ambiguous Summer League player resolution."""
+
+    __tablename__ = "summer_league_player_resolution_reviews"
+    __table_args__ = (
+        Index(
+            "uq_summer_league_player_resolution_reviews_pending_source",
+            "source_player_id",
+            unique=True,
+            postgresql_where=text("status = 'PENDING'"),
+        ),
+        Index("ix_summer_league_player_resolution_reviews_status", "status"),
+        Index(
+            "ix_summer_league_player_resolution_reviews_selected_player_id",
+            "selected_player_id",
+        ),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    source_player_id: int = Field(
+        sa_column=Column(
+            Integer,
+            ForeignKey("summer_league_source_players.id"),
+            nullable=False,
+        )
+    )
+    raw_player_name: str = Field(nullable=False)
+    nba_stats_person_id: str = Field(nullable=False)
+    candidate_players: Optional[list[dict[str, object]]] = Field(
+        default=None,
+        sa_column=Column(JSONB, nullable=True),
+    )
+    status: SummerLeagueReviewStatus = Field(
+        default=SummerLeagueReviewStatus.PENDING,
+        sa_column=Column(
+            SAEnum(
+                SummerLeagueReviewStatus,
+                name="summer_league_review_status_enum",
+            ),
+            nullable=False,
+            server_default=SummerLeagueReviewStatus.PENDING.value,
+        ),
+    )
+    selected_player_id: Optional[int] = Field(
+        default=None,
+        foreign_key="players_master.id",
+    )
+    review_note: Optional[str] = Field(default=None, sa_column=Column(Text))
+    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    reviewed_at: Optional[datetime] = Field(default=None)

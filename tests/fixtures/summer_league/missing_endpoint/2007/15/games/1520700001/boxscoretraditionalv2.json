@@ -1,0 +1,17 @@
+{
+  "resultSets": [
+    {
+      "name": "PlayerStats",
+      "headers": ["GAME_ID", "TEAM_ID", "PLAYER_ID", "PLAYER_NAME", "MIN", "PTS"],
+      "rowSet": [["1520700001", 1610612757, 1644001, "Missing Endpoint Prospect", "10:00", 4]]
+    },
+    {
+      "name": "TeamStats",
+      "headers": ["GAME_ID", "TEAM_ID", "TEAM_NAME", "TEAM_ABBREVIATION", "MIN", "PTS"],
+      "rowSet": [
+        ["1520700001", 1610612757, "Trail Blazers", "POR", "200:00", 74],
+        ["1520700001", 1610612760, "SuperSonics", "SEA", "200:00", 70]
+      ]
+    }
+  ]
+}
