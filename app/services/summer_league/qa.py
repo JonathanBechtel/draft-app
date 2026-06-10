@@ -33,6 +33,12 @@ GAME_ENDPOINTS = (
     "shotchartdetail",
 )
 SEASON_ENDPOINTS = ("manifest", "leaguegamelog_team", "leaguegamelog_player")
+OPTIONAL_GAME_DETAIL_ENDPOINTS = {"playbyplayv2", "shotchartdetail"}
+RAW_FILE_ERROR_STATUSES = {
+    SummerLeagueRawFileStatus.MISSING,
+    SummerLeagueRawFileStatus.EMPTY,
+    SummerLeagueRawFileStatus.PARSE_FAILED,
+}
 
 
 class SummerLeagueQASeverity(str, Enum):
@@ -158,7 +164,7 @@ async def validate_raw_audit_integrity(
     if raw_run.error_count > 0:
         findings.append(
             _finding(
-                SummerLeagueQASeverity.ERROR,
+                _raw_run_error_severity(raw_run, raw_files),
                 "RAW_RUN_ERRORS_RECORDED",
                 "Raw audit run recorded source fetch or parse errors.",
                 raw_run_id=raw_run.id,
@@ -225,6 +231,7 @@ def _validate_raw_file_duplicates(
 
 def _validate_raw_file(raw_file: SummerLeagueRawFile) -> list[SummerLeagueQAFinding]:
     findings: list[SummerLeagueQAFinding] = []
+    file_error_severity = _raw_file_error_severity(raw_file)
     evidence = {
         "raw_file_id": raw_file.id,
         "endpoint": raw_file.endpoint,
@@ -234,7 +241,7 @@ def _validate_raw_file(raw_file: SummerLeagueRawFile) -> list[SummerLeagueQAFind
     if raw_file.parse_status == SummerLeagueRawFileStatus.MISSING:
         findings.append(
             _finding(
-                SummerLeagueQASeverity.ERROR,
+                file_error_severity,
                 "RAW_FILE_MISSING",
                 "Expected raw file is missing.",
                 **evidence,
@@ -244,7 +251,7 @@ def _validate_raw_file(raw_file: SummerLeagueRawFile) -> list[SummerLeagueQAFind
     if raw_file.parse_status == SummerLeagueRawFileStatus.EMPTY:
         findings.append(
             _finding(
-                SummerLeagueQASeverity.ERROR,
+                file_error_severity,
                 "RAW_FILE_EMPTY",
                 "Expected raw file is empty.",
                 **evidence,
@@ -253,7 +260,7 @@ def _validate_raw_file(raw_file: SummerLeagueRawFile) -> list[SummerLeagueQAFind
     if raw_file.parse_status == SummerLeagueRawFileStatus.PARSE_FAILED:
         findings.append(
             _finding(
-                SummerLeagueQASeverity.ERROR,
+                file_error_severity,
                 "RAW_FILE_PARSE_FAILED",
                 "Expected raw file failed JSON/result-set parsing.",
                 parse_error=raw_file.parse_error,
@@ -290,6 +297,39 @@ def _validate_raw_file(raw_file: SummerLeagueRawFile) -> list[SummerLeagueQAFind
                 )
             )
     return findings
+
+
+def _raw_run_error_severity(
+    raw_run: SummerLeagueRawRun,
+    raw_files: list[SummerLeagueRawFile],
+) -> SummerLeagueQASeverity:
+    error_files = [
+        raw_file
+        for raw_file in raw_files
+        if raw_file.parse_status in RAW_FILE_ERROR_STATUSES
+    ]
+    if (
+        raw_run.status == SummerLeagueRawRunStatus.PARTIAL
+        and error_files
+        and all(_is_optional_game_detail_file(raw_file) for raw_file in error_files)
+    ):
+        return SummerLeagueQASeverity.WARNING
+    return SummerLeagueQASeverity.ERROR
+
+
+def _raw_file_error_severity(
+    raw_file: SummerLeagueRawFile,
+) -> SummerLeagueQASeverity:
+    if _is_optional_game_detail_file(raw_file):
+        return SummerLeagueQASeverity.WARNING
+    return SummerLeagueQASeverity.ERROR
+
+
+def _is_optional_game_detail_file(raw_file: SummerLeagueRawFile) -> bool:
+    return (
+        raw_file.game_id is not None
+        and raw_file.endpoint in OPTIONAL_GAME_DETAIL_ENDPOINTS
+    )
 
 
 async def validate_normalization_parity(

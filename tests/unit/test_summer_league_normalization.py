@@ -5,7 +5,24 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeagueRawFile,
+    SummerLeagueRawFileStatus,
+    SummerLeagueRawRun,
+    SummerLeagueRawRunStatus,
+    SummerLeagueTeamEntry,
+    SummerLeagueTeamGameLog,
+)
+from app.services.summer_league import normalization as service
 from app.services.summer_league.normalization import (
+    ParsedTeamBoxRow,
+    ParsedTeamGamelogRow,
+    _team_box_row_from_gamelog,
+    normalize_competition_games,
     parse_minutes_to_int,
     parse_team_box_rows,
     parse_team_gamelog,
@@ -160,3 +177,167 @@ def test_parse_team_box_rows_merges_traditional_and_advanced(tmp_path: Path) -> 
     assert rows[0].pts == 106
     assert rows[0].off_rating == 115.2
     assert rows[0].pace == 110.84
+
+
+def test_team_box_row_from_gamelog_preserves_available_source_fields() -> None:
+    """Gamelog fallback rows keep IDs and points while leaving box-only stats empty."""
+    row = ParsedTeamGamelogRow(
+        game_id="1520700003",
+        game_date=None,
+        nba_stats_team_id="45",
+        raw_team_name="Team China Basketball",
+        raw_team_abbreviation="CHN",
+        matchup="CHN @ MEM",
+        pts=77,
+    )
+
+    box_row = _team_box_row_from_gamelog(row)
+
+    assert box_row.game_id == "1520700003"
+    assert box_row.nba_stats_team_id == "45"
+    assert box_row.raw_team_abbreviation == "CHN"
+    assert box_row.pts == 77
+    assert box_row.fgm is None
+
+
+@pytest.mark.asyncio
+async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Missing boxscore team rows fall back to season gamelog rows."""
+    raw_run = SummerLeagueRawRun(
+        id=1,
+        year=2007,
+        league_id="15",
+        venue_slug="las_vegas",
+        status=SummerLeagueRawRunStatus.COMPLETE,
+        manifest_path="2007/15/manifest.json",
+        game_count=2,
+    )
+    raw_files = [
+        SummerLeagueRawFile(
+            raw_run_id=1,
+            year=2007,
+            league_id="15",
+            endpoint="boxscoretraditionalv2",
+            game_id="G1",
+            relative_path="2007/15/games/G1/boxscoretraditionalv2.json",
+            parse_status=SummerLeagueRawFileStatus.PARSED,
+        )
+    ]
+    competition = SummerLeagueCompetition(
+        id=10,
+        year=2007,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2007 Las Vegas Summer League",
+    )
+    team_rows = [
+        ParsedTeamGamelogRow("G1", None, "A", "Alpha", "ALP", "ALP vs. BET", 80),
+        ParsedTeamGamelogRow("G1", None, "B", "Beta", "BET", "BET @ ALP", 70),
+        ParsedTeamGamelogRow("G2", None, "C", "Gamma", "GAM", "GAM vs. DEL", 65),
+    ]
+    box_rows = [
+        ParsedTeamBoxRow("G1", "A", "Alpha", "ALP", pts=80, fgm=30),
+    ]
+    team_entries = {
+        "A": SummerLeagueTeamEntry(
+            id=20,
+            competition_id=10,
+            nba_stats_team_id="A",
+            raw_team_name="Alpha",
+            team_slug="alpha",
+        ),
+        "B": SummerLeagueTeamEntry(
+            id=21,
+            competition_id=10,
+            nba_stats_team_id="B",
+            raw_team_name="Beta",
+            team_slug="beta",
+        ),
+        "C": SummerLeagueTeamEntry(
+            id=None,
+            competition_id=10,
+            nba_stats_team_id="C",
+            raw_team_name="Gamma",
+            team_slug="gamma",
+        ),
+    }
+    games = {
+        "G1": SummerLeagueGame(id=30, competition_id=10, nba_stats_game_id="G1"),
+        "G2": SummerLeagueGame(id=31, competition_id=10, nba_stats_game_id="G2"),
+    }
+    calls: list[tuple[str, str, int | None]] = []
+
+    class FakeDb:
+        async def flush(self) -> None:
+            return None
+
+    async def fake_get_raw_run(*_args: object, **_kwargs: object) -> SummerLeagueRawRun:
+        return raw_run
+
+    async def fake_get_raw_files(
+        *_args: object, **_kwargs: object
+    ) -> list[SummerLeagueRawFile]:
+        return raw_files
+
+    async def fake_upsert_competition(
+        *_args: object, **_kwargs: object
+    ) -> SummerLeagueCompetition:
+        return competition
+
+    async def fake_upsert_team_entry(
+        _db: object,
+        _competition_id: int,
+        row: ParsedTeamGamelogRow,
+    ) -> SummerLeagueTeamEntry:
+        return team_entries[row.nba_stats_team_id]
+
+    async def fake_upsert_game(
+        _db: object,
+        _competition_id: int,
+        game_id: str,
+        *_args: object,
+    ) -> SummerLeagueGame:
+        return games[game_id]
+
+    async def fake_upsert_team_game_log(
+        _db: object,
+        _competition_id: int,
+        _game_id: int,
+        _team_entry_id: int,
+        box_row: ParsedTeamBoxRow,
+        *,
+        source_endpoint: str = "boxscoretraditionalv2",
+    ) -> SummerLeagueTeamGameLog:
+        calls.append((source_endpoint, box_row.nba_stats_team_id, box_row.fgm))
+        return SummerLeagueTeamGameLog(
+            competition_id=10,
+            game_id=_game_id,
+            team_entry_id=_team_entry_id,
+            source_endpoint=source_endpoint,
+        )
+
+    monkeypatch.setattr(service, "_get_raw_run", fake_get_raw_run)
+    monkeypatch.setattr(service, "_get_raw_files", fake_get_raw_files)
+    monkeypatch.setattr(service, "_upsert_competition", fake_upsert_competition)
+    monkeypatch.setattr(service, "_limited_game_ids", lambda **_kwargs: None)
+    monkeypatch.setattr(service, "parse_team_gamelog", lambda _path: team_rows)
+    monkeypatch.setattr(service, "parse_team_box_rows", lambda *_args, **_kwargs: box_rows)
+    monkeypatch.setattr(service, "_upsert_team_entry", fake_upsert_team_entry)
+    monkeypatch.setattr(service, "_upsert_game", fake_upsert_game)
+    monkeypatch.setattr(service, "_upsert_team_game_log", fake_upsert_team_game_log)
+
+    report = await normalize_competition_games(
+        FakeDb(),  # type: ignore[arg-type]
+        year=2007,
+        league_id="15",
+        raw_root=tmp_path,
+    )
+
+    assert report.team_game_logs_upserted == 2
+    assert calls == [
+        ("boxscoretraditionalv2", "A", 30),
+        ("leaguegamelog_team", "B", None),
+    ]

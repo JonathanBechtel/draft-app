@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.nba_teams import NbaTeam as _NbaTeam  # noqa: F401
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueDataQuality,
@@ -217,6 +218,7 @@ async def normalize_competition_games(
         games_by_source_id[game_id] = game
 
     team_log_count = 0
+    team_log_keys: set[tuple[str, str]] = set()
     for box_row in parse_team_box_rows(
         raw_root / f"{year}/{league_id}",
         game_ids=limited_game_ids,
@@ -232,6 +234,30 @@ async def normalize_competition_games(
             continue
         await _upsert_team_game_log(
             db, competition.id, box_game.id, box_team.id, box_row
+        )
+        team_log_keys.add((box_row.game_id, box_row.nba_stats_team_id))
+        team_log_count += 1
+
+    for gamelog_row in team_gamelog_rows:
+        key = (gamelog_row.game_id, gamelog_row.nba_stats_team_id)
+        if key in team_log_keys:
+            continue
+        fallback_game = games_by_source_id.get(gamelog_row.game_id)
+        fallback_team = teams_by_source_id.get(gamelog_row.nba_stats_team_id)
+        if (
+            fallback_game is None
+            or fallback_team is None
+            or fallback_game.id is None
+            or fallback_team.id is None
+        ):
+            continue
+        await _upsert_team_game_log(
+            db,
+            competition.id,
+            fallback_game.id,
+            fallback_team.id,
+            _team_box_row_from_gamelog(gamelog_row),
+            source_endpoint="leaguegamelog_team",
         )
         team_log_count += 1
 
@@ -681,6 +707,8 @@ async def _upsert_team_game_log(
     game_id: int,
     team_entry_id: int,
     box_row: ParsedTeamBoxRow,
+    *,
+    source_endpoint: str = "boxscoretraditionalv2",
 ) -> SummerLeagueTeamGameLog:
     result = await db.execute(
         select(SummerLeagueTeamGameLog).where(
@@ -705,9 +733,19 @@ async def _upsert_team_game_log(
         }:
             continue
         setattr(row, field_name, getattr(box_row, field_name))
-    row.source_endpoint = "boxscoretraditionalv2"
+    row.source_endpoint = source_endpoint
     row.updated_at = _utc_now_naive()
     return row
+
+
+def _team_box_row_from_gamelog(row: ParsedTeamGamelogRow) -> ParsedTeamBoxRow:
+    return ParsedTeamBoxRow(
+        game_id=row.game_id,
+        nba_stats_team_id=row.nba_stats_team_id,
+        raw_team_name=row.raw_team_name,
+        raw_team_abbreviation=row.raw_team_abbreviation,
+        pts=row.pts,
+    )
 
 
 async def _upsert_source_player(

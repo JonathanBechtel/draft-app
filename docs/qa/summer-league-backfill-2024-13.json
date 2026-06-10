@@ -1,0 +1,2350 @@
+{
+  "audit": {
+    "endpoint_coverage": {
+      "boxscoreadvancedv2": 12,
+      "boxscorescoringv2": 12,
+      "boxscoretraditionalv2": 12,
+      "leaguegamelog_player": 1,
+      "leaguegamelog_team": 1,
+      "manifest": 1,
+      "playbyplayv2": 12,
+      "shotchartdetail": 12
+    },
+    "files_audited": 63,
+    "parse_failures": 0,
+    "row_counts": {
+      "boxscoreadvancedv2": 336,
+      "boxscorescoringv2": 336,
+      "boxscoretraditionalv2": 336,
+      "leaguegamelog_player": 270,
+      "leaguegamelog_team": 24,
+      "playbyplayv2": 5095,
+      "shotchartdetail": 1765
+    },
+    "runs_scanned": 1
+  },
+  "competition_game_team": {
+    "competition_id": 2,
+    "data_quality": "full",
+    "games_upserted": 12,
+    "league_id": "13",
+    "team_game_logs_upserted": 24,
+    "teams_upserted": 8,
+    "year": 2024
+  },
+  "create_stubs": true,
+  "dry_run": false,
+  "force": false,
+  "league_id": "13",
+  "limit_games": null,
+  "player_logs": {
+    "competition_id": 2,
+    "league_id": "13",
+    "player_game_logs_skipped": 0,
+    "player_game_logs_upserted": 336,
+    "source_players_upserted": 121,
+    "year": 2024
+  },
+  "raw_root": "data/raw/nba_stats/summer_league",
+  "resolution": {
+    "alias_resolutions": 0,
+    "candidate_source_players": 26,
+    "exact_resolutions": 1,
+    "existing_source_resolutions": 0,
+    "external_id_resolutions": 72,
+    "league_id": "13",
+    "player_game_logs_backfilled": 627,
+    "resolved_source_players": 93,
+    "results": [
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 9,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "27777",
+        "player_id": 1,
+        "raw_player_name": "Neal Sako",
+        "source_player_id": 1,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 9,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "27778",
+        "player_id": 2,
+        "raw_player_name": "Warren Washington",
+        "source_player_id": 2,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 9,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1630528",
+        "player_id": 4,
+        "raw_player_name": "Josh Christopher",
+        "source_player_id": 4,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 9,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641815",
+        "player_id": 5,
+        "raw_player_name": "Isaiah Stevens",
+        "source_player_id": 5,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 9,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642389",
+        "player_id": 8,
+        "raw_player_name": "Zyon Pullin",
+        "source_player_id": 9,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 9,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631306",
+        "player_id": 10,
+        "raw_player_name": "Cole Swider",
+        "source_player_id": 11,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 9,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641796",
+        "player_id": 11,
+        "raw_player_name": "Pelle Larsson",
+        "source_player_id": 12,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 9,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641915",
+        "player_id": 12,
+        "raw_player_name": "Caleb Daniels",
+        "source_player_id": 13,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 9,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642276",
+        "player_id": 13,
+        "raw_player_name": "Kel'el Ware",
+        "source_player_id": 14,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 10,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642418",
+        "player_id": 16,
+        "raw_player_name": "Drew Pember",
+        "source_player_id": 17,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 9,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631214",
+        "player_id": 17,
+        "raw_player_name": "Alondes Williams",
+        "source_player_id": 18,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641879",
+        "player_id": 22,
+        "raw_player_name": "Yuri Collins",
+        "source_player_id": 23,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642429",
+        "player_id": 23,
+        "raw_player_name": "Donta Scott",
+        "source_player_id": 24,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642392",
+        "player_id": 40,
+        "raw_player_name": "Jameer Nelson Jr.",
+        "source_player_id": 42,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "27780",
+        "player_id": 46,
+        "raw_player_name": "Malik Hall",
+        "source_player_id": 48,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641733",
+        "player_id": 47,
+        "raw_player_name": "Nick Smith Jr.",
+        "source_player_id": 49,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641799",
+        "player_id": 48,
+        "raw_player_name": "Caleb McConnell",
+        "source_player_id": 50,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 7,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1628995",
+        "player_id": 50,
+        "raw_player_name": "Kevin Knox II",
+        "source_player_id": 53,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "GG Jackson",
+            "method": "HYBRID",
+            "player_id": 7,
+            "score": 0.5
+          },
+          {
+            "display_name": "Jack Gohlke",
+            "method": "HYBRID",
+            "player_id": 159,
+            "score": 0.190476194024086
+          },
+          {
+            "display_name": "Jason Preston",
+            "method": "HYBRID",
+            "player_id": 306,
+            "score": 0.1818181872367859
+          },
+          {
+            "display_name": "Jalen Wilson",
+            "method": "HYBRID",
+            "player_id": 59,
+            "score": 0.1818181872367859
+          },
+          {
+            "display_name": "Ron Harper Jr.",
+            "method": "HYBRID",
+            "player_id": 253,
+            "score": 0.17391304671764374
+          }
+        ],
+        "confidence": 0.5,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1642050",
+        "player_id": null,
+        "raw_player_name": "Jackson Rowe",
+        "source_player_id": 54,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642432",
+        "player_id": 65,
+        "raw_player_name": "Darin Green Jr.",
+        "source_player_id": 69,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1630791",
+        "player_id": 72,
+        "raw_player_name": "James Banks III",
+        "source_player_id": 80,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642446",
+        "player_id": 73,
+        "raw_player_name": "RaeQuan Battle",
+        "source_player_id": 81,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631342",
+        "player_id": 75,
+        "raw_player_name": "Daeqwon Plowden",
+        "source_player_id": 83,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641862",
+        "player_id": 86,
+        "raw_player_name": "Yauhen Massalski",
+        "source_player_id": 99,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 6,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642434",
+        "player_id": 87,
+        "raw_player_name": "Riley Minix",
+        "source_player_id": 100,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642436",
+        "player_id": 88,
+        "raw_player_name": "Tyrece Radford",
+        "source_player_id": 101,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641868",
+        "player_id": 92,
+        "raw_player_name": "Jake Stephens",
+        "source_player_id": 106,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1630679",
+        "player_id": 93,
+        "raw_player_name": "Ethan Thompson",
+        "source_player_id": 107,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642417",
+        "player_id": 95,
+        "raw_player_name": "Santiago Vescovi",
+        "source_player_id": 109,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631123",
+        "player_id": 104,
+        "raw_player_name": "Jamaree Bouyea",
+        "source_player_id": 122,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641982",
+        "player_id": 105,
+        "raw_player_name": "Seth Millner Jr.",
+        "source_player_id": 123,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "27781",
+        "player_id": 114,
+        "raw_player_name": "Charles Pride",
+        "source_player_id": 133,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641778",
+        "player_id": 115,
+        "raw_player_name": "Leaky Black",
+        "source_player_id": 134,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1630311",
+        "player_id": 117,
+        "raw_player_name": "Pat Spencer",
+        "source_player_id": 137,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642388",
+        "player_id": 118,
+        "raw_player_name": "Mantas Rubstavicius",
+        "source_player_id": 138,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641988",
+        "player_id": 126,
+        "raw_player_name": "Luke Avdalovic",
+        "source_player_id": 151,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642433",
+        "player_id": 127,
+        "raw_player_name": "DJ Horne",
+        "source_player_id": 152,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "27779",
+        "player_id": 132,
+        "raw_player_name": "Kevin Cross Jr.",
+        "source_player_id": 158,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1630817",
+        "player_id": 133,
+        "raw_player_name": "Pedro Bradshaw",
+        "source_player_id": 159,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641994",
+        "player_id": 134,
+        "raw_player_name": "Brandon Slater",
+        "source_player_id": 160,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Marcus Sasser",
+            "method": "HYBRID",
+            "player_id": 68,
+            "score": 0.3181818127632141
+          },
+          {
+            "display_name": "Jarrett Culver",
+            "method": "HYBRID",
+            "player_id": 33,
+            "score": 0.20000000298023224
+          },
+          {
+            "display_name": "Myron Gardner",
+            "method": "HYBRID",
+            "player_id": 61,
+            "score": 0.1599999964237213
+          },
+          {
+            "display_name": "Garrison Brooks",
+            "method": "HYBRID",
+            "player_id": 170,
+            "score": 0.14814814925193787
+          },
+          {
+            "display_name": "David Jones Garcia",
+            "method": "HYBRID",
+            "player_id": 138,
+            "score": 0.13333334028720856
+          }
+        ],
+        "confidence": 0.3181818127632141,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1630585",
+        "player_id": null,
+        "raw_player_name": "Marcus Garrett",
+        "source_player_id": 168,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1630658",
+        "player_id": 151,
+        "raw_player_name": "Colin Castleton",
+        "source_player_id": 185,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642398",
+        "player_id": 152,
+        "raw_player_name": "Sean East II",
+        "source_player_id": 186,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631166",
+        "player_id": 157,
+        "raw_player_name": "Drew Timme",
+        "source_player_id": 193,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641784",
+        "player_id": 158,
+        "raw_player_name": "Antoine Davis",
+        "source_player_id": 194,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Jordan Miller",
+            "method": "HYBRID",
+            "player_id": 54,
+            "score": 0.3888888955116272
+          },
+          {
+            "display_name": "Josiah-Jordan James",
+            "method": "HYBRID",
+            "player_id": 181,
+            "score": 0.3333333432674408
+          },
+          {
+            "display_name": "Jaden Shackelford",
+            "method": "HYBRID",
+            "player_id": 233,
+            "score": 0.1599999964237213
+          },
+          {
+            "display_name": "Josh Bannan",
+            "method": "HYBRID",
+            "player_id": 98,
+            "score": 0.15000000596046448
+          },
+          {
+            "display_name": "Tevian Jones",
+            "method": "HYBRID",
+            "player_id": 123,
+            "score": 0.1428571492433548
+          }
+        ],
+        "confidence": 0.3888888955116272,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1630259",
+        "player_id": null,
+        "raw_player_name": "Jordan Ford",
+        "source_player_id": 204,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641941",
+        "player_id": 173,
+        "raw_player_name": "Vincent Valerio-Bodon",
+        "source_player_id": 213,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642396",
+        "player_id": 174,
+        "raw_player_name": "Blake Hinson",
+        "source_player_id": 214,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642422",
+        "player_id": 175,
+        "raw_player_name": "Armel Traore",
+        "source_player_id": 215,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Tevian Jones",
+            "method": "HYBRID",
+            "player_id": 123,
+            "score": 0.31578946113586426
+          },
+          {
+            "display_name": "David Jones Garcia",
+            "method": "HYBRID",
+            "player_id": 138,
+            "score": 0.23999999463558197
+          },
+          {
+            "display_name": "Cole Swider",
+            "method": "HYBRID",
+            "player_id": 10,
+            "score": 0.1428571492433548
+          },
+          {
+            "display_name": "Yuri Collins",
+            "method": "HYBRID",
+            "player_id": 22,
+            "score": 0.13636364042758942
+          },
+          {
+            "display_name": "Colin Castleton",
+            "method": "HYBRID",
+            "player_id": 151,
+            "score": 0.125
+          }
+        ],
+        "confidence": 0.31578946113586426,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1641732",
+        "player_id": null,
+        "raw_player_name": "Colby Jones",
+        "source_player_id": 229,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 7,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642053",
+        "player_id": 193,
+        "raw_player_name": "Joirdon Nicholas",
+        "source_player_id": 243,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642439",
+        "player_id": 194,
+        "raw_player_name": "Quincy Olivari",
+        "source_player_id": 244,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Aminu Mohammed",
+            "method": "HYBRID",
+            "player_id": 83,
+            "score": 0.30434781312942505
+          },
+          {
+            "display_name": "Moussa Diabat\u00e9",
+            "method": "HYBRID",
+            "player_id": 27,
+            "score": 0.20000000298023224
+          },
+          {
+            "display_name": "D'Moi Hodge",
+            "method": "HYBRID",
+            "player_id": 289,
+            "score": 0.125
+          },
+          {
+            "display_name": "Rob Dillingham",
+            "method": "HYBRID",
+            "player_id": 30,
+            "score": 0.1111111119389534
+          },
+          {
+            "display_name": "Ibrahima Diallo",
+            "method": "HYBRID",
+            "player_id": 66,
+            "score": 0.1071428582072258
+          }
+        ],
+        "confidence": 0.30434781312942505,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1642437",
+        "player_id": null,
+        "raw_player_name": "Mohamed Diarra",
+        "source_player_id": 266,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "27774",
+        "player_id": 217,
+        "raw_player_name": "Kenan Blackshear",
+        "source_player_id": 279,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1629958",
+        "player_id": 218,
+        "raw_player_name": "Ahmad Caver",
+        "source_player_id": 280,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Tevian Jones",
+            "method": "HYBRID",
+            "player_id": 123,
+            "score": 0.31578946113586426
+          },
+          {
+            "display_name": "David Jones Garcia",
+            "method": "HYBRID",
+            "player_id": 138,
+            "score": 0.23999999463558197
+          },
+          {
+            "display_name": "Isaiah Stevens",
+            "method": "HYBRID",
+            "player_id": 5,
+            "score": 0.125
+          },
+          {
+            "display_name": "Jonathan Mogbo",
+            "method": "HYBRID",
+            "player_id": 297,
+            "score": 0.125
+          },
+          {
+            "display_name": "James Banks III",
+            "method": "HYBRID",
+            "player_id": 72,
+            "score": 0.11999999731779099
+          }
+        ],
+        "confidence": 0.31578946113586426,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1642403",
+        "player_id": null,
+        "raw_player_name": "Isaac Jones",
+        "source_player_id": 281,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Quinn Ellis",
+            "method": "HYBRID",
+            "player_id": 63,
+            "score": 0.31578946113586426
+          },
+          {
+            "display_name": "Boo Buie III",
+            "method": "HYBRID",
+            "player_id": 182,
+            "score": 0.190476194024086
+          },
+          {
+            "display_name": "Matas Buzelis",
+            "method": "HYBRID",
+            "player_id": 147,
+            "score": 0.125
+          }
+        ],
+        "confidence": 0.31578946113586426,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1642407",
+        "player_id": null,
+        "raw_player_name": "Boogie Ellis",
+        "source_player_id": 282,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642438",
+        "player_id": 225,
+        "raw_player_name": "Grayson Murphy",
+        "source_player_id": 294,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Tevian Jones",
+            "method": "HYBRID",
+            "player_id": 123,
+            "score": 0.31578946113586426
+          },
+          {
+            "display_name": "Mason Walters IV",
+            "method": "HYBRID",
+            "player_id": 322,
+            "score": 0.260869562625885
+          },
+          {
+            "display_name": "David Jones Garcia",
+            "method": "HYBRID",
+            "player_id": 138,
+            "score": 0.23999999463558197
+          },
+          {
+            "display_name": "Keon Johnson",
+            "method": "HYBRID",
+            "player_id": 58,
+            "score": 0.20000000298023224
+          },
+          {
+            "display_name": "Jason Preston",
+            "method": "HYBRID",
+            "player_id": 306,
+            "score": 0.190476194024086
+          }
+        ],
+        "confidence": 0.31578946113586426,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1630222",
+        "player_id": null,
+        "raw_player_name": "Mason Jones",
+        "source_player_id": 302,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Xavier Moon",
+            "method": "HYBRID",
+            "player_id": 34,
+            "score": 0.3888888955116272
+          },
+          {
+            "display_name": "Zavier Simpson",
+            "method": "HYBRID",
+            "player_id": 246,
+            "score": 0.21739129722118378
+          },
+          {
+            "display_name": "Reed Sheppard",
+            "method": "HYBRID",
+            "player_id": 268,
+            "score": 0.125
+          },
+          {
+            "display_name": "Olivier Nkamhoua",
+            "method": "HYBRID",
+            "player_id": 39,
+            "score": 0.1111111119389534
+          }
+        ],
+        "confidence": 0.3888888955116272,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1630270",
+        "player_id": null,
+        "raw_player_name": "Xavier Sneed",
+        "source_player_id": 303,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631339",
+        "player_id": 235,
+        "raw_player_name": "Tommy Kuhse",
+        "source_player_id": 313,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641863",
+        "player_id": 238,
+        "raw_player_name": "Dane Goodwin",
+        "source_player_id": 320,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642384",
+        "player_id": 239,
+        "raw_player_name": "Isaiah Crawford",
+        "source_player_id": 321,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 7,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631127",
+        "player_id": 240,
+        "raw_player_name": "Harrison Ingram",
+        "source_player_id": 322,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1630285",
+        "player_id": 246,
+        "raw_player_name": "Zavier Simpson",
+        "source_player_id": 330,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642430",
+        "player_id": 248,
+        "raw_player_name": "Roman Sorkin",
+        "source_player_id": 332,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 7,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631121",
+        "player_id": 249,
+        "raw_player_name": "Bryce McGowens",
+        "source_player_id": 333,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Hunter Tyson",
+            "method": "HYBRID",
+            "player_id": 150,
+            "score": 0.3333333432674408
+          },
+          {
+            "display_name": "Anton Watson",
+            "method": "HYBRID",
+            "player_id": 116,
+            "score": 0.21052631735801697
+          },
+          {
+            "display_name": "Warren Washington",
+            "method": "HYBRID",
+            "player_id": 2,
+            "score": 0.17391304671764374
+          },
+          {
+            "display_name": "Mason Walters IV",
+            "method": "HYBRID",
+            "player_id": 322,
+            "score": 0.1666666716337204
+          },
+          {
+            "display_name": "DJ Steward",
+            "method": "HYBRID",
+            "player_id": 169,
+            "score": 0.15789473056793213
+          }
+        ],
+        "confidence": 0.3333333432674408,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1642435",
+        "player_id": null,
+        "raw_player_name": "Tyson Ward",
+        "source_player_id": 334,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Warren Washington",
+            "method": "HYBRID",
+            "player_id": 2,
+            "score": 0.3636363744735718
+          },
+          {
+            "display_name": "Garrison Brooks",
+            "method": "HYBRID",
+            "player_id": 170,
+            "score": 0.20000000298023224
+          },
+          {
+            "display_name": "Branden Carlson",
+            "method": "HYBRID",
+            "player_id": 109,
+            "score": 0.20000000298023224
+          },
+          {
+            "display_name": "Anton Watson",
+            "method": "HYBRID",
+            "player_id": 116,
+            "score": 0.1818181872367859
+          },
+          {
+            "display_name": "Jalen Wilson",
+            "method": "HYBRID",
+            "player_id": 59,
+            "score": 0.17391304671764374
+          }
+        ],
+        "confidence": 0.3636363744735718,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1641985",
+        "player_id": null,
+        "raw_player_name": "Bryson Warren",
+        "source_player_id": 340,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 7,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642275",
+        "player_id": 256,
+        "raw_player_name": "Tidjane Sala\u00fcn",
+        "source_player_id": 342,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "John Butler Jr.",
+            "method": "HYBRID",
+            "player_id": 200,
+            "score": 0.4000000059604645
+          },
+          {
+            "display_name": "Jameer Nelson Jr.",
+            "method": "HYBRID",
+            "player_id": 40,
+            "score": 0.27586206793785095
+          },
+          {
+            "display_name": "James Banks III",
+            "method": "HYBRID",
+            "player_id": 72,
+            "score": 0.23333333432674408
+          },
+          {
+            "display_name": "James Akinjo",
+            "method": "HYBRID",
+            "player_id": 227,
+            "score": 0.2142857164144516
+          },
+          {
+            "display_name": "Ron Harper Jr.",
+            "method": "HYBRID",
+            "player_id": 253,
+            "score": 0.2068965584039688
+          }
+        ],
+        "confidence": 0.4000000059604645,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1641925",
+        "player_id": null,
+        "raw_player_name": "James Caron Butler Jr.",
+        "source_player_id": 344,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 6,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631321",
+        "player_id": 260,
+        "raw_player_name": "Sidy Cissoko",
+        "source_player_id": 349,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1630001",
+        "player_id": 261,
+        "raw_player_name": "Matt Morgan",
+        "source_player_id": 350,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641721",
+        "player_id": 264,
+        "raw_player_name": "Maxwell Lewis",
+        "source_player_id": 354,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "James Banks III",
+            "method": "HYBRID",
+            "player_id": 72,
+            "score": 0.3181818127632141
+          },
+          {
+            "display_name": "James Akinjo",
+            "method": "HYBRID",
+            "player_id": 227,
+            "score": 0.30000001192092896
+          },
+          {
+            "display_name": "Josiah-Jordan James",
+            "method": "HYBRID",
+            "player_id": 181,
+            "score": 0.25
+          },
+          {
+            "display_name": "Jalen Bridges",
+            "method": "HYBRID",
+            "player_id": 216,
+            "score": 0.22727273404598236
+          },
+          {
+            "display_name": "Jamaree Bouyea",
+            "method": "HYBRID",
+            "player_id": 104,
+            "score": 0.1666666716337204
+          }
+        ],
+        "confidence": 0.3181818127632141,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1642355",
+        "player_id": null,
+        "raw_player_name": "Bronny James",
+        "source_player_id": 361,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1642261",
+        "player_id": 275,
+        "raw_player_name": "Dalton Knecht",
+        "source_player_id": 373,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 7,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631317",
+        "player_id": 277,
+        "raw_player_name": "Adonis Arms",
+        "source_player_id": 377,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Quinn Ellis",
+            "method": "HYBRID",
+            "player_id": 63,
+            "score": 0.3529411852359772
+          },
+          {
+            "display_name": "Keon Johnson",
+            "method": "HYBRID",
+            "player_id": 58,
+            "score": 0.2777777910232544
+          },
+          {
+            "display_name": "Kel'el Ware",
+            "method": "HYBRID",
+            "player_id": 13,
+            "score": 0.2222222238779068
+          },
+          {
+            "display_name": "Kylor Kelley",
+            "method": "HYBRID",
+            "player_id": 232,
+            "score": 0.15000000596046448
+          },
+          {
+            "display_name": "Kendric Davis",
+            "method": "HYBRID",
+            "player_id": 287,
+            "score": 0.13636364042758942
+          }
+        ],
+        "confidence": 0.3529411852359772,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1631165",
+        "player_id": null,
+        "raw_player_name": "Keon Ellis",
+        "source_player_id": 381,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Keon Johnson",
+            "method": "HYBRID",
+            "player_id": 58,
+            "score": 0.5882353186607361
+          },
+          {
+            "display_name": "Keshawn Justice",
+            "method": "HYBRID",
+            "player_id": 90,
+            "score": 0.23999999463558197
+          },
+          {
+            "display_name": "Johnny Furphy",
+            "method": "HYBRID",
+            "player_id": 265,
+            "score": 0.1599999964237213
+          },
+          {
+            "display_name": "John Butler Jr.",
+            "method": "HYBRID",
+            "player_id": 200,
+            "score": 0.1599999964237213
+          },
+          {
+            "display_name": "Kenneth Lofton Jr.",
+            "method": "HYBRID",
+            "player_id": 129,
+            "score": 0.13793103396892548
+          }
+        ],
+        "confidence": 0.5882353186607361,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1642352",
+        "player_id": null,
+        "raw_player_name": "Keshad Johnson",
+        "source_player_id": 386,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 7,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641793",
+        "player_id": 289,
+        "raw_player_name": "D'Moi Hodge",
+        "source_player_id": 394,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Nathan Knight",
+            "method": "HYBRID",
+            "player_id": 204,
+            "score": 0.3333333432674408
+          },
+          {
+            "display_name": "Jonathan Mogbo",
+            "method": "HYBRID",
+            "player_id": 297,
+            "score": 0.260869562625885
+          },
+          {
+            "display_name": "Gabe McGlothan",
+            "method": "HYBRID",
+            "player_id": 192,
+            "score": 0.1599999964237213
+          },
+          {
+            "display_name": "Nate Hinton",
+            "method": "HYBRID",
+            "player_id": 52,
+            "score": 0.1304347813129425
+          },
+          {
+            "display_name": "Zylan Cheatham",
+            "method": "HYBRID",
+            "player_id": 122,
+            "score": 0.11538461595773697
+          }
+        ],
+        "confidence": 0.3333333432674408,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1641877",
+        "player_id": null,
+        "raw_player_name": "Nathan Mensah",
+        "source_player_id": 395,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 5,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631170",
+        "player_id": 293,
+        "raw_player_name": "Jaime Jaquez Jr.",
+        "source_player_id": 404,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641764",
+        "player_id": 300,
+        "raw_player_name": "Brandin Podziemski",
+        "source_player_id": 412,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "JD Davison",
+            "method": "HYBRID",
+            "player_id": 280,
+            "score": 0.3333333432674408
+          },
+          {
+            "display_name": "GG Jackson",
+            "method": "HYBRID",
+            "player_id": 7,
+            "score": 0.3333333432674408
+          },
+          {
+            "display_name": "Antoine Davis",
+            "method": "HYBRID",
+            "player_id": 158,
+            "score": 0.2068965584039688
+          },
+          {
+            "display_name": "Kendric Davis",
+            "method": "HYBRID",
+            "player_id": 287,
+            "score": 0.2068965584039688
+          },
+          {
+            "display_name": "Trey Jemison III",
+            "method": "HYBRID",
+            "player_id": 3,
+            "score": 0.1515151560306549
+          }
+        ],
+        "confidence": 0.3333333432674408,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1631218",
+        "player_id": null,
+        "raw_player_name": "Trayce Jackson-Davis",
+        "source_player_id": 415,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1629716",
+        "player_id": 305,
+        "raw_player_name": "Marques Bolden",
+        "source_player_id": 421,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Colin Castleton",
+            "method": "HYBRID",
+            "player_id": 151,
+            "score": 0.30434781312942505
+          },
+          {
+            "display_name": "Jake Stephens",
+            "method": "HYBRID",
+            "player_id": 92,
+            "score": 0.2083333283662796
+          },
+          {
+            "display_name": "D.J. Carton",
+            "method": "HYBRID",
+            "player_id": 106,
+            "score": 0.1304347813129425
+          },
+          {
+            "display_name": "DJ Steward",
+            "method": "HYBRID",
+            "player_id": 169,
+            "score": 0.1304347813129425
+          },
+          {
+            "display_name": "Cole Swider",
+            "method": "HYBRID",
+            "player_id": 10,
+            "score": 0.125
+          }
+        ],
+        "confidence": 0.30434781312942505,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1642264",
+        "player_id": null,
+        "raw_player_name": "Stephon Castle",
+        "source_player_id": 427,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1630667",
+        "player_id": 316,
+        "raw_player_name": "Kyle Mangas",
+        "source_player_id": 436,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 6,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1631338",
+        "player_id": 317,
+        "raw_player_name": "Mouhamadou Gueye",
+        "source_player_id": 439,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Zavier Simpson",
+            "method": "HYBRID",
+            "player_id": 246,
+            "score": 0.4444444477558136
+          },
+          {
+            "display_name": "Ethan Thompson",
+            "method": "HYBRID",
+            "player_id": 93,
+            "score": 0.1818181872367859
+          },
+          {
+            "display_name": "Keon Johnson",
+            "method": "HYBRID",
+            "player_id": 58,
+            "score": 0.15000000596046448
+          },
+          {
+            "display_name": "Samson Froling",
+            "method": "HYBRID",
+            "player_id": 230,
+            "score": 0.1304347813129425
+          },
+          {
+            "display_name": "Kameron Hankerson",
+            "method": "HYBRID",
+            "player_id": 112,
+            "score": 0.11999999731779099
+          }
+        ],
+        "confidence": 0.4444444477558136,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1642354",
+        "player_id": null,
+        "raw_player_name": "KJ Simpson",
+        "source_player_id": 440,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "David Muoka",
+            "method": "HYBRID",
+            "player_id": 81,
+            "score": 0.31578946113586426
+          },
+          {
+            "display_name": "David Jones Garcia",
+            "method": "HYBRID",
+            "player_id": 138,
+            "score": 0.2800000011920929
+          },
+          {
+            "display_name": "JD Davison",
+            "method": "HYBRID",
+            "player_id": 280,
+            "score": 0.2631579041481018
+          },
+          {
+            "display_name": "Darin Green Jr.",
+            "method": "HYBRID",
+            "player_id": 65,
+            "score": 0.21739129722118378
+          },
+          {
+            "display_name": "Mike Miles Jr.",
+            "method": "HYBRID",
+            "player_id": 119,
+            "score": 0.190476194024086
+          }
+        ],
+        "confidence": 0.31578946113586426,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1630561",
+        "player_id": null,
+        "raw_player_name": "David Duke Jr.",
+        "source_player_id": 448,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 8,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1641736",
+        "player_id": 323,
+        "raw_player_name": "Reece Beekman",
+        "source_player_id": 452,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": false,
+        "logs_backfilled": 6,
+        "method": "EXTERNAL_ID",
+        "nba_stats_person_id": "1630611",
+        "player_id": 324,
+        "raw_player_name": "Gui Santos",
+        "source_player_id": 453,
+        "status": "EXTERNAL_ID",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Kobe Brown",
+            "method": "HYBRID",
+            "player_id": 97,
+            "score": 0.46666666865348816
+          },
+          {
+            "display_name": "Charlie Brown Jr.",
+            "method": "HYBRID",
+            "player_id": 102,
+            "score": 0.27272728085517883
+          },
+          {
+            "display_name": "Gabe McGlothan",
+            "method": "HYBRID",
+            "player_id": 192,
+            "score": 0.2380952388048172
+          },
+          {
+            "display_name": "Gabe Kalscheur",
+            "method": "HYBRID",
+            "player_id": 121,
+            "score": 0.2380952388048172
+          },
+          {
+            "display_name": "Garrison Brooks",
+            "method": "HYBRID",
+            "player_id": 170,
+            "score": 0.22727273404598236
+          }
+        ],
+        "confidence": 0.46666666865348816,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1631122",
+        "player_id": null,
+        "raw_player_name": "Gabe Brown",
+        "source_player_id": 455,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27762",
+        "player_id": 325,
+        "raw_player_name": "Hansen Yang",
+        "source_player_id": 457,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27764",
+        "player_id": 326,
+        "raw_player_name": "Shiyan Gao",
+        "source_player_id": 458,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27766",
+        "player_id": 327,
+        "raw_player_name": "Mingzhen Zhu",
+        "source_player_id": 459,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "1630829",
+        "player_id": 328,
+        "raw_player_name": "Hongquan Li",
+        "source_player_id": 460,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27772",
+        "player_id": 329,
+        "raw_player_name": "Melwin Pantzer",
+        "source_player_id": 461,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Jarod Lucas",
+            "method": "HYBRID",
+            "player_id": 205,
+            "score": 0.31578946113586426
+          },
+          {
+            "display_name": "Alex Ducas",
+            "method": "HYBRID",
+            "player_id": 320,
+            "score": 0.2631579041481018
+          }
+        ],
+        "confidence": 0.31578946113586426,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "27769",
+        "player_id": null,
+        "raw_player_name": "Lucas Dufeal",
+        "source_player_id": 462,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27759",
+        "player_id": 330,
+        "raw_player_name": "Xining He",
+        "source_player_id": 463,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27760",
+        "player_id": 331,
+        "raw_player_name": "Boqiao Jiao",
+        "source_player_id": 464,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27763",
+        "player_id": 332,
+        "raw_player_name": "Junlong Zhu",
+        "source_player_id": 465,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27770",
+        "player_id": 333,
+        "raw_player_name": "Sehmus Hazer",
+        "source_player_id": 466,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27753",
+        "player_id": 334,
+        "raw_player_name": "Shuaipeng Cheng",
+        "source_player_id": 467,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27752",
+        "player_id": 335,
+        "raw_player_name": "Sanning Liao",
+        "source_player_id": 468,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27758",
+        "player_id": 336,
+        "raw_player_name": "Runwang Du",
+        "source_player_id": 469,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 2,
+        "method": "EXACT",
+        "nba_stats_person_id": "27773",
+        "player_id": 274,
+        "raw_player_name": "Fardaws Aimaq",
+        "source_player_id": 470,
+        "status": "EXACT",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27775",
+        "player_id": 337,
+        "raw_player_name": "Jay Nagle",
+        "source_player_id": 471,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Shuaipeng Cheng",
+            "method": "HYBRID",
+            "player_id": 334,
+            "score": 0.3333333432674408
+          },
+          {
+            "display_name": "Hansen Yang",
+            "method": "HYBRID",
+            "player_id": 325,
+            "score": 0.29411765933036804
+          },
+          {
+            "display_name": "Ulrich Chomche",
+            "method": "HYBRID",
+            "player_id": 67,
+            "score": 0.13636364042758942
+          },
+          {
+            "display_name": "Zylan Cheatham",
+            "method": "HYBRID",
+            "player_id": 122,
+            "score": 0.13636364042758942
+          },
+          {
+            "display_name": "Kok Yat",
+            "method": "HYBRID",
+            "player_id": 120,
+            "score": 0.125
+          }
+        ],
+        "confidence": 0.3333333432674408,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "27754",
+        "player_id": null,
+        "raw_player_name": "Yang Cheng",
+        "source_player_id": 472,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27756",
+        "player_id": 338,
+        "raw_player_name": "Jiahao Yu",
+        "source_player_id": 473,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27776",
+        "player_id": 339,
+        "raw_player_name": "Hason Ward",
+        "source_player_id": 474,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Yves Missi",
+            "method": "HYBRID",
+            "player_id": 262,
+            "score": 0.3125
+          }
+        ],
+        "confidence": 0.3125,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1630582",
+        "player_id": null,
+        "raw_player_name": "Yves Pons",
+        "source_player_id": 475,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27755",
+        "player_id": 340,
+        "raw_player_name": "Lanqing Wang",
+        "source_player_id": 476,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 3,
+        "method": "STUB",
+        "nba_stats_person_id": "27757",
+        "player_id": 341,
+        "raw_player_name": "Haoran Wang",
+        "source_player_id": 477,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Cui Cui",
+            "method": "HYBRID",
+            "player_id": 259,
+            "score": 0.3076923191547394
+          },
+          {
+            "display_name": "Xining He",
+            "method": "HYBRID",
+            "player_id": 330,
+            "score": 0.15000000596046448
+          },
+          {
+            "display_name": "Junlong Zhu",
+            "method": "HYBRID",
+            "player_id": 332,
+            "score": 0.13636364042758942
+          }
+        ],
+        "confidence": 0.3076923191547394,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "27761",
+        "player_id": null,
+        "raw_player_name": "Xiaolong Cui",
+        "source_player_id": 478,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [
+          {
+            "display_name": "Cam Christie",
+            "method": "HYBRID",
+            "player_id": 79,
+            "score": 0.30434781312942505
+          },
+          {
+            "display_name": "Josh Christopher",
+            "method": "HYBRID",
+            "player_id": 4,
+            "score": 0.2068965584039688
+          },
+          {
+            "display_name": "Chris Livingston",
+            "method": "HYBRID",
+            "player_id": 209,
+            "score": 0.1666666716337204
+          },
+          {
+            "display_name": "Terry Taylor",
+            "method": "HYBRID",
+            "player_id": 78,
+            "score": 0.1538461595773697
+          },
+          {
+            "display_name": "Terrence Shannon Jr.",
+            "method": "HYBRID",
+            "player_id": 271,
+            "score": 0.1515151560306549
+          }
+        ],
+        "confidence": 0.30434781312942505,
+        "external_id_created": false,
+        "logs_backfilled": 0,
+        "method": "VECTOR_CANDIDATE",
+        "nba_stats_person_id": "1630715",
+        "player_id": null,
+        "raw_player_name": "Christian Terrell",
+        "source_player_id": 479,
+        "status": "VECTOR_CANDIDATE",
+        "stub_created": false
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 2,
+        "method": "STUB",
+        "nba_stats_person_id": "2794",
+        "player_id": 342,
+        "raw_player_name": "J.B. Bickerstaff",
+        "source_player_id": 480,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 1,
+        "method": "STUB",
+        "nba_stats_person_id": "1631239",
+        "player_id": 343,
+        "raw_player_name": "Allen Flanigan",
+        "source_player_id": 481,
+        "status": "STUB",
+        "stub_created": true
+      },
+      {
+        "candidates": [],
+        "confidence": 1.0,
+        "external_id_created": true,
+        "logs_backfilled": 1,
+        "method": "STUB",
+        "nba_stats_person_id": "1630564",
+        "player_id": 344,
+        "raw_player_name": "RaiQuan Gray",
+        "source_player_id": 482,
+        "status": "STUB",
+        "stub_created": true
+      }
+    ],
+    "stubs_created": 20,
+    "total_source_players": 119,
+    "unresolved_source_players": 26,
+    "year": 2024
+  },
+  "stopped_after_stage": null,
+  "unsupported_dry_run_stages": [],
+  "warnings": [],
+  "year": 2024
+}
