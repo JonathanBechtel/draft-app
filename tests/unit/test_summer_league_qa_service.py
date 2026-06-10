@@ -332,6 +332,45 @@ async def test_raw_audit_integrity_reports_run_and_file_findings(
 
 
 @pytest.mark.asyncio
+async def test_raw_audit_integrity_treats_optional_detail_gaps_as_warnings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Historical PBP/shotchart endpoint gaps do not fail the backbone QA gate."""
+    qa_slice = SummerLeagueSlice(2010, "14")
+    raw_run = _raw_run(
+        status=SummerLeagueRawRunStatus.PARTIAL,
+        error_count=1,
+        year=2010,
+        league_id="14",
+    )
+    raw_files = [
+        _raw_file(
+            SummerLeagueRawFileStatus.MISSING,
+            endpoint="playbyplayv2",
+            game_id="1421000004",
+            relative_path="2010/14/games/1421000004/playbyplayv2.json",
+        )
+    ]
+
+    async def fake_raw_run(
+        _db: object, slice_: SummerLeagueSlice
+    ) -> SummerLeagueRawRun:
+        return raw_run
+
+    async def fake_raw_files(_db: object, raw_run_id: int) -> list[SummerLeagueRawFile]:
+        return raw_files
+
+    monkeypatch.setattr(service, "_load_raw_run", fake_raw_run)
+    monkeypatch.setattr(service, "_load_raw_files", fake_raw_files)
+
+    findings = await service.validate_raw_audit_integrity(object(), slice_=qa_slice)  # type: ignore[arg-type]
+
+    severities = {finding.code: finding.severity for finding in findings}
+    assert severities["RAW_RUN_ERRORS_RECORDED"] == SummerLeagueQASeverity.WARNING
+    assert severities["RAW_FILE_MISSING"] == SummerLeagueQASeverity.WARNING
+
+
+@pytest.mark.asyncio
 async def test_normalization_parity_reports_count_and_link_mismatches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
