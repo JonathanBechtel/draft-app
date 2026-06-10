@@ -173,6 +173,7 @@ async def normalize_competition_games(
     year: int,
     league_id: str,
     raw_root: Path,
+    limit_games: int | None = None,
 ) -> SummerLeagueNormalizationReport:
     """Normalize competition, teams, games, and team game logs for one slice."""
     raw_run = await _get_raw_run(db, year=year, league_id=league_id)
@@ -185,8 +186,15 @@ async def normalize_competition_games(
     if competition.id is None:
         raise RuntimeError("Competition id was not populated after flush")
 
-    team_gamelog_rows = parse_team_gamelog(
-        raw_root / f"{year}/{league_id}/leaguegamelog_team.json"
+    limited_game_ids = _limited_game_ids(
+        raw_root=raw_root,
+        year=year,
+        league_id=league_id,
+        limit_games=limit_games,
+    )
+    team_gamelog_rows = _filter_team_gamelog_rows(
+        parse_team_gamelog(raw_root / f"{year}/{league_id}/leaguegamelog_team.json"),
+        limited_game_ids,
     )
     teams_by_source_id: dict[str, SummerLeagueTeamEntry] = {}
     for row in team_gamelog_rows:
@@ -209,7 +217,10 @@ async def normalize_competition_games(
         games_by_source_id[game_id] = game
 
     team_log_count = 0
-    for box_row in parse_team_box_rows(raw_root / f"{year}/{league_id}"):
+    for box_row in parse_team_box_rows(
+        raw_root / f"{year}/{league_id}",
+        game_ids=limited_game_ids,
+    ):
         box_game = games_by_source_id.get(box_row.game_id)
         box_team = teams_by_source_id.get(box_row.nba_stats_team_id)
         if (
@@ -242,6 +253,7 @@ async def normalize_player_game_logs(
     year: int,
     league_id: str,
     raw_root: Path,
+    limit_games: int | None = None,
 ) -> SummerLeaguePlayerLogReport:
     """Normalize source players and player game logs for one Summer League slice."""
     competition = await _get_competition(db, year=year, league_id=league_id)
@@ -249,10 +261,19 @@ async def normalize_player_game_logs(
         raise RuntimeError("Competition id was not populated")
 
     season_dir = raw_root / f"{year}/{league_id}"
+    limited_game_ids = _limited_game_ids(
+        raw_root=raw_root,
+        year=year,
+        league_id=league_id,
+        limit_games=limit_games,
+    )
     source_player_ids: set[str] = set()
-    for gamelog_row in parse_player_gamelog(season_dir / "leaguegamelog_player.json"):
-        await _upsert_source_player(db, gamelog_row, year=year)
-        source_player_ids.add(gamelog_row.nba_stats_person_id)
+    if limited_game_ids is None:
+        for gamelog_row in parse_player_gamelog(
+            season_dir / "leaguegamelog_player.json"
+        ):
+            await _upsert_source_player(db, gamelog_row, year=year)
+            source_player_ids.add(gamelog_row.nba_stats_person_id)
 
     await db.flush()
     games_by_source_id = await _games_by_source_id(db, competition.id)
@@ -260,7 +281,7 @@ async def normalize_player_game_logs(
 
     upserted_logs = 0
     skipped_logs = 0
-    for box_row in parse_player_box_rows(season_dir):
+    for box_row in parse_player_box_rows(season_dir, game_ids=limited_game_ids):
         source_player = await _upsert_source_player(
             db,
             ParsedPlayerGamelogRow(
@@ -316,13 +337,17 @@ def parse_team_gamelog(path: Path) -> list[ParsedTeamGamelogRow]:
     return [_parse_team_gamelog_row(result_set, row) for row in result_set.rows]
 
 
-def parse_team_box_rows(season_dir: Path) -> list[ParsedTeamBoxRow]:
+def parse_team_box_rows(
+    season_dir: Path,
+    *,
+    game_ids: set[str] | None = None,
+) -> list[ParsedTeamBoxRow]:
     """Parse team box-score rows from all game directories in one season."""
     rows: list[ParsedTeamBoxRow] = []
     games_root = season_dir / "games"
     if not games_root.exists():
         return rows
-    for game_dir in sorted(path for path in games_root.iterdir() if path.is_dir()):
+    for game_dir in _iter_game_dirs(games_root, game_ids):
         traditional = _team_stats_by_team_id(
             game_dir / "boxscoretraditionalv2.json",
             traditional=True,
@@ -353,13 +378,17 @@ def parse_player_gamelog(path: Path) -> list[ParsedPlayerGamelogRow]:
     return rows
 
 
-def parse_player_box_rows(season_dir: Path) -> list[ParsedPlayerBoxRow]:
+def parse_player_box_rows(
+    season_dir: Path,
+    *,
+    game_ids: set[str] | None = None,
+) -> list[ParsedPlayerBoxRow]:
     """Parse player box-score rows from all game directories in one season."""
     rows: list[ParsedPlayerBoxRow] = []
     games_root = season_dir / "games"
     if not games_root.exists():
         return rows
-    for game_dir in sorted(path for path in games_root.iterdir() if path.is_dir()):
+    for game_dir in _iter_game_dirs(games_root, game_ids):
         traditional = _player_stats_by_key(
             game_dir / "boxscoretraditionalv2.json",
             stat_set="traditional",
@@ -421,6 +450,41 @@ def team_slug(raw_team_name: str, abbreviation: str | None) -> str:
     base = raw_team_name.strip().lower() or (abbreviation or "team").lower()
     slug = "".join(ch if ch.isalnum() else "-" for ch in base)
     return "-".join(part for part in slug.split("-") if part) or "team"
+
+
+def _iter_game_dirs(games_root: Path, game_ids: set[str] | None) -> list[Path]:
+    if not games_root.exists():
+        return []
+    game_dirs = sorted(path for path in games_root.iterdir() if path.is_dir())
+    if game_ids is None:
+        return game_dirs
+    return [path for path in game_dirs if path.name in game_ids]
+
+
+def _limited_game_ids(
+    *,
+    raw_root: Path,
+    year: int,
+    league_id: str,
+    limit_games: int | None,
+) -> set[str] | None:
+    if limit_games is None:
+        return None
+    if limit_games < 0:
+        raise ValueError("limit_games must be non-negative")
+    manifest_path = raw_root / f"{year}/{league_id}/manifest.json"
+    payload = _read_payload(manifest_path)
+    game_ids = [str(value) for value in payload.get("game_ids") or []]
+    return set(game_ids[:limit_games])
+
+
+def _filter_team_gamelog_rows(
+    rows: list[ParsedTeamGamelogRow],
+    game_ids: set[str] | None,
+) -> list[ParsedTeamGamelogRow]:
+    if game_ids is None:
+        return rows
+    return [row for row in rows if row.game_id in game_ids]
 
 
 async def _get_raw_run(

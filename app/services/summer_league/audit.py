@@ -140,6 +140,7 @@ async def audit_summer_league_raw(
     year: int | None = None,
     league_id: str | None = None,
     s3_prefix: str | None = None,
+    limit_games: int | None = None,
 ) -> SummerLeagueAuditReport:
     """Scan local Summer League raw snapshots and upsert audit metadata."""
     runs = tuple(
@@ -147,6 +148,7 @@ async def audit_summer_league_raw(
             raw_root=raw_root,
             manifest_path=manifest_path,
             s3_prefix=s3_prefix,
+            limit_games=limit_games,
         )
         for manifest_path in discover_manifest_paths(
             raw_root=raw_root,
@@ -189,6 +191,7 @@ def audit_raw_run(
     raw_root: Path,
     manifest_path: Path,
     s3_prefix: str | None = None,
+    limit_games: int | None = None,
 ) -> AuditedRawRun:
     """Audit one raw manifest and its expected files."""
     manifest_relative_path = manifest_path.relative_to(raw_root).as_posix()
@@ -224,6 +227,7 @@ def audit_raw_run(
     descriptors = build_expected_file_descriptors(
         manifest_relative_path=manifest_relative_path,
         manifest_payload=manifest_payload,
+        limit_games=limit_games,
     )
     files = tuple(
         inspect_raw_file(
@@ -246,7 +250,9 @@ def audit_raw_run(
         finished_at=_parse_datetime(manifest_payload.get("finished_at")),
         team_gamelog_rows=_int_value(manifest_payload.get("team_gamelog_rows")),
         player_gamelog_rows=_int_value(manifest_payload.get("player_gamelog_rows")),
-        game_count=_int_value(manifest_payload.get("game_count")),
+        game_count=_limited_count(
+            _int_value(manifest_payload.get("game_count")), limit_games
+        ),
         error_count=len(manifest_payload.get("errors") or []),
         files=files,
     )
@@ -256,6 +262,7 @@ def build_expected_file_descriptors(
     *,
     manifest_relative_path: str,
     manifest_payload: dict[str, Any],
+    limit_games: int | None = None,
 ) -> tuple[RawFileDescriptor, ...]:
     """Build expected file descriptors from one parsed manifest."""
     year = str(manifest_payload.get("year") or "").strip()
@@ -272,7 +279,10 @@ def build_expected_file_descriptors(
         )
         for endpoint in SEASON_ENDPOINTS
     )
-    for game_id in [str(value) for value in manifest_payload.get("game_ids") or []]:
+    game_ids = [str(value) for value in manifest_payload.get("game_ids") or []]
+    if limit_games is not None:
+        game_ids = game_ids[:limit_games]
+    for game_id in game_ids:
         descriptors.extend(
             RawFileDescriptor(
                 relative_path=f"{year}/{league_id}/games/{game_id}/{endpoint}.json",
@@ -481,6 +491,12 @@ def _int_value(value: object) -> int:
         return int(str(value or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _limited_count(value: int, limit: int | None) -> int:
+    if limit is None:
+        return value
+    return min(value, limit)
 
 
 def _s3_key_for_relative_path(s3_prefix: str | None, relative_path: str) -> str | None:
