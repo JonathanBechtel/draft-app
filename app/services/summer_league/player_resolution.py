@@ -7,9 +7,10 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_aliases import PlayerAlias
@@ -317,7 +318,7 @@ async def _backfill_player_game_logs(
         .where(SummerLeaguePlayerGameLog.source_player_id == source_player_id)  # type: ignore[arg-type]
         .values(player_id=player_id, updated_at=datetime.utcnow())
     )
-    rowcount = result.rowcount
+    rowcount = cast(CursorResult[Any], result).rowcount
     return int(rowcount) if rowcount is not None else 0
 
 
