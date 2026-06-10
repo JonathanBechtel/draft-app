@@ -1,0 +1,10 @@
+{
+  "year": 2024,
+  "league_id": "15",
+  "venue": "las_vegas",
+  "team_gamelog_rows": 2,
+  "player_gamelog_rows": 1,
+  "game_ids": ["1522400002"],
+  "game_count": 1,
+  "errors": []
+}

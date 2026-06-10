@@ -1,0 +1,11 @@
+{
+  "resultSets": [
+    {
+      "name": "LeagueGameLog",
+      "headers": ["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"],
+      "rowSet": [
+        [1643001, "Corrupt Prospect", 1610612753]
+      ]
+    }
+  ]
+}

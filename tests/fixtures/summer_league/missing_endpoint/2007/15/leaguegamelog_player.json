@@ -1,0 +1,11 @@
+{
+  "resultSets": [
+    {
+      "name": "LeagueGameLog",
+      "headers": ["PLAYER_ID", "PLAYER_NAME", "TEAM_ID"],
+      "rowSet": [
+        [1644001, "Missing Endpoint Prospect", 1610612757]
+      ]
+    }
+  ]
+}

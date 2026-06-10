@@ -1,0 +1,5 @@
+{
+  "resultSets": [
+    {"name": "Shot_Chart_Detail", "headers": ["GAME_ID", "PLAYER_ID"], "rowSet": []}
+  ]
+}
