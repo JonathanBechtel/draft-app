@@ -1,11 +1,16 @@
 # Summer League Data Backbone QA Checklist
 
 **Sources:**
-- Master spec: `docs/plans/summer-league-data-backbone.md`
+- Raw-ingestion spec: `docs/plans/summer-league-raw-ingestion-workflow.md`
+- Feature plan: `docs/summer_league_stats_plan.md`
+- Operator runbook: `docs/summer_league_backbone_runbook.md`
 - Repo orchestration guide: `docs/plans/ai-orchestrator-ticket-spec.md`
 - GitHub master issue: `#319`
 
 **Sibling artifact:** test plan at `summer-league-data-backbone-test-plan.md`
+
+**Final QA evidence:** `docs/qa/summer-league-backbone-qa-2026-06-10.md`
+passed with `0` errors after PR `#343`.
 
 This checklist defines product-level behaviors QA should verify before considering
 the Summer League data backbone complete. The project is a backend data pipeline:

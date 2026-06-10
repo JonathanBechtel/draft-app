@@ -11,6 +11,20 @@ This project intentionally stops at raw ingestion. Normalized
 `summer_league_*` tables, player entity resolution, public routes, and UI pages
 come after the raw source data is reliable and inspectable.
 
+## Implementation Status
+
+This raw-ingestion slice and the follow-on Summer League data backbone are
+implemented on `main`.
+
+- Final QA PR: `#343`
+- Merge commit: `80255e20846a195af25c474076945cacafeec9ce`
+- Final QA report: `docs/qa/summer-league-backbone-qa-2026-06-10.md`
+- Operator runbook: `docs/summer_league_backbone_runbook.md`
+
+The final QA harness passed for `2024/15`, `2024/13`, `2010/14`, and `2007/15`
+with `0` blocking errors. Remaining warnings are documented as accepted
+historical source-data or row-count-shape findings in the QA report.
+
 ## Background
 
 Primary references:

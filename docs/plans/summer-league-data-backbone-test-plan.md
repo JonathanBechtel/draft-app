@@ -1,11 +1,16 @@
 # Summer League Data Backbone Test Plan
 
 **Sources:**
-- Master spec: `docs/plans/summer-league-data-backbone.md`
+- Raw-ingestion spec: `docs/plans/summer-league-raw-ingestion-workflow.md`
+- Feature plan: `docs/summer_league_stats_plan.md`
+- Operator runbook: `docs/summer_league_backbone_runbook.md`
 - Repo orchestration guide: `docs/plans/ai-orchestrator-ticket-spec.md`
 - GitHub master issue: `#319`
 
 **Sibling artifact:** QA checklist at `summer-league-data-backbone-qa-checklist.md`
+
+**Final QA evidence:** `docs/qa/summer-league-backbone-qa-2026-06-10.md`
+passed with `0` errors after PR `#343`.
 
 ## Purpose
 
@@ -108,8 +113,7 @@ normalization, final QA must also run the relevant integration suite:
 conda run -n draftguru --no-capture-output python -m pytest tests/integration -q
 ```
 
-Then run the Summer League QA harness against the required stress slices from
-`docs/plans/summer-league-data-backbone.md`:
+Then run the Summer League QA harness against the required stress slices:
 
 ```bash
 conda run -n draftguru --no-capture-output python scripts/qa_summer_league_backbone.py \
