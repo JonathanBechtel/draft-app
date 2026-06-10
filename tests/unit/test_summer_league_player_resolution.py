@@ -8,8 +8,12 @@ from typing import Any
 import pytest
 
 from app.schemas.players_master import PlayerMaster
-from app.schemas.summer_league import SummerLeagueResolutionStatus
-from app.schemas.summer_league import SummerLeagueSourcePlayer
+from app.schemas.summer_league import (
+    SummerLeaguePlayerResolutionReview,
+    SummerLeagueResolutionStatus,
+    SummerLeagueReviewStatus,
+    SummerLeagueSourcePlayer,
+)
 from app.services.summer_league import player_resolution as service
 from app.services.summer_league.player_resolution import (
     SummerLeagueResolutionCandidate,
@@ -27,7 +31,9 @@ from app.services.summer_league.player_resolution import (
     _load_source_players,
     _serialize_search_candidates,
     _backfill_player_game_logs,
+    ensure_pending_resolution_review,
     normalize_player_name,
+    record_resolution_review_decision,
     resolve_source_player,
     resolve_summer_league_players,
 )
@@ -66,8 +72,14 @@ class _FakeScalarResult:
 
 
 class _FakeDb:
-    def __init__(self, results: list[_FakeResult] | None = None) -> None:
+    def __init__(
+        self,
+        results: list[_FakeResult] | None = None,
+        *,
+        get_result: Any = None,
+    ) -> None:
         self.results = results or []
+        self.get_result = get_result
         self.added: list[Any] = []
         self.flushed = 0
         self.executed = 0
@@ -80,6 +92,9 @@ class _FakeDb:
 
     def add(self, obj: Any) -> None:
         self.added.append(obj)
+
+    async def get(self, model: Any, object_id: Any) -> Any:
+        return self.get_result
 
     async def flush(self) -> None:
         self.flushed += 1
@@ -172,6 +187,98 @@ def test_serious_candidate_threshold_blocks_speculative_stubs() -> None:
         )
         is True
     )
+
+
+@pytest.mark.asyncio
+async def test_ensure_pending_resolution_review_creates_and_updates() -> None:
+    """Pending review upsert creates one active row and refreshes candidates."""
+    source = _source()
+    candidate = SummerLeagueResolutionCandidate(
+        player_id=7,
+        display_name="Candidate",
+        score=0.72,
+    )
+    create_db = _FakeDb([_FakeResult(scalar=None)])
+
+    created = await ensure_pending_resolution_review(  # type: ignore[arg-type]
+        create_db,
+        source,
+        [candidate],
+    )
+
+    assert created.source_player_id == source.id
+    assert created.status == SummerLeagueReviewStatus.PENDING
+    assert created.candidate_players == [
+        {
+            "player_id": 7,
+            "display_name": "Candidate",
+            "score": 0.72,
+            "method": "HYBRID",
+        }
+    ]
+    assert create_db.flushed == 1
+
+    existing = SummerLeaguePlayerResolutionReview(
+        source_player_id=source.id,  # type: ignore[arg-type]
+        raw_player_name="Old Name",
+        nba_stats_person_id="old",
+        candidate_players=[],
+        status=SummerLeagueReviewStatus.PENDING,
+        selected_player_id=99,
+        review_note="stale",
+        reviewed_at=datetime(2024, 7, 1, 12, 0, 0),
+    )
+    update_db = _FakeDb([_FakeResult(scalar=existing)])
+    updated = await ensure_pending_resolution_review(  # type: ignore[arg-type]
+        update_db,
+        source,
+        [],
+    )
+
+    assert updated is existing
+    assert updated.raw_player_name == source.raw_player_name
+    assert updated.nba_stats_person_id == source.nba_stats_person_id
+    assert updated.candidate_players is None
+    assert updated.selected_player_id is None
+    assert updated.review_note is None
+    assert updated.reviewed_at is None
+
+
+@pytest.mark.asyncio
+async def test_record_resolution_review_decision_updates_status_note_and_time() -> None:
+    """Review decisions persist lifecycle status and selected player metadata."""
+    review = SummerLeaguePlayerResolutionReview(
+        id=3,
+        source_player_id=5,
+        raw_player_name="Review Me",
+        nba_stats_person_id="1640001",
+        status=SummerLeagueReviewStatus.PENDING,
+    )
+    decided_at = datetime(2026, 6, 9, 15, 30, 0)
+    db = _FakeDb(get_result=review)
+
+    updated = await record_resolution_review_decision(  # type: ignore[arg-type]
+        db,
+        review_id=3,
+        status=SummerLeagueReviewStatus.APPROVED,
+        selected_player_id=11,
+        review_note="Matches profile",
+        reviewed_at=decided_at,
+    )
+
+    assert updated is review
+    assert review.status == SummerLeagueReviewStatus.APPROVED
+    assert review.selected_player_id == 11
+    assert review.review_note == "Matches profile"
+    assert review.reviewed_at == decided_at
+    assert db.flushed == 1
+
+    missing = await record_resolution_review_decision(  # type: ignore[arg-type]
+        _FakeDb(get_result=None),
+        review_id=999,
+        status=SummerLeagueReviewStatus.REJECTED,
+    )
+    assert missing is None
 
 
 def test_report_counts_methods_candidates_stubs_and_backfills() -> None:

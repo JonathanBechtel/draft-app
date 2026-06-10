@@ -19,6 +19,8 @@ from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeaguePlayerGameLog,
+    SummerLeaguePlayerResolutionReview,
+    SummerLeagueReviewStatus,
     SummerLeagueResolutionStatus,
     SummerLeagueSourcePlayer,
 )
@@ -159,6 +161,72 @@ def _serialize_search_candidates(
             )
         )
     return serialized
+
+
+async def ensure_pending_resolution_review(
+    db: AsyncSession,
+    source_player: SummerLeagueSourcePlayer,
+    candidates: list[SummerLeagueResolutionCandidate],
+) -> SummerLeaguePlayerResolutionReview:
+    """Create or update the active pending review row for a source player."""
+    if source_player.id is None:
+        raise ValueError("source_player.id is required before creating review rows.")
+
+    candidate_payloads = _candidate_payloads(candidates) if candidates else None
+    result = await db.execute(
+        select(SummerLeaguePlayerResolutionReview).where(
+            SummerLeaguePlayerResolutionReview.source_player_id == source_player.id,  # type: ignore[arg-type]
+            SummerLeaguePlayerResolutionReview.status
+            == SummerLeagueReviewStatus.PENDING,  # type: ignore[arg-type]
+        )
+    )
+    review = result.scalar_one_or_none()
+    if review is None:
+        review = SummerLeaguePlayerResolutionReview(
+            source_player_id=source_player.id,
+            raw_player_name=source_player.raw_player_name,
+            nba_stats_person_id=source_player.nba_stats_person_id,
+            candidate_players=candidate_payloads,
+            status=SummerLeagueReviewStatus.PENDING,
+        )
+    else:
+        review.raw_player_name = source_player.raw_player_name
+        review.nba_stats_person_id = source_player.nba_stats_person_id
+        review.candidate_players = candidate_payloads
+        review.selected_player_id = None
+        review.review_note = None
+        review.reviewed_at = None
+
+    db.add(review)
+    await db.flush()
+    return review
+
+
+async def record_resolution_review_decision(
+    db: AsyncSession,
+    *,
+    review_id: int,
+    status: SummerLeagueReviewStatus,
+    selected_player_id: int | None = None,
+    review_note: str | None = None,
+    reviewed_at: datetime | None = None,
+) -> SummerLeaguePlayerResolutionReview | None:
+    """Persist a manual review decision for a resolution-review row."""
+    review = await db.get(SummerLeaguePlayerResolutionReview, review_id)
+    if review is None:
+        return None
+
+    review.status = status
+    review.selected_player_id = selected_player_id
+    review.review_note = review_note
+    review.reviewed_at = (
+        None
+        if status == SummerLeagueReviewStatus.PENDING
+        else reviewed_at or datetime.utcnow()
+    )
+    db.add(review)
+    await db.flush()
+    return review
 
 
 def _has_serious_candidate(
@@ -482,6 +550,7 @@ async def resolve_source_player(
         source_player.resolution_candidates = _candidate_payloads(candidates)
         source_player.updated_at = now
         db.add(source_player)
+        await ensure_pending_resolution_review(db, source_player, candidates)
         return SummerLeagueResolutionResult(
             source_player_id=source_player.id,
             nba_stats_person_id=source_player.nba_stats_person_id,
