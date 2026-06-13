@@ -6,7 +6,7 @@ composite index ``(competition_id, player_id)`` cannot serve that filter
 (leading column is ``competition_id``), so add a single-column index.
 
 Revision ID: c7d8e9f0a1b2
-Revises: b6c7d8e9f0a1
+Revises: a9b8c7d6e5f4
 Create Date: 2026-06-13
 
 """
@@ -17,7 +17,7 @@ from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
 revision: str = "c7d8e9f0a1b2"
-down_revision: Union[str, None] = "b6c7d8e9f0a1"
+down_revision: Union[str, None] = "a9b8c7d6e5f4"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
