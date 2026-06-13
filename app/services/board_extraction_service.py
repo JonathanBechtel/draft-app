@@ -39,7 +39,10 @@ from app.schemas.news_items import NewsItem
 from app.schemas.player_aliases import PlayerAlias
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service
-from app.services.player_search_service import find_candidate_players
+from app.services.player_search_service import (
+    find_candidate_players,
+    find_lexical_players,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -848,10 +851,12 @@ async def resolve_player(
     Args:
         db: Async session; caller owns any open transaction.
         raw_name: The player name exactly as emitted by the extraction AI.
-        use_vector: When False, skip the step-3 hybrid/vector search entirely
-            and fall straight through to UNRESOLVED. Callers extracting a whole
-            board flip this off once the embedding backend looks degraded so a
-            stalled embedding can't be paid once per remaining name.
+        use_vector: When False, skip only the embedding-backed vector lookup in
+            step 3 — the cheap trigram lexical search still runs, so the result
+            is UNRESOLVED but may still carry lexical candidates. Callers
+            extracting a whole board flip this off once the embedding backend
+            looks degraded so a stalled embedding can't be paid once per
+            remaining name.
 
     Returns:
         A :class:`ResolutionResult` with:
@@ -884,10 +889,36 @@ async def resolve_player(
     if alias_match is not None:
         return ResolutionResult(player_id=alias_match, method=ResolutionMethod.ALIAS)
 
-    # Circuit-breaker: the caller has decided the embedding backend is degraded,
-    # so skip the (best-effort) vector step rather than pay its timeout again.
+    # Circuit-breaker: the caller has decided the embedding backend is degraded.
+    # Skip only the embedding-backed vector lookup (which would re-pay its
+    # timeout per name); still run the cheap, embedding-free trigram lexical
+    # search so admins keep surname/typo candidates for the remaining rows.
     if not use_vector:
-        return ResolutionResult(player_id=None, method=ResolutionMethod.UNRESOLVED)
+        try:
+            lexical_hits = await find_lexical_players(db, raw_name, k=5)
+        except Exception:
+            logger.exception(
+                "board.resolve.lexical_search_error raw_name=%r — UNRESOLVED",
+                raw_name,
+            )
+            lexical_hits = []
+        lexical_candidates: Optional[list[dict]] = (  # type: ignore[type-arg]
+            [
+                {
+                    "player_id": hit.player_id,
+                    "display_name": hit.display_name,
+                    "score": round(hit.score, 6),
+                }
+                for hit in lexical_hits
+            ]
+            if lexical_hits
+            else None
+        )
+        return ResolutionResult(
+            player_id=None,
+            method=ResolutionMethod.UNRESOLVED,
+            candidates=lexical_candidates,
+        )
 
     # Step 3: hybrid search (trigram lexical + cosine-distance vector).
     # Blending both signals surfaces bare/short-surname queries that pure vector

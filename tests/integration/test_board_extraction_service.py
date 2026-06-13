@@ -804,18 +804,30 @@ async def test_extract_board_opens_vector_circuit_after_a_stall(
         board_extraction_service, "_RESOLUTION_STALL_THRESHOLD_SECONDS", 0.05
     )
 
-    calls = {"count": 0}
+    hybrid_calls = {"count": 0}
+    lexical_calls = {"count": 0}
 
-    async def _slow_then_skipped(db, query: str, k: int = 5) -> list[Candidate]:
-        calls["count"] += 1
+    async def _slow_hybrid(db, query: str, k: int = 5) -> list[Candidate]:
+        hybrid_calls["count"] += 1
         # First call stalls past the (patched) threshold; if the breaker works
-        # it is never invoked again, so later names cost nothing.
+        # it is never invoked again, so later names skip the vector path.
         await asyncio.sleep(0.1)
         return []
 
+    async def _fast_lexical(db, query: str, k: int = 5) -> list[Candidate]:
+        # Embedding-free trigram search; should still run once the circuit is
+        # open so unresolved rows keep surname/typo candidates.
+        lexical_calls["count"] += 1
+        return [
+            Candidate(
+                player_id=999, display_name="Lexical Match", school=None, score=0.6
+            )
+        ]
+
     monkeypatch.setattr(
-        board_extraction_service, "find_candidate_players", _slow_then_skipped
+        board_extraction_service, "find_candidate_players", _slow_hybrid
     )
+    monkeypatch.setattr(board_extraction_service, "find_lexical_players", _fast_lexical)
 
     _stub_extraction(
         monkeypatch,
@@ -839,13 +851,22 @@ async def test_extract_board_opens_vector_circuit_after_a_stall(
 
     assert board is not None
     assert board.size == 3
-    # Circuit opened after the first stalled resolve: the other two names
-    # skipped the vector path entirely.
-    assert calls["count"] == 1
+    # Circuit opened after the first stalled resolve: the hybrid (vector) path
+    # ran only for the first name.
+    assert hybrid_calls["count"] == 1
+    # ...but the remaining two names still get the embedding-free lexical search,
+    # so admins keep candidates instead of losing them outright.
+    assert lexical_calls["count"] == 2
 
     result = await db_session.execute(
-        select(BoardEntry).where(BoardEntry.board_id == board.id)
+        select(BoardEntry)
+        .where(BoardEntry.board_id == board.id)
+        .order_by(BoardEntry.position)
     )
     entries = result.scalars().all()
     assert len(entries) == 3
     assert all(e.resolution_method == ResolutionMethod.UNRESOLVED for e in entries)
+    # Rows resolved under the open circuit preserve the lexical candidates.
+    assert entries[1].vector_candidates is not None
+    assert entries[2].vector_candidates is not None
+    assert entries[1].vector_candidates[0]["display_name"] == "Lexical Match"
