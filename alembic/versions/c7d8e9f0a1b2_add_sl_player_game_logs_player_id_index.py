@@ -26,10 +26,15 @@ TABLE_NAME = "summer_league_player_game_logs"
 
 
 def upgrade() -> None:
-    """Create the single-column ``player_id`` index."""
-    op.create_index(INDEX_NAME, TABLE_NAME, ["player_id"])
+    """Create the single-column ``player_id`` index.
+
+    Idempotent: on a fresh database the table is created from the live SQLModel
+    metadata (which already declares this index), so ``IF NOT EXISTS`` no-ops;
+    on an existing database that predates the index, it is created.
+    """
+    op.execute(f'CREATE INDEX IF NOT EXISTS {INDEX_NAME} ON {TABLE_NAME} (player_id)')
 
 
 def downgrade() -> None:
     """Drop the single-column ``player_id`` index."""
-    op.drop_index(INDEX_NAME, table_name=TABLE_NAME)
+    op.execute(f"DROP INDEX IF EXISTS {INDEX_NAME}")
