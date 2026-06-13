@@ -149,23 +149,30 @@ in `tests/integration/perf/budgets.py` for the one added query if needed.
 
 ## UI / Section Design
 
-- **Placement:** Directly below the College Production scoreboard, above the Consensus
-  Rank section. Use the same retro "stats-scoreboard" visual treatment (scanlines, pixel
-  corners) per the style guide.
-- **Component reuse:** Mirror the College Production scoreboard markup
-  (`stats-headline-row` PPG/RPG/APG + `stats-detail-grid` + `shooting-splits`) so it reads
-  as a sibling, not a new pattern.
-- **Year selector:** Reuse the `season-btn` / `.season-data[data-season-index]` toggle
-  and the `CollegeStatsModule` JS pattern; add a `SummerLeagueStatsModule` cloned from it.
-  Add a "Career" pseudo-season as the last toggle.
-- **Stat-mode toggle:** A small Per Game / Per 36 / Per 100 segmented control scoped to the
-  section; flips which set of cells is shown (server-renders all three, JS toggles visibility
-  — no fetch). Per-100 cells show `—` for seasons without `pace`.
-- **Venue + season context bar:** "2024 · Las Vegas + California Classic · 7 GP".
-- **Recent games:** A compact 5-row mini-table under the averages.
+It is an **addition** alongside College Production, not a replacement; College Production
+stays in the bio block and the SL section renders below it.
+
+- **Placement:** A separate full-width `<section id="summerLeagueSection">` directly below
+  the personal-info block (which holds College Production), above the Consensus Rank section.
+  Same retro "stats-scoreboard" treatment (scanlines, pixel corners) per the style guide.
+- **Layout (density-first):** One **mode selector** at the top is the only tab group —
+  **Per Game / Per 36 / Per 100**. Below it, **Career averages occupy the hero pills**
+  (`stats-headline-row` PTS/REB/AST), then a **compact one-row-per-competition table**.
+  This keeps the section visually consistent regardless of how many competitions a player
+  has (a multi-stint summer = multiple rows, never multiple tab pages).
+- **Stats table:** Columns `Season · Lg · GP · MIN · PTS · REB · AST · STL · BLK · TOV ·
+  FG% · 3P% · FT% · TS%`. `Season` = year, `Lg` = venue abbreviation (LV/SLC/CC/ORL) so a
+  player who appears in two leagues one summer gets a row each. A bold **Career** summary
+  row anchors the bottom (rendered only when >1 competition). The table scrolls horizontally
+  on narrow screens (`.sl-table-wrap`).
+- **Stat-mode toggle:** `SummerLeagueStatsModule` swaps every `.sl-mode-data` element in one
+  click — both the career pills and the table `<tbody>` (server-renders all three modes; JS
+  toggles visibility, no fetch). The rate columns (PTS–TOV) change with the mode; `MIN`,
+  `GP`, and shooting % are mode-independent. Per-100 cells show `—` where `pace` is absent.
+- **Recent games:** A compact last-5-games table below the stats table.
 - **Empty state:** Section omitted via `{% if summer_league %}` — no placeholder, matching
   the consensus/combine convention.
-- **Data injection:** Pass via template context and `window.SUMMER_LEAGUE_DATA = {{ ... | tojson | safe }}`
+- **Data injection:** Passed via template context and `window.SUMMER_LEAGUE_DATA = {{ ... | tojson | safe }}`
   consistent with existing `window.PLAYER_DATA` injection.
 
 ## Edge Cases

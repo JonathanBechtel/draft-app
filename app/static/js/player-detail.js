@@ -1705,11 +1705,9 @@ const CollegeStatsModule = {
 
 /* ============================================================================
  * SUMMER LEAGUE STATS MODULE
- * Two independent toggles on the Summer League scoreboard:
- *  - year/career selector (.sl-season-btn -> .sl-season-data)
- *  - stat-mode selector (.sl-mode-btn -> .sl-mode-data, across all panels)
- * Visibility composes via parent/child: hiding a season container hides its
- * mode blocks regardless of the mode toggle's per-block display value.
+ * Single stat-mode selector (.sl-mode-btn -> .sl-mode-data). One click swaps
+ * both the Career hero pills and the per-competition table body (Per Game /
+ * Per 36 / Per 100). MIN, GP, and shooting % are mode-independent.
  * ============================================================================
  */
 const SummerLeagueStatsModule = {
@@ -1717,25 +1715,18 @@ const SummerLeagueStatsModule = {
     const root = document.getElementById('summerLeagueSection');
     if (!root) return;
 
-    const bindToggle = (btnSelector, dataKey, paneSelector, paneKey) => {
-      const buttons = root.querySelectorAll(btnSelector);
-      if (!buttons.length) return;
-      buttons.forEach(btn => {
-        btn.addEventListener('click', () => {
-          const value = btn.dataset[dataKey];
-          buttons.forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          root.querySelectorAll(paneSelector).forEach(pane => {
-            pane.style.display = pane.dataset[paneKey] === value ? '' : 'none';
-          });
+    const buttons = root.querySelectorAll('.sl-mode-btn[data-sl-mode]');
+    if (!buttons.length) return;
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.slMode;
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        root.querySelectorAll('.sl-mode-data[data-sl-mode]').forEach(pane => {
+          pane.style.display = pane.dataset.slMode === mode ? '' : 'none';
         });
       });
-    };
-
-    bindToggle('.sl-season-btn[data-sl-season-index]', 'slSeasonIndex',
-               '.sl-season-data[data-sl-season-index]', 'slSeasonIndex');
-    bindToggle('.sl-mode-btn[data-sl-mode]', 'slMode',
-               '.sl-mode-data[data-sl-mode]', 'slMode');
+    });
   }
 };
 

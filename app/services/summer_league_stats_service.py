@@ -13,7 +13,6 @@ No composite/derived metrics are computed here.
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import asdict, dataclass
 from typing import Optional
 
@@ -96,7 +95,6 @@ class SummerLeagueSeason:
 
     year: Optional[int]
     season_label: str
-    tab_label: str
     venues: list[str]
     gp: int
     gs: int
@@ -111,6 +109,8 @@ class SummerLeagueSeason:
     fg3a_per_g: Optional[float]
     fta_per_g: Optional[float]
     modes: dict[str, SummerLeagueModeStats]
+    # Venue/league abbreviation (LV/SLC/CC/ORL) for a competition row; None for Career.
+    venue_abbr: Optional[str] = None
 
 
 @dataclass
@@ -199,7 +199,6 @@ def _aggregate_season(
     return SummerLeagueSeason(
         year=year,
         season_label=season_label,
-        tab_label=season_label,
         venues=venues,
         gp=gp,
         gs=gs,
@@ -308,27 +307,17 @@ async def get_summer_league_profile_by_player_id(
         rows_by_comp,
         key=lambda k: (-k[0], _VENUE_ORDER.get(k[1], 99)),
     )
-    prelim: list[tuple[int, str, SummerLeagueSeason]] = []
+    seasons: list[SummerLeagueSeason] = []
     for year, venue_slug in ordered_keys:
         season = _aggregate_season(
             rows_by_comp[(year, venue_slug)], year=year, season_label=str(year)
         )
         if season is not None:
-            prelim.append((year, venue_slug, season))
+            season.venue_abbr = _VENUE_ABBR.get(venue_slug, venue_slug)
+            seasons.append(season)
 
-    if not prelim:
+    if not seasons:
         return None
-
-    # Disambiguate the year tab with a venue tag only when a year has >1 stint.
-    year_counts = Counter(year for year, _slug, _season in prelim)
-    seasons: list[SummerLeagueSeason] = []
-    for year, venue_slug, season in prelim:
-        if year_counts[year] > 1:
-            abbr = _VENUE_ABBR.get(venue_slug, venue_slug)
-            season.tab_label = f"{year} {abbr}"
-        else:
-            season.tab_label = str(year)
-        seasons.append(season)
 
     career = _aggregate_season(rows, year=None, season_label="Career")
     assert career is not None  # at least one season survived above

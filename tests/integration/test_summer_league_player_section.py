@@ -197,9 +197,6 @@ async def test_player_with_summer_league_shows_section(
 
     assert "summerLeagueSection" in html
     assert "Summer League" in html
-    # Two venues in one year -> two separate competition rows, each tagged.
-    assert "2024 LV" in html and "2024 CC" in html
-    assert "Las Vegas" in html and "California Classic" in html
     # Per-100 toggle is present (pace exists).
     assert 'data-sl-mode="per_100"' in html
     # window data injected (not null).
@@ -217,7 +214,9 @@ async def test_player_with_summer_league_shows_section(
     profile = await get_summer_league_profile_by_player_id(db_session, player.id)
     assert profile is not None
     assert len(profile.seasons) == 2
-    assert {s.tab_label for s in profile.seasons} == {"2024 LV", "2024 CC"}
+    # Both rows are 2024 but distinguished by league/venue abbreviation.
+    assert {s.season_label for s in profile.seasons} == {"2024"}
+    assert {s.venue_abbr for s in profile.seasons} == {"LV", "CC"}
     # Each row carries a single venue; Career combines both.
     assert all(len(s.venues) == 1 for s in profile.seasons)
     assert set(profile.career.venues) == {"Las Vegas", "California Classic"}

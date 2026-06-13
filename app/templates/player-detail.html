@@ -223,10 +223,12 @@
 
   {# ==========================================================================
      SUMMER LEAGUE SECTION
-     Per-year + career box-score production with Per Game / Per 36 / Per 100.
-     Omitted entirely when the player has no resolved Summer League logs.
+     Mode tabs (Per Game / Per 36 / Per 100) drive both the Career hero pills
+     and a compact one-row-per-competition stats table (a player who appears in
+     two leagues one summer gets a row each). Omitted entirely when the player
+     has no resolved Summer League logs.
      ========================================================================== #}
-  {% macro sl_stat_hero(label, value, sub) %}
+  {% macro sl_hero(label, value, sub) %}
   <div class="stat-hero">
     <span class="stat-hero__label">{{ label }}</span>
     <div class="stat-hero__value">{{ '%.1f' % value if value is not none else '—' }}</div>
@@ -234,73 +236,33 @@
   </div>
   {% endmacro %}
 
-  {% macro sl_mode_block(m, active) %}
-  <div class="sl-mode-data" data-sl-mode="{{ m.mode }}"{% if not active %} style="display:none;"{% endif %}>
-    <div class="stats-headline-row">
-      {{ sl_stat_hero('PTS', m.pts, 'Points') }}
-      {{ sl_stat_hero('REB', m.reb, 'Rebounds') }}
-      {{ sl_stat_hero('AST', m.ast, 'Assists') }}
-    </div>
-    <div class="stats-detail-grid">
-      <div class="stat-cell"><span class="stat-cell__label">STL</span><span class="stat-cell__value">{{ '%.1f' % m.stl if m.stl is not none else '—' }}</span></div>
-      <div class="stat-cell"><span class="stat-cell__label">BLK</span><span class="stat-cell__value">{{ '%.1f' % m.blk if m.blk is not none else '—' }}</span></div>
-      <div class="stat-cell"><span class="stat-cell__label">TOV</span><span class="stat-cell__value">{{ '%.1f' % m.tov if m.tov is not none else '—' }}</span></div>
-    </div>
+  {% macro sl_hero_row(m, active) %}
+  <div class="sl-mode-data stats-headline-row" data-sl-mode="{{ m.mode }}"{% if not active %} style="display:none;"{% endif %}>
+    {{ sl_hero('PTS', m.pts, 'Points') }}
+    {{ sl_hero('REB', m.reb, 'Rebounds') }}
+    {{ sl_hero('AST', m.ast, 'Assists') }}
   </div>
   {% endmacro %}
 
-  {% macro sl_season_panel(s, index, visible) %}
-  <div class="stats-content sl-season-data" data-sl-season-index="{{ index }}"{% if not visible %} style="display:none;"{% endif %}>
-    {{ sl_mode_block(s.modes.per_game, true) }}
-    {{ sl_mode_block(s.modes.per_36, false) }}
-    {{ sl_mode_block(s.modes.per_100, false) }}
+  {% macro sl_n(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
 
-    <div class="stats-detail-grid sl-meta-grid">
-      <div class="stat-cell"><span class="stat-cell__label">MPG</span><span class="stat-cell__value">{{ '%.1f' % s.mpg if s.mpg is not none else '—' }}</span></div>
-      <div class="stat-cell"><span class="stat-cell__label">GP</span><span class="stat-cell__value">{{ s.gp }}</span></div>
-      <div class="stat-cell"><span class="stat-cell__label">GS</span><span class="stat-cell__value">{{ s.gs }}</span></div>
-    </div>
-
-    <div class="stats-section-label">Shooting Splits</div>
-    <div class="shooting-splits">
-      <div class="split-item">
-        <span class="split-label">FG%</span>
-        <div class="split-value">{{ '%.1f' % s.fg_pct if s.fg_pct is not none else '—' }}</div>
-        <div class="split-bar"><div class="split-bar__fill split-bar__fill--fg" style="width: {{ s.fg_pct if s.fg_pct is not none else 0 }}%;"></div></div>
-      </div>
-      <div class="split-item">
-        <span class="split-label">3P%</span>
-        <div class="split-value">{{ '%.1f' % s.fg3_pct if s.fg3_pct is not none else '—' }}</div>
-        <div class="split-bar"><div class="split-bar__fill split-bar__fill--3p" style="width: {{ s.fg3_pct if s.fg3_pct is not none else 0 }}%;"></div></div>
-        {% if s.fg3a_per_g is not none %}<div class="split-context">{{ '%.1f' % s.fg3a_per_g }} 3PA/g</div>{% endif %}
-      </div>
-      <div class="split-item">
-        <span class="split-label">FT%</span>
-        <div class="split-value">{{ '%.1f' % s.ft_pct if s.ft_pct is not none else '—' }}</div>
-        <div class="split-bar"><div class="split-bar__fill split-bar__fill--ft" style="width: {{ s.ft_pct if s.ft_pct is not none else 0 }}%;"></div></div>
-        {% if s.fta_per_g is not none %}<div class="split-context">{{ '%.1f' % s.fta_per_g }} FTA/g</div>{% endif %}
-      </div>
-      <div class="split-item">
-        <span class="split-label">TS%</span>
-        <div class="split-value">{{ '%.1f' % s.ts_pct if s.ts_pct is not none else '—' }}</div>
-        <div class="split-bar"><div class="split-bar__fill split-bar__fill--ts" style="width: {{ s.ts_pct if s.ts_pct is not none else 0 }}%;"></div></div>
-        <div class="split-context">SL context</div>
-      </div>
-    </div>
-
-    <div class="stats-context-bar">
-      <div class="context-item">
-        <span class="context-label">Season</span>
-        <span class="context-value">{{ s.season_label }}</span>
-      </div>
-      {% if s.venues %}
-      <div class="context-item">
-        <span class="context-label">Venue{{ 's' if s.venues | length > 1 else '' }}</span>
-        <span class="context-value">{{ s.venues | join(' + ') }}</span>
-      </div>
-      {% endif %}
-    </div>
-  </div>
+  {% macro sl_row(s, m, is_career) %}
+  <tr{% if is_career %} class="sl-stats-table__career"{% endif %}>
+    <th scope="row">{{ s.season_label }}</th>
+    <td class="sl-col-lg">{{ s.venue_abbr or '—' }}</td>
+    <td>{{ s.gp }}</td>
+    <td>{{ sl_n(s.mpg) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.pts) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.reb) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.ast) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.stl) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.blk) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.tov) }}</td>
+    <td>{{ sl_n(s.fg_pct) }}</td>
+    <td>{{ sl_n(s.fg3_pct) }}</td>
+    <td>{{ sl_n(s.ft_pct) }}</td>
+    <td>{{ sl_n(s.ts_pct) }}</td>
+  </tr>
   {% endmacro %}
 
   {% if summer_league %}
@@ -317,55 +279,84 @@
           </svg>
           Summer League
         </div>
-        <div class="sl-controls">
-          {% if summer_league.seasons | length > 1 %}
-          <div class="season-selector sl-season-selector">
-            {% for s in summer_league.seasons %}
-            <button class="season-btn sl-season-btn{% if loop.first %} active{% endif %}" data-sl-season-index="{{ loop.index0 }}">{{ s.tab_label }}</button>
-            {% endfor %}
-            <button class="season-btn sl-season-btn" data-sl-season-index="career">Career</button>
-          </div>
-          {% endif %}
-          <div class="season-selector sl-mode-selector">
-            <button class="season-btn sl-mode-btn active" data-sl-mode="per_game">Per Game</button>
-            <button class="season-btn sl-mode-btn" data-sl-mode="per_36">Per 36</button>
-            <button class="season-btn sl-mode-btn" data-sl-mode="per_100">Per 100</button>
-          </div>
+        <div class="season-selector sl-mode-selector">
+          <button class="season-btn sl-mode-btn active" data-sl-mode="per_game">Per Game</button>
+          <button class="season-btn sl-mode-btn" data-sl-mode="per_36">Per 36</button>
+          <button class="season-btn sl-mode-btn" data-sl-mode="per_100">Per 100</button>
         </div>
       </div>
 
-      {% for s in summer_league.seasons %}
-      {{ sl_season_panel(s, loop.index0, loop.first) }}
-      {% endfor %}
-      {% if summer_league.seasons | length > 1 %}
-      {{ sl_season_panel(summer_league.career, 'career', false) }}
-      {% endif %}
+      <div class="stats-content">
+        {# Career headline pills (mode-aware) #}
+        {{ sl_hero_row(summer_league.career.modes.per_game, true) }}
+        {{ sl_hero_row(summer_league.career.modes.per_36, false) }}
+        {{ sl_hero_row(summer_league.career.modes.per_100, false) }}
+        <div class="sl-career-meta">
+          Career · {{ summer_league.career.gp }} G · {{ summer_league.seasons | length }} competition{{ '' if summer_league.seasons | length == 1 else 's' }} · TS% reflects Summer League context
+        </div>
 
-      {% if summer_league.recent_games %}
-      <div class="sl-recent">
-        <div class="stats-section-label">Recent Games</div>
-        <table class="sl-recent__table">
-          <thead>
-            <tr><th>Date</th><th>Venue</th><th>Opp</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG</th><th>3P</th></tr>
-          </thead>
-          <tbody>
-            {% for g in summer_league.recent_games %}
-            <tr>
-              <td>{{ g.game_date or '—' }}</td>
-              <td>{{ g.venue }}</td>
-              <td>{{ g.opponent or '—' }}</td>
-              <td>{{ '%.1f' % g.minutes if g.minutes is not none else '—' }}</td>
-              <td>{{ g.pts if g.pts is not none else '—' }}</td>
-              <td>{{ g.reb if g.reb is not none else '—' }}</td>
-              <td>{{ g.ast if g.ast is not none else '—' }}</td>
-              <td>{{ g.fg }}</td>
-              <td>{{ g.fg3 }}</td>
-            </tr>
+        {# Per-competition stats table #}
+        <div class="sl-table-wrap">
+          <table class="sl-stats-table">
+            <thead>
+              <tr>
+                <th scope="col">Season</th>
+                <th scope="col" class="sl-col-lg">Lg</th>
+                <th scope="col">GP</th>
+                <th scope="col">MIN</th>
+                <th scope="col" class="sl-col-rate">PTS</th>
+                <th scope="col" class="sl-col-rate">REB</th>
+                <th scope="col" class="sl-col-rate">AST</th>
+                <th scope="col" class="sl-col-rate">STL</th>
+                <th scope="col" class="sl-col-rate">BLK</th>
+                <th scope="col" class="sl-col-rate">TOV</th>
+                <th scope="col">FG%</th>
+                <th scope="col">3P%</th>
+                <th scope="col">FT%</th>
+                <th scope="col">TS%</th>
+              </tr>
+            </thead>
+            {% for mode in ['per_game', 'per_36', 'per_100'] %}
+            <tbody class="sl-mode-data" data-sl-mode="{{ mode }}"{% if mode != 'per_game' %} style="display:none;"{% endif %}>
+              {% for s in summer_league.seasons %}
+              {{ sl_row(s, s.modes[mode], false) }}
+              {% endfor %}
+              {% if summer_league.seasons | length > 1 %}
+              {{ sl_row(summer_league.career, summer_league.career.modes[mode], true) }}
+              {% endif %}
+            </tbody>
             {% endfor %}
-          </tbody>
-        </table>
+          </table>
+        </div>
+
+        {% if summer_league.recent_games %}
+        <div class="sl-recent">
+          <div class="stats-section-label">Recent Games</div>
+          <div class="sl-table-wrap">
+            <table class="sl-stats-table sl-recent__table">
+              <thead>
+                <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col">Opp</th><th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th><th scope="col">AST</th><th scope="col">FG</th><th scope="col">3P</th></tr>
+              </thead>
+              <tbody>
+                {% for g in summer_league.recent_games %}
+                <tr>
+                  <th scope="row">{{ g.game_date or '—' }}</th>
+                  <td>{{ g.venue }}</td>
+                  <td>{{ g.opponent or '—' }}</td>
+                  <td>{{ '%.1f' % g.minutes if g.minutes is not none else '—' }}</td>
+                  <td>{{ g.pts if g.pts is not none else '—' }}</td>
+                  <td>{{ g.reb if g.reb is not none else '—' }}</td>
+                  <td>{{ g.ast if g.ast is not none else '—' }}</td>
+                  <td>{{ g.fg }}</td>
+                  <td>{{ g.fg3 }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
       </div>
-      {% endif %}
     </div>
   </section>
 
