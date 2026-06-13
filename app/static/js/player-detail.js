@@ -1704,6 +1704,33 @@ const CollegeStatsModule = {
 };
 
 /* ============================================================================
+ * SUMMER LEAGUE STATS MODULE
+ * Single stat-mode selector (.sl-mode-btn -> .sl-mode-data). One click swaps
+ * both the Career hero pills and the per-competition table body (Per Game /
+ * Per 36 / Per 100). MIN, GP, and shooting % are mode-independent.
+ * ============================================================================
+ */
+const SummerLeagueStatsModule = {
+  init() {
+    const root = document.getElementById('summerLeagueSection');
+    if (!root) return;
+
+    const buttons = root.querySelectorAll('.sl-mode-btn[data-sl-mode]');
+    if (!buttons.length) return;
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.slMode;
+        buttons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        root.querySelectorAll('.sl-mode-data[data-sl-mode]').forEach(pane => {
+          pane.style.display = pane.dataset.slMode === mode ? '' : 'none';
+        });
+      });
+    });
+  }
+};
+
+/* ============================================================================
    COMBINE SCORE HEADLINE — static donut ring + dynamic updates
    ========================================================================= */
 var CombineScoreModule = {
@@ -1944,6 +1971,7 @@ document.addEventListener('DOMContentLoaded', () => {
   CombineScoreModule.init();
   ScoreboardModule.init();
   CollegeStatsModule.init();
+  SummerLeagueStatsModule.init();
   PerformanceModule.init();
   ConsensusChartModule.init();
   PlayerComparisonsModule.init();

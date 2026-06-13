@@ -2220,3 +2220,100 @@
     font-size: 2.5rem;
   }
 }
+
+/* ============================================================================
+   SUMMER LEAGUE SECTION
+   Career hero pills (mode-aware) above a compact one-row-per-competition stats
+   table. A single mode selector (Per Game / Per 36 / Per 100) swaps both.
+   ========================================================================== */
+.sl-mode-selector {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.sl-career-meta {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  color: var(--color-slate-500);
+  text-align: center;
+}
+
+/* Horizontal scroll on narrow screens rather than cramping the columns. */
+.sl-table-wrap {
+  overflow-x: auto;
+}
+
+.sl-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sl-stats-table thead th {
+  text-align: right;
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-slate-500);
+  font-weight: 600;
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--color-slate-200);
+}
+
+.sl-stats-table td,
+.sl-stats-table tbody th {
+  text-align: right;
+  padding: 0.375rem 0.5rem;
+  color: var(--color-slate-800);
+  border-bottom: 1px solid var(--color-slate-100);
+  font-weight: 400;
+}
+
+/* Row headers (Season / Date) and the league column read left/centered. */
+.sl-stats-table th[scope="row"] {
+  text-align: left;
+  color: var(--color-slate-700);
+  font-weight: 600;
+}
+
+.sl-stats-table .sl-col-lg {
+  text-align: center;
+  color: var(--color-slate-500);
+}
+
+/* Rate columns (those that change with the mode toggle) get a faint tint. */
+.sl-stats-table td.sl-col-rate {
+  background: var(--color-slate-50);
+}
+
+.sl-stats-table tbody tr:last-child td,
+.sl-stats-table tbody tr:last-child th {
+  border-bottom: none;
+}
+
+/* Career summary row sits apart and bold. */
+.sl-stats-table__career th,
+.sl-stats-table__career td {
+  border-top: 2px solid var(--color-accent-emerald);
+  font-weight: 700;
+  color: var(--color-slate-900);
+}
+
+.sl-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Recent-games text columns (Venue, Opp) align left. */
+.sl-recent__table thead th:nth-child(2),
+.sl-recent__table thead th:nth-child(3),
+.sl-recent__table td:nth-child(2),
+.sl-recent__table td:nth-child(3) {
+  text-align: left;
+  color: var(--color-slate-600);
+}
