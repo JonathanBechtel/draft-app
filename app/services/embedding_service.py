@@ -14,6 +14,7 @@ it is reused across calls within a single process.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -24,6 +25,16 @@ from app.config import settings
 from app.schemas.players_master import PlayerMaster
 
 logger = logging.getLogger(__name__)
+
+# Hard ceiling on a single Gemini embedding call. Without it the underlying
+# HTTP request can stall indefinitely, and because embeddings are generated
+# inline during board extraction (one call per unresolved player name), a
+# single hung call freezes the whole synchronous admin request — the
+# "Extract Board" spinner then spins forever. Mirrors the wait_for guard on
+# the generate_content call in board_extraction_service. A timeout surfaces
+# as an exception so callers like ``find_candidate_players`` degrade to
+# lexical-only matching instead of hanging.
+_EMBED_TIMEOUT_SECONDS = 20
 
 # Module-level client; instantiated on first use.
 _client: Optional[genai.Client] = None
@@ -148,11 +159,19 @@ async def embed_text(
         raise ValueError("embed_text received an empty string.")
 
     _c = client or _get_client()
-    response = await _c.aio.models.embed_content(
-        model=settings.gemini_embedding_model,
-        contents=[text],  # type: ignore[arg-type]
-        config=_embed_config(),
-    )
+    try:
+        response = await asyncio.wait_for(
+            _c.aio.models.embed_content(
+                model=settings.gemini_embedding_model,
+                contents=[text],  # type: ignore[arg-type]
+                config=_embed_config(),
+            ),
+            timeout=_EMBED_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as exc:
+        raise RuntimeError(
+            f"Gemini embedding timed out after {_EMBED_TIMEOUT_SECONDS}s"
+        ) from exc
     embeddings = response.embeddings
     if not embeddings or embeddings[0].values is None:
         raise RuntimeError(f"Gemini returned an empty embedding for text: {text!r}")
@@ -188,11 +207,19 @@ async def embed_players_batch(
 
     texts = [build_player_embed_input(p) for p in players]
     _c = client or _get_client()
-    response = await _c.aio.models.embed_content(
-        model=settings.gemini_embedding_model,
-        contents=texts,  # type: ignore[arg-type]
-        config=_embed_config(),
-    )
+    try:
+        response = await asyncio.wait_for(
+            _c.aio.models.embed_content(
+                model=settings.gemini_embedding_model,
+                contents=texts,  # type: ignore[arg-type]
+                config=_embed_config(),
+            ),
+            timeout=_EMBED_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as exc:
+        raise RuntimeError(
+            f"Gemini embedding timed out after {_EMBED_TIMEOUT_SECONDS}s"
+        ) from exc
     embeddings = response.embeddings
     if not embeddings or len(embeddings) != len(players):
         raise RuntimeError(
