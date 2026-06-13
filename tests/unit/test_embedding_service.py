@@ -99,7 +99,8 @@ class TestBuildPlayerEmbedInput:
 
     def test_all_fields_present(self) -> None:
         """When display_name, school, and birth_country are all set, all appear
-        in the embed input in that order."""
+        in the embed input in that order.
+        """
         player = _make_player(
             display_name="Cooper Flagg",
             school="Duke",
@@ -140,7 +141,8 @@ class TestBuildPlayerEmbedInput:
 
     def test_position_not_on_player_master(self) -> None:
         """``PlayerMaster`` has no ``position`` field; getattr returns None and
-        the embed input does not contain a bare 'None' string."""
+        the embed input does not contain a bare 'None' string.
+        """
         player = _make_player()
         result = build_player_embed_input(player)
         # position is not a PlayerMaster field, so it is silently omitted.
@@ -213,6 +215,33 @@ class TestEmbedText:
 
         with pytest.raises(RuntimeError, match="empty embedding"):
             await embed_text("some text", client=client)
+
+    @pytest.mark.asyncio
+    async def test_raises_timeout_when_call_stalls(self) -> None:
+        """A stalled embed_content must raise (not hang) so callers can degrade.
+
+        Regression guard for the "Extract Board" spinner that spun forever: a
+        single hung embedding call (one per unresolved player name) froze the
+        whole synchronous extraction request. ``embed_text`` now bounds the
+        call and surfaces a timeout as ``RuntimeError`` within the deadline.
+        """
+
+        async def _never_returns(*args: object, **kwargs: object) -> object:
+            await asyncio.sleep(10)
+            raise AssertionError("embed_content should have been cancelled")
+
+        mock_models = MagicMock()
+        mock_models.embed_content = _never_returns
+        mock_aio = MagicMock()
+        mock_aio.models = mock_models
+        client = MagicMock()
+        client.aio = mock_aio
+
+        with patch("app.services.embedding_service._EMBED_TIMEOUT_SECONDS", 0.05):
+            with pytest.raises(RuntimeError, match="timed out"):
+                await asyncio.wait_for(
+                    embed_text("Aday Mara", client=client), timeout=2.0
+                )
 
 
 # ---------------------------------------------------------------------------

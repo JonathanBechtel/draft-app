@@ -6,6 +6,7 @@ real DB through the fixtures in ``tests/integration/conftest.py``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,13 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from app.schemas.boards import Board, BoardEntry, BoardKind, BoardStatus, ResolutionMethod
+from app.schemas.boards import (
+    Board,
+    BoardEntry,
+    BoardKind,
+    BoardStatus,
+    ResolutionMethod,
+)
 from app.schemas.news_items import NewsItem, NewsItemTag
 from app.schemas.news_sources import NewsSource
 from app.schemas.player_aliases import PlayerAlias
@@ -267,8 +274,7 @@ async def test_extract_board_resolves_via_alias(
     assert board.size == 1
 
     entries_stmt = (
-        select(BoardEntry)
-        .where(BoardEntry.board_id == board.id)  # type: ignore[arg-type]
+        select(BoardEntry).where(BoardEntry.board_id == board.id)  # type: ignore[arg-type]
     )
     result = await db_session.execute(entries_stmt)
     entries = list(result.scalars().all())
@@ -301,7 +307,9 @@ async def test_extract_board_persists_unresolved_players(
 
     # Two fake vector candidates returned by the mocked search.
     fake_candidates = [
-        Candidate(player_id=999, display_name="Nobody Player", school="Duke", score=0.85),
+        Candidate(
+            player_id=999, display_name="Nobody Player", school="Duke", score=0.85
+        ),
         Candidate(player_id=998, display_name="Somebody Else", school=None, score=0.70),
     ]
     _stub_vector_search(monkeypatch, candidates=fake_candidates)
@@ -688,9 +696,7 @@ async def test_extract_board_routes_substack_url_through_api(
     flagg = await _make_player(db_session, display_name="Cooper Flagg")
     harper = await _make_player(db_session, display_name="Dylan Harper")
 
-    fixture_payload = json.loads(
-        (_FIXTURE_DIR / "big_board_free.json").read_text()
-    )
+    fixture_payload = json.loads((_FIXTURE_DIR / "big_board_free.json").read_text())
     api_urls_called: list[str] = []
 
     async def _stub_http_get(url: str) -> str:
@@ -743,9 +749,7 @@ async def test_extract_board_paywalled_substack_post_raises(
         url="https://example.substack.com/p/2026-nba-draft-big-board-paid",
     )
 
-    fixture_payload = json.loads(
-        (_FIXTURE_DIR / "big_board_paid.json").read_text()
-    )
+    fixture_payload = json.loads((_FIXTURE_DIR / "big_board_paid.json").read_text())
 
     async def _stub_http_get(url: str) -> str:
         return json.dumps(fixture_payload)
@@ -773,3 +777,75 @@ async def test_extract_board_paywalled_substack_post_raises(
         select(Board).where(Board.news_item_id == item.id)
     )
     assert result.scalar_one_or_none() is None
+
+
+# --- Vector-resolution circuit breaker -------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_extract_board_opens_vector_circuit_after_a_stall(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+    monkeypatch,
+) -> None:
+    """A stalled vector resolve disables vector search for the rest of the board.
+
+    Regression guard for the "Extract Board" spinner that never resolved: the
+    per-name embedding call had no ceiling, so one hung call (and, on a big
+    board, one per remaining name) froze the whole synchronous request. Once a
+    single resolve crosses the stall threshold, extraction stops calling the
+    vector path — so the board still gets created instead of hanging.
+    """
+    assert news_source.id is not None
+    item = await _make_news_item(db_session, source_id=news_source.id)
+
+    # Make the breaker trip on the very first slow call.
+    monkeypatch.setattr(
+        board_extraction_service, "_RESOLUTION_STALL_THRESHOLD_SECONDS", 0.05
+    )
+
+    calls = {"count": 0}
+
+    async def _slow_then_skipped(db, query: str, k: int = 5) -> list[Candidate]:
+        calls["count"] += 1
+        # First call stalls past the (patched) threshold; if the breaker works
+        # it is never invoked again, so later names cost nothing.
+        await asyncio.sleep(0.1)
+        return []
+
+    monkeypatch.setattr(
+        board_extraction_service, "find_candidate_players", _slow_then_skipped
+    )
+
+    _stub_extraction(
+        monkeypatch,
+        ExtractedBoard(
+            draft_year=2026,
+            published_at=datetime(2026, 3, 15),
+            entries=[
+                ExtractedBoardEntry(player_name="Nobody One", rank=1),
+                ExtractedBoardEntry(player_name="Nobody Two", rank=2),
+                ExtractedBoardEntry(player_name="Nobody Three", rank=3),
+            ],
+        ),
+    )
+
+    assert item.id is not None
+    board = await extract_board(
+        db_session,
+        news_item_id=item.id,
+        fetcher=_fake_fetcher("article text"),
+    )
+
+    assert board is not None
+    assert board.size == 3
+    # Circuit opened after the first stalled resolve: the other two names
+    # skipped the vector path entirely.
+    assert calls["count"] == 1
+
+    result = await db_session.execute(
+        select(BoardEntry).where(BoardEntry.board_id == board.id)
+    )
+    entries = result.scalars().all()
+    assert len(entries) == 3
+    assert all(e.resolution_method == ResolutionMethod.UNRESOLVED for e in entries)

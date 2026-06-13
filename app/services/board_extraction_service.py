@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -51,6 +52,16 @@ _GEMINI_TIMEOUT_SECONDS = 60
 # and lax on instruction-following; gemini-3.5-flash with response_schema
 # is materially better at honoring the no-bare-surname constraint.
 _GEMINI_MODEL = "gemini-3.5-flash"
+
+# Circuit-breaker for the per-name vector resolution step. The vector branch
+# embeds each unresolved name via Gemini (one network call apiece). A healthy
+# resolve finishes in a couple of seconds; a stalled embedding hits the
+# embedding service's own timeout (~20s). If a single resolve takes at least
+# this long we treat the embedding backend as degraded and skip the vector
+# step for the remaining names — so a board with dozens of names can't turn an
+# embedding outage into a multi-minute "Extract Board" hang. Exact/alias
+# resolution still runs; only the (already best-effort) vector candidates drop.
+_RESOLUTION_STALL_THRESHOLD_SECONDS = 15.0
 
 # Cap input to Gemini at ~30k chars (~7.5k tokens). Substack articles
 # rarely exceed this; if they do, we lose tail entries gracefully rather
@@ -237,8 +248,27 @@ async def extract_board(
     unresolved_names: list[str] = []
     seen_player_ids: set[int] = set()
     seen_positions: set[int] = set()
+    # Vector resolution embeds each name via Gemini; if one call stalls long
+    # enough to hit its timeout we treat the backend as degraded and stop
+    # attempting it for the rest of this board (see the constant's note).
+    vector_enabled = True
     for raw in extracted.entries:
-        resolution = await resolve_player(db, raw.player_name)
+        resolve_started = time.monotonic()
+        resolution = await resolve_player(
+            db, raw.player_name, use_vector=vector_enabled
+        )
+        if (
+            vector_enabled
+            and time.monotonic() - resolve_started
+            >= _RESOLUTION_STALL_THRESHOLD_SECONDS
+        ):
+            vector_enabled = False
+            logger.warning(
+                "board.extract.vector_circuit_open news_item_id=%s — embedding "
+                "backend looks degraded; resolving remaining names without "
+                "vector search.",
+                news_item_id,
+            )
 
         # Dedup: skip a rank or player that Gemini already emitted to avoid
         # unique-constraint violations. Only resolved entries (with a real
@@ -386,9 +416,7 @@ def _substack_api_url(url: str) -> Optional[str]:
         ):
             publication = path_parts[2]
             slug = path_parts[4]
-            return (
-                f"{parsed.scheme}://{publication}.substack.com" f"/api/v1/posts/{slug}"
-            )
+            return f"{parsed.scheme}://{publication}.substack.com/api/v1/posts/{slug}"
         return None
 
     # Canonical publication form: /p/<slug>
@@ -796,7 +824,9 @@ def normalize_player_name(name: str) -> str:
     return collapsed.lower()
 
 
-async def resolve_player(db: AsyncSession, raw_name: str) -> ResolutionResult:
+async def resolve_player(
+    db: AsyncSession, raw_name: str, *, use_vector: bool = True
+) -> ResolutionResult:
     """Resolve a raw player name to a ``players_master`` id via a three-step cascade.
 
     Cascade order:
@@ -818,6 +848,10 @@ async def resolve_player(db: AsyncSession, raw_name: str) -> ResolutionResult:
     Args:
         db: Async session; caller owns any open transaction.
         raw_name: The player name exactly as emitted by the extraction AI.
+        use_vector: When False, skip the step-3 hybrid/vector search entirely
+            and fall straight through to UNRESOLVED. Callers extracting a whole
+            board flip this off once the embedding backend looks degraded so a
+            stalled embedding can't be paid once per remaining name.
 
     Returns:
         A :class:`ResolutionResult` with:
@@ -849,6 +883,11 @@ async def resolve_player(db: AsyncSession, raw_name: str) -> ResolutionResult:
     )
     if alias_match is not None:
         return ResolutionResult(player_id=alias_match, method=ResolutionMethod.ALIAS)
+
+    # Circuit-breaker: the caller has decided the embedding backend is degraded,
+    # so skip the (best-effort) vector step rather than pay its timeout again.
+    if not use_vector:
+        return ResolutionResult(player_id=None, method=ResolutionMethod.UNRESOLVED)
 
     # Step 3: hybrid search (trigram lexical + cosine-distance vector).
     # Blending both signals surfaces bare/short-surname queries that pure vector
