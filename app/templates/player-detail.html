@@ -221,6 +221,157 @@
 
   <div class="section-divider"></div>
 
+  {# ==========================================================================
+     SUMMER LEAGUE SECTION
+     Per-year + career box-score production with Per Game / Per 36 / Per 100.
+     Omitted entirely when the player has no resolved Summer League logs.
+     ========================================================================== #}
+  {% macro sl_stat_hero(label, value, sub) %}
+  <div class="stat-hero">
+    <span class="stat-hero__label">{{ label }}</span>
+    <div class="stat-hero__value">{{ '%.1f' % value if value is not none else '—' }}</div>
+    <div class="stat-hero__sub">{{ sub }}</div>
+  </div>
+  {% endmacro %}
+
+  {% macro sl_mode_block(m, active) %}
+  <div class="sl-mode-data" data-sl-mode="{{ m.mode }}"{% if not active %} style="display:none;"{% endif %}>
+    <div class="stats-headline-row">
+      {{ sl_stat_hero('PTS', m.pts, 'Points') }}
+      {{ sl_stat_hero('REB', m.reb, 'Rebounds') }}
+      {{ sl_stat_hero('AST', m.ast, 'Assists') }}
+    </div>
+    <div class="stats-detail-grid">
+      <div class="stat-cell"><span class="stat-cell__label">STL</span><span class="stat-cell__value">{{ '%.1f' % m.stl if m.stl is not none else '—' }}</span></div>
+      <div class="stat-cell"><span class="stat-cell__label">BLK</span><span class="stat-cell__value">{{ '%.1f' % m.blk if m.blk is not none else '—' }}</span></div>
+      <div class="stat-cell"><span class="stat-cell__label">TOV</span><span class="stat-cell__value">{{ '%.1f' % m.tov if m.tov is not none else '—' }}</span></div>
+    </div>
+  </div>
+  {% endmacro %}
+
+  {% macro sl_season_panel(s, index, visible) %}
+  <div class="stats-content sl-season-data" data-sl-season-index="{{ index }}"{% if not visible %} style="display:none;"{% endif %}>
+    {{ sl_mode_block(s.modes.per_game, true) }}
+    {{ sl_mode_block(s.modes.per_36, false) }}
+    {{ sl_mode_block(s.modes.per_100, false) }}
+
+    <div class="stats-detail-grid sl-meta-grid">
+      <div class="stat-cell"><span class="stat-cell__label">MPG</span><span class="stat-cell__value">{{ '%.1f' % s.mpg if s.mpg is not none else '—' }}</span></div>
+      <div class="stat-cell"><span class="stat-cell__label">GP</span><span class="stat-cell__value">{{ s.gp }}</span></div>
+      <div class="stat-cell"><span class="stat-cell__label">GS</span><span class="stat-cell__value">{{ s.gs }}</span></div>
+    </div>
+
+    <div class="stats-section-label">Shooting Splits</div>
+    <div class="shooting-splits">
+      <div class="split-item">
+        <span class="split-label">FG%</span>
+        <div class="split-value">{{ '%.1f' % s.fg_pct if s.fg_pct is not none else '—' }}</div>
+        <div class="split-bar"><div class="split-bar__fill split-bar__fill--fg" style="width: {{ s.fg_pct if s.fg_pct is not none else 0 }}%;"></div></div>
+      </div>
+      <div class="split-item">
+        <span class="split-label">3P%</span>
+        <div class="split-value">{{ '%.1f' % s.fg3_pct if s.fg3_pct is not none else '—' }}</div>
+        <div class="split-bar"><div class="split-bar__fill split-bar__fill--3p" style="width: {{ s.fg3_pct if s.fg3_pct is not none else 0 }}%;"></div></div>
+        {% if s.fg3a_per_g is not none %}<div class="split-context">{{ '%.1f' % s.fg3a_per_g }} 3PA/g</div>{% endif %}
+      </div>
+      <div class="split-item">
+        <span class="split-label">FT%</span>
+        <div class="split-value">{{ '%.1f' % s.ft_pct if s.ft_pct is not none else '—' }}</div>
+        <div class="split-bar"><div class="split-bar__fill split-bar__fill--ft" style="width: {{ s.ft_pct if s.ft_pct is not none else 0 }}%;"></div></div>
+        {% if s.fta_per_g is not none %}<div class="split-context">{{ '%.1f' % s.fta_per_g }} FTA/g</div>{% endif %}
+      </div>
+      <div class="split-item">
+        <span class="split-label">TS%</span>
+        <div class="split-value">{{ '%.1f' % s.ts_pct if s.ts_pct is not none else '—' }}</div>
+        <div class="split-bar"><div class="split-bar__fill split-bar__fill--ts" style="width: {{ s.ts_pct if s.ts_pct is not none else 0 }}%;"></div></div>
+        <div class="split-context">SL context</div>
+      </div>
+    </div>
+
+    <div class="stats-context-bar">
+      <div class="context-item">
+        <span class="context-label">Season</span>
+        <span class="context-value">{{ s.season_label }}</span>
+      </div>
+      {% if s.venues %}
+      <div class="context-item">
+        <span class="context-label">Venue{{ 's' if s.venues | length > 1 else '' }}</span>
+        <span class="context-value">{{ s.venues | join(' + ') }}</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endmacro %}
+
+  {% if summer_league %}
+  <section class="section" id="summerLeagueSection">
+    <div class="stats-scoreboard sl-scoreboard">
+      <div class="scanlines"></div>
+
+      <div class="stats-header">
+        <div class="stats-title">
+          <svg style="width:1rem;height:1rem;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+          Summer League
+        </div>
+        <div class="sl-controls">
+          {% if summer_league.seasons | length > 1 %}
+          <div class="season-selector sl-season-selector">
+            {% for s in summer_league.seasons %}
+            <button class="season-btn sl-season-btn{% if loop.first %} active{% endif %}" data-sl-season-index="{{ loop.index0 }}">{{ s.tab_label }}</button>
+            {% endfor %}
+            <button class="season-btn sl-season-btn" data-sl-season-index="career">Career</button>
+          </div>
+          {% endif %}
+          <div class="season-selector sl-mode-selector">
+            <button class="season-btn sl-mode-btn active" data-sl-mode="per_game">Per Game</button>
+            <button class="season-btn sl-mode-btn" data-sl-mode="per_36">Per 36</button>
+            <button class="season-btn sl-mode-btn" data-sl-mode="per_100">Per 100</button>
+          </div>
+        </div>
+      </div>
+
+      {% for s in summer_league.seasons %}
+      {{ sl_season_panel(s, loop.index0, loop.first) }}
+      {% endfor %}
+      {% if summer_league.seasons | length > 1 %}
+      {{ sl_season_panel(summer_league.career, 'career', false) }}
+      {% endif %}
+
+      {% if summer_league.recent_games %}
+      <div class="sl-recent">
+        <div class="stats-section-label">Recent Games</div>
+        <table class="sl-recent__table">
+          <thead>
+            <tr><th>Date</th><th>Venue</th><th>Opp</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG</th><th>3P</th></tr>
+          </thead>
+          <tbody>
+            {% for g in summer_league.recent_games %}
+            <tr>
+              <td>{{ g.game_date or '—' }}</td>
+              <td>{{ g.venue }}</td>
+              <td>{{ g.opponent or '—' }}</td>
+              <td>{{ '%.1f' % g.minutes if g.minutes is not none else '—' }}</td>
+              <td>{{ g.pts if g.pts is not none else '—' }}</td>
+              <td>{{ g.reb if g.reb is not none else '—' }}</td>
+              <td>{{ g.ast if g.ast is not none else '—' }}</td>
+              <td>{{ g.fg }}</td>
+              <td>{{ g.fg3 }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+  {% endif %}
+
   {% if consensus %}
   <!-- ==========================================================================
        CONSENSUS RANK SECTION
@@ -692,6 +843,8 @@
   window.S3_IMAGE_BASE_URL = {{ s3_image_base_url | tojson | safe }};
   // Consensus rank history (array of {computed_at, consensus_rank}); null when no consensus.
   window.consensusHistory = {{ (consensus.history if consensus else none) | tojson | safe }};
+  // Summer League profile (seasons/career/recent_games); null when player has none.
+  window.SUMMER_LEAGUE_DATA = {{ summer_league | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/player-detail.js') }}"></script>
 <script src="{{ url_for('static', path='js/film-room.js') }}"></script>

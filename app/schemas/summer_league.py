@@ -429,6 +429,7 @@ class SummerLeaguePlayerGameLog(SQLModel, table=True):  # type: ignore[call-arg]
             "competition_id",
             "player_id",
         ),
+        Index("ix_summer_league_player_game_logs_player_id", "player_id"),
         Index(
             "ix_summer_league_player_game_logs_competition_source_player",
             "competition_id",

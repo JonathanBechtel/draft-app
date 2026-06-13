@@ -64,6 +64,10 @@ from app.services.player_service import (
     get_player_profile_by_slug,
 )
 from app.services.school_logo_service import get_logo_url_for_school
+from app.services.summer_league_stats_service import (
+    get_summer_league_profile_by_player_id,
+    summer_league_to_context,
+)
 from app.utils.db_async import get_session
 from app.utils.sparkline import build_sparkline_path, sparkline_direction
 from app.utils.images import (
@@ -914,6 +918,16 @@ async def player_detail(
         for row in college_stats_rows
     ]
 
+    # Fetch Summer League production for the SL scoreboard section.
+    # None (player not resolved to any SL game log) => omit the section.
+    summer_league = None
+    if player_profile.id is not None:
+        sl_profile = await get_summer_league_profile_by_player_id(
+            db, player_id=player_profile.id
+        )
+        if sl_profile is not None:
+            summer_league = summer_league_to_context(sl_profile)
+
     # Fetch consensus detail for this player.
     # Treat a None result (player not on any board) as "omit the section" — do
     # NOT raise 404; the rest of the page must still render normally.
@@ -1113,6 +1127,7 @@ async def player_detail(
             "player": player,
             "consensus": consensus,
             "college_stats": college_stats,
+            "summer_league": summer_league,
             "percentile_data": percentile_data,
             "comparison_data": comparison_data,
             "player_feed": player_feed,

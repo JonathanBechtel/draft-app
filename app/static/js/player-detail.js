@@ -1704,6 +1704,42 @@ const CollegeStatsModule = {
 };
 
 /* ============================================================================
+ * SUMMER LEAGUE STATS MODULE
+ * Two independent toggles on the Summer League scoreboard:
+ *  - year/career selector (.sl-season-btn -> .sl-season-data)
+ *  - stat-mode selector (.sl-mode-btn -> .sl-mode-data, across all panels)
+ * Visibility composes via parent/child: hiding a season container hides its
+ * mode blocks regardless of the mode toggle's per-block display value.
+ * ============================================================================
+ */
+const SummerLeagueStatsModule = {
+  init() {
+    const root = document.getElementById('summerLeagueSection');
+    if (!root) return;
+
+    const bindToggle = (btnSelector, dataKey, paneSelector, paneKey) => {
+      const buttons = root.querySelectorAll(btnSelector);
+      if (!buttons.length) return;
+      buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const value = btn.dataset[dataKey];
+          buttons.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          root.querySelectorAll(paneSelector).forEach(pane => {
+            pane.style.display = pane.dataset[paneKey] === value ? '' : 'none';
+          });
+        });
+      });
+    };
+
+    bindToggle('.sl-season-btn[data-sl-season-index]', 'slSeasonIndex',
+               '.sl-season-data[data-sl-season-index]', 'slSeasonIndex');
+    bindToggle('.sl-mode-btn[data-sl-mode]', 'slMode',
+               '.sl-mode-data[data-sl-mode]', 'slMode');
+  }
+};
+
+/* ============================================================================
    COMBINE SCORE HEADLINE — static donut ring + dynamic updates
    ========================================================================= */
 var CombineScoreModule = {
@@ -1944,6 +1980,7 @@ document.addEventListener('DOMContentLoaded', () => {
   CombineScoreModule.init();
   ScoreboardModule.init();
   CollegeStatsModule.init();
+  SummerLeagueStatsModule.init();
   PerformanceModule.init();
   ConsensusChartModule.init();
   PlayerComparisonsModule.init();
