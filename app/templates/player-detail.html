@@ -331,7 +331,10 @@
 
         {% if summer_league.recent_games %}
         <div class="sl-recent">
-          <div class="stats-section-label">Recent Games</div>
+          <div class="sl-recent__head">
+            <div class="stats-section-label">Recent Games</div>
+            <a class="sl-gamelog-btn" href="/players/{{ player.slug }}/summer-league">Game Log &rarr;</a>
+          </div>
           <div class="sl-table-wrap">
             <table class="sl-stats-table sl-recent__table">
               <thead>
@@ -340,7 +343,9 @@
               <tbody>
                 {% for g in summer_league.recent_games %}
                 <tr>
-                  <th scope="row">{{ g.game_date or '—' }}</th>
+                  <th scope="row">
+                    {% if g.game_id %}<a class="sl-game-link" href="/stats/summer-league/{{ g.year }}/games/{{ g.game_id }}">{{ g.game_date or '—' }}</a>{% else %}{{ g.game_date or '—' }}{% endif %}
+                  </th>
                   <td>{{ g.venue }}</td>
                   <td>{{ g.opponent or '—' }}</td>
                   <td>{{ '%.1f' % g.minutes if g.minutes is not none else '—' }}</td>

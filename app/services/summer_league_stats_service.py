@@ -77,6 +77,7 @@ class SummerLeagueModeStats:
 class SummerLeagueGameLine:
     """One recent Summer League game line for the mini-table."""
 
+    game_id: Optional[int]
     game_date: Optional[str]
     year: int
     venue: str
@@ -249,6 +250,7 @@ async def get_summer_league_profile_by_player_id(
 
     stmt = (
         select(
+            SummerLeagueGame.id.label("sl_game_id"),  # type: ignore[union-attr]
             SummerLeagueCompetition.year,
             SummerLeagueCompetition.venue_slug,
             SummerLeagueGame.game_date,
@@ -328,6 +330,7 @@ async def get_summer_league_profile_by_player_id(
             continue
         recent_games.append(
             SummerLeagueGameLine(
+                game_id=row.sl_game_id,
                 game_date=row.game_date.isoformat() if row.game_date else None,
                 year=row.year,
                 venue=VENUE_LABELS.get(row.venue_slug, row.venue_slug),

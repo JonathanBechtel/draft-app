@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}{{ player.name }} — Summer League Game Logs — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% endblock %}
+
+{% macro n(v) %}{{ v if v is not none else '—' }}{% endmacro %}
+{% macro mins(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
+
+{% block content %}
+<main class="container slg-page slg-logs">
+
+  <a class="slg-back" href="/players/{{ player.slug }}">&larr; {{ player.name }}</a>
+
+  <header class="slg-head">
+    <p class="slg-eyebrow">Summer League &middot; Game Logs</p>
+    <h1 class="slg-title">{{ player.name }}</h1>
+    <p class="slg-sub">
+      Complete Summer League game-by-game logs &middot;
+      {{ total_games }} game{{ '' if total_games == 1 else 's' }} across {{ seasons | length }}
+      competition{{ '' if seasons | length == 1 else 's' }}.
+    </p>
+  </header>
+
+  {% if not seasons %}
+  <div class="stats-scoreboard slg-board">
+    <div class="scanlines"></div>
+    <p class="slg-empty slg-empty--block">{{ player.name }} hasn't played Summer League yet.</p>
+  </div>
+  {% endif %}
+
+  {% for s in seasons %}
+  <section class="slg-season">
+    <div class="slg-season__head">
+      <h2 class="slg-season__title">{{ s.label }}</h2>
+      <span class="slg-season__gp">{{ s.rows | length }} G</span>
+    </div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-logs-table">
+          <thead>
+            <tr>
+              <th scope="col">Date</th><th scope="col">Opp</th>
+              <th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th>
+              <th scope="col">AST</th><th scope="col">STL</th><th scope="col">BLK</th>
+              <th scope="col">TOV</th><th scope="col">FG</th><th scope="col">3P</th>
+              <th scope="col">FT</th><th scope="col">+/−</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in s.rows %}
+            <tr>
+              <th scope="row"><a class="slg-game-link" href="/stats/summer-league/{{ s.year }}/games/{{ g.game_id }}">{{ g.game_date or '—' }}</a></th>
+              <td>{{ g.opponent or '—' }}</td>
+              <td>{{ mins(g.minutes) }}</td><td class="slg-strong">{{ n(g.pts) }}</td>
+              <td>{{ n(g.reb) }}</td><td>{{ n(g.ast) }}</td><td>{{ n(g.stl) }}</td>
+              <td>{{ n(g.blk) }}</td><td>{{ n(g.tov) }}</td>
+              <td>{{ g.fg }}</td><td>{{ g.fg3 }}</td><td>{{ g.ft }}</td>
+              <td>{{ n(g.plus_minus) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+
+</main>
+{% endblock %}
