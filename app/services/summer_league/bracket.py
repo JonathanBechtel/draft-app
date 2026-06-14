@@ -57,5 +57,5 @@ async def apply_game_rounds(db: AsyncSession, rounds: dict[str, str]) -> int:
             .where(SummerLeagueGame.nba_stats_game_id == game_id)  # type: ignore[arg-type]
             .values(round_label=label)
         )
-        updated += result.rowcount or 0
+        updated += result.rowcount or 0  # type: ignore[attr-defined]
     return updated
