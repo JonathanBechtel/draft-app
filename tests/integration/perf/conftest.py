@@ -14,7 +14,7 @@ seeded player slug so the ``/players/{slug}`` route can be exercised.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 import pytest_asyncio
@@ -29,6 +29,13 @@ from app.schemas.player_content_mentions import (
     PlayerContentMention,
 )
 from app.schemas.players_master import PlayerMaster
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeaguePlayerGameLog,
+    SummerLeagueSourcePlayer,
+    SummerLeagueTeamEntry,
+)
 from app.services import consensus_service as svc
 from tests.integration.conftest import (
     make_article,
@@ -203,6 +210,73 @@ async def representative_dataset(db_session: AsyncSession) -> SeededData:
                 player_id=players[i % len(players)].id,
             )
         )
+
+    # --- Summer League: one competition/game/log so the SL landing exercises
+    # its populated path (season overview + leaders + all-time) rather than the
+    # empty-state short-circuit.
+    comp = SummerLeagueCompetition(
+        year=2025,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2025 Las Vegas",
+        starts_on=date(2025, 7, 1),
+        ends_on=date(2025, 7, 15),
+    )
+    db_session.add(comp)
+    await db_session.flush()
+    assert comp.id is not None
+    sl_home = SummerLeagueTeamEntry(
+        competition_id=comp.id,
+        nba_stats_team_id="perf-sl-home",
+        raw_team_name="Perf Home",
+        raw_team_abbreviation="PFH",
+        team_slug="perf-home",
+    )
+    sl_away = SummerLeagueTeamEntry(
+        competition_id=comp.id,
+        nba_stats_team_id="perf-sl-away",
+        raw_team_name="Perf Away",
+        raw_team_abbreviation="PFA",
+        team_slug="perf-away",
+    )
+    db_session.add_all([sl_home, sl_away])
+    await db_session.flush()
+    assert sl_home.id is not None and sl_away.id is not None
+    sl_game = SummerLeagueGame(
+        competition_id=comp.id,
+        nba_stats_game_id="perf-sl-game",
+        game_date=date(2025, 7, 5),
+        home_team_entry_id=sl_home.id,
+        away_team_entry_id=sl_away.id,
+        home_score=100,
+        away_score=90,
+    )
+    db_session.add(sl_game)
+    await db_session.flush()
+    assert sl_game.id is not None
+    sl_sp = SummerLeagueSourcePlayer(
+        nba_stats_person_id="perf-sl-person",
+        raw_player_name=players[0].display_name or "Player",
+        normalized_name=(players[0].display_name or "player").lower(),
+        canonical_player_id=players[0].id,
+    )
+    db_session.add(sl_sp)
+    await db_session.flush()
+    db_session.add(
+        SummerLeaguePlayerGameLog(
+            competition_id=comp.id,
+            game_id=sl_game.id,
+            team_entry_id=sl_home.id,
+            source_player_id=sl_sp.id,
+            player_id=players[0].id,
+            nba_stats_person_id=sl_sp.nba_stats_person_id,
+            raw_player_name=players[0].display_name or "Player",
+            minutes_seconds=1800,
+            pts=20,
+            reb=8,
+            ast=5,
+        )
+    )
 
     await db_session.commit()
 
