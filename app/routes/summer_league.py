@@ -25,8 +25,14 @@ from app.services.summer_league_season_service import (
     get_season_leaders,
     get_season_overview,
     get_season_years,
+    get_venue_leaders,
 )
+from app.services.summer_league_team_service import get_team_season, get_venue
 from app.utils.db_async import get_session
+
+# Schedule lists on the season-hub and venue pages page 20 games at a time so
+# the section stays compact instead of scrolling the whole slate.
+SCHEDULE_PAGE_SIZE = 20
 
 LANDING_RECENT_GAMES = 8
 
@@ -186,6 +192,7 @@ async def summer_league_landing(
 async def summer_league_season(
     request: Request,
     year: int,
+    page: int = Query(default=1, ge=1),
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
     """Season hub: a year's venues, schedule, and leaderboards."""
@@ -197,7 +204,9 @@ async def summer_league_season(
 
     years = await get_season_years(db)
     leaders = await get_season_leaders(db, year)
-    schedule = await search_games(db, year=year, page=1, page_size=12)
+    schedule = await search_games(
+        db, year=year, page=page, page_size=SCHEDULE_PAGE_SIZE
+    )
 
     return request.app.state.templates.TemplateResponse(
         "stats/summer-league/season.html",
@@ -208,6 +217,61 @@ async def summer_league_season(
             "overview": overview,
             "leaders": leaders,
             "schedule": schedule,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/stats/summer-league/{year}/{venue}", response_class=HTMLResponse)
+async def summer_league_venue(
+    request: Request,
+    year: int,
+    venue: str,
+    page: int = Query(default=1, ge=1),
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """Single venue within a season: standings, leaders, schedule, teams."""
+    detail = await get_venue(db, year, venue)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Summer League venue not found")
+
+    leaders = await get_venue_leaders(db, year, venue)
+    schedule = await search_games(
+        db, year=year, venue_slug=venue, page=page, page_size=SCHEDULE_PAGE_SIZE
+    )
+
+    return request.app.state.templates.TemplateResponse(
+        "stats/summer-league/venue.html",
+        {
+            "request": request,
+            "detail": detail,
+            "leaders": leaders,
+            "schedule": schedule,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/stats/summer-league/{year}/{venue}/{team}", response_class=HTMLResponse)
+async def summer_league_team(
+    request: Request,
+    year: int,
+    venue: str,
+    team: str,
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """One team's run at a single venue-year: record, roster, schedule."""
+    team_season = await get_team_season(db, year, venue, team)
+    if team_season is None:
+        raise HTTPException(status_code=404, detail="Summer League team not found")
+
+    return request.app.state.templates.TemplateResponse(
+        "stats/summer-league/team.html",
+        {
+            "request": request,
+            "team": team_season,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

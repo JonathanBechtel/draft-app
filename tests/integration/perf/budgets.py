@@ -50,6 +50,9 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/consensus": 80,
     "/stats/summer-league": 8,
     "/stats/summer-league/games": 5,
+    "/stats/summer-league/{year}": 7,
+    "/stats/summer-league/{year}/{venue}": 6,
+    "/stats/summer-league/{year}/{venue}/{team}": 3,
 }
 
 # Admin route budgets (authentication-gated; tested separately via

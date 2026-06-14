@@ -54,6 +54,10 @@ class SeededData:
     """Handle returned to budget tests."""
 
     player_slug: str
+    # Summer League seed coordinates for the year/venue/team drill-down routes.
+    sl_year: int = 2025
+    sl_venue: str = "las_vegas"
+    sl_team: str = "perf-home"
 
 
 @pytest.fixture(autouse=True)

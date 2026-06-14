@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}{{ team.name }} — {{ team.venue }} {{ team.year }} Summer League — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% endblock %}
+
+{% macro n1(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
+
+{% block content %}
+<main class="container slg-page">
+
+  <a class="slg-back" href="/stats/summer-league/{{ team.year }}/{{ team.venue_slug }}">&larr; {{ team.venue }} {{ team.year }}</a>
+
+  <header class="slg-team-head">
+    <div>
+      <p class="slg-eyebrow">{{ team.venue }} &middot; {{ team.year }}</p>
+      <h1 class="slg-title">{{ team.name }}</h1>
+    </div>
+    <div class="slg-team-record">
+      <span class="slg-team-record__wl">{{ team.wins }}–{{ team.losses }}</span>
+      <span class="slg-team-record__label">Record</span>
+    </div>
+  </header>
+
+  {# Quick stats #}
+  <div class="slg-quickstats">
+    <div class="slg-quickstat"><span class="slg-quickstat__v">{{ n1(team.ppg) }}</span><span class="slg-quickstat__l">PPG</span></div>
+    <div class="slg-quickstat"><span class="slg-quickstat__v">{{ n1(team.opp_ppg) }}</span><span class="slg-quickstat__l">Opp PPG</span></div>
+    <div class="slg-quickstat">
+      <span class="slg-quickstat__v {% if team.ppg is not none and team.opp_ppg is not none %}{{ 'slg-pos' if team.ppg > team.opp_ppg else 'slg-neg' }}{% endif %}">
+        {{ '%+.1f' % (team.ppg - team.opp_ppg) if team.ppg is not none and team.opp_ppg is not none else '—' }}
+      </span>
+      <span class="slg-quickstat__l">Diff</span>
+    </div>
+  </div>
+
+  {# Roster #}
+  <section class="slg-leaders">
+    <div class="slg-leaders__head"><h2 class="slg-section-title">Roster</h2></div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-roster">
+          <thead>
+            <tr>
+              <th scope="col" class="slg-roster__name">Player</th>
+              <th scope="col">GP</th><th scope="col">PPG</th><th scope="col">RPG</th>
+              <th scope="col">APG</th><th scope="col">FG%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in team.roster %}
+            <tr>
+              <th scope="row" class="slg-roster__name">
+                {% if p.slug %}<a href="/players/{{ p.slug }}">{{ p.name }}</a>{% else %}<span class="slg-bx-name--stub">{{ p.name }}</span>{% endif %}
+              </th>
+              <td>{{ p.gp }}</td><td class="slg-strong">{{ n1(p.ppg) }}</td>
+              <td>{{ n1(p.rpg) }}</td><td>{{ n1(p.apg) }}</td><td>{{ n1(p.fg_pct) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="slg-empty">No roster data.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  {# Schedule #}
+  <section class="slg-recent-block">
+    <div class="slg-leaders__head"><h2 class="slg-section-title">Schedule &amp; Results</h2></div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-table">
+          <thead>
+            <tr><th scope="col">Date</th><th scope="col"></th><th scope="col">Opponent</th><th scope="col">Result</th></tr>
+          </thead>
+          <tbody>
+            {% for g in team.schedule %}
+            <tr>
+              <th scope="row"><a class="slg-game-link" href="/stats/summer-league/{{ team.year }}/games/{{ g.game_id }}">{{ g.game_date or '—' }}</a></th>
+              <td class="slg-loc">{{ 'vs' if g.is_home else '@' }}</td>
+              <td>{{ g.opponent or '—' }}</td>
+              <td>
+                {% if g.result %}<span class="slg-res slg-res--{{ g.result | lower }}">{{ g.result }}</span>
+                {{ g.team_score }}–{{ g.opp_score }}{% else %}—{% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="slg-empty">No games.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+{% endblock %}

@@ -31,6 +31,26 @@
 </div>
 {% endmacro %}
 
+{# Prev/Next pager for a paginated GamesPage. `base_url` is the page path,
+   `anchor` (e.g. "#schedule") keeps the viewport on the section after paging. #}
+{% macro pager(base_url, result, anchor='') %}
+{% if result.total_pages > 1 %}
+<nav class="slg-pager" aria-label="Schedule pagination">
+  {% if result.page > 1 %}
+  <a class="slg-pager__btn" href="{{ base_url }}?page={{ result.page - 1 }}{{ anchor }}">&larr; Prev</a>
+  {% else %}
+  <span class="slg-pager__btn slg-pager__btn--off">&larr; Prev</span>
+  {% endif %}
+  <span class="slg-pager__info">{{ result.page }} / {{ result.total_pages }}</span>
+  {% if result.page < result.total_pages %}
+  <a class="slg-pager__btn" href="{{ base_url }}?page={{ result.page + 1 }}{{ anchor }}">Next &rarr;</a>
+  {% else %}
+  <span class="slg-pager__btn slg-pager__btn--off">Next &rarr;</span>
+  {% endif %}
+</nav>
+{% endif %}
+{% endmacro %}
+
 {# tbody rows for a compact games table (Date · Venue · Matchup). #}
 {% macro game_rows(games) %}
 {% for g in games %}

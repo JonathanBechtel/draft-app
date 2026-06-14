@@ -35,7 +35,12 @@ async def test_route_within_query_budget(
     un-batched serial load) or, if the new query is genuinely required, raise the
     budget in the same diff so the added per-request cost is reviewed.
     """
-    url = route_template.format(slug=representative_dataset.player_slug)
+    url = route_template.format(
+        slug=representative_dataset.player_slug,
+        year=representative_dataset.sl_year,
+        venue=representative_dataset.sl_venue,
+        team=representative_dataset.sl_team,
+    )
     budget = ROUTE_BUDGETS[route_template]
 
     with count_queries(async_engine) as captured:
