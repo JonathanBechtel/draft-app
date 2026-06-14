@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
 {% endblock %}
 
-{% from 'stats/summer-league/_sl_macros.html' import leader_board, game_rows, pager %}
+{% from 'stats/summer-league/_sl_macros.html' import leader_board, game_rows, pager, team_logo %}
 
 {% block content %}
 <main class="container slg-page">
@@ -28,11 +28,17 @@
   {% macro bracket_match(g, year) %}
   <a class="slg-bm" href="/stats/summer-league/{{ year }}/games/{{ g.game_id }}">
     <div class="slg-bm__team {% if g.winner == 'away' %}slg-bm__team--win{% endif %}">
-      <span class="slg-bm__name">{{ g.away_abbr or g.away_name }}</span>
+      <span class="slg-bm__name">
+        {{ team_logo(g.away_logo) }}
+        {{ g.away_abbr or g.away_name }}
+      </span>
       <span class="slg-bm__score">{{ g.away_score if g.away_score is not none else '—' }}</span>
     </div>
     <div class="slg-bm__team {% if g.winner == 'home' %}slg-bm__team--win{% endif %}">
-      <span class="slg-bm__name">{{ g.home_abbr or g.home_name }}</span>
+      <span class="slg-bm__name">
+        {{ team_logo(g.home_logo) }}
+        {{ g.home_abbr or g.home_name }}
+      </span>
       <span class="slg-bm__score">{{ g.home_score if g.home_score is not none else '—' }}</span>
     </div>
   </a>
@@ -76,7 +82,9 @@
             {% set gp = s.wins + s.losses %}
             <tr>
               <th scope="row" class="slg-standings__team">
-                <a href="/stats/summer-league/{{ detail.year }}/{{ detail.venue_slug }}/{{ s.team_slug }}">{{ s.name }}</a>
+                <a href="/stats/summer-league/{{ detail.year }}/{{ detail.venue_slug }}/{{ s.team_slug }}">
+                  {{ team_logo(s.logo_url) }}{{ s.name }}
+                </a>
               </th>
               <td>{{ s.wins }}</td><td>{{ s.losses }}</td>
               <td>{{ '%.3f' % (s.wins / gp) if gp else '—' }}</td>

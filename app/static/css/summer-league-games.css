@@ -630,3 +630,17 @@
 .slg-bm__team--win .slg-bm__score { color: var(--color-accent-emerald); }
 .slg-bm__name { letter-spacing: 0.02em; }
 .slg-bm__score { font-variant-numeric: tabular-nums; }
+
+/* ===================================================== Team logos */
+.slg-tlogo {
+  height: 1.1rem;
+  width: 1.1rem;
+  object-fit: contain;
+  vertical-align: -0.2rem;
+  margin-right: 0.35rem;
+}
+.slg-tlogo--lg { height: 2.75rem; width: 2.75rem; vertical-align: middle; margin-right: 0; }
+.slg-team-head__id { display: flex; align-items: center; gap: 0.9rem; }
+/* In the bracket cards, the logo sits inside the name flex item. */
+.slg-bm__name { display: inline-flex; align-items: center; }
+.slg-bm__name .slg-tlogo { margin-right: 0.4rem; }
