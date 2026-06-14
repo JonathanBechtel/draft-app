@@ -133,6 +133,25 @@ def build_playbyplay_params(game_id: str) -> dict[str, str]:
     return {"GameID": game_id.strip(), "StartPeriod": "0", "EndPeriod": "10"}
 
 
+def build_schedule_params(*, league_id: str, season: int | str) -> dict[str, str]:
+    """Build params for the NBA Stats ``scheduleleaguev2`` endpoint.
+
+    The schedule feed carries each game's tournament round via ``gameSubLabel``
+    (e.g. "Semifinals" / "Championship"), which the game log does not.
+
+    Args:
+        league_id: Summer League NBA Stats LeagueID.
+        season: Four-digit Summer League season year.
+
+    Returns:
+        Complete query parameter dictionary.
+    """
+    return {
+        "LeagueID": normalize_league_id(league_id),
+        "Season": normalize_season(season),
+    }
+
+
 def build_shotchart_params(
     *,
     league_id: str,
