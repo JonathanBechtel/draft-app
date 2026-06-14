@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
 {% endblock %}
 
+{% from 'stats/summer-league/_sl_macros.html' import team_logo %}
+
 {% macro n1(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
 
 {% block content %}
@@ -16,7 +18,7 @@
 
   <header class="slg-team-head">
     <div class="slg-team-head__id">
-      {% if team.logo_url %}<img class="slg-tlogo slg-tlogo--lg" src="{{ team.logo_url }}" alt="" loading="lazy">{% endif %}
+      {{ team_logo(team.logo_url, lg=true) }}
       <div>
         <p class="slg-eyebrow">{{ team.venue }} &middot; {{ team.year }}</p>
         <h1 class="slg-title">{{ team.name }}</h1>

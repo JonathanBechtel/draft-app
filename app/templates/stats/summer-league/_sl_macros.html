@@ -10,6 +10,11 @@
 </nav>
 {% endmacro %}
 
+{# An optional NBA team logo (self-hosted SVG). `lg` enlarges it for headers. #}
+{% macro team_logo(url, lg=false) %}
+{%- if url %}<img class="slg-tlogo{% if lg %} slg-tlogo--lg{% endif %}" src="{{ url }}" alt="" loading="lazy">{% endif -%}
+{% endmacro %}
+
 {# A compact single-stat leaderboard card. `unit` is the stat label (PPG / PTS);
    each row carries its own service-formatted `display` value. #}
 {% macro leader_board(title, unit, rows) %}
