@@ -20,6 +20,7 @@ from app.services.summer_league_games_service import (
     resolve_player_ref,
     search_games,
 )
+from app.services.summer_league_leaders_service import get_leaders
 from app.services.summer_league_season_service import (
     get_alltime_leaders,
     get_season_leaders,
@@ -101,6 +102,40 @@ async def summer_league_games_index(
                 "player": player,
             },
             "player_label": player_label,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/stats/summer-league/leaders", response_class=HTMLResponse)
+async def summer_league_leaders(
+    request: Request,
+    mode: str = Query(default="per_game"),
+    year: int | None = Query(default=None),
+    sort: str | None = Query(default=None),
+    dir: str = Query(default="desc"),
+    min_gp: int = Query(default=2, ge=0),
+    min_min: int = Query(default=60, ge=0),
+    page: int = Query(default=1, ge=1),
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """Comprehensive, sortable Summer League leaderboard across display modes."""
+    result = await get_leaders(
+        db,
+        mode=mode,
+        year=year,
+        sort=sort,
+        direction=dir,
+        min_games=min_gp,
+        min_minutes=min_min,
+        page=page,
+    )
+    return request.app.state.templates.TemplateResponse(
+        "stats/summer-league/leaders.html",
+        {
+            "request": request,
+            "result": result,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

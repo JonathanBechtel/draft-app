@@ -644,3 +644,25 @@
 /* In the bracket cards, the logo sits inside the name flex item. */
 .slg-bm__name { display: inline-flex; align-items: center; }
 .slg-bm__name .slg-tlogo { margin-right: 0.4rem; }
+
+/* ===================================================== Leaders page */
+.slg-modetabs { flex-wrap: wrap; gap: 0.3rem; margin-bottom: 1rem; }
+.slg-modetabs .season-btn { text-decoration: none; }
+.slg-num { min-width: 5rem; }
+.slg-leaders-table { width: 100%; }
+.slg-rank { color: var(--color-slate-400); font-variant-numeric: tabular-nums; }
+.slg-lead-name { text-align: left !important; min-width: 11rem; }
+.slg-lead-name a { color: var(--color-slate-900); text-decoration: none; font-weight: 600; }
+.slg-lead-name a:hover { color: var(--color-accent-emerald); text-decoration: underline; }
+.slg-sort {
+  color: var(--color-slate-600);
+  text-decoration: none;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.slg-sort:hover { color: var(--color-accent-emerald); }
+.slg-sort--active { color: var(--color-slate-900); font-weight: 600; }
+.slg-sort__arrow { color: var(--color-accent-emerald); font-size: 0.7rem; }
+.slg-col-ph { color: var(--color-slate-300); }
