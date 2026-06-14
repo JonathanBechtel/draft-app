@@ -13,6 +13,12 @@
       // Submitting omits `page`, which the route defaults to 1 — so a filter
       // change naturally resets pagination.
       el.addEventListener("change", function () {
+        // Drop empty-valued controls (e.g. the "All-time" year option) so they
+        // are omitted from the query string rather than submitted as `year=`,
+        // which would fail the route's `int | None` validation.
+        form.querySelectorAll("[name]").forEach(function (field) {
+          field.disabled = field.value === "";
+        });
         form.submit();
       });
     });

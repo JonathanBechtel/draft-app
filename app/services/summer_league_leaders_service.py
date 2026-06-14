@@ -310,7 +310,8 @@ async def _aggregate(
 def _compute_row(r: Any, mode: str) -> LeaderRow:
     """Compute one player's column values for the selected mode."""
     gp = int(r.gp)
-    minutes = (r.sec or 0) / 60.0
+    sec = float(r.sec or 0)
+    minutes = sec / 60.0
     poss = (r.pace_sec or 0) / (60.0 * _MINUTES_PER_GAME)
 
     if mode == "per_game":
@@ -345,14 +346,17 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
         "ts_pct": _pct(_safe_div(float(r.pts or 0), 2.0 * (fga + 0.44 * fta))),
         "efg_pct": _pct(_safe_div(float(r.fgm or 0) + 0.5 * float(r.fg3m or 0), fga)),
-        # Minute-weighted on-court rates.
-        "usg_pct": _round1(_safe_div(float(r.w_usg or 0), float(r.sec or 0))),
-        "pie": _round1(_safe_div(float(r.w_pie or 0) * 100.0, float(r.sec or 0))),
-        "off_rating": _round1(_safe_div(float(r.w_off or 0), float(r.sec or 0))),
-        "def_rating": _round1(_safe_div(float(r.w_def or 0), float(r.sec or 0))),
-        "net_rating": _round1(_safe_div(float(r.w_net or 0), float(r.sec or 0))),
-        "reb_pct": _round1(_safe_div(float(r.w_reb or 0), float(r.sec or 0))),
-        "ast_pct": _round1(_safe_div(float(r.w_ast or 0), float(r.sec or 0))),
+        # Minute-weighted on-court rates. Stored percentages are fractions
+        # (0.41 == 41%), so scale to display percent; ratings are already on the
+        # 100-point scale. A NULL weighted sum means no row supplied the metric,
+        # so it stays None ("—") rather than collapsing to 0.0.
+        "usg_pct": _wrate(r.w_usg, sec, scale=100.0),
+        "pie": _wrate(r.w_pie, sec, scale=100.0),
+        "off_rating": _wrate(r.w_off, sec),
+        "def_rating": _wrate(r.w_def, sec),
+        "net_rating": _wrate(r.w_net, sec),
+        "reb_pct": _wrate(r.w_reb, sec, scale=100.0),
+        "ast_pct": _wrate(r.w_ast, sec, scale=100.0),
         # Composite metrics pending methodology.
         "gamescore": None,
         "sl_score": None,
@@ -362,5 +366,22 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
     )
 
 
-def _round1(v: Optional[float]) -> Optional[float]:
-    return round(v, 1) if v is not None else None
+def _wrate(
+    weighted: Optional[float], sec: float, *, scale: float = 1.0
+) -> Optional[float]:
+    """Minute-weighted rate ``sum(metric*sec)/sec``, ``None`` when unsupplied.
+
+    Args:
+        weighted: ``sum(metric * seconds)`` from the aggregate, or ``None`` if no
+            row supplied the metric.
+        sec: Total seconds played (the weighting denominator).
+        scale: Multiplier applied to the rate (``100`` to turn a stored fraction
+            into a display percent; ``1`` for already-scaled ratings).
+
+    Returns:
+        The scaled rate rounded to one decimal, or ``None`` when the metric is
+        absent or no minutes were played.
+    """
+    if weighted is None or not sec:
+        return None
+    return round(float(weighted) / sec * scale, 1)

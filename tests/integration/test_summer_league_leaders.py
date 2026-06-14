@@ -156,6 +156,11 @@ async def test_leaders_modes_ranking_and_filter(
     placeholders = {c.key for c in adv.columns if c.placeholder}
     assert placeholders == {"gamescore", "sl_score"}
     assert adv.rows[0].values["ts_pct"] is not None
+    # Stored advanced fields are fractions (0.25 == 25%); the leaderboard scales
+    # them to display percent. Ratings keep their native 100-point scale.
+    assert adv.rows[0].values["usg_pct"] == pytest.approx(25.0)
+    assert adv.rows[0].values["pie"] == pytest.approx(12.0)
+    assert adv.rows[0].values["off_rating"] == pytest.approx(110.0)
     assert adv.rows[0].values["gamescore"] is None
 
 
