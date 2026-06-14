@@ -15,9 +15,12 @@
   <a class="slg-back" href="/stats/summer-league/{{ team.year }}/{{ team.venue_slug }}">&larr; {{ team.venue }} {{ team.year }}</a>
 
   <header class="slg-team-head">
-    <div>
-      <p class="slg-eyebrow">{{ team.venue }} &middot; {{ team.year }}</p>
-      <h1 class="slg-title">{{ team.name }}</h1>
+    <div class="slg-team-head__id">
+      {% if team.logo_url %}<img class="slg-tlogo slg-tlogo--lg" src="{{ team.logo_url }}" alt="" loading="lazy">{% endif %}
+      <div>
+        <p class="slg-eyebrow">{{ team.venue }} &middot; {{ team.year }}</p>
+        <h1 class="slg-title">{{ team.name }}</h1>
+      </div>
     </div>
     <div class="slg-team-record">
       <span class="slg-team-record__wl">{{ team.wins }}–{{ team.losses }}</span>

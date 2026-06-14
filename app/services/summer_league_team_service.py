@@ -25,6 +25,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamEntry,
 )
+from app.services.summer_league.team_logos import franchise_logo_url
 from app.services.summer_league_games_service import _enum_str, _venue_label
 from app.services.summer_league_season_service import _iso
 
@@ -51,6 +52,7 @@ class TeamStanding:
     losses: int
     points_for: int
     points_against: int
+    logo_url: Optional[str] = None
 
 
 @dataclass
@@ -105,6 +107,7 @@ class TeamSeason:
     losses: int
     ppg: Optional[float]
     opp_ppg: Optional[float]
+    logo_url: Optional[str] = None
     roster: list[RosterRow] = field(default_factory=list)
     schedule: list[TeamGameRow] = field(default_factory=list)
 
@@ -138,6 +141,7 @@ async def get_venue(
                 SummerLeagueTeamEntry.id,
                 SummerLeagueTeamEntry.team_slug,
                 SummerLeagueTeamEntry.raw_team_name,
+                SummerLeagueTeamEntry.nba_stats_team_id,
             ).where(SummerLeagueTeamEntry.competition_id == header.id)  # type: ignore[call-overload, arg-type]
         )
     ).all()
@@ -177,6 +181,7 @@ async def get_venue(
             losses=rec["l"],
             points_for=rec["pf"],
             points_against=rec["pa"],
+            logo_url=franchise_logo_url(teams[tid].nba_stats_team_id),
         )
         for tid, rec in records.items()
     ]
@@ -216,6 +221,7 @@ async def get_team_season(
             select(
                 te.id,
                 te.raw_team_name,
+                te.nba_stats_team_id,
                 comp.id,
             )  # type: ignore[call-overload, misc]
             .select_from(te)
@@ -352,6 +358,7 @@ async def get_team_season(
         losses=losses,
         ppg=round(pf / played, 1) if played else None,
         opp_ppg=round(pa / played, 1) if played else None,
+        logo_url=franchise_logo_url(header.nba_stats_team_id),
         roster=roster,
         schedule=schedule,
     )
@@ -373,9 +380,11 @@ class BracketGame:
     game_id: int
     home_name: str
     home_abbr: Optional[str]
+    home_logo: Optional[str]
     home_score: Optional[int]
     away_name: str
     away_abbr: Optional[str]
+    away_logo: Optional[str]
     away_score: Optional[int]
     winner: Optional[str]  # "home" | "away" | None
 
@@ -422,8 +431,10 @@ async def get_venue_bracket(
                 game.away_score,
                 home.raw_team_name.label("home_name"),  # type: ignore[attr-defined]
                 home.raw_team_abbreviation.label("home_abbr"),  # type: ignore[union-attr]
+                home.nba_stats_team_id.label("home_sid"),  # type: ignore[attr-defined]
                 away.raw_team_name.label("away_name"),  # type: ignore[attr-defined]
                 away.raw_team_abbreviation.label("away_abbr"),  # type: ignore[union-attr]
+                away.nba_stats_team_id.label("away_sid"),  # type: ignore[attr-defined]
             )  # type: ignore[call-overload, misc]
             .select_from(game)
             .join(comp, comp.id == game.competition_id)
@@ -446,9 +457,11 @@ async def get_venue_bracket(
             game_id=r.id,
             home_name=r.home_name or "—",
             home_abbr=r.home_abbr,
+            home_logo=franchise_logo_url(r.home_sid),
             home_score=r.home_score,
             away_name=r.away_name or "—",
             away_abbr=r.away_abbr,
+            away_logo=franchise_logo_url(r.away_sid),
             away_score=r.away_score,
             winner=_winner(r.home_score, r.away_score),
         )
