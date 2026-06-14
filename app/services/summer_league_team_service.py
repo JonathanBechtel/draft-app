@@ -371,15 +371,11 @@ class BracketGame:
     """One game in a venue's championship bracket."""
 
     game_id: int
-    round_label: str
-    game_date: Optional[str]
     home_name: str
     home_abbr: Optional[str]
-    home_slug: Optional[str]
     home_score: Optional[int]
     away_name: str
     away_abbr: Optional[str]
-    away_slug: Optional[str]
     away_score: Optional[int]
     winner: Optional[str]  # "home" | "away" | None
 
@@ -389,7 +385,6 @@ class Bracket:
     """A venue's championship bracket (semifinals + final)."""
 
     year: int
-    venue_slug: str
     semifinals: list[BracketGame] = field(default_factory=list)
     final: Optional[BracketGame] = None
 
@@ -423,15 +418,12 @@ async def get_venue_bracket(
             select(
                 game.id,
                 game.round_label,
-                game.game_date,
                 game.home_score,
                 game.away_score,
                 home.raw_team_name.label("home_name"),  # type: ignore[attr-defined]
                 home.raw_team_abbreviation.label("home_abbr"),  # type: ignore[union-attr]
-                home.team_slug.label("home_slug"),  # type: ignore[attr-defined]
                 away.raw_team_name.label("away_name"),  # type: ignore[attr-defined]
                 away.raw_team_abbreviation.label("away_abbr"),  # type: ignore[union-attr]
-                away.team_slug.label("away_slug"),  # type: ignore[attr-defined]
             )  # type: ignore[call-overload, misc]
             .select_from(game)
             .join(comp, comp.id == game.competition_id)
@@ -448,19 +440,15 @@ async def get_venue_bracket(
     if not rows:
         return None
 
-    bracket = Bracket(year=year, venue_slug=venue_slug)
+    bracket = Bracket(year=year)
     for r in rows:
         bg = BracketGame(
             game_id=r.id,
-            round_label=r.round_label,
-            game_date=r.game_date.isoformat() if r.game_date else None,
             home_name=r.home_name or "—",
             home_abbr=r.home_abbr,
-            home_slug=r.home_slug,
             home_score=r.home_score,
             away_name=r.away_name or "—",
             away_abbr=r.away_abbr,
-            away_slug=r.away_slug,
             away_score=r.away_score,
             winner=_winner(r.home_score, r.away_score),
         )
