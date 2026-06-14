@@ -576,3 +576,57 @@
 }
 .slg-res--w { background: #d1fae5; color: #065f46; }
 .slg-res--l { background: #fee2e2; color: #991b1b; }
+
+/* ===================================================== Championship bracket */
+.slg-bracket-block { margin-bottom: 1.75rem; }
+.slg-bracket {
+  display: flex;
+  gap: 2.5rem;
+  align-items: center;
+  padding: 1.25rem;
+  overflow-x: auto;
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--border-radius);
+}
+.slg-bracket__round {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  flex: 0 0 auto;
+}
+.slg-bracket__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-slate-400);
+  text-align: center;
+}
+.slg-bracket__round--final .slg-bracket__label { color: var(--color-accent-amber); }
+.slg-bm {
+  display: block;
+  min-width: 11rem;
+  border: 1px solid var(--color-slate-200);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  text-decoration: none;
+  transition: border-color var(--transition-speed), transform var(--transition-speed);
+}
+.slg-bm:hover { border-color: var(--color-accent-emerald); transform: translateY(-2px); }
+.slg-bracket__round--final .slg-bm { border-color: var(--color-accent-amber); box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.25); }
+.slg-bm__team {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-slate-500);
+}
+.slg-bm__team:first-child { border-bottom: 1px solid var(--color-slate-100); }
+.slg-bm__team--win { color: var(--color-slate-900); font-weight: 600; background: #ecfdf5; }
+.slg-bm__team--win .slg-bm__score { color: var(--color-accent-emerald); }
+.slg-bm__name { letter-spacing: 0.02em; }
+.slg-bm__score { font-variant-numeric: tabular-nums; }

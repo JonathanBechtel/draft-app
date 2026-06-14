@@ -355,3 +355,105 @@ async def get_team_season(
         roster=roster,
         schedule=schedule,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Venue bracket (Las Vegas championship)
+# --------------------------------------------------------------------------- #
+
+# Rounds that make up the championship bracket (consolation/placement games are
+# excluded — they're not part of the title path).
+CHAMPIONSHIP_ROUNDS = ("Semifinals", "Championship")
+
+
+@dataclass
+class BracketGame:
+    """One game in a venue's championship bracket."""
+
+    game_id: int
+    home_name: str
+    home_abbr: Optional[str]
+    home_score: Optional[int]
+    away_name: str
+    away_abbr: Optional[str]
+    away_score: Optional[int]
+    winner: Optional[str]  # "home" | "away" | None
+
+
+@dataclass
+class Bracket:
+    """A venue's championship bracket (semifinals + final)."""
+
+    year: int
+    semifinals: list[BracketGame] = field(default_factory=list)
+    final: Optional[BracketGame] = None
+
+
+def _winner(home_score: Optional[int], away_score: Optional[int]) -> Optional[str]:
+    """Return ``"home"``/``"away"`` for the higher score, or ``None``."""
+    if home_score is None or away_score is None:
+        return None
+    if home_score > away_score:
+        return "home"
+    if away_score > home_score:
+        return "away"
+    return None
+
+
+async def get_venue_bracket(
+    db: AsyncSession, year: int, venue_slug: str
+) -> Optional[Bracket]:
+    """Return a venue's championship bracket, or ``None`` when it has none.
+
+    Only Las Vegas runs a true bracket; other venues (and years without schedule
+    enrichment) have no ``round_label`` games and return ``None``.
+    """
+    home = aliased(SummerLeagueTeamEntry)
+    away = aliased(SummerLeagueTeamEntry)
+    game = SummerLeagueGame
+    comp = SummerLeagueCompetition
+
+    rows = (
+        await db.execute(
+            select(
+                game.id,
+                game.round_label,
+                game.home_score,
+                game.away_score,
+                home.raw_team_name.label("home_name"),  # type: ignore[attr-defined]
+                home.raw_team_abbreviation.label("home_abbr"),  # type: ignore[union-attr]
+                away.raw_team_name.label("away_name"),  # type: ignore[attr-defined]
+                away.raw_team_abbreviation.label("away_abbr"),  # type: ignore[union-attr]
+            )  # type: ignore[call-overload, misc]
+            .select_from(game)
+            .join(comp, comp.id == game.competition_id)
+            .join(home, home.id == game.home_team_entry_id, isouter=True)
+            .join(away, away.id == game.away_team_entry_id, isouter=True)
+            .where(
+                comp.year == year,  # type: ignore[arg-type]
+                comp.venue_slug == venue_slug,
+                game.round_label.in_(CHAMPIONSHIP_ROUNDS),  # type: ignore[union-attr]
+            )
+            .order_by(game.game_date, game.id)  # type: ignore[arg-type]
+        )
+    ).all()
+    if not rows:
+        return None
+
+    bracket = Bracket(year=year)
+    for r in rows:
+        bg = BracketGame(
+            game_id=r.id,
+            home_name=r.home_name or "—",
+            home_abbr=r.home_abbr,
+            home_score=r.home_score,
+            away_name=r.away_name or "—",
+            away_abbr=r.away_abbr,
+            away_score=r.away_score,
+            winner=_winner(r.home_score, r.away_score),
+        )
+        if r.round_label == "Championship":
+            bracket.final = bg
+        else:
+            bracket.semifinals.append(bg)
+    return bracket

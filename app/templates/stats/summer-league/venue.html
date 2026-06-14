@@ -24,6 +24,39 @@
     </p>
   </header>
 
+  {# Championship bracket (Las Vegas only) #}
+  {% macro bracket_match(g, year) %}
+  <a class="slg-bm" href="/stats/summer-league/{{ year }}/games/{{ g.game_id }}">
+    <div class="slg-bm__team {% if g.winner == 'away' %}slg-bm__team--win{% endif %}">
+      <span class="slg-bm__name">{{ g.away_abbr or g.away_name }}</span>
+      <span class="slg-bm__score">{{ g.away_score if g.away_score is not none else '—' }}</span>
+    </div>
+    <div class="slg-bm__team {% if g.winner == 'home' %}slg-bm__team--win{% endif %}">
+      <span class="slg-bm__name">{{ g.home_abbr or g.home_name }}</span>
+      <span class="slg-bm__score">{{ g.home_score if g.home_score is not none else '—' }}</span>
+    </div>
+  </a>
+  {% endmacro %}
+  {% if bracket %}
+  <section class="slg-bracket-block">
+    <div class="slg-leaders__head"><h2 class="slg-section-title">Championship Bracket</h2></div>
+    <div class="slg-bracket">
+      {% if bracket.semifinals %}
+      <div class="slg-bracket__round">
+        <div class="slg-bracket__label">Semifinals</div>
+        {% for g in bracket.semifinals %}{{ bracket_match(g, bracket.year) }}{% endfor %}
+      </div>
+      {% endif %}
+      {% if bracket.final %}
+      <div class="slg-bracket__round slg-bracket__round--final">
+        <div class="slg-bracket__label">Championship</div>
+        {{ bracket_match(bracket.final, bracket.year) }}
+      </div>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
   {# Standings #}
   <section class="slg-leaders">
     <div class="slg-leaders__head"><h2 class="slg-section-title">Standings</h2></div>

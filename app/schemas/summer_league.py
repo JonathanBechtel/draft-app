@@ -309,6 +309,10 @@ class SummerLeagueGame(SQLModel, table=True):  # type: ignore[call-arg]
             server_default=SummerLeagueDataQuality.RAW_ONLY.value,
         ),
     )
+    # Tournament round from the NBA.com schedule feed (gameSubLabel), e.g.
+    # "Semifinals" / "Championship" / "Consolation". Null for pool-play games
+    # and for exhibition venues (Salt Lake / California Classic / Orlando).
+    round_label: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 

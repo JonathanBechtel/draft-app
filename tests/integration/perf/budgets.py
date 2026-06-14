@@ -51,7 +51,7 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/stats/summer-league": 8,
     "/stats/summer-league/games": 5,
     "/stats/summer-league/{year}": 7,
-    "/stats/summer-league/{year}/{venue}": 6,
+    "/stats/summer-league/{year}/{venue}": 7,
     "/stats/summer-league/{year}/{venue}/{team}": 3,
 }
 

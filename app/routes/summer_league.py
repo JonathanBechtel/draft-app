@@ -27,7 +27,11 @@ from app.services.summer_league_season_service import (
     get_season_years,
     get_venue_leaders,
 )
-from app.services.summer_league_team_service import get_team_season, get_venue
+from app.services.summer_league_team_service import (
+    get_team_season,
+    get_venue,
+    get_venue_bracket,
+)
 from app.utils.db_async import get_session
 
 # Schedule lists on the season-hub and venue pages page 20 games at a time so
@@ -236,6 +240,7 @@ async def summer_league_venue(
     if detail is None:
         raise HTTPException(status_code=404, detail="Summer League venue not found")
 
+    bracket = await get_venue_bracket(db, year, venue)
     leaders = await get_venue_leaders(db, year, venue)
     schedule = await search_games(
         db, year=year, venue_slug=venue, page=page, page_size=SCHEDULE_PAGE_SIZE
@@ -246,6 +251,7 @@ async def summer_league_venue(
         {
             "request": request,
             "detail": detail,
+            "bracket": bracket,
             "leaders": leaders,
             "schedule": schedule,
             "footer_links": FOOTER_LINKS,
