@@ -41,7 +41,7 @@
     <a class="slg-hero__leader" href="/players/{{ hero_leaders.pts[0].slug }}">
       <span class="slg-hero__leader-label">{{ latest_year }} top scorer</span>
       <span class="slg-hero__leader-name">{{ hero_leaders.pts[0].name }}</span>
-      <span class="slg-hero__leader-stat">{{ '%.1f' % hero_leaders.pts[0].value }} <small>PPG</small></span>
+      <span class="slg-hero__leader-stat">{{ hero_leaders.pts[0].display }} <small>PPG</small></span>
     </a>
     {% endif %}
   </section>
@@ -56,9 +56,9 @@
       <span class="slg-section-note">Career Summer League totals</span>
     </div>
     <div class="slg-leaders__grid">
-      {{ leader_board('Points', 'PTS', alltime.pts, 0) }}
-      {{ leader_board('Rebounds', 'REB', alltime.reb, 0) }}
-      {{ leader_board('Assists', 'AST', alltime.ast, 0) }}
+      {{ leader_board('Points', 'PTS', alltime.pts) }}
+      {{ leader_board('Rebounds', 'REB', alltime.reb) }}
+      {{ leader_board('Assists', 'AST', alltime.ast) }}
     </div>
   </section>
   {% endif %}

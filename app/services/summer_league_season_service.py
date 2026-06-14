@@ -40,7 +40,6 @@ class VenueSummary:
 
     venue_slug: str
     venue: str
-    display_name: str
     starts_on: Optional[str]
     ends_on: Optional[str]
     team_count: int
@@ -61,13 +60,17 @@ class SeasonOverview:
 
 @dataclass
 class LeaderRow:
-    """One ranked player on a season leaderboard."""
+    """One ranked player on a season leaderboard.
 
-    player_id: int
+    ``value`` is the numeric stat (per-game average or career total); ``display``
+    is the service-formatted string for that value, so callers never have to know
+    which kind it is.
+    """
+
     slug: Optional[str]
     name: str
-    gp: int
     value: float
+    display: str
 
 
 @dataclass
@@ -105,7 +108,6 @@ async def get_season_overview(db: AsyncSession, year: int) -> Optional[SeasonOve
             select(
                 comp.id,
                 comp.venue_slug,
-                comp.display_name,
                 comp.starts_on,
                 comp.ends_on,
                 comp.data_quality,
@@ -145,7 +147,6 @@ async def get_season_overview(db: AsyncSession, year: int) -> Optional[SeasonOve
         VenueSummary(
             venue_slug=r.venue_slug,
             venue=_venue_label(r.venue_slug),
-            display_name=r.display_name,
             starts_on=_iso(r.starts_on),
             ends_on=_iso(r.ends_on),
             team_count=int(team_counts.get(r.id, 0)),
@@ -215,15 +216,15 @@ def _rank_leaders(
         games = int(r.gp)
         total = getattr(r, stat) or 0
         value = (total / games if games else 0.0) if per_game else float(total)
+        display = f"{value:.1f}" if per_game else f"{value:.0f}"
         ranked.append(
             (
                 value,
                 LeaderRow(
-                    player_id=r.player_id,
                     slug=r.slug,
                     name=r.display_name or "Player",
-                    gp=games,
                     value=round(value, 1),
+                    display=display,
                 ),
             )
         )
