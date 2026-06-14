@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Summer League Leaders — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% endblock %}
+
+{# Build a leaders URL, overriding mode/sort/dir/page; year + min filters from result. #}
+{% macro lurl(mode=none, sort=none, dir=none, page=1) %}
+{%- set parts = ['mode=' ~ (mode or result.mode)] -%}
+{%- if result.year is not none %}{% set _ = parts.append('year=' ~ result.year) %}{% endif -%}
+{%- set _ = parts.append('sort=' ~ (sort or result.sort)) -%}
+{%- set _ = parts.append('dir=' ~ (dir or result.direction)) -%}
+{%- set _ = parts.append('min_gp=' ~ result.min_games) -%}
+{%- set _ = parts.append('min_min=' ~ result.min_minutes) -%}
+{%- if page > 1 %}{% set _ = parts.append('page=' ~ page) %}{% endif -%}
+/stats/summer-league/leaders?{{ parts | join('&') }}
+{%- endmacro %}
+
+{% block content %}
+<main class="container slg-page">
+
+  <header class="slg-head">
+    <p class="slg-eyebrow"><a href="/stats/summer-league" class="slg-crumb">Summer League</a> &middot; Leaders</p>
+    <h1 class="slg-title">Leaders</h1>
+    <p class="slg-sub">
+      Sortable Summer League leaderboards — switch modes and click any column to re-rank.
+    </p>
+  </header>
+
+  {# Mode tabs #}
+  <div class="season-selector slg-modetabs">
+    {% for m in ['totals','per_game','per_36','per_100','advanced'] %}
+    <a class="season-btn {% if result.mode == m %}active{% endif %}" href="{{ lurl(mode=m) }}">
+      {{ {'totals':'Totals','per_game':'Per Game','per_36':'Per 36','per_100':'Per 100','advanced':'Advanced'}[m] }}
+    </a>
+    {% endfor %}
+  </div>
+
+  {# Filters #}
+  <form class="slg-filters" method="get" action="/stats/summer-league/leaders" id="slgFilters">
+    <input type="hidden" name="mode" value="{{ result.mode }}">
+    <input type="hidden" name="sort" value="{{ result.sort }}">
+    <input type="hidden" name="dir" value="{{ result.direction }}">
+    <label class="slg-field">
+      <span class="slg-field__label">Season</span>
+      <select name="year" class="slg-select" data-autosubmit>
+        <option value="">All-time</option>
+        {% for y in result.years %}
+        <option value="{{ y }}"{% if result.year == y %} selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="slg-field">
+      <span class="slg-field__label">Min GP</span>
+      <input type="number" name="min_gp" min="0" value="{{ result.min_games }}" class="slg-select slg-num" data-autosubmit>
+    </label>
+    <label class="slg-field">
+      <span class="slg-field__label">Min MIN</span>
+      <input type="number" name="min_min" min="0" value="{{ result.min_minutes }}" class="slg-select slg-num" data-autosubmit>
+    </label>
+    <a class="slg-clear" href="/stats/summer-league/leaders?mode={{ result.mode }}">Reset</a>
+  </form>
+
+  <div class="slg-resultmeta">
+    <span class="slg-count">{{ result.total }} qualified player{{ '' if result.total == 1 else 's' }}</span>
+    <span class="slg-pageof">
+      {{ result.year or 'All-time' }} &middot; {{ result.min_games }}+ GP &middot; {{ result.min_minutes }}+ MIN
+      {% if result.total_pages > 1 %}&middot; page {{ result.page }}/{{ result.total_pages }}{% endif %}
+    </span>
+  </div>
+
+  {# Leaderboard #}
+  <div class="stats-scoreboard slg-board">
+    <div class="scanlines"></div>
+    <div class="slg-tablewrap">
+      <table class="sl-stats-table slg-leaders-table">
+        <thead>
+          <tr>
+            <th scope="col">#</th>
+            <th scope="col" class="slg-lead-name">Player</th>
+            <th scope="col">GP</th>
+            {% for col in result.columns %}
+            {% if col.sortable %}
+            {% set new_dir = 'asc' if (result.sort == col.key and result.direction == 'desc') else 'desc' %}
+            <th scope="col">
+              <a class="slg-sort {% if result.sort == col.key %}slg-sort--active{% endif %}" href="{{ lurl(sort=col.key, dir=new_dir) }}">
+                {{ col.label }}{% if result.sort == col.key %}<span class="slg-sort__arrow">{{ '▾' if result.direction == 'desc' else '▴' }}</span>{% endif %}
+              </a>
+            </th>
+            {% else %}
+            <th scope="col" class="slg-col-ph" title="Coming soon">{{ col.label }}</th>
+            {% endif %}
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.rows %}
+          <tr>
+            <td class="slg-rank">{{ row.rank }}</td>
+            <th scope="row" class="slg-lead-name">
+              {% if row.slug %}<a href="/players/{{ row.slug }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}
+            </th>
+            <td>{{ row.gp }}</td>
+            {% for col in result.columns %}
+            {% set v = row.values.get(col.key) %}
+            <td class="{% if col.placeholder %}slg-col-ph{% elif col.key == result.sort %}slg-strong{% endif %}">{{ v if v is not none else '—' }}</td>
+            {% endfor %}
+          </tr>
+          {% else %}
+          <tr><td colspan="{{ result.columns | length + 3 }}" class="slg-empty">No players meet the filters.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if result.total_pages > 1 %}
+  <nav class="slg-pager" aria-label="Pagination">
+    {% if result.page > 1 %}<a class="slg-pager__btn" href="{{ lurl(page=result.page - 1) }}">&larr; Prev</a>
+    {% else %}<span class="slg-pager__btn slg-pager__btn--off">&larr; Prev</span>{% endif %}
+    <span class="slg-pager__info">{{ result.page }} / {{ result.total_pages }}</span>
+    {% if result.page < result.total_pages %}<a class="slg-pager__btn" href="{{ lurl(page=result.page + 1) }}">Next &rarr;</a>
+    {% else %}<span class="slg-pager__btn slg-pager__btn--off">Next &rarr;</span>{% endif %}
+  </nav>
+  {% endif %}
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='summer-league-games.js') }}"></script>
+{% endblock %}
