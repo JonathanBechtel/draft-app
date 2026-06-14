@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}NBA Summer League — Stats, Box Scores & Leaders — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% endblock %}
+
+{% from 'stats/summer-league/_sl_macros.html' import year_strip, leader_board, game_rows %}
+
+{% block content %}
+<main class="container slg-page">
+
+  <header class="slg-head">
+    <p class="slg-eyebrow">Summer League</p>
+    <h1 class="slg-title">NBA Summer League</h1>
+    <p class="slg-sub">
+      Box scores, game logs, and leaders for every Summer League season — Las Vegas,
+      Salt Lake City, the California Classic, and Orlando.
+    </p>
+  </header>
+
+  {{ year_strip(years, none) }}
+
+  {# Latest-season hero #}
+  {% if overview %}
+  <section class="slg-hero">
+    <div class="slg-hero__main">
+      <p class="slg-hero__eyebrow">Latest season</p>
+      <h2 class="slg-hero__title">
+        <a href="/stats/summer-league/{{ latest_year }}">{{ latest_year }} Summer League &rarr;</a>
+      </h2>
+      <p class="slg-hero__meta">
+        {{ overview.venues | length }} venue{{ '' if overview.venues | length == 1 else 's' }}
+        &middot; {{ overview.total_games }} games
+        {% if overview.date_start %}&middot; {{ overview.date_start }} – {{ overview.date_end }}{% endif %}
+      </p>
+    </div>
+    {% if hero_leaders and hero_leaders.pts %}
+    <a class="slg-hero__leader" href="/players/{{ hero_leaders.pts[0].slug }}">
+      <span class="slg-hero__leader-label">{{ latest_year }} top scorer</span>
+      <span class="slg-hero__leader-name">{{ hero_leaders.pts[0].name }}</span>
+      <span class="slg-hero__leader-stat">{{ hero_leaders.pts[0].display }} <small>PPG</small></span>
+    </a>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {# All-time leaders (career totals across every season) — distinct from the
+     per-year leaders on each season hub. #}
+  {% if alltime %}
+  <section class="slg-leaders">
+    <div class="slg-leaders__head">
+      <h2 class="slg-section-title">All-Time Leaders</h2>
+      <span class="slg-section-note">Career Summer League totals</span>
+    </div>
+    <div class="slg-leaders__grid">
+      {{ leader_board('Points', 'PTS', alltime.pts) }}
+      {{ leader_board('Rebounds', 'REB', alltime.reb) }}
+      {{ leader_board('Assists', 'AST', alltime.ast) }}
+    </div>
+  </section>
+  {% endif %}
+
+  {# Recent games #}
+  <section class="slg-recent-block">
+    <div class="slg-leaders__head">
+      <h2 class="slg-section-title">Recent Games</h2>
+      <a class="slg-seeall" href="/stats/summer-league/games">Game finder &rarr;</a>
+    </div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-table">
+          <thead>
+            <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col" class="slg-col-matchup">Matchup</th></tr>
+          </thead>
+          <tbody>
+            {{ game_rows(recent.games) }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='summer-league-games.js') }}"></script>
+{% endblock %}

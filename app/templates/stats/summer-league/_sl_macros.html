@@ -1,0 +1,56 @@
+{# Shared macros for the Summer League landing and season-hub pages. #}
+
+{# Horizontal year strip; `active` is the current year or none. #}
+{% macro year_strip(years, active) %}
+<nav class="slg-yearstrip" aria-label="Summer League seasons">
+  {% for y in years %}
+  <a class="slg-yeartile{% if y == active %} slg-yeartile--active{% endif %}"
+     href="/stats/summer-league/{{ y }}">{{ y }}</a>
+  {% endfor %}
+</nav>
+{% endmacro %}
+
+{# A compact single-stat leaderboard card. `unit` is the stat label (PPG / PTS);
+   each row carries its own service-formatted `display` value. #}
+{% macro leader_board(title, unit, rows) %}
+<div class="slg-lboard">
+  <div class="slg-lboard__title">{{ title }}</div>
+  {% if rows %}
+  <ol class="slg-lboard__list">
+    {% for r in rows %}
+    <li class="slg-lboard__row">
+      <span class="slg-lboard__rank">{{ loop.index }}</span>
+      <a class="slg-lboard__name" href="/players/{{ r.slug }}">{{ r.name }}</a>
+      <span class="slg-lboard__val">{{ r.display }} <small>{{ unit }}</small></span>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="slg-lboard__empty">No qualified players.</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{# tbody rows for a compact games table (Date · Venue · Matchup). #}
+{% macro game_rows(games) %}
+{% for g in games %}
+{% set href = '/stats/summer-league/' ~ g.year ~ '/games/' ~ g.game_id %}
+<tr class="slg-row{% if g.data_quality in ('box_only', 'partial') %} slg-row--dim{% endif %}" data-href="{{ href }}">
+  <th scope="row"><a class="slg-game-link" href="{{ href }}">{{ g.game_date or '—' }}</a></th>
+  <td>{{ g.venue }}</td>
+  <td class="slg-col-matchup">
+    <span class="slg-matchup">
+      <span class="slg-team {% if g.away_score is not none and g.home_score is not none and g.away_score > g.home_score %}slg-team--win{% endif %}">
+        {{ g.away_abbr or g.away_name }}{% if g.away_score is not none %}<b>{{ g.away_score }}</b>{% endif %}
+      </span>
+      <span class="slg-at">@</span>
+      <span class="slg-team {% if g.away_score is not none and g.home_score is not none and g.home_score > g.away_score %}slg-team--win{% endif %}">
+        {{ g.home_abbr or g.home_name }}{% if g.home_score is not none %}<b>{{ g.home_score }}</b>{% endif %}
+      </span>
+    </span>
+  </td>
+</tr>
+{% else %}
+<tr><td colspan="3" class="slg-empty">No games yet.</td></tr>
+{% endfor %}
+{% endmacro %}

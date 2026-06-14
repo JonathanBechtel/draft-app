@@ -1274,3 +1274,35 @@
   .stats-section-nav__inner { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .stats-nav-tab { padding: 0.75rem 1rem; font-size: 0.6875rem; }
 }
+
+/* Summer League promo card (links from the combine stats landing). */
+.sl-promo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1.5rem 0 0;
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+  border: 1px solid var(--color-accent-emerald);
+  border-radius: var(--border-radius);
+  text-decoration: none;
+  transition: transform 0.15s;
+}
+.sl-promo:hover { transform: translateY(-2px); }
+.sl-promo__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #065f46;
+  display: block;
+}
+.sl-promo__title {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  color: var(--color-slate-900);
+  display: block;
+}
+.sl-promo__sub { font-family: var(--font-body); font-size: 0.85rem; color: var(--color-slate-700); }
+.sl-promo__cta { font-family: var(--font-mono); font-weight: 600; color: var(--color-accent-emerald); white-space: nowrap; }
