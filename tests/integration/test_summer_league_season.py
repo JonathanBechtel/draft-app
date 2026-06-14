@@ -24,6 +24,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league_season_service import (
+    get_alltime_leaders,
     get_season_leaders,
     get_season_overview,
     get_season_years,
@@ -128,23 +129,40 @@ async def test_season_landing_renders(
     star = make_player("Landing", "Star", school="Duke")
     db_session.add(star)
     await db_session.flush()
+    # 3 + 3 = 6 career games so the star clears the all-time min-games floor.
     await _seed_competition(
-        db_session, player=star, year=2025, venue_slug="las_vegas", league_id="15"
+        db_session,
+        player=star,
+        year=2025,
+        venue_slug="las_vegas",
+        league_id="15",
+        n_games=3,
     )
     await _seed_competition(
-        db_session, player=star, year=2024, venue_slug="las_vegas", league_id="15"
+        db_session,
+        player=star,
+        year=2024,
+        venue_slug="las_vegas",
+        league_id="15",
+        n_games=3,
     )
     await db_session.commit()
 
     years = await get_season_years(db_session)
     assert years[:2] == [2025, 2024]
 
+    # All-time leaders use career totals: 6 games x 20 pts = 120.
+    alltime = await get_alltime_leaders(db_session)
+    assert alltime.pts[0].name == "Landing Star"
+    assert alltime.pts[0].value == pytest.approx(120.0)
+
     resp = await app_client.get("/stats/summer-league")
     assert resp.status_code == 200
     html = resp.text
     assert "NBA Summer League" in html
     assert "/stats/summer-league/2025" in html  # year strip + hero link
-    assert "Landing Star" in html  # appears as a leader
+    assert "All-Time Leaders" in html
+    assert "Landing Star" in html  # hero top scorer + all-time leader
     assert "/stats/summer-league/games" in html  # game-finder CTA
 
 

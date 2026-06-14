@@ -21,6 +21,7 @@ from app.services.summer_league_games_service import (
     search_games,
 )
 from app.services.summer_league_season_service import (
+    get_alltime_leaders,
     get_season_leaders,
     get_season_overview,
     get_season_years,
@@ -159,7 +160,10 @@ async def summer_league_landing(
     years = await get_season_years(db)
     latest = years[0] if years else None
     overview = await get_season_overview(db, latest) if latest is not None else None
-    leaders = await get_season_leaders(db, latest) if latest is not None else None
+    # Hero highlights the latest season; the leaders board spans all seasons so
+    # the landing isn't a duplicate of the newest season hub.
+    hero_leaders = await get_season_leaders(db, latest) if latest is not None else None
+    alltime = await get_alltime_leaders(db) if latest is not None else None
     recent = await search_games(db, page=1, page_size=LANDING_RECENT_GAMES)
 
     return request.app.state.templates.TemplateResponse(
@@ -169,7 +173,8 @@ async def summer_league_landing(
             "years": years,
             "latest_year": latest,
             "overview": overview,
-            "leaders": leaders,
+            "hero_leaders": hero_leaders,
+            "alltime": alltime,
             "recent": recent,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,

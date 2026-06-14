@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +30,8 @@ from app.services.summer_league_games_service import (
 
 DEFAULT_LEADER_LIMIT = 5
 DEFAULT_MIN_GAMES = 2
+# Career totals reward longevity, so require a slightly larger sample.
+DEFAULT_ALLTIME_MIN_GAMES = 5
 
 
 @dataclass
@@ -165,29 +167,30 @@ async def get_season_overview(db: AsyncSession, year: int) -> Optional[SeasonOve
     )
 
 
-async def get_season_leaders(
-    db: AsyncSession,
-    year: int,
-    *,
-    limit: int = DEFAULT_LEADER_LIMIT,
-    min_games: int = DEFAULT_MIN_GAMES,
-) -> SeasonLeaders:
-    """Return per-game PTS/REB/AST leaders for a season.
+async def _fetch_leader_aggregates(
+    db: AsyncSession, *, year: Optional[int], min_games: int
+) -> list[Any]:
+    """Aggregate resolved, non-DNP player lines (optionally for one year).
 
-    Aggregates resolved, non-DNP player lines for ``year``, requires at least
-    ``min_games`` games played, and returns the top ``limit`` per category.
+    Returns one row per qualifying player with ``gp`` and summed pts/reb/ast.
     """
     pgl = SummerLeaguePlayerGameLog
     comp = SummerLeagueCompetition
 
-    gp = func.count().label("gp")
+    conds: list[Any] = [
+        pgl.player_id.isnot(None),  # type: ignore[union-attr]
+        pgl.minutes_seconds > 0,  # type: ignore[operator]
+    ]
+    if year is not None:
+        conds.append(comp.year == year)  # type: ignore[arg-type]
+
     rows = (
         await db.execute(
             select(
                 pgl.player_id,
                 PlayerMaster.slug,
                 PlayerMaster.display_name,
-                gp,
+                func.count().label("gp"),
                 func.sum(pgl.pts).label("pts"),
                 func.sum(pgl.reb).label("reb"),
                 func.sum(pgl.ast).label("ast"),
@@ -195,35 +198,65 @@ async def get_season_leaders(
             .select_from(pgl)
             .join(comp, comp.id == pgl.competition_id)
             .join(PlayerMaster, PlayerMaster.id == pgl.player_id)
-            .where(
-                comp.year == year,  # type: ignore[arg-type]
-                pgl.player_id.isnot(None),  # type: ignore[union-attr]
-                pgl.minutes_seconds > 0,  # type: ignore[operator]
-            )
+            .where(*conds)
             .group_by(pgl.player_id, PlayerMaster.slug, PlayerMaster.display_name)
             .having(func.count() >= min_games)
         )
     ).all()
+    return list(rows)
 
-    def _top(stat: str) -> list[LeaderRow]:
-        ranked: list[tuple[float, LeaderRow]] = []
-        for r in rows:
-            games = int(r.gp)
-            total = getattr(r, stat) or 0
-            per_game = total / games if games else 0.0
-            ranked.append(
-                (
-                    per_game,
-                    LeaderRow(
-                        player_id=r.player_id,
-                        slug=r.slug,
-                        name=r.display_name or "Player",
-                        gp=games,
-                        value=round(per_game, 1),
-                    ),
-                )
+
+def _rank_leaders(
+    rows: list[Any], stat: str, *, per_game: bool, limit: int
+) -> list[LeaderRow]:
+    """Rank aggregate rows by a stat (per-game average or career total)."""
+    ranked: list[tuple[float, LeaderRow]] = []
+    for r in rows:
+        games = int(r.gp)
+        total = getattr(r, stat) or 0
+        value = (total / games if games else 0.0) if per_game else float(total)
+        ranked.append(
+            (
+                value,
+                LeaderRow(
+                    player_id=r.player_id,
+                    slug=r.slug,
+                    name=r.display_name or "Player",
+                    gp=games,
+                    value=round(value, 1),
+                ),
             )
-        ranked.sort(key=lambda t: t[0], reverse=True)
-        return [row for _, row in ranked[:limit]]
+        )
+    ranked.sort(key=lambda t: t[0], reverse=True)
+    return [row for _, row in ranked[:limit]]
 
-    return SeasonLeaders(pts=_top("pts"), reb=_top("reb"), ast=_top("ast"))
+
+async def get_season_leaders(
+    db: AsyncSession,
+    year: int,
+    *,
+    limit: int = DEFAULT_LEADER_LIMIT,
+    min_games: int = DEFAULT_MIN_GAMES,
+) -> SeasonLeaders:
+    """Return per-game PTS/REB/AST leaders for one season."""
+    rows = await _fetch_leader_aggregates(db, year=year, min_games=min_games)
+    return SeasonLeaders(
+        pts=_rank_leaders(rows, "pts", per_game=True, limit=limit),
+        reb=_rank_leaders(rows, "reb", per_game=True, limit=limit),
+        ast=_rank_leaders(rows, "ast", per_game=True, limit=limit),
+    )
+
+
+async def get_alltime_leaders(
+    db: AsyncSession,
+    *,
+    limit: int = DEFAULT_LEADER_LIMIT,
+    min_games: int = DEFAULT_ALLTIME_MIN_GAMES,
+) -> SeasonLeaders:
+    """Return career (all-season) PTS/REB/AST total leaders."""
+    rows = await _fetch_leader_aggregates(db, year=None, min_games=min_games)
+    return SeasonLeaders(
+        pts=_rank_leaders(rows, "pts", per_game=False, limit=limit),
+        reb=_rank_leaders(rows, "reb", per_game=False, limit=limit),
+        ast=_rank_leaders(rows, "ast", per_game=False, limit=limit),
+    )

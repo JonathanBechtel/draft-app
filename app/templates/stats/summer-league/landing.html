@@ -37,26 +37,28 @@
         {% if overview.date_start %}&middot; {{ overview.date_start }} – {{ overview.date_end }}{% endif %}
       </p>
     </div>
-    {% if leaders and leaders.pts %}
-    <a class="slg-hero__leader" href="/players/{{ leaders.pts[0].slug }}">
-      <span class="slg-hero__leader-label">Top scorer</span>
-      <span class="slg-hero__leader-name">{{ leaders.pts[0].name }}</span>
-      <span class="slg-hero__leader-stat">{{ '%.1f' % leaders.pts[0].value }} <small>PPG</small></span>
+    {% if hero_leaders and hero_leaders.pts %}
+    <a class="slg-hero__leader" href="/players/{{ hero_leaders.pts[0].slug }}">
+      <span class="slg-hero__leader-label">{{ latest_year }} top scorer</span>
+      <span class="slg-hero__leader-name">{{ hero_leaders.pts[0].name }}</span>
+      <span class="slg-hero__leader-stat">{{ '%.1f' % hero_leaders.pts[0].value }} <small>PPG</small></span>
     </a>
     {% endif %}
   </section>
   {% endif %}
 
-  {# Leaders preview #}
-  {% if leaders %}
+  {# All-time leaders (career totals across every season) — distinct from the
+     per-year leaders on each season hub. #}
+  {% if alltime %}
   <section class="slg-leaders">
     <div class="slg-leaders__head">
-      <h2 class="slg-section-title">{{ latest_year }} Leaders</h2>
+      <h2 class="slg-section-title">All-Time Leaders</h2>
+      <span class="slg-section-note">Career Summer League totals</span>
     </div>
     <div class="slg-leaders__grid">
-      {{ leader_board('Points', 'PPG', leaders.pts) }}
-      {{ leader_board('Rebounds', 'RPG', leaders.reb) }}
-      {{ leader_board('Assists', 'APG', leaders.ast) }}
+      {{ leader_board('Points', 'PTS', alltime.pts, 0) }}
+      {{ leader_board('Rebounds', 'REB', alltime.reb, 0) }}
+      {{ leader_board('Assists', 'AST', alltime.ast, 0) }}
     </div>
   </section>
   {% endif %}

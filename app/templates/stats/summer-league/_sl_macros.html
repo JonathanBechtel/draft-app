@@ -10,8 +10,9 @@
 </nav>
 {% endmacro %}
 
-{# A compact single-stat leaderboard card. #}
-{% macro leader_board(title, unit, rows) %}
+{# A compact single-stat leaderboard card. `decimals` is 1 for per-game
+   averages, 0 for career totals. #}
+{% macro leader_board(title, unit, rows, decimals=1) %}
 <div class="slg-lboard">
   <div class="slg-lboard__title">{{ title }}</div>
   {% if rows %}
@@ -20,7 +21,7 @@
     <li class="slg-lboard__row">
       <span class="slg-lboard__rank">{{ loop.index }}</span>
       <a class="slg-lboard__name" href="/players/{{ r.slug }}">{{ r.name }}</a>
-      <span class="slg-lboard__val">{{ '%.1f' % r.value }} <small>{{ unit }}</small></span>
+      <span class="slg-lboard__val">{{ ('%.0f' if decimals == 0 else '%.1f') % r.value }} <small>{{ unit }}</small></span>
     </li>
     {% endfor %}
   </ol>
