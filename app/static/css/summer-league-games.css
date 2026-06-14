@@ -493,3 +493,86 @@
 .slg-crumb:hover { opacity: 0.8; }
 
 .slg-section-note { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-slate-400); }
+
+/* ===================================================== Venue + team pages */
+.slg-pos { color: var(--color-accent-emerald); }
+.slg-neg { color: var(--color-accent-rose); }
+
+/* Standings table */
+.slg-standings__team { text-align: left !important; min-width: 11rem; }
+.slg-standings__team a { color: var(--color-slate-900); text-decoration: none; font-weight: 600; }
+.slg-standings__team a:hover { color: var(--color-accent-emerald); text-decoration: underline; }
+
+/* Team-season header */
+.slg-team-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+.slg-team-record { text-align: right; }
+.slg-team-record__wl {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--color-slate-900);
+  line-height: 1;
+}
+.slg-team-record__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-400);
+}
+
+/* Quick stats strip */
+.slg-quickstats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+.slg-quickstat {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--border-radius);
+  padding: 1rem;
+  text-align: center;
+}
+.slg-quickstat__v {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--color-slate-900);
+}
+.slg-quickstat__l {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-400);
+}
+
+/* Roster table */
+.slg-roster__name { text-align: left !important; min-width: 11rem; }
+.slg-roster__name a { color: var(--color-slate-900); text-decoration: none; font-weight: 600; }
+.slg-roster__name a:hover { color: var(--color-accent-emerald); text-decoration: underline; }
+
+/* Schedule result chips */
+.slg-loc { color: var(--color-slate-400); font-family: var(--font-mono); }
+.slg-res {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  width: 1.1rem;
+  text-align: center;
+  border-radius: 0.2rem;
+  margin-right: 0.4rem;
+}
+.slg-res--w { background: #d1fae5; color: #065f46; }
+.slg-res--l { background: #fee2e2; color: #991b1b; }

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}{{ detail.venue }} — {{ detail.year }} NBA Summer League — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% endblock %}
+
+{% from 'stats/summer-league/_sl_macros.html' import leader_board, game_rows %}
+
+{% block content %}
+<main class="container slg-page">
+
+  <a class="slg-back" href="/stats/summer-league/{{ detail.year }}">&larr; {{ detail.year }} Summer League</a>
+
+  <header class="slg-head">
+    <p class="slg-eyebrow">Summer League &middot; {{ detail.year }}</p>
+    <h1 class="slg-title">{{ detail.venue }}</h1>
+    <p class="slg-sub">
+      {{ detail.standings | length }} teams
+      {% if detail.date_start %}&middot; {{ detail.date_start }} – {{ detail.date_end }}{% endif %}
+      <span class="slg-quality slg-quality--{{ detail.data_quality }}">{{ detail.data_quality | replace('_', ' ') }}</span>
+    </p>
+  </header>
+
+  {# Standings #}
+  <section class="slg-leaders">
+    <div class="slg-leaders__head"><h2 class="slg-section-title">Standings</h2></div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-standings">
+          <thead>
+            <tr>
+              <th scope="col" class="slg-standings__team">Team</th>
+              <th scope="col">W</th><th scope="col">L</th><th scope="col">PCT</th>
+              <th scope="col">PF</th><th scope="col">PA</th><th scope="col">DIFF</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in detail.standings %}
+            {% set gp = s.wins + s.losses %}
+            <tr>
+              <th scope="row" class="slg-standings__team">
+                <a href="/stats/summer-league/{{ detail.year }}/{{ detail.venue_slug }}/{{ s.team_slug }}">{{ s.name }}</a>
+              </th>
+              <td>{{ s.wins }}</td><td>{{ s.losses }}</td>
+              <td>{{ '%.3f' % (s.wins / gp) if gp else '—' }}</td>
+              <td>{{ s.points_for }}</td><td>{{ s.points_against }}</td>
+              <td class="{{ 'slg-pos' if s.points_for - s.points_against > 0 else ('slg-neg' if s.points_for - s.points_against < 0 else '') }}">
+                {{ '%+d' % (s.points_for - s.points_against) }}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="slg-empty">No games recorded.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  {# Venue leaders #}
+  {% if leaders %}
+  <section class="slg-leaders">
+    <div class="slg-leaders__head">
+      <h2 class="slg-section-title">Leaders</h2>
+      <span class="slg-section-note">Per game</span>
+    </div>
+    <div class="slg-leaders__grid">
+      {{ leader_board('Points', 'PPG', leaders.pts) }}
+      {{ leader_board('Rebounds', 'RPG', leaders.reb) }}
+      {{ leader_board('Assists', 'APG', leaders.ast) }}
+    </div>
+  </section>
+  {% endif %}
+
+  {# Schedule #}
+  <section class="slg-recent-block">
+    <div class="slg-leaders__head">
+      <h2 class="slg-section-title">Schedule &amp; Results</h2>
+      <a class="slg-seeall" href="/stats/summer-league/games?year={{ detail.year }}&venue={{ detail.venue_slug }}">All {{ schedule.total }} games &rarr;</a>
+    </div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-table">
+          <thead>
+            <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col" class="slg-col-matchup">Matchup</th></tr>
+          </thead>
+          <tbody>
+            {{ game_rows(schedule.games) }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='summer-league-games.js') }}"></script>
+{% endblock %}

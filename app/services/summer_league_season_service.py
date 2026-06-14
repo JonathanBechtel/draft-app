@@ -169,9 +169,13 @@ async def get_season_overview(db: AsyncSession, year: int) -> Optional[SeasonOve
 
 
 async def _fetch_leader_aggregates(
-    db: AsyncSession, *, year: Optional[int], min_games: int
+    db: AsyncSession,
+    *,
+    year: Optional[int],
+    min_games: int,
+    venue_slug: Optional[str] = None,
 ) -> list[Any]:
-    """Aggregate resolved, non-DNP player lines (optionally for one year).
+    """Aggregate resolved, non-DNP player lines (optionally by year/venue).
 
     Returns one row per qualifying player with ``gp`` and summed pts/reb/ast.
     """
@@ -184,6 +188,8 @@ async def _fetch_leader_aggregates(
     ]
     if year is not None:
         conds.append(comp.year == year)  # type: ignore[arg-type]
+    if venue_slug:
+        conds.append(comp.venue_slug == venue_slug)
 
     rows = (
         await db.execute(
@@ -260,4 +266,23 @@ async def get_alltime_leaders(
         pts=_rank_leaders(rows, "pts", per_game=False, limit=limit),
         reb=_rank_leaders(rows, "reb", per_game=False, limit=limit),
         ast=_rank_leaders(rows, "ast", per_game=False, limit=limit),
+    )
+
+
+async def get_venue_leaders(
+    db: AsyncSession,
+    year: int,
+    venue_slug: str,
+    *,
+    limit: int = DEFAULT_LEADER_LIMIT,
+    min_games: int = DEFAULT_MIN_GAMES,
+) -> SeasonLeaders:
+    """Return per-game PTS/REB/AST leaders scoped to one venue in one season."""
+    rows = await _fetch_leader_aggregates(
+        db, year=year, venue_slug=venue_slug, min_games=min_games
+    )
+    return SeasonLeaders(
+        pts=_rank_leaders(rows, "pts", per_game=True, limit=limit),
+        reb=_rank_leaders(rows, "reb", per_game=True, limit=limit),
+        ast=_rank_leaders(rows, "ast", per_game=True, limit=limit),
     )

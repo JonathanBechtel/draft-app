@@ -29,7 +29,7 @@
   {# Venue summary cards #}
   <section class="slg-venues">
     {% for v in overview.venues %}
-    <a class="slg-venue-card" href="/stats/summer-league/games?year={{ year }}&venue={{ v.venue_slug }}">
+    <a class="slg-venue-card" href="/stats/summer-league/{{ year }}/{{ v.venue_slug }}">
       <div class="slg-venue-card__head">
         <span class="slg-venue-card__name">{{ v.venue }}</span>
         <span class="slg-quality slg-quality--{{ v.data_quality }}">{{ v.data_quality | replace('_', ' ') }}</span>
