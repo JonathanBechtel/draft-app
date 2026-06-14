@@ -211,3 +211,44 @@ async def test_team_season_renders_record_and_roster(
 
     missing = await app_client.get("/stats/summer-league/2025/las_vegas/no-such-team")
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_box_score_route_wins_over_team_route(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """`/{year}/games/{id}` must resolve to the box score, not the team page.
+
+    Pins the route precedence: the box-score route (literal ``games`` segment)
+    is registered before the catch-all ``/{year}/{venue}/{team}`` route, so a
+    future reorder can't silently let the team route shadow box scores.
+    """
+    star = make_player("Precedence", "Star", school="Duke")
+    db_session.add(star)
+    await db_session.flush()
+    comp, team_a, _ = await _seed_venue(
+        db_session, year=2025, venue_slug="las_vegas", league_id="15", star=star
+    )
+    await db_session.commit()
+
+    # Grab a real game id for this competition.
+    from sqlalchemy import select
+
+    game_id = (
+        (
+            await db_session.execute(
+                select(SummerLeagueGame.id).where(  # type: ignore[call-overload]
+                    SummerLeagueGame.competition_id == comp.id  # type: ignore[arg-type]
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert game_id is not None
+
+    resp = await app_client.get(f"/stats/summer-league/2025/games/{game_id}")
+    assert resp.status_code == 200
+    # Box score-only markers (the team page has no Box Score/Advanced toggle).
+    assert "Box Score" in resp.text and "Advanced" in resp.text

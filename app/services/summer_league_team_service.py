@@ -12,7 +12,6 @@ Standings and records are computed from normalized game scores (the stored
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 from typing import Optional
 
 from sqlalchemy import case, desc, func, or_, select
@@ -27,14 +26,10 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league_games_service import _enum_str, _venue_label
+from app.services.summer_league_season_service import _iso
 
 
-def _iso(d: Optional[date]) -> Optional[str]:
-    """Return an ISO date string or ``None``."""
-    return d.isoformat() if d else None
-
-
-def _pct(num: float, den: float) -> Optional[float]:
+def _ratio_pct(num: float, den: float) -> Optional[float]:
     """Percentage (0-100) of num/den, or ``None`` when den is zero."""
     if not den:
         return None
@@ -52,7 +47,6 @@ class TeamStanding:
 
     team_slug: str
     name: str
-    abbr: Optional[str]
     wins: int
     losses: int
     points_for: int
@@ -66,7 +60,6 @@ class VenueDetail:
     year: int
     venue_slug: str
     venue: str
-    display_name: str
     date_start: Optional[str]
     date_end: Optional[str]
     data_quality: str
@@ -93,7 +86,6 @@ class TeamGameRow:
     game_id: int
     game_date: Optional[str]
     opponent: Optional[str]
-    opponent_slug: Optional[str]
     is_home: bool
     team_score: Optional[int]
     opp_score: Optional[int]
@@ -109,7 +101,6 @@ class TeamSeason:
     venue: str
     team_slug: str
     name: str
-    abbr: Optional[str]
     wins: int
     losses: int
     ppg: Optional[float]
@@ -132,11 +123,10 @@ async def get_venue(
         await db.execute(
             select(
                 comp.id,
-                comp.display_name,
                 comp.starts_on,
                 comp.ends_on,
                 comp.data_quality,
-            ).where(comp.year == year, comp.venue_slug == venue_slug)  # type: ignore[call-overload, misc]  # type: ignore[arg-type]
+            ).where(comp.year == year, comp.venue_slug == venue_slug)  # type: ignore[call-overload, misc, arg-type]
         )
     ).first()
     if header is None:
@@ -148,8 +138,7 @@ async def get_venue(
                 SummerLeagueTeamEntry.id,
                 SummerLeagueTeamEntry.team_slug,
                 SummerLeagueTeamEntry.raw_team_name,
-                SummerLeagueTeamEntry.raw_team_abbreviation,
-            ).where(SummerLeagueTeamEntry.competition_id == header.id)  # type: ignore[call-overload]  # type: ignore[arg-type]
+            ).where(SummerLeagueTeamEntry.competition_id == header.id)  # type: ignore[call-overload, arg-type]
         )
     ).all()
     teams = {r.id: r for r in team_rows}
@@ -184,7 +173,6 @@ async def get_venue(
         TeamStanding(
             team_slug=teams[tid].team_slug,
             name=teams[tid].raw_team_name or "—",
-            abbr=teams[tid].raw_team_abbreviation,
             wins=rec["w"],
             losses=rec["l"],
             points_for=rec["pf"],
@@ -205,7 +193,6 @@ async def get_venue(
         year=year,
         venue_slug=venue_slug,
         venue=_venue_label(venue_slug),
-        display_name=header.display_name,
         date_start=_iso(header.starts_on),
         date_end=_iso(header.ends_on),
         data_quality=_enum_str(header.data_quality),
@@ -229,7 +216,6 @@ async def get_team_season(
             select(
                 te.id,
                 te.raw_team_name,
-                te.raw_team_abbreviation,
                 comp.id,
             )  # type: ignore[call-overload, misc]
             .select_from(te)
@@ -257,7 +243,6 @@ async def get_team_season(
                 game.away_score,
                 opponent.raw_team_abbreviation,
                 opponent.raw_team_name,
-                opponent.team_slug,
             )  # type: ignore[call-overload, misc]
             .select_from(game)
             .join(
@@ -304,7 +289,6 @@ async def get_team_season(
                 game_id=r.id,
                 game_date=r.game_date.isoformat() if r.game_date else None,
                 opponent=r.raw_team_abbreviation or r.raw_team_name,
-                opponent_slug=r.team_slug,
                 is_home=is_home,
                 team_score=team_score,
                 opp_score=opp_score,
@@ -353,7 +337,7 @@ async def get_team_season(
                 ppg=round((r.pts or 0) / gp, 1) if gp else None,
                 rpg=round((r.reb or 0) / gp, 1) if gp else None,
                 apg=round((r.ast or 0) / gp, 1) if gp else None,
-                fg_pct=_pct(r.fgm or 0, r.fga or 0),
+                fg_pct=_ratio_pct(r.fgm or 0, r.fga or 0),
             )
         )
     roster.sort(key=lambda x: x.ppg or 0.0, reverse=True)
@@ -364,7 +348,6 @@ async def get_team_season(
         venue=_venue_label(venue_slug),
         team_slug=team_slug,
         name=header.raw_team_name or "—",
-        abbr=header.raw_team_abbreviation,
         wins=wins,
         losses=losses,
         ppg=round(pf / played, 1) if played else None,
