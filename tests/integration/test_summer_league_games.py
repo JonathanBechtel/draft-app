@@ -212,6 +212,14 @@ async def test_games_index_lists_filters_and_paginates(
     assert resp_p.status_code == 200
     assert "Index Tester" in resp_p.text
 
+    # An unresolvable player filter renders no games (not silently all games).
+    resp_bad = await app_client.get(
+        "/stats/summer-league/games?player=no-such-player-xyz"
+    )
+    assert resp_bad.status_code == 200
+    assert "0 games" in resp_bad.text
+    assert f"/stats/summer-league/2025/games/{g2025.id}" not in resp_bad.text
+
 
 @pytest.mark.asyncio
 async def test_game_box_score_renders_and_missing_404(
@@ -230,6 +238,26 @@ async def test_game_box_score_renders_and_missing_404(
         venue_slug="las_vegas",
         game_date=date(2025, 7, 10),
     )
+
+    # A DNP teammate (NULL minutes) on the home team: must sort BELOW played
+    # lines despite Postgres placing NULLs first under DESC.
+    dnp = make_player("Bench", "Warmer", school="Iowa")
+    db_session.add(dnp)
+    await db_session.flush()
+    dnp_sp = await _source_player(db_session, player=dnp)
+    assert game.home_team_entry_id is not None
+    db_session.add(
+        SummerLeaguePlayerGameLog(
+            competition_id=game.competition_id,
+            game_id=game.id,
+            team_entry_id=game.home_team_entry_id,
+            source_player_id=dnp_sp.id,
+            player_id=dnp.id,
+            nba_stats_person_id=dnp_sp.nba_stats_person_id,
+            raw_player_name="Bench Warmer",
+            minutes_seconds=None,
+        )
+    )
     await db_session.commit()
     assert game.id is not None
 
@@ -238,6 +266,10 @@ async def test_game_box_score_renders_and_missing_404(
     assert box.home.name == "Home Team"
     assert box.away.name == "Away Team"
     assert any(line.name == "Box Scorer" for line in box.home.lines)
+    # DNP teammate renders last among home lines, not first.
+    assert box.home.lines[-1].name == "Bench Warmer"
+    assert box.home.lines[-1].dnp is True
+    assert box.home.lines[0].dnp is False
 
     resp = await app_client.get(f"/stats/summer-league/2025/games/{game.id}")
     assert resp.status_code == 200

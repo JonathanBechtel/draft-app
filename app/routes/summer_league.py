@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.summer_league_games_service import (
+    GamesPage,
     get_game_box_score,
     get_games_facets,
     get_player_game_logs,
@@ -43,20 +44,30 @@ async def summer_league_games_index(
     """Centralized, filterable index of every Summer League game."""
     player_id: int | None = None
     player_label: str | None = None
+    player_unresolved = False
     if player:
         ref = await resolve_player_ref(db, player)
         if ref is not None:
             player_id = ref.id
             player_label = ref.name
+        else:
+            # A requested player filter that can't be resolved (stale/mistyped
+            # slug) must not silently fall through to "all games" — show no
+            # results so the failed filter is visible.
+            player_unresolved = True
+            player_label = player
 
-    result = await search_games(
-        db,
-        year=year,
-        venue_slug=venue,
-        team_slug=team,
-        player_id=player_id,
-        page=page,
-    )
+    if player_unresolved:
+        result = GamesPage(games=[], total=0, page=1, page_size=1, total_pages=1)
+    else:
+        result = await search_games(
+            db,
+            year=year,
+            venue_slug=venue,
+            team_slug=team,
+            player_id=player_id,
+            page=page,
+        )
     facets = await get_games_facets(db)
 
     return request.app.state.templates.TemplateResponse(

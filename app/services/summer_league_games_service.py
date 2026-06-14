@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from sqlalchemy import case, desc, func, or_, select
+from sqlalchemy import case, desc, func, nulls_last, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -504,9 +504,11 @@ async def get_game_box_score(db: AsyncSession, game_id: int) -> Optional[GameBox
         .select_from(pgl)
         .join(PlayerMaster, PlayerMaster.id == pgl.player_id, isouter=True)
         .where(pgl.game_id == game_id)  # type: ignore[arg-type]
+        # nulls_last keeps DNP rows (NULL minutes) below played lines — Postgres
+        # otherwise sorts NULLs first under DESC.
         .order_by(
-            desc(pgl.minutes_seconds),  # type: ignore[arg-type]
-            desc(pgl.pts),  # type: ignore[arg-type]
+            nulls_last(desc(pgl.minutes_seconds)),  # type: ignore[arg-type]
+            nulls_last(desc(pgl.pts)),  # type: ignore[arg-type]
         )
     )
     for r in (await db.execute(lines_stmt)).all():
