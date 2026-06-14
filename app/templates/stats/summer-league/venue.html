@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
 {% endblock %}
 
-{% from 'stats/summer-league/_sl_macros.html' import leader_board, game_rows %}
+{% from 'stats/summer-league/_sl_macros.html' import leader_board, game_rows, pager %}
 
 {% block content %}
 <main class="container slg-page">
@@ -77,7 +77,7 @@
   {% endif %}
 
   {# Schedule #}
-  <section class="slg-recent-block">
+  <section class="slg-recent-block" id="schedule">
     <div class="slg-leaders__head">
       <h2 class="slg-section-title">Schedule &amp; Results</h2>
       <a class="slg-seeall" href="/stats/summer-league/games?year={{ detail.year }}&venue={{ detail.venue_slug }}">All {{ schedule.total }} games &rarr;</a>
@@ -95,6 +95,7 @@
         </table>
       </div>
     </div>
+    {{ pager('/stats/summer-league/' ~ detail.year ~ '/' ~ detail.venue_slug, schedule, '#schedule') }}
   </section>
 
 </main>

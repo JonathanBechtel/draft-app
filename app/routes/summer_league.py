@@ -30,7 +30,9 @@ from app.services.summer_league_season_service import (
 from app.services.summer_league_team_service import get_team_season, get_venue
 from app.utils.db_async import get_session
 
-VENUE_SCHEDULE_LIMIT = 50
+# Schedule lists on the season-hub and venue pages page 20 games at a time so
+# the section stays compact instead of scrolling the whole slate.
+SCHEDULE_PAGE_SIZE = 20
 
 LANDING_RECENT_GAMES = 8
 
@@ -190,6 +192,7 @@ async def summer_league_landing(
 async def summer_league_season(
     request: Request,
     year: int,
+    page: int = Query(default=1, ge=1),
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
     """Season hub: a year's venues, schedule, and leaderboards."""
@@ -201,7 +204,9 @@ async def summer_league_season(
 
     years = await get_season_years(db)
     leaders = await get_season_leaders(db, year)
-    schedule = await search_games(db, year=year, page=1, page_size=12)
+    schedule = await search_games(
+        db, year=year, page=page, page_size=SCHEDULE_PAGE_SIZE
+    )
 
     return request.app.state.templates.TemplateResponse(
         "stats/summer-league/season.html",
@@ -223,6 +228,7 @@ async def summer_league_venue(
     request: Request,
     year: int,
     venue: str,
+    page: int = Query(default=1, ge=1),
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
     """Single venue within a season: standings, leaders, schedule, teams."""
@@ -232,7 +238,7 @@ async def summer_league_venue(
 
     leaders = await get_venue_leaders(db, year, venue)
     schedule = await search_games(
-        db, year=year, venue_slug=venue, page=1, page_size=VENUE_SCHEDULE_LIMIT
+        db, year=year, venue_slug=venue, page=page, page_size=SCHEDULE_PAGE_SIZE
     )
 
     return request.app.state.templates.TemplateResponse(
