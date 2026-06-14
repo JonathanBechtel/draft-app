@@ -2309,6 +2309,40 @@
   gap: 0.5rem;
 }
 
+/* Recent-games header row: section label + "Game Log" CTA. */
+.sl-recent__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.sl-gamelog-btn {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--color-accent-emerald);
+  border-radius: 0.25rem;
+  color: var(--color-accent-emerald);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all var(--transition-speed);
+}
+.sl-gamelog-btn:hover {
+  background: var(--color-accent-emerald);
+  color: var(--color-white);
+}
+.sl-game-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--color-slate-300);
+}
+.sl-game-link:hover {
+  color: var(--color-accent-emerald);
+  border-bottom-color: var(--color-accent-emerald);
+}
+
 /* Recent-games text columns (Venue, Opp) align left. */
 .sl-recent__table thead th:nth-child(2),
 .sl-recent__table thead th:nth-child(3),

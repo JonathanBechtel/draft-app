@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Summer League Games — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% endblock %}
+
+{# Build a query string for pagination/filter links, overriding one key. #}
+{% macro page_url(page) %}
+{%- set parts = [] -%}
+{%- if active.year %}{% set _ = parts.append('year=' ~ active.year) %}{% endif -%}
+{%- if active.venue %}{% set _ = parts.append('venue=' ~ active.venue) %}{% endif -%}
+{%- if active.team %}{% set _ = parts.append('team=' ~ active.team) %}{% endif -%}
+{%- if active.player %}{% set _ = parts.append('player=' ~ active.player) %}{% endif -%}
+{%- set _ = parts.append('page=' ~ page) -%}
+/stats/summer-league/games?{{ parts | join('&') }}
+{%- endmacro %}
+
+{% block content %}
+<main class="container slg-page">
+
+  <header class="slg-head">
+    <p class="slg-eyebrow">Summer League &middot; Games</p>
+    <h1 class="slg-title">Game Finder</h1>
+    <p class="slg-sub">
+      Every Summer League box score, across every year and venue. Filter the store
+      and open any game for the full line.
+    </p>
+  </header>
+
+  {# ---------------------------------------------------------------- Filters #}
+  <form class="slg-filters" method="get" action="/stats/summer-league/games" id="slgFilters">
+    {% if active.player %}<input type="hidden" name="player" value="{{ active.player }}">{% endif %}
+
+    <label class="slg-field">
+      <span class="slg-field__label">Year</span>
+      <select name="year" class="slg-select" data-autosubmit>
+        <option value="">All years</option>
+        {% for y in facets.years %}
+        <option value="{{ y }}"{% if active.year == y %} selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="slg-field">
+      <span class="slg-field__label">Venue</span>
+      <select name="venue" class="slg-select" data-autosubmit>
+        <option value="">All venues</option>
+        {% for v in facets.venues %}
+        <option value="{{ v.value }}"{% if active.venue == v.value %} selected{% endif %}>{{ v.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="slg-field">
+      <span class="slg-field__label">Team</span>
+      <select name="team" class="slg-select" data-autosubmit>
+        <option value="">All teams</option>
+        {% for t in facets.teams %}
+        <option value="{{ t.value }}"{% if active.team == t.value %} selected{% endif %}>{{ t.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <noscript><button type="submit" class="slg-apply">Apply</button></noscript>
+    <a class="slg-clear" href="/stats/summer-league/games">Clear</a>
+  </form>
+
+  {% if active.player and player_label %}
+  <div class="slg-playerchip">
+    Showing games for <strong>{{ player_label }}</strong>
+    <a href="/stats/summer-league/games{% if active.year %}?year={{ active.year }}{% endif %}" class="slg-playerchip__x" aria-label="Remove player filter">&times;</a>
+  </div>
+  {% endif %}
+
+  {# ---------------------------------------------------------------- Results #}
+  <div class="slg-resultmeta">
+    <span class="slg-count">{{ result.total }} game{{ '' if result.total == 1 else 's' }}</span>
+    {% if result.total_pages > 1 %}
+    <span class="slg-pageof">Page {{ result.page }} of {{ result.total_pages }}</span>
+    {% endif %}
+  </div>
+
+  <div class="stats-scoreboard slg-board">
+    <div class="scanlines"></div>
+    <div class="slg-tablewrap">
+      <table class="sl-stats-table slg-table">
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Venue</th>
+            <th scope="col" class="slg-col-matchup">Matchup</th>
+            <th scope="col">Status</th>
+            <th scope="col">Data</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for g in result.games %}
+          {% set href = '/stats/summer-league/' ~ g.year ~ '/games/' ~ g.game_id %}
+          <tr class="slg-row{% if g.data_quality in ('box_only', 'partial') %} slg-row--dim{% endif %}" data-href="{{ href }}">
+            <th scope="row"><a class="slg-game-link" href="{{ href }}">{{ g.game_date or '—' }}</a></th>
+            <td>{{ g.venue }}</td>
+            <td class="slg-col-matchup">
+              <span class="slg-matchup">
+                <span class="slg-team {% if g.away_score is not none and g.home_score is not none and g.away_score > g.home_score %}slg-team--win{% endif %}">
+                  {{ g.away_abbr or g.away_name }}
+                  {% if g.away_score is not none %}<b>{{ g.away_score }}</b>{% endif %}
+                </span>
+                <span class="slg-at">@</span>
+                <span class="slg-team {% if g.away_score is not none and g.home_score is not none and g.home_score > g.away_score %}slg-team--win{% endif %}">
+                  {{ g.home_abbr or g.home_name }}
+                  {% if g.home_score is not none %}<b>{{ g.home_score }}</b>{% endif %}
+                </span>
+              </span>
+            </td>
+            <td><span class="slg-status slg-status--{{ g.status }}">{{ g.status | capitalize }}</span></td>
+            <td><span class="slg-quality slg-quality--{{ g.data_quality }}">{{ g.data_quality | replace('_', ' ') }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="slg-empty">No games match these filters. <a href="/stats/summer-league/games">Clear filters</a>.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------- Pagination #}
+  {% if result.total_pages > 1 %}
+  <nav class="slg-pager" aria-label="Pagination">
+    {% if result.page > 1 %}
+    <a class="slg-pager__btn" href="{{ page_url(result.page - 1) }}">&larr; Prev</a>
+    {% else %}
+    <span class="slg-pager__btn slg-pager__btn--off">&larr; Prev</span>
+    {% endif %}
+    <span class="slg-pager__info">{{ result.page }} / {{ result.total_pages }}</span>
+    {% if result.page < result.total_pages %}
+    <a class="slg-pager__btn" href="{{ page_url(result.page + 1) }}">Next &rarr;</a>
+    {% else %}
+    <span class="slg-pager__btn slg-pager__btn--off">Next &rarr;</span>
+    {% endif %}
+  </nav>
+  {% endif %}
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='summer-league-games.js') }}"></script>
+{% endblock %}

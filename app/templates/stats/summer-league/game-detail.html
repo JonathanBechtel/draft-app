@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}{{ box.away.abbr or box.away.name }} @ {{ box.home.abbr or box.home.name }} — Summer League {{ box.year }} — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% endblock %}
+
+{% macro n(v) %}{{ v if v is not none else '—' }}{% endmacro %}
+{% macro mins(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
+{% macro pct(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
+
+{# A player name cell, linked to the player page when resolved. #}
+{% macro player_cell(line) %}
+<th scope="row" class="slg-bx-name{% if line.starter %} slg-bx-name--starter{% endif %}">
+  {% if line.slug %}<a href="/players/{{ line.slug }}">{{ line.name }}</a>{% else %}<span class="slg-bx-name--stub">{{ line.name }}</span>{% endif %}
+</th>
+{% endmacro %}
+
+{# One team's traditional + advanced box tables. #}
+{% macro team_box(team) %}
+<div class="slg-bx">
+  <div class="slg-bx__head">
+    <span class="slg-bx__name">{{ team.name }}</span>
+    <span class="slg-bx__tag">{{ 'HOME' if team.is_home else 'AWAY' }}</span>
+    <span class="slg-bx__score">{{ team.score if team.score is not none else '—' }}</span>
+  </div>
+
+  {# Traditional #}
+  <div class="slg-tablewrap slg-mode-data" data-slg-mode="traditional">
+    <table class="sl-stats-table slg-bx-table">
+      <thead>
+        <tr>
+          <th scope="col" class="slg-bx-namecol">Player</th>
+          <th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th>
+          <th scope="col">AST</th><th scope="col">STL</th><th scope="col">BLK</th>
+          <th scope="col">TOV</th><th scope="col">PF</th>
+          <th scope="col">FG</th><th scope="col">3P</th><th scope="col">FT</th>
+          <th scope="col">+/−</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in team.lines %}
+        {% if line.dnp %}
+        <tr class="slg-bx-dnp">{{ player_cell(line) }}<td colspan="12">Did Not Play</td></tr>
+        {% else %}
+        <tr>
+          {{ player_cell(line) }}
+          <td>{{ mins(line.minutes) }}</td><td class="slg-strong">{{ n(line.pts) }}</td>
+          <td>{{ n(line.reb) }}</td><td>{{ n(line.ast) }}</td><td>{{ n(line.stl) }}</td>
+          <td>{{ n(line.blk) }}</td><td>{{ n(line.tov) }}</td><td>{{ n(line.pf) }}</td>
+          <td>{{ line.fg }}</td><td>{{ line.fg3 }}</td><td>{{ line.ft }}</td>
+          <td>{{ n(line.plus_minus) }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+        {% if team.totals %}
+        <tr class="sl-stats-table__career">
+          <th scope="row" class="slg-bx-namecol">Team</th>
+          <td>{{ mins(team.totals.minutes) }}</td><td class="slg-strong">{{ n(team.totals.pts) }}</td>
+          <td>{{ n(team.totals.reb) }}</td><td>{{ n(team.totals.ast) }}</td><td>{{ n(team.totals.stl) }}</td>
+          <td>{{ n(team.totals.blk) }}</td><td>{{ n(team.totals.tov) }}</td><td>{{ n(team.totals.pf) }}</td>
+          <td>{{ team.totals.fg }}</td><td>{{ team.totals.fg3 }}</td><td>{{ team.totals.ft }}</td>
+          <td>{{ n(team.totals.plus_minus) }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Advanced #}
+  <div class="slg-tablewrap slg-mode-data" data-slg-mode="advanced" style="display:none;">
+    <table class="sl-stats-table slg-bx-table">
+      <thead>
+        <tr>
+          <th scope="col" class="slg-bx-namecol">Player</th>
+          <th scope="col">MIN</th><th scope="col">PTS</th>
+          <th scope="col">TS%</th><th scope="col">eFG%</th><th scope="col">USG%</th>
+          <th scope="col">+/−</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in team.lines %}{% if not line.dnp %}
+        <tr>
+          {{ player_cell(line) }}
+          <td>{{ mins(line.minutes) }}</td><td class="slg-strong">{{ n(line.pts) }}</td>
+          <td>{{ pct(line.ts_pct) }}</td><td>{{ pct(line.efg_pct) }}</td><td>{{ pct(line.usg_pct) }}</td>
+          <td>{{ n(line.plus_minus) }}</td>
+        </tr>
+        {% endif %}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<main class="container slg-page slg-game">
+
+  <a class="slg-back" href="/stats/summer-league/games">&larr; All games</a>
+
+  <header class="slg-game__head">
+    <div class="slg-game__teams">
+      <div class="slg-game__team {% if box.away.score is not none and box.home.score is not none and box.away.score > box.home.score %}slg-game__team--win{% endif %}">
+        <span class="slg-game__tname">{{ box.away.name }}</span>
+        <span class="slg-game__tscore">{{ box.away.score if box.away.score is not none else '—' }}</span>
+        <span class="slg-game__ttag">Away</span>
+      </div>
+      <span class="slg-game__at">@</span>
+      <div class="slg-game__team {% if box.away.score is not none and box.home.score is not none and box.home.score > box.away.score %}slg-game__team--win{% endif %}">
+        <span class="slg-game__tname">{{ box.home.name }}</span>
+        <span class="slg-game__tscore">{{ box.home.score if box.home.score is not none else '—' }}</span>
+        <span class="slg-game__ttag">Home</span>
+      </div>
+    </div>
+    <div class="slg-game__meta">
+      <span>Summer League {{ box.year }}</span>
+      <span class="slg-dot">&middot;</span>
+      <span>{{ box.venue }}</span>
+      {% if box.game_date %}<span class="slg-dot">&middot;</span><span>{{ box.game_date }}</span>{% endif %}
+      <span class="slg-quality slg-quality--{{ box.data_quality }}">{{ box.data_quality | replace('_', ' ') }}</span>
+    </div>
+  </header>
+
+  <div class="slg-modebar">
+    <div class="season-selector slg-mode-selector">
+      <button class="season-btn slg-mode-btn active" data-slg-mode="traditional">Box Score</button>
+      <button class="season-btn slg-mode-btn" data-slg-mode="advanced">Advanced</button>
+    </div>
+  </div>
+
+  <div class="slg-boxes">
+    {{ team_box(box.away) }}
+    {{ team_box(box.home) }}
+  </div>
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='summer-league-games.js') }}"></script>
+{% endblock %}
