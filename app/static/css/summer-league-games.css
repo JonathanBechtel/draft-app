@@ -353,3 +353,141 @@
   font-size: 0.75rem;
   color: var(--color-slate-500);
 }
+
+/* ===================================================== Landing + season hub */
+
+/* Year strip */
+.slg-yearstrip {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding: 0.25rem 0 1.25rem;
+}
+.slg-yeartile {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--color-slate-200);
+  border-radius: 0.375rem;
+  background: var(--color-white);
+  color: var(--color-slate-600);
+  text-decoration: none;
+}
+.slg-yeartile:hover { border-color: var(--color-accent-emerald); color: var(--color-accent-emerald); }
+.slg-yeartile--active {
+  background: var(--color-accent-emerald);
+  border-color: var(--color-accent-emerald);
+  color: var(--color-white);
+}
+
+/* Hero */
+.slg-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+  border: 1px solid var(--color-accent-emerald);
+  border-radius: var(--border-radius);
+}
+.slg-hero__eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #065f46;
+  margin: 0 0 0.25rem;
+}
+.slg-hero__title { font-family: var(--font-heading); font-size: 1.5rem; margin: 0 0 0.4rem; }
+.slg-hero__title a { color: var(--color-slate-900); text-decoration: none; }
+.slg-hero__title a:hover { color: var(--color-accent-emerald); }
+.slg-hero__meta { font-family: var(--font-mono); font-size: 0.8125rem; color: var(--color-slate-600); margin: 0; }
+.slg-hero__leader {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-decoration: none;
+  padding-left: 1rem;
+}
+.slg-hero__leader-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #065f46;
+}
+.slg-hero__leader-name { font-family: var(--font-heading); font-size: 1.05rem; color: var(--color-slate-900); }
+.slg-hero__leader-stat { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 600; color: var(--color-accent-emerald); }
+.slg-hero__leader-stat small { font-size: 0.7rem; color: var(--color-slate-500); }
+
+/* Section title + see-all */
+.slg-section-title { font-family: var(--font-heading); font-size: 1.15rem; color: var(--color-slate-900); margin: 0; }
+.slg-leaders__head, .slg-recent-block .slg-leaders__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 0.75rem;
+}
+.slg-seeall { font-family: var(--font-mono); font-size: 0.8125rem; color: var(--color-accent-emerald); text-decoration: none; }
+.slg-seeall:hover { text-decoration: underline; }
+.slg-leaders, .slg-recent-block { margin-bottom: 1.75rem; }
+
+/* Leaderboards grid */
+.slg-leaders__grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 720px) { .slg-leaders__grid { grid-template-columns: repeat(3, 1fr); } }
+.slg-lboard {
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+.slg-lboard__title {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #065f46;
+  background: linear-gradient(to right, #d1fae5, #a7f3d0);
+  padding: 0.5rem 0.875rem;
+  border-bottom: 2px solid var(--color-accent-emerald);
+}
+.slg-lboard__list { list-style: none; margin: 0; padding: 0.5rem 0.875rem; }
+.slg-lboard__row { display: flex; align-items: baseline; gap: 0.6rem; padding: 0.25rem 0; }
+.slg-lboard__rank { font-family: var(--font-mono); font-size: 0.75rem; color: var(--color-slate-400); width: 1rem; }
+.slg-lboard__name { flex: 1; color: var(--color-slate-900); text-decoration: none; font-size: 0.9rem; }
+.slg-lboard__name:hover { color: var(--color-accent-emerald); }
+.slg-lboard__val { font-family: var(--font-mono); font-weight: 600; color: var(--color-slate-900); }
+.slg-lboard__val small { color: var(--color-slate-400); font-weight: 400; }
+.slg-lboard__empty { padding: 0.875rem; color: var(--color-slate-400); font-size: 0.85rem; }
+
+/* Venue cards */
+.slg-venues { display: grid; gap: 1rem; grid-template-columns: 1fr; margin-bottom: 1.75rem; }
+@media (min-width: 640px) { .slg-venues { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); } }
+.slg-venue-card {
+  display: block;
+  padding: 1rem;
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: var(--border-radius);
+  text-decoration: none;
+  transition: border-color var(--transition-speed), transform var(--transition-speed);
+}
+.slg-venue-card:hover { border-color: var(--color-accent-emerald); transform: translateY(-2px); }
+.slg-venue-card__head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+.slg-venue-card__name { font-family: var(--font-heading); font-size: 1rem; color: var(--color-slate-900); }
+.slg-venue-card__stats { display: flex; gap: 1rem; font-family: var(--font-mono); font-size: 0.8125rem; color: var(--color-slate-600); }
+.slg-venue-card__stats b { color: var(--color-slate-900); }
+.slg-venue-card__dates { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-slate-400); margin-top: 0.4rem; }
+
+/* Breadcrumb link in the eyebrow */
+.slg-crumb { color: inherit; text-decoration: none; border-bottom: 1px dotted currentColor; }
+.slg-crumb:hover { opacity: 0.8; }

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}{{ year }} NBA Summer League — Schedule, Leaders & Box Scores — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% endblock %}
+
+{% from 'stats/summer-league/_sl_macros.html' import year_strip, leader_board, game_rows %}
+
+{% block content %}
+<main class="container slg-page">
+
+  <a class="slg-back" href="/stats/summer-league">&larr; Summer League</a>
+
+  <header class="slg-head">
+    <p class="slg-eyebrow">Summer League &middot; Season</p>
+    <h1 class="slg-title">{{ year }} NBA Summer League</h1>
+    <p class="slg-sub">
+      {{ overview.venues | length }} venue{{ '' if overview.venues | length == 1 else 's' }}
+      &middot; {{ overview.total_games }} games
+      {% if overview.date_start %}&middot; {{ overview.date_start }} – {{ overview.date_end }}{% endif %}
+    </p>
+  </header>
+
+  {{ year_strip(years, year) }}
+
+  {# Venue summary cards #}
+  <section class="slg-venues">
+    {% for v in overview.venues %}
+    <a class="slg-venue-card" href="/stats/summer-league/games?year={{ year }}&venue={{ v.venue_slug }}">
+      <div class="slg-venue-card__head">
+        <span class="slg-venue-card__name">{{ v.venue }}</span>
+        <span class="slg-quality slg-quality--{{ v.data_quality }}">{{ v.data_quality | replace('_', ' ') }}</span>
+      </div>
+      <div class="slg-venue-card__stats">
+        <span><b>{{ v.team_count }}</b> teams</span>
+        <span><b>{{ v.game_count }}</b> games</span>
+      </div>
+      {% if v.starts_on %}<div class="slg-venue-card__dates">{{ v.starts_on }} – {{ v.ends_on }}</div>{% endif %}
+    </a>
+    {% endfor %}
+  </section>
+
+  {# Leaderboards #}
+  <section class="slg-leaders">
+    <div class="slg-leaders__head">
+      <h2 class="slg-section-title">{{ year }} Leaders</h2>
+    </div>
+    <div class="slg-leaders__grid">
+      {{ leader_board('Points', 'PPG', leaders.pts) }}
+      {{ leader_board('Rebounds', 'RPG', leaders.reb) }}
+      {{ leader_board('Assists', 'APG', leaders.ast) }}
+    </div>
+  </section>
+
+  {# Schedule / results #}
+  <section class="slg-recent-block">
+    <div class="slg-leaders__head">
+      <h2 class="slg-section-title">Schedule &amp; Results</h2>
+      <a class="slg-seeall" href="/stats/summer-league/games?year={{ year }}">All {{ schedule.total }} games &rarr;</a>
+    </div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-table">
+          <thead>
+            <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col" class="slg-col-matchup">Matchup</th></tr>
+          </thead>
+          <tbody>
+            {{ game_rows(schedule.games) }}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='summer-league-games.js') }}"></script>
+{% endblock %}

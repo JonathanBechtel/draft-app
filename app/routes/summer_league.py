@@ -20,7 +20,14 @@ from app.services.summer_league_games_service import (
     resolve_player_ref,
     search_games,
 )
+from app.services.summer_league_season_service import (
+    get_season_leaders,
+    get_season_overview,
+    get_season_years,
+)
 from app.utils.db_async import get_session
+
+LANDING_RECENT_GAMES = 8
 
 router = APIRouter(tags=["summer-league"])
 
@@ -137,6 +144,65 @@ async def player_summer_league_logs(
             },
             "seasons": seasons,
             "total_games": total_games,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/stats/summer-league", response_class=HTMLResponse)
+async def summer_league_landing(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """Front door for the Summer League section."""
+    years = await get_season_years(db)
+    latest = years[0] if years else None
+    overview = await get_season_overview(db, latest) if latest is not None else None
+    leaders = await get_season_leaders(db, latest) if latest is not None else None
+    recent = await search_games(db, page=1, page_size=LANDING_RECENT_GAMES)
+
+    return request.app.state.templates.TemplateResponse(
+        "stats/summer-league/landing.html",
+        {
+            "request": request,
+            "years": years,
+            "latest_year": latest,
+            "overview": overview,
+            "leaders": leaders,
+            "recent": recent,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/stats/summer-league/{year}", response_class=HTMLResponse)
+async def summer_league_season(
+    request: Request,
+    year: int,
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """Season hub: a year's venues, schedule, and leaderboards."""
+    overview = await get_season_overview(db, year)
+    if overview is None:
+        raise HTTPException(
+            status_code=404, detail="No Summer League data for this year"
+        )
+
+    years = await get_season_years(db)
+    leaders = await get_season_leaders(db, year)
+    schedule = await search_games(db, year=year, page=1, page_size=12)
+
+    return request.app.state.templates.TemplateResponse(
+        "stats/summer-league/season.html",
+        {
+            "request": request,
+            "year": year,
+            "years": years,
+            "overview": overview,
+            "leaders": leaders,
+            "schedule": schedule,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },
