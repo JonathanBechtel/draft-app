@@ -13,6 +13,42 @@
   align-items: start;
 }
 
+/* Jump-to-section anchor nav (top box) */
+.player-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.player-section-nav__link {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--color-slate-300);
+  border-radius: 0.25rem;
+  background: var(--color-white);
+  color: var(--color-slate-600);
+  text-decoration: none;
+  transition: all var(--transition-speed);
+}
+
+.player-section-nav__link:hover {
+  border-color: var(--color-accent-indigo);
+  color: var(--color-accent-indigo);
+}
+
+/* Offset anchor targets so they clear the fixed navbar when jumped to */
+#collegeSection,
+#summerLeagueSection,
+#consensusSection,
+#playerFilmStudySection,
+#combineSection,
+#newsSection {
+  scroll-margin-top: 7rem;
+}
+
 /* Left column: Photo only */
 .player-photo-wrapper {
   display: flex;
