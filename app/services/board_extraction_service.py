@@ -811,10 +811,12 @@ _NAME_SUFFIX_RE = re.compile(
 def normalize_player_name(name: str) -> str:
     """Return a canonical comparison form of a player name.
 
-    Folds Unicode diacritics (NFKD then ASCII-strip), strips trailing
+    Folds Unicode diacritics (NFKD then ASCII-strip), normalizes the
+    comma some sources put before a suffix ("Acuff, Jr."), strips trailing
     suffix tokens (Jr., Sr., II, III, IV, V), collapses internal
     whitespace, and lowercases. Used on both sides of the lookup so a
-    "Théo Maledon" DB row matches a "Theo Maledon" extracted name.
+    "Théo Maledon" DB row matches a "Theo Maledon" extracted name, and a
+    "Darius Acuff, Jr." board entry matches a "Darius Acuff Jr." DB row.
 
     Pure function — unit-tested.
     """
@@ -822,7 +824,11 @@ def normalize_player_name(name: str) -> str:
         return ""
     folded = unicodedata.normalize("NFKD", name)
     ascii_only = "".join(ch for ch in folded if not unicodedata.combining(ch))
-    without_suffix = _NAME_SUFFIX_RE.sub("", ascii_only)
+    # Commas only ever appear here as a suffix separator ("Surname, Jr.").
+    # Turn them into whitespace so the suffix stripper actually fires and no
+    # stray comma is left behind (which would otherwise block the match).
+    de_comma = ascii_only.replace(",", " ")
+    without_suffix = _NAME_SUFFIX_RE.sub("", de_comma)
     collapsed = re.sub(r"\s+", " ", without_suffix).strip()
     return collapsed.lower()
 
