@@ -204,6 +204,24 @@ def test_normalize_player_name_strips_suffix() -> None:
     assert normalize_player_name("Robert Williams III") == "robert williams"
 
 
+def test_normalize_player_name_strips_comma_before_suffix() -> None:
+    """A comma before the suffix ("Surname, Jr.") must not block the match.
+
+    Some sources write "Darius Acuff, Jr."; the suffix stripper used to leave
+    a trailing comma ("darius acuff,") that no longer equaled the DB's
+    "Darius Acuff Jr." → "darius acuff", silently dropping the player from
+    resolution. Both forms must normalize identically.
+    """
+    assert normalize_player_name("Darius Acuff, Jr.") == "darius acuff"
+    assert normalize_player_name("Darius Acuff Jr.") == "darius acuff"
+    assert normalize_player_name("Mikel Brown, Jr.") == "mikel brown"
+    assert normalize_player_name("Christian Anderson, Jr.") == "christian anderson"
+    # The comma-with-suffix and the plain-suffix forms must collide exactly.
+    assert normalize_player_name("Tarris Reed, Jr.") == normalize_player_name(
+        "Tarris Reed Jr"
+    )
+
+
 def test_normalize_player_name_collapses_whitespace() -> None:
     assert normalize_player_name("  Cooper   Flagg  ") == "cooper flagg"
 
@@ -446,9 +464,7 @@ def test_substack_api_url_translates_open_substack_share_link() -> None:
     they fall through to the HTML scraper and silently lose the article body.
     """
     assert (
-        _substack_api_url(
-            "https://open.substack.com/pub/edemirnba/p/2026-big-board"
-        )
+        _substack_api_url("https://open.substack.com/pub/edemirnba/p/2026-big-board")
         == "https://edemirnba.substack.com/api/v1/posts/2026-big-board"
     )
 
@@ -467,9 +483,7 @@ def test_substack_api_url_rejects_open_host_without_pub_path() -> None:
     """``open.substack.com`` paths that don't carry /pub/<pub>/p/<slug> are not posts."""
     assert _substack_api_url("https://open.substack.com/") is None
     assert _substack_api_url("https://open.substack.com/pub/edemirnba") is None
-    assert (
-        _substack_api_url("https://open.substack.com/pub/edemirnba/p/") is None
-    )
+    assert _substack_api_url("https://open.substack.com/pub/edemirnba/p/") is None
     assert _substack_api_url("https://open.substack.com/p/2026-big-board") is None
 
 
@@ -501,17 +515,12 @@ async def test_fetch_substack_api_returns_body_text_for_free_post(
         "audience": "everyone",
         "free_unlock_required": False,
         "body_html": (
-            "<div><p>1. Cooper Flagg, Duke</p>"
-            "<p>2. Dylan Harper, Rutgers</p></div>"
+            "<div><p>1. Cooper Flagg, Duke</p><p>2. Dylan Harper, Rutgers</p></div>"
         ),
     }
-    monkeypatch.setattr(
-        board_extraction_service, "_http_get", _fake_http_get(payload)
-    )
+    monkeypatch.setattr(board_extraction_service, "_http_get", _fake_http_get(payload))
 
-    text = await _fetch_substack_api(
-        "https://edemirnba.substack.com/p/2026-big-board"
-    )
+    text = await _fetch_substack_api("https://edemirnba.substack.com/p/2026-big-board")
     assert "Cooper Flagg" in text
     assert "Dylan Harper" in text
 
@@ -520,14 +529,10 @@ async def test_fetch_substack_api_returns_body_text_for_free_post(
 async def test_fetch_substack_api_raises_on_paid_audience(monkeypatch) -> None:
     """``audience=only_paid`` triggers the paywall path."""
     payload = {"audience": "only_paid", "body_html": "<p>teaser</p>"}
-    monkeypatch.setattr(
-        board_extraction_service, "_http_get", _fake_http_get(payload)
-    )
+    monkeypatch.setattr(board_extraction_service, "_http_get", _fake_http_get(payload))
 
     with pytest.raises(PaywallDetectedError):
-        await _fetch_substack_api(
-            "https://edemirnba.substack.com/p/2026-big-board"
-        )
+        await _fetch_substack_api("https://edemirnba.substack.com/p/2026-big-board")
 
 
 @pytest.mark.asyncio
@@ -536,14 +541,10 @@ async def test_fetch_substack_api_raises_on_only_free_audience(
 ) -> None:
     """``audience=only_free`` is also gated (requires a free-tier login)."""
     payload = {"audience": "only_free", "body_html": "<p>teaser</p>"}
-    monkeypatch.setattr(
-        board_extraction_service, "_http_get", _fake_http_get(payload)
-    )
+    monkeypatch.setattr(board_extraction_service, "_http_get", _fake_http_get(payload))
 
     with pytest.raises(PaywallDetectedError):
-        await _fetch_substack_api(
-            "https://edemirnba.substack.com/p/2026-big-board"
-        )
+        await _fetch_substack_api("https://edemirnba.substack.com/p/2026-big-board")
 
 
 @pytest.mark.asyncio
@@ -556,14 +557,10 @@ async def test_fetch_substack_api_raises_on_free_unlock_required(
         "free_unlock_required": True,
         "body_html": "<p>teaser</p>",
     }
-    monkeypatch.setattr(
-        board_extraction_service, "_http_get", _fake_http_get(payload)
-    )
+    monkeypatch.setattr(board_extraction_service, "_http_get", _fake_http_get(payload))
 
     with pytest.raises(PaywallDetectedError):
-        await _fetch_substack_api(
-            "https://edemirnba.substack.com/p/2026-big-board"
-        )
+        await _fetch_substack_api("https://edemirnba.substack.com/p/2026-big-board")
 
 
 @pytest.mark.asyncio
@@ -583,23 +580,17 @@ async def test_fetch_substack_api_raises_on_malformed_json(monkeypatch) -> None:
     )
 
     with pytest.raises(BoardExtractionError):
-        await _fetch_substack_api(
-            "https://edemirnba.substack.com/p/2026-big-board"
-        )
+        await _fetch_substack_api("https://edemirnba.substack.com/p/2026-big-board")
 
 
 @pytest.mark.asyncio
 async def test_fetch_substack_api_raises_on_empty_body_html(monkeypatch) -> None:
     """An empty body is also a hard error — we can't extract from nothing."""
     payload = {"audience": "everyone", "body_html": ""}
-    monkeypatch.setattr(
-        board_extraction_service, "_http_get", _fake_http_get(payload)
-    )
+    monkeypatch.setattr(board_extraction_service, "_http_get", _fake_http_get(payload))
 
     with pytest.raises(BoardExtractionError):
-        await _fetch_substack_api(
-            "https://edemirnba.substack.com/p/2026-big-board"
-        )
+        await _fetch_substack_api("https://edemirnba.substack.com/p/2026-big-board")
 
 
 # --- _default_fetcher routing ------------------------------------------
