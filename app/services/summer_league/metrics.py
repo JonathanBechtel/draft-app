@@ -1,0 +1,911 @@
+"""Compute Summer League advanced metrics, recalibrated to the league itself.
+
+The pipeline turns raw box logs into a full advanced-stat basket per
+``(player, year, venue)`` season:
+
+* A :class:`LeagueContext` per competition holds the recalibration constants
+  (pace, VOP, DRB%, the PER standardization scalar) built from *summed totals* of
+  every team-game in that pool.
+* Box / shooting / rate / possession / ratings / PER / Win Shares are computed
+  per player from their box totals plus their team's and opponent's totals.
+* **Coefficients are derived from actual Summer League data wherever possible:**
+  Win Shares' points-to-wins comes from the SL Pythagorean exponent, and BPM is a
+  weighted regression of per-100 box stats onto real SL plus-minus (re-centered so
+  each pool averages 0.0), rather than borrowing NBA-fit constants.
+
+Pools with thin or incomplete box data are flagged ``adv_eligible=False``; for
+those, only box and shooting stats are trustworthy and the league-relative
+composites are left ``None``.
+
+This module is pure computation plus a persistence orchestrator; it is invoked
+offline by ``scripts/rebuild_sl_metrics.py``, not on the request path.
+"""
+
+from __future__ import annotations
+
+import math
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any, Optional
+
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.schemas.players_master import PlayerMaster
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeaguePlayerGameLog,
+    SummerLeagueTeamGameLog,
+)
+from app.schemas.summer_league_metrics import (
+    SummerLeagueMetricContext,
+    SummerLeagueMetricModel,
+    SummerLeaguePlayerSeason,
+)
+
+# Qualification / gating thresholds.
+QUALIFY_MIN_MINUTES = 40.0  # minutes for a season to feed fits / leaders
+MIN_COMPLETE_TEAM_MP = 150.0  # sane regulation team minutes (~200 for 40-min)
+ADV_MIN_PLAYERS = 10  # qualified players for a trustworthy pool
+ADV_MIN_COMPLETE_FRAC = 0.80  # fraction of complete-box games for a pool
+VORP_REPLACEMENT = -2.0  # pts/100 below average (scale convention)
+
+# Non-collinear per-100 box predictors for the BPM regression (pts omitted — it
+# is a linear combination of made shots, already present as features).
+BPM_FEATURES = (
+    "fg2m",
+    "fg3m",
+    "ftm",
+    "fg_miss",
+    "ft_miss",
+    "orb",
+    "drb",
+    "ast",
+    "stl",
+    "blk",
+    "tov",
+    "pf",
+)
+OFF_FEATURES = frozenset(
+    {"fg2m", "fg3m", "ftm", "fg_miss", "ft_miss", "orb", "ast", "tov"}
+)
+DEF_FEATURES = frozenset({"drb", "stl", "blk", "pf"})
+
+_BOX_INT_FIELDS = (
+    "fgm",
+    "fga",
+    "fg3m",
+    "fg3a",
+    "ftm",
+    "fta",
+    "oreb",
+    "dreb",
+    "reb",
+    "ast",
+    "stl",
+    "blk",
+    "tov",
+    "pf",
+    "pts",
+)
+
+
+def _d(num: float, den: float) -> float:
+    """Safe divide: 0.0 when the denominator is zero (small-sample guard)."""
+    return num / den if den else 0.0
+
+
+# --------------------------------------------------------------------------- #
+# Aggregates
+# --------------------------------------------------------------------------- #
+@dataclass
+class Box:
+    """A summed box line (minutes in *minutes*, not seconds)."""
+
+    mp: float = 0.0
+    fgm: float = 0.0
+    fga: float = 0.0
+    fg3m: float = 0.0
+    fg3a: float = 0.0
+    ftm: float = 0.0
+    fta: float = 0.0
+    oreb: float = 0.0
+    dreb: float = 0.0
+    reb: float = 0.0
+    ast: float = 0.0
+    stl: float = 0.0
+    blk: float = 0.0
+    tov: float = 0.0
+    pf: float = 0.0
+    pts: float = 0.0
+    gp: int = 0
+
+    def add_row(self, r: Any) -> None:
+        """Accumulate a team or player box row's counting stats."""
+        for f in _BOX_INT_FIELDS:
+            setattr(self, f, getattr(self, f) + (getattr(r, f) or 0))
+
+    def poss(self, opp: "Box") -> float:
+        """Bbref estimated team possessions for this box vs an opponent box."""
+        return 0.5 * (
+            (
+                self.fga
+                + 0.4 * self.fta
+                - 1.07 * _d(self.oreb, self.oreb + opp.dreb) * (self.fga - self.fgm)
+                + self.tov
+            )
+            + (
+                opp.fga
+                + 0.4 * opp.fta
+                - 1.07 * _d(opp.oreb, opp.oreb + self.dreb) * (opp.fga - opp.fgm)
+                + opp.tov
+            )
+        )
+
+
+@dataclass
+class LeagueContext:
+    """Recalibration constants for one (year, venue) competition pool."""
+
+    competition_id: int
+    year: int
+    venue: str
+    lg: Box
+    poss: float
+    team_games: int  # team-game rows (2 per game)
+    total_games: int = 0  # distinct games (denominator for completeness)
+    complete_games: int = 0
+    pace: float = 0.0
+    pts_per_poss: float = 0.0
+    ppg: float = 0.0
+    factor: float = 0.0
+    vop: float = 0.0
+    drb_pct: float = 0.0
+    aper_scalar: float = 0.0
+    adv_eligible: bool = False
+
+    def finalize(self) -> None:
+        """Derive the league constants from the summed league box."""
+        lg = self.lg
+        self.pace = 48.0 * _d(self.poss, lg.mp / 5.0)
+        self.pts_per_poss = _d(lg.pts, self.poss)
+        self.ppg = _d(lg.pts, self.team_games)
+        self.factor = (2.0 / 3.0) - _d(
+            0.5 * _d(lg.ast, lg.fgm), 2.0 * _d(lg.fgm, lg.ftm)
+        )
+        self.vop = _d(lg.pts, lg.fga - lg.oreb + lg.tov + 0.44 * lg.fta)
+        self.drb_pct = _d(lg.reb - lg.oreb, lg.reb)
+
+
+@dataclass
+class PlayerSeason:
+    """One (player, year, venue) row with box totals and team/opponent context."""
+
+    player_id: int
+    competition_id: int
+    primary_team_entry_id: Optional[int]
+    year: int
+    venue: str
+    box: Box
+    team: Box
+    opp: Box
+    pm: float = 0.0
+    # Transient computation scratch (not persisted): possession/usage bases and
+    # the pre-standardization PER / pre-centering BPM components.
+    player_poss: float = 0.0
+    pct_min: float = 0.0
+    aper: Optional[float] = None
+    raw_off: Optional[float] = None
+    raw_def: Optional[float] = None
+    raw_bpm: Optional[float] = None
+    metrics: dict[str, Optional[float]] = field(default_factory=dict)
+
+
+# --------------------------------------------------------------------------- #
+# Per-player metric computation
+# --------------------------------------------------------------------------- #
+def game_score(b: Box) -> float:
+    """Hollinger Game Score (no league constants)."""
+    return (
+        b.pts
+        + 0.4 * b.fgm
+        - 0.7 * b.fga
+        - 0.4 * (b.fta - b.ftm)
+        + 0.7 * b.oreb
+        + 0.3 * b.dreb
+        + b.stl
+        + 0.7 * b.ast
+        + 0.7 * b.blk
+        - 0.4 * b.pf
+        - b.tov
+    )
+
+
+def compute_uper(b: Box, tm: Box, ctx: LeagueContext) -> float:
+    """Bbref unadjusted PER from a player's box + team totals + league context."""
+    if b.mp <= 0:
+        return 0.0
+    factor, vop, drbp = ctx.factor, ctx.vop, ctx.drb_pct
+    tm_ast_fg = _d(tm.ast, tm.fgm)
+    lg = ctx.lg
+    return (1.0 / b.mp) * (
+        b.fg3m
+        + (2.0 / 3.0) * b.ast
+        + (2.0 - factor * tm_ast_fg) * b.fgm
+        + (b.ftm * 0.5 * (1.0 + (1.0 - tm_ast_fg) + (2.0 / 3.0) * tm_ast_fg))
+        - vop * b.tov
+        - vop * drbp * (b.fga - b.fgm)
+        - vop * 0.44 * (0.44 + 0.56 * drbp) * (b.fta - b.ftm)
+        + vop * (1.0 - drbp) * (b.reb - b.oreb)
+        + vop * drbp * b.oreb
+        + vop * b.stl
+        + vop * drbp * b.blk
+        - b.pf * (_d(lg.ftm, lg.pf) - 0.44 * _d(lg.fta, lg.pf) * vop)
+    )
+
+
+def compute_ortg(b: Box, tm: Box, opp: Box) -> tuple[float, float, float]:
+    """Dean Oliver individual offensive rating.
+
+    Returns ``(ortg, total_possessions, points_produced)``.
+    """
+    if b.mp <= 0 or b.fga <= 0:
+        return 0.0, 0.0, 0.0
+    tm_mp5 = _d(tm.mp, 5.0)
+    qast = (_d(b.mp, tm_mp5) * (1.14 * _d(tm.ast - b.ast, tm.fgm))) + (
+        _d(
+            (_d(tm.ast, tm.mp) * b.mp * 5.0 - b.ast),
+            (_d(tm.fgm, tm.mp) * b.mp * 5.0 - b.fgm),
+        )
+        * (1.0 - _d(b.mp, tm_mp5))
+    )
+    fg_part = b.fgm * (1.0 - 0.5 * _d(b.pts - b.ftm, 2.0 * b.fga) * qast)
+    ast_part = (
+        0.5 * _d((tm.pts - tm.ftm) - (b.pts - b.ftm), 2.0 * (tm.fga - b.fga)) * b.ast
+    )
+    ft_part = (1.0 - (1.0 - _d(b.ftm, b.fta)) ** 2) * 0.4 * b.fta if b.fta else 0.0
+    tm_scor_poss = tm.fgm + (1.0 - (1.0 - _d(tm.ftm, tm.fta)) ** 2) * tm.fta * 0.4
+    team_orb_pct = _d(tm.oreb, tm.oreb + opp.dreb)
+    team_play_pct = _d(tm_scor_poss, tm.fga + tm.fta * 0.4 + tm.tov)
+    team_orb_weight = _d(
+        (1.0 - team_orb_pct) * team_play_pct,
+        (1.0 - team_orb_pct) * team_play_pct + team_orb_pct * (1.0 - team_play_pct),
+    )
+    orb_part = b.oreb * team_orb_weight * team_play_pct
+
+    scposs = (fg_part + ast_part + ft_part) * (
+        1.0 - _d(tm.oreb, tm_scor_poss) * team_orb_weight * team_play_pct
+    ) + orb_part
+    fgx_poss = (b.fga - b.fgm) * (1.0 - 1.07 * team_orb_pct)
+    ftx_poss = ((1.0 - _d(b.ftm, b.fta)) ** 2) * 0.4 * b.fta if b.fta else 0.0
+    tot_poss = scposs + fgx_poss + ftx_poss + b.tov
+    if tot_poss <= 0:
+        return 0.0, 0.0, 0.0
+
+    pprod_fg = (
+        2.0
+        * (b.fgm + 0.5 * b.fg3m)
+        * (1.0 - 0.5 * _d(b.pts - b.ftm, 2.0 * b.fga) * qast)
+    )
+    pprod_ast = (
+        2.0
+        * _d(tm.fgm - b.fgm + 0.5 * (tm.fg3m - b.fg3m), tm.fgm - b.fgm)
+        * 0.5
+        * _d((tm.pts - tm.ftm) - (b.pts - b.ftm), 2.0 * (tm.fga - b.fga))
+        * b.ast
+    )
+    pprod_orb = (
+        b.oreb
+        * team_orb_weight
+        * team_play_pct
+        * _d(tm.pts, tm.fgm + (1.0 - (1.0 - _d(tm.ftm, tm.fta)) ** 2) * 0.4 * tm.fta)
+    )
+    pprod = (pprod_fg + pprod_ast + b.ftm) * (
+        1.0 - _d(tm.oreb, tm_scor_poss) * team_orb_weight * team_play_pct
+    ) + pprod_orb
+    return 100.0 * _d(pprod, tot_poss), tot_poss, pprod
+
+
+def compute_drtg(b: Box, tm: Box, opp: Box, tm_poss: float) -> float:
+    """Dean Oliver individual defensive rating."""
+    if b.mp <= 0 or tm.mp <= 0:
+        return 0.0
+    dor_pct = _d(opp.oreb, opp.oreb + tm.dreb)
+    dfg_pct = _d(opp.fgm, opp.fga)
+    fmwt = _d(
+        dfg_pct * (1.0 - dor_pct),
+        dfg_pct * (1.0 - dor_pct) + (1.0 - dfg_pct) * dor_pct,
+    )
+    stops1 = b.stl + b.blk * fmwt * (1.0 - 1.07 * dor_pct) + b.dreb * (1.0 - fmwt)
+    stops2 = (
+        _d(opp.fga - opp.fgm - tm.blk, tm.mp) * fmwt * (1.0 - 1.07 * dor_pct)
+        + _d(opp.tov - tm.stl, tm.mp)
+    ) * b.mp + _d(b.pf, tm.pf) * 0.4 * opp.fta * (1.0 - _d(opp.ftm, opp.fta)) ** 2
+    stops = stops1 + stops2
+    stop_pct = _d(stops * tm.mp, tm_poss * b.mp) if tm_poss else 0.0
+    team_drtg = 100.0 * _d(opp.pts, tm_poss) if tm_poss else 0.0
+    d_pts_per_scposs = _d(
+        opp.pts, opp.fgm + (1.0 - (1.0 - _d(opp.ftm, opp.fta)) ** 2) * opp.fta * 0.4
+    )
+    return team_drtg + 0.2 * (100.0 * d_pts_per_scposs * (1.0 - stop_pct) - team_drtg)
+
+
+def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -> None:
+    """Populate ``ps.metrics`` with the full box-derived basket.
+
+    PER is left un-standardized (``ps.aper``); the caller standardizes per pool.
+    BPM/OBPM/DBPM/VORP are filled later by :func:`apply_sl_bpm`.
+    """
+    b, tm, opp = ps.box, ps.team, ps.opp
+    m = ps.metrics
+    gp = max(1, b.gp)
+
+    # Shooting / four-factors (player-only).
+    m["gmsc"] = round(game_score(b) / gp, 1)
+    m["ts_pct"] = round(100.0 * _d(b.pts, 2.0 * (b.fga + 0.44 * b.fta)), 1)
+    m["efg_pct"] = round(100.0 * _d(b.fgm + 0.5 * b.fg3m, b.fga), 1)
+    m["fg3ar"] = round(_d(b.fg3a, b.fga), 3)
+    m["ftr"] = round(_d(b.fta, b.fga), 3)
+
+    # League-relative metrics only when the pool is eligible.
+    if not ctx.adv_eligible:
+        for k in (
+            "tov_pct",
+            "usg_pct",
+            "ast_pct",
+            "orb_pct",
+            "drb_pct",
+            "trb_pct",
+            "stl_pct",
+            "blk_pct",
+            "pace",
+            "pts_per100",
+            "per",
+            "ortg",
+            "drtg",
+            "net",
+            "ows",
+            "dws",
+            "ws",
+            "ws40",
+        ):
+            m[k] = None
+        ps.aper = None
+        return
+
+    tm_mp5 = _d(tm.mp, 5.0)
+    m["tov_pct"] = round(100.0 * _d(b.tov, b.fga + 0.44 * b.fta + b.tov), 1)
+    m["usg_pct"] = round(
+        100.0
+        * _d(
+            (b.fga + 0.44 * b.fta + b.tov) * tm_mp5,
+            b.mp * (tm.fga + 0.44 * tm.fta + tm.tov),
+        ),
+        1,
+    )
+    m["ast_pct"] = round(100.0 * _d(b.ast, _d(b.mp, tm_mp5) * tm.fgm - b.fgm), 1)
+    m["orb_pct"] = round(100.0 * _d(b.oreb * tm_mp5, b.mp * (tm.oreb + opp.dreb)), 1)
+    m["drb_pct"] = round(100.0 * _d(b.dreb * tm_mp5, b.mp * (tm.dreb + opp.oreb)), 1)
+    m["trb_pct"] = round(100.0 * _d(b.reb * tm_mp5, b.mp * (tm.reb + opp.reb)), 1)
+    tm_poss = tm.poss(opp)
+    opp_poss = opp.poss(tm)
+    m["stl_pct"] = round(100.0 * _d(b.stl * tm_mp5, b.mp * opp_poss), 1)
+    m["blk_pct"] = round(100.0 * _d(b.blk * tm_mp5, b.mp * (opp.fga - opp.fg3a)), 1)
+
+    tm_pace = 48.0 * _d(tm_poss + opp_poss, 2.0 * tm_mp5)
+    player_poss = tm_poss * _d(b.mp, tm_mp5)
+    m["pace"] = round(tm_pace, 1)
+    m["pts_per100"] = round(100.0 * _d(b.pts, player_poss), 1)
+    ps.player_poss = player_poss
+    ps.pct_min = _d(b.mp, tm_mp5)
+
+    uper = compute_uper(b, tm, ctx)
+    ps.aper = _d(ctx.pace, tm_pace) * uper
+
+    ortg, tot_poss, pprod = compute_ortg(b, tm, opp)
+    drtg = compute_drtg(b, tm, opp, tm_poss)
+    m["ortg"] = round(ortg, 1)
+    m["drtg"] = round(drtg, 1)
+    m["net"] = round(ortg - drtg, 1)
+
+    mppw = ws_ppw_coeff * ctx.ppg * _d(tm_pace, ctx.pace)
+    marg_off = pprod - 0.92 * ctx.pts_per_poss * tot_poss
+    marg_def = _d(b.mp, tm.mp) * tm_poss * (1.08 * ctx.pts_per_poss - drtg / 100.0)
+    ows, dws = _d(marg_off, mppw), _d(marg_def, mppw)
+    m["ows"] = round(ows, 2)
+    m["dws"] = round(dws, 2)
+    m["ws"] = round(ows + dws, 2)
+    m["ws40"] = round(40.0 * _d(ows + dws, b.mp), 3)
+
+
+# --------------------------------------------------------------------------- #
+# SL-native coefficient fits
+# --------------------------------------------------------------------------- #
+def fit_pythagorean(
+    records: dict[int, dict], team_comp: dict[int, int], adv_pools: set[int]
+) -> tuple[float, int]:
+    """Fit the SL Pythagorean exponent x in ln(W/L) = x·ln(PF/PA).
+
+    Regression through the origin over decided team records in ADV pools. Falls
+    back to an NBA-ish 13.0 when too few records exist.
+    """
+    sxy = sxx = 0.0
+    n = 0
+    for entry, rec in records.items():
+        if team_comp.get(entry) not in adv_pools:
+            continue
+        w, losses, pf, pa = rec["w"], rec["l"], rec["pf"], rec["pa"]
+        if w > 0 and losses > 0 and pf > 0 and pa > 0:
+            lx, ly = math.log(pf / pa), math.log(w / losses)
+            sxy += lx * ly
+            sxx += lx * lx
+            n += 1
+    if n < 20 or sxx == 0:
+        return 13.0, n
+    return sxy / sxx, n
+
+
+def _bpm_feature_row(ps: PlayerSeason) -> Optional[list[float]]:
+    """Per-100-possession predictor vector for one player-season, or None."""
+    poss = ps.player_poss
+    if poss <= 0:
+        return None
+    b = ps.box
+    x = 100.0 / poss
+    return [
+        (b.fgm - b.fg3m) * x,
+        b.fg3m * x,
+        b.ftm * x,
+        (b.fga - b.fgm) * x,
+        (b.fta - b.ftm) * x,
+        b.oreb * x,
+        b.dreb * x,
+        b.ast * x,
+        b.stl * x,
+        b.blk * x,
+        b.tov * x,
+        b.pf * x,
+    ]
+
+
+def fit_sl_bpm(
+    seasons: list[PlayerSeason],
+    adv_pools: set[int],
+    min_mp: float = QUALIFY_MIN_MINUTES,
+) -> tuple[Optional[dict[str, float]], float, float, int]:
+    """Weighted OLS of per-100 box stats onto per-100 plus-minus over SL pools.
+
+    Returns ``(coef, intercept, weighted_r2, n)``; ``coef`` is ``None`` when too
+    few rows exist to fit.
+    """
+    import numpy as np
+
+    rows, targets, weights = [], [], []
+    for ps in seasons:
+        if ps.competition_id not in adv_pools or ps.box.mp < min_mp:
+            continue
+        feats = _bpm_feature_row(ps)
+        if feats is None or ps.player_poss <= 0:
+            continue
+        rows.append(feats)
+        targets.append(ps.pm * 100.0 / ps.player_poss)
+        weights.append(ps.box.mp)
+
+    n = len(rows)
+    if n < 50:
+        return None, 0.0, 0.0, n
+
+    x = np.array(rows, dtype=float)
+    y = np.array(targets, dtype=float)
+    w = np.array(weights, dtype=float)
+    x_aug = np.hstack([x, np.ones((n, 1))])
+    sw = np.sqrt(w)
+    beta, *_ = np.linalg.lstsq(x_aug * sw[:, None], y * sw, rcond=None)
+
+    pred = x_aug @ beta
+    ybar = float(np.average(y, weights=w))
+    ss_res = float(np.sum(w * (y - pred) ** 2))
+    ss_tot = float(np.sum(w * (y - ybar) ** 2))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot else 0.0
+    coef = {f: float(beta[i]) for i, f in enumerate(BPM_FEATURES)}
+    return coef, float(beta[-1]), r2, n
+
+
+def apply_sl_bpm(
+    seasons: list[PlayerSeason],
+    by_pool: dict[int, list[PlayerSeason]],
+    coef: Optional[dict[str, float]],
+    intercept: float,
+) -> None:
+    """Assign raw BPM + offense/defense parts, re-center per pool, then VORP.
+
+    OBPM/DBPM are the offensive- and defensive-feature contributions of the
+    fitted model, each centered to its pool mean; (OBPM + DBPM) == BPM exactly.
+    """
+    for ps in seasons:
+        feats = _bpm_feature_row(ps)
+        if feats is None or coef is None:
+            ps.metrics["bpm"] = ps.metrics["obpm"] = ps.metrics["dbpm"] = None
+            ps.metrics["vorp"] = None
+            continue
+        ps.raw_off = sum(
+            coef[f] * v for f, v in zip(BPM_FEATURES, feats) if f in OFF_FEATURES
+        )
+        ps.raw_def = sum(
+            coef[f] * v for f, v in zip(BPM_FEATURES, feats) if f in DEF_FEATURES
+        )
+        ps.raw_bpm = intercept + ps.raw_off + ps.raw_def
+
+    for pool in by_pool.values():
+        scored = [ps for ps in pool if ps.raw_bpm is not None]
+        if not scored:
+            continue
+        wmp = sum(ps.box.mp for ps in scored) or 1.0
+        off_mean = sum((ps.raw_off or 0.0) * ps.box.mp for ps in scored) / wmp
+        def_mean = sum((ps.raw_def or 0.0) * ps.box.mp for ps in scored) / wmp
+        for ps in scored:
+            obpm = (ps.raw_off or 0.0) - off_mean
+            dbpm = (ps.raw_def or 0.0) - def_mean
+            bpm = obpm + dbpm
+            ps.metrics["obpm"] = round(obpm, 1)
+            ps.metrics["dbpm"] = round(dbpm, 1)
+            ps.metrics["bpm"] = round(bpm, 1)
+            ps.metrics["vorp"] = round((bpm - VORP_REPLACEMENT) * ps.pct_min, 2)
+
+
+# --------------------------------------------------------------------------- #
+# Loading + assembly
+# --------------------------------------------------------------------------- #
+@dataclass
+class ComputeResult:
+    """Everything a rebuild needs to persist."""
+
+    contexts: dict[int, LeagueContext]
+    seasons: list[PlayerSeason]
+    pyth_exponent: float
+    pyth_n: int
+    ws_ppw_coeff: float
+    bpm_coef: Optional[dict[str, float]]
+    bpm_intercept: float
+    bpm_r2: float
+    bpm_n_fit: int
+
+
+async def _load(db: AsyncSession) -> tuple[Any, ...]:
+    comp = SummerLeagueCompetition
+    tgl = SummerLeagueTeamGameLog
+    pgl = SummerLeaguePlayerGameLog
+
+    comps = {
+        c.id: (c.year, c.venue_slug) for c in (await db.execute(select(comp))).scalars()
+    }
+    games = {
+        g.id: (g.home_team_entry_id, g.away_team_entry_id, g.home_score, g.away_score)
+        for g in (await db.execute(select(SummerLeagueGame))).scalars()
+    }
+    team_rows = (await db.execute(select(tgl))).scalars().all()
+    team_mp = {
+        tid: (sec or 0) / 60.0
+        for tid, sec in (
+            await db.execute(
+                select(pgl.team_entry_id, func.sum(pgl.minutes_seconds)).group_by(  # type: ignore[call-overload]
+                    pgl.team_entry_id
+                )
+            )
+        ).all()
+    }
+    sec: Any = pgl.minutes_seconds  # column expression for arithmetic/compare
+    player_rows = (
+        await db.execute(
+            select(  # type: ignore[call-overload]
+                pgl.competition_id,
+                pgl.player_id,
+                pgl.team_entry_id,
+                func.count().label("gp"),
+                func.sum(sec).label("sec"),
+                *[func.sum(getattr(pgl, f)).label(f) for f in _BOX_INT_FIELDS],
+                func.sum(pgl.plus_minus).label("plus_minus"),
+            )
+            .join(PlayerMaster, PlayerMaster.id == pgl.player_id)
+            .where(pgl.player_id.isnot(None), sec > 0)  # type: ignore[union-attr]
+            .group_by(pgl.competition_id, pgl.player_id, pgl.team_entry_id)
+        )
+    ).all()
+    return comps, games, team_rows, team_mp, player_rows
+
+
+def _build(comps, games, team_rows, team_mp):
+    team_box: dict[int, Box] = defaultdict(Box)
+    team_comp: dict[int, int] = {}
+    opp_box: dict[int, Box] = defaultdict(Box)
+    row_by_game_entry: dict[tuple[int, int], Any] = {}
+
+    for r in team_rows:
+        team_box[r.team_entry_id].add_row(r)
+        team_comp[r.team_entry_id] = r.competition_id
+        row_by_game_entry[(r.game_id, r.team_entry_id)] = r
+
+    records: dict[int, dict] = defaultdict(lambda: {"w": 0, "l": 0, "pf": 0, "pa": 0})
+    for gid, (home, away, hs, as_) in games.items():
+        for me, other, my_s, opp_s in ((home, away, hs, as_), (away, home, as_, hs)):
+            if me is None or other is None:
+                continue
+            other_row = row_by_game_entry.get((gid, other))
+            if other_row is not None:
+                opp_box[me].add_row(other_row)
+            if my_s is not None and opp_s is not None:
+                rec = records[me]
+                rec["pf"] += my_s
+                rec["pa"] += opp_s
+                if my_s > opp_s:
+                    rec["w"] += 1
+                elif my_s < opp_s:
+                    rec["l"] += 1
+
+    for entry, box in team_box.items():
+        box.mp = team_mp.get(entry, 0.0)
+
+    lg_box: dict[int, Box] = defaultdict(Box)
+    lg_team_games: dict[int, int] = defaultdict(int)
+    for (_gid, _entry), row in row_by_game_entry.items():
+        lg_box[row.competition_id].add_row(row)
+        lg_team_games[row.competition_id] += 1
+    lg_poss: dict[int, float] = defaultdict(float)
+    lg_mp: dict[int, float] = defaultdict(float)
+    for entry, box in team_box.items():
+        cid = team_comp[entry]
+        lg_poss[cid] += box.poss(opp_box[entry])
+        lg_mp[cid] += box.mp
+
+    complete = _completeness(team_rows, team_mp)
+
+    contexts: dict[int, LeagueContext] = {}
+    for cid, box in lg_box.items():
+        year, venue = comps[cid]
+        box.mp = lg_mp[cid]
+        cov = complete.get(cid, {"games": 0, "complete": 0})
+        ctx = LeagueContext(
+            competition_id=cid,
+            year=year,
+            venue=venue,
+            lg=box,
+            poss=lg_poss[cid],
+            team_games=lg_team_games[cid],
+            total_games=cov["games"],
+            complete_games=cov["complete"],
+        )
+        ctx.finalize()
+        contexts[cid] = ctx
+
+    return team_box, opp_box, team_comp, contexts, records
+
+
+def _completeness(team_rows, team_mp) -> dict[int, dict]:
+    """Per-competition game counts: total games and complete-box games.
+
+    A game is complete when both team rows exist and each team's minutes are in a
+    sane regulation range (filters broken partial boxes).
+    """
+    by_game: dict[int, list] = defaultdict(list)
+    game_comp: dict[int, int] = {}
+    for r in team_rows:
+        by_game[r.game_id].append(r)
+        game_comp[r.game_id] = r.competition_id
+    out: dict[int, dict] = defaultdict(lambda: {"games": 0, "complete": 0})
+    for gid, rows in by_game.items():
+        cid = game_comp[gid]
+        out[cid]["games"] += 1
+        if len(rows) == 2 and all(
+            team_mp.get(r.team_entry_id, 0.0) >= MIN_COMPLETE_TEAM_MP for r in rows
+        ):
+            out[cid]["complete"] += 1
+    return out
+
+
+async def compute(db: AsyncSession) -> ComputeResult:
+    """Load raw logs and compute every metric in memory."""
+    comps, games, team_rows, team_mp, player_rows = await _load(db)
+    team_box, opp_box, team_comp, contexts, records = _build(
+        comps, games, team_rows, team_mp
+    )
+
+    # Merge multiple team-entries per (comp, player); primary = most minutes.
+    merged: dict[tuple[int, int], dict] = {}
+    for r in player_rows:
+        key = (r.competition_id, r.player_id)
+        sec = float(r.sec or 0)
+        cur = merged.get(key)
+        if cur is None:
+            cur = {"box": Box(), "entry": r.team_entry_id, "sec": sec, "pm": 0.0}
+            merged[key] = cur
+        bx = cur["box"]
+        bx.gp += int(r.gp)
+        bx.mp += sec / 60.0
+        cur["pm"] += float(r.plus_minus or 0)
+        for f in _BOX_INT_FIELDS:
+            setattr(bx, f, getattr(bx, f) + float(getattr(r, f) or 0))
+        if sec > cur["sec"]:
+            cur["entry"] = r.team_entry_id
+            cur["sec"] = sec
+
+    seasons: list[PlayerSeason] = []
+    for (cid, pid), v in merged.items():
+        year, venue = comps[cid]
+        entry = v["entry"]
+        seasons.append(
+            PlayerSeason(
+                player_id=pid,
+                competition_id=cid,
+                primary_team_entry_id=entry,
+                year=year,
+                venue=venue,
+                box=v["box"],
+                team=team_box[entry],
+                opp=opp_box[entry],
+                pm=v["pm"],
+            )
+        )
+
+    by_pool: dict[int, list[PlayerSeason]] = defaultdict(list)
+    for ps in seasons:
+        by_pool[ps.competition_id].append(ps)
+
+    # Gate pools for league-relative metrics.
+    adv_pools: set[int] = set()
+    for cid, pool in by_pool.items():
+        qual = sum(1 for p in pool if p.box.mp >= QUALIFY_MIN_MINUTES)
+        ctx = contexts[cid]
+        cfrac = _d(ctx.complete_games, ctx.total_games)
+        if cfrac >= ADV_MIN_COMPLETE_FRAC and qual >= ADV_MIN_PLAYERS:
+            adv_pools.add(cid)
+            ctx.adv_eligible = True
+
+    # (a) SL points-to-wins from the Pythagorean exponent.
+    pyth_x, pyth_n = fit_pythagorean(records, team_comp, adv_pools)
+    ws_ppw_coeff = 4.0 / pyth_x
+
+    for ps in seasons:
+        compute_metrics(ps, contexts[ps.competition_id], ws_ppw_coeff)
+
+    # Standardize PER per pool so the minute-weighted mean aPER -> 15.
+    for cid, pool in by_pool.items():
+        if not contexts[cid].adv_eligible:
+            continue
+        num = sum((ps.aper or 0.0) * ps.box.mp for ps in pool)
+        den = sum(ps.box.mp for ps in pool)
+        scalar = _d(num, den)
+        contexts[cid].aper_scalar = scalar
+        for ps in pool:
+            ps.metrics["per"] = (
+                round(ps.aper * _d(15.0, scalar), 1) if ps.aper is not None else None
+            )
+
+    # (b) SL-native BPM (+ OBPM/DBPM/VORP); fit only over adv pools.
+    adv_by_pool = {cid: pool for cid, pool in by_pool.items() if cid in adv_pools}
+    coef, intercept, r2, n_fit = fit_sl_bpm(seasons, adv_pools)
+    apply_sl_bpm(seasons, adv_by_pool, coef, intercept)
+
+    return ComputeResult(
+        contexts=contexts,
+        seasons=seasons,
+        pyth_exponent=pyth_x,
+        pyth_n=pyth_n,
+        ws_ppw_coeff=ws_ppw_coeff,
+        bpm_coef=coef,
+        bpm_intercept=intercept,
+        bpm_r2=r2,
+        bpm_n_fit=n_fit,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Persistence
+# --------------------------------------------------------------------------- #
+def _season_columns(
+    ps: PlayerSeason, model_version: str, adv_eligible: bool
+) -> dict[str, Any]:
+    b, m = ps.box, ps.metrics
+    return {
+        "competition_id": ps.competition_id,
+        "player_id": ps.player_id,
+        "primary_team_entry_id": ps.primary_team_entry_id,
+        "year": ps.year,
+        "venue_slug": ps.venue,
+        "gp": b.gp,
+        "minutes": round(b.mp, 1),
+        **{f: int(getattr(b, f)) for f in _BOX_INT_FIELDS},
+        "plus_minus": int(ps.pm),
+        "ts_pct": m.get("ts_pct"),
+        "efg_pct": m.get("efg_pct"),
+        "fg3ar": m.get("fg3ar"),
+        "ftr": m.get("ftr"),
+        "gmsc": m.get("gmsc"),
+        "usg_pct": m.get("usg_pct"),
+        "ast_pct": m.get("ast_pct"),
+        "orb_pct": m.get("orb_pct"),
+        "drb_pct": m.get("drb_pct"),
+        "trb_pct": m.get("trb_pct"),
+        "stl_pct": m.get("stl_pct"),
+        "blk_pct": m.get("blk_pct"),
+        "tov_pct": m.get("tov_pct"),
+        "pace": m.get("pace"),
+        "pts_per100": m.get("pts_per100"),
+        "per": m.get("per"),
+        "ortg": m.get("ortg"),
+        "drtg": m.get("drtg"),
+        "net_rtg": m.get("net"),
+        "ows": m.get("ows"),
+        "dws": m.get("dws"),
+        "ws": m.get("ws"),
+        "ws40": m.get("ws40"),
+        "obpm": m.get("obpm"),
+        "dbpm": m.get("dbpm"),
+        "bpm": m.get("bpm"),
+        "vorp": m.get("vorp"),
+        "adv_eligible": adv_eligible,
+        "model_version": model_version,
+    }
+
+
+async def rebuild(
+    db: AsyncSession, *, model_version: Optional[str] = None
+) -> dict[str, int]:
+    """Recompute and replace all materialized SL metric tables.
+
+    Returns a small summary dict (counts). The caller controls the transaction.
+    """
+    result = await compute(db)
+    version = model_version or datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    adv_cids = {cid for cid, ctx in result.contexts.items() if ctx.adv_eligible}
+
+    # Clear existing rows (full rebuild).
+    await db.execute(delete(SummerLeaguePlayerSeason))
+    await db.execute(delete(SummerLeagueMetricContext))
+    await db.execute(delete(SummerLeagueMetricModel))
+
+    db.add(
+        SummerLeagueMetricModel(
+            model_version=version,
+            pyth_exponent=result.pyth_exponent,
+            ws_ppw_coeff=result.ws_ppw_coeff,
+            pyth_n_teams=result.pyth_n,
+            bpm_intercept=result.bpm_intercept,
+            bpm_r2=result.bpm_r2,
+            bpm_n_fit=result.bpm_n_fit,
+            bpm_replacement=VORP_REPLACEMENT,
+            bpm_coefficients=result.bpm_coef or {},
+        )
+    )
+
+    for ctx in result.contexts.values():
+        db.add(
+            SummerLeagueMetricContext(
+                competition_id=ctx.competition_id,
+                year=ctx.year,
+                venue_slug=ctx.venue,
+                pace=round(ctx.pace, 3),
+                pts_per_poss=round(ctx.pts_per_poss, 4),
+                ppg=round(ctx.ppg, 3),
+                factor=round(ctx.factor, 4),
+                vop=round(ctx.vop, 4),
+                drb_pct=round(ctx.drb_pct, 4),
+                aper_scalar=round(ctx.aper_scalar, 4),
+                n_team_games=ctx.team_games,
+                n_complete_games=ctx.complete_games,
+                adv_eligible=ctx.adv_eligible,
+            )
+        )
+
+    n_seasons = 0
+    for ps in result.seasons:
+        cols = _season_columns(ps, version, ps.competition_id in adv_cids)
+        db.add(SummerLeaguePlayerSeason(**cols))
+        n_seasons += 1
+
+    return {
+        "seasons": n_seasons,
+        "contexts": len(result.contexts),
+        "adv_pools": len(adv_cids),
+    }
