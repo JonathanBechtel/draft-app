@@ -28,6 +28,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 
 # Minimum total minutes in a competition before its rate composites are
@@ -235,3 +236,168 @@ async def get_player_metric_seasons(
     rows.sort(key=lambda r: (-r.year, _VENUE_ORDER.get(r.venue_slug, 99)))
     seasons = [_to_season(r) for r in rows]
     return PlayerMetricsProfile(seasons=seasons, career=_career(seasons))
+
+
+# --------------------------------------------------------------------------- #
+# Per-competition leaderboard
+# --------------------------------------------------------------------------- #
+# The composites are recalibrated within each pool, so a leaderboard is only
+# meaningful inside a single competition (year + venue). The value columns shown
+# are the per-competition basket — cumulative WS/VORP rank the same as their /82
+# projections within one pool, so the cumulative form is enough here.
+ADV_LEADER_COLUMNS: tuple[str, ...] = (
+    "min",
+    "per",
+    "ts_pct",
+    "efg_pct",
+    "usg_pct",
+    "ast_pct",
+    "trb_pct",
+    "ortg",
+    "drtg",
+    "bpm",
+    "ws",
+    "vorp",
+)
+
+
+@dataclass
+class CompetitionLeaderRow:
+    """One player's row on a per-competition advanced leaderboard."""
+
+    slug: Optional[str]
+    name: str
+    gp: int
+    values: dict[str, Optional[float]]
+
+
+@dataclass
+class CompetitionLeaders:
+    """An adv-eligible competition's leaderboard plus the picker's options.
+
+    ``year``/``venue_slug`` are the *resolved* competition (may differ from the
+    request when it defaulted). ``competitions`` lists every adv-eligible
+    ``(year, venue_slug)`` newest-first for the selector. Empty ``rows`` with a
+    ``None`` competition means no adv-eligible pool exists at all.
+    """
+
+    year: Optional[int]
+    venue_slug: Optional[str]
+    venue_label: Optional[str]
+    competitions: list[tuple[int, str]]
+    rows: list[CompetitionLeaderRow]
+
+
+def _leader_values(s: SummerLeaguePlayerSeason) -> dict[str, Optional[float]]:
+    """Shape one materialized row into display values keyed by leader column."""
+    return {
+        "min": _round1(s.minutes),
+        "per": _round1(s.per),
+        "ts_pct": _round1(s.ts_pct),
+        "efg_pct": _round1(s.efg_pct),
+        "usg_pct": _round1(s.usg_pct),
+        "ast_pct": _round1(s.ast_pct),
+        "trb_pct": _round1(s.trb_pct),
+        "ortg": _round1(s.ortg),
+        "drtg": _round1(s.drtg),
+        "bpm": _round1(s.bpm),
+        "ws": _round1(s.ws),
+        "vorp": _round1(s.vorp),
+    }
+
+
+async def list_adv_competitions(db: AsyncSession) -> list[tuple[int, str]]:
+    """Distinct adv-eligible ``(year, venue_slug)``, newest year first, LV first."""
+    stmt = (
+        select(
+            SummerLeaguePlayerSeason.year,
+            SummerLeaguePlayerSeason.venue_slug,
+        )  # type: ignore[call-overload]
+        .where(
+            SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
+            SummerLeaguePlayerSeason.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
+        )
+        .distinct()
+    )
+    pairs = {(int(y), v) for y, v in (await db.execute(stmt)).all()}
+    return sorted(pairs, key=lambda k: (-k[0], _VENUE_ORDER.get(k[1], 99)))
+
+
+def _resolve_competition(
+    competitions: list[tuple[int, str]],
+    year: Optional[int],
+    venue_slug: Optional[str],
+) -> Optional[tuple[int, str]]:
+    """Pick the competition to show, defaulting toward the latest/marquee pool.
+
+    Honors an exact ``(year, venue)`` match; otherwise falls back to the first
+    (marquee-ordered) venue for a requested year, then the latest year for a
+    requested venue, then the newest competition overall.
+    """
+    if not competitions:
+        return None
+    if (year, venue_slug) in competitions:
+        return (year, venue_slug)  # type: ignore[return-value]
+    if year is not None:
+        for comp in competitions:
+            if comp[0] == year:
+                return comp
+    if venue_slug is not None:
+        for comp in competitions:
+            if comp[1] == venue_slug:
+                return comp
+    return competitions[0]
+
+
+async def get_competition_leaders(
+    db: AsyncSession,
+    *,
+    year: Optional[int] = None,
+    venue_slug: Optional[str] = None,
+    min_games: int = 0,
+    min_minutes: int = 0,
+) -> CompetitionLeaders:
+    """Fetch one competition's advanced leaderboard rows (unsorted).
+
+    Resolves ``(year, venue_slug)`` to an adv-eligible competition (defaulting to
+    the latest when unspecified or unavailable), then returns its players above
+    the ``min_games`` / ``min_minutes`` thresholds. The caller sorts/paginates.
+    """
+    competitions = await list_adv_competitions(db)
+    resolved = _resolve_competition(competitions, year, venue_slug)
+    if resolved is None:
+        return CompetitionLeaders(None, None, None, competitions, [])
+    r_year, r_venue = resolved
+
+    stmt = (
+        select(
+            SummerLeaguePlayerSeason,
+            PlayerMaster.slug,
+            PlayerMaster.display_name,
+        )  # type: ignore[call-overload]
+        .join(PlayerMaster, PlayerMaster.id == SummerLeaguePlayerSeason.player_id)
+        .where(
+            SummerLeaguePlayerSeason.year == r_year,  # type: ignore[arg-type]
+            SummerLeaguePlayerSeason.venue_slug == r_venue,  # type: ignore[arg-type]
+            SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
+            SummerLeaguePlayerSeason.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
+            SummerLeaguePlayerSeason.gp >= min_games,  # type: ignore[arg-type]
+            SummerLeaguePlayerSeason.minutes >= min_minutes,  # type: ignore[arg-type]
+        )
+    )
+    rows = [
+        CompetitionLeaderRow(
+            slug=slug,
+            name=name or "Player",
+            gp=season.gp,
+            values=_leader_values(season),
+        )
+        for season, slug, name in (await db.execute(stmt)).all()
+    ]
+    return CompetitionLeaders(
+        year=r_year,
+        venue_slug=r_venue,
+        venue_label=VENUE_LABELS.get(r_venue, r_venue),
+        competitions=competitions,
+        rows=rows,
+    )

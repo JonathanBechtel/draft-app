@@ -13,8 +13,11 @@ from typing import Optional
 from app.services.summer_league_metrics_service import (
     PlayerMetricSeason,
     _career,
+    _resolve_competition,
     _weighted_mean,
 )
+
+_COMPS = [(2025, "las_vegas"), (2025, "salt_lake_city"), (2024, "las_vegas")]
 
 
 def _season(
@@ -52,6 +55,30 @@ def _season(
         vorp=vorp,
         vorp82=vorp82,
     )
+
+
+def test_resolve_competition_exact_match() -> None:
+    """An exact (year, venue) pair is honored."""
+    assert _resolve_competition(_COMPS, 2024, "las_vegas") == (2024, "las_vegas")
+
+
+def test_resolve_competition_year_fallback() -> None:
+    """An unavailable venue for a requested year falls back to that year's first."""
+    assert _resolve_competition(_COMPS, 2025, "orlando") == (2025, "las_vegas")
+
+
+def test_resolve_competition_venue_fallback() -> None:
+    """A venue with no requested year falls back to its latest year."""
+    assert _resolve_competition(_COMPS, None, "salt_lake_city") == (
+        2025,
+        "salt_lake_city",
+    )
+
+
+def test_resolve_competition_defaults_to_latest() -> None:
+    """No request resolves to the newest competition; empty list yields None."""
+    assert _resolve_competition(_COMPS, None, None) == (2025, "las_vegas")
+    assert _resolve_competition([], 2025, "las_vegas") is None
 
 
 def test_weighted_mean_weights_by_minutes() -> None:
