@@ -94,6 +94,17 @@ def test_bpm_split_reconstructs_bpm_and_centers_to_zero() -> None:
         bpm, obpm, dbpm = ps.metrics["bpm"], ps.metrics["obpm"], ps.metrics["dbpm"]
         assert bpm is not None and obpm is not None and dbpm is not None
         assert bpm == round(obpm + dbpm, 1)
+        # Two value flavours: cumulative VORP on the standard MP/(48*82) yardstick
+        # and an 82-game projection. The cumulative is never the larger magnitude
+        # (a few games' worth of minutes is a fraction of a full season).
+        vorp, vorp82 = ps.metrics["vorp"], ps.metrics["vorp82"]
+        assert vorp is not None and vorp82 is not None
+        assert abs(vorp) <= abs(vorp82)
+    # At least one player has a non-trivial, clearly distinct pair of values.
+    top = max(pool, key=lambda p: abs(p.metrics["vorp82"] or 0.0))
+    top_vorp82, top_vorp = top.metrics["vorp82"], top.metrics["vorp"]
+    assert top_vorp82 is not None and top_vorp is not None
+    assert abs(top_vorp82) > abs(top_vorp) > 0.0
     wmp = sum(p.box.mp for p in pool)
     mean_bpm = sum((p.metrics["bpm"] or 0.0) * p.box.mp for p in pool) / wmp
     assert abs(mean_bpm) < 0.06  # within rounding of zero
@@ -120,3 +131,4 @@ def test_compute_metrics_blanks_composites_when_pool_ineligible() -> None:
     assert ps.metrics["per"] is None
     assert ps.metrics["ortg"] is None
     assert ps.metrics["ws"] is None
+    assert ps.metrics["ws82"] is None

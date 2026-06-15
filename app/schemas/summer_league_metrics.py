@@ -193,12 +193,14 @@ class SummerLeaguePlayerSeason(SQLModel, table=True):  # type: ignore[call-arg]
     net_rtg: Optional[float] = Field(default=None)
     ows: Optional[float] = Field(default=None)
     dws: Optional[float] = Field(default=None)
-    ws: Optional[float] = Field(default=None)
+    ws: Optional[float] = Field(default=None)  # cumulative Win Shares
     ws40: Optional[float] = Field(default=None)
+    ws82: Optional[float] = Field(default=None)  # WS projected to an 82-game season
     obpm: Optional[float] = Field(default=None)
     dbpm: Optional[float] = Field(default=None)
     bpm: Optional[float] = Field(default=None)
-    vorp: Optional[float] = Field(default=None)
+    vorp: Optional[float] = Field(default=None)  # cumulative VORP (accrued)
+    vorp82: Optional[float] = Field(default=None)  # VORP projected to 82 games
 
     adv_eligible: bool = Field(default=False, nullable=False)
     model_version: Optional[str] = Field(default=None)

@@ -370,6 +370,7 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
             "dws",
             "ws",
             "ws40",
+            "ws82",
         ):
             m[k] = None
         ps.aper = None
@@ -418,6 +419,10 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     m["dws"] = round(dws, 2)
     m["ws"] = round(ows + dws, 2)
     m["ws40"] = round(40.0 * _d(ows + dws, b.mp), 3)
+    # Full-season projection: scale the accumulated WS by an 82-game / 48-min
+    # "season" relative to the minutes actually available here. ``k82`` ~= 82/G.
+    k82 = _d(48.0 * 82.0, tm_mp5)
+    m["ws82"] = round((ows + dws) * k82, 2)
 
 
 # --------------------------------------------------------------------------- #
@@ -528,7 +533,7 @@ def apply_sl_bpm(
         feats = _bpm_feature_row(ps)
         if feats is None or coef is None:
             ps.metrics["bpm"] = ps.metrics["obpm"] = ps.metrics["dbpm"] = None
-            ps.metrics["vorp"] = None
+            ps.metrics["vorp"] = ps.metrics["vorp82"] = None
             continue
         ps.raw_off = sum(
             coef[f] * v for f, v in zip(BPM_FEATURES, feats) if f in OFF_FEATURES
@@ -552,7 +557,16 @@ def apply_sl_bpm(
             ps.metrics["obpm"] = round(obpm, 1)
             ps.metrics["dbpm"] = round(dbpm, 1)
             ps.metrics["bpm"] = round(bpm, 1)
-            ps.metrics["vorp"] = round((bpm - VORP_REPLACEMENT) * ps.pct_min, 2)
+            # Cumulative VORP: points-above-replacement → wins, accrued over the
+            # minutes actually played (standard BBRef identity MP/(48*82)). Small
+            # for a few-game SL sample, and additive across competitions.
+            ps.metrics["vorp"] = round(
+                (bpm - VORP_REPLACEMENT) * ps.box.mp / (48.0 * 82.0), 2
+            )
+            # VORP/82: the same rate projected to a full 82-game season
+            # (``pct_min`` is the share of available lineup-minutes). This is the
+            # prior bare-"VORP" value, now labelled as the per-season pace.
+            ps.metrics["vorp82"] = round((bpm - VORP_REPLACEMENT) * ps.pct_min, 2)
 
 
 # --------------------------------------------------------------------------- #
@@ -842,10 +856,12 @@ def _season_columns(
         "dws": m.get("dws"),
         "ws": m.get("ws"),
         "ws40": m.get("ws40"),
+        "ws82": m.get("ws82"),
         "obpm": m.get("obpm"),
         "dbpm": m.get("dbpm"),
         "bpm": m.get("bpm"),
         "vorp": m.get("vorp"),
+        "vorp82": m.get("vorp82"),
         "adv_eligible": adv_eligible,
         "model_version": model_version,
     }
