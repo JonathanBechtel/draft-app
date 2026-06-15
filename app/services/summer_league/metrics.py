@@ -659,7 +659,7 @@ def _build(comps, games, team_rows, team_mp):
         lg_poss[cid] += box.poss(opp_box[entry])
         lg_mp[cid] += box.mp
 
-    complete = _completeness(team_rows, team_mp)
+    complete = _completeness(team_rows)
 
     contexts: dict[int, LeagueContext] = {}
     for cid, box in lg_box.items():
@@ -682,11 +682,13 @@ def _build(comps, games, team_rows, team_mp):
     return team_box, opp_box, team_comp, contexts, records
 
 
-def _completeness(team_rows, team_mp) -> dict[int, dict]:
+def _completeness(team_rows) -> dict[int, dict]:
     """Per-competition game counts: total games and complete-box games.
 
-    A game is complete when both team rows exist and each team's minutes are in a
-    sane regulation range (filters broken partial boxes).
+    A game is complete when both team rows exist and each team's *per-game* box
+    minutes are in a sane regulation range (filters broken partial boxes). Uses
+    the team row's own ``minutes`` — not a season total — so a single partial
+    game can't be masked by the team's other (complete) games.
     """
     by_game: dict[int, list] = defaultdict(list)
     game_comp: dict[int, int] = {}
@@ -698,7 +700,7 @@ def _completeness(team_rows, team_mp) -> dict[int, dict]:
         cid = game_comp[gid]
         out[cid]["games"] += 1
         if len(rows) == 2 and all(
-            team_mp.get(r.team_entry_id, 0.0) >= MIN_COMPLETE_TEAM_MP for r in rows
+            (r.minutes or 0) >= MIN_COMPLETE_TEAM_MP for r in rows
         ):
             out[cid]["complete"] += 1
     return out
