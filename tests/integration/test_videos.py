@@ -438,12 +438,12 @@ class TestFilmRoomPages:
         _assert_film_room_stat(response.text, "Channels", 1)
         _assert_film_room_stat(response.text, "Trending", 1)
 
-    async def test_player_page_shows_no_video_placeholder(
+    async def test_player_page_omits_film_section_when_no_videos(
         self,
         app_client: AsyncClient,
         db_session: AsyncSession,
     ) -> None:
-        """Player page renders no-videos message when no linked videos."""
+        """Player page omits the Film Study section entirely with no videos."""
         player = make_player("No", "Video")
         db_session.add(player)
         await db_session.commit()
@@ -451,7 +451,8 @@ class TestFilmRoomPages:
 
         response = await app_client.get(f"/players/{player.slug}")
         assert response.status_code == 200
-        assert "film-no-videos" in response.text
+        assert "playerFilmStudySection" not in response.text
+        assert "film-no-videos" not in response.text
 
     async def test_player_page_renders_player_video_cards(
         self,
