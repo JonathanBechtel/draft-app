@@ -1,0 +1,205 @@
+"""Integration test for the Summer League metrics rebuild.
+
+Seeds a complete, advanced-eligible pool plus a thin pool, runs the full
+``rebuild`` against the DB, and asserts the materialized tables, the gating
+(eligible vs. not), and the league-relative invariant (PER → 15).
+"""
+
+from __future__ import annotations
+
+from datetime import date
+
+import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeaguePlayerGameLog,
+    SummerLeagueSourcePlayer,
+    SummerLeagueTeamEntry,
+    SummerLeagueTeamGameLog,
+)
+from app.schemas.summer_league_metrics import (
+    SummerLeagueMetricContext,
+    SummerLeagueMetricModel,
+    SummerLeaguePlayerSeason,
+)
+from app.services.summer_league.metrics import rebuild
+from tests.integration.conftest import make_player
+
+_N = {"i": 0}
+
+# One player's per-game line; six per team gives 180 team minutes (≥150 = complete).
+_LINE = dict(
+    minutes_seconds=1800, pts=12, fgm=5, fga=10, fg3m=1, fg3a=3, ftm=1, fta=2,
+    oreb=1, dreb=3, reb=4, ast=2, stl=1, blk=1, tov=2, pf=2,
+)
+
+
+async def _team(db: AsyncSession, comp_id: int, idx: int) -> SummerLeagueTeamEntry:
+    _N["i"] += 1
+    team = SummerLeagueTeamEntry(
+        competition_id=comp_id,
+        nba_stats_team_id=f"t-{_N['i']}",
+        raw_team_name=f"Team {idx}",
+        raw_team_abbreviation=f"T{idx}",
+        team_slug=f"team-{_N['i']}",
+    )
+    db.add(team)
+    await db.flush()
+    assert team.id is not None
+    return team
+
+
+async def _players(db: AsyncSession, n: int) -> list:
+    out = []
+    for _i in range(n):
+        _N["i"] += 1
+        p = make_player(f"First{_N['i']}", f"Last{_N['i']}")
+        db.add(p)
+        await db.flush()
+        sp = SummerLeagueSourcePlayer(
+            nba_stats_person_id=f"sp-{_N['i']}",
+            raw_player_name=p.display_name or "P",
+            normalized_name=(p.display_name or "p").lower(),
+            canonical_player_id=p.id,
+        )
+        db.add(sp)
+        await db.flush()
+        out.append((p, sp))
+    return out
+
+
+async def _seed_pool(
+    db: AsyncSession, *, year: int, venue: str, league_id: str,
+    players_per_team: int, n_games: int,
+) -> int:
+    """Seed a two-team pool with ``n_games`` complete games; return competition id."""
+    comp = SummerLeagueCompetition(
+        year=year, league_id=league_id, venue_slug=venue,
+        display_name=f"{year} {venue}",
+    )
+    db.add(comp)
+    await db.flush()
+    assert comp.id is not None
+    team_a = await _team(db, comp.id, 1)
+    team_b = await _team(db, comp.id, 2)
+    roster_a = await _players(db, players_per_team)
+    roster_b = await _players(db, players_per_team)
+
+    n = players_per_team
+    team_total = {k: v * n for k, v in _LINE.items() if k != "minutes_seconds"}
+    team_minutes = (_LINE["minutes_seconds"] // 60) * n
+
+    for g in range(n_games):
+        _N["i"] += 1
+        home, away = (team_a, team_b) if g % 2 == 0 else (team_b, team_a)
+        game = SummerLeagueGame(
+            competition_id=comp.id,
+            nba_stats_game_id=f"g-{_N['i']}",
+            game_date=date(year, 7, 6),
+            home_team_entry_id=home.id,
+            away_team_entry_id=away.id,
+            home_score=80,
+            away_score=72,
+        )
+        db.add(game)
+        await db.flush()
+        for team, roster in ((team_a, roster_a), (team_b, roster_b)):
+            db.add(SummerLeagueTeamGameLog(
+                competition_id=comp.id, game_id=game.id, team_entry_id=team.id,
+                minutes=team_minutes, **team_total,
+            ))
+            for pid, (player, sp) in enumerate(roster):
+                db.add(SummerLeaguePlayerGameLog(
+                    competition_id=comp.id, game_id=game.id, team_entry_id=team.id,
+                    source_player_id=sp.id, player_id=player.id,
+                    nba_stats_person_id=sp.nba_stats_person_id,
+                    raw_player_name=player.display_name or "P",
+                    plus_minus=(2 if pid % 2 == 0 else -2),
+                    **_LINE,
+                ))
+    await db.flush()
+    return comp.id
+
+
+@pytest.mark.asyncio
+async def test_rebuild_materializes_metrics_and_gates_pools(
+    db_session: AsyncSession,
+) -> None:
+    """Rebuild populates all three tables; eligible pool gets composites, thin doesn't."""
+    # Eligible: 12 players, 4 complete games. Thin: 3 players, 1 game.
+    elig_id = await _seed_pool(
+        db_session, year=2025, venue="las_vegas", league_id="15",
+        players_per_team=6, n_games=4,
+    )
+    thin_id = await _seed_pool(
+        db_session, year=2025, venue="orlando", league_id="14",
+        players_per_team=3, n_games=1,
+    )
+    await db_session.commit()
+
+    async with db_session.begin():
+        summary = await rebuild(db_session)
+
+    assert summary["contexts"] == 2
+    assert summary["adv_pools"] == 1
+    assert summary["seasons"] == 12 + 6  # eligible 12 + thin 6
+
+    # Exactly one model row, with sane fit metadata.
+    model = (await db_session.execute(select(SummerLeagueMetricModel))).scalars().one()
+    assert model.pyth_exponent > 0
+    assert model.ws_ppw_coeff == pytest.approx(4.0 / model.pyth_exponent)
+
+    # Context gating.
+    ctxs = {
+        c.competition_id: c
+        for c in (await db_session.execute(select(SummerLeagueMetricContext))).scalars()
+    }
+    assert ctxs[elig_id].adv_eligible is True
+    assert ctxs[thin_id].adv_eligible is False
+
+    # Eligible pool: composites present, PER standardized to ~15 (uniform lines).
+    elig = (await db_session.execute(
+        select(SummerLeaguePlayerSeason).where(
+            SummerLeaguePlayerSeason.competition_id == elig_id
+        )
+    )).scalars().all()
+    assert len(elig) == 12
+    assert all(s.adv_eligible for s in elig)
+    assert all(s.gmsc is not None for s in elig)
+    assert all(s.per is not None and abs(s.per - 15.0) < 0.5 for s in elig)
+    assert all(s.ortg is not None and s.ws is not None for s in elig)
+
+    # Thin pool: box/shooting only; league-relative composites blanked.
+    thin = (await db_session.execute(
+        select(SummerLeaguePlayerSeason).where(
+            SummerLeaguePlayerSeason.competition_id == thin_id
+        )
+    )).scalars().all()
+    assert len(thin) == 6
+    assert all(not s.adv_eligible for s in thin)
+    assert all(s.gmsc is not None for s in thin)       # box-derived still computed
+    assert all(s.per is None and s.ortg is None for s in thin)
+
+
+@pytest.mark.asyncio
+async def test_rebuild_is_idempotent(db_session: AsyncSession) -> None:
+    """Running the rebuild twice replaces rows rather than accumulating them."""
+    await _seed_pool(
+        db_session, year=2024, venue="las_vegas", league_id="15",
+        players_per_team=6, n_games=4,
+    )
+    await db_session.commit()
+
+    async with db_session.begin():
+        await rebuild(db_session)
+    async with db_session.begin():
+        summary = await rebuild(db_session)
+
+    total = (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
+    assert len(total) == summary["seasons"] == 12
+    models = (await db_session.execute(select(SummerLeagueMetricModel))).scalars().all()
+    assert len(models) == 1  # not duplicated
