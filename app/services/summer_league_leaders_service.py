@@ -2,13 +2,14 @@
 
 A comprehensive, sortable leaderboard across five display modes:
 
-* ``totals`` / ``per_game`` / ``per_36`` / ``per_100`` — counting stats scaled
-  per the mode (per-100 uses NBA-supplied on-court ``pace``).
-* ``advanced`` — rate metrics (TS%, eFG%, USG%, PIE, ratings, REB%/AST%)
-  computed from box totals (TS/eFG) or minute-weighted (USG/PIE/ratings/%).
+* ``totals`` / ``per_game`` / ``per_36`` / ``per_100`` — counting stats from the
+  box logs, scaled per the mode (per-100 uses NBA-supplied on-court ``pace``).
+* ``advanced`` — SL-calibrated composites (PER, ratings, BPM, WS, VORP, …) read
+  from the materialized ``summer_league_player_seasons`` table. Those metrics are
+  recalibrated per pool, so the advanced board is scoped to a single competition
+  (year + venue) rather than aggregated across the whole season.
 
-Every visible column is sortable. Composite metrics (GameScore, an SL composite)
-are scaffolded as placeholder columns pending a methodology decision.
+Every visible column is sortable.
 """
 
 from __future__ import annotations
@@ -23,6 +24,11 @@ from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeaguePlayerGameLog,
+)
+from app.services.summer_league_metrics_service import (
+    ADV_LEADER_COLUMNS,
+    VENUE_LABELS,
+    get_competition_leaders,
 )
 
 DEFAULT_MIN_GAMES = 2
@@ -42,9 +48,8 @@ MODE_LABELS = {
 # Counting stats that scale with the per-game / per-36 / per-100 transforms.
 _COUNTING = ("pts", "reb", "ast", "stl", "blk", "tov")
 
-# Column metadata: key -> (label, kind). kind drives template formatting and the
-# in-service computation. "count" scales by mode; "pct"/"rating" do not;
-# "placeholder" has no data yet.
+# Column header labels keyed by column key. Counting columns come from the box
+# logs; advanced columns come from the materialized metrics table.
 COLUMN_LABELS: dict[str, str] = {
     "min": "MIN",
     "pts": "PTS",
@@ -57,28 +62,17 @@ COLUMN_LABELS: dict[str, str] = {
     "fg3_pct": "3P%",
     "ft_pct": "FT%",
     "ts_pct": "TS%",
+    "per": "PER",
     "efg_pct": "eFG%",
     "usg_pct": "USG%",
-    "pie": "PIE",
-    "off_rating": "ORtg",
-    "def_rating": "DRtg",
-    "net_rating": "NetRtg",
-    "reb_pct": "REB%",
     "ast_pct": "AST%",
-    "gamescore": "GmSc",
-    "sl_score": "SL Score",
+    "trb_pct": "REB%",
+    "ortg": "ORtg",
+    "drtg": "DRtg",
+    "bpm": "BPM",
+    "ws": "WS",
+    "vorp": "VORP",
 }
-_PCT_COLS = {
-    "fg_pct",
-    "fg3_pct",
-    "ft_pct",
-    "ts_pct",
-    "efg_pct",
-    "usg_pct",
-    "reb_pct",
-    "ast_pct",
-}
-_PLACEHOLDER_COLS = {"gamescore", "sl_score"}
 
 _COUNTING_COLUMNS = [
     "min",
@@ -88,20 +82,9 @@ _COUNTING_COLUMNS = [
     "ft_pct",
     "ts_pct",
 ]
-_ADVANCED_COLUMNS = [
-    "min",
-    "ts_pct",
-    "efg_pct",
-    "usg_pct",
-    "pie",
-    "off_rating",
-    "def_rating",
-    "net_rating",
-    "reb_pct",
-    "ast_pct",
-    "gamescore",
-    "sl_score",
-]
+# Advanced mode is per-competition and sourced from summer_league_player_seasons.
+_ADVANCED_COLUMNS = list(ADV_LEADER_COLUMNS)
+_ADVANCED_DEFAULT_SORT = "per"
 MODE_COLUMNS: dict[str, list[str]] = {
     "totals": _COUNTING_COLUMNS,
     "per_game": _COUNTING_COLUMNS,
@@ -149,6 +132,12 @@ class LeadersResult:
     page: int
     page_size: int
     total_pages: int
+    # Advanced mode is scoped to a single competition; these drive the extra
+    # venue picker and are unset for the counting modes.
+    is_advanced: bool = False
+    venue: Optional[str] = None
+    venue_label: Optional[str] = None
+    venues: list[tuple[str, str]] = field(default_factory=list)
 
 
 def _safe_div(num: float, den: float) -> Optional[float]:
@@ -174,6 +163,7 @@ async def get_leaders(
     *,
     mode: str = "per_game",
     year: Optional[int] = None,
+    venue: Optional[str] = None,
     sort: Optional[str] = None,
     direction: str = "desc",
     min_games: int = DEFAULT_MIN_GAMES,
@@ -187,6 +177,8 @@ async def get_leaders(
         db: Async database session.
         mode: One of :data:`MODES`.
         year: Restrict to a single season; ``None`` for all-time/career.
+        venue: Venue slug; only used by ``advanced`` mode to scope the
+            competition (counting modes aggregate across venues).
         sort: Column key to rank by (defaults to the mode's headline stat).
         direction: ``"desc"`` (default) or ``"asc"``.
         min_games: Minimum games played to qualify.
@@ -200,9 +192,22 @@ async def get_leaders(
     mode = mode if mode in MODES else "per_game"
     page = max(1, page)
     direction = "asc" if direction == "asc" else "desc"
+    if mode == "advanced":
+        return await _advanced_leaders(
+            db,
+            year=year,
+            venue=venue,
+            sort=sort,
+            direction=direction,
+            min_games=min_games,
+            min_minutes=min_minutes,
+            page=page,
+            page_size=page_size,
+        )
+
     columns_keys = MODE_COLUMNS[mode]
-    if sort not in columns_keys or sort in _PLACEHOLDER_COLS:
-        sort = "pie" if mode == "advanced" else "pts"
+    if sort not in columns_keys:
+        sort = "pts"
 
     rows = await _aggregate(db, year=year, min_games=min_games, min_minutes=min_minutes)
     computed = [_compute_row(r, mode) for r in rows]
@@ -225,12 +230,7 @@ async def get_leaders(
         row.rank = i
 
     columns = [
-        LeaderColumn(
-            key=k,
-            label=COLUMN_LABELS[k],
-            sortable=k not in _PLACEHOLDER_COLS,
-            placeholder=k in _PLACEHOLDER_COLS,
-        )
+        LeaderColumn(key=k, label=COLUMN_LABELS[k], sortable=True, placeholder=False)
         for k in columns_keys
     ]
     return LeadersResult(
@@ -250,10 +250,87 @@ async def get_leaders(
     )
 
 
+async def _advanced_leaders(
+    db: AsyncSession,
+    *,
+    year: Optional[int],
+    venue: Optional[str],
+    sort: Optional[str],
+    direction: str,
+    min_games: int,
+    min_minutes: int,
+    page: int,
+    page_size: int,
+) -> LeadersResult:
+    """Rank one competition's players by SL-calibrated advanced metrics.
+
+    Reads the materialized ``summer_league_player_seasons`` table via the metrics
+    service. The pool is recalibrated per competition, so this resolves to a
+    single (year, venue) and ranks within it.
+    """
+    comp = await get_competition_leaders(
+        db, year=year, venue_slug=venue, min_games=min_games, min_minutes=min_minutes
+    )
+    if sort not in _ADVANCED_COLUMNS:
+        sort = _ADVANCED_DEFAULT_SORT
+    reverse = direction == "desc"
+
+    rows = [
+        LeaderRow(rank=0, slug=r.slug, name=r.name, gp=r.gp, values=r.values)
+        for r in comp.rows
+    ]
+    rows.sort(
+        key=lambda row: (
+            row.values.get(sort) is None,  # Nones last regardless of direction
+            -(row.values.get(sort) or 0.0)
+            if reverse
+            else (row.values.get(sort) or 0.0),
+        )
+    )
+
+    total = len(rows)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    start = (page - 1) * page_size
+    page_rows = rows[start : start + page_size]
+    for i, row in enumerate(page_rows, start=start + 1):
+        row.rank = i
+
+    columns = [
+        LeaderColumn(key=k, label=COLUMN_LABELS[k], sortable=True, placeholder=False)
+        for k in _ADVANCED_COLUMNS
+    ]
+    adv_years = sorted({y for (y, _v) in comp.competitions}, reverse=True)
+    seen: set[str] = set()
+    venues: list[tuple[str, str]] = []
+    for _y, v in comp.competitions:
+        if v not in seen:
+            seen.add(v)
+            venues.append((v, VENUE_LABELS.get(v, v)))
+    return LeadersResult(
+        mode="advanced",
+        year=comp.year,
+        sort=sort,
+        direction=direction,
+        min_games=min_games,
+        min_minutes=min_minutes,
+        years=adv_years,
+        columns=columns,
+        rows=page_rows,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+        is_advanced=True,
+        venue=comp.venue_slug,
+        venue_label=comp.venue_label,
+        venues=venues,
+    )
+
+
 async def _aggregate(
     db: AsyncSession, *, year: Optional[int], min_games: int, min_minutes: int
 ) -> list[Any]:
-    """Aggregate per-player box totals (+ minute-weighted advanced inputs)."""
+    """Aggregate per-player box totals for the counting display modes."""
     pgl = SummerLeaguePlayerGameLog
     comp = SummerLeagueCompetition
     sec: Any = pgl.minutes_seconds  # treat as a column expression for arithmetic
@@ -264,9 +341,6 @@ async def _aggregate(
     ]
     if year is not None:
         conds.append(comp.year == year)  # type: ignore[arg-type]
-
-    def wsum(col: Any) -> Any:
-        return func.sum(col * sec)
 
     stmt = (
         select(
@@ -288,13 +362,6 @@ async def _aggregate(
             func.sum(pgl.fg3a).label("fg3a"),
             func.sum(pgl.ftm).label("ftm"),
             func.sum(pgl.fta).label("fta"),
-            wsum(pgl.usg_pct).label("w_usg"),
-            wsum(pgl.pie).label("w_pie"),
-            wsum(pgl.off_rating).label("w_off"),
-            wsum(pgl.def_rating).label("w_def"),
-            wsum(pgl.net_rating).label("w_net"),
-            wsum(pgl.reb_pct).label("w_reb"),
-            wsum(pgl.ast_pct).label("w_ast"),
         )  # type: ignore[call-overload, misc]
         .select_from(pgl)
         .join(comp, comp.id == pgl.competition_id)
@@ -323,13 +390,9 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
     elif mode == "per_100":
         factor = _safe_div(100.0, poss) if poss else None
         min_val = round(minutes / gp, 1) if gp else None
-    else:  # totals / advanced
+    else:  # totals
         factor = 1.0
-        min_val = (
-            round(minutes, 1)
-            if mode == "totals"
-            else (round(minutes / gp, 1) if gp else None)
-        )
+        min_val = round(minutes, 1)
 
     def scaled(total: Optional[float]) -> Optional[float]:
         if factor is None or total is None:
@@ -345,43 +408,7 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
         "fg3_pct": _pct(_safe_div(float(r.fg3m or 0), float(r.fg3a or 0))),
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
         "ts_pct": _pct(_safe_div(float(r.pts or 0), 2.0 * (fga + 0.44 * fta))),
-        "efg_pct": _pct(_safe_div(float(r.fgm or 0) + 0.5 * float(r.fg3m or 0), fga)),
-        # Minute-weighted on-court rates. Stored percentages are fractions
-        # (0.41 == 41%), so scale to display percent; ratings are already on the
-        # 100-point scale. A NULL weighted sum means no row supplied the metric,
-        # so it stays None ("—") rather than collapsing to 0.0.
-        "usg_pct": _wrate(r.w_usg, sec, scale=100.0),
-        "pie": _wrate(r.w_pie, sec, scale=100.0),
-        "off_rating": _wrate(r.w_off, sec),
-        "def_rating": _wrate(r.w_def, sec),
-        "net_rating": _wrate(r.w_net, sec),
-        "reb_pct": _wrate(r.w_reb, sec, scale=100.0),
-        "ast_pct": _wrate(r.w_ast, sec, scale=100.0),
-        # Composite metrics pending methodology.
-        "gamescore": None,
-        "sl_score": None,
     }
     return LeaderRow(
         rank=0, slug=r.slug, name=r.display_name or "Player", gp=gp, values=values
     )
-
-
-def _wrate(
-    weighted: Optional[float], sec: float, *, scale: float = 1.0
-) -> Optional[float]:
-    """Minute-weighted rate ``sum(metric*sec)/sec``, ``None`` when unsupplied.
-
-    Args:
-        weighted: ``sum(metric * seconds)`` from the aggregate, or ``None`` if no
-            row supplied the metric.
-        sec: Total seconds played (the weighting denominator).
-        scale: Multiplier applied to the rate (``100`` to turn a stored fraction
-            into a display percent; ``1`` for already-scaled ratings).
-
-    Returns:
-        The scaled rate rounded to one decimal, or ``None`` when the metric is
-        absent or no minutes were played.
-    """
-    if weighted is None or not sec:
-        return None
-    return round(float(weighted) / sec * scale, 1)
