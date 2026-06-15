@@ -45,7 +45,10 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/": 52,
     "/news": 8,
     "/podcasts": 5,
-    "/players/{slug}": 24,
+    # +1 over the prior 24 for the SL advanced-metrics read
+    # (get_player_metric_seasons): one indexed lookup on
+    # summer_league_player_seasons by player_id.
+    "/players/{slug}": 25,
     "/players/{slug}/summer-league": 2,
     "/consensus": 80,
     "/stats/summer-league": 8,
