@@ -64,6 +64,7 @@ from app.services.player_service import (
     get_player_profile_by_slug,
 )
 from app.services.school_logo_service import get_logo_url_for_school
+from app.services.summer_league_metrics_service import get_player_metric_seasons
 from app.services.summer_league_stats_service import (
     get_summer_league_profile_by_player_id,
     summer_league_to_context,
@@ -928,6 +929,13 @@ async def player_detail(
         if sl_profile is not None:
             summer_league = summer_league_to_context(sl_profile)
 
+    # SL-calibrated advanced metrics (PER / WS / BPM / VORP / ratings) from the
+    # materialized per-competition table. None when the player has no
+    # adv-eligible competition => the advanced sub-table is omitted.
+    sl_metrics = None
+    if player_profile.id is not None:
+        sl_metrics = await get_player_metric_seasons(db, player_id=player_profile.id)
+
     # Fetch consensus detail for this player.
     # Treat a None result (player not on any board) as "omit the section" — do
     # NOT raise 404; the rest of the page must still render normally.
@@ -1128,6 +1136,7 @@ async def player_detail(
             "consensus": consensus,
             "college_stats": college_stats,
             "summer_league": summer_league,
+            "sl_metrics": sl_metrics,
             "percentile_data": percentile_data,
             "comparison_data": comparison_data,
             "player_feed": player_feed,

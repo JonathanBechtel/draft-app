@@ -172,6 +172,11 @@ async def test_rebuild_materializes_metrics_and_gates_pools(
     assert all(s.gmsc is not None for s in elig)
     assert all(s.per is not None and abs(s.per - 15.0) < 0.5 for s in elig)
     assert all(s.ortg is not None and s.ws is not None for s in elig)
+    # WS exposes both flavours: a cumulative total and its 82-game projection.
+    # (VORP rides on BPM, whose regression is degenerate on this uniform pool, so
+    # bpm/vorp are null here — the VORP formulas are checked in the unit suite.)
+    assert all(s.ws82 is not None for s in elig)
+    assert all(abs(s.ws) <= abs(s.ws82) for s in elig)  # few games << a season
 
     # Thin pool: box/shooting only; league-relative composites blanked.
     thin = (await db_session.execute(
@@ -183,6 +188,7 @@ async def test_rebuild_materializes_metrics_and_gates_pools(
     assert all(not s.adv_eligible for s in thin)
     assert all(s.gmsc is not None for s in thin)       # box-derived still computed
     assert all(s.per is None and s.ortg is None for s in thin)
+    assert all(s.ws82 is None and s.vorp82 is None for s in thin)
 
 
 @pytest.mark.asyncio
