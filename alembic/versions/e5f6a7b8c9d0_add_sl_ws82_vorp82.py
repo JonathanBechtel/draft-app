@@ -13,7 +13,6 @@ Create Date: 2026-06-15
 
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
@@ -26,12 +25,29 @@ _TABLE = "summer_league_player_seasons"
 
 
 def upgrade() -> None:
-    """Add the nullable ``ws82`` and ``vorp82`` projection columns."""
-    op.add_column(_TABLE, sa.Column("ws82", sa.Float(), nullable=True))
-    op.add_column(_TABLE, sa.Column("vorp82", sa.Float(), nullable=True))
+    """Add the nullable ``ws82`` and ``vorp82`` projection columns.
+
+    ``summer_league_player_seasons`` is created by the prior migration via
+    ``SQLModel.metadata.create_all``, which reflects the *live* schema — so on a
+    fresh database these columns already exist by the time this runs. Guard with
+    ``IF NOT EXISTS`` so this is a no-op there while still adding the columns on
+    databases whose table was created before the columns were defined.
+    """
+    op.execute(
+        "ALTER TABLE summer_league_player_seasons "
+        "ADD COLUMN IF NOT EXISTS ws82 DOUBLE PRECISION"
+    )
+    op.execute(
+        "ALTER TABLE summer_league_player_seasons "
+        "ADD COLUMN IF NOT EXISTS vorp82 DOUBLE PRECISION"
+    )
 
 
 def downgrade() -> None:
     """Drop the projection columns."""
-    op.drop_column(_TABLE, "vorp82")
-    op.drop_column(_TABLE, "ws82")
+    op.execute(
+        "ALTER TABLE summer_league_player_seasons DROP COLUMN IF EXISTS vorp82"
+    )
+    op.execute(
+        "ALTER TABLE summer_league_player_seasons DROP COLUMN IF EXISTS ws82"
+    )
