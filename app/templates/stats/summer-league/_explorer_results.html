@@ -1,0 +1,81 @@
+{# Explorer results: result count, sortable table, pagination.
+   Rendered standalone for ?partial=1 (JS swap) and included by explorer.html. #}
+
+{%- macro n1(v) -%}{{ '%.1f' % v if v is not none else '—' }}{%- endmacro -%}
+
+{# Serialize the current query to a querystring, overriding sort/dir/page. #}
+{%- macro explorer_qs(q, sort=none, direction=none, page=none) -%}
+?subject={{ q.subject }}&mode={{ q.mode }}&min_gp={{ q.min_games }}&min_min={{ q.min_minutes }}
+{%- if sort %}&sort={{ sort }}{% else %}&sort={{ q.sort }}{% endif %}
+{%- if direction %}&dir={{ direction }}{% else %}&dir={{ q.direction }}{% endif %}
+{%- if q.year_min %}&year_min={{ q.year_min }}{% endif %}
+{%- if q.year_max %}&year_max={{ q.year_max }}{% endif %}
+{%- if q.venue %}&venue={{ q.venue }}{% endif %}
+{%- if q.draft_class %}&draft_class={{ q.draft_class }}{% endif %}
+{%- if q.draft_round %}&draft_round={{ q.draft_round }}{% endif %}
+{%- if page %}&page={{ page }}{% endif %}
+{%- endmacro -%}
+
+<div class="slg-explorer-results" id="explorer-results">
+  {% if not result.available %}
+  <p class="slg-empty slg-explorer-soon">
+    The <strong>{{ result.subject }}</strong> subject is coming soon. Try the
+    <a href="/stats/summer-league/explorer?subject=players">Players</a> view.
+  </p>
+  {% else %}
+  <p class="slg-explorer-count">
+    {{ result.total }} {{ 'result' if result.total == 1 else 'results' }}
+    {% if result.total > result.page_size %}
+    · page {{ result.page }} of {{ (result.total // result.page_size) + (1 if result.total % result.page_size else 0) }}
+    {% endif %}
+  </p>
+
+  <div class="stats-scoreboard slg-board">
+    <div class="scanlines"></div>
+    <div class="slg-tablewrap">
+      <table class="sl-stats-table slg-explorer-table">
+        <thead>
+          <tr>
+            <th scope="col" class="slg-explorer__label">
+              {%- if result.subject == 'players' %}Player{% elif result.subject == 'teams' %}Team{% elif result.subject == 'games' %}Game{% else %}Name{% endif -%}
+            </th>
+            {% for col in result.columns %}
+            {%- set is_active = result.query.sort == col.key -%}
+            {%- set next_dir = 'asc' if (is_active and result.query.direction == 'desc') else 'desc' -%}
+            <th scope="col" class="{{ 'slg-sort-active' if is_active else '' }}">
+              <a href="{{ explorer_qs(result.query, sort=col.key, direction=next_dir) }}">
+                {{ col.label }}{% if is_active %} {{ '▾' if result.query.direction == 'desc' else '▴' }}{% endif %}
+              </a>
+            </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.rows %}
+          <tr>
+            <th scope="row" class="slg-explorer__label">
+              {% if row.href %}<a href="{{ row.href }}">{{ row.label }}</a>{% else %}<span class="slg-bx-name--stub">{{ row.label }}</span>{% endif %}
+            </th>
+            {% for col in result.columns %}
+            <td class="{{ 'slg-strong' if col.key == result.query.sort else '' }}">
+              {% set v = row.values.get(col.key) %}
+              {% if col.key in ('gp', 'w', 'l', 'total', 'margin') %}{{ v }}{% else %}{{ n1(v) }}{% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% else %}
+          <tr><td colspan="{{ result.columns|length + 1 }}" class="slg-empty">No results match these filters.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if result.page > 1 or result.has_next %}
+  <div class="slg-explorer-pager">
+    {% if result.page > 1 %}<a class="slg-pager-btn" href="{{ explorer_qs(result.query, page=result.page - 1) }}">&larr; Prev</a>{% endif %}
+    {% if result.has_next %}<a class="slg-pager-btn" href="{{ explorer_qs(result.query, page=result.page + 1) }}">Next &rarr;</a>{% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+</div>

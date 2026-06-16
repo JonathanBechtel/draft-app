@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Summer League Explorer — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='summer-league-explorer.js') }}" defer></script>
+{% endblock %}
+
+{% block content %}
+{% set q = result.query %}
+<main class="container slg-page">
+
+  <a class="slg-back" href="/stats/summer-league">&larr; Summer League</a>
+
+  <header class="slg-explorer-head">
+    <p class="slg-eyebrow">Summer League</p>
+    <h1 class="slg-title">Explorer</h1>
+    <p class="slg-explorer-sub">Build a custom query across every Summer League season. Sort any column; the URL is shareable.</p>
+  </header>
+
+  {# Subject toggle #}
+  <div class="slg-explorer-subjects">
+    {% for s in ['players', 'teams', 'games'] %}
+    <a class="slg-subject-tab {{ 'is-active' if q.subject == s else '' }}"
+       href="/stats/summer-league/explorer?subject={{ s }}">{{ s|capitalize }}</a>
+    {% endfor %}
+  </div>
+
+  {# Query builder #}
+  <form class="slg-explorer-form" method="get" action="/stats/summer-league/explorer" id="explorer-form">
+    <input type="hidden" name="subject" value="{{ q.subject }}">
+    <input type="hidden" name="sort" value="{{ q.sort }}">
+    <input type="hidden" name="dir" value="{{ q.direction }}">
+
+    <div class="slg-filter">
+      <label for="ex-year-min">From year</label>
+      <select id="ex-year-min" name="year_min">
+        <option value="">Earliest</option>
+        {% for y in result.facets.years %}<option value="{{ y }}" {{ 'selected' if q.year_min == y else '' }}>{{ y }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="slg-filter">
+      <label for="ex-year-max">To year</label>
+      <select id="ex-year-max" name="year_max">
+        <option value="">Latest</option>
+        {% for y in result.facets.years %}<option value="{{ y }}" {{ 'selected' if q.year_max == y else '' }}>{{ y }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="slg-filter">
+      <label for="ex-venue">Venue</label>
+      <select id="ex-venue" name="venue">
+        <option value="">All venues</option>
+        {% for slug, label in result.facets.venues %}<option value="{{ slug }}" {{ 'selected' if q.venue == slug else '' }}>{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    {% if q.subject == 'players' %}
+    <div class="slg-filter">
+      <label for="ex-draft-class">Draft class</label>
+      <select id="ex-draft-class" name="draft_class">
+        <option value="">Any</option>
+        {% for y in result.facets.draft_classes %}<option value="{{ y }}" {{ 'selected' if q.draft_class == y else '' }}>{{ y }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="slg-filter">
+      <label for="ex-draft-round">Draft round</label>
+      <select id="ex-draft-round" name="draft_round">
+        <option value="">Any</option>
+        <option value="1" {{ 'selected' if q.draft_round == 1 else '' }}>1st round</option>
+        <option value="2" {{ 'selected' if q.draft_round == 2 else '' }}>2nd round</option>
+      </select>
+    </div>
+    <div class="slg-filter">
+      <label for="ex-mode">Mode</label>
+      <select id="ex-mode" name="mode">
+        <option value="per_game" {{ 'selected' if q.mode == 'per_game' else '' }}>Per game</option>
+        <option value="per_36" {{ 'selected' if q.mode == 'per_36' else '' }}>Per 36</option>
+        <option value="per_100" {{ 'selected' if q.mode == 'per_100' else '' }}>Per 100</option>
+        <option value="totals" {{ 'selected' if q.mode == 'totals' else '' }}>Totals</option>
+      </select>
+    </div>
+    <div class="slg-filter">
+      <label for="ex-min-gp">Min GP</label>
+      <input id="ex-min-gp" type="number" name="min_gp" min="0" value="{{ q.min_games }}">
+    </div>
+    <div class="slg-filter">
+      <label for="ex-min-min">Min MIN</label>
+      <input id="ex-min-min" type="number" name="min_min" min="0" value="{{ q.min_minutes }}">
+    </div>
+    {% endif %}
+    <div class="slg-filter slg-filter--actions">
+      <button type="submit" class="slg-explorer-run">Run query</button>
+    </div>
+  </form>
+
+  {% include "stats/summer-league/_explorer_results.html" %}
+
+</main>
+{% endblock %}
