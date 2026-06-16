@@ -20,6 +20,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
+    SummerLeagueTeamGameLog,
 )
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
@@ -243,14 +244,117 @@ async def test_min_minutes_filter_excludes_small_samples(
 
 
 @pytest.mark.asyncio
-async def test_teams_subject_unavailable_phase1(db_session: AsyncSession) -> None:
-    """Teams/games subjects return an empty, unavailable result for now."""
+async def test_games_subject_unavailable_phase2(db_session: AsyncSession) -> None:
+    """The games subject is still a placeholder until Phase 3."""
     await _seed(db_session)
-    result = await run_explorer_query(db_session, ExplorerQuery(subject="teams"))
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="games"))
     assert result.available is False
     assert result.rows == []
     # Facets still populate so the builder renders.
     assert result.facets.years == [2025, 2024]
+
+
+# --------------------------------------------------------------------------- #
+# teams subject (Phase 2)
+# --------------------------------------------------------------------------- #
+
+
+async def _team_game(
+    db: AsyncSession,
+    *,
+    comp_id: int,
+    home: SummerLeagueTeamEntry,
+    away: SummerLeagueTeamEntry,
+    home_score: int,
+    away_score: int,
+    pace: float = 100.0,
+) -> None:
+    """A real game between two distinct teams, with a box log per side."""
+    _N["i"] += 1
+    g = SummerLeagueGame(
+        competition_id=comp_id,
+        nba_stats_game_id=f"tm-game-{_N['i']}",
+        game_date=date(2024, 7, 4),
+        home_team_entry_id=home.id,
+        away_team_entry_id=away.id,
+        home_score=home_score,
+        away_score=away_score,
+    )
+    db.add(g)
+    await db.flush()
+    assert g.id is not None
+    for entry, pts, opp in (
+        (home, home_score, away_score),
+        (away, away_score, home_score),
+    ):
+        db.add(
+            SummerLeagueTeamGameLog(
+                competition_id=comp_id,
+                game_id=g.id,
+                team_entry_id=entry.id,
+                pts=pts,
+                plus_minus=pts - opp,
+                pace=pace,
+                off_rating=110.0,
+                def_rating=105.0,
+            )
+        )
+    await db.flush()
+
+
+async def _seed_teams(db: AsyncSession) -> None:
+    """One competition, two teams; Alpha beats Bravo twice (Alpha 2-0, Bravo 0-2)."""
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    alpha = await _team(db, comp_id=c)
+    bravo = await _team(db, comp_id=c)
+    alpha.raw_team_name, bravo.raw_team_name = "Alpha", "Bravo"
+    await db.flush()
+    await _team_game(
+        db, comp_id=c, home=alpha, away=bravo, home_score=110, away_score=90
+    )
+    await _team_game(
+        db, comp_id=c, home=bravo, away=alpha, home_score=95, away_score=105
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_teams_aggregates_record_from_scores(db_session: AsyncSession) -> None:
+    """Teams subject computes W-L and scoring from game scores, sorted by DIFF."""
+    await _seed_teams(db_session)
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="teams"))
+
+    assert result.available is True
+    assert result.total == 2
+    top = result.rows[0]
+    assert top.label.startswith("Alpha")
+    assert (top.values["w"], top.values["l"]) == (2, 0)
+    assert top.values["ppg"] == 107.5  # (110 + 105) / 2
+    assert top.values["opp_ppg"] == 92.5  # (90 + 95) / 2
+    assert top.values["diff"] == 15.0
+    assert top.values["pace"] == 100.0  # averaged from box logs
+    # Bravo is the mirror image and sorts second (lower DIFF).
+    assert result.rows[1].label.startswith("Bravo")
+    assert result.rows[1].values["diff"] == -15.0
+
+
+@pytest.mark.asyncio
+async def test_teams_links_to_team_season(db_session: AsyncSession) -> None:
+    """Each team row links to its team-season page."""
+    await _seed_teams(db_session)
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="teams"))
+    assert result.rows[0].href is not None
+    assert result.rows[0].href.startswith("/stats/summer-league/2024/las_vegas/")
+
+
+@pytest.mark.asyncio
+async def test_teams_default_sort_is_valid_for_subject(
+    db_session: AsyncSession,
+) -> None:
+    """A player sort key passed to the teams subject falls back to the team default."""
+    await _seed_teams(db_session)
+    q = parse_query({"subject": "teams", "sort": "ts_pct"})
+    assert q.sort == "diff"  # 'ts_pct' is not a team column
 
 
 # --------------------------------------------------------------------------- #

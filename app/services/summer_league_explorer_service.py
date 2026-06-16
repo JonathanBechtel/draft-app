@@ -21,13 +21,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
+    SummerLeagueGame,
     SummerLeaguePlayerGameLog,
+    SummerLeagueTeamEntry,
+    SummerLeagueTeamGameLog,
 )
 from app.services.summer_league_games_service import _venue_label
 
@@ -72,7 +75,34 @@ _PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("ft_pct", "FT%"),
     ExplorerColumn("ts_pct", "TS%"),
 ]
-_PLAYER_SORT_KEYS = {c.key for c in _PLAYER_STAT_COLUMNS}
+
+# Stat columns for the teams subject (one row per team-season). W-L and points
+# come from game scores; pace/ratings are team-box-log averages where present.
+_TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
+    ExplorerColumn("gp", "GP"),
+    ExplorerColumn("w", "W"),
+    ExplorerColumn("l", "L"),
+    ExplorerColumn("ppg", "PPG"),
+    ExplorerColumn("opp_ppg", "OPP"),
+    ExplorerColumn("diff", "DIFF"),
+    ExplorerColumn("pace", "PACE"),
+    ExplorerColumn("ortg", "ORtg"),
+    ExplorerColumn("drtg", "DRtg"),
+]
+
+_COLUMNS_BY_SUBJECT: dict[str, list[ExplorerColumn]] = {
+    "players": _PLAYER_STAT_COLUMNS,
+    "teams": _TEAM_STAT_COLUMNS,
+    "games": [],
+}
+_SORT_KEYS_BY_SUBJECT: dict[str, set[str]] = {
+    s: {c.key for c in cols} for s, cols in _COLUMNS_BY_SUBJECT.items()
+}
+_DEFAULT_SORT_BY_SUBJECT: dict[str, str] = {
+    "players": "pts",
+    "teams": "diff",
+    "games": "total",
+}
 _COUNTING = ("pts", "reb", "ast", "stl", "blk", "tov")
 
 
@@ -158,9 +188,11 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     if mode not in MODES:
         mode = DEFAULT_MODE
 
-    sort = params.get("sort", "pts")
-    if sort not in _PLAYER_SORT_KEYS:
-        sort = "pts"
+    # Sort keys are subject-specific; fall back to the subject's default.
+    default_sort = _DEFAULT_SORT_BY_SUBJECT.get(subject, "pts")
+    sort = params.get("sort", default_sort)
+    if sort not in _SORT_KEYS_BY_SUBJECT.get(subject, set()):
+        sort = default_sort
 
     direction = params.get("dir", "desc")
     if direction not in ("asc", "desc"):
@@ -342,7 +374,142 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         for r in raw
     ]
 
-    # Sort in Python on the mode-scaled value (nulls sort last regardless of dir).
+    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+
+
+# --------------------------------------------------------------------------- #
+# Teams subject
+# --------------------------------------------------------------------------- #
+
+
+async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
+    """One row per team-season: record + scoring from games, ratings from box logs."""
+    te = SummerLeagueTeamEntry
+    comp = SummerLeagueCompetition
+
+    conds: list[Any] = []
+    if q.year_min is not None:
+        conds.append(comp.year >= q.year_min)  # type: ignore[arg-type]
+    if q.year_max is not None:
+        conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
+    if q.venue:
+        conds.append(comp.venue_slug == q.venue)
+
+    entry_rows = (
+        await db.execute(
+            select(
+                te.id,
+                te.team_slug,
+                te.raw_team_name,
+                te.raw_team_abbreviation,
+                comp.year,
+                comp.venue_slug,
+            )  # type: ignore[call-overload, misc]
+            .select_from(te)
+            .join(comp, comp.id == te.competition_id)
+            .where(*conds)
+        )
+    ).all()
+    if not entry_rows:
+        return _empty_result("teams", q)
+
+    entry_ids = [r.id for r in entry_rows]
+    entry_set = set(entry_ids)
+
+    # Win/loss + points-for/against from game scores (complete; plus_minus is not).
+    game = SummerLeagueGame
+    games = (
+        await db.execute(
+            select(
+                game.home_team_entry_id,
+                game.away_team_entry_id,
+                game.home_score,
+                game.away_score,
+            ).where(  # type: ignore[call-overload]
+                or_(
+                    game.home_team_entry_id.in_(entry_ids),  # type: ignore[union-attr]
+                    game.away_team_entry_id.in_(entry_ids),  # type: ignore[union-attr]
+                )
+            )
+        )
+    ).all()
+
+    rec: dict[int, list[int]] = {e: [0, 0, 0, 0, 0] for e in entry_ids}  # gp,w,l,pf,pa
+    for g in games:
+        if g.home_score is None or g.away_score is None:
+            continue
+        # Both teams are typically in scope, so credit each from its own side.
+        for eid, mine, opp in (
+            (g.home_team_entry_id, g.home_score, g.away_score),
+            (g.away_team_entry_id, g.away_score, g.home_score),
+        ):
+            if eid not in entry_set:
+                continue
+            s = rec[eid]
+            s[0] += 1
+            s[1 if mine > opp else 2] += 1
+            s[3] += mine
+            s[4] += opp
+
+    # Pace / efficiency from team box logs (averaged where present).
+    tgl = SummerLeagueTeamGameLog
+    rating_rows = (
+        await db.execute(
+            select(
+                tgl.team_entry_id,
+                func.avg(tgl.pace).label("pace"),
+                func.avg(tgl.off_rating).label("ortg"),
+                func.avg(tgl.def_rating).label("drtg"),
+            )  # type: ignore[call-overload, misc]
+            .where(tgl.team_entry_id.in_(entry_ids))  # type: ignore[attr-defined]
+            .group_by(tgl.team_entry_id)
+        )
+    ).all()
+    ratings = {r.team_entry_id: r for r in rating_rows}
+
+    def _r1(v: Any) -> Optional[float]:
+        return round(float(v), 1) if v is not None else None
+
+    rows: list[ExplorerRow] = []
+    for r in entry_rows:
+        gp, w, lo, pf, pa = rec[r.id]
+        if gp == 0:
+            continue
+        rt = ratings.get(r.id)
+        name = r.raw_team_name or r.raw_team_abbreviation or "Team"
+        rows.append(
+            ExplorerRow(
+                label=f"{name} · {_venue_label(r.venue_slug)} {r.year}",
+                href=f"/stats/summer-league/{r.year}/{r.venue_slug}/{r.team_slug}",
+                values={
+                    "gp": gp,
+                    "w": w,
+                    "l": lo,
+                    "ppg": round(pf / gp, 1),
+                    "opp_ppg": round(pa / gp, 1),
+                    "diff": round((pf - pa) / gp, 1),
+                    "pace": _r1(rt.pace) if rt else None,
+                    "ortg": _r1(rt.ortg) if rt else None,
+                    "drtg": _r1(rt.drtg) if rt else None,
+                },
+            )
+        )
+
+    return _paginate("teams", _TEAM_STAT_COLUMNS, rows, q)
+
+
+# --------------------------------------------------------------------------- #
+# Shared helpers
+# --------------------------------------------------------------------------- #
+
+
+def _paginate(
+    subject: str,
+    columns: list[ExplorerColumn],
+    rows: list[ExplorerRow],
+    q: ExplorerQuery,
+) -> ExplorerResult:
+    """Sort rows by the query's column (nulls last), then slice to the page."""
     reverse = q.direction == "desc"
     rows.sort(
         key=lambda row: (
@@ -352,16 +519,13 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             else (row.values.get(q.sort) or 0),
         )
     )
-
     total = len(rows)
     start = (q.page - 1) * PAGE_SIZE
-    page_rows = rows[start : start + PAGE_SIZE]
-
     return ExplorerResult(
-        subject="players",
+        subject=subject,
         available=True,
-        columns=_PLAYER_STAT_COLUMNS,
-        rows=page_rows,
+        columns=columns,
+        rows=rows[start : start + PAGE_SIZE],
         total=total,
         page=q.page,
         page_size=PAGE_SIZE,
@@ -369,6 +533,11 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         facets=ExplorerFacets(),  # filled by the caller
         query=q,
     )
+
+
+def _empty_result(subject: str, q: ExplorerQuery) -> ExplorerResult:
+    """An available result with no rows (e.g. filters matched nothing)."""
+    return _paginate(subject, _COLUMNS_BY_SUBJECT.get(subject, []), [], q)
 
 
 # --------------------------------------------------------------------------- #
@@ -385,8 +554,13 @@ async def run_explorer_query(db: AsyncSession, q: ExplorerQuery) -> ExplorerResu
         result.facets = facets
         return result
 
-    # Teams/games land in later phases; return an empty, unavailable result so
-    # the subject toggle renders without error.
+    if q.subject == "teams":
+        result = await _query_teams(db, q)
+        result.facets = facets
+        return result
+
+    # Games lands in a later phase; return an empty, unavailable result so the
+    # subject toggle renders without error.
     return ExplorerResult(
         subject=q.subject,
         available=False,

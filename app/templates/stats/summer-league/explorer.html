@@ -53,6 +53,7 @@
         {% for slug, label in result.facets.venues %}<option value="{{ slug }}" {{ 'selected' if q.venue == slug else '' }}>{{ label }}</option>{% endfor %}
       </select>
     </div>
+    {% if q.subject == 'players' %}
     <div class="slg-filter">
       <label for="ex-draft-class">Draft class</label>
       <select id="ex-draft-class" name="draft_class">
@@ -85,6 +86,7 @@
       <label for="ex-min-min">Min MIN</label>
       <input id="ex-min-min" type="number" name="min_min" min="0" value="{{ q.min_minutes }}">
     </div>
+    {% endif %}
     <div class="slg-filter slg-filter--actions">
       <button type="submit" class="slg-explorer-run">Run query</button>
     </div>
