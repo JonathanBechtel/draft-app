@@ -59,6 +59,9 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/stats/summer-league/{year}": 7,
     "/stats/summer-league/{year}/{venue}": 7,
     "/stats/summer-league/{year}/{venue}/{team}": 3,
+    # Franchise history: header + entries + games + top-performers + career
+    # player aggregates = 5 indexed reads.
+    "/stats/summer-league/teams/{team}": 5,
 }
 
 # Admin route budgets (authentication-gated; tested separately via

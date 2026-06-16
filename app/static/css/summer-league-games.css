@@ -641,6 +641,19 @@
 }
 .slg-tlogo--lg { height: 2.75rem; width: 2.75rem; vertical-align: middle; margin-right: 0; }
 .slg-team-head__id { display: flex; align-items: center; gap: 0.9rem; }
+/* Franchise cross-link under the team-season title + muted inline meta. */
+.slg-franchise-link {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent, #c2410c);
+  text-decoration: none;
+}
+.slg-franchise-link:hover { text-decoration: underline; }
+.slg-muted { color: var(--muted, #6b7280); font-weight: 400; }
 /* In the bracket cards, the logo sits inside the name flex item. */
 .slg-bm__name { display: inline-flex; align-items: center; }
 .slg-bm__name .slg-tlogo { margin-right: 0.4rem; }

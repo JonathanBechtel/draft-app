@@ -22,6 +22,7 @@
       <div>
         <p class="slg-eyebrow">{{ team.venue }} &middot; {{ team.year }}</p>
         <h1 class="slg-title">{{ team.name }}</h1>
+        {% if team.franchise_slug %}<a class="slg-franchise-link" href="/stats/summer-league/teams/{{ team.franchise_slug }}">All-time SL history &rarr;</a>{% endif %}
       </div>
     </div>
     <div class="slg-team-record">
