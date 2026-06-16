@@ -687,6 +687,78 @@
   margin-top: 4rem;
 }
 
+/* ===================================================== Stats hub */
+.stats-hub-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.25rem;
+  margin-top: 0.5rem;
+}
+.stats-module-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.75rem;
+  border: 1px solid var(--color-slate-200);
+  border-left-width: 5px;
+  border-radius: var(--border-radius);
+  background: #fff;
+  text-decoration: none;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.stats-module-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+.stats-module-card--combine { border-left-color: var(--color-accent-indigo, #6366f1); }
+.stats-module-card--sl { border-left-color: var(--color-accent-emerald, #10b981); }
+.stats-module-card__icon { font-size: 1.75rem; }
+.stats-module-card__title {
+  font-family: var(--font-heading);
+  font-size: 1.4rem;
+  color: var(--color-slate-900);
+}
+.stats-module-card__sub {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  color: var(--color-slate-700);
+}
+.stats-module-card__sample {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-slate-500, #64748b);
+}
+.stats-module-card__cta {
+  margin-top: 0.4rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--color-slate-900);
+}
+.stats-module-card--combine .stats-module-card__cta { color: var(--color-accent-indigo, #6366f1); }
+.stats-module-card--sl .stats-module-card__cta { color: var(--color-accent-emerald, #10b981); }
+.stats-hub-soon {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 1.5rem 0 0;
+  padding: 0.9rem 1.25rem;
+  border: 1px dashed var(--color-slate-200);
+  border-radius: var(--border-radius);
+  color: var(--color-slate-500, #64748b);
+}
+.stats-hub-soon__label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.stats-hub-soon__items { font-family: var(--font-body); font-size: 0.85rem; }
+@media (max-width: 640px) {
+  .stats-hub-grid { grid-template-columns: 1fr; }
+}
+
 .stats-hero h2 {
   font-family: var(--font-heading);
   font-size: 2rem;
