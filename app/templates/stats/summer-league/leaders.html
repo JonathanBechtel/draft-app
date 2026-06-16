@@ -11,6 +11,7 @@
 {% macro lurl(mode=none, sort=none, dir=none, page=1) %}
 {%- set parts = ['mode=' ~ (mode or result.mode)] -%}
 {%- if result.year is not none %}{% set _ = parts.append('year=' ~ result.year) %}{% endif -%}
+{%- if result.is_advanced and result.venue %}{% set _ = parts.append('venue=' ~ result.venue) %}{% endif -%}
 {%- set _ = parts.append('sort=' ~ (sort or result.sort)) -%}
 {%- set _ = parts.append('dir=' ~ (dir or result.direction)) -%}
 {%- set _ = parts.append('min_gp=' ~ result.min_games) -%}
@@ -47,12 +48,23 @@
     <label class="slg-field">
       <span class="slg-field__label">Season</span>
       <select name="year" class="slg-select" data-autosubmit>
-        <option value="">All-time</option>
+        {# Advanced mode is per-competition, so it has no all-time option. #}
+        {% if not result.is_advanced %}<option value="">All-time</option>{% endif %}
         {% for y in result.years %}
         <option value="{{ y }}"{% if result.year == y %} selected{% endif %}>{{ y }}</option>
         {% endfor %}
       </select>
     </label>
+    {% if result.is_advanced %}
+    <label class="slg-field">
+      <span class="slg-field__label">Venue</span>
+      <select name="venue" class="slg-select" data-autosubmit>
+        {% for slug, label in result.venues %}
+        <option value="{{ slug }}"{% if result.venue == slug %} selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
     <label class="slg-field">
       <span class="slg-field__label">Min GP</span>
       <input type="number" name="min_gp" min="0" value="{{ result.min_games }}" class="slg-select slg-num" data-autosubmit>
@@ -67,7 +79,7 @@
   <div class="slg-resultmeta">
     <span class="slg-count">{{ result.total }} qualified player{{ '' if result.total == 1 else 's' }}</span>
     <span class="slg-pageof">
-      {{ result.year or 'All-time' }} &middot; {{ result.min_games }}+ GP &middot; {{ result.min_minutes }}+ MIN
+      {% if result.is_advanced %}{{ result.year }} {{ result.venue_label }}{% else %}{{ result.year or 'All-time' }}{% endif %} &middot; {{ result.min_games }}+ GP &middot; {{ result.min_minutes }}+ MIN
       {% if result.total_pages > 1 %}&middot; page {{ result.page }}/{{ result.total_pages }}{% endif %}
     </span>
   </div>

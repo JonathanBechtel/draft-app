@@ -1,8 +1,9 @@
 """Integration tests for the Summer League leaders page.
 
-- ``get_leaders`` ranks players per mode, scales counting stats, computes
-  advanced rates, applies the min-sample filter, and scaffolds composite
-  placeholders.
+- ``get_leaders`` ranks players per counting mode, scales counting stats, and
+  applies the min-sample filter.
+- ``advanced`` mode is per-competition and reads the materialized metrics table
+  (PER/WS/BPM/VORP), defaulting to the latest competition and scoping by venue.
 - The route renders for every mode.
 """
 
@@ -22,6 +23,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
 )
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league_leaders_service import get_leaders
 from tests.integration.conftest import make_player
 
@@ -149,19 +151,14 @@ async def test_leaders_modes_ranking_and_filter(
     assert by_ast.rows[0].name == "Star Scorer"
     assert by_ast.sort == "ast"
 
-    # Advanced mode exposes rate stats and scaffolds composite placeholders.
+    # Advanced mode is per-competition (composite columns, no placeholders) and
+    # reads the metrics table — empty here since no player_seasons were seeded.
     adv = await get_leaders(db_session, mode="advanced")
     keys = {c.key for c in adv.columns}
-    assert {"ts_pct", "usg_pct", "pie"} <= keys
-    placeholders = {c.key for c in adv.columns if c.placeholder}
-    assert placeholders == {"gamescore", "sl_score"}
-    assert adv.rows[0].values["ts_pct"] is not None
-    # Stored advanced fields are fractions (0.25 == 25%); the leaderboard scales
-    # them to display percent. Ratings keep their native 100-point scale.
-    assert adv.rows[0].values["usg_pct"] == pytest.approx(25.0)
-    assert adv.rows[0].values["pie"] == pytest.approx(12.0)
-    assert adv.rows[0].values["off_rating"] == pytest.approx(110.0)
-    assert adv.rows[0].values["gamescore"] is None
+    assert {"per", "ws", "bpm", "vorp"} <= keys
+    assert all(not c.placeholder for c in adv.columns)
+    assert adv.is_advanced is True
+    assert adv.rows == []
 
 
 @pytest.mark.asyncio
@@ -175,4 +172,91 @@ async def test_leaders_route_renders_each_mode(
         resp = await app_client.get(f"/stats/summer-league/leaders?mode={mode}")
         assert resp.status_code == 200
         assert "Leaders" in resp.text
-        assert "Star Scorer" in resp.text
+        # The counting modes list the seeded game-log players; advanced reads the
+        # (here unseeded) metrics table, so it renders but lists no players.
+        if mode != "advanced":
+            assert "Star Scorer" in resp.text
+
+
+async def _comp(
+    db: AsyncSession, *, year: int, venue: str, league_id: str
+) -> SummerLeagueCompetition:
+    comp = SummerLeagueCompetition(
+        year=year, league_id=league_id, venue_slug=venue, display_name=f"{year} {venue}"
+    )
+    db.add(comp)
+    await db.flush()
+    return comp
+
+
+async def _season(
+    db: AsyncSession,
+    *,
+    comp: SummerLeagueCompetition,
+    first: str,
+    last: str,
+    adv_eligible: bool = True,
+    minutes: float = 120.0,
+    gp: int = 3,
+    **metrics: float,
+) -> None:
+    player = make_player(first, last)
+    db.add(player)
+    await db.flush()
+    db.add(
+        SummerLeaguePlayerSeason(
+            competition_id=comp.id,
+            player_id=player.id,
+            year=comp.year,
+            venue_slug=comp.venue_slug,
+            gp=gp,
+            minutes=minutes,
+            adv_eligible=adv_eligible,
+            **metrics,
+        )
+    )
+    await db.flush()
+
+
+@pytest.mark.asyncio
+async def test_advanced_leaders_from_metrics_table(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Advanced mode ranks a competition's players from the materialized table,
+    defaulting to the latest competition, scoping by venue, and gating rows."""
+    lv25 = await _comp(db_session, year=2025, venue="las_vegas", league_id="15")
+    slc24 = await _comp(db_session, year=2024, venue="salt_lake_city", league_id="16")
+
+    await _season(db_session, comp=lv25, first="Vegas", last="Ace", per=30.0, ws=2.0)
+    await _season(db_session, comp=lv25, first="Vegas", last="Role", per=20.0, ws=1.0)
+    # Excluded: under the 40-min display floor.
+    await _season(
+        db_session, comp=lv25, first="Cup", last="Coffee", minutes=30.0, gp=1, per=99.0
+    )
+    # Excluded: pool not adv-eligible.
+    await _season(
+        db_session, comp=lv25, first="Thin", last="Pool", adv_eligible=False, per=88.0
+    )
+    await _season(db_session, comp=slc24, first="Salt", last="Laker", per=18.0)
+    await db_session.commit()
+
+    # Defaults to the latest competition (2025 Las Vegas), ranked by PER desc,
+    # excluding the sub-floor and non-eligible players.
+    adv = await get_leaders(db_session, mode="advanced")
+    assert adv.year == 2025 and adv.venue == "las_vegas"
+    assert [r.name for r in adv.rows] == ["Vegas Ace", "Vegas Role"]
+    assert adv.rows[0].values["per"] == 30.0
+    assert {v[0] for v in adv.venues} == {"las_vegas", "salt_lake_city"}
+
+    # Venue scoping resolves a different competition.
+    slc = await get_leaders(
+        db_session, mode="advanced", year=2024, venue="salt_lake_city"
+    )
+    assert slc.year == 2024 and slc.venue == "salt_lake_city"
+    assert [r.name for r in slc.rows] == ["Salt Laker"]
+
+    # Sorting by a different metric re-ranks within the competition.
+    by_ws = await get_leaders(db_session, mode="advanced", sort="ws")
+    assert by_ws.sort == "ws"
+    assert by_ws.rows[0].name == "Vegas Ace"

@@ -53,6 +53,9 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/consensus": 80,
     "/stats/summer-league": 8,
     "/stats/summer-league/games": 5,
+    # Both counting (aggregate + years) and advanced (competition list +
+    # per-competition rows) modes fire 2 indexed queries.
+    "/stats/summer-league/leaders": 3,
     "/stats/summer-league/{year}": 7,
     "/stats/summer-league/{year}/{venue}": 7,
     "/stats/summer-league/{year}/{venue}/{team}": 3,
