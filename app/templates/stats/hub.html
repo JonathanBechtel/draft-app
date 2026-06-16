@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Stats — NBA Draft Combine & Summer League — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/stats.css') }}">
+{% endblock %}
+
+{% block content %}
+<main>
+  <section class="stats-hero">
+    <div class="container">
+      <h2>DraftGuru Stats</h2>
+      <p class="stats-hero-tagline">Combine measurements &amp; Summer League production, in one place</p>
+    </div>
+  </section>
+
+  <div class="container">
+    <div class="stats-hub-grid">
+
+      {# Combine module #}
+      <a class="stats-module-card stats-module-card--combine" href="/stats/combine">
+        <span class="stats-module-card__icon">&#x1F4CF;</span>
+        <span class="stats-module-card__title">NBA Draft Combine</span>
+        <span class="stats-module-card__sub">Measurements, athletic testing, shooting drills &amp; combine scores</span>
+        {% if combine %}
+        <span class="stats-module-card__sample">
+          {{ combine.count }} draft {{ 'year' if combine.count == 1 else 'years' }}
+          {% if combine.earliest != combine.latest %}· {{ combine.earliest }}–{{ combine.latest }}{% else %}· {{ combine.latest }}{% endif %}
+        </span>
+        {% endif %}
+        <span class="stats-module-card__cta">Explore Combine &rarr;</span>
+      </a>
+
+      {# Summer League module #}
+      <a class="stats-module-card stats-module-card--sl" href="/stats/summer-league">
+        <span class="stats-module-card__icon">&#x1F3C0;</span>
+        <span class="stats-module-card__title">NBA Summer League</span>
+        <span class="stats-module-card__sub">Box scores, game logs, leaders &amp; advanced metrics across every season</span>
+        {% if summer_league %}
+        <span class="stats-module-card__sample">
+          {{ summer_league.count }} {{ 'season' if summer_league.count == 1 else 'seasons' }}
+          {% if summer_league.earliest != summer_league.latest %}· {{ summer_league.earliest }}–{{ summer_league.latest }}{% else %}· {{ summer_league.latest }}{% endif %}
+        </span>
+        {% endif %}
+        <span class="stats-module-card__cta">Explore Summer League &rarr;</span>
+      </a>
+
+    </div>
+
+    {# Reserved for future modules (College, G-League). Visually neutral. #}
+    <div class="stats-hub-soon">
+      <span class="stats-hub-soon__label">Coming soon</span>
+      <span class="stats-hub-soon__items">College production · G-League</span>
+    </div>
+  </div>
+</main>
+{% endblock %}

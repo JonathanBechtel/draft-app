@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,7 @@ from app.services.school_logo_service import (
     get_logo_url_for_school,
     get_logo_urls_for_schools,
 )
+from app.services.summer_league_season_service import get_season_years
 from app.utils.db_async import get_session
 from app.utils.images import get_placeholder_url, get_player_image_url
 
@@ -188,12 +189,45 @@ def _shooting_entry_to_dict(entry: object) -> dict:
     return d
 
 
+def _year_coverage(years: list[int]) -> dict | None:
+    """Summarize a descending year list as latest/earliest/count for a hub card."""
+    if not years:
+        return None
+    return {"latest": years[0], "earliest": years[-1], "count": len(years)}
+
+
 @router.get("/", response_class=HTMLResponse)
-async def stats_homepage(
+async def stats_hub(
     request: Request,
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
-    """Stats homepage with leader cards for all combine metrics."""
+    """Top-level stats hub: preview cards for each statistical module.
+
+    Lean entry point that routes to the Combine and Summer League sections
+    without hosting their content, so module pages can grow without churning
+    ``/stats`` itself. Each card shows a small coverage sample.
+    """
+    combine = _year_coverage(await get_available_years(db))
+    summer_league = _year_coverage(await get_season_years(db))
+
+    return request.app.state.templates.TemplateResponse(
+        "stats/hub.html",
+        {
+            "request": request,
+            "combine": combine,
+            "summer_league": summer_league,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/combine", response_class=HTMLResponse)
+async def combine_landing(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """Combine landing with leader cards for all combine metrics."""
     data = await get_homepage_data(db)
 
     measurement_leaders = {
@@ -245,7 +279,7 @@ async def stats_homepage(
     )
 
 
-@router.get("/combine/{year}", response_class=HTMLResponse)
+@router.get("/combine/{year:int}", response_class=HTMLResponse)
 async def draft_year_page(
     request: Request,
     year: int,
@@ -443,7 +477,7 @@ async def draft_year_page(
     )
 
 
-@router.get("/{metric_key}", response_class=HTMLResponse)
+@router.get("/combine/{metric_key}", response_class=HTMLResponse)
 async def metric_leaderboard(
     request: Request,
     metric_key: str,
@@ -541,3 +575,19 @@ async def metric_leaderboard(
             "current_year": datetime.now().year,
         },
     )
+
+
+@router.get("/{metric_key}", response_class=RedirectResponse)
+async def legacy_metric_redirect(metric_key: str, request: Request) -> RedirectResponse:
+    """Permanent redirect from the pre-hub metric URL to its combine-namespaced home.
+
+    Metric leaderboards moved from ``/stats/{metric_key}`` to
+    ``/stats/combine/{metric_key}`` when ``/stats`` became the hub. Old links and
+    search-indexed URLs 301 here so they keep resolving. Registered last so it
+    only catches single-segment paths the literal routes above did not.
+    """
+    query = request.url.query
+    target = f"/stats/combine/{metric_key}"
+    if query:
+        target = f"{target}?{query}"
+    return RedirectResponse(target, status_code=301)

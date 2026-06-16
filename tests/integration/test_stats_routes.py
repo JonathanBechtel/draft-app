@@ -178,21 +178,21 @@ async def seed_data(db_session):
 @pytest.mark.asyncio
 async def test_metric_page_returns_200(app_client, seed_data) -> None:
     """GET /stats/wingspan_in returns 200."""
-    resp = await app_client.get("/stats/wingspan_in")
+    resp = await app_client.get("/stats/combine/wingspan_in")
     assert resp.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_metric_page_invalid_key_returns_404(app_client, seed_data) -> None:
-    """GET /stats/fake_metric returns 404."""
-    resp = await app_client.get("/stats/fake_metric")
+    """GET /stats/combine/fake_metric returns 404."""
+    resp = await app_client.get("/stats/combine/fake_metric")
     assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_metric_page_contains_player_names(app_client, seed_data) -> None:
     """Response HTML includes seeded player display names."""
-    resp = await app_client.get("/stats/wingspan_in")
+    resp = await app_client.get("/stats/combine/wingspan_in")
     text = resp.text
     assert "Tall Center" in text
     assert "Long Wing" in text
@@ -202,7 +202,7 @@ async def test_metric_page_contains_player_names(app_client, seed_data) -> None:
 @pytest.mark.asyncio
 async def test_metric_page_contains_table_headers(app_client, seed_data) -> None:
     """Response HTML has expected column headers."""
-    resp = await app_client.get("/stats/wingspan_in")
+    resp = await app_client.get("/stats/combine/wingspan_in")
     text = resp.text
     assert "Rank" in text
     assert "Player" in text
@@ -217,7 +217,7 @@ async def test_metric_page_contains_table_headers(app_client, seed_data) -> None
 @pytest.mark.asyncio
 async def test_metric_page_year_filter(app_client, seed_data) -> None:
     """Filtering by year=2024 shows only 2024 players."""
-    resp = await app_client.get("/stats/wingspan_in?year=2024")
+    resp = await app_client.get("/stats/combine/wingspan_in?year=2024")
     text = resp.text
     assert "Tall Center" in text
     assert "Quick Guard" not in text  # 2025 player
@@ -226,7 +226,7 @@ async def test_metric_page_year_filter(app_client, seed_data) -> None:
 @pytest.mark.asyncio
 async def test_metric_page_position_filter(app_client, seed_data) -> None:
     """Filtering by position=PG shows only point guards."""
-    resp = await app_client.get("/stats/wingspan_in?position=PG")
+    resp = await app_client.get("/stats/combine/wingspan_in?position=PG")
     text = resp.text
     assert "Quick Guard" in text
     assert "Tall Center" not in text  # C position
@@ -235,7 +235,7 @@ async def test_metric_page_position_filter(app_client, seed_data) -> None:
 @pytest.mark.asyncio
 async def test_metric_page_combined_filters(app_client, seed_data) -> None:
     """Year + position filter together."""
-    resp = await app_client.get("/stats/wingspan_in?year=2025&position=PG")
+    resp = await app_client.get("/stats/combine/wingspan_in?year=2025&position=PG")
     text = resp.text
     assert "Quick Guard" in text
     assert "Short Guard" in text
@@ -245,7 +245,7 @@ async def test_metric_page_combined_filters(app_client, seed_data) -> None:
 @pytest.mark.asyncio
 async def test_metric_page_summary_cards_present(app_client, seed_data) -> None:
     """Response has Best, Worst, Typical summary cards."""
-    resp = await app_client.get("/stats/wingspan_in")
+    resp = await app_client.get("/stats/combine/wingspan_in")
     text = resp.text
     assert "Best" in text
     assert "Worst" in text
@@ -255,18 +255,62 @@ async def test_metric_page_summary_cards_present(app_client, seed_data) -> None:
 @pytest.mark.asyncio
 async def test_metric_page_breadcrumb(app_client, seed_data) -> None:
     """Response has breadcrumb with Stats link."""
-    resp = await app_client.get("/stats/wingspan_in")
+    resp = await app_client.get("/stats/combine/wingspan_in")
     assert '/stats"' in resp.text or "/stats'" in resp.text
 
 
 @pytest.mark.asyncio
 async def test_metric_page_filter_dropdowns(app_client, seed_data) -> None:
     """Response has metric, year, and position select elements."""
-    resp = await app_client.get("/stats/wingspan_in")
+    resp = await app_client.get("/stats/combine/wingspan_in")
     text = resp.text
     assert "<select" in text
     assert "All Years" in text
     assert "All Positions" in text
+
+
+@pytest.mark.asyncio
+async def test_stats_hub_returns_200_with_module_cards(app_client, seed_data) -> None:
+    """GET /stats renders the hub with Combine and Summer League module cards.
+
+    Bare ``/stats`` 307s to the canonical ``/stats/`` (Starlette slash redirect),
+    so follow it the way a browser following the navbar link would.
+    """
+    resp = await app_client.get("/stats", follow_redirects=True)
+    assert resp.status_code == 200
+    text = resp.text
+    assert "/stats/combine" in text
+    assert "/stats/summer-league" in text
+    assert "NBA Draft Combine" in text
+    assert "NBA Summer League" in text
+
+
+@pytest.mark.asyncio
+async def test_combine_landing_returns_200(app_client, seed_data) -> None:
+    """GET /stats/combine renders the combine landing (moved from /stats)."""
+    resp = await app_client.get("/stats/combine")
+    assert resp.status_code == 200
+    assert "Tall Center" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_legacy_metric_url_redirects_permanently(app_client, seed_data) -> None:
+    """The pre-hub /stats/{metric} URL 301s to /stats/combine/{metric}."""
+    resp = await app_client.get("/stats/wingspan_in", follow_redirects=False)
+    assert resp.status_code == 301
+    assert resp.headers["location"] == "/stats/combine/wingspan_in"
+
+
+@pytest.mark.asyncio
+async def test_legacy_metric_url_preserves_query_string(app_client, seed_data) -> None:
+    """The legacy redirect carries filters across so bookmarked queries survive."""
+    resp = await app_client.get(
+        "/stats/wingspan_in?year=2024&position=PG", follow_redirects=False
+    )
+    assert resp.status_code == 301
+    assert resp.headers["location"] == (
+        "/stats/combine/wingspan_in?year=2024&position=PG"
+    )
 
 
 
