@@ -15,6 +15,8 @@
       <nav class="breadcrumb-nav">
         <a href="/stats">Stats</a>
         <span class="breadcrumb-sep">/</span>
+        <a href="/stats/combine">Combine</a>
+        <span class="breadcrumb-sep">/</span>
         <span class="breadcrumb-current">{{ metric.display_name }}</span>
       </nav>
     </div>
@@ -127,7 +129,7 @@
       <!-- Filter Bar -->
       <div class="stats-filters-bar">
         <span class="stats-filters-bar__label mono-font uppercase">Metric:</span>
-        <select class="stats-filter-select" onchange="window.location.href='/stats/' + this.value + StatsFilters.buildQueryString();">
+        <select class="stats-filter-select" onchange="window.location.href='/stats/combine/' + this.value + StatsFilters.buildQueryString();">
           {% for cat_name, cat_metrics in metrics_grouped.items() %}
           <optgroup label="{{ cat_name | replace('_', ' ') | title }}">
             {% for m in cat_metrics %}
@@ -283,7 +285,7 @@
         {% if active_nba_status %}{% set ns.params = ns.params ~ '&nba_status=' ~ active_nba_status %}{% endif %}
 
         {% if current_page > 1 %}
-        <a href="/stats/{{ active_metric_key }}?offset={{ (current_page - 2) * limit }}{{ ns.params }}" class="stats-pagination__btn">&#8592; Prev</a>
+        <a href="/stats/combine/{{ active_metric_key }}?offset={{ (current_page - 2) * limit }}{{ ns.params }}" class="stats-pagination__btn">&#8592; Prev</a>
         {% else %}
         <span class="stats-pagination__btn stats-pagination__btn--disabled">&#8592; Prev</span>
         {% endif %}
@@ -293,7 +295,7 @@
             {% if p == current_page %}
             <span class="stats-pagination__btn stats-pagination__btn--active">{{ p }}</span>
             {% else %}
-            <a href="/stats/{{ active_metric_key }}?offset={{ (p - 1) * limit }}{{ ns.params }}" class="stats-pagination__btn">{{ p }}</a>
+            <a href="/stats/combine/{{ active_metric_key }}?offset={{ (p - 1) * limit }}{{ ns.params }}" class="stats-pagination__btn">{{ p }}</a>
             {% endif %}
           {% elif p == 4 or p == total_pages - 2 %}
             <span class="stats-pagination__ellipsis">...</span>
@@ -301,14 +303,14 @@
         {% endfor %}
 
         {% if current_page < total_pages %}
-        <a href="/stats/{{ active_metric_key }}?offset={{ current_page * limit }}{{ ns.params }}" class="stats-pagination__btn">Next &#8594;</a>
+        <a href="/stats/combine/{{ active_metric_key }}?offset={{ current_page * limit }}{{ ns.params }}" class="stats-pagination__btn">Next &#8594;</a>
         {% else %}
         <span class="stats-pagination__btn stats-pagination__btn--disabled">Next &#8594;</span>
         {% endif %}
       </nav>
       {% endif %}
 
-      <a href="/stats" class="stats-back-link mono-font">&#8592; Back to All Stats</a>
+      <a href="/stats/combine" class="stats-back-link mono-font">&#8592; Back to All Combine Stats</a>
 
     </div>
   </section>
@@ -392,7 +394,7 @@ const StatsFilters = {
 
   apply() {
     const metricKey = '{{ active_metric_key }}';
-    window.location.href = '/stats/' + metricKey + this.buildQueryString();
+    window.location.href = '/stats/combine/' + metricKey + this.buildQueryString();
   }
 };
 

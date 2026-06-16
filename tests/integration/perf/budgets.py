@@ -51,6 +51,8 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/players/{slug}": 25,
     "/players/{slug}/summer-league": 2,
     "/consensus": 80,
+    # Hub: combine-year coverage + SL-year coverage, one indexed read each.
+    "/stats/": 2,
     "/stats/summer-league": 8,
     "/stats/summer-league/games": 5,
     # Both counting (aggregate + years) and advanced (competition list +
