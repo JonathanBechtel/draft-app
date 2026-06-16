@@ -186,6 +186,74 @@ async def _seed_franchise(db: AsyncSession) -> tuple[NbaTeam, PlayerMaster]:
 
 
 @pytest.mark.asyncio
+async def test_resolved_player_name_variants_collapse_to_one_row(
+    db_session: AsyncSession,
+) -> None:
+    """A resolved player logged under two feed names aggregates into one row.
+
+    Regression for the franchise aggregates splitting on ``raw_player_name``.
+    """
+    franchise = NbaTeam(name="Boston Celtics", abbreviation="BOS", slug="celtics")
+    db_session.add(franchise)
+    await db_session.flush()
+    player = make_player("Jaylen", "Brown")
+    db_session.add(player)
+    await db_session.flush()
+
+    comp_id = await _comp(db_session, year=2024, venue_slug="vegas", league_id="15")
+    team = await _entry(db_session, comp_id=comp_id, franchise=franchise, name="Celtics")
+    opp = await _entry(db_session, comp_id=comp_id, franchise=franchise, name="Foes")
+    opp.nba_team_id = None
+    await db_session.flush()
+
+    # Same canonical player, two games, two different raw feed names.
+    for i, raw_name in enumerate(("Jaylen Brown", "J. Brown")):
+        g = SummerLeagueGame(
+            competition_id=comp_id,
+            nba_stats_game_id=f"var-game-{i}",
+            game_date=date(2024, 7, 3 + i),
+            home_team_entry_id=team.id,
+            away_team_entry_id=opp.id,
+            home_score=100,
+            away_score=90,
+        )
+        db_session.add(g)
+        await db_session.flush()
+        sp = SummerLeagueSourcePlayer(
+            nba_stats_person_id=f"var-person-{i}",
+            raw_player_name=raw_name,
+            normalized_name=raw_name.lower(),
+            canonical_player_id=player.id,
+        )
+        db_session.add(sp)
+        await db_session.flush()
+        db_session.add(
+            SummerLeaguePlayerGameLog(
+                competition_id=comp_id,
+                game_id=g.id,
+                team_entry_id=team.id,
+                source_player_id=sp.id,
+                player_id=player.id,
+                nba_stats_person_id=sp.nba_stats_person_id,
+                raw_player_name=raw_name,
+                minutes_seconds=1800,
+                pts=20,
+            )
+        )
+    await db_session.commit()
+
+    hist = await get_franchise_history(db_session, "celtics")
+
+    assert hist is not None
+    # One canonical player, not two — gp and points aggregated across both names.
+    brown_rows = [p for p in hist.players if p.slug == player.slug]
+    assert len(brown_rows) == 1
+    assert brown_rows[0].gp == 2
+    assert brown_rows[0].pts == 40
+    assert hist.player_count == 1
+
+
+@pytest.mark.asyncio
 async def test_get_franchise_history_aggregates_record_and_players(
     db_session: AsyncSession,
 ) -> None:

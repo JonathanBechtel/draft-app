@@ -12,9 +12,9 @@ records sum cleanly into an all-time record with no double counting.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.nba_teams import NbaTeam
@@ -90,6 +90,21 @@ def _ppg(pts: int, gp: int) -> Optional[float]:
     if not gp:
         return None
     return round(pts / gp, 1)
+
+
+def _player_identity_key() -> Any:
+    """A grouping key that collapses a resolved player's logs into one row.
+
+    Resolved logs group by ``player_id`` (so the same canonical player isn't
+    split when NBA feed names vary across games/years); only unresolved logs
+    (no ``player_id``) fall back to ``raw_player_name``. Prefixes keep the two
+    namespaces from ever colliding.
+    """
+    pgl = SummerLeaguePlayerGameLog
+    return func.coalesce(
+        func.concat("p", cast(pgl.player_id, String)),
+        func.concat("r", pgl.raw_player_name),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -188,9 +203,9 @@ async def get_franchise_history(
         await db.execute(
             select(
                 pgl.team_entry_id,
-                PlayerMaster.slug,
-                PlayerMaster.display_name,
-                pgl.raw_player_name,
+                func.min(PlayerMaster.slug).label("slug"),
+                func.min(PlayerMaster.display_name).label("display_name"),
+                func.min(pgl.raw_player_name).label("raw_player_name"),
                 func.count().label("gp"),
                 func.sum(pgl.pts).label("pts"),
             )  # type: ignore[call-overload, misc]
@@ -200,12 +215,7 @@ async def get_franchise_history(
                 pgl.team_entry_id.in_(entry_ids),  # type: ignore[attr-defined]
                 pgl.minutes_seconds > 0,  # type: ignore[operator]
             )
-            .group_by(
-                pgl.team_entry_id,
-                PlayerMaster.slug,
-                PlayerMaster.display_name,
-                pgl.raw_player_name,
-            )
+            .group_by(pgl.team_entry_id, _player_identity_key())
         )
     ).all()
 
@@ -250,10 +260,9 @@ async def get_franchise_history(
     player_rows = (
         await db.execute(
             select(
-                pgl.player_id,
-                PlayerMaster.slug,
-                PlayerMaster.display_name,
-                pgl.raw_player_name,
+                func.min(PlayerMaster.slug).label("slug"),
+                func.min(PlayerMaster.display_name).label("display_name"),
+                func.min(pgl.raw_player_name).label("raw_player_name"),
                 func.count(func.distinct(pgl.competition_id)).label("seasons"),
                 func.count().label("gp"),
                 func.sum(pgl.pts).label("pts"),
@@ -261,17 +270,12 @@ async def get_franchise_history(
                 func.sum(pgl.ast).label("ast"),
             )  # type: ignore[call-overload, misc]
             .select_from(pgl)
-            .join(PlayerMaster, PlayerMaster.id == pgl.player_id, isouter=True)
+            .join(PlayerMaster, PlayerMaster.id == pgl.player_id, isouter=True)  # type: ignore[arg-type]
             .where(
                 pgl.team_entry_id.in_(entry_ids),  # type: ignore[attr-defined]
-                pgl.minutes_seconds > 0,  # type: ignore[operator]
+                pgl.minutes_seconds > 0,  # type: ignore[operator, arg-type]
             )
-            .group_by(
-                pgl.player_id,
-                PlayerMaster.slug,
-                PlayerMaster.display_name,
-                pgl.raw_player_name,
-            )
+            .group_by(_player_identity_key())
         )
     ).all()
 
