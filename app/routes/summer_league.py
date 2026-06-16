@@ -20,6 +20,10 @@ from app.services.summer_league_games_service import (
     resolve_player_ref,
     search_games,
 )
+from app.services.summer_league_explorer_service import (
+    parse_query,
+    run_explorer_query,
+)
 from app.services.summer_league_franchise_service import get_franchise_history
 from app.services.summer_league_leaders_service import get_leaders
 from app.services.summer_league_season_service import (
@@ -136,6 +140,35 @@ async def summer_league_leaders(
     )
     return request.app.state.templates.TemplateResponse(
         "stats/summer-league/leaders.html",
+        {
+            "request": request,
+            "result": result,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/stats/summer-league/explorer", response_class=HTMLResponse)
+async def summer_league_explorer(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """Faceted query builder over Summer League players, teams, and games.
+
+    All state is URL-encoded so every query is shareable. ``?partial=1`` renders
+    just the results table for in-place JS swaps; otherwise the full page renders.
+    """
+    query = parse_query(dict(request.query_params))
+    result = await run_explorer_query(db, query)
+
+    template = (
+        "stats/summer-league/_explorer_results.html"
+        if request.query_params.get("partial")
+        else "stats/summer-league/explorer.html"
+    )
+    return request.app.state.templates.TemplateResponse(
+        template,
         {
             "request": request,
             "result": result,
