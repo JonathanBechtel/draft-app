@@ -74,8 +74,13 @@
     var host = document.getElementById(RESULTS_ID);
     if (!host || !host.contains(link)) return; // only links inside the results
     if (link.target === "_blank" || e.metaKey || e.ctrlKey) return;
+    // Only intercept query-state links (sort headers + pager), which are
+    // relative `?...` hrefs. Row links (player/team/game) are absolute paths
+    // and must navigate out of the explorer normally.
+    var href = link.getAttribute("href");
+    if (!href || href.charAt(0) !== "?") return;
     e.preventDefault();
-    load(link.getAttribute("href"), true);
+    load(href, true);
   });
 
   // Back/forward should restore the corresponding results.
