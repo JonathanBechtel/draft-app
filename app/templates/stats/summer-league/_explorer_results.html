@@ -37,7 +37,7 @@
         <thead>
           <tr>
             <th scope="col" class="slg-explorer__label">
-              {%- if result.subject == 'players' %}Player{% elif result.subject == 'teams' %}Team{% else %}Name{% endif -%}
+              {%- if result.subject == 'players' %}Player{% elif result.subject == 'teams' %}Team{% elif result.subject == 'games' %}Game{% else %}Name{% endif -%}
             </th>
             {% for col in result.columns %}
             {%- set is_active = result.query.sort == col.key -%}
@@ -59,7 +59,7 @@
             {% for col in result.columns %}
             <td class="{{ 'slg-strong' if col.key == result.query.sort else '' }}">
               {% set v = row.values.get(col.key) %}
-              {% if col.key in ('gp', 'w', 'l') %}{{ v }}{% else %}{{ n1(v) }}{% endif %}
+              {% if col.key in ('gp', 'w', 'l', 'total', 'margin') %}{{ v }}{% else %}{{ n1(v) }}{% endif %}
             </td>
             {% endfor %}
           </tr>

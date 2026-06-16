@@ -244,13 +244,10 @@ async def test_min_minutes_filter_excludes_small_samples(
 
 
 @pytest.mark.asyncio
-async def test_games_subject_unavailable_phase2(db_session: AsyncSession) -> None:
-    """The games subject is still a placeholder until Phase 3."""
+async def test_facets_populate_for_every_subject(db_session: AsyncSession) -> None:
+    """Builder facets populate regardless of subject."""
     await _seed(db_session)
     result = await run_explorer_query(db_session, ExplorerQuery(subject="games"))
-    assert result.available is False
-    assert result.rows == []
-    # Facets still populate so the builder renders.
     assert result.facets.years == [2025, 2024]
 
 
@@ -355,6 +352,56 @@ async def test_teams_default_sort_is_valid_for_subject(
     await _seed_teams(db_session)
     q = parse_query({"subject": "teams", "sort": "ts_pct"})
     assert q.sort == "diff"  # 'ts_pct' is not a team column
+
+
+# --------------------------------------------------------------------------- #
+# games subject (Phase 3)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_games_one_row_per_game_with_total_and_margin(
+    db_session: AsyncSession,
+) -> None:
+    """Games subject yields one row per scored game with total + margin."""
+    await _seed_teams(db_session)  # 2 games: 110-90 and 105-95
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="games"))
+
+    assert result.available is True
+    assert result.total == 2
+    assert {r.values["total"] for r in result.rows} == {200}
+    assert {r.values["margin"] for r in result.rows} == {20, 10}
+
+
+@pytest.mark.asyncio
+async def test_games_sort_by_margin(db_session: AsyncSession) -> None:
+    """Sorting by margin desc puts the bigger blowout first, linked to its box."""
+    await _seed_teams(db_session)
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="games", sort="margin", direction="desc")
+    )
+    assert result.rows[0].values["margin"] == 20
+    assert result.rows[0].href is not None
+    assert result.rows[0].href.startswith("/stats/summer-league/2024/games/")
+    # The label carries date + matchup + score.
+    assert "@" in result.rows[0].label
+
+
+@pytest.mark.asyncio
+async def test_games_default_sort_is_total(db_session: AsyncSession) -> None:
+    """The games subject defaults its sort key to 'total'."""
+    q = parse_query({"subject": "games"})
+    assert q.sort == "total"
+
+
+@pytest.mark.asyncio
+async def test_games_venue_filter(db_session: AsyncSession) -> None:
+    """A non-matching venue filter yields no games."""
+    await _seed_teams(db_session)  # all games at las_vegas
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="games", venue="orlando")
+    )
+    assert result.total == 0
 
 
 # --------------------------------------------------------------------------- #

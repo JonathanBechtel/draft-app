@@ -23,6 +23,7 @@ from typing import Any, Optional
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
@@ -90,10 +91,17 @@ _TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("drtg", "DRtg"),
 ]
 
+# Stat columns for the games subject (one row per game). The label carries date
+# + matchup + score; these are the sortable numeric dimensions.
+_GAME_STAT_COLUMNS: list[ExplorerColumn] = [
+    ExplorerColumn("total", "Total"),
+    ExplorerColumn("margin", "Margin"),
+]
+
 _COLUMNS_BY_SUBJECT: dict[str, list[ExplorerColumn]] = {
     "players": _PLAYER_STAT_COLUMNS,
     "teams": _TEAM_STAT_COLUMNS,
-    "games": [],
+    "games": _GAME_STAT_COLUMNS,
 }
 _SORT_KEYS_BY_SUBJECT: dict[str, set[str]] = {
     s: {c.key for c in cols} for s, cols in _COLUMNS_BY_SUBJECT.items()
@@ -499,6 +507,70 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 
 
 # --------------------------------------------------------------------------- #
+# Games subject
+# --------------------------------------------------------------------------- #
+
+
+async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
+    """One row per game: matchup/score in the label, total + margin sortable."""
+    game = SummerLeagueGame
+    comp = SummerLeagueCompetition
+    home = aliased(SummerLeagueTeamEntry)
+    away = aliased(SummerLeagueTeamEntry)
+
+    conds: list[Any] = [game.home_score.isnot(None), game.away_score.isnot(None)]  # type: ignore[union-attr]
+    if q.year_min is not None:
+        conds.append(comp.year >= q.year_min)  # type: ignore[arg-type]
+    if q.year_max is not None:
+        conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
+    if q.venue:
+        conds.append(comp.venue_slug == q.venue)
+
+    game_rows = (
+        await db.execute(
+            select(
+                game.id,
+                game.game_date,
+                game.home_score,
+                game.away_score,
+                comp.year,
+                comp.venue_slug,
+                home.raw_team_abbreviation.label("home_abbr"),  # type: ignore[union-attr]
+                home.raw_team_name.label("home_name"),  # type: ignore[attr-defined]
+                away.raw_team_abbreviation.label("away_abbr"),  # type: ignore[union-attr]
+                away.raw_team_name.label("away_name"),  # type: ignore[attr-defined]
+            )  # type: ignore[call-overload, misc]
+            .select_from(game)
+            .join(comp, comp.id == game.competition_id)
+            .join(home, home.id == game.home_team_entry_id, isouter=True)
+            .join(away, away.id == game.away_team_entry_id, isouter=True)
+            .where(*conds)
+        )
+    ).all()
+
+    rows: list[ExplorerRow] = []
+    for r in game_rows:
+        home_label = r.home_abbr or r.home_name or "Home"
+        away_label = r.away_abbr or r.away_name or "Away"
+        date_str = r.game_date.isoformat() if r.game_date else "—"
+        rows.append(
+            ExplorerRow(
+                label=(
+                    f"{date_str} · {away_label} {r.away_score} "
+                    f"@ {home_label} {r.home_score}"
+                ),
+                href=f"/stats/summer-league/{r.year}/games/{r.id}",
+                values={
+                    "total": r.home_score + r.away_score,
+                    "margin": abs(r.home_score - r.away_score),
+                },
+            )
+        )
+
+    return _paginate("games", _GAME_STAT_COLUMNS, rows, q)
+
+
+# --------------------------------------------------------------------------- #
 # Shared helpers
 # --------------------------------------------------------------------------- #
 
@@ -559,17 +631,6 @@ async def run_explorer_query(db: AsyncSession, q: ExplorerQuery) -> ExplorerResu
         result.facets = facets
         return result
 
-    # Games lands in a later phase; return an empty, unavailable result so the
-    # subject toggle renders without error.
-    return ExplorerResult(
-        subject=q.subject,
-        available=False,
-        columns=[],
-        rows=[],
-        total=0,
-        page=1,
-        page_size=PAGE_SIZE,
-        has_next=False,
-        facets=facets,
-        query=q,
-    )
+    result = await _query_games(db, q)
+    result.facets = facets
+    return result
