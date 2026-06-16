@@ -28,6 +28,18 @@
     });
   }
 
+  // Push the just-loaded URL's params back onto the (persistent) form controls,
+  // so the form always reflects the visible results. Params absent from the URL
+  // reset their control to empty (the "All/Any" option).
+  function syncForm(url) {
+    var qi = url.indexOf("?");
+    var params = new URLSearchParams(qi === -1 ? "" : url.slice(qi + 1));
+    Array.prototype.forEach.call(form.elements, function (el) {
+      if (!el.name || el.type === "submit" || el.type === "button") return;
+      el.value = params.has(el.name) ? params.get(el.name) : "";
+    });
+  }
+
   function load(url, push) {
     var host = document.getElementById(RESULTS_ID);
     if (host) host.classList.add("is-loading");
@@ -44,6 +56,11 @@
         }
         cur.outerHTML = html;
         if (push) history.pushState({ explorerUrl: url }, "", canonical(url));
+        // The form lives outside the swapped fragment, so its controls (and the
+        // hidden sort/dir inputs) would keep stale values after a sort/pager/back
+        // swap — a later filter submit would then send the old sort. Re-sync the
+        // whole form to the URL we just loaded.
+        syncForm(url);
         // Keep the viewport anchored to the results, not jumped to top.
         var fresh = document.getElementById(RESULTS_ID);
         if (fresh) fresh.scrollIntoView({ block: "nearest" });
