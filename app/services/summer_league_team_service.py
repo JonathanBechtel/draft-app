@@ -18,6 +18,7 @@ from sqlalchemy import case, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.schemas.nba_teams import NbaTeam
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
@@ -108,6 +109,7 @@ class TeamSeason:
     ppg: Optional[float]
     opp_ppg: Optional[float]
     logo_url: Optional[str] = None
+    franchise_slug: Optional[str] = None
     roster: list[RosterRow] = field(default_factory=list)
     schedule: list[TeamGameRow] = field(default_factory=list)
 
@@ -223,9 +225,11 @@ async def get_team_season(
                 te.raw_team_name,
                 te.nba_stats_team_id,
                 comp.id,
+                NbaTeam.slug.label("franchise_slug"),  # type: ignore[attr-defined]
             )  # type: ignore[call-overload, misc]
             .select_from(te)
             .join(comp, comp.id == te.competition_id)
+            .join(NbaTeam, NbaTeam.id == te.nba_team_id, isouter=True)
             .where(
                 comp.year == year,  # type: ignore[arg-type]
                 comp.venue_slug == venue_slug,
@@ -359,6 +363,7 @@ async def get_team_season(
         ppg=round(pf / played, 1) if played else None,
         opp_ppg=round(pa / played, 1) if played else None,
         logo_url=franchise_logo_url(header.nba_stats_team_id),
+        franchise_slug=header.franchise_slug,
         roster=roster,
         schedule=schedule,
     )

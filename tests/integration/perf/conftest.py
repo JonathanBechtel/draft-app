@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.boards import Board, BoardEntry, BoardStatus
 from app.schemas.consensus import ConsensusTrigger
+from app.schemas.nba_teams import NbaTeam
 from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.player_content_mentions import (
     ContentType,
@@ -229,8 +230,14 @@ async def representative_dataset(db_session: AsyncSession) -> SeededData:
     db_session.add(comp)
     await db_session.flush()
     assert comp.id is not None
+    # Map the home entry to a real franchise so the franchise-history route
+    # (`/stats/summer-league/teams/{team}`) resolves with slug == sl_team.
+    franchise = NbaTeam(name="Perf Home", abbreviation="PFH", slug="perf-home")
+    db_session.add(franchise)
+    await db_session.flush()
     sl_home = SummerLeagueTeamEntry(
         competition_id=comp.id,
+        nba_team_id=franchise.id,
         nba_stats_team_id="perf-sl-home",
         raw_team_name="Perf Home",
         raw_team_abbreviation="PFH",

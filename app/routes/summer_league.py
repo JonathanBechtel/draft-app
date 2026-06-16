@@ -20,6 +20,7 @@ from app.services.summer_league_games_service import (
     resolve_player_ref,
     search_games,
 )
+from app.services.summer_league_franchise_service import get_franchise_history
 from app.services.summer_league_leaders_service import get_leaders
 from app.services.summer_league_season_service import (
     get_alltime_leaders,
@@ -138,6 +139,28 @@ async def summer_league_leaders(
         {
             "request": request,
             "result": result,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/stats/summer-league/teams/{team}", response_class=HTMLResponse)
+async def summer_league_franchise(
+    request: Request,
+    team: str,
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """One NBA franchise's full cross-year Summer League history."""
+    franchise = await get_franchise_history(db, team)
+    if franchise is None:
+        raise HTTPException(status_code=404, detail="Summer League franchise not found")
+
+    return request.app.state.templates.TemplateResponse(
+        "stats/summer-league/franchise.html",
+        {
+            "request": request,
+            "franchise": franchise,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

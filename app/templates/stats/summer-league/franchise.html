@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}{{ franchise.name }} — Summer League History — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% endblock %}
+
+{% from 'stats/summer-league/_sl_macros.html' import team_logo %}
+
+{% macro n1(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
+
+{% block content %}
+<main class="container slg-page">
+
+  <a class="slg-back" href="/stats/summer-league">&larr; Summer League</a>
+
+  <header class="slg-team-head">
+    <div class="slg-team-head__id">
+      {{ team_logo(franchise.logo_url, lg=true) }}
+      <div>
+        <p class="slg-eyebrow">Summer League History</p>
+        <h1 class="slg-title">{{ franchise.name }}</h1>
+      </div>
+    </div>
+    <div class="slg-team-record">
+      <span class="slg-team-record__wl">{{ franchise.all_time_wins }}–{{ franchise.all_time_losses }}</span>
+      <span class="slg-team-record__label">All-Time SL Record</span>
+    </div>
+  </header>
+
+  {# Quick stats #}
+  <div class="slg-quickstats">
+    <div class="slg-quickstat"><span class="slg-quickstat__v">{{ franchise.season_count }}</span><span class="slg-quickstat__l">SL Appearances</span></div>
+    <div class="slg-quickstat"><span class="slg-quickstat__v">{{ franchise.player_count }}</span><span class="slg-quickstat__l">Players</span></div>
+    <div class="slg-quickstat">
+      {% set tot = franchise.all_time_wins + franchise.all_time_losses %}
+      <span class="slg-quickstat__v">{{ '%.0f%%' % (100 * franchise.all_time_wins / tot) if tot else '—' }}</span>
+      <span class="slg-quickstat__l">Win Pct</span>
+    </div>
+  </div>
+
+  {# By season #}
+  <section class="slg-recent-block">
+    <div class="slg-leaders__head"><h2 class="slg-section-title">By Season</h2></div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-table">
+          <thead>
+            <tr>
+              <th scope="col">Year</th><th scope="col">Venue</th><th scope="col">Record</th>
+              <th scope="col">Top Performer</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in franchise.seasons %}
+            <tr>
+              <th scope="row"><a class="slg-game-link" href="/stats/summer-league/{{ s.year }}/{{ s.venue_slug }}/{{ s.team_slug }}">{{ s.year }}</a></th>
+              <td><a href="/stats/summer-league/{{ s.year }}/{{ s.venue_slug }}">{{ s.venue }}</a></td>
+              <td class="slg-strong">{{ s.wins }}–{{ s.losses }}</td>
+              <td>
+                {% if s.top_performer_name %}
+                  {% if s.top_performer_slug %}<a href="/players/{{ s.top_performer_slug }}">{{ s.top_performer_name }}</a>{% else %}<span class="slg-bx-name--stub">{{ s.top_performer_name }}</span>{% endif %}
+                  {% if s.top_performer_ppg is not none %}<span class="slg-muted"> · {{ n1(s.top_performer_ppg) }} PPG</span>{% endif %}
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="slg-empty">No Summer League appearances.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  {# Franchise career leaders #}
+  <section class="slg-leaders">
+    <div class="slg-leaders__head"><h2 class="slg-section-title">Franchise Career Leaders</h2></div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-roster">
+          <thead>
+            <tr>
+              <th scope="col" class="slg-roster__name">Player</th>
+              <th scope="col">Yrs</th><th scope="col">GP</th><th scope="col">PTS</th>
+              <th scope="col">REB</th><th scope="col">AST</th><th scope="col">PPG</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in franchise.leaders %}
+            <tr>
+              <th scope="row" class="slg-roster__name">
+                {% if p.slug %}<a href="/players/{{ p.slug }}">{{ p.name }}</a>{% else %}<span class="slg-bx-name--stub">{{ p.name }}</span>{% endif %}
+              </th>
+              <td>{{ p.seasons }}</td><td>{{ p.gp }}</td><td class="slg-strong">{{ p.pts }}</td>
+              <td>{{ p.reb }}</td><td>{{ p.ast }}</td><td>{{ n1(p.ppg) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="slg-empty">No player data.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  {# All players #}
+  <section class="slg-recent-block">
+    <div class="slg-leaders__head"><h2 class="slg-section-title">All Players <span class="slg-muted">({{ franchise.player_count }})</span></h2></div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-roster">
+          <thead>
+            <tr>
+              <th scope="col" class="slg-roster__name">Player</th>
+              <th scope="col">Yrs</th><th scope="col">GP</th><th scope="col">PPG</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in franchise.players %}
+            <tr>
+              <th scope="row" class="slg-roster__name">
+                {% if p.slug %}<a href="/players/{{ p.slug }}">{{ p.name }}</a>{% else %}<span class="slg-bx-name--stub">{{ p.name }}</span>{% endif %}
+              </th>
+              <td>{{ p.seasons }}</td><td>{{ p.gp }}</td><td>{{ n1(p.ppg) }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="slg-empty">No player data.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+{% endblock %}
