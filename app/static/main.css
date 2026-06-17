@@ -408,6 +408,28 @@ body {
   font-size: 0.875rem;
 }
 
+.footer-connect {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.footer-connect a {
+  color: var(--color-slate-700);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  transition: color var(--transition-speed);
+}
+
+.footer-connect a:hover {
+  color: var(--color-slate-900);
+  text-decoration: underline;
+}
+
 .footer-copyright {
   text-align: center;
   font-size: 0.875rem;
