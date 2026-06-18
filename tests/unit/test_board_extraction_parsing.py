@@ -15,9 +15,11 @@ from app.services.board_extraction_service import (
     BoardExtractionError,
     ExtractedBoard,
     PaywallDetectedError,
+    PresentationOrder,
     _build_extraction_schema,
     _derive_num_rounds,
     _fetch_substack_api,
+    _normalize_presentation_order,
     _substack_api_url,
     extract_article_text,
     is_paywalled,
@@ -289,6 +291,81 @@ def test_parse_gemini_response_rejects_zero_rank() -> None:
 def test_parse_gemini_response_empty_response_raises() -> None:
     with pytest.raises(BoardExtractionError):
         parse_gemini_response("")
+
+
+def test_parse_gemini_response_defaults_top_first() -> None:
+    """A payload omitting presentation_order defaults to TOP_FIRST (no flip)."""
+    raw = '{"draft_year": 2026, "entries": [{"player_name": "Best", "rank": 1}]}'
+    parsed = parse_gemini_response(raw)
+    assert parsed.presentation_order is PresentationOrder.TOP_FIRST
+    assert parsed.entries[0].rank == 1
+
+
+def test_parse_gemini_response_top_first_preserves_ranks() -> None:
+    """Explicit TOP_FIRST leaves reading-order ranks untouched."""
+    raw = """
+    {
+      "draft_year": 2026,
+      "presentation_order": "TOP_FIRST",
+      "entries": [
+        {"player_name": "Best", "rank": 1},
+        {"player_name": "Mid", "rank": 2},
+        {"player_name": "Worst", "rank": 3}
+      ]
+    }
+    """
+    parsed = parse_gemini_response(raw)
+    ranks = {e.player_name: e.rank for e in parsed.entries}
+    assert ranks == {"Best": 1, "Mid": 2, "Worst": 3}
+
+
+def test_parse_gemini_response_bottom_first_reverses_ranks() -> None:
+    """A countdown (worst listed first) is flipped so the best lands at rank 1.
+
+    Gemini emits ranks in reading order — for a countdown the worst prospect
+    is read first (rank 1) and the best last (rank N). The normalizer must
+    reflect the ranks so the analyst's top prospect ends up at rank 1.
+    """
+    raw = """
+    {
+      "draft_year": 2026,
+      "presentation_order": "BOTTOM_FIRST",
+      "entries": [
+        {"player_name": "Worst", "rank": 1},
+        {"player_name": "Mid", "rank": 2},
+        {"player_name": "Best", "rank": 3}
+      ]
+    }
+    """
+    parsed = parse_gemini_response(raw)
+    ranks = {e.player_name: e.rank for e in parsed.entries}
+    assert ranks == {"Best": 1, "Mid": 2, "Worst": 3}
+    # The set of rank values is preserved (still 1..3), only the assignment flips.
+    assert sorted(e.rank for e in parsed.entries) == [1, 2, 3]
+
+
+def test_normalize_presentation_order_empty_board_is_noop() -> None:
+    """Reflecting an empty countdown must not raise on min()/max()."""
+    board = ExtractedBoard(
+        draft_year=2026,
+        presentation_order=PresentationOrder.BOTTOM_FIRST,
+        entries=[],
+    )
+    assert _normalize_presentation_order(board).entries == []
+
+
+def test_normalize_presentation_order_handles_offset_rank_range() -> None:
+    """Reflection uses the list's own [min,max], not an assumed 1..N."""
+    board = ExtractedBoard(
+        draft_year=2026,
+        presentation_order=PresentationOrder.BOTTOM_FIRST,
+        entries=[
+            board_extraction_service.ExtractedBoardEntry(player_name="Worst", rank=5),
+            board_extraction_service.ExtractedBoardEntry(player_name="Best", rank=8),
+        ],
+    )
+    flipped = {e.player_name: e.rank for e in _normalize_presentation_order(board).entries}
+    assert flipped == {"Best": 5, "Worst": 8}
 
 
 # --- ExtractedBoard timezone normalization ------------------------------
