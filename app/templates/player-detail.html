@@ -22,17 +22,6 @@
       {{ player.name }} — Player Profile
     </h2>
 
-    {# Jump-to-section anchors. Each link renders only when its section does, so
-       the nav stays in sync with what's actually on the page. #}
-    <nav class="player-section-nav mono-font" aria-label="Jump to section">
-      {% if college_stats %}<a class="player-section-nav__link" href="#collegeSection">College</a>{% endif %}
-      {% if summer_league %}<a class="player-section-nav__link" href="#summerLeagueSection">Summer League</a>{% endif %}
-      {% if consensus %}<a class="player-section-nav__link" href="#consensusSection">Consensus</a>{% endif %}
-      {% if has_player_videos %}<a class="player-section-nav__link" href="#playerFilmStudySection">Film</a>{% endif %}
-      {% if player.combine_year %}<a class="player-section-nav__link" href="#combineSection">Combine</a>{% endif %}
-      <a class="player-section-nav__link" href="#newsSection">News</a>
-    </nav>
-
     <div class="personal-info-grid">
 
 	      <!-- LEFT COLUMN: Photo Only -->
@@ -100,6 +89,22 @@
             {% endif %}
           </div>
         </div>
+
+        {# Jump-to-section anchors, placed beneath the bio so they're easy to reach.
+           Each link renders only when its section does, so the nav stays in sync
+           with what's actually on the page. #}
+        <nav class="player-section-nav mono-font" aria-label="Jump to section">
+          {% if college_stats %}<a class="player-section-nav__link" href="#collegeSection">College</a>{% endif %}
+          {% if summer_league %}<a class="player-section-nav__link" href="#summerLeagueSection">Summer League</a>{% endif %}
+          {% if consensus %}<a class="player-section-nav__link" href="#consensusSection">Consensus</a>{% endif %}
+          {% if has_player_videos %}<a class="player-section-nav__link" href="#playerFilmStudySection">Film</a>{% endif %}
+          {% if player.combine_year %}<a class="player-section-nav__link" href="#combineSection">Combine</a>{% endif %}
+          {# Head-to-Head and Comps sections currently live inside the combine_year
+             block, so gate their links on the same condition to avoid dead anchors. #}
+          {% if player.combine_year %}<a class="player-section-nav__link" href="#h2hSection">Head-to-Head</a>{% endif %}
+          {% if player.combine_year %}<a class="player-section-nav__link" href="#compsSection">Comps</a>{% endif %}
+          <a class="player-section-nav__link" href="#newsSection">News</a>
+        </nav>
 
         {% if college_stats %}
         <!-- College Production Scoreboard -->
@@ -706,7 +711,7 @@
        HEAD-TO-HEAD COMPARISON
        Compare this player against another prospect
        ========================================================================== -->
-  <section class="section">
+  <section class="section" id="h2hSection">
     <div class="section-header-row">
       <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-fuchsia);">
         <!-- Swords icon -->
@@ -825,7 +830,7 @@
        PLAYER COMPARISONS
        Find similar players based on various criteria
        ========================================================================== -->
-  <section class="section">
+  <section class="section" id="compsSection">
     <div class="section-header-row">
       <h2 class="section-header mono-font uppercase" style="border-left-color: var(--color-accent-cyan);">
         Player Comparisons
