@@ -22,6 +22,7 @@ import time
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Optional, Protocol
 
 import httpx
@@ -106,6 +107,27 @@ class PaywallDetectedError(BoardExtractionError):
 # --- Public DTOs returned by the parsing helpers ---------------------------
 
 
+class PresentationOrder(str, Enum):
+    """Direction the analyst presents their ranked list in the article.
+
+    ``rank`` is always emitted in reading order (the order players appear
+    in the article). This field records whether that reading order runs
+    best-to-worst or worst-to-best, so the parser can flip the ranks of a
+    countdown into canonical "rank 1 = best" order.
+
+    Values:
+        TOP_FIRST: Best/#1 prospect appears first; reading order == rank.
+            The common case (and the safe default).
+        BOTTOM_FIRST: A countdown — the list builds up to the best prospect
+            at the END (e.g. "...and my No. 1 is", elite tier discussed last,
+            or explicit numbers descending 100→1). Reading order is the
+            reverse of talent rank.
+    """
+
+    TOP_FIRST = "TOP_FIRST"
+    BOTTOM_FIRST = "BOTTOM_FIRST"
+
+
 class ExtractedBoardEntry(BaseModel):
     """One row in a Gemini-parsed big board."""
 
@@ -119,6 +141,7 @@ class ExtractedBoard(BaseModel):
 
     draft_year: int = Field(ge=2024, le=2040)
     published_at: Optional[datetime] = None
+    presentation_order: PresentationOrder = PresentationOrder.TOP_FIRST
     entries: list[ExtractedBoardEntry] = Field(default_factory=list)
 
     @field_validator("published_at")
@@ -596,7 +619,11 @@ _RANKING_EXTRACTION_PROMPT = """You are a structured-data extractor for DraftGur
 You will be given the cleaned body text of an NBA Draft analyst's article that ranks college / international prospects. The article may be framed either as a "big board" (a pure talent ranking) or as a "mock draft" (a projected pick order, often phrased as "Team X selects Player Y" or "1. Team — Player"). Treat both identically: extract the analyst's ORDERED LIST OF PLAYERS into the structured response schema you have been given.
 
 Rules:
-- "rank" is the player's position in the ordered list (1, 2, 3, ...). For a big board this is the talent rank; for a mock draft this is the pick number. Either way it is just the 1-based order in which the analyst presents the players.
+- "rank" is the player's position in READING ORDER — the 1-based order in which the player appears in the article's list (first listed = 1, second = 2, ...). Do NOT try to re-derive a talent rank; just number players in the order you encounter them.
+- "presentation_order" records the DIRECTION of the list, so we can correct countdowns:
+    - "TOP_FIRST": the best / #1 prospect is listed FIRST and the list descends to the worst. This is the usual case — use it unless you see clear countdown signals.
+    - "BOTTOM_FIRST": the article is a COUNTDOWN that builds UP to the best prospect at the END. Signals: the elite/top prospects (the consensus #1-overall types) are discussed LAST; phrasing like "and finally, my number one"; explicit numbers that descend (e.g. 100, 99, ... 1); or tiers presented from the lowest tier up to "Tier 1" at the end. When in doubt and the marquee prospects clearly sit at the bottom of the article, choose BOTTOM_FIRST.
+  Emit "rank" in plain reading order in BOTH cases — do not pre-reverse it yourself; just classify the direction and we handle the rest.
 - Extract ONLY the player at each position. Ignore the team making the pick, trade notes, and round labels — DraftGuru sources team/pick ownership separately and does not need them from this article.
 - "tier" is only present when the analyst explicitly groups players into tiers (Tier 1, Tier 2, ...). Otherwise leave it null. Do NOT use a mock draft's round (Round 1 / Round 2) as a tier.
 - Extract EVERY ranked position in the list. Use whatever name the analyst writes at that position — partial names like "Mara" or "Bronny James Jr." are acceptable; downstream resolution handles them.
@@ -620,7 +647,7 @@ def _build_extraction_schema() -> types.Schema:
     """
     return types.Schema(
         type=types.Type.OBJECT,
-        required=["draft_year", "entries"],
+        required=["draft_year", "presentation_order", "entries"],
         properties={
             "draft_year": types.Schema(
                 type=types.Type.INTEGER,
@@ -636,6 +663,19 @@ def _build_extraction_schema() -> types.Schema:
                 description=(
                     "ISO 8601 publication date of the article if "
                     "discoverable from the text; null otherwise."
+                ),
+            ),
+            "presentation_order": types.Schema(
+                type=types.Type.STRING,
+                enum=["TOP_FIRST", "BOTTOM_FIRST"],
+                description=(
+                    "Direction the list is presented. 'TOP_FIRST' (default): "
+                    "best/#1 prospect listed first, descending to worst. "
+                    "'BOTTOM_FIRST': a countdown that builds up to the best "
+                    "prospect at the END (elite prospects discussed last, "
+                    "'and my number one is', or numbers/tiers descending to 1). "
+                    "Always emit 'rank' in plain reading order regardless; this "
+                    "field tells us whether to reverse it."
                 ),
             ),
             "entries": types.Schema(
@@ -737,11 +777,39 @@ def parse_gemini_response(raw_text: str) -> ExtractedBoard:
         ) from exc
 
     try:
-        return ExtractedBoard.model_validate(payload)
+        board = ExtractedBoard.model_validate(payload)
     except ValidationError as exc:
         raise BoardExtractionError(
             f"Gemini response did not match expected schema: {exc}"
         ) from exc
+
+    return _normalize_presentation_order(board)
+
+
+def _normalize_presentation_order(board: ExtractedBoard) -> ExtractedBoard:
+    """Flip a countdown's ranks so rank 1 is always the analyst's best prospect.
+
+    ``rank`` is emitted in reading order. For a ``BOTTOM_FIRST`` article (a
+    countdown that builds up to the #1 prospect at the end) reading order is
+    the reverse of talent rank, so the worst prospect would otherwise be
+    stored at rank 1. Reflect each rank around the list's own [min, max]
+    range — this inverts the assignment while preserving the exact set of
+    rank values, so downstream uniqueness/dedup is unaffected.
+
+    No-op for ``TOP_FIRST`` (the common case) and for empty boards. Pure
+    function.
+    """
+    if board.presentation_order is not PresentationOrder.BOTTOM_FIRST:
+        return board
+    if not board.entries:
+        return board
+    ranks = [e.rank for e in board.entries]
+    reflection = min(ranks) + max(ranks)
+    flipped = [
+        entry.model_copy(update={"rank": reflection - entry.rank})
+        for entry in board.entries
+    ]
+    return board.model_copy(update={"entries": flipped})
 
 
 _MARKDOWN_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
