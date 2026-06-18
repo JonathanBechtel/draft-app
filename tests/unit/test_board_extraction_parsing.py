@@ -88,10 +88,11 @@ def test_extract_article_text_strips_scripts_and_styles() -> None:
 
 def test_extract_article_text_truncates_long_input() -> None:
     """Articles longer than the cap are truncated, not raised on."""
-    big_paragraph = "Player " * 20_000
+    cap = board_extraction_service._MAX_ARTICLE_CHARS
+    big_paragraph = "Player " * (cap // 4)  # comfortably exceeds the cap
     html = f"<html><body><article><p>{big_paragraph}</p></article></body></html>"
     text = extract_article_text(html)
-    assert len(text) <= 30_000
+    assert len(text) <= cap
 
 
 # --- is_paywalled (structural JSON-LD detection) ------------------------

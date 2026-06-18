@@ -66,10 +66,13 @@ _GEMINI_MODEL = "gemini-3.5-flash"
 # resolution still runs; only the (already best-effort) vector candidates drop.
 _RESOLUTION_STALL_THRESHOLD_SECONDS = 15.0
 
-# Cap input to Gemini at ~30k chars (~7.5k tokens). Substack articles
-# rarely exceed this; if they do, we lose tail entries gracefully rather
-# than blowing the model's context window.
-_MAX_ARTICLE_CHARS = 30_000
+# Cap input to Gemini at ~200k chars (~50k tokens). The 30k-char cap this
+# replaced silently truncated long-form articles — a prose mock draft with a
+# write-up and stat block per pick easily runs past 30k, which dropped the
+# tail picks and yielded a partial board. gemini-3.5-flash has a ~1M-token
+# context window, so 50k tokens is a comfortable headroom that holds any
+# realistic single Substack article while still bounding pathological input.
+_MAX_ARTICLE_CHARS = 200_000
 
 # CSS selectors tried in order to find the main article body. Substack's
 # markup has changed over the years; the first match wins.
