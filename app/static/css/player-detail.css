@@ -2277,12 +2277,11 @@
   text-align: center;
 }
 
-/* Advanced-metrics sub-table: separated from the counting table above it. */
+/* Advanced-metrics table: its own stat-mode tab (Advanced). */
 .sl-advanced {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  margin-top: 1.25rem;
 }
 
 /* Horizontal scroll on narrow screens rather than cramping the columns. */

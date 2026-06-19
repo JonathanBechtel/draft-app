@@ -1705,9 +1705,13 @@ const CollegeStatsModule = {
 
 /* ============================================================================
  * SUMMER LEAGUE STATS MODULE
- * Single stat-mode selector (.sl-mode-btn -> .sl-mode-data). One click swaps
- * both the Career hero pills and the per-competition table body (Per Game /
- * Per 36 / Per 100). MIN, GP, and shooting % are mode-independent.
+ * Stat-mode selector (.sl-mode-btn). One click swaps the active view:
+ *   - Per Game / Per 36/m / Per 100/poss swap the Career hero pills and the
+ *     per-competition counting table body (MIN, GP, and shooting % are
+ *     mode-independent).
+ *   - Advanced swaps to the SL-calibrated advanced-metrics table.
+ * Single-mode panes (.sl-mode-data) match one mode exactly; multi-mode groups
+ * (.sl-mode-group[data-sl-modes]) show for any listed mode.
  * ============================================================================
  */
 const SummerLeagueStatsModule = {
@@ -1717,14 +1721,22 @@ const SummerLeagueStatsModule = {
 
     const buttons = root.querySelectorAll('.sl-mode-btn[data-sl-mode]');
     if (!buttons.length) return;
+
+    const apply = mode => {
+      root.querySelectorAll('.sl-mode-data[data-sl-mode]').forEach(pane => {
+        pane.style.display = pane.dataset.slMode === mode ? '' : 'none';
+      });
+      root.querySelectorAll('.sl-mode-group[data-sl-modes]').forEach(group => {
+        const modes = group.dataset.slModes.split(/\s+/);
+        group.style.display = modes.includes(mode) ? '' : 'none';
+      });
+    };
+
     buttons.forEach(btn => {
       btn.addEventListener('click', () => {
-        const mode = btn.dataset.slMode;
         buttons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        root.querySelectorAll('.sl-mode-data[data-sl-mode]').forEach(pane => {
-          pane.style.display = pane.dataset.slMode === mode ? '' : 'none';
-        });
+        apply(btn.dataset.slMode);
       });
     });
   }

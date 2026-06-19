@@ -297,12 +297,18 @@
         </div>
         <div class="season-selector sl-mode-selector">
           <button class="season-btn sl-mode-btn active" data-sl-mode="per_game">Per Game</button>
-          <button class="season-btn sl-mode-btn" data-sl-mode="per_36">Per 36</button>
-          <button class="season-btn sl-mode-btn" data-sl-mode="per_100">Per 100</button>
+          <button class="season-btn sl-mode-btn" data-sl-mode="per_36">Per 36/m</button>
+          <button class="season-btn sl-mode-btn" data-sl-mode="per_100">Per 100/poss</button>
+          {% if sl_metrics %}
+          <button class="season-btn sl-mode-btn" data-sl-mode="advanced">Advanced</button>
+          {% endif %}
         </div>
       </div>
 
       <div class="stats-content">
+        {# Counting-stats block (per game / per 36 / per 100); hidden when the
+           Advanced tab is active. #}
+        <div class="sl-mode-group" data-sl-modes="per_game per_36 per_100">
         {# Career headline pills (mode-aware) #}
         {{ sl_hero_row(summer_league.career.modes.per_game, true) }}
         {{ sl_hero_row(summer_league.career.modes.per_36, false) }}
@@ -344,12 +350,13 @@
             {% endfor %}
           </table>
         </div>
+        </div>{# /sl-mode-group counting #}
 
         {# Advanced metrics (SL-calibrated) — per-competition only, since PER/WS/
            BPM are recalibrated within each pool. Shown only for competitions whose
-           pool is complete enough to qualify (adv_eligible). #}
+           pool is complete enough to qualify (adv_eligible). Its own tab. #}
         {% if sl_metrics %}
-        <div class="sl-advanced">
+        <div class="sl-advanced sl-mode-group" data-sl-modes="advanced" style="display:none;">
           <div class="stats-section-label" title="Advanced metrics are recalibrated to the Summer League itself, separately per competition (PER to a 15.0 mean, BPM to 0.0). Only competitions with a complete enough pool of games qualify.">
             Advanced Metrics
           </div>
