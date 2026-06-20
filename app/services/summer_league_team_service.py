@@ -79,6 +79,13 @@ class RosterRow:
     ppg: Optional[float]
     rpg: Optional[float]
     apg: Optional[float]
+    # Per-game shooting volume (made/attempted) shown as separate columns.
+    fgm: Optional[float]
+    fga: Optional[float]
+    fg3m: Optional[float]
+    fg3a: Optional[float]
+    ftm: Optional[float]
+    fta: Optional[float]
     fg_pct: Optional[float]
 
 
@@ -320,6 +327,10 @@ async def get_team_season(
                 func.sum(pgl.ast).label("ast"),
                 func.sum(pgl.fgm).label("fgm"),
                 func.sum(pgl.fga).label("fga"),
+                func.sum(pgl.fg3m).label("fg3m"),
+                func.sum(pgl.fg3a).label("fg3a"),
+                func.sum(pgl.ftm).label("ftm"),
+                func.sum(pgl.fta).label("fta"),
             )  # type: ignore[call-overload, misc]
             .select_from(pgl)
             .join(PlayerMaster, PlayerMaster.id == pgl.player_id, isouter=True)
@@ -347,6 +358,12 @@ async def get_team_season(
                 ppg=round((r.pts or 0) / gp, 1) if gp else None,
                 rpg=round((r.reb or 0) / gp, 1) if gp else None,
                 apg=round((r.ast or 0) / gp, 1) if gp else None,
+                fgm=round((r.fgm or 0) / gp, 1) if gp else None,
+                fga=round((r.fga or 0) / gp, 1) if gp else None,
+                fg3m=round((r.fg3m or 0) / gp, 1) if gp else None,
+                fg3a=round((r.fg3a or 0) / gp, 1) if gp else None,
+                ftm=round((r.ftm or 0) / gp, 1) if gp else None,
+                fta=round((r.fta or 0) / gp, 1) if gp else None,
                 fg_pct=_ratio_pct(r.fgm or 0, r.fga or 0),
             )
         )

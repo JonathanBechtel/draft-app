@@ -142,6 +142,11 @@ async def test_leaders_modes_ranking_and_filter(
     assert pg.rows[0].values["pts"] == pytest.approx(30.0)
     assert pg.rows[0].rank == 1
 
+    # Shooting volume is surfaced as discrete made/attempted columns.
+    col_keys = {c.key for c in pg.columns}
+    assert {"fgm", "fga", "fg3m", "fg3a", "ftm", "fta"} <= col_keys
+    assert "fgm" in pg.rows[0].values
+
     # Totals scale up: star 90 PTS.
     tot = await get_leaders(db_session, mode="totals", sort="pts")
     assert tot.rows[0].values["pts"] == 90

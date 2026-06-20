@@ -71,6 +71,12 @@ _PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("stl", "STL"),
     ExplorerColumn("blk", "BLK"),
     ExplorerColumn("tov", "TOV"),
+    ExplorerColumn("fgm", "FGM"),
+    ExplorerColumn("fga", "FGA"),
+    ExplorerColumn("fg3m", "3PM"),
+    ExplorerColumn("fg3a", "3PA"),
+    ExplorerColumn("ftm", "FTM"),
+    ExplorerColumn("fta", "FTA"),
     ExplorerColumn("fg_pct", "FG%"),
     ExplorerColumn("fg3_pct", "3P%"),
     ExplorerColumn("ft_pct", "FT%"),
@@ -111,7 +117,20 @@ _DEFAULT_SORT_BY_SUBJECT: dict[str, str] = {
     "teams": "diff",
     "games": "total",
 }
-_COUNTING = ("pts", "reb", "ast", "stl", "blk", "tov")
+_COUNTING = (
+    "pts",
+    "reb",
+    "ast",
+    "stl",
+    "blk",
+    "tov",
+    "fgm",
+    "fga",
+    "fg3m",
+    "fg3a",
+    "ftm",
+    "fta",
+)
 
 
 # --------------------------------------------------------------------------- #

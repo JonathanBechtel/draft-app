@@ -97,9 +97,12 @@ class SummerLeagueGameLine:
     pts: Optional[int]
     reb: Optional[int]
     ast: Optional[int]
-    fg: str  # "fgm-fga"
-    fg3: str  # "fg3m-fg3a"
-    ft: str  # "ftm-fta"
+    fgm: Optional[int]
+    fga: Optional[int]
+    fg3m: Optional[int]
+    fg3a: Optional[int]
+    ftm: Optional[int]
+    fta: Optional[int]
 
 
 @dataclass
@@ -369,9 +372,12 @@ async def get_summer_league_profile_by_player_id(
                 pts=row.pts,
                 reb=row.reb,
                 ast=row.ast,
-                fg=f"{row.fgm or 0}-{row.fga or 0}",
-                fg3=f"{row.fg3m or 0}-{row.fg3a or 0}",
-                ft=f"{row.ftm or 0}-{row.fta or 0}",
+                fgm=row.fgm,
+                fga=row.fga,
+                fg3m=row.fg3m,
+                fg3a=row.fg3a,
+                ftm=row.ftm,
+                fta=row.fta,
             )
         )
         if len(recent_games) >= _RECENT_GAME_LIMIT:

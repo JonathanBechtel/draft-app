@@ -54,7 +54,11 @@
             <tr>
               <th scope="col" class="slg-roster__name">Player</th>
               <th scope="col">GP</th><th scope="col">PPG</th><th scope="col">RPG</th>
-              <th scope="col">APG</th><th scope="col">FG%</th>
+              <th scope="col">APG</th>
+              <th scope="col" title="Field goals made per game">FGM</th><th scope="col" title="Field goals attempted per game">FGA</th>
+              <th scope="col" title="3-pointers made per game">3PM</th><th scope="col" title="3-pointers attempted per game">3PA</th>
+              <th scope="col" title="Free throws made per game">FTM</th><th scope="col" title="Free throws attempted per game">FTA</th>
+              <th scope="col">FG%</th>
             </tr>
           </thead>
           <tbody>
@@ -64,10 +68,12 @@
                 {% if p.slug %}<a href="/players/{{ p.slug }}">{{ p.name }}</a>{% else %}<span class="slg-bx-name--stub">{{ p.name }}</span>{% endif %}
               </th>
               <td>{{ p.gp }}</td><td class="slg-strong">{{ n1(p.ppg) }}</td>
-              <td>{{ n1(p.rpg) }}</td><td>{{ n1(p.apg) }}</td><td>{{ n1(p.fg_pct) }}</td>
+              <td>{{ n1(p.rpg) }}</td><td>{{ n1(p.apg) }}</td>
+              <td>{{ n1(p.fgm) }}</td><td>{{ n1(p.fga) }}</td><td>{{ n1(p.fg3m) }}</td><td>{{ n1(p.fg3a) }}</td><td>{{ n1(p.ftm) }}</td><td>{{ n1(p.fta) }}</td>
+              <td>{{ n1(p.fg_pct) }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="6" class="slg-empty">No roster data.</td></tr>
+            <tr><td colspan="12" class="slg-empty">No roster data.</td></tr>
             {% endfor %}
           </tbody>
         </table>

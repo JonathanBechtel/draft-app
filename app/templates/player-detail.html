@@ -452,7 +452,7 @@
           <div class="sl-table-wrap">
             <table class="sl-stats-table sl-recent__table">
               <thead>
-                <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col">Opp</th><th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th><th scope="col">AST</th><th scope="col">FG</th><th scope="col">3P</th><th scope="col">FT</th></tr>
+                <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col">Opp</th><th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th><th scope="col">AST</th><th scope="col" title="Field goals made">FGM</th><th scope="col" title="Field goals attempted">FGA</th><th scope="col" title="3-pointers made">3PM</th><th scope="col" title="3-pointers attempted">3PA</th><th scope="col" title="Free throws made">FTM</th><th scope="col" title="Free throws attempted">FTA</th></tr>
               </thead>
               <tbody>
                 {% for g in summer_league.recent_games %}
@@ -466,9 +466,12 @@
                   <td>{{ g.pts if g.pts is not none else '—' }}</td>
                   <td>{{ g.reb if g.reb is not none else '—' }}</td>
                   <td>{{ g.ast if g.ast is not none else '—' }}</td>
-                  <td>{{ g.fg }}</td>
-                  <td>{{ g.fg3 }}</td>
-                  <td>{{ g.ft }}</td>
+                  <td>{{ g.fgm if g.fgm is not none else '—' }}</td>
+                  <td>{{ g.fga if g.fga is not none else '—' }}</td>
+                  <td>{{ g.fg3m if g.fg3m is not none else '—' }}</td>
+                  <td>{{ g.fg3a if g.fg3a is not none else '—' }}</td>
+                  <td>{{ g.ftm if g.ftm is not none else '—' }}</td>
+                  <td>{{ g.fta if g.fta is not none else '—' }}</td>
                 </tr>
                 {% endfor %}
               </tbody>

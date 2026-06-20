@@ -46,7 +46,22 @@ MODE_LABELS = {
 }
 
 # Counting stats that scale with the per-game / per-36 / per-100 transforms.
-_COUNTING = ("pts", "reb", "ast", "stl", "blk", "tov")
+# Includes shooting volume (makes/attempts) so the rate modes convey shot diet
+# and free-throw rate, not just the percentages.
+_COUNTING = (
+    "pts",
+    "reb",
+    "ast",
+    "stl",
+    "blk",
+    "tov",
+    "fgm",
+    "fga",
+    "fg3m",
+    "fg3a",
+    "ftm",
+    "fta",
+)
 
 # Column header labels keyed by column key. Counting columns come from the box
 # logs; advanced columns come from the materialized metrics table.
@@ -58,6 +73,12 @@ COLUMN_LABELS: dict[str, str] = {
     "stl": "STL",
     "blk": "BLK",
     "tov": "TOV",
+    "fgm": "FGM",
+    "fga": "FGA",
+    "fg3m": "3PM",
+    "fg3a": "3PA",
+    "ftm": "FTM",
+    "fta": "FTA",
     "fg_pct": "FG%",
     "fg3_pct": "3P%",
     "ft_pct": "FT%",
