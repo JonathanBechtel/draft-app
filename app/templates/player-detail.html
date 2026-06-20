@@ -262,9 +262,6 @@
 
   {% macro sl_n(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
 
-  {# Makes-attempts pair (e.g. "4.2-9.1"); mode-scaled volume shown alongside the % #}
-  {% macro sl_ma(made, att) %}{{ ('%.1f-%.1f' % (made, att)) if (made is not none and att is not none) else '—' }}{% endmacro %}
-
   {% macro sl_row(s, m, is_career) %}
   <tr{% if is_career %} class="sl-stats-table__career"{% endif %}>
     <th scope="row">{{ s.season_label }}</th>
@@ -277,9 +274,12 @@
     <td class="sl-col-rate">{{ sl_n(m.stl) }}</td>
     <td class="sl-col-rate">{{ sl_n(m.blk) }}</td>
     <td class="sl-col-rate">{{ sl_n(m.tov) }}</td>
-    <td class="sl-col-rate">{{ sl_ma(m.fgm, m.fga) }}</td>
-    <td class="sl-col-rate">{{ sl_ma(m.fg3m, m.fg3a) }}</td>
-    <td class="sl-col-rate">{{ sl_ma(m.ftm, m.fta) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.fgm) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.fga) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.fg3m) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.fg3a) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.ftm) }}</td>
+    <td class="sl-col-rate">{{ sl_n(m.fta) }}</td>
     <td>{{ sl_n(s.fg_pct) }}</td>
     <td>{{ sl_n(s.fg3_pct) }}</td>
     <td>{{ sl_n(s.ft_pct) }}</td>
@@ -338,9 +338,12 @@
                 <th scope="col" class="sl-col-rate">STL</th>
                 <th scope="col" class="sl-col-rate">BLK</th>
                 <th scope="col" class="sl-col-rate">TOV</th>
-                <th scope="col" class="sl-col-rate" title="Field goals made-attempted">FG</th>
-                <th scope="col" class="sl-col-rate" title="3-pointers made-attempted">3P</th>
-                <th scope="col" class="sl-col-rate" title="Free throws made-attempted">FT</th>
+                <th scope="col" class="sl-col-rate" title="Field goals made">FGM</th>
+                <th scope="col" class="sl-col-rate" title="Field goals attempted">FGA</th>
+                <th scope="col" class="sl-col-rate" title="3-pointers made">3PM</th>
+                <th scope="col" class="sl-col-rate" title="3-pointers attempted">3PA</th>
+                <th scope="col" class="sl-col-rate" title="Free throws made">FTM</th>
+                <th scope="col" class="sl-col-rate" title="Free throws attempted">FTA</th>
                 <th scope="col">FG%</th>
                 <th scope="col">3P%</th>
                 <th scope="col">FT%</th>
