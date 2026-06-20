@@ -913,8 +913,21 @@ async def player_detail(
             "fg_pct": row.fg_pct,
             "three_p_pct": row.three_p_pct,
             "three_pa": row.three_pa,
+            # Makes aren't stored for college; derive per-game 3PM/FTM from the
+            # attempts and the shooting % (0-100 scale) so the volume shows
+            # alongside the rate. (FG volume is unrecoverable: only fg_pct exists.)
+            "three_pm": (
+                row.three_pa * row.three_p_pct / 100.0
+                if row.three_pa is not None and row.three_p_pct is not None
+                else None
+            ),
             "ft_pct": row.ft_pct,
             "fta": row.fta,
+            "ftm": (
+                row.fta * row.ft_pct / 100.0
+                if row.fta is not None and row.ft_pct is not None
+                else None
+            ),
         }
         for row in college_stats_rows
     ]
