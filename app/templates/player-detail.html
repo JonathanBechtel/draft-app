@@ -197,7 +197,7 @@
                   <div class="split-bar__fill split-bar__fill--3p" style="width: {{ s.three_p_pct if s.three_p_pct is not none else 0 }}%;"></div>
                 </div>
                 {% if s.three_pa is not none %}
-                <div class="split-context">{{ '%.1f' % s.three_pa }} 3PA/g</div>
+                <div class="split-context">{% if s.three_pm is not none %}{{ '%.1f' % s.three_pm }}-{% endif %}{{ '%.1f' % s.three_pa }} 3P/g</div>
                 {% endif %}
               </div>
               <div class="split-item">
@@ -207,7 +207,7 @@
                   <div class="split-bar__fill split-bar__fill--ft" style="width: {{ s.ft_pct if s.ft_pct is not none else 0 }}%;"></div>
                 </div>
                 {% if s.fta is not none %}
-                <div class="split-context">{{ '%.1f' % s.fta }} FTA/g</div>
+                <div class="split-context">{% if s.ftm is not none %}{{ '%.1f' % s.ftm }}-{% endif %}{{ '%.1f' % s.fta }} FT/g</div>
                 {% endif %}
               </div>
             </div>
@@ -262,6 +262,9 @@
 
   {% macro sl_n(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
 
+  {# Makes-attempts pair (e.g. "4.2-9.1"); mode-scaled volume shown alongside the % #}
+  {% macro sl_ma(made, att) %}{{ ('%.1f-%.1f' % (made, att)) if (made is not none and att is not none) else '—' }}{% endmacro %}
+
   {% macro sl_row(s, m, is_career) %}
   <tr{% if is_career %} class="sl-stats-table__career"{% endif %}>
     <th scope="row">{{ s.season_label }}</th>
@@ -274,6 +277,9 @@
     <td class="sl-col-rate">{{ sl_n(m.stl) }}</td>
     <td class="sl-col-rate">{{ sl_n(m.blk) }}</td>
     <td class="sl-col-rate">{{ sl_n(m.tov) }}</td>
+    <td class="sl-col-rate">{{ sl_ma(m.fgm, m.fga) }}</td>
+    <td class="sl-col-rate">{{ sl_ma(m.fg3m, m.fg3a) }}</td>
+    <td class="sl-col-rate">{{ sl_ma(m.ftm, m.fta) }}</td>
     <td>{{ sl_n(s.fg_pct) }}</td>
     <td>{{ sl_n(s.fg3_pct) }}</td>
     <td>{{ sl_n(s.ft_pct) }}</td>
@@ -332,6 +338,9 @@
                 <th scope="col" class="sl-col-rate">STL</th>
                 <th scope="col" class="sl-col-rate">BLK</th>
                 <th scope="col" class="sl-col-rate">TOV</th>
+                <th scope="col" class="sl-col-rate" title="Field goals made-attempted">FG</th>
+                <th scope="col" class="sl-col-rate" title="3-pointers made-attempted">3P</th>
+                <th scope="col" class="sl-col-rate" title="Free throws made-attempted">FT</th>
                 <th scope="col">FG%</th>
                 <th scope="col">3P%</th>
                 <th scope="col">FT%</th>
@@ -440,7 +449,7 @@
           <div class="sl-table-wrap">
             <table class="sl-stats-table sl-recent__table">
               <thead>
-                <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col">Opp</th><th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th><th scope="col">AST</th><th scope="col">FG</th><th scope="col">3P</th></tr>
+                <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col">Opp</th><th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th><th scope="col">AST</th><th scope="col">FG</th><th scope="col">3P</th><th scope="col">FT</th></tr>
               </thead>
               <tbody>
                 {% for g in summer_league.recent_games %}
@@ -456,6 +465,7 @@
                   <td>{{ g.ast if g.ast is not none else '—' }}</td>
                   <td>{{ g.fg }}</td>
                   <td>{{ g.fg3 }}</td>
+                  <td>{{ g.ft }}</td>
                 </tr>
                 {% endfor %}
               </tbody>

@@ -92,11 +92,21 @@ def test_per_game_and_per_36_and_per_100_math() -> None:
     assert pg.reb == pytest.approx(7.0)
     assert pg.ast == pytest.approx(4.0)
     assert pg.blk == pytest.approx(0.5)
+    # Shooting volume scales per mode alongside the counting stats.
+    # Totals: FGM 12, FGA 26, 3PM 3, 3PA 9, FTM 3, FTA 4 over 2 games.
+    assert pg.fgm == pytest.approx(6.0)
+    assert pg.fga == pytest.approx(13.0)
+    assert pg.fg3m == pytest.approx(1.5)
+    assert pg.fg3a == pytest.approx(4.5)
+    assert pg.ftm == pytest.approx(1.5)
+    assert pg.fta == pytest.approx(2.0)
 
     p36 = season.modes["per_36"]
     # 30 pts over 50 min -> 30 * 36 / 50 = 21.6
     assert p36.pts == pytest.approx(21.6)
     assert p36.reb == pytest.approx(14 * 36 / 50)
+    assert p36.fga == pytest.approx(26 * 36 / 50)
+    assert p36.fta == pytest.approx(4 * 36 / 50)
 
     # possessions = 100*30/48 + 104*20/48 = 105.8333...
     expected_poss = 100.0 * 30 / 48 + 104.0 * 20 / 48
@@ -138,6 +148,7 @@ def test_missing_pace_yields_no_per_100() -> None:
     assert season.total_possessions is None
     p100 = season.modes["per_100"]
     assert p100.pts is None and p100.reb is None
+    assert p100.fga is None and p100.fta is None
     # per-game / per-36 still work.
     assert season.modes["per_game"].pts == pytest.approx(14.0)
 

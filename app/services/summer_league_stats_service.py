@@ -62,7 +62,12 @@ _RECENT_GAME_LIMIT = 5
 
 @dataclass
 class SummerLeagueModeStats:
-    """Counting stats for one display mode (per-game / per-36 / per-100)."""
+    """Counting stats for one display mode (per-game / per-36 / per-100).
+
+    Shooting makes/attempts are mode-scaled alongside the counting stats so the
+    per-36 / per-100 views convey shot volume and free-throw rate, not just the
+    percentages (which are span-constant and live on the season).
+    """
 
     mode: str  # "per_game" | "per_36" | "per_100"
     pts: Optional[float]
@@ -71,6 +76,12 @@ class SummerLeagueModeStats:
     stl: Optional[float]
     blk: Optional[float]
     tov: Optional[float]
+    fgm: Optional[float]
+    fga: Optional[float]
+    fg3m: Optional[float]
+    fg3a: Optional[float]
+    ftm: Optional[float]
+    fta: Optional[float]
 
 
 @dataclass
@@ -88,6 +99,7 @@ class SummerLeagueGameLine:
     ast: Optional[int]
     fg: str  # "fgm-fga"
     fg3: str  # "fg3m-fg3a"
+    ft: str  # "ftm-fta"
 
 
 @dataclass
@@ -173,7 +185,19 @@ def _aggregate_season(
     def _mode(name: str, factor: Optional[float]) -> SummerLeagueModeStats:
         if factor is None:
             return SummerLeagueModeStats(
-                mode=name, pts=None, reb=None, ast=None, stl=None, blk=None, tov=None
+                mode=name,
+                pts=None,
+                reb=None,
+                ast=None,
+                stl=None,
+                blk=None,
+                tov=None,
+                fgm=None,
+                fga=None,
+                fg3m=None,
+                fg3a=None,
+                ftm=None,
+                fta=None,
             )
         return SummerLeagueModeStats(
             mode=name,
@@ -183,6 +207,12 @@ def _aggregate_season(
             stl=sums["stl"] * factor,
             blk=sums["blk"] * factor,
             tov=sums["tov"] * factor,
+            fgm=sums["fgm"] * factor,
+            fga=sums["fga"] * factor,
+            fg3m=sums["fg3m"] * factor,
+            fg3a=sums["fg3a"] * factor,
+            ftm=sums["ftm"] * factor,
+            fta=sums["fta"] * factor,
         )
 
     modes = {
@@ -341,6 +371,7 @@ async def get_summer_league_profile_by_player_id(
                 ast=row.ast,
                 fg=f"{row.fgm or 0}-{row.fga or 0}",
                 fg3=f"{row.fg3m or 0}-{row.fg3a or 0}",
+                ft=f"{row.ftm or 0}-{row.fta or 0}",
             )
         )
         if len(recent_games) >= _RECENT_GAME_LIMIT:

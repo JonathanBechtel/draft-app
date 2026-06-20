@@ -375,6 +375,10 @@ async def test_player_detail_shows_college_stats(app_client, db_session):
     assert "4.2" in content  # APG
     assert "47.1" in content  # FG%
     assert "2024-25" in content  # Season in context bar
+    # Shooting volume as made-attempted: 3PM derived = 3.4 * 0.358 = 1.2;
+    # FTM derived = 5.1 * 0.769 = 3.9.
+    assert "1.2-3.4 3P/g" in content
+    assert "3.9-5.1 FT/g" in content
 
 
 @pytest.mark.asyncio
