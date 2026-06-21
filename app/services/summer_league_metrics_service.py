@@ -322,7 +322,9 @@ def _leader_values(s: SummerLeaguePlayerSeason) -> dict[str, Optional[float]]:
         "ows": _round1(s.ows),
         "dws": _round1(s.dws),
         "ws": _round1(s.ws),
-        "ws40": _round1(s.ws40),
+        # WS/40 lives in the hundredths; keep 2 decimals so sorting and display
+        # don't collapse to 0.0 (matches _to_season / _career).
+        "ws40": round(s.ws40, 2) if s.ws40 is not None else None,
         "vorp": _round1(s.vorp),
         "gmsc": _round1(s.gmsc),
     }
