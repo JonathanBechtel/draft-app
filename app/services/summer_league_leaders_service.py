@@ -46,21 +46,25 @@ MODE_LABELS = {
 }
 
 # Counting stats that scale with the per-game / per-36 / per-100 transforms.
-# Includes shooting volume (makes/attempts) so the rate modes convey shot diet
-# and free-throw rate, not just the percentages.
+# Includes split rebounds, fouls, shooting volume, and plus-minus so the rate
+# modes convey a full box line, not just the headline counts and percentages.
 _COUNTING = (
     "pts",
+    "oreb",
+    "dreb",
     "reb",
     "ast",
     "stl",
     "blk",
     "tov",
+    "pf",
     "fgm",
     "fga",
     "fg3m",
     "fg3a",
     "ftm",
     "fta",
+    "plus_minus",
 )
 
 # Column header labels keyed by column key. Counting columns come from the box
@@ -68,40 +72,73 @@ _COUNTING = (
 COLUMN_LABELS: dict[str, str] = {
     "min": "MIN",
     "pts": "PTS",
+    "oreb": "OREB",
+    "dreb": "DREB",
     "reb": "REB",
     "ast": "AST",
     "stl": "STL",
     "blk": "BLK",
     "tov": "TOV",
+    "pf": "PF",
     "fgm": "FGM",
     "fga": "FGA",
     "fg3m": "3PM",
     "fg3a": "3PA",
     "ftm": "FTM",
     "fta": "FTA",
+    "plus_minus": "+/-",
     "fg_pct": "FG%",
     "fg3_pct": "3P%",
     "ft_pct": "FT%",
+    "efg_pct": "eFG%",
     "ts_pct": "TS%",
     "per": "PER",
-    "efg_pct": "eFG%",
     "usg_pct": "USG%",
     "ast_pct": "AST%",
+    "orb_pct": "OREB%",
+    "drb_pct": "DREB%",
     "trb_pct": "REB%",
+    "stl_pct": "STL%",
+    "blk_pct": "BLK%",
+    "tov_pct": "TOV%",
     "ortg": "ORtg",
     "drtg": "DRtg",
+    "obpm": "OBPM",
+    "dbpm": "DBPM",
     "bpm": "BPM",
+    "ows": "OWS",
+    "dws": "DWS",
     "ws": "WS",
+    "ws40": "WS/40",
     "vorp": "VORP",
+    "gmsc": "GmSc",
 }
 
+# Display order for the counting modes: groups makes/attempts with their % and
+# keeps plus-minus last, BBRef-style.
 _COUNTING_COLUMNS = [
     "min",
-    *_COUNTING,
+    "pts",
+    "oreb",
+    "dreb",
+    "reb",
+    "ast",
+    "stl",
+    "blk",
+    "tov",
+    "pf",
+    "fgm",
+    "fga",
     "fg_pct",
+    "fg3m",
+    "fg3a",
     "fg3_pct",
+    "ftm",
+    "fta",
     "ft_pct",
+    "efg_pct",
     "ts_pct",
+    "plus_minus",
 ]
 # Advanced mode is per-competition and sourced from summer_league_player_seasons.
 _ADVANCED_COLUMNS = list(ADV_LEADER_COLUMNS)
@@ -372,11 +409,15 @@ async def _aggregate(
             func.sum(sec).label("sec"),
             func.sum(pgl.pace * sec).label("pace_sec"),
             func.sum(pgl.pts).label("pts"),
+            func.sum(pgl.oreb).label("oreb"),
+            func.sum(pgl.dreb).label("dreb"),
             func.sum(pgl.reb).label("reb"),
             func.sum(pgl.ast).label("ast"),
             func.sum(pgl.stl).label("stl"),
             func.sum(pgl.blk).label("blk"),
             func.sum(pgl.tov).label("tov"),
+            func.sum(pgl.pf).label("pf"),
+            func.sum(pgl.plus_minus).label("plus_minus"),
             func.sum(pgl.fgm).label("fgm"),
             func.sum(pgl.fga).label("fga"),
             func.sum(pgl.fg3m).label("fg3m"),
@@ -422,12 +463,14 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
         return round(v) if mode == "totals" else round(v, 1)
 
     fga, fta = float(r.fga or 0), float(r.fta or 0)
+    fgm, fg3m = float(r.fgm or 0), float(r.fg3m or 0)
     values: dict[str, Optional[float]] = {
         "min": min_val,
         **{c: scaled(float(getattr(r, c) or 0)) for c in _COUNTING},
-        "fg_pct": _pct(_safe_div(float(r.fgm or 0), fga)),
-        "fg3_pct": _pct(_safe_div(float(r.fg3m or 0), float(r.fg3a or 0))),
+        "fg_pct": _pct(_safe_div(fgm, fga)),
+        "fg3_pct": _pct(_safe_div(fg3m, float(r.fg3a or 0))),
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
+        "efg_pct": _pct(_safe_div(fgm + 0.5 * fg3m, fga)),
         "ts_pct": _pct(_safe_div(float(r.pts or 0), 2.0 * (fga + 0.44 * fta))),
     }
     return LeaderRow(
