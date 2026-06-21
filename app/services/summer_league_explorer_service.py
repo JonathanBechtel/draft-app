@@ -71,6 +71,11 @@ _PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("stl", "STL"),
     ExplorerColumn("blk", "BLK"),
     ExplorerColumn("tov", "TOV"),
+    ExplorerColumn("oreb", "OREB"),
+    ExplorerColumn("dreb", "DREB"),
+    ExplorerColumn("pf", "PF"),
+    ExplorerColumn("plus_minus", "+/-"),
+    ExplorerColumn("efg_pct", "eFG%"),
     ExplorerColumn("fgm", "FGM"),
     ExplorerColumn("fga", "FGA"),
     ExplorerColumn("fg3m", "3PM"),
@@ -124,6 +129,9 @@ _COUNTING = (
     "stl",
     "blk",
     "tov",
+    "oreb",
+    "dreb",
+    "pf",
     "fgm",
     "fga",
     "fg3m",
@@ -332,10 +340,22 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
         return round(v) if mode == "totals" else round(v, 1)
 
     fga, fta = float(r.fga or 0), float(r.fta or 0)
+
+    if mode == "per_game":
+        plus_minus_val: Optional[float] = (
+            round(float(r.plus_minus or 0) / gp, 1) if gp else None
+        )
+    elif mode == "totals":
+        plus_minus_val = round(float(r.plus_minus or 0))
+    else:
+        plus_minus_val = None
+
     return {
         "gp": gp,
         "min": min_val,
         **{c: scaled(float(getattr(r, c) or 0)) for c in _COUNTING},
+        "plus_minus": plus_minus_val,
+        "efg_pct": _pct(_safe_div(float(r.fgm or 0) + 0.5 * float(r.fg3m or 0), fga)),
         "fg_pct": _pct(_safe_div(float(r.fgm or 0), fga)),
         "fg3_pct": _pct(_safe_div(float(r.fg3m or 0), float(r.fg3a or 0))),
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
@@ -381,6 +401,10 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             func.sum(pgl.fg3a).label("fg3a"),
             func.sum(pgl.ftm).label("ftm"),
             func.sum(pgl.fta).label("fta"),
+            func.sum(pgl.oreb).label("oreb"),
+            func.sum(pgl.dreb).label("dreb"),
+            func.sum(pgl.pf).label("pf"),
+            func.sum(pgl.plus_minus).label("plus_minus"),
         )  # type: ignore[call-overload, misc]
         .select_from(pgl)
         .join(comp, comp.id == pgl.competition_id)
