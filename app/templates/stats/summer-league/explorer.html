@@ -74,6 +74,10 @@
       </select>
     </div>
     <div class="slg-filter">
+      <label for="ex-undrafted">Undrafted only</label>
+      <input id="ex-undrafted" type="checkbox" name="undrafted" value="1" {{ 'checked' if q.undrafted else '' }}>
+    </div>
+    <div class="slg-filter">
       <label for="ex-position">Position</label>
       <select id="ex-position" name="position">
         <option value="">Any</option>

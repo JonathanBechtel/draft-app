@@ -157,6 +157,7 @@ class ExplorerQuery:
     draft_class: Optional[int] = None
     draft_round: Optional[int] = None
     position: Optional[str] = None
+    undrafted: bool = False
     min_games: int = DEFAULT_MIN_GAMES
     min_minutes: int = DEFAULT_MIN_MINUTES
     mode: str = DEFAULT_MODE
@@ -237,6 +238,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
 
     venue = params.get("venue") or None
     position = params.get("position") or None
+    undrafted = params.get("undrafted") == "1"
 
     min_games = _to_int(params.get("min_gp"))
     min_minutes = _to_int(params.get("min_min"))
@@ -250,6 +252,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         draft_class=_to_int(params.get("draft_class")),
         draft_round=_to_int(params.get("draft_round")),
         position=position,
+        undrafted=undrafted,
         min_games=min_games if min_games is not None else DEFAULT_MIN_GAMES,
         min_minutes=min_minutes if min_minutes is not None else DEFAULT_MIN_MINUTES,
         mode=mode,
@@ -393,10 +396,13 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
         conds.append(comp.venue_slug == q.venue)
-    if q.draft_class is not None:
-        conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
-    if q.draft_round is not None:
-        conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+    if q.undrafted:
+        conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
+    else:
+        if q.draft_class is not None:
+            conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
+        if q.draft_round is not None:
+            conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
 
