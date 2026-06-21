@@ -47,8 +47,11 @@
               <th scope="col">Date</th><th scope="col">Opp</th>
               <th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th>
               <th scope="col">AST</th><th scope="col">STL</th><th scope="col">BLK</th>
-              <th scope="col">TOV</th><th scope="col">FG</th><th scope="col">3P</th>
-              <th scope="col">FT</th><th scope="col">+/−</th>
+              <th scope="col">TOV</th>
+              <th scope="col" title="Field goals made">FGM</th><th scope="col" title="Field goals attempted">FGA</th>
+              <th scope="col" title="3-pointers made">3PM</th><th scope="col" title="3-pointers attempted">3PA</th>
+              <th scope="col" title="Free throws made">FTM</th><th scope="col" title="Free throws attempted">FTA</th>
+              <th scope="col">+/−</th>
             </tr>
           </thead>
           <tbody>
@@ -59,7 +62,7 @@
               <td>{{ mins(g.minutes) }}</td><td class="slg-strong">{{ n(g.pts) }}</td>
               <td>{{ n(g.reb) }}</td><td>{{ n(g.ast) }}</td><td>{{ n(g.stl) }}</td>
               <td>{{ n(g.blk) }}</td><td>{{ n(g.tov) }}</td>
-              <td>{{ g.fg }}</td><td>{{ g.fg3 }}</td><td>{{ g.ft }}</td>
+              <td>{{ n(g.fgm) }}</td><td>{{ n(g.fga) }}</td><td>{{ n(g.fg3m) }}</td><td>{{ n(g.fg3a) }}</td><td>{{ n(g.ftm) }}</td><td>{{ n(g.fta) }}</td>
               <td>{{ n(g.plus_minus) }}</td>
             </tr>
             {% endfor %}

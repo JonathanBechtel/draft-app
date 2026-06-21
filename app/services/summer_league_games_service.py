@@ -187,9 +187,12 @@ class PlayerLogRow:
     stl: Optional[int]
     blk: Optional[int]
     tov: Optional[int]
-    fg: str
-    fg3: str
-    ft: str
+    fgm: Optional[int]
+    fga: Optional[int]
+    fg3m: Optional[int]
+    fg3a: Optional[int]
+    ftm: Optional[int]
+    fta: Optional[int]
     plus_minus: Optional[int]
 
 
@@ -687,9 +690,12 @@ async def get_player_game_logs(
                 stl=r.stl,
                 blk=r.blk,
                 tov=r.tov,
-                fg=_fg_str(r.fgm, r.fga),
-                fg3=_fg_str(r.fg3m, r.fg3a),
-                ft=_fg_str(r.ftm, r.fta),
+                fgm=r.fgm,
+                fga=r.fga,
+                fg3m=r.fg3m,
+                fg3a=r.fg3a,
+                ftm=r.ftm,
+                fta=r.fta,
                 plus_minus=r.plus_minus,
             )
         )

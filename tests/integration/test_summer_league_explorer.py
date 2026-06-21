@@ -170,6 +170,10 @@ async def test_players_aggregates_and_sorts(db_session: AsyncSession) -> None:
     assert [r.label for r in result.rows] == ["Big Scorer", "Role Player"]
     assert result.rows[0].values["pts"] == 30.0
     assert result.rows[0].href == "/players/big-scorer"
+    # Shooting volume is surfaced as discrete made/attempted columns.
+    col_keys = {c.key for c in result.columns}
+    assert {"fgm", "fga", "fg3m", "fg3a", "ftm", "fta"} <= col_keys
+    assert "fgm" in result.rows[0].values
 
 
 @pytest.mark.asyncio
