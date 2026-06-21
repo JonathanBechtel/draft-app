@@ -1,7 +1,7 @@
 """add position to players_master with index
 
-Revision ID: b2c3d4e5f6a1
-Revises: a1b2c3d4e5f6
+Revision ID: 1233bc724a9f
+Revises: 6f111a4e928f
 Create Date: 2026-06-21
 
 """
@@ -11,8 +11,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op  # type: ignore[attr-defined]
 
-revision: str = "b2c3d4e5f6a1"
-down_revision: Union[str, None] = "a1b2c3d4e5f6"
+revision: str = "1233bc724a9f"
+down_revision: Union[str, None] = "6f111a4e928f"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

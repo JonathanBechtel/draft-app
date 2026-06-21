@@ -1,7 +1,7 @@
 """add index players_master draft_round
 
-Revision ID: a1b2c3d4e5f6
-Revises: z5a6b7c8d9e0
+Revision ID: 6f111a4e928f
+Revises: e6f7g8h9i0j1
 Create Date: 2026-06-21
 
 """
@@ -10,8 +10,8 @@ from typing import Sequence, Union
 
 from alembic import op  # type: ignore[attr-defined]
 
-revision: str = "a1b2c3d4e5f6"
-down_revision: Union[str, None] = "z5a6b7c8d9e0"
+revision: str = "6f111a4e928f"
+down_revision: Union[str, None] = "e6f7g8h9i0j1"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
