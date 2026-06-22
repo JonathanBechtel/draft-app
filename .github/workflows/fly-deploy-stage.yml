@@ -54,7 +54,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          alembic upgrade head
+          alembic upgrade heads
 
       - name: Deploy
         env:
