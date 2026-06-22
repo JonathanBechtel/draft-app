@@ -45,7 +45,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          alembic upgrade head
+          alembic upgrade heads
 
       # Set prod secrets on the prod app (idempotent; safe to run every deploy)
       - name: Ensure prod secrets exist

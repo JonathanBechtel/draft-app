@@ -90,7 +90,7 @@ jobs:
           PY
 
       - name: Alembic upgrade head
-        run: alembic upgrade head
+        run: alembic upgrade heads
 
       - name: Run tests
         run: pytest -q --ignore=tests/visual --cov=app --cov-report=xml --cov-report=term
@@ -192,7 +192,7 @@ jobs:
           PY
 
       - name: Alembic upgrade head
-        run: alembic upgrade head
+        run: alembic upgrade heads
 
       - name: Run tests
         run: pytest -q --ignore=tests/visual --cov=app --cov-report=xml --cov-report=term

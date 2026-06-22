@@ -71,6 +71,11 @@ _PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("stl", "STL"),
     ExplorerColumn("blk", "BLK"),
     ExplorerColumn("tov", "TOV"),
+    ExplorerColumn("oreb", "OREB"),
+    ExplorerColumn("dreb", "DREB"),
+    ExplorerColumn("pf", "PF"),
+    ExplorerColumn("plus_minus", "+/-"),
+    ExplorerColumn("efg_pct", "eFG%"),
     ExplorerColumn("fgm", "FGM"),
     ExplorerColumn("fga", "FGA"),
     ExplorerColumn("fg3m", "3PM"),
@@ -124,6 +129,9 @@ _COUNTING = (
     "stl",
     "blk",
     "tov",
+    "oreb",
+    "dreb",
+    "pf",
     "fgm",
     "fga",
     "fg3m",
@@ -148,6 +156,8 @@ class ExplorerQuery:
     venue: Optional[str] = None
     draft_class: Optional[int] = None
     draft_round: Optional[int] = None
+    position: Optional[str] = None
+    undrafted: bool = False
     min_games: int = DEFAULT_MIN_GAMES
     min_minutes: int = DEFAULT_MIN_MINUTES
     mode: str = DEFAULT_MODE
@@ -172,6 +182,7 @@ class ExplorerFacets:
     years: list[int] = field(default_factory=list)
     venues: list[tuple[str, str]] = field(default_factory=list)
     draft_classes: list[int] = field(default_factory=list)
+    positions: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -226,6 +237,8 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         direction = "desc"
 
     venue = params.get("venue") or None
+    position = params.get("position") or None
+    undrafted = params.get("undrafted") == "1"
 
     min_games = _to_int(params.get("min_gp"))
     min_minutes = _to_int(params.get("min_min"))
@@ -238,6 +251,8 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         venue=venue,
         draft_class=_to_int(params.get("draft_class")),
         draft_round=_to_int(params.get("draft_round")),
+        position=position,
+        undrafted=undrafted,
         min_games=min_games if min_games is not None else DEFAULT_MIN_GAMES,
         min_minutes=min_minutes if min_minutes is not None else DEFAULT_MIN_MINUTES,
         mode=mode,
@@ -285,10 +300,22 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
             )
         ).all()
     ]
+    positions = [
+        str(p)
+        for (p,) in (
+            await db.execute(
+                select(PlayerMaster.position)  # type: ignore[call-overload]
+                .where(PlayerMaster.position.isnot(None))  # type: ignore[union-attr]
+                .distinct()
+                .order_by(PlayerMaster.position)  # type: ignore[union-attr]
+            )
+        ).all()
+    ]
     return ExplorerFacets(
         years=years,
         venues=[(v, _venue_label(v)) for v in venue_slugs],
         draft_classes=draft_classes,
+        positions=positions,
     )
 
 
@@ -332,10 +359,22 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
         return round(v) if mode == "totals" else round(v, 1)
 
     fga, fta = float(r.fga or 0), float(r.fta or 0)
+
+    if mode == "per_game":
+        plus_minus_val: Optional[float] = (
+            round(float(r.plus_minus or 0) / gp, 1) if gp else None
+        )
+    elif mode == "totals":
+        plus_minus_val = round(float(r.plus_minus or 0))
+    else:
+        plus_minus_val = None
+
     return {
         "gp": gp,
         "min": min_val,
         **{c: scaled(float(getattr(r, c) or 0)) for c in _COUNTING},
+        "plus_minus": plus_minus_val,
+        "efg_pct": _pct(_safe_div(float(r.fgm or 0) + 0.5 * float(r.fg3m or 0), fga)),
         "fg_pct": _pct(_safe_div(float(r.fgm or 0), fga)),
         "fg3_pct": _pct(_safe_div(float(r.fg3m or 0), float(r.fg3a or 0))),
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
@@ -357,10 +396,15 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
         conds.append(comp.venue_slug == q.venue)
-    if q.draft_class is not None:
-        conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
-    if q.draft_round is not None:
-        conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+    if q.undrafted:
+        conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
+    else:
+        if q.draft_class is not None:
+            conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
+        if q.draft_round is not None:
+            conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+    if q.position is not None:
+        conds.append(pm.position == q.position)  # type: ignore[arg-type]
 
     stmt = (
         select(
@@ -381,6 +425,10 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             func.sum(pgl.fg3a).label("fg3a"),
             func.sum(pgl.ftm).label("ftm"),
             func.sum(pgl.fta).label("fta"),
+            func.sum(pgl.oreb).label("oreb"),
+            func.sum(pgl.dreb).label("dreb"),
+            func.sum(pgl.pf).label("pf"),
+            func.sum(pgl.plus_minus).label("plus_minus"),
         )  # type: ignore[call-overload, misc]
         .select_from(pgl)
         .join(comp, comp.id == pgl.competition_id)

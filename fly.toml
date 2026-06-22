@@ -9,7 +9,7 @@ primary_region = 'ewr'
 [build]
 
 [deploy]
-  release_command = "/app/.venv/bin/alembic upgrade head"
+  release_command = "/app/.venv/bin/alembic upgrade heads"
 
 [http_service]
   internal_port = 8080

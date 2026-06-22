@@ -46,9 +46,11 @@ class PlayerMaster(SQLModel, table=True):  # type: ignore[call-arg]
     high_school: Optional[str] = Field(default=None)
     shoots: Optional[str] = Field(default=None, description="Shooting hand")
 
+    position: Optional[str] = Field(default=None, index=True)
+
     # Draft facts
     draft_year: Optional[int] = Field(default=None, index=True)
-    draft_round: Optional[int] = Field(default=None)
+    draft_round: Optional[int] = Field(default=None, index=True)
     draft_pick: Optional[int] = Field(default=None)
     draft_team: Optional[str] = Field(default=None)
 

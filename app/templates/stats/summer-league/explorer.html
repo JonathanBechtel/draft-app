@@ -74,6 +74,17 @@
       </select>
     </div>
     <div class="slg-filter">
+      <label for="ex-undrafted">Undrafted only</label>
+      <input id="ex-undrafted" type="checkbox" name="undrafted" value="1" {{ 'checked' if q.undrafted else '' }}>
+    </div>
+    <div class="slg-filter">
+      <label for="ex-position">Position</label>
+      <select id="ex-position" name="position">
+        <option value="">Any</option>
+        {% for pos in result.facets.positions %}<option value="{{ pos }}" {{ 'selected' if q.position == pos else '' }}>{{ pos }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="slg-filter">
       <label for="ex-mode">Mode</label>
       <select id="ex-mode" name="mode">
         <option value="per_game" {{ 'selected' if q.mode == 'per_game' else '' }}>Per game</option>
