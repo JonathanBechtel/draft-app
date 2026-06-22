@@ -536,3 +536,114 @@ async def test_plus_minus_suppressed_in_rate_modes(
         assert result.rows[0].values["plus_minus"] is not None, (
             f"expected value in {mode}"
         )
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2e: draft pick range filter
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_with_picks(db: AsyncSession) -> None:
+    """Two drafted players with different pick numbers (5 and 25)."""
+    early = make_player("Early", "Pick")
+    early.draft_year, early.draft_round, early.draft_pick = 2024, 1, 5
+
+    late = make_player("Late", "Pick")
+    late.draft_year, late.draft_round, late.draft_pick = 2024, 1, 25
+
+    db.add_all([early, late])
+    await db.flush()
+
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db, comp_id=c)
+    await _log(db, comp_id=c, team=t, player=early, pts=20, games=2)
+    await _log(db, comp_id=c, team=t, player=late, pts=15, games=2)
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_draft_pick_range_filter(db_session: AsyncSession) -> None:
+    """draft_pick_min/max narrows to players whose pick falls in the range."""
+    await _seed_with_picks(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", draft_pick_min=1, draft_pick_max=10),
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "Early Pick"
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2f: country / birth country filter
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_with_countries(db: AsyncSession) -> None:
+    """Two players with different birth countries (US and FR)."""
+    us_player = make_player("USA", "Player")
+    us_player.birth_country = "US"
+
+    fr_player = make_player("France", "Player")
+    fr_player.birth_country = "FR"
+
+    db.add_all([us_player, fr_player])
+    await db.flush()
+
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db, comp_id=c)
+    await _log(db, comp_id=c, team=t, player=us_player, pts=20, games=2)
+    await _log(db, comp_id=c, team=t, player=fr_player, pts=15, games=2)
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_country_filter(db_session: AsyncSession) -> None:
+    """?country=US returns only players born in the US; FR player is excluded.
+
+    Also asserts that the countries facet lists both seeded countries.
+    """
+    await _seed_with_countries(db_session)
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", country="US")
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "USA Player"
+    # Facet includes both countries (facet is unfiltered)
+    assert "US" in result.facets.countries
+    assert "FR" in result.facets.countries
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2h: team filter for players
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_with_two_teams(
+    db: AsyncSession,
+) -> tuple[SummerLeagueTeamEntry, SummerLeagueTeamEntry]:
+    """Two players each on a different team entry within the same competition."""
+    player_a = make_player("Alpha", "Player")
+    player_b = make_player("Bravo", "Player")
+    db.add_all([player_a, player_b])
+    await db.flush()
+
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    team_a = await _team(db, comp_id=c)
+    team_b = await _team(db, comp_id=c)
+
+    await _log(db, comp_id=c, team=team_a, player=player_a, pts=20, games=2)
+    await _log(db, comp_id=c, team=team_b, player=player_b, pts=15, games=2)
+    await db.commit()
+    return team_a, team_b
+
+
+@pytest.mark.asyncio
+async def test_team_filter(db_session: AsyncSession) -> None:
+    """?team_slug=<slug> returns only players who played for that team."""
+    team_a, _team_b = await _seed_with_two_teams(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", team_slug=team_a.team_slug),
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "Alpha Player"

@@ -74,6 +74,12 @@
       </select>
     </div>
     <div class="slg-filter">
+      <label>Pick range</label>
+      <input type="number" name="draft_pick_min" value="{{ q.draft_pick_min or '' }}" min="1" max="60" placeholder="Min">
+      <span>–</span>
+      <input type="number" name="draft_pick_max" value="{{ q.draft_pick_max or '' }}" min="1" max="60" placeholder="Max">
+    </div>
+    <div class="slg-filter">
       <label for="ex-undrafted">Undrafted only</label>
       <input id="ex-undrafted" type="checkbox" name="undrafted" value="1" {{ 'checked' if q.undrafted else '' }}>
     </div>
@@ -82,6 +88,24 @@
       <select id="ex-position" name="position">
         <option value="">Any</option>
         {% for pos in result.facets.positions %}<option value="{{ pos }}" {{ 'selected' if q.position == pos else '' }}>{{ pos }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="slg-filter">
+      <label for="country-select">Country</label>
+      <select id="country-select" name="country">
+        <option value="">All countries</option>
+        {% for c in result.facets.countries %}
+        <option value="{{ c }}" {% if q.country == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="slg-filter">
+      <label for="team-select">Team</label>
+      <select id="team-select" name="team_slug">
+        <option value="">All teams</option>
+        {% for slug in result.facets.teams %}
+        <option value="{{ slug }}" {% if q.team_slug == slug %}selected{% endif %}>{{ slug }}</option>
+        {% endfor %}
       </select>
     </div>
     <div class="slg-filter">

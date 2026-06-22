@@ -1030,7 +1030,7 @@ async def get_biggest_movers(
     # rank_delta < 0 → fallen; sort ascending (most negative first)
     fallers = sorted(
         [r for r in bbc_rows if r.rank_delta is not None and r.rank_delta < 0],
-        key=lambda r: (r.rank_delta or 0),
+        key=lambda r: r.rank_delta or 0,
     )[:k]
 
     return {
