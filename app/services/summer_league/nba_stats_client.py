@@ -163,8 +163,7 @@ class NBAStatsClient:
             status_code = int(getattr(response, "status_code", 0) or 0)
             if status_code >= 400:
                 error = NBAStatsAPIError(
-                    f"NBA Stats request failed for {clean_endpoint}: "
-                    f"HTTP {status_code}"
+                    f"NBA Stats request failed for {clean_endpoint}: HTTP {status_code}"
                 )
                 if _is_retryable_status(status_code) and attempt < self.max_retries:
                     self._sleep_before_retry(attempt)

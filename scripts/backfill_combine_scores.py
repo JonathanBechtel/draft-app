@@ -145,10 +145,7 @@ async def summarize_state() -> None:
     """Print a quick summary of combine_score rows currently in the target DB."""
     async with SessionLocal() as db:
         r = await db.execute(
-            text(
-                "SELECT COUNT(*) FROM metric_snapshots "
-                "WHERE source = 'combine_score'"
-            )
+            text("SELECT COUNT(*) FROM metric_snapshots WHERE source = 'combine_score'")
         )
         total = r.scalar()
         r = await db.execute(

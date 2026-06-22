@@ -158,7 +158,11 @@ class ExplorerQuery:
     venue: Optional[str] = None
     draft_class: Optional[int] = None
     draft_round: Optional[int] = None
+    draft_pick_min: Optional[int] = None
+    draft_pick_max: Optional[int] = None
     position: Optional[str] = None
+    country: Optional[str] = None
+    team_slug: Optional[str] = None
     undrafted: bool = False
     min_games: int = DEFAULT_MIN_GAMES
     min_minutes: int = DEFAULT_MIN_MINUTES
@@ -185,6 +189,8 @@ class ExplorerFacets:
     venues: list[tuple[str, str]] = field(default_factory=list)
     draft_classes: list[int] = field(default_factory=list)
     positions: list[str] = field(default_factory=list)
+    countries: list[str] = field(default_factory=list)
+    teams: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -247,6 +253,8 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
 
     venue = params.get("venue") or None
     position = params.get("position") or None
+    country = params.get("country") or None
+    team_slug = params.get("team_slug") or None
     undrafted = params.get("undrafted") == "1"
 
     min_games = _to_int(params.get("min_gp"))
@@ -261,7 +269,11 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         venue=venue,
         draft_class=_to_int(params.get("draft_class")),
         draft_round=_to_int(params.get("draft_round")),
+        draft_pick_min=_to_int(params.get("draft_pick_min")),
+        draft_pick_max=_to_int(params.get("draft_pick_max")),
         position=position,
+        country=country,
+        team_slug=team_slug,
         undrafted=undrafted,
         min_games=min_games if min_games is not None else DEFAULT_MIN_GAMES,
         min_minutes=min_minutes if min_minutes is not None else DEFAULT_MIN_MINUTES,
@@ -321,11 +333,34 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
             )
         ).all()
     ]
+    countries = [
+        str(c)
+        for (c,) in (
+            await db.execute(
+                select(PlayerMaster.birth_country)  # type: ignore[call-overload]
+                .where(PlayerMaster.birth_country.isnot(None))  # type: ignore[union-attr]
+                .distinct()
+                .order_by(PlayerMaster.birth_country)  # type: ignore[union-attr]
+            )
+        ).all()
+    ]
+    teams = [
+        str(s)
+        for (s,) in (
+            await db.execute(
+                select(SummerLeagueTeamEntry.team_slug)  # type: ignore[call-overload]
+                .distinct()
+                .order_by(SummerLeagueTeamEntry.team_slug)  # type: ignore[union-attr]
+            )
+        ).all()
+    ]
     return ExplorerFacets(
         years=years,
         venues=[(v, _venue_label(v)) for v in venue_slugs],
         draft_classes=draft_classes,
         positions=positions,
+        countries=countries,
+        teams=teams,
     )
 
 
@@ -413,8 +448,14 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
         if q.draft_round is not None:
             conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+        if q.draft_pick_min is not None:
+            conds.append(pm.draft_pick >= q.draft_pick_min)  # type: ignore[operator, arg-type]
+        if q.draft_pick_max is not None:
+            conds.append(pm.draft_pick <= q.draft_pick_max)  # type: ignore[operator, arg-type]
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
+    if q.country is not None:
+        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
 
     stmt = (
         select(
@@ -448,6 +489,11 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         .having(func.count() >= q.min_games)
         .having(func.sum(sec) >= q.min_minutes * 60)
     )
+    if q.team_slug is not None:
+        te = SummerLeagueTeamEntry
+        stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
+            te.team_slug == q.team_slug
+        )
     raw = list((await db.execute(stmt)).all())
 
     rows = [
