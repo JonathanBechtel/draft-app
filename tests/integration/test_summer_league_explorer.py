@@ -70,6 +70,7 @@ async def _log(
     player: PlayerMaster,
     pts: int,
     games: int = 1,
+    round_label: str | None = None,
 ) -> None:
     """Add ``games`` identical box lines (30 MIN each) for one player."""
     for _ in range(games):
@@ -82,6 +83,7 @@ async def _log(
             away_team_entry_id=team.id,
             home_score=100,
             away_score=90,
+            round_label=round_label,
         )
         db.add(g)
         await db.flush()
@@ -793,3 +795,88 @@ async def test_team_filter(db_session: AsyncSession) -> None:
     )
     assert result.total == 1
     assert result.rows[0].label == "Alpha Player"
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2g: round type filter
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_round_types(db: AsyncSession) -> None:
+    """Two players: one in Qualifying games, one in Championship games.
+
+    Each player has 2 GP so they exceed the default min_games threshold.
+    """
+    qualifier = make_player("Qual", "Player")
+    champion = make_player("Champ", "Player")
+    db.add_all([qualifier, champion])
+    await db.flush()
+
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db, comp_id=c)
+    await _log(
+        db,
+        comp_id=c,
+        team=t,
+        player=qualifier,
+        pts=10,
+        games=2,
+        round_label="Qualifying",
+    )
+    await _log(
+        db,
+        comp_id=c,
+        team=t,
+        player=champion,
+        pts=20,
+        games=2,
+        round_label="Championship",
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_round_type_filter_players(db_session: AsyncSession) -> None:
+    """round_type filter narrows player results to games with that round_label.
+
+    Seeding one player in Qualifying games and one in Championship games, then
+    filtering to Qualifying should return only the qualifying player.
+    """
+    await _seed_round_types(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", round_type="Qualifying", min_games=1),
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "Qual Player"
+
+
+@pytest.mark.asyncio
+async def test_round_type_filter_games(db_session: AsyncSession) -> None:
+    """round_type filter on the games subject yields 0 rows when no match exists.
+
+    All seeded games via _seed_teams have no round_label; filtering to
+    'Championship' should return an empty result set.
+    """
+    await _seed_teams(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="games", round_type="Championship"),
+    )
+    assert result.total == 0
+
+
+@pytest.mark.asyncio
+async def test_round_types_facet_lists_values(db_session: AsyncSession) -> None:
+    """Facets include distinct non-null round_label values from SummerLeagueGame.
+
+    After seeding games with 'Qualifying' and 'Championship' labels, both values
+    should appear in facets.round_types (alphabetically sorted), while None is
+    excluded.
+    """
+    await _seed_round_types(db_session)
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
+    assert "Championship" in result.facets.round_types
+    assert "Qualifying" in result.facets.round_types
+    # Alphabetical order
+    assert result.facets.round_types == sorted(result.facets.round_types)

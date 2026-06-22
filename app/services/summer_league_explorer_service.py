@@ -163,6 +163,7 @@ class ExplorerQuery:
     position: Optional[str] = None
     country: Optional[str] = None
     team_slug: Optional[str] = None
+    round_type: Optional[str] = None
     undrafted: bool = False
     min_games: int = DEFAULT_MIN_GAMES
     min_minutes: int = DEFAULT_MIN_MINUTES
@@ -191,6 +192,7 @@ class ExplorerFacets:
     positions: list[str] = field(default_factory=list)
     countries: list[str] = field(default_factory=list)
     teams: list[str] = field(default_factory=list)
+    round_types: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -255,6 +257,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     position = params.get("position") or None
     country = params.get("country") or None
     team_slug = params.get("team_slug") or None
+    round_type = params.get("round_type") or None
     undrafted = params.get("undrafted") == "1"
 
     min_games = _to_int(params.get("min_gp"))
@@ -274,6 +277,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         position=position,
         country=country,
         team_slug=team_slug,
+        round_type=round_type,
         undrafted=undrafted,
         min_games=min_games if min_games is not None else DEFAULT_MIN_GAMES,
         min_minutes=min_minutes if min_minutes is not None else DEFAULT_MIN_MINUTES,
@@ -354,6 +358,17 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
             )
         ).all()
     ]
+    round_types = [
+        str(rt)
+        for (rt,) in (
+            await db.execute(
+                select(SummerLeagueGame.round_label)  # type: ignore[call-overload]
+                .where(SummerLeagueGame.round_label.isnot(None))  # type: ignore[union-attr]
+                .distinct()
+                .order_by(SummerLeagueGame.round_label)  # type: ignore[union-attr]
+            )
+        ).all()
+    ]
     return ExplorerFacets(
         years=years,
         venues=[(v, _venue_label(v)) for v in venue_slugs],
@@ -361,6 +376,7 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
         positions=positions,
         countries=countries,
         teams=teams,
+        round_types=round_types,
     )
 
 
@@ -494,6 +510,9 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
             te.team_slug == q.team_slug
         )
+    if q.round_type is not None:
+        g = SummerLeagueGame
+        stmt = stmt.join(g, pgl.game_id == g.id).where(g.round_label == q.round_type)
     raw = list((await db.execute(stmt)).all())
 
     rows = [
@@ -749,6 +768,14 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 
     # Win/loss + points-for/against from game scores (complete; plus_minus is not).
     game = SummerLeagueGame
+    game_scope_conds: list[Any] = [
+        or_(
+            game.home_team_entry_id.in_(entry_ids),  # type: ignore[union-attr]
+            game.away_team_entry_id.in_(entry_ids),  # type: ignore[union-attr]
+        )
+    ]
+    if q.round_type is not None:
+        game_scope_conds.append(game.round_label == q.round_type)
     games = (
         await db.execute(
             select(
@@ -756,12 +783,7 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                 game.away_team_entry_id,
                 game.home_score,
                 game.away_score,
-            ).where(  # type: ignore[call-overload]
-                or_(
-                    game.home_team_entry_id.in_(entry_ids),  # type: ignore[union-attr]
-                    game.away_team_entry_id.in_(entry_ids),  # type: ignore[union-attr]
-                )
-            )
+            ).where(*game_scope_conds)  # type: ignore[call-overload]
         )
     ).all()
 
@@ -848,6 +870,8 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
         conds.append(comp.venue_slug == q.venue)
+    if q.round_type is not None:
+        conds.append(game.round_label == q.round_type)
 
     game_rows = (
         await db.execute(
