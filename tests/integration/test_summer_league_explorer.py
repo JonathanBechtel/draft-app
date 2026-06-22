@@ -446,3 +446,93 @@ async def test_explorer_not_shadowed_by_year_route(app_client: AsyncClient) -> N
     """`/explorer` must hit the explorer route, not 422 against `/{year:int}`."""
     resp = await app_client.get("/stats/summer-league/explorer")
     assert resp.status_code == 200
+
+
+# --------------------------------------------------------------------------- #
+# Phase 1: position filter, undrafted filter, positions facet, plus_minus
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_with_positions(db: AsyncSession) -> None:
+    """Three players: one G (drafted), one F (drafted), one undrafted with no position."""
+    guard = make_player("Guard", "One")
+    guard.position = "G"
+    guard.draft_year, guard.draft_round = 2024, 1
+
+    forward = make_player("Forward", "Two")
+    forward.position = "F"
+    forward.draft_year, forward.draft_round = 2024, 2
+
+    undrafted = make_player("Undrafted", "Three")
+    undrafted.position = None
+    undrafted.draft_year = None
+
+    db.add_all([guard, forward, undrafted])
+    await db.flush()
+
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db, comp_id=c)
+    await _log(db, comp_id=c, team=t, player=guard, pts=20, games=2)
+    await _log(db, comp_id=c, team=t, player=forward, pts=15, games=2)
+    await _log(db, comp_id=c, team=t, player=undrafted, pts=10, games=2)
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_position_filter_returns_only_matching_position(
+    db_session: AsyncSession,
+) -> None:
+    """?position=G returns only players at that position; others are excluded."""
+    await _seed_with_positions(db_session)
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", position="G")
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "Guard One"
+
+
+@pytest.mark.asyncio
+async def test_undrafted_filter_returns_only_undrafted(
+    db_session: AsyncSession,
+) -> None:
+    """?undrafted=1 returns only players with no draft year."""
+    await _seed_with_positions(db_session)
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", undrafted=True)
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "Undrafted Three"
+
+
+@pytest.mark.asyncio
+async def test_positions_facet_lists_distinct_values(
+    db_session: AsyncSession,
+) -> None:
+    """Positions facet enumerates distinct non-null position values from PlayerMaster."""
+    await _seed_with_positions(db_session)
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
+    assert "F" in result.facets.positions
+    assert "G" in result.facets.positions
+    # None is excluded from the facet
+    assert None not in result.facets.positions  # type: ignore[operator]
+
+
+@pytest.mark.asyncio
+async def test_plus_minus_suppressed_in_rate_modes(
+    db_session: AsyncSession,
+) -> None:
+    """plus_minus is None for per_36 and per_100 modes, present for per_game/totals."""
+    await _seed(db_session)
+    for mode in ("per_36", "per_100"):
+        result = await run_explorer_query(
+            db_session, ExplorerQuery(subject="players", mode=mode)
+        )
+        assert result.rows[0].values["plus_minus"] is None, f"expected None in {mode}"
+
+    for mode in ("per_game", "totals"):
+        result = await run_explorer_query(
+            db_session, ExplorerQuery(subject="players", mode=mode)
+        )
+        assert result.rows[0].values["plus_minus"] is not None, (
+            f"expected value in {mode}"
+        )
