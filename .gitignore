@@ -241,6 +241,7 @@ scripts/x_threads/drafts/
 
 # Local agent / MCP state
 .claude/scheduled_tasks.lock
+.claude/worktrees/
 .playwright-mcp/
 
 # Scraper outputs (large HTML dumps, regenerated on demand)
