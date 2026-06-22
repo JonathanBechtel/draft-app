@@ -57,6 +57,13 @@
         {% for slug, label in result.facets.venues %}<option value="{{ slug }}" {{ 'selected' if q.venue == slug else '' }}>{{ label }}</option>{% endfor %}
       </select>
     </div>
+    <div class="slg-filter">
+      <label for="ex-round-type">Round type</label>
+      <select id="ex-round-type" name="round_type">
+        <option value="">All rounds</option>
+        {% for rt in result.facets.round_types %}<option value="{{ rt }}" {{ 'selected' if q.round_type == rt else '' }}>{{ rt }}</option>{% endfor %}
+      </select>
+    </div>
     {% if q.subject == 'players' %}
     <div class="slg-filter">
       <label for="ex-draft-class">Draft class</label>
