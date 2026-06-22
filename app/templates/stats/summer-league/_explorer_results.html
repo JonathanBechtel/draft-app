@@ -5,7 +5,7 @@
 
 {# Serialize the current query to a querystring, overriding sort/dir/page. #}
 {%- macro explorer_qs(q, sort=none, direction=none, page=none) -%}
-?subject={{ q.subject }}&mode={{ q.mode }}&min_gp={{ q.min_games }}&min_min={{ q.min_minutes }}
+?subject={{ q.subject }}&grain={{ q.grain }}&mode={{ q.mode }}&min_gp={{ q.min_games }}&min_min={{ q.min_minutes }}
 {%- if sort %}&sort={{ sort }}{% else %}&sort={{ q.sort }}{% endif %}
 {%- if direction %}&dir={{ direction }}{% else %}&dir={{ q.direction }}{% endif %}
 {%- if q.year_min %}&year_min={{ q.year_min }}{% endif %}

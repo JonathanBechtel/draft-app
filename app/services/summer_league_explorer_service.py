@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -33,6 +33,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league_games_service import _venue_label
 
 SUBJECTS = ("players", "teams", "games")
@@ -151,6 +152,7 @@ class ExplorerQuery:
     """Parsed, validated Explorer query state (mirrors the URL params)."""
 
     subject: str = DEFAULT_SUBJECT
+    grain: str = "career"  # "career" | "per_competition" | "per_game"
     year_min: Optional[int] = None
     year_max: Optional[int] = None
     venue: Optional[str] = None
@@ -222,6 +224,13 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     if subject not in SUBJECTS:
         subject = DEFAULT_SUBJECT
 
+    grain_raw = params.get("grain", "career")
+    grain = (
+        grain_raw
+        if grain_raw in ("career", "per_competition", "per_game")
+        else "career"
+    )
+
     mode = params.get("mode", DEFAULT_MODE)
     if mode not in MODES:
         mode = DEFAULT_MODE
@@ -246,6 +255,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
 
     return ExplorerQuery(
         subject=subject,
+        grain=grain,
         year_min=_to_int(params.get("year_min")),
         year_max=_to_int(params.get("year_max")),
         venue=venue,
@@ -450,6 +460,206 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     ]
 
     return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+
+
+async def _query_players_per_competition(
+    db: AsyncSession, q: ExplorerQuery
+) -> ExplorerResult:
+    """One row per (player, competition): season box totals from SummerLeaguePlayerSeason."""
+    ps = SummerLeaguePlayerSeason
+    comp = SummerLeagueCompetition
+    pm = PlayerMaster
+
+    # Alias minutes*60 as sec so _compute_player_values works unchanged.
+    # pace_sec is 0 — season rows have no weighted pace; per_100 mode yields None.
+    conds: list[Any] = [
+        ps.gp >= q.min_games,  # type: ignore[operator]
+        ps.minutes >= q.min_minutes / 60.0,  # type: ignore[operator]
+    ]
+    if q.year_min is not None:
+        conds.append(ps.year >= q.year_min)  # type: ignore[arg-type]
+    if q.year_max is not None:
+        conds.append(ps.year <= q.year_max)  # type: ignore[arg-type]
+    if q.venue:
+        conds.append(ps.venue_slug == q.venue)
+    if q.undrafted:
+        conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
+    else:
+        if q.draft_class is not None:
+            conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
+        if q.draft_round is not None:
+            conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+    if q.position is not None:
+        conds.append(pm.position == q.position)  # type: ignore[arg-type]
+
+    stmt = (
+        select(
+            pm.slug,
+            pm.display_name,
+            ps.year,
+            ps.venue_slug,
+            ps.gp.label("gp"),  # type: ignore[attr-defined]
+            (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
+            literal(0).label("pace_sec"),
+            ps.pts.label("pts"),  # type: ignore[attr-defined]
+            ps.reb.label("reb"),  # type: ignore[attr-defined]
+            ps.ast.label("ast"),  # type: ignore[attr-defined]
+            ps.stl.label("stl"),  # type: ignore[attr-defined]
+            ps.blk.label("blk"),  # type: ignore[attr-defined]
+            ps.tov.label("tov"),  # type: ignore[attr-defined]
+            ps.fgm.label("fgm"),  # type: ignore[attr-defined]
+            ps.fga.label("fga"),  # type: ignore[attr-defined]
+            ps.fg3m.label("fg3m"),  # type: ignore[attr-defined]
+            ps.fg3a.label("fg3a"),  # type: ignore[attr-defined]
+            ps.ftm.label("ftm"),  # type: ignore[attr-defined]
+            ps.fta.label("fta"),  # type: ignore[attr-defined]
+            ps.oreb.label("oreb"),  # type: ignore[attr-defined]
+            ps.dreb.label("dreb"),  # type: ignore[attr-defined]
+            ps.pf.label("pf"),  # type: ignore[attr-defined]
+            ps.plus_minus.label("plus_minus"),  # type: ignore[attr-defined]
+        )  # type: ignore[call-overload, misc]
+        .select_from(ps)
+        .join(comp, comp.id == ps.competition_id)
+        .join(pm, pm.id == ps.player_id)
+        .where(*conds)
+    )
+
+    raw = list((await db.execute(stmt)).all())
+
+    rows = [
+        ExplorerRow(
+            label=f"{r.display_name} · {_venue_label(r.venue_slug)} {r.year}",
+            href=f"/players/{r.slug}" if r.slug else None,
+            values=_compute_player_values(r, q.mode),
+        )
+        for r in raw
+    ]
+
+    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+
+
+async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
+    """One row per player game log (no aggregation)."""
+    pgl = SummerLeaguePlayerGameLog
+    comp = SummerLeagueCompetition
+    pm = PlayerMaster
+    game = SummerLeagueGame
+
+    conds: list[Any] = [pgl.player_id.isnot(None), pgl.minutes_seconds > 0]  # type: ignore[union-attr, operator]
+    if q.year_min is not None:
+        conds.append(comp.year >= q.year_min)  # type: ignore[arg-type]
+    if q.year_max is not None:
+        conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
+    if q.venue:
+        conds.append(comp.venue_slug == q.venue)
+    if q.undrafted:
+        conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
+    else:
+        if q.draft_class is not None:
+            conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
+        if q.draft_round is not None:
+            conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+    if q.position is not None:
+        conds.append(pm.position == q.position)  # type: ignore[arg-type]
+
+    stmt = (
+        select(
+            pm.slug,
+            pm.display_name,
+            game.game_date,
+            game.id.label("game_id"),  # type: ignore[attr-defined, union-attr]
+            comp.year,
+            comp.venue_slug,
+            pgl.minutes_seconds.label("sec"),  # type: ignore[union-attr]
+            pgl.pts.label("pts"),  # type: ignore[union-attr]
+            pgl.reb.label("reb"),  # type: ignore[union-attr]
+            pgl.ast.label("ast"),  # type: ignore[union-attr]
+            pgl.stl.label("stl"),  # type: ignore[union-attr]
+            pgl.blk.label("blk"),  # type: ignore[union-attr]
+            pgl.tov.label("tov"),  # type: ignore[union-attr]
+            pgl.fgm.label("fgm"),  # type: ignore[union-attr]
+            pgl.fga.label("fga"),  # type: ignore[union-attr]
+            pgl.fg3m.label("fg3m"),  # type: ignore[union-attr]
+            pgl.fg3a.label("fg3a"),  # type: ignore[union-attr]
+            pgl.ftm.label("ftm"),  # type: ignore[union-attr]
+            pgl.fta.label("fta"),  # type: ignore[union-attr]
+            pgl.oreb.label("oreb"),  # type: ignore[union-attr]
+            pgl.dreb.label("dreb"),  # type: ignore[union-attr]
+            pgl.pf.label("pf"),  # type: ignore[union-attr]
+            pgl.plus_minus.label("plus_minus"),  # type: ignore[union-attr]
+            # pace_sec: 0 for single-game rows (per_100 mode will show None)
+            literal(0).label("pace_sec"),
+        )  # type: ignore[call-overload, misc]
+        .select_from(pgl)
+        .join(comp, comp.id == pgl.competition_id)
+        .join(pm, pm.id == pgl.player_id)
+        .join(game, game.id == pgl.game_id)
+        .where(*conds)
+    )
+
+    raw = list((await db.execute(stmt)).all())
+
+    rows = []
+    for r in raw:
+        date_str = r.game_date.isoformat() if r.game_date else "—"
+        # Build a namespace with gp=1 so _compute_player_values treats each row as one game.
+        row_ns = _SingleGameRow(r)
+        rows.append(
+            ExplorerRow(
+                label=f"{r.display_name} · {date_str}",
+                href=f"/stats/summer-league/{r.year}/games/{r.game_id}",
+                values=_compute_player_values(row_ns, q.mode),
+            )
+        )
+
+    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+
+
+class _SingleGameRow:
+    """Thin adapter that exposes a game-log row as gp=1 for _compute_player_values."""
+
+    __slots__ = (
+        "gp",
+        "sec",
+        "pace_sec",
+        "pts",
+        "reb",
+        "ast",
+        "stl",
+        "blk",
+        "tov",
+        "fgm",
+        "fga",
+        "fg3m",
+        "fg3a",
+        "ftm",
+        "fta",
+        "oreb",
+        "dreb",
+        "pf",
+        "plus_minus",
+    )
+
+    def __init__(self, row: Any) -> None:
+        self.gp = 1
+        self.sec = row.sec
+        self.pace_sec = 0
+        self.pts = row.pts
+        self.reb = row.reb
+        self.ast = row.ast
+        self.stl = row.stl
+        self.blk = row.blk
+        self.tov = row.tov
+        self.fgm = row.fgm
+        self.fga = row.fga
+        self.fg3m = row.fg3m
+        self.fg3a = row.fg3a
+        self.ftm = row.ftm
+        self.fta = row.fta
+        self.oreb = row.oreb
+        self.dreb = row.dreb
+        self.pf = row.pf
+        self.plus_minus = row.plus_minus
 
 
 # --------------------------------------------------------------------------- #
@@ -689,7 +899,12 @@ async def run_explorer_query(db: AsyncSession, q: ExplorerQuery) -> ExplorerResu
     facets = await get_facets(db)
 
     if q.subject == "players":
-        result = await _query_players(db, q)
+        if q.grain == "per_competition":
+            result = await _query_players_per_competition(db, q)
+        elif q.grain == "per_game":
+            result = await _query_players_per_game(db, q)
+        else:  # career (default)
+            result = await _query_players(db, q)
         result.facets = facets
         return result
 

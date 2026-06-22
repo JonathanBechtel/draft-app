@@ -85,6 +85,14 @@
       </select>
     </div>
     <div class="slg-filter">
+      <label for="grain-select">Grain</label>
+      <select id="grain-select" name="grain">
+        <option value="career" {% if q.grain == "career" %}selected{% endif %}>Career</option>
+        <option value="per_competition" {% if q.grain == "per_competition" %}selected{% endif %}>Per competition</option>
+        <option value="per_game" {% if q.grain == "per_game" %}selected{% endif %}>Per game</option>
+      </select>
+    </div>
+    <div class="slg-filter grain-hide-per-game">
       <label for="ex-mode">Mode</label>
       <select id="ex-mode" name="mode">
         <option value="per_game" {{ 'selected' if q.mode == 'per_game' else '' }}>Per game</option>
@@ -93,11 +101,11 @@
         <option value="totals" {{ 'selected' if q.mode == 'totals' else '' }}>Totals</option>
       </select>
     </div>
-    <div class="slg-filter">
+    <div class="slg-filter grain-hide-per-game">
       <label for="ex-min-gp">Min GP</label>
       <input id="ex-min-gp" type="number" name="min_gp" min="0" value="{{ q.min_games }}">
     </div>
-    <div class="slg-filter">
+    <div class="slg-filter grain-hide-per-game">
       <label for="ex-min-min">Min MIN</label>
       <input id="ex-min-min" type="number" name="min_min" min="0" value="{{ q.min_minutes }}">
     </div>
@@ -106,6 +114,22 @@
       <button type="submit" class="slg-explorer-run">Run query</button>
     </div>
   </form>
+  {% if q.subject == 'players' %}
+  <script>
+  (function() {
+    var grain = document.getElementById('grain-select');
+    if (!grain) return;
+    function toggle() {
+      var isPerGame = grain.value === 'per_game';
+      document.querySelectorAll('.grain-hide-per-game').forEach(function(el) {
+        el.style.display = isPerGame ? 'none' : '';
+      });
+    }
+    grain.addEventListener('change', toggle);
+    toggle();
+  })();
+  </script>
+  {% endif %}
 
   {% include "stats/summer-league/_explorer_results.html" %}
 

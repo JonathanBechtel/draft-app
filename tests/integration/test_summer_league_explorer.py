@@ -22,6 +22,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     parse_query,
@@ -536,3 +537,148 @@ async def test_plus_minus_suppressed_in_rate_modes(
         assert result.rows[0].values["plus_minus"] is not None, (
             f"expected value in {mode}"
         )
+
+
+# --------------------------------------------------------------------------- #
+# Grain selector (Phase 2a-2d)
+# --------------------------------------------------------------------------- #
+
+
+async def _season(
+    db: AsyncSession,
+    *,
+    player: PlayerMaster,
+    comp_id: int,
+    year: int,
+    venue_slug: str,
+    gp: int = 2,
+    minutes: float = 60.0,
+    pts: int = 20,
+) -> None:
+    """Add one SummerLeaguePlayerSeason row for a (player, competition)."""
+    assert player.id is not None
+    db.add(
+        SummerLeaguePlayerSeason(
+            competition_id=comp_id,
+            player_id=player.id,
+            year=year,
+            venue_slug=venue_slug,
+            gp=gp,
+            minutes=minutes,
+            pts=pts,
+            reb=5,
+            ast=3,
+            fgm=pts // 2,
+            fga=pts,
+            fg3m=0,
+            fg3a=0,
+            ftm=0,
+            fta=0,
+            oreb=1,
+            dreb=4,
+            blk=1,
+            stl=1,
+            tov=2,
+            pf=3,
+            plus_minus=10,
+        )
+    )
+    await db.flush()
+
+
+async def _seed_grain(db: AsyncSession) -> tuple[PlayerMaster, int, int]:
+    """One player, two competitions (Vegas 2024 and Salt Lake 2025).
+
+    Returns (player, comp_id_vegas, comp_id_slc).
+    """
+    player = make_player("Star", "Player")
+    db.add(player)
+    await db.flush()
+
+    c_vegas = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    c_slc = await _comp(db, year=2025, venue_slug="salt_lake_city", league_id="16")
+
+    await _season(
+        db, player=player, comp_id=c_vegas, year=2024, venue_slug="las_vegas", pts=30
+    )
+    await _season(
+        db, player=player, comp_id=c_slc, year=2025, venue_slug="salt_lake_city", pts=10
+    )
+    await db.commit()
+    return player, c_vegas, c_slc
+
+
+@pytest.mark.asyncio
+async def test_grain_per_competition_one_row_per_event(
+    db_session: AsyncSession,
+) -> None:
+    """grain=per_competition yields one row per (player, competition) — 2 rows for 2 events."""
+    await _seed_grain(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="per_competition", min_games=1, min_minutes=1
+        ),
+    )
+    assert result.available is True
+    assert result.total == 2
+    # Labels carry venue name and year.
+    labels = {r.label for r in result.rows}
+    assert any("2024" in lbl for lbl in labels)
+    assert any("2025" in lbl for lbl in labels)
+
+
+@pytest.mark.asyncio
+async def test_grain_per_game_one_row_per_log(
+    db_session: AsyncSession,
+) -> None:
+    """grain=per_game yields one row per game log — 3 rows for 3 game logs."""
+    player = make_player("Game", "Logger")
+    db_session.add(player)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db_session, comp_id=c)
+    await _log(db_session, comp_id=c, team=t, player=player, pts=20, games=3)
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game"),
+    )
+    assert result.available is True
+    assert result.total == 3
+    # Each row links to the game box.
+    for row in result.rows:
+        assert row.href is not None
+        assert "/stats/summer-league/2024/games/" in row.href
+
+
+@pytest.mark.asyncio
+async def test_grain_career_default_unchanged(
+    db_session: AsyncSession,
+) -> None:
+    """No grain param (or grain=career) falls back to career aggregates (one row per player)."""
+    await _seed(db_session)
+    # No grain param → defaults to career.
+    result_default = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players")
+    )
+    result_explicit = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", grain="career")
+    )
+    assert result_default.total == result_explicit.total == 2
+    # Career grain returns one row per player (not per competition).
+    labels = {r.label for r in result_default.rows}
+    assert "Big Scorer" in labels
+    assert "Role Player" in labels
+
+
+@pytest.mark.asyncio
+async def test_grain_parse_query_valid_grains() -> None:
+    """parse_query accepts career/per_competition/per_game and rejects invalid values."""
+    assert parse_query({"grain": "career"}).grain == "career"
+    assert parse_query({"grain": "per_competition"}).grain == "per_competition"
+    assert parse_query({"grain": "per_game"}).grain == "per_game"
+    assert parse_query({"grain": "invalid"}).grain == "career"
+    assert parse_query({}).grain == "career"
