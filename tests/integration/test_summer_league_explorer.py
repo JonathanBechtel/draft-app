@@ -1271,6 +1271,7 @@ async def test_per_competition_year_and_venue_filters(db_session: AsyncSession) 
 async def test_per_competition_undrafted_filter(db_session: AsyncSession) -> None:
     """undrafted=True keeps only players with no draft_year in per_competition grain."""
     undrafted = make_player("Undrafted", "Comp")
+    undrafted.draft_year = None  # make_player always sets draft_year=2025; override it
     drafted = make_player("Drafted", "Comp")
     drafted.draft_year = 2024
     db_session.add_all([undrafted, drafted])
