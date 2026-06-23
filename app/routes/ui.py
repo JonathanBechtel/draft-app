@@ -1267,11 +1267,12 @@ async def consensus_page(
                 source_overlays.append(detail)
 
     # --- Matrix + trajectories (ticket #270 additions) ------------------------
+    # 14 rows = the full lottery (top-14 picks).
     source_matrix = await get_source_breakdown_matrix(
-        db, draft_year=CONSENSUS_DRAFT_YEAR, top_n=10
+        db, draft_year=CONSENSUS_DRAFT_YEAR, top_n=14
     )
     rank_trajectories = await get_rank_trajectories(
-        db, draft_year=CONSENSUS_DRAFT_YEAR, top_n=10
+        db, draft_year=CONSENSUS_DRAFT_YEAR, top_n=14
     )
 
     return request.app.state.templates.TemplateResponse(
