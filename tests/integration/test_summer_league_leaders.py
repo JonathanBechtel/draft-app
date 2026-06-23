@@ -142,10 +142,12 @@ async def test_leaders_modes_ranking_and_filter(
     assert pg.rows[0].values["pts"] == pytest.approx(30.0)
     assert pg.rows[0].rank == 1
 
-    # Shooting volume is surfaced as discrete made/attempted columns.
+    # Full box line: shooting volume + split rebounds, fouls, eFG%, plus-minus.
     col_keys = {c.key for c in pg.columns}
     assert {"fgm", "fga", "fg3m", "fg3a", "ftm", "fta"} <= col_keys
+    assert {"oreb", "dreb", "pf", "efg_pct", "plus_minus"} <= col_keys
     assert "fgm" in pg.rows[0].values
+    assert "efg_pct" in pg.rows[0].values
 
     # Totals scale up: star 90 PTS.
     tot = await get_leaders(db_session, mode="totals", sort="pts")
@@ -161,6 +163,20 @@ async def test_leaders_modes_ranking_and_filter(
     adv = await get_leaders(db_session, mode="advanced")
     keys = {c.key for c in adv.columns}
     assert {"per", "ws", "bpm", "vorp"} <= keys
+    # Broadened advanced suite: split rates, offensive/defensive splits, GmSc.
+    assert {
+        "orb_pct",
+        "drb_pct",
+        "stl_pct",
+        "blk_pct",
+        "tov_pct",
+        "obpm",
+        "dbpm",
+        "ows",
+        "dws",
+        "ws40",
+        "gmsc",
+    } <= keys
     assert all(not c.placeholder for c in adv.columns)
     assert adv.is_advanced is True
     assert adv.rows == []
