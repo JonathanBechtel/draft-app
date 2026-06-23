@@ -539,7 +539,7 @@ async def _query_players_per_competition(
     # pace_sec is 0 — season rows have no weighted pace; per_100 mode yields None.
     conds: list[Any] = [
         ps.gp >= q.min_games,  # type: ignore[operator]
-        ps.minutes >= q.min_minutes / 60.0,  # type: ignore[operator]
+        ps.minutes >= q.min_minutes,  # minutes stored as minutes, not seconds
     ]
     if q.year_min is not None:
         conds.append(ps.year >= q.year_min)  # type: ignore[arg-type]
@@ -554,8 +554,14 @@ async def _query_players_per_competition(
             conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
         if q.draft_round is not None:
             conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+        if q.draft_pick_min is not None:
+            conds.append(pm.draft_pick >= q.draft_pick_min)  # type: ignore[operator, arg-type]
+        if q.draft_pick_max is not None:
+            conds.append(pm.draft_pick <= q.draft_pick_max)  # type: ignore[operator, arg-type]
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
+    if q.country is not None:
+        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
 
     stmt = (
         select(
@@ -588,6 +594,11 @@ async def _query_players_per_competition(
         .join(pm, pm.id == ps.player_id)
         .where(*conds)
     )
+    if q.team_slug is not None:
+        te = SummerLeagueTeamEntry
+        stmt = stmt.join(te, ps.primary_team_entry_id == te.id).where(  # type: ignore[arg-type]
+            te.team_slug == q.team_slug
+        )
 
     raw = list((await db.execute(stmt)).all())
 
@@ -624,8 +635,16 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
             conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
         if q.draft_round is not None:
             conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+        if q.draft_pick_min is not None:
+            conds.append(pm.draft_pick >= q.draft_pick_min)  # type: ignore[operator, arg-type]
+        if q.draft_pick_max is not None:
+            conds.append(pm.draft_pick <= q.draft_pick_max)  # type: ignore[operator, arg-type]
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
+    if q.country is not None:
+        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
+    if q.round_type is not None:
+        conds.append(game.round_label == q.round_type)  # type: ignore[arg-type]
 
     stmt = (
         select(
@@ -661,6 +680,11 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
         .join(game, game.id == pgl.game_id)
         .where(*conds)
     )
+    if q.team_slug is not None:
+        te = SummerLeagueTeamEntry
+        stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
+            te.team_slug == q.team_slug
+        )
 
     raw = list((await db.execute(stmt)).all())
 
@@ -805,19 +829,23 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             s[4] += opp
 
     # Pace / efficiency from team box logs (averaged where present).
+    # Apply the same round_type scope as game-score records so the row is consistent.
     tgl = SummerLeagueTeamGameLog
-    rating_rows = (
-        await db.execute(
-            select(
-                tgl.team_entry_id,
-                func.avg(tgl.pace).label("pace"),
-                func.avg(tgl.off_rating).label("ortg"),
-                func.avg(tgl.def_rating).label("drtg"),
-            )  # type: ignore[call-overload, misc]
-            .where(tgl.team_entry_id.in_(entry_ids))  # type: ignore[attr-defined]
-            .group_by(tgl.team_entry_id)
+    rating_stmt = (
+        select(
+            tgl.team_entry_id,
+            func.avg(tgl.pace).label("pace"),
+            func.avg(tgl.off_rating).label("ortg"),
+            func.avg(tgl.def_rating).label("drtg"),
+        )  # type: ignore[call-overload, misc]
+        .where(tgl.team_entry_id.in_(entry_ids))  # type: ignore[attr-defined]
+        .group_by(tgl.team_entry_id)
+    )
+    if q.round_type is not None:
+        rating_stmt = rating_stmt.join(game, tgl.game_id == game.id).where(
+            game.round_label == q.round_type
         )
-    ).all()
+    rating_rows = (await db.execute(rating_stmt)).all()
     ratings = {r.team_entry_id: r for r in rating_rows}
 
     def _r1(v: Any) -> Optional[float]:
