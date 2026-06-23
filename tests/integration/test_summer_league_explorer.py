@@ -1231,3 +1231,107 @@ async def test_teams_round_type_scopes_rating_query(db_session: AsyncSession) ->
     alpha_row = next(r for r in result.rows if r.label.startswith("Alpha"))
     # Only the Qualifying game (pace=80) should be averaged, not both games (100).
     assert alpha_row.values["pace"] == 80.0
+
+
+@pytest.mark.asyncio
+async def test_per_competition_year_and_venue_filters(db_session: AsyncSession) -> None:
+    """year_min/year_max and venue filter branches apply in per_competition grain."""
+    await _seed_grain(db_session)  # seeds Vegas 2024 + SLC 2025 for one player
+    # year_min excludes the 2024 row; only 2025 remains.
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            year_min=2025,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result.total == 1
+    assert "2025" in result.rows[0].label
+
+    # venue filter keeps only Vegas rows.
+    result2 = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            year_max=2024,
+            venue="las_vegas",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result2.total == 1
+    assert "las_vegas" in result2.rows[0].label or "Vegas" in result2.rows[0].label
+
+
+@pytest.mark.asyncio
+async def test_per_competition_undrafted_filter(db_session: AsyncSession) -> None:
+    """undrafted=True keeps only players with no draft_year in per_competition grain."""
+    undrafted = make_player("Undrafted", "Comp")
+    drafted = make_player("Drafted", "Comp")
+    drafted.draft_year = 2024
+    db_session.add_all([undrafted, drafted])
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    for player, pts in ((undrafted, 15), (drafted, 20)):
+        await _season(
+            db_session,
+            player=player,
+            comp_id=c,
+            year=2024,
+            venue_slug="las_vegas",
+            pts=pts,
+        )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            undrafted=True,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result.total == 1
+    assert result.rows[0].label.startswith("Undrafted")
+
+
+@pytest.mark.asyncio
+async def test_per_game_year_and_pick_min_filters(db_session: AsyncSession) -> None:
+    """year_min and draft_pick_min filter branches apply in per_game grain."""
+    early = make_player("Early", "PG")
+    early.draft_year, early.draft_round, early.draft_pick = 2024, 1, 3
+    late = make_player("Late", "PG")
+    late.draft_year, late.draft_round, late.draft_pick = 2024, 1, 25
+    db_session.add_all([early, late])
+    await db_session.flush()
+
+    c1 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2025, venue_slug="las_vegas", league_id="16")
+    t1 = await _team(db_session, comp_id=c1)
+    t2 = await _team(db_session, comp_id=c2)
+    await _log(db_session, comp_id=c1, team=t1, player=early, pts=20, games=1)
+    await _log(db_session, comp_id=c2, team=t2, player=late, pts=10, games=1)
+    await db_session.commit()
+
+    # year_min=2025 keeps only the 2025 log.
+    result_year = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", year_min=2025),
+    )
+    assert result_year.total == 1
+    assert result_year.rows[0].label.startswith("Late")
+
+    # draft_pick_min=10 keeps only pick 25 (Early pick=3 is excluded).
+    result_pick = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", draft_pick_min=10),
+    )
+    assert result_pick.total == 1
+    assert result_pick.rows[0].label.startswith("Late")
