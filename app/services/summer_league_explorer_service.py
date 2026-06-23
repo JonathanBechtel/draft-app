@@ -14,14 +14,37 @@ scope (year range, venue, draft class/round), then scale to the selected per-mod
 view. Composite metrics that don't sum across competition pools (PER/BPM/etc.) are
 intentionally excluded here — only additive box stats and ratio shooting metrics,
 which recombine correctly from summed makes/attempts.
+
+## Pagination strategy (Phase 3)
+
+All subjects/grains paginate entirely in SQL using ORDER BY + LIMIT + OFFSET.
+The total row count is obtained via a wrapping subquery:
+
+    SELECT count(*) FROM (<unsliced statement>) AS _count_sq
+
+This avoids fetching all rows into Python (previously done by `_paginate()`).
+
+Sort-column mapping for the players career/per_competition grains:
+- Counting stats (pts, reb, ast, …) → sort on the raw SUM aggregate; this is
+  monotonically equivalent to sorting on any per-mode rate (per-game, per-36,
+  per-100) because all rows are divided by the same denominator within a grain.
+- Percentage stats (efg_pct, fg_pct, fg3_pct, ft_pct, ts_pct, min) → a SQL
+  expression is computed inline and used as the ORDER BY clause.
+- gp, plus_minus → direct aggregate labels.
+
+For the per_game grain the sort column maps directly to a raw column label.
+
+For teams and games, derived numeric values (diff, total, margin) are expressed
+as SQL arithmetic inside a CTE/subquery so they can be sorted in SQL.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Optional
 
-from sqlalchemy import func, literal, or_, select
+from sqlalchemy import func, literal, nulls_last, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -33,8 +56,12 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import (
+    SummerLeagueMetricContext,
+    SummerLeaguePlayerSeason,
+)
 from app.services.summer_league_games_service import _venue_label
+from app.utils.country import canonical_country, country_variants
 
 SUBJECTS = ("players", "teams", "games")
 DEFAULT_SUBJECT = "players"
@@ -46,6 +73,16 @@ MODES = ("per_game", "per_36", "per_100", "totals")
 DEFAULT_MODE = "per_game"
 
 _MINUTES_PER_GAME = 48.0
+
+
+def _max_plausible_draft_class() -> int:
+    """Upper bound for draft-class facet/filter values.
+
+    The next legitimately-knowable draft class is one year out; anything beyond
+    is a data artifact (the SL pool carries stray 2028–2033 draft years).  Used
+    to clamp both the facet dropdown and inbound filter values.
+    """
+    return date.today().year + 1
 
 
 # --------------------------------------------------------------------------- #
@@ -86,7 +123,22 @@ _PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("fg_pct", "FG%"),
     ExplorerColumn("fg3_pct", "3P%"),
     ExplorerColumn("ft_pct", "FT%"),
+]
+
+# Advanced columns exposed only when grain=per_competition AND a single adv-eligible
+# competition is fully specified (one year + one venue).
+# TS% leads the group: it is box-derived (recombines from summed PTS/FGA/FTA) so it is
+# always computed, but it reads as an advanced efficiency metric and is surfaced here
+# rather than in the always-on base columns. The remainder (PER/BPM/ratings/WS/VORP) are
+# pool-calibrated composites that must NOT be mixed with career/multi-competition rows.
+_PLAYER_ADVANCED_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("ts_pct", "TS%"),
+    ExplorerColumn("per", "PER"),
+    ExplorerColumn("ortg", "ORtg"),
+    ExplorerColumn("drtg", "DRtg"),
+    ExplorerColumn("bpm", "BPM"),
+    ExplorerColumn("ws", "WS"),
+    ExplorerColumn("vorp", "VORP"),
 ]
 
 # Stat columns for the teams subject (one row per team-season). W-L and points
@@ -118,6 +170,9 @@ _COLUMNS_BY_SUBJECT: dict[str, list[ExplorerColumn]] = {
 _SORT_KEYS_BY_SUBJECT: dict[str, set[str]] = {
     s: {c.key for c in cols} for s, cols in _COLUMNS_BY_SUBJECT.items()
 }
+# Advanced sort keys are valid for the players subject in single-competition mode.
+# Add them to the allowed set so parse_query does not reject them.
+_SORT_KEYS_BY_SUBJECT["players"] |= {c.key for c in _PLAYER_ADVANCED_COLUMNS}
 _DEFAULT_SORT_BY_SUBJECT: dict[str, str] = {
     "players": "pts",
     "teams": "diff",
@@ -165,12 +220,17 @@ class ExplorerQuery:
     team_slug: Optional[str] = None
     round_type: Optional[str] = None
     undrafted: bool = False
+    age_min: Optional[int] = None
+    age_max: Optional[int] = None
     min_games: int = DEFAULT_MIN_GAMES
     min_minutes: int = DEFAULT_MIN_MINUTES
     mode: str = DEFAULT_MODE
     sort: str = "pts"
     direction: str = "desc"
     page: int = 1
+    # When False, query builders skip LIMIT/OFFSET and return every matching
+    # row (used by the CSV export so downloads are not capped to one page).
+    paginate: bool = True
 
 
 @dataclass
@@ -209,6 +269,7 @@ class ExplorerResult:
     has_next: bool
     facets: ExplorerFacets
     query: ExplorerQuery
+    adv_eligible: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -255,10 +316,36 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
 
     venue = params.get("venue") or None
     position = params.get("position") or None
-    country = params.get("country") or None
+    # Canonicalize so a raw ?country=US URL resolves to the same value the
+    # dropdown emits ("United States") and matches every stored encoding.
+    country = canonical_country(params.get("country"))
     team_slug = params.get("team_slug") or None
     round_type = params.get("round_type") or None
     undrafted = params.get("undrafted") == "1"
+
+    year_min = _to_int(params.get("year_min"))
+    year_max = _to_int(params.get("year_max"))
+
+    # Composite sort keys (PER/ORtg/DRtg/BPM/WS/VORP) are only SELECTed by the
+    # single-competition per_competition query; on any other grain/scope they would
+    # become ORDER BY on a column the SELECT never exposes. Coerce them back to the
+    # default sort so a hand-typed ?sort=per&grain=career — or sorting by PER and then
+    # switching grain — can't 500. (ts_pct stays valid everywhere; it's box-derived.)
+    composite_sort_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS if c.key != "ts_pct"}
+    single_comp_scope = (
+        grain == "per_competition"
+        and year_min is not None
+        and year_min == year_max
+        and venue is not None
+    )
+    if sort in composite_sort_keys and not single_comp_scope:
+        sort = default_sort
+
+    # Reject implausible future draft classes so a hand-typed ?draft_class=2033
+    # cannot filter on a phantom year (mirrors the facet clamp).
+    draft_class = _to_int(params.get("draft_class"))
+    if draft_class is not None and draft_class > _max_plausible_draft_class():
+        draft_class = None
 
     min_games = _to_int(params.get("min_gp"))
     min_minutes = _to_int(params.get("min_min"))
@@ -267,10 +354,10 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     return ExplorerQuery(
         subject=subject,
         grain=grain,
-        year_min=_to_int(params.get("year_min")),
-        year_max=_to_int(params.get("year_max")),
+        year_min=year_min,
+        year_max=year_max,
         venue=venue,
-        draft_class=_to_int(params.get("draft_class")),
+        draft_class=draft_class,
         draft_round=_to_int(params.get("draft_round")),
         draft_pick_min=_to_int(params.get("draft_pick_min")),
         draft_pick_max=_to_int(params.get("draft_pick_max")),
@@ -279,6 +366,8 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         team_slug=team_slug,
         round_type=round_type,
         undrafted=undrafted,
+        age_min=_to_int(params.get("age_min")),
+        age_max=_to_int(params.get("age_max")),
         min_games=min_games if min_games is not None else DEFAULT_MIN_GAMES,
         min_minutes=min_minutes if min_minutes is not None else DEFAULT_MIN_MINUTES,
         mode=mode,
@@ -321,6 +410,9 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
             await db.execute(
                 select(PlayerMaster.draft_year)  # type: ignore[call-overload]
                 .where(PlayerMaster.draft_year.isnot(None))  # type: ignore[union-attr]
+                # Clamp out implausible future classes (data artifacts) so the
+                # dropdown never lists phantom years like 2030+.
+                .where(PlayerMaster.draft_year <= _max_plausible_draft_class())  # type: ignore[operator]
                 .distinct()
                 .order_by(PlayerMaster.draft_year.desc())  # type: ignore[union-attr]
             )
@@ -337,17 +429,22 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
             )
         ).all()
     ]
-    countries = [
-        str(c)
-        for (c,) in (
-            await db.execute(
-                select(PlayerMaster.birth_country)  # type: ignore[call-overload]
-                .where(PlayerMaster.birth_country.isnot(None))  # type: ignore[union-attr]
-                .distinct()
-                .order_by(PlayerMaster.birth_country)  # type: ignore[union-attr]
-            )
-        ).all()
-    ]
+    # Raw birth_country mixes ISO-2 codes, full names, and aliases across
+    # ingestion sources.  Normalize each to a canonical display name, then
+    # dedupe + sort so the dropdown lists every country exactly once.
+    countries = sorted(
+        {
+            name
+            for (c,) in (
+                await db.execute(
+                    select(PlayerMaster.birth_country)  # type: ignore[call-overload]
+                    .where(PlayerMaster.birth_country.isnot(None))  # type: ignore[union-attr]
+                    .distinct()
+                )
+            ).all()
+            if (name := canonical_country(c)) is not None
+        }
+    )
     teams = [
         str(s)
         for (s,) in (
@@ -443,8 +540,96 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
     }
 
 
+def _scaled_sort_expr(num: str, gp: str, sec: str, pace_sec: str, mode: str) -> str:
+    """Scale a counting-stat numerator into the displayed per-mode rate.
+
+    Mirrors the arithmetic in :func:`_compute_player_values` so ORDER BY ranks on
+    exactly what the cell shows.  ``num``/``gp``/``sec``/``pace_sec`` are SQL
+    fragments (aggregates for career, raw labels for per_competition); ``sec`` is
+    seconds played and ``pace_sec`` the pace-weighted seconds.
+    """
+    if mode == "per_game":
+        # * 1.0 forces float division (counts/totals are integers in Postgres,
+        # and integer division would truncate the rate into non-monotonic ties).
+        return f"{num} * 1.0 / NULLIF({gp}, 0)"
+    if mode == "per_36":  # 36 min / (sec/60) = num * 36 * 60 / sec
+        return f"{num} * 2160.0 / NULLIF({sec}, 0)"
+    if mode == "per_100":  # 100 poss; poss = pace_sec / (60 * 48)
+        return f"{num} * 288000.0 / NULLIF({pace_sec}, 0)"
+    return num  # totals
+
+
+def _player_sort_expr(sort_col: str, mode: str) -> Any:
+    """Return a SQL text expression used in ORDER BY for the players career grain.
+
+    Counting stats sort on their **displayed per-mode rate** (computed in SQL by
+    repeating the SUM aggregates) so the sorted column is visually monotonic in
+    the selected mode — sorting on the raw SUM is only monotonic with totals, and
+    reads as "broken sort" in per-game/-36/-100.  Minutes sort on per-game minutes
+    (or total minutes in totals mode).  Percentage stats use NULLIF-guarded ratios.
+
+    Aggregates are repeated (e.g. ``SUM(pts)``) rather than referencing the SELECT
+    aliases because Postgres resolves names inside an ORDER BY *expression* against
+    input columns, not output labels.
+    """
+    # Percentage stats — mode-independent NULLIF-guarded ratio expressions.
+    _pct_exprs: dict[str, str] = {
+        "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
+        "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
+        "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
+        "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
+        "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
+    }
+    if sort_col in _pct_exprs:
+        return _pct_exprs[sort_col]
+    if sort_col == "min":
+        total = "SUM(minutes_seconds)"
+        # Minutes display as per-game minutes in every rate mode (* 1.0 forces
+        # float division — seconds are integers).
+        return total if mode == "totals" else f"{total} * 1.0 / NULLIF(COUNT(*), 0)"
+    if sort_col in _COUNTING or sort_col == "plus_minus":
+        return _scaled_sort_expr(
+            f"SUM({sort_col})",
+            "COUNT(*)",
+            "SUM(minutes_seconds)",
+            "SUM(pace * minutes_seconds)",
+            mode,
+        )
+    # gp (mode-independent) and any other label: sort on the SELECT output alias.
+    return sort_col
+
+
+async def _count_subquery(db: AsyncSession, inner_stmt: Any) -> int:
+    """Return the total row count by wrapping ``inner_stmt`` in a COUNT subquery.
+
+    Strategy: SELECT count(*) FROM (<inner_stmt>) AS _count_sq.
+    This avoids fetching all rows into Python and works for any SELECT shape.
+    """
+    count_sq = inner_stmt.subquery("_count_sq")
+    count_stmt = select(func.count()).select_from(count_sq)
+    result = await db.execute(count_stmt)
+    return int(result.scalar() or 0)
+
+
+def _apply_pagination(stmt: Any, q: ExplorerQuery) -> Any:
+    """Apply LIMIT/OFFSET for the requested page, unless the query opts out.
+
+    When ``q.paginate`` is False (CSV export) the statement is returned unsliced
+    so every matching row is fetched.
+    """
+    if not q.paginate:
+        return stmt
+    return stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
+
+
 async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """Aggregate, sort, and paginate the players subject."""
+    """Aggregate, sort, and paginate the players subject using SQL ORDER BY / LIMIT / OFFSET.
+
+    Sort order: counting stats sort on their raw SUM aggregate (monotonically
+    equivalent to any rate mode).  Percentage stats use NULLIF-guarded SQL
+    ratio expressions.  Total row count uses a COUNT(*) subquery wrapping the
+    unsliced aggregation statement.
+    """
     pgl = SummerLeaguePlayerGameLog
     comp = SummerLeagueCompetition
     pm = PlayerMaster
@@ -471,7 +656,9 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
     if q.country is not None:
-        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
+        # q.country is a canonical name; match every raw encoding (code/alias)
+        # that normalizes to it so filtering is independent of stored form.
+        conds.append(pm.birth_country.in_(country_variants(q.country)))  # type: ignore[union-attr]
 
     stmt = (
         select(
@@ -505,6 +692,25 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         .having(func.count() >= q.min_games)
         .having(func.sum(sec) >= q.min_minutes * 60)
     )
+    # Age filter (career grain): age = year of the player's EARLIEST summer league in scope
+    # minus birth year.  We use MIN(comp.year) — the populated integer competition year —
+    # NOT EXTRACT(YEAR FROM comp.starts_on): starts_on is unpopulated for ingested
+    # competitions, so deriving the year from it would NULL out every age.  MIN(comp.year)
+    # anchors age to the player's first appearance in the filtered pool, the most meaningful
+    # anchor for prospect-era analysis (e.g., "19-year-old rookies").
+    # birthdate is constant per player but the PK is not in GROUP BY, so wrap it in MIN() to
+    # satisfy Postgres grouping rules; MIN of a per-player constant is that constant.  NULL
+    # birthdate yields NULL age → comparison is NULL → row excluded (no false match).
+    if q.age_min is not None:
+        stmt = stmt.having(
+            func.min(comp.year) - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
+            >= q.age_min
+        )
+    if q.age_max is not None:
+        stmt = stmt.having(
+            func.min(comp.year) - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
+            <= q.age_max
+        )
     if q.team_slug is not None:
         te = SummerLeagueTeamEntry
         stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
@@ -513,6 +719,16 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     if q.round_type is not None:
         g = SummerLeagueGame
         stmt = stmt.join(g, pgl.game_id == g.id).where(g.round_label == q.round_type)
+
+    # Count total matching rows before slicing (wrapping subquery avoids fetching all rows).
+    total = await _count_subquery(db, stmt)
+
+    # Apply SQL ORDER BY (NULLS LAST) + LIMIT + OFFSET.
+    sort_expr = _player_sort_expr(q.sort, q.mode)
+    direction = "DESC" if q.direction == "desc" else "ASC"
+    stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
+    stmt = _apply_pagination(stmt, q)
+
     raw = list((await db.execute(stmt)).all())
 
     rows = [
@@ -524,16 +740,70 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         for r in raw
     ]
 
-    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+    return ExplorerResult(
+        subject="players",
+        available=True,
+        columns=_PLAYER_STAT_COLUMNS,
+        rows=rows,
+        total=total,
+        page=q.page,
+        page_size=PAGE_SIZE,
+        has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
+        facets=ExplorerFacets(),
+        query=q,
+    )
+
+
+def _is_single_competition(q: ExplorerQuery) -> bool:
+    """Return True when the query pins exactly one competition (one year, one venue).
+
+    Both year_min == year_max (pinned to a single year) and a non-None venue are
+    required.  This is the only case where pool-calibrated composites are valid.
+    """
+    return (
+        q.year_min is not None
+        and q.year_max is not None
+        and q.year_min == q.year_max
+        and q.venue is not None
+    )
+
+
+async def _fetch_adv_eligible(db: AsyncSession, year: int, venue_slug: str) -> bool:
+    """Look up the adv_eligible flag for a single (year, venue_slug) competition pool.
+
+    Returns False when no matching metric context row exists (pool not yet computed).
+    """
+    ctx = SummerLeagueMetricContext
+    result = await db.execute(
+        select(ctx.adv_eligible)  # type: ignore[call-overload]
+        .where(ctx.year == year)  # type: ignore[arg-type]
+        .where(ctx.venue_slug == venue_slug)  # type: ignore[arg-type]
+        .limit(1)
+    )
+    row = result.one_or_none()
+    return bool(row[0]) if row is not None else False
 
 
 async def _query_players_per_competition(
     db: AsyncSession, q: ExplorerQuery
 ) -> ExplorerResult:
-    """One row per (player, competition): season box totals from SummerLeaguePlayerSeason."""
+    """One row per (player, competition): season box totals from SummerLeaguePlayerSeason.
+
+    Sort and pagination happen in SQL (ORDER BY + LIMIT + OFFSET).  Count uses
+    a wrapping COUNT(*) subquery on the unsliced statement.
+
+    When the query pins a single competition (one year + one venue), composite
+    columns (PER, ORtg, DRtg, BPM, WS, VORP) from ``summer_league_player_seasons``
+    are appended to the result.  ``adv_eligible`` on the result tells the template
+    whether those composites are valid for this pool; when False a warning banner
+    is shown and the composite columns are omitted from the column list.
+    """
     ps = SummerLeaguePlayerSeason
     comp = SummerLeagueCompetition
     pm = PlayerMaster
+
+    # Detect single-competition scope: composites are only valid within one pool.
+    single_comp = _is_single_competition(q)
 
     # Alias minutes*60 as sec so _compute_player_values works unchanged.
     # pace_sec is 0 — season rows have no weighted pace; per_100 mode yields None.
@@ -561,61 +831,162 @@ async def _query_players_per_competition(
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
     if q.country is not None:
-        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
+        # q.country is a canonical name; match every raw encoding (code/alias)
+        # that normalizes to it so filtering is independent of stored form.
+        conds.append(pm.birth_country.in_(country_variants(q.country)))  # type: ignore[union-attr]
+    # Age filter (per_competition grain): age = competition year − birth year.
+    # One row per (player, competition), so the year is the competition year directly
+    # (ps.year).  NULL birth dates naturally produce NULL age and are excluded (no match).
+    if q.age_min is not None:
+        conds.append(
+            ps.year - func.extract("year", pm.birthdate)  # type: ignore[arg-type]
+            >= q.age_min
+        )
+    if q.age_max is not None:
+        conds.append(
+            ps.year - func.extract("year", pm.birthdate)  # type: ignore[arg-type]
+            <= q.age_max
+        )
+
+    base_select = [
+        pm.slug,
+        pm.display_name,
+        ps.year,
+        ps.venue_slug,
+        ps.gp.label("gp"),  # type: ignore[attr-defined]
+        (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
+        literal(0).label("pace_sec"),
+        ps.pts.label("pts"),  # type: ignore[attr-defined]
+        ps.reb.label("reb"),  # type: ignore[attr-defined]
+        ps.ast.label("ast"),  # type: ignore[attr-defined]
+        ps.stl.label("stl"),  # type: ignore[attr-defined]
+        ps.blk.label("blk"),  # type: ignore[attr-defined]
+        ps.tov.label("tov"),  # type: ignore[attr-defined]
+        ps.fgm.label("fgm"),  # type: ignore[attr-defined]
+        ps.fga.label("fga"),  # type: ignore[attr-defined]
+        ps.fg3m.label("fg3m"),  # type: ignore[attr-defined]
+        ps.fg3a.label("fg3a"),  # type: ignore[attr-defined]
+        ps.ftm.label("ftm"),  # type: ignore[attr-defined]
+        ps.fta.label("fta"),  # type: ignore[attr-defined]
+        ps.oreb.label("oreb"),  # type: ignore[attr-defined]
+        ps.dreb.label("dreb"),  # type: ignore[attr-defined]
+        ps.pf.label("pf"),  # type: ignore[attr-defined]
+        ps.plus_minus.label("plus_minus"),  # type: ignore[attr-defined]
+    ]
+
+    # When scoped to a single competition, also SELECT the composite columns so
+    # the template can display them when adv_eligible is True.
+    if single_comp:
+        base_select += [
+            ps.per.label("per"),  # type: ignore[attr-defined, union-attr]
+            ps.ortg.label("ortg"),  # type: ignore[attr-defined, union-attr]
+            ps.drtg.label("drtg"),  # type: ignore[attr-defined, union-attr]
+            ps.bpm.label("bpm"),  # type: ignore[attr-defined, union-attr]
+            ps.ws.label("ws"),  # type: ignore[attr-defined, union-attr]
+            ps.vorp.label("vorp"),  # type: ignore[attr-defined, union-attr]
+        ]
 
     stmt = (
-        select(
-            pm.slug,
-            pm.display_name,
-            ps.year,
-            ps.venue_slug,
-            ps.gp.label("gp"),  # type: ignore[attr-defined]
-            (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
-            literal(0).label("pace_sec"),
-            ps.pts.label("pts"),  # type: ignore[attr-defined]
-            ps.reb.label("reb"),  # type: ignore[attr-defined]
-            ps.ast.label("ast"),  # type: ignore[attr-defined]
-            ps.stl.label("stl"),  # type: ignore[attr-defined]
-            ps.blk.label("blk"),  # type: ignore[attr-defined]
-            ps.tov.label("tov"),  # type: ignore[attr-defined]
-            ps.fgm.label("fgm"),  # type: ignore[attr-defined]
-            ps.fga.label("fga"),  # type: ignore[attr-defined]
-            ps.fg3m.label("fg3m"),  # type: ignore[attr-defined]
-            ps.fg3a.label("fg3a"),  # type: ignore[attr-defined]
-            ps.ftm.label("ftm"),  # type: ignore[attr-defined]
-            ps.fta.label("fta"),  # type: ignore[attr-defined]
-            ps.oreb.label("oreb"),  # type: ignore[attr-defined]
-            ps.dreb.label("dreb"),  # type: ignore[attr-defined]
-            ps.pf.label("pf"),  # type: ignore[attr-defined]
-            ps.plus_minus.label("plus_minus"),  # type: ignore[attr-defined]
-        )  # type: ignore[call-overload, misc]
+        select(*base_select)  # type: ignore[call-overload, misc]
         .select_from(ps)
-        .join(comp, comp.id == ps.competition_id)
-        .join(pm, pm.id == ps.player_id)
+        .join(comp, comp.id == ps.competition_id)  # type: ignore[arg-type]
+        .join(pm, pm.id == ps.player_id)  # type: ignore[arg-type]
         .where(*conds)
     )
     if q.team_slug is not None:
         te = SummerLeagueTeamEntry
-        stmt = stmt.join(te, ps.primary_team_entry_id == te.id).where(  # type: ignore[arg-type]
-            te.team_slug == q.team_slug
-        )
+        stmt = stmt.join(
+            te,
+            ps.primary_team_entry_id == te.id,  # type: ignore[arg-type]
+        ).where(te.team_slug == q.team_slug)  # type: ignore[arg-type]
+
+    # Count via wrapping subquery, then slice.
+    total = await _count_subquery(db, stmt)
+
+    # per_competition rows are one-per-(player, competition) season totals, so
+    # the sort references raw column labels (no aggregation).  Counting stats sort
+    # on the displayed per-mode rate — matching _compute_player_values — so the
+    # column stays visually monotonic; percentages use NULLIF-guarded ratios.
+    # ``minutes`` is stored in minutes; sec = minutes * 60, pace_sec is 0 (no
+    # weighted pace at season grain), so per_100 yields NULL and sorts last.
+    _pc_pct_exprs: dict[str, str] = {
+        "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
+        "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
+        "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
+        "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
+        "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
+    }
+    if q.sort in _pc_pct_exprs:
+        sort_expr: str = _pc_pct_exprs[q.sort]
+    elif q.sort == "min":
+        sort_expr = "minutes" if q.mode == "totals" else "minutes / NULLIF(gp, 0)"
+    elif q.sort in _COUNTING or q.sort == "plus_minus":
+        sort_expr = _scaled_sort_expr(q.sort, "gp", "minutes * 60", "0", q.mode)
+    else:
+        # gp and the advanced composites (per/ortg/bpm/…) sort on the raw label.
+        sort_expr = q.sort
+    direction = "DESC" if q.direction == "desc" else "ASC"
+    stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
+    stmt = _apply_pagination(stmt, q)
 
     raw = list((await db.execute(stmt)).all())
+
+    # Determine adv_eligible for this query scope.
+    pool_adv_eligible = False
+    if single_comp and q.year_min is not None and q.venue is not None:
+        pool_adv_eligible = await _fetch_adv_eligible(db, q.year_min, q.venue)
+
+    # Build result column list: base stats always present; advanced appended when eligible.
+    columns: list[ExplorerColumn] = list(_PLAYER_STAT_COLUMNS)
+    if single_comp and pool_adv_eligible:
+        columns = columns + _PLAYER_ADVANCED_COLUMNS
+
+    def _adv_values(r: Any) -> dict[str, Any]:
+        """Extract composite values from a result row (only when single-comp selected)."""
+        return {
+            "per": getattr(r, "per", None),
+            "ortg": getattr(r, "ortg", None),
+            "drtg": getattr(r, "drtg", None),
+            "bpm": getattr(r, "bpm", None),
+            "ws": getattr(r, "ws", None),
+            "vorp": getattr(r, "vorp", None),
+        }
 
     rows = [
         ExplorerRow(
             label=f"{r.display_name} · {_venue_label(r.venue_slug)} {r.year}",
             href=f"/players/{r.slug}" if r.slug else None,
-            values=_compute_player_values(r, q.mode),
+            values={
+                **_compute_player_values(r, q.mode),
+                **(_adv_values(r) if (single_comp and pool_adv_eligible) else {}),
+            },
         )
         for r in raw
     ]
 
-    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+    return ExplorerResult(
+        subject="players",
+        available=True,
+        columns=columns,
+        rows=rows,
+        total=total,
+        page=q.page,
+        page_size=PAGE_SIZE,
+        has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
+        facets=ExplorerFacets(),
+        query=q,
+        adv_eligible=pool_adv_eligible if single_comp else False,
+    )
 
 
 async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """One row per player game log (no aggregation)."""
+    """One row per player game log (no aggregation).
+
+    This grain has the highest row count, making SQL-level pagination most
+    critical.  Sort column maps directly to a raw column label in the SELECT;
+    percentage stats use NULLIF-guarded expressions on raw column labels.
+    Count uses a wrapping COUNT(*) subquery.
+    """
     pgl = SummerLeaguePlayerGameLog
     comp = SummerLeagueCompetition
     pm = PlayerMaster
@@ -642,9 +1013,23 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
     if q.country is not None:
-        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
+        # q.country is a canonical name; match every raw encoding (code/alias)
+        # that normalizes to it so filtering is independent of stored form.
+        conds.append(pm.birth_country.in_(country_variants(q.country)))  # type: ignore[union-attr]
     if q.round_type is not None:
         conds.append(game.round_label == q.round_type)  # type: ignore[arg-type]
+    # Age at the time of the game = competition year - birth year. Applied as a
+    # per-row WHERE (per_game is not aggregated). NULL birthdate yields NULL → the
+    # row is excluded, matching the career/per_competition grains. Without this the
+    # Age range control silently no-ops for grain=per_game.
+    if q.age_min is not None:
+        conds.append(
+            comp.year - func.extract("year", pm.birthdate) >= q.age_min  # type: ignore[arg-type]
+        )
+    if q.age_max is not None:
+        conds.append(
+            comp.year - func.extract("year", pm.birthdate) <= q.age_max  # type: ignore[arg-type]
+        )
 
     stmt = (
         select(
@@ -686,6 +1071,24 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
             te.team_slug == q.team_slug
         )
 
+    # Count via wrapping subquery, then sort + slice.
+    total = await _count_subquery(db, stmt)
+
+    # Percentage sort expressions operate on raw per-game-log column labels.
+    _pg_pct_exprs: dict[str, str] = {
+        "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
+        "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
+        "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
+        "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
+        "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
+        "min": "sec",
+        "gp": "1",  # every row is 1 game; stable but well-defined
+    }
+    sort_expr = _pg_pct_exprs.get(q.sort, q.sort)
+    direction = "DESC" if q.direction == "desc" else "ASC"
+    stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
+    stmt = _apply_pagination(stmt, q)
+
     raw = list((await db.execute(stmt)).all())
 
     rows = []
@@ -701,7 +1104,18 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
             )
         )
 
-    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+    return ExplorerResult(
+        subject="players",
+        available=True,
+        columns=_PLAYER_STAT_COLUMNS,
+        rows=rows,
+        total=total,
+        page=q.page,
+        page_size=PAGE_SIZE,
+        has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
+        facets=ExplorerFacets(),
+        query=q,
+    )
 
 
 class _SingleGameRow:
@@ -757,7 +1171,14 @@ class _SingleGameRow:
 
 
 async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """One row per team-season: record + scoring from games, ratings from box logs."""
+    """One row per team-season: record + scoring from games, ratings from box logs.
+
+    The raw per-game averages (ppg, diff, pace, etc.) are computed in Python
+    after fetching the full (filtered) team set, because the teams subject has
+    at most hundreds of rows and requires a complex multi-source assembly from
+    games + team-box-logs.  Pagination is still SQL-free on the assembled rows,
+    but `_paginate()` is gone — we inline the sort + slice here.
+    """
     te = SummerLeagueTeamEntry
     comp = SummerLeagueCompetition
 
@@ -876,7 +1297,10 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             )
         )
 
-    return _paginate("teams", _TEAM_STAT_COLUMNS, rows, q)
+    # Teams row count is bounded (hundreds at most), so sort + slice in Python.
+    # This avoids the complexity of a multi-CTE SQL approach while still removing
+    # the shared `_paginate()` helper.
+    return _build_result("teams", _TEAM_STAT_COLUMNS, rows, q)
 
 
 # --------------------------------------------------------------------------- #
@@ -885,7 +1309,7 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 
 
 async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """One row per game: matchup/score in the label, total + margin sortable."""
+    """One row per game: matchup/score in the label, total + margin sortable in SQL."""
     game = SummerLeagueGame
     comp = SummerLeagueCompetition
     home = aliased(SummerLeagueTeamEntry)
@@ -901,27 +1325,40 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     if q.round_type is not None:
         conds.append(game.round_label == q.round_type)
 
-    game_rows = (
-        await db.execute(
-            select(
-                game.id,
-                game.game_date,
-                game.home_score,
-                game.away_score,
-                comp.year,
-                comp.venue_slug,
-                home.raw_team_abbreviation.label("home_abbr"),  # type: ignore[union-attr]
-                home.raw_team_name.label("home_name"),  # type: ignore[attr-defined]
-                away.raw_team_abbreviation.label("away_abbr"),  # type: ignore[union-attr]
-                away.raw_team_name.label("away_name"),  # type: ignore[attr-defined]
-            )  # type: ignore[call-overload, misc]
-            .select_from(game)
-            .join(comp, comp.id == game.competition_id)
-            .join(home, home.id == game.home_team_entry_id, isouter=True)
-            .join(away, away.id == game.away_team_entry_id, isouter=True)
-            .where(*conds)
-        )
-    ).all()
+    # Include computed sort columns (total, margin) directly in the SELECT so
+    # ORDER BY can reference them by label without repeating the expression.
+    inner_stmt = (
+        select(
+            game.id,
+            game.game_date,
+            game.home_score,
+            game.away_score,
+            comp.year,
+            comp.venue_slug,
+            home.raw_team_abbreviation.label("home_abbr"),  # type: ignore[union-attr]
+            home.raw_team_name.label("home_name"),  # type: ignore[attr-defined]
+            away.raw_team_abbreviation.label("away_abbr"),  # type: ignore[union-attr]
+            away.raw_team_name.label("away_name"),  # type: ignore[attr-defined]
+            (game.home_score + game.away_score).label("total"),  # type: ignore[operator, union-attr]
+            func.abs(game.home_score - game.away_score).label("margin"),  # type: ignore[operator]
+        )  # type: ignore[call-overload, misc]
+        .select_from(game)
+        .join(comp, comp.id == game.competition_id)
+        .join(home, home.id == game.home_team_entry_id, isouter=True)
+        .join(away, away.id == game.away_team_entry_id, isouter=True)
+        .where(*conds)
+    )
+
+    # Count via wrapping subquery.
+    total = await _count_subquery(db, inner_stmt)
+
+    # Sort on the computed label (total or margin); both are valid column labels.
+    sort_col = q.sort if q.sort in ("total", "margin") else "total"
+    direction = "DESC" if q.direction == "desc" else "ASC"
+    stmt = inner_stmt.order_by(nulls_last(text(f"{sort_col} {direction}")))
+    stmt = _apply_pagination(stmt, q)
+
+    game_rows = (await db.execute(stmt)).all()
 
     rows: list[ExplorerRow] = []
     for r in game_rows:
@@ -936,13 +1373,24 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                 ),
                 href=f"/stats/summer-league/{r.year}/games/{r.id}",
                 values={
-                    "total": r.home_score + r.away_score,
-                    "margin": abs(r.home_score - r.away_score),
+                    "total": r.total,
+                    "margin": r.margin,
                 },
             )
         )
 
-    return _paginate("games", _GAME_STAT_COLUMNS, rows, q)
+    return ExplorerResult(
+        subject="games",
+        available=True,
+        columns=_GAME_STAT_COLUMNS,
+        rows=rows,
+        total=total,
+        page=q.page,
+        page_size=PAGE_SIZE,
+        has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
+        facets=ExplorerFacets(),
+        query=q,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -950,13 +1398,17 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 # --------------------------------------------------------------------------- #
 
 
-def _paginate(
+def _build_result(
     subject: str,
     columns: list[ExplorerColumn],
     rows: list[ExplorerRow],
     q: ExplorerQuery,
 ) -> ExplorerResult:
-    """Sort rows by the query's column (nulls last), then slice to the page."""
+    """Sort rows by the query's column (nulls last), then slice to the page.
+
+    Used only for the teams subject where the rows are assembled from multiple
+    Python-side queries.  Players and games paginate entirely in SQL.
+    """
     reverse = q.direction == "desc"
     rows.sort(
         key=lambda row: (
@@ -967,16 +1419,22 @@ def _paginate(
         )
     )
     total = len(rows)
-    start = (q.page - 1) * PAGE_SIZE
+    if q.paginate:
+        start = (q.page - 1) * PAGE_SIZE
+        page_rows = rows[start : start + PAGE_SIZE]
+        has_next = start + PAGE_SIZE < total
+    else:
+        page_rows = rows
+        has_next = False
     return ExplorerResult(
         subject=subject,
         available=True,
         columns=columns,
-        rows=rows[start : start + PAGE_SIZE],
+        rows=page_rows,
         total=total,
         page=q.page,
         page_size=PAGE_SIZE,
-        has_next=start + PAGE_SIZE < total,
+        has_next=has_next,
         facets=ExplorerFacets(),  # filled by the caller
         query=q,
     )
@@ -984,7 +1442,7 @@ def _paginate(
 
 def _empty_result(subject: str, q: ExplorerQuery) -> ExplorerResult:
     """An available result with no rows (e.g. filters matched nothing)."""
-    return _paginate(subject, _COLUMNS_BY_SUBJECT.get(subject, []), [], q)
+    return _build_result(subject, _COLUMNS_BY_SUBJECT.get(subject, []), [], q)
 
 
 # --------------------------------------------------------------------------- #

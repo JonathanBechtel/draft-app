@@ -31,6 +31,7 @@ from app.services.canonical_resolution_service import (  # noqa: E402
     resolve_affiliation,
 )
 from app.models.position_taxonomy import derive_position_tags, get_parents_for_fine  # noqa: E402
+from app.utils.country import canonical_country  # noqa: E402
 from app.utils.db_async import SessionLocal  # noqa: E402
 
 
@@ -242,6 +243,9 @@ async def _update_master(
     row.birth_city, row.birth_state_province, row.birth_country = _clean_loc(
         row.birth_city, row.birth_state_province, row.birth_country
     )
+    # Normalize to a canonical country name (ISO codes/aliases → full name) so
+    # facets and filters stay consistent regardless of source encoding.
+    row.birth_country = canonical_country(row.birth_country)
     # birthdate
     if row.birth_date:
         if player.birthdate is None or overwrite:

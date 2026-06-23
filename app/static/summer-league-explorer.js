@@ -91,6 +91,9 @@
     var host = document.getElementById(RESULTS_ID);
     if (!host || !host.contains(link)) return; // only links inside the results
     if (link.target === "_blank" || e.metaKey || e.ctrlKey) return;
+    // Download links (CSV export) must navigate normally so the browser saves the
+    // file — never swap their body into the results container.
+    if (link.hasAttribute("download")) return;
     // Only intercept query-state links (sort headers + pager), which are
     // relative `?...` hrefs. Row links (player/team/game) are absolute paths
     // and must navigate out of the explorer normally.

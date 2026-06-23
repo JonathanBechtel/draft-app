@@ -64,8 +64,12 @@ ROUTE_BUDGETS: dict[str, int] = {
     # Franchise history: header + entries + games + top-performers + career
     # player aggregates = 5 indexed reads.
     "/stats/summer-league/teams/{team}": 5,
-    # Explorer: 7 facet lookups (years/venues/draft-classes/positions/countries/teams/round-types) + 1 aggregate.
-    "/stats/summer-league/explorer": 8,
+    # Explorer: 7 facet lookups (years/venues/draft-classes/positions/countries/teams/round-types)
+    # + 1 COUNT(*) subquery + 1 aggregate rows query. SQL-side pagination (replacing the old
+    # Python _paginate(), which fetched every row into memory) requires a separate COUNT to
+    # report the total without materializing the full result set — a deliberate +1 over the
+    # prior all-rows-in-Python approach.
+    "/stats/summer-league/explorer": 9,
 }
 
 # Admin route budgets (authentication-gated; tested separately via

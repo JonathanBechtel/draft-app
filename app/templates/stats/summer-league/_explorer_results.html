@@ -20,6 +20,8 @@
 {%- if q.team_slug %}&team_slug={{ q.team_slug }}{% endif %}
 {%- if q.round_type %}&round_type={{ q.round_type }}{% endif %}
 {%- if q.undrafted %}&undrafted=1{% endif %}
+{%- if q.age_min %}&age_min={{ q.age_min }}{% endif %}
+{%- if q.age_max %}&age_max={{ q.age_max }}{% endif %}
 {%- if page %}&page={{ page }}{% endif %}
 {%- endmacro -%}
 
@@ -30,10 +32,26 @@
     <a href="/stats/summer-league/explorer?subject=players">Players</a> view.
   </p>
   {% else %}
+
+  {# Advanced-composites eligibility banner (per_competition grain, single competition only) #}
+  {% if result.query.grain == 'per_competition' and result.query.year_min == result.query.year_max and result.query.year_min and result.query.venue %}
+    {% if not result.adv_eligible %}
+  <div class="slg-explorer-banner slg-explorer-banner--warn" role="alert">
+    <span class="slg-explorer-banner__icon">&#9888;</span>
+    Advanced composites (PER, ORtg, DRtg, BPM, WS, VORP) require a minimum pool
+    size that this competition has not yet met. Select a larger competition or
+    check back after more games are complete.
+  </div>
+    {% endif %}
+  {% endif %}
+
   <p class="slg-explorer-count">
     {{ result.total }} {{ 'result' if result.total == 1 else 'results' }}
     {% if result.total > result.page_size %}
     · page {{ result.page }} of {{ (result.total // result.page_size) + (1 if result.total % result.page_size else 0) }}
+    {% endif %}
+    {% if result.total > 0 %}
+    · <a class="slg-explorer-count__csv" href="{{ explorer_qs(result.query) }}&format=csv" download="summer-league-explorer.csv">Download CSV</a>
     {% endif %}
   </p>
 
