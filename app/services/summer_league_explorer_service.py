@@ -214,6 +214,9 @@ class ExplorerQuery:
     sort: str = "pts"
     direction: str = "desc"
     page: int = 1
+    # When False, query builders skip LIMIT/OFFSET and return every matching
+    # row (used by the CSV export so downloads are not capped to one page).
+    paginate: bool = True
 
 
 @dataclass
@@ -524,6 +527,17 @@ async def _count_subquery(db: AsyncSession, inner_stmt: Any) -> int:
     return int(result.scalar() or 0)
 
 
+def _apply_pagination(stmt: Any, q: ExplorerQuery) -> Any:
+    """Apply LIMIT/OFFSET for the requested page, unless the query opts out.
+
+    When ``q.paginate`` is False (CSV export) the statement is returned unsliced
+    so every matching row is fetched.
+    """
+    if not q.paginate:
+        return stmt
+    return stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
+
+
 async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     """Aggregate, sort, and paginate the players subject using SQL ORDER BY / LIMIT / OFFSET.
 
@@ -627,7 +641,7 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     sort_expr = _player_sort_expr(q.sort)
     direction = "DESC" if q.direction == "desc" else "ASC"
     stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
-    stmt = stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
+    stmt = _apply_pagination(stmt, q)
 
     raw = list((await db.execute(stmt)).all())
 
@@ -815,7 +829,7 @@ async def _query_players_per_competition(
     sort_expr = _pc_pct_exprs.get(q.sort, q.sort)
     direction = "DESC" if q.direction == "desc" else "ASC"
     stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
-    stmt = stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
+    stmt = _apply_pagination(stmt, q)
 
     raw = list((await db.execute(stmt)).all())
 
@@ -961,7 +975,7 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
     sort_expr = _pg_pct_exprs.get(q.sort, q.sort)
     direction = "DESC" if q.direction == "desc" else "ASC"
     stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
-    stmt = stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
+    stmt = _apply_pagination(stmt, q)
 
     raw = list((await db.execute(stmt)).all())
 
@@ -1230,7 +1244,7 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     sort_col = q.sort if q.sort in ("total", "margin") else "total"
     direction = "DESC" if q.direction == "desc" else "ASC"
     stmt = inner_stmt.order_by(nulls_last(text(f"{sort_col} {direction}")))
-    stmt = stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
+    stmt = _apply_pagination(stmt, q)
 
     game_rows = (await db.execute(stmt)).all()
 
@@ -1293,16 +1307,22 @@ def _build_result(
         )
     )
     total = len(rows)
-    start = (q.page - 1) * PAGE_SIZE
+    if q.paginate:
+        start = (q.page - 1) * PAGE_SIZE
+        page_rows = rows[start : start + PAGE_SIZE]
+        has_next = start + PAGE_SIZE < total
+    else:
+        page_rows = rows
+        has_next = False
     return ExplorerResult(
         subject=subject,
         available=True,
         columns=columns,
-        rows=rows[start : start + PAGE_SIZE],
+        rows=page_rows,
         total=total,
         page=q.page,
         page_size=PAGE_SIZE,
-        has_next=start + PAGE_SIZE < total,
+        has_next=has_next,
         facets=ExplorerFacets(),  # filled by the caller
         query=q,
     )

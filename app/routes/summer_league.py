@@ -207,9 +207,15 @@ async def summer_league_explorer(
     ``?format=csv`` streams a CSV download of the current query result.
     """
     query = parse_query(dict(request.query_params))
+
+    # CSV export returns the full result set, not just the current page.
+    is_csv = request.query_params.get("format") == "csv"
+    if is_csv:
+        query.paginate = False
+
     result = await run_explorer_query(db, query)
 
-    if request.query_params.get("format") == "csv":
+    if is_csv:
         return _explorer_csv(result)
 
     template = (

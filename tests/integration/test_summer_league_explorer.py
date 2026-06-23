@@ -22,7 +22,10 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeagueMetricContext, SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import (
+    SummerLeagueMetricContext,
+    SummerLeaguePlayerSeason,
+)
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     _PLAYER_ADVANCED_COLUMNS,
@@ -447,6 +450,51 @@ async def test_explorer_partial_returns_table_only(
     assert "explorer-results" in body
     assert "<html" not in body.lower()
     assert "explorer-form" not in body  # the builder is not in the partial
+
+
+@pytest.mark.asyncio
+async def test_csv_export_returns_full_result_set(
+    db_session: AsyncSession,
+    app_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`?format=csv` returns every matching row, not just the current page.
+
+    Regression for #393: the CSV branch previously reused the page-limited
+    result. With PAGE_SIZE forced to 2 and three qualifying players seeded, the
+    HTML page shows a single page (2 rows) while the CSV contains all 3 rows
+    plus the header.
+    """
+    import app.services.summer_league_explorer_service as svc
+
+    monkeypatch.setattr(svc, "PAGE_SIZE", 2)
+
+    # Three qualifying players in one competition (career grain, default scope).
+    players = [make_player(f"Csv{i}", "Player") for i in range(3)]
+    for p in players:
+        p.draft_year, p.draft_round = 2024, 1
+    db_session.add_all(players)
+    await db_session.flush()
+    cid = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    team = await _team(db_session, comp_id=cid)
+    for i, p in enumerate(players):
+        await _log(db_session, comp_id=cid, team=team, player=p, pts=30 - i, games=2)
+    await db_session.commit()
+
+    # HTML page is paginated to PAGE_SIZE rows.
+    html = await app_client.get("/stats/summer-league/explorer")
+    assert html.status_code == 200
+    assert html.text.count('scope="row"') == 2  # one page only
+    assert "3 results" in html.text
+
+    # CSV contains the header + every matching row.
+    csv_resp = await app_client.get("/stats/summer-league/explorer?format=csv")
+    assert csv_resp.status_code == 200
+    assert csv_resp.headers["content-type"].startswith("text/csv")
+    assert "attachment" in csv_resp.headers["content-disposition"]
+    lines = [ln for ln in csv_resp.text.splitlines() if ln.strip()]
+    assert len(lines) == 1 + 3  # header + all three rows, not the 2-row page
+    assert lines[0].startswith("Player,GP,MIN,PTS")
 
 
 @pytest.mark.asyncio
@@ -1597,10 +1645,18 @@ async def _seed_adv_single_comp(
 
 def test_is_single_competition_helper() -> None:
     """_is_single_competition returns True only when year_min==year_max and venue is set."""
-    assert _is_single_competition(ExplorerQuery(year_min=2024, year_max=2024, venue="las_vegas"))
-    assert not _is_single_competition(ExplorerQuery(year_min=2024, year_max=2025, venue="las_vegas"))
-    assert not _is_single_competition(ExplorerQuery(year_min=2024, year_max=2024, venue=None))
-    assert not _is_single_competition(ExplorerQuery(year_min=None, year_max=2024, venue="las_vegas"))
+    assert _is_single_competition(
+        ExplorerQuery(year_min=2024, year_max=2024, venue="las_vegas")
+    )
+    assert not _is_single_competition(
+        ExplorerQuery(year_min=2024, year_max=2025, venue="las_vegas")
+    )
+    assert not _is_single_competition(
+        ExplorerQuery(year_min=2024, year_max=2024, venue=None)
+    )
+    assert not _is_single_competition(
+        ExplorerQuery(year_min=None, year_max=2024, venue="las_vegas")
+    )
     assert not _is_single_competition(ExplorerQuery())  # no constraints at all
 
 
@@ -1629,7 +1685,9 @@ async def test_adv_columns_present_when_eligible(db_session: AsyncSession) -> No
     assert result.adv_eligible is True
     adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
     result_col_keys = {c.key for c in result.columns}
-    assert adv_keys <= result_col_keys, f"missing advanced keys: {adv_keys - result_col_keys}"
+    assert adv_keys <= result_col_keys, (
+        f"missing advanced keys: {adv_keys - result_col_keys}"
+    )
 
     # Verify values are present on the row.
     assert result.total == 1
@@ -1671,7 +1729,9 @@ async def test_adv_columns_absent_when_not_eligible(db_session: AsyncSession) ->
     assert result.total == 1
     row = result.rows[0]
     for key in ("per", "ortg", "drtg", "bpm", "ws", "vorp"):
-        assert row.values.get(key) is None, f"expected None for {key!r} when not eligible"
+        assert row.values.get(key) is None, (
+            f"expected None for {key!r} when not eligible"
+        )
 
 
 @pytest.mark.asyncio
@@ -1691,12 +1751,19 @@ async def test_adv_columns_absent_multi_year(db_session: AsyncSession) -> None:
 
     for comp_id, year in ((c1, 2024), (c2, 2025)):
         await _season_with_composites(
-            db_session, player=player, comp_id=comp_id, year=year,
-            venue_slug="las_vegas", adv_eligible=True,
+            db_session,
+            player=player,
+            comp_id=comp_id,
+            year=year,
+            venue_slug="las_vegas",
+            adv_eligible=True,
         )
         await _metric_context(
-            db_session, comp_id=comp_id, year=year,
-            venue_slug="las_vegas", adv_eligible=True,
+            db_session,
+            comp_id=comp_id,
+            year=year,
+            venue_slug="las_vegas",
+            adv_eligible=True,
         )
     await db_session.commit()
 
@@ -1762,15 +1829,29 @@ async def test_adv_sort_by_per_when_eligible(db_session: AsyncSession) -> None:
     comp_id = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
 
     await _season_with_composites(
-        db_session, player=player_hi, comp_id=comp_id, year=2024,
-        venue_slug="las_vegas", per=25.0, adv_eligible=True,
+        db_session,
+        player=player_hi,
+        comp_id=comp_id,
+        year=2024,
+        venue_slug="las_vegas",
+        per=25.0,
+        adv_eligible=True,
     )
     await _season_with_composites(
-        db_session, player=player_lo, comp_id=comp_id, year=2024,
-        venue_slug="las_vegas", per=12.0, adv_eligible=True,
+        db_session,
+        player=player_lo,
+        comp_id=comp_id,
+        year=2024,
+        venue_slug="las_vegas",
+        per=12.0,
+        adv_eligible=True,
     )
     await _metric_context(
-        db_session, comp_id=comp_id, year=2024, venue_slug="las_vegas", adv_eligible=True
+        db_session,
+        comp_id=comp_id,
+        year=2024,
+        venue_slug="las_vegas",
+        adv_eligible=True,
     )
     await db_session.commit()
 
@@ -1963,7 +2044,9 @@ async def test_age_filter_career_anchors_to_earliest_competition(
     c_late = await _comp(db_session, year=2025, venue_slug="las_vegas", league_id="15")
     t_early = await _team(db_session, comp_id=c_early)
     t_late = await _team(db_session, comp_id=c_late)
-    await _log(db_session, comp_id=c_early, team=t_early, player=player, pts=20, games=2)
+    await _log(
+        db_session, comp_id=c_early, team=t_early, player=player, pts=20, games=2
+    )
     await _log(db_session, comp_id=c_late, team=t_late, player=player, pts=18, games=2)
     await db_session.commit()
 
@@ -2122,7 +2205,9 @@ async def test_age_filter_composes_with_venue_filter(
     await db_session.flush()
 
     c_lv = await _comp(db_session, year=2023, venue_slug="las_vegas", league_id="15")
-    c_slc = await _comp(db_session, year=2023, venue_slug="salt_lake_city", league_id="16")
+    c_slc = await _comp(
+        db_session, year=2023, venue_slug="salt_lake_city", league_id="16"
+    )
     t_lv = await _team(db_session, comp_id=c_lv)
     t_slc = await _team(db_session, comp_id=c_slc)
 
@@ -2146,8 +2231,7 @@ async def test_age_filter_composes_with_venue_filter(
 
 
 @pytest.mark.asyncio
-async def test_parse_query_age_min_max_parsed(
-) -> None:
+async def test_parse_query_age_min_max_parsed() -> None:
     """parse_query correctly parses age_min and age_max from query string."""
     q = parse_query({"age_min": "19", "age_max": "24"})
     assert q.age_min == 19
@@ -2325,8 +2409,6 @@ async def test_csv_download_link_absent_when_no_results(
     the download link must not appear.
     """
     await _seed(db_session)
-    resp = await app_client.get(
-        "/stats/summer-league/explorer?min_gp=9999"
-    )
+    resp = await app_client.get("/stats/summer-league/explorer?min_gp=9999")
     assert resp.status_code == 200
     assert "Download CSV" not in resp.text

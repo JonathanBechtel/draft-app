@@ -70,7 +70,9 @@ def test_player_sort_expr_percentage_stats_return_sql_expressions() -> None:
     for key in ("efg_pct", "fg_pct", "fg3_pct", "ft_pct", "ts_pct"):
         expr = _player_sort_expr(key)
         assert expr != key, f"{key!r} should map to an expression, not itself"
-        assert "NULLIF" in expr, f"{key!r} expression should guard against division by zero"
+        assert "NULLIF" in expr, (
+            f"{key!r} expression should guard against division by zero"
+        )
 
 
 def test_player_sort_expr_min_maps_to_sec() -> None:
@@ -114,6 +116,18 @@ def test_build_result_page2_remainder() -> None:
     assert len(result.rows) == 5
     assert result.has_next is False
     assert result.total == PAGE_SIZE + 5
+
+
+def test_build_result_unpaginated_returns_all_rows() -> None:
+    """paginate=False returns every row (CSV export path); has_next is False."""
+    rows = _make_rows(PAGE_SIZE + 5)
+    cols = [ExplorerColumn("pts", "PTS")]
+    q = ExplorerQuery(sort="pts", direction="asc", page=1, paginate=False)
+    result = _build_result("teams", cols, rows, q)
+
+    assert len(result.rows) == PAGE_SIZE + 5
+    assert result.total == PAGE_SIZE + 5
+    assert result.has_next is False
 
 
 def test_build_result_sorts_desc() -> None:
@@ -201,6 +215,4 @@ def test_parse_query_accepts_advanced_sort_keys() -> None:
     """parse_query does not fall back to default when an advanced sort key is passed."""
     for col in _PLAYER_ADVANCED_COLUMNS:
         q = parse_query({"subject": "players", "sort": col.key})
-        assert q.sort == col.key, (
-            f"expected sort={col.key!r}, got {q.sort!r}"
-        )
+        assert q.sort == col.key, f"expected sort={col.key!r}, got {q.sort!r}"
