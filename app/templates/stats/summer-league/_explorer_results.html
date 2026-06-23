@@ -5,7 +5,7 @@
 
 {# Serialize the current query to a querystring, overriding sort/dir/page. #}
 {%- macro explorer_qs(q, sort=none, direction=none, page=none) -%}
-?subject={{ q.subject }}&mode={{ q.mode }}&min_gp={{ q.min_games }}&min_min={{ q.min_minutes }}
+?subject={{ q.subject }}&grain={{ q.grain }}&mode={{ q.mode }}&min_gp={{ q.min_games }}&min_min={{ q.min_minutes }}
 {%- if sort %}&sort={{ sort }}{% else %}&sort={{ q.sort }}{% endif %}
 {%- if direction %}&dir={{ direction }}{% else %}&dir={{ q.direction }}{% endif %}
 {%- if q.year_min %}&year_min={{ q.year_min }}{% endif %}
@@ -13,7 +13,12 @@
 {%- if q.venue %}&venue={{ q.venue }}{% endif %}
 {%- if q.draft_class %}&draft_class={{ q.draft_class }}{% endif %}
 {%- if q.draft_round %}&draft_round={{ q.draft_round }}{% endif %}
+{%- if q.draft_pick_min %}&draft_pick_min={{ q.draft_pick_min }}{% endif %}
+{%- if q.draft_pick_max %}&draft_pick_max={{ q.draft_pick_max }}{% endif %}
 {%- if q.position %}&position={{ q.position }}{% endif %}
+{%- if q.country %}&country={{ q.country }}{% endif %}
+{%- if q.team_slug %}&team_slug={{ q.team_slug }}{% endif %}
+{%- if q.round_type %}&round_type={{ q.round_type }}{% endif %}
 {%- if q.undrafted %}&undrafted=1{% endif %}
 {%- if page %}&page={{ page }}{% endif %}
 {%- endmacro -%}

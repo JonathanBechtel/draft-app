@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -33,6 +33,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league_games_service import _venue_label
 
 SUBJECTS = ("players", "teams", "games")
@@ -151,12 +152,18 @@ class ExplorerQuery:
     """Parsed, validated Explorer query state (mirrors the URL params)."""
 
     subject: str = DEFAULT_SUBJECT
+    grain: str = "career"  # "career" | "per_competition" | "per_game"
     year_min: Optional[int] = None
     year_max: Optional[int] = None
     venue: Optional[str] = None
     draft_class: Optional[int] = None
     draft_round: Optional[int] = None
+    draft_pick_min: Optional[int] = None
+    draft_pick_max: Optional[int] = None
     position: Optional[str] = None
+    country: Optional[str] = None
+    team_slug: Optional[str] = None
+    round_type: Optional[str] = None
     undrafted: bool = False
     min_games: int = DEFAULT_MIN_GAMES
     min_minutes: int = DEFAULT_MIN_MINUTES
@@ -183,6 +190,9 @@ class ExplorerFacets:
     venues: list[tuple[str, str]] = field(default_factory=list)
     draft_classes: list[int] = field(default_factory=list)
     positions: list[str] = field(default_factory=list)
+    countries: list[str] = field(default_factory=list)
+    teams: list[str] = field(default_factory=list)
+    round_types: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -222,6 +232,13 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     if subject not in SUBJECTS:
         subject = DEFAULT_SUBJECT
 
+    grain_raw = params.get("grain", "career")
+    grain = (
+        grain_raw
+        if grain_raw in ("career", "per_competition", "per_game")
+        else "career"
+    )
+
     mode = params.get("mode", DEFAULT_MODE)
     if mode not in MODES:
         mode = DEFAULT_MODE
@@ -238,6 +255,9 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
 
     venue = params.get("venue") or None
     position = params.get("position") or None
+    country = params.get("country") or None
+    team_slug = params.get("team_slug") or None
+    round_type = params.get("round_type") or None
     undrafted = params.get("undrafted") == "1"
 
     min_games = _to_int(params.get("min_gp"))
@@ -246,12 +266,18 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
 
     return ExplorerQuery(
         subject=subject,
+        grain=grain,
         year_min=_to_int(params.get("year_min")),
         year_max=_to_int(params.get("year_max")),
         venue=venue,
         draft_class=_to_int(params.get("draft_class")),
         draft_round=_to_int(params.get("draft_round")),
+        draft_pick_min=_to_int(params.get("draft_pick_min")),
+        draft_pick_max=_to_int(params.get("draft_pick_max")),
         position=position,
+        country=country,
+        team_slug=team_slug,
+        round_type=round_type,
         undrafted=undrafted,
         min_games=min_games if min_games is not None else DEFAULT_MIN_GAMES,
         min_minutes=min_minutes if min_minutes is not None else DEFAULT_MIN_MINUTES,
@@ -311,11 +337,46 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
             )
         ).all()
     ]
+    countries = [
+        str(c)
+        for (c,) in (
+            await db.execute(
+                select(PlayerMaster.birth_country)  # type: ignore[call-overload]
+                .where(PlayerMaster.birth_country.isnot(None))  # type: ignore[union-attr]
+                .distinct()
+                .order_by(PlayerMaster.birth_country)  # type: ignore[union-attr]
+            )
+        ).all()
+    ]
+    teams = [
+        str(s)
+        for (s,) in (
+            await db.execute(
+                select(SummerLeagueTeamEntry.team_slug)  # type: ignore[call-overload]
+                .distinct()
+                .order_by(SummerLeagueTeamEntry.team_slug)  # type: ignore[union-attr]
+            )
+        ).all()
+    ]
+    round_types = [
+        str(rt)
+        for (rt,) in (
+            await db.execute(
+                select(SummerLeagueGame.round_label)  # type: ignore[call-overload]
+                .where(SummerLeagueGame.round_label.isnot(None))  # type: ignore[union-attr]
+                .distinct()
+                .order_by(SummerLeagueGame.round_label)  # type: ignore[union-attr]
+            )
+        ).all()
+    ]
     return ExplorerFacets(
         years=years,
         venues=[(v, _venue_label(v)) for v in venue_slugs],
         draft_classes=draft_classes,
         positions=positions,
+        countries=countries,
+        teams=teams,
+        round_types=round_types,
     )
 
 
@@ -403,8 +464,14 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
         if q.draft_round is not None:
             conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+        if q.draft_pick_min is not None:
+            conds.append(pm.draft_pick >= q.draft_pick_min)  # type: ignore[operator, arg-type]
+        if q.draft_pick_max is not None:
+            conds.append(pm.draft_pick <= q.draft_pick_max)  # type: ignore[operator, arg-type]
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
+    if q.country is not None:
+        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
 
     stmt = (
         select(
@@ -438,6 +505,14 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         .having(func.count() >= q.min_games)
         .having(func.sum(sec) >= q.min_minutes * 60)
     )
+    if q.team_slug is not None:
+        te = SummerLeagueTeamEntry
+        stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
+            te.team_slug == q.team_slug
+        )
+    if q.round_type is not None:
+        g = SummerLeagueGame
+        stmt = stmt.join(g, pgl.game_id == g.id).where(g.round_label == q.round_type)
     raw = list((await db.execute(stmt)).all())
 
     rows = [
@@ -450,6 +525,230 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     ]
 
     return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+
+
+async def _query_players_per_competition(
+    db: AsyncSession, q: ExplorerQuery
+) -> ExplorerResult:
+    """One row per (player, competition): season box totals from SummerLeaguePlayerSeason."""
+    ps = SummerLeaguePlayerSeason
+    comp = SummerLeagueCompetition
+    pm = PlayerMaster
+
+    # Alias minutes*60 as sec so _compute_player_values works unchanged.
+    # pace_sec is 0 — season rows have no weighted pace; per_100 mode yields None.
+    conds: list[Any] = [
+        ps.gp >= q.min_games,  # type: ignore[operator]
+        ps.minutes >= q.min_minutes,  # minutes stored as minutes, not seconds
+    ]
+    if q.year_min is not None:
+        conds.append(ps.year >= q.year_min)  # type: ignore[arg-type]
+    if q.year_max is not None:
+        conds.append(ps.year <= q.year_max)  # type: ignore[arg-type]
+    if q.venue:
+        conds.append(ps.venue_slug == q.venue)
+    if q.undrafted:
+        conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
+    else:
+        if q.draft_class is not None:
+            conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
+        if q.draft_round is not None:
+            conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+        if q.draft_pick_min is not None:
+            conds.append(pm.draft_pick >= q.draft_pick_min)  # type: ignore[operator, arg-type]
+        if q.draft_pick_max is not None:
+            conds.append(pm.draft_pick <= q.draft_pick_max)  # type: ignore[operator, arg-type]
+    if q.position is not None:
+        conds.append(pm.position == q.position)  # type: ignore[arg-type]
+    if q.country is not None:
+        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
+
+    stmt = (
+        select(
+            pm.slug,
+            pm.display_name,
+            ps.year,
+            ps.venue_slug,
+            ps.gp.label("gp"),  # type: ignore[attr-defined]
+            (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
+            literal(0).label("pace_sec"),
+            ps.pts.label("pts"),  # type: ignore[attr-defined]
+            ps.reb.label("reb"),  # type: ignore[attr-defined]
+            ps.ast.label("ast"),  # type: ignore[attr-defined]
+            ps.stl.label("stl"),  # type: ignore[attr-defined]
+            ps.blk.label("blk"),  # type: ignore[attr-defined]
+            ps.tov.label("tov"),  # type: ignore[attr-defined]
+            ps.fgm.label("fgm"),  # type: ignore[attr-defined]
+            ps.fga.label("fga"),  # type: ignore[attr-defined]
+            ps.fg3m.label("fg3m"),  # type: ignore[attr-defined]
+            ps.fg3a.label("fg3a"),  # type: ignore[attr-defined]
+            ps.ftm.label("ftm"),  # type: ignore[attr-defined]
+            ps.fta.label("fta"),  # type: ignore[attr-defined]
+            ps.oreb.label("oreb"),  # type: ignore[attr-defined]
+            ps.dreb.label("dreb"),  # type: ignore[attr-defined]
+            ps.pf.label("pf"),  # type: ignore[attr-defined]
+            ps.plus_minus.label("plus_minus"),  # type: ignore[attr-defined]
+        )  # type: ignore[call-overload, misc]
+        .select_from(ps)
+        .join(comp, comp.id == ps.competition_id)
+        .join(pm, pm.id == ps.player_id)
+        .where(*conds)
+    )
+    if q.team_slug is not None:
+        te = SummerLeagueTeamEntry
+        stmt = stmt.join(te, ps.primary_team_entry_id == te.id).where(  # type: ignore[arg-type]
+            te.team_slug == q.team_slug
+        )
+
+    raw = list((await db.execute(stmt)).all())
+
+    rows = [
+        ExplorerRow(
+            label=f"{r.display_name} · {_venue_label(r.venue_slug)} {r.year}",
+            href=f"/players/{r.slug}" if r.slug else None,
+            values=_compute_player_values(r, q.mode),
+        )
+        for r in raw
+    ]
+
+    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+
+
+async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
+    """One row per player game log (no aggregation)."""
+    pgl = SummerLeaguePlayerGameLog
+    comp = SummerLeagueCompetition
+    pm = PlayerMaster
+    game = SummerLeagueGame
+
+    conds: list[Any] = [pgl.player_id.isnot(None), pgl.minutes_seconds > 0]  # type: ignore[union-attr, operator]
+    if q.year_min is not None:
+        conds.append(comp.year >= q.year_min)  # type: ignore[arg-type]
+    if q.year_max is not None:
+        conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
+    if q.venue:
+        conds.append(comp.venue_slug == q.venue)
+    if q.undrafted:
+        conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
+    else:
+        if q.draft_class is not None:
+            conds.append(pm.draft_year == q.draft_class)  # type: ignore[arg-type]
+        if q.draft_round is not None:
+            conds.append(pm.draft_round == q.draft_round)  # type: ignore[arg-type]
+        if q.draft_pick_min is not None:
+            conds.append(pm.draft_pick >= q.draft_pick_min)  # type: ignore[operator, arg-type]
+        if q.draft_pick_max is not None:
+            conds.append(pm.draft_pick <= q.draft_pick_max)  # type: ignore[operator, arg-type]
+    if q.position is not None:
+        conds.append(pm.position == q.position)  # type: ignore[arg-type]
+    if q.country is not None:
+        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
+    if q.round_type is not None:
+        conds.append(game.round_label == q.round_type)  # type: ignore[arg-type]
+
+    stmt = (
+        select(
+            pm.slug,
+            pm.display_name,
+            game.game_date,
+            game.id.label("game_id"),  # type: ignore[attr-defined, union-attr]
+            comp.year,
+            comp.venue_slug,
+            pgl.minutes_seconds.label("sec"),  # type: ignore[union-attr]
+            pgl.pts.label("pts"),  # type: ignore[union-attr]
+            pgl.reb.label("reb"),  # type: ignore[union-attr]
+            pgl.ast.label("ast"),  # type: ignore[union-attr]
+            pgl.stl.label("stl"),  # type: ignore[union-attr]
+            pgl.blk.label("blk"),  # type: ignore[union-attr]
+            pgl.tov.label("tov"),  # type: ignore[union-attr]
+            pgl.fgm.label("fgm"),  # type: ignore[union-attr]
+            pgl.fga.label("fga"),  # type: ignore[union-attr]
+            pgl.fg3m.label("fg3m"),  # type: ignore[union-attr]
+            pgl.fg3a.label("fg3a"),  # type: ignore[union-attr]
+            pgl.ftm.label("ftm"),  # type: ignore[union-attr]
+            pgl.fta.label("fta"),  # type: ignore[union-attr]
+            pgl.oreb.label("oreb"),  # type: ignore[union-attr]
+            pgl.dreb.label("dreb"),  # type: ignore[union-attr]
+            pgl.pf.label("pf"),  # type: ignore[union-attr]
+            pgl.plus_minus.label("plus_minus"),  # type: ignore[union-attr]
+            # pace_sec: 0 for single-game rows (per_100 mode will show None)
+            literal(0).label("pace_sec"),
+        )  # type: ignore[call-overload, misc]
+        .select_from(pgl)
+        .join(comp, comp.id == pgl.competition_id)
+        .join(pm, pm.id == pgl.player_id)
+        .join(game, game.id == pgl.game_id)
+        .where(*conds)
+    )
+    if q.team_slug is not None:
+        te = SummerLeagueTeamEntry
+        stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
+            te.team_slug == q.team_slug
+        )
+
+    raw = list((await db.execute(stmt)).all())
+
+    rows = []
+    for r in raw:
+        date_str = r.game_date.isoformat() if r.game_date else "—"
+        # Build a namespace with gp=1 so _compute_player_values treats each row as one game.
+        row_ns = _SingleGameRow(r)
+        rows.append(
+            ExplorerRow(
+                label=f"{r.display_name} · {date_str}",
+                href=f"/stats/summer-league/{r.year}/games/{r.game_id}",
+                values=_compute_player_values(row_ns, q.mode),
+            )
+        )
+
+    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+
+
+class _SingleGameRow:
+    """Thin adapter that exposes a game-log row as gp=1 for _compute_player_values."""
+
+    __slots__ = (
+        "gp",
+        "sec",
+        "pace_sec",
+        "pts",
+        "reb",
+        "ast",
+        "stl",
+        "blk",
+        "tov",
+        "fgm",
+        "fga",
+        "fg3m",
+        "fg3a",
+        "ftm",
+        "fta",
+        "oreb",
+        "dreb",
+        "pf",
+        "plus_minus",
+    )
+
+    def __init__(self, row: Any) -> None:
+        self.gp = 1
+        self.sec = row.sec
+        self.pace_sec = 0
+        self.pts = row.pts
+        self.reb = row.reb
+        self.ast = row.ast
+        self.stl = row.stl
+        self.blk = row.blk
+        self.tov = row.tov
+        self.fgm = row.fgm
+        self.fga = row.fga
+        self.fg3m = row.fg3m
+        self.fg3a = row.fg3a
+        self.ftm = row.ftm
+        self.fta = row.fta
+        self.oreb = row.oreb
+        self.dreb = row.dreb
+        self.pf = row.pf
+        self.plus_minus = row.plus_minus
 
 
 # --------------------------------------------------------------------------- #
@@ -493,6 +792,14 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 
     # Win/loss + points-for/against from game scores (complete; plus_minus is not).
     game = SummerLeagueGame
+    game_scope_conds: list[Any] = [
+        or_(
+            game.home_team_entry_id.in_(entry_ids),  # type: ignore[union-attr]
+            game.away_team_entry_id.in_(entry_ids),  # type: ignore[union-attr]
+        )
+    ]
+    if q.round_type is not None:
+        game_scope_conds.append(game.round_label == q.round_type)
     games = (
         await db.execute(
             select(
@@ -500,12 +807,7 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                 game.away_team_entry_id,
                 game.home_score,
                 game.away_score,
-            ).where(  # type: ignore[call-overload]
-                or_(
-                    game.home_team_entry_id.in_(entry_ids),  # type: ignore[union-attr]
-                    game.away_team_entry_id.in_(entry_ids),  # type: ignore[union-attr]
-                )
-            )
+            ).where(*game_scope_conds)  # type: ignore[call-overload]
         )
     ).all()
 
@@ -527,19 +829,23 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             s[4] += opp
 
     # Pace / efficiency from team box logs (averaged where present).
+    # Apply the same round_type scope as game-score records so the row is consistent.
     tgl = SummerLeagueTeamGameLog
-    rating_rows = (
-        await db.execute(
-            select(
-                tgl.team_entry_id,
-                func.avg(tgl.pace).label("pace"),
-                func.avg(tgl.off_rating).label("ortg"),
-                func.avg(tgl.def_rating).label("drtg"),
-            )  # type: ignore[call-overload, misc]
-            .where(tgl.team_entry_id.in_(entry_ids))  # type: ignore[attr-defined]
-            .group_by(tgl.team_entry_id)
+    rating_stmt = (
+        select(
+            tgl.team_entry_id,
+            func.avg(tgl.pace).label("pace"),
+            func.avg(tgl.off_rating).label("ortg"),
+            func.avg(tgl.def_rating).label("drtg"),
+        )  # type: ignore[call-overload, misc]
+        .where(tgl.team_entry_id.in_(entry_ids))  # type: ignore[attr-defined]
+        .group_by(tgl.team_entry_id)
+    )
+    if q.round_type is not None:
+        rating_stmt = rating_stmt.join(game, tgl.game_id == game.id).where(
+            game.round_label == q.round_type
         )
-    ).all()
+    rating_rows = (await db.execute(rating_stmt)).all()
     ratings = {r.team_entry_id: r for r in rating_rows}
 
     def _r1(v: Any) -> Optional[float]:
@@ -592,6 +898,8 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
         conds.append(comp.venue_slug == q.venue)
+    if q.round_type is not None:
+        conds.append(game.round_label == q.round_type)
 
     game_rows = (
         await db.execute(
@@ -689,7 +997,12 @@ async def run_explorer_query(db: AsyncSession, q: ExplorerQuery) -> ExplorerResu
     facets = await get_facets(db)
 
     if q.subject == "players":
-        result = await _query_players(db, q)
+        if q.grain == "per_competition":
+            result = await _query_players_per_competition(db, q)
+        elif q.grain == "per_game":
+            result = await _query_players_per_game(db, q)
+        else:  # career (default)
+            result = await _query_players(db, q)
         result.facets = facets
         return result
 

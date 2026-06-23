@@ -463,9 +463,9 @@ async def load_shooting(
     if df.empty:
         return df
     df["fg_pct"] = df.apply(
-        lambda row: (row["fgm"] / row["fga"]) * 100
-        if row["fga"] not in (0, None)
-        else pd.NA,
+        lambda row: (
+            (row["fgm"] / row["fga"]) * 100 if row["fga"] not in (0, None) else pd.NA
+        ),
         axis=1,
     )
     return df

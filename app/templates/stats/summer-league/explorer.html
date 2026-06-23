@@ -57,6 +57,13 @@
         {% for slug, label in result.facets.venues %}<option value="{{ slug }}" {{ 'selected' if q.venue == slug else '' }}>{{ label }}</option>{% endfor %}
       </select>
     </div>
+    <div class="slg-filter">
+      <label for="ex-round-type">Round type</label>
+      <select id="ex-round-type" name="round_type">
+        <option value="">All rounds</option>
+        {% for rt in result.facets.round_types %}<option value="{{ rt }}" {{ 'selected' if q.round_type == rt else '' }}>{{ rt }}</option>{% endfor %}
+      </select>
+    </div>
     {% if q.subject == 'players' %}
     <div class="slg-filter">
       <label for="ex-draft-class">Draft class</label>
@@ -74,6 +81,12 @@
       </select>
     </div>
     <div class="slg-filter">
+      <label>Pick range</label>
+      <input type="number" name="draft_pick_min" value="{{ q.draft_pick_min or '' }}" min="1" max="60" placeholder="Min">
+      <span>–</span>
+      <input type="number" name="draft_pick_max" value="{{ q.draft_pick_max or '' }}" min="1" max="60" placeholder="Max">
+    </div>
+    <div class="slg-filter">
       <label for="ex-undrafted">Undrafted only</label>
       <input id="ex-undrafted" type="checkbox" name="undrafted" value="1" {{ 'checked' if q.undrafted else '' }}>
     </div>
@@ -85,6 +98,32 @@
       </select>
     </div>
     <div class="slg-filter">
+      <label for="grain-select">Grain</label>
+      <select id="grain-select" name="grain">
+        <option value="career" {% if q.grain == "career" %}selected{% endif %}>Career</option>
+        <option value="per_competition" {% if q.grain == "per_competition" %}selected{% endif %}>Per competition</option>
+        <option value="per_game" {% if q.grain == "per_game" %}selected{% endif %}>Per game</option>
+      </select>
+    </div>
+    <div class="slg-filter">
+      <label for="country-select">Country</label>
+      <select id="country-select" name="country">
+        <option value="">All countries</option>
+        {% for c in result.facets.countries %}
+        <option value="{{ c }}" {% if q.country == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="slg-filter">
+      <label for="team-select">Team</label>
+      <select id="team-select" name="team_slug">
+        <option value="">All teams</option>
+        {% for slug in result.facets.teams %}
+        <option value="{{ slug }}" {% if q.team_slug == slug %}selected{% endif %}>{{ slug }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="slg-filter grain-hide-per-game">
       <label for="ex-mode">Mode</label>
       <select id="ex-mode" name="mode">
         <option value="per_game" {{ 'selected' if q.mode == 'per_game' else '' }}>Per game</option>
@@ -93,11 +132,11 @@
         <option value="totals" {{ 'selected' if q.mode == 'totals' else '' }}>Totals</option>
       </select>
     </div>
-    <div class="slg-filter">
+    <div class="slg-filter grain-hide-per-game">
       <label for="ex-min-gp">Min GP</label>
       <input id="ex-min-gp" type="number" name="min_gp" min="0" value="{{ q.min_games }}">
     </div>
-    <div class="slg-filter">
+    <div class="slg-filter grain-hide-per-game">
       <label for="ex-min-min">Min MIN</label>
       <input id="ex-min-min" type="number" name="min_min" min="0" value="{{ q.min_minutes }}">
     </div>
@@ -106,6 +145,22 @@
       <button type="submit" class="slg-explorer-run">Run query</button>
     </div>
   </form>
+  {% if q.subject == 'players' %}
+  <script>
+  (function() {
+    var grain = document.getElementById('grain-select');
+    if (!grain) return;
+    function toggle() {
+      var isPerGame = grain.value === 'per_game';
+      document.querySelectorAll('.grain-hide-per-game').forEach(function(el) {
+        el.style.display = isPerGame ? 'none' : '';
+      });
+    }
+    grain.addEventListener('change', toggle);
+    toggle();
+  })();
+  </script>
+  {% endif %}
 
   {% include "stats/summer-league/_explorer_results.html" %}
 
