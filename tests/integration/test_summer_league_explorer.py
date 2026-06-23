@@ -1829,3 +1829,298 @@ async def test_adv_banner_absent_when_eligible(
     )
     assert resp.status_code == 200
     assert "slg-explorer-banner--warn" not in resp.text
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4c: age filter (career grain and per_competition grain)
+# --------------------------------------------------------------------------- #
+#
+# Age computation choices (matches service layer inline comment):
+#   - career grain: age = EXTRACT(YEAR FROM MIN(comp.starts_on)) - EXTRACT(YEAR FROM pm.birthdate)
+#     → anchored to the EARLIEST competition in scope (youngest / debut-era age)
+#   - per_competition grain: age = ps.year - EXTRACT(YEAR FROM pm.birthdate)
+#     → competition year minus birth year, one row per season
+
+
+async def _seed_age_filter(
+    db: AsyncSession,
+) -> tuple[PlayerMaster, PlayerMaster]:
+    """Two players with known birth years and known debut years.
+
+    young_player: born 2004-01-01, first SL in 2023 → career age = 19
+    old_player:   born 1999-01-01, first SL in 2023 → career age = 24
+
+    Both have 2 GP and 60 minutes so they qualify at default thresholds.
+    starts_on for the competition is 2023-07-01.
+    """
+    young = make_player("Young", "Rookie")
+    young.birthdate = date(2004, 1, 1)
+
+    old = make_player("Old", "Vet")
+    old.birthdate = date(1999, 1, 1)
+
+    db.add_all([young, old])
+    await db.flush()
+
+    # Competition starts 2023-07-01 → EXTRACT(YEAR FROM starts_on) = 2023
+    # young career age: 2023 - 2004 = 19
+    # old   career age: 2023 - 1999 = 24
+    c = await _comp(db, year=2023, venue_slug="las_vegas", league_id="15")
+    t = await _team(db, comp_id=c)
+    await _log(db, comp_id=c, team=t, player=young, pts=20, games=2)
+    await _log(db, comp_id=c, team=t, player=old, pts=15, games=2)
+    await db.commit()
+    return young, old
+
+
+@pytest.mark.asyncio
+async def test_age_min_filter_career_excludes_younger_players(
+    db_session: AsyncSession,
+) -> None:
+    """age_min filter in career grain: only players old enough are returned.
+
+    young_player (career age 19) must be excluded by age_min=20.
+    old_player (career age 24) must be included.
+    """
+    await _seed_age_filter(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", age_min=20),
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "Old Vet"
+
+
+@pytest.mark.asyncio
+async def test_age_max_filter_career_excludes_older_players(
+    db_session: AsyncSession,
+) -> None:
+    """age_max filter in career grain: only players young enough are returned.
+
+    old_player (career age 24) must be excluded by age_max=21.
+    young_player (career age 19) must be included.
+    """
+    await _seed_age_filter(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", age_max=21),
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "Young Rookie"
+
+
+@pytest.mark.asyncio
+async def test_age_range_filter_career_both_bounds(
+    db_session: AsyncSession,
+) -> None:
+    """age_min and age_max together narrow to players within the range (both inclusive).
+
+    age_min=19, age_max=21 → only young_player (age 19) qualifies.
+    """
+    await _seed_age_filter(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", age_min=19, age_max=21),
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "Young Rookie"
+
+
+@pytest.mark.asyncio
+async def test_age_filter_career_no_bounds_returns_all(
+    db_session: AsyncSession,
+) -> None:
+    """No age filter returns all qualifying players (both bounds None)."""
+    await _seed_age_filter(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career"),
+    )
+    assert result.total == 2
+
+
+@pytest.mark.asyncio
+async def test_age_filter_career_no_birthdate_excluded(
+    db_session: AsyncSession,
+) -> None:
+    """A player with NULL birthdate is excluded when age_min is set.
+
+    NULL birthday → NULL computed age → does not satisfy any age bound.
+    The other player (with a known birthdate) is still returned.
+    """
+    no_birth = make_player("No", "Birth")
+    no_birth.birthdate = None
+    has_birth = make_player("Has", "Birth")
+    has_birth.birthdate = date(2000, 6, 1)  # career age = 2023 - 2000 = 23
+    db_session.add_all([no_birth, has_birth])
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2023, venue_slug="las_vegas", league_id="15")
+    t = await _team(db_session, comp_id=c)
+    await _log(db_session, comp_id=c, team=t, player=no_birth, pts=10, games=2)
+    await _log(db_session, comp_id=c, team=t, player=has_birth, pts=20, games=2)
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", age_min=20),
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "Has Birth"
+
+
+async def _seed_age_filter_per_comp(
+    db: AsyncSession,
+) -> None:
+    """Seed per_competition age filter data.
+
+    young_player: born 2004, plays in 2023 → per_comp age = 2023 - 2004 = 19
+    old_player:   born 1999, plays in 2023 → per_comp age = 2023 - 1999 = 24
+    """
+    young = make_player("YoungPC", "Rookie")
+    young.birthdate = date(2004, 1, 1)
+
+    old = make_player("OldPC", "Vet")
+    old.birthdate = date(1999, 1, 1)
+
+    db.add_all([young, old])
+    await db.flush()
+
+    c = await _comp(db, year=2023, venue_slug="las_vegas", league_id="15")
+    for player, pts in ((young, 20), (old, 15)):
+        assert player.id is not None
+        db.add(
+            SummerLeaguePlayerSeason(
+                competition_id=c,
+                player_id=player.id,
+                year=2023,
+                venue_slug="las_vegas",
+                gp=2,
+                minutes=60.0,
+                pts=pts,
+                reb=3,
+                ast=2,
+                fgm=pts // 2,
+                fga=pts,
+                fg3m=0,
+                fg3a=0,
+                ftm=0,
+                fta=0,
+                oreb=1,
+                dreb=2,
+                blk=0,
+                stl=1,
+                tov=1,
+                pf=2,
+                plus_minus=5,
+            )
+        )
+    await db.flush()
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_age_min_filter_per_competition(
+    db_session: AsyncSession,
+) -> None:
+    """age_min filter in per_competition grain: only players old enough are returned.
+
+    young_player (per_comp age 19) excluded by age_min=22; old_player (age 24) included.
+    """
+    await _seed_age_filter_per_comp(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            age_min=22,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result.total == 1
+    assert result.rows[0].label.startswith("OldPC")
+
+
+@pytest.mark.asyncio
+async def test_age_max_filter_per_competition(
+    db_session: AsyncSession,
+) -> None:
+    """age_max filter in per_competition grain: only players young enough are returned.
+
+    old_player (per_comp age 24) excluded by age_max=21; young_player (age 19) included.
+    """
+    await _seed_age_filter_per_comp(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            age_max=21,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result.total == 1
+    assert result.rows[0].label.startswith("YoungPC")
+
+
+@pytest.mark.asyncio
+async def test_age_filter_composes_with_venue_filter(
+    db_session: AsyncSession,
+) -> None:
+    """Age filter composes correctly with venue filter (career grain).
+
+    Seeds two competitions for the same player (different venues). The age
+    filter should compose with the venue filter without expanding or collapsing
+    the result set incorrectly.  With venue=las_vegas AND age_max=21 only the
+    young player at that venue should be visible.
+    """
+    young = make_player("YoungVenue", "Player")
+    young.birthdate = date(2004, 1, 1)  # career age at 2023 = 19
+
+    old = make_player("OldVenue", "Player")
+    old.birthdate = date(1998, 1, 1)  # career age at 2023 = 25
+
+    db_session.add_all([young, old])
+    await db_session.flush()
+
+    c_lv = await _comp(db_session, year=2023, venue_slug="las_vegas", league_id="15")
+    c_slc = await _comp(db_session, year=2023, venue_slug="salt_lake_city", league_id="16")
+    t_lv = await _team(db_session, comp_id=c_lv)
+    t_slc = await _team(db_session, comp_id=c_slc)
+
+    # Both players at Las Vegas; only old at Salt Lake.
+    await _log(db_session, comp_id=c_lv, team=t_lv, player=young, pts=20, games=2)
+    await _log(db_session, comp_id=c_lv, team=t_lv, player=old, pts=15, games=2)
+    await _log(db_session, comp_id=c_slc, team=t_slc, player=old, pts=15, games=2)
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="career",
+            venue="las_vegas",
+            age_max=21,
+        ),
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "YoungVenue Player"
+
+
+@pytest.mark.asyncio
+async def test_parse_query_age_min_max_parsed(
+) -> None:
+    """parse_query correctly parses age_min and age_max from query string."""
+    q = parse_query({"age_min": "19", "age_max": "24"})
+    assert q.age_min == 19
+    assert q.age_max == 24
+
+
+@pytest.mark.asyncio
+async def test_parse_query_age_invalid_values_become_none() -> None:
+    """Invalid / blank age values degrade to None (filter off)."""
+    q = parse_query({"age_min": "bad", "age_max": ""})
+    assert q.age_min is None
+    assert q.age_max is None

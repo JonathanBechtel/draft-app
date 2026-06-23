@@ -91,6 +91,12 @@
       <input id="ex-undrafted" type="checkbox" name="undrafted" value="1" {{ 'checked' if q.undrafted else '' }}>
     </div>
     <div class="slg-filter">
+      <label>Age range</label>
+      <input type="number" name="age_min" id="ex-age-min" value="{{ q.age_min or '' }}" min="16" max="40" placeholder="Min">
+      <span>–</span>
+      <input type="number" name="age_max" id="ex-age-max" value="{{ q.age_max or '' }}" min="16" max="40" placeholder="Max">
+    </div>
+    <div class="slg-filter">
       <label for="ex-position">Position</label>
       <select id="ex-position" name="position">
         <option value="">Any</option>

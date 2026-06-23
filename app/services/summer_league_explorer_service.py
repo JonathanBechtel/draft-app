@@ -206,6 +206,8 @@ class ExplorerQuery:
     team_slug: Optional[str] = None
     round_type: Optional[str] = None
     undrafted: bool = False
+    age_min: Optional[int] = None
+    age_max: Optional[int] = None
     min_games: int = DEFAULT_MIN_GAMES
     min_minutes: int = DEFAULT_MIN_MINUTES
     mode: str = DEFAULT_MODE
@@ -321,6 +323,8 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         team_slug=team_slug,
         round_type=round_type,
         undrafted=undrafted,
+        age_min=_to_int(params.get("age_min")),
+        age_max=_to_int(params.get("age_max")),
         min_games=min_games if min_games is not None else DEFAULT_MIN_GAMES,
         min_minutes=min_minutes if min_minutes is not None else DEFAULT_MIN_MINUTES,
         mode=mode,
@@ -588,6 +592,26 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         .having(func.count() >= q.min_games)
         .having(func.sum(sec) >= q.min_minutes * 60)
     )
+    # Age filter (career grain): age = year of the player's EARLIEST summer league in scope
+    # minus birth year.  We use MIN(comp.starts_on) so the age reflects how old the player
+    # was when they first appeared in the filtered competition pool, which is the most
+    # meaningful anchor for prospect-era analysis (e.g., "19-year-old rookies").
+    # NULL birth dates are excluded from the age filter (no match rather than false match).
+    # birthdate is constant per player but the PK is not in GROUP BY, so wrap it in
+    # MIN() to satisfy Postgres grouping rules; MIN of a per-player constant is that
+    # constant.  NULL birthdate yields NULL age → comparison is NULL → row excluded.
+    if q.age_min is not None:
+        stmt = stmt.having(
+            func.extract("year", func.min(comp.starts_on))  # type: ignore[arg-type]
+            - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
+            >= q.age_min
+        )
+    if q.age_max is not None:
+        stmt = stmt.having(
+            func.extract("year", func.min(comp.starts_on))  # type: ignore[arg-type]
+            - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
+            <= q.age_max
+        )
     if q.team_slug is not None:
         te = SummerLeagueTeamEntry
         stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
@@ -709,6 +733,19 @@ async def _query_players_per_competition(
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
     if q.country is not None:
         conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
+    # Age filter (per_competition grain): age = competition year − birth year.
+    # One row per (player, competition), so the year is the competition year directly
+    # (ps.year).  NULL birth dates naturally produce NULL age and are excluded (no match).
+    if q.age_min is not None:
+        conds.append(
+            ps.year - func.extract("year", pm.birthdate)  # type: ignore[arg-type]
+            >= q.age_min
+        )
+    if q.age_max is not None:
+        conds.append(
+            ps.year - func.extract("year", pm.birthdate)  # type: ignore[arg-type]
+            <= q.age_max
+        )
 
     base_select = [
         pm.slug,
