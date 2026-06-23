@@ -10,8 +10,6 @@ from __future__ import annotations
 import re
 
 import pytest
-from sqlalchemy import select, text
-from sqlalchemy.dialects import postgresql
 
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
@@ -78,65 +76,6 @@ def test_player_sort_expr_percentage_stats_return_sql_expressions() -> None:
 def test_player_sort_expr_min_maps_to_sec() -> None:
     """'min' (displayed minutes) sorts by raw seconds-played aggregate."""
     assert _player_sort_expr("min") == "SUM(sec)"
-
-
-# --------------------------------------------------------------------------- #
-# Career-grain statement contains ORDER BY, LIMIT, OFFSET
-# --------------------------------------------------------------------------- #
-
-
-def test_career_grain_statement_contains_order_limit_offset() -> None:
-    """The career-grain query path must produce SQL containing ORDER BY, LIMIT, OFFSET.
-
-    We construct a minimal representative SQLAlchemy statement that mirrors
-    what _query_players builds (the aggregation + order_by + limit + offset),
-    compile it to SQL, and assert all three clauses are present.
-
-    This is a unit test (no DB required): it validates the statement shape, not
-    execution results.
-    """
-    from sqlalchemy import func, nulls_last
-
-    from app.schemas.players_master import PlayerMaster
-    from app.schemas.summer_league import SummerLeaguePlayerGameLog, SummerLeagueCompetition
-
-    pgl = SummerLeaguePlayerGameLog
-    comp = SummerLeagueCompetition
-    pm = PlayerMaster
-    sec = pgl.minutes_seconds
-
-    q = ExplorerQuery(subject="players", grain="career", sort="pts", direction="desc", page=2)
-
-    stmt = (
-        select(
-            pm.slug,
-            pm.display_name,
-            func.count().label("gp"),
-            func.sum(sec).label("sec"),
-            func.sum(pgl.pts).label("pts"),
-        )  # type: ignore[call-overload]
-        .select_from(pgl)
-        .join(comp, comp.id == pgl.competition_id)
-        .join(pm, pm.id == pgl.player_id)
-        .group_by(pgl.player_id, pm.slug, pm.display_name)
-        .having(func.count() >= q.min_games)
-        .having(func.sum(sec) >= q.min_minutes * 60)
-    )
-
-    sort_expr = _player_sort_expr(q.sort)
-    direction = "DESC" if q.direction == "desc" else "ASC"
-    stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
-    stmt = stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
-
-    # Compile to a dialect-specific string for inspection.
-    compiled = stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})  # type: ignore[call-arg]
-    sql = str(compiled).upper()
-
-    assert "ORDER BY" in sql, "compiled SQL must contain ORDER BY"
-    assert "LIMIT" in sql, "compiled SQL must contain LIMIT"
-    assert "OFFSET" in sql, "compiled SQL must contain OFFSET"
-    # Offset for page 2 = (2-1) * PAGE_SIZE = PAGE_SIZE.
-    assert str(PAGE_SIZE) in sql, f"LIMIT/OFFSET value {PAGE_SIZE} must appear in SQL"
 
 
 # --------------------------------------------------------------------------- #

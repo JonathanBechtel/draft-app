@@ -1940,6 +1940,39 @@ async def test_age_filter_career_no_bounds_returns_all(
 
 
 @pytest.mark.asyncio
+async def test_age_filter_career_anchors_to_earliest_competition(
+    db_session: AsyncSession,
+) -> None:
+    """Career-grain age is anchored to the player's EARLIEST competition, not latest.
+
+    One player (born 2004-01-01) appears in two SL competitions: 2023 and 2025.
+    Earliest-anchor age = 2023 - 2004 = 19; latest-anchor age = 2025 - 2004 = 21.
+    Filtering age_max=20 must INCLUDE the player (19 <= 20). If the implementation
+    anchored to MAX(starts_on) instead of MIN, the age would read 21 and the player
+    would be wrongly excluded — so this distinguishes the two semantics.
+    """
+    player = make_player("Two", "Comps")
+    player.birthdate = date(2004, 1, 1)
+    db_session.add(player)
+    await db_session.flush()
+
+    c_early = await _comp(db_session, year=2023, venue_slug="las_vegas", league_id="15")
+    c_late = await _comp(db_session, year=2025, venue_slug="las_vegas", league_id="15")
+    t_early = await _team(db_session, comp_id=c_early)
+    t_late = await _team(db_session, comp_id=c_late)
+    await _log(db_session, comp_id=c_early, team=t_early, player=player, pts=20, games=2)
+    await _log(db_session, comp_id=c_late, team=t_late, player=player, pts=18, games=2)
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", age_max=20),
+    )
+    assert result.total == 1, "earliest-era age (19) should pass age_max=20"
+    assert result.rows[0].label == "Two Comps"
+
+
+@pytest.mark.asyncio
 async def test_age_filter_career_no_birthdate_excluded(
     db_session: AsyncSession,
 ) -> None:
