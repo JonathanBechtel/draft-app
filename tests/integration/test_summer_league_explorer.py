@@ -42,8 +42,11 @@ async def _comp(db: AsyncSession, *, year: int, venue_slug: str, league_id: str)
         league_id=league_id,
         venue_slug=venue_slug,
         display_name=f"{year} {venue_slug}",
-        starts_on=date(year, 7, 1),
-        ends_on=date(year, 7, 10),
+        # starts_on/ends_on are intentionally left NULL to mirror production data
+        # (ingested competitions have no dates). Career-grain age must derive from
+        # the integer comp.year, not EXTRACT(YEAR FROM starts_on).
+        starts_on=None,
+        ends_on=None,
     )
     db.add(comp)
     await db.flush()
@@ -1836,7 +1839,7 @@ async def test_adv_banner_absent_when_eligible(
 # --------------------------------------------------------------------------- #
 #
 # Age computation choices (matches service layer inline comment):
-#   - career grain: age = EXTRACT(YEAR FROM MIN(comp.starts_on)) - EXTRACT(YEAR FROM pm.birthdate)
+#   - career grain: age = MIN(comp.year) - EXTRACT(YEAR FROM pm.birthdate)
 #     → anchored to the EARLIEST competition in scope (youngest / debut-era age)
 #   - per_competition grain: age = ps.year - EXTRACT(YEAR FROM pm.birthdate)
 #     → competition year minus birth year, one row per season
@@ -1851,7 +1854,7 @@ async def _seed_age_filter(
     old_player:   born 1999-01-01, first SL in 2023 → career age = 24
 
     Both have 2 GP and 60 minutes so they qualify at default thresholds.
-    starts_on for the competition is 2023-07-01.
+    Competition year is 2023 (starts_on is NULL, as in production).
     """
     young = make_player("Young", "Rookie")
     young.birthdate = date(2004, 1, 1)
@@ -1862,7 +1865,7 @@ async def _seed_age_filter(
     db.add_all([young, old])
     await db.flush()
 
-    # Competition starts 2023-07-01 → EXTRACT(YEAR FROM starts_on) = 2023
+    # Competition year is 2023 (comp.year), used directly for career-grain age
     # young career age: 2023 - 2004 = 19
     # old   career age: 2023 - 1999 = 24
     c = await _comp(db, year=2023, venue_slug="las_vegas", league_id="15")
@@ -1948,7 +1951,7 @@ async def test_age_filter_career_anchors_to_earliest_competition(
     One player (born 2004-01-01) appears in two SL competitions: 2023 and 2025.
     Earliest-anchor age = 2023 - 2004 = 19; latest-anchor age = 2025 - 2004 = 21.
     Filtering age_max=20 must INCLUDE the player (19 <= 20). If the implementation
-    anchored to MAX(starts_on) instead of MIN, the age would read 21 and the player
+    anchored to MAX(comp.year) instead of MIN, the age would read 21 and the player
     would be wrongly excluded — so this distinguishes the two semantics.
     """
     player = make_player("Two", "Comps")

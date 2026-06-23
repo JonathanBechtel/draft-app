@@ -593,23 +593,22 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         .having(func.sum(sec) >= q.min_minutes * 60)
     )
     # Age filter (career grain): age = year of the player's EARLIEST summer league in scope
-    # minus birth year.  We use MIN(comp.starts_on) so the age reflects how old the player
-    # was when they first appeared in the filtered competition pool, which is the most
-    # meaningful anchor for prospect-era analysis (e.g., "19-year-old rookies").
-    # NULL birth dates are excluded from the age filter (no match rather than false match).
-    # birthdate is constant per player but the PK is not in GROUP BY, so wrap it in
-    # MIN() to satisfy Postgres grouping rules; MIN of a per-player constant is that
-    # constant.  NULL birthdate yields NULL age → comparison is NULL → row excluded.
+    # minus birth year.  We use MIN(comp.year) — the populated integer competition year —
+    # NOT EXTRACT(YEAR FROM comp.starts_on): starts_on is unpopulated for ingested
+    # competitions, so deriving the year from it would NULL out every age.  MIN(comp.year)
+    # anchors age to the player's first appearance in the filtered pool, the most meaningful
+    # anchor for prospect-era analysis (e.g., "19-year-old rookies").
+    # birthdate is constant per player but the PK is not in GROUP BY, so wrap it in MIN() to
+    # satisfy Postgres grouping rules; MIN of a per-player constant is that constant.  NULL
+    # birthdate yields NULL age → comparison is NULL → row excluded (no false match).
     if q.age_min is not None:
         stmt = stmt.having(
-            func.extract("year", func.min(comp.starts_on))  # type: ignore[arg-type]
-            - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
+            func.min(comp.year) - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
             >= q.age_min
         )
     if q.age_max is not None:
         stmt = stmt.having(
-            func.extract("year", func.min(comp.starts_on))  # type: ignore[arg-type]
-            - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
+            func.min(comp.year) - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
             <= q.age_max
         )
     if q.team_slug is not None:
