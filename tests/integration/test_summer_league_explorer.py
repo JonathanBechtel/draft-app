@@ -2060,6 +2060,32 @@ async def test_age_filter_career_anchors_to_earliest_competition(
 
 
 @pytest.mark.asyncio
+async def test_age_filter_applies_to_per_game_grain(
+    db_session: AsyncSession,
+) -> None:
+    """#398 codex: the age filter must also constrain grain=per_game.
+
+    _seed_age_filter seeds a 19-year-old and a 24-year-old (at the 2023 competition),
+    each with game logs. With grain=per_game and age_max=21, only the young player's
+    game-log rows may appear; previously the per_game builder ignored age entirely.
+    """
+    young, old = await _seed_age_filter(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_game",
+            age_max=21,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result.total >= 1
+    names = {r.label.split(" · ")[0] for r in result.rows}
+    assert names == {"Young Rookie"}, f"old vet (age 24) should be excluded: {names}"
+
+
+@pytest.mark.asyncio
 async def test_age_filter_career_no_birthdate_excluded(
     db_session: AsyncSession,
 ) -> None:

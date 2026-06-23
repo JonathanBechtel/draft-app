@@ -323,6 +323,24 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     round_type = params.get("round_type") or None
     undrafted = params.get("undrafted") == "1"
 
+    year_min = _to_int(params.get("year_min"))
+    year_max = _to_int(params.get("year_max"))
+
+    # Composite sort keys (PER/ORtg/DRtg/BPM/WS/VORP) are only SELECTed by the
+    # single-competition per_competition query; on any other grain/scope they would
+    # become ORDER BY on a column the SELECT never exposes. Coerce them back to the
+    # default sort so a hand-typed ?sort=per&grain=career — or sorting by PER and then
+    # switching grain — can't 500. (ts_pct stays valid everywhere; it's box-derived.)
+    composite_sort_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS if c.key != "ts_pct"}
+    single_comp_scope = (
+        grain == "per_competition"
+        and year_min is not None
+        and year_min == year_max
+        and venue is not None
+    )
+    if sort in composite_sort_keys and not single_comp_scope:
+        sort = default_sort
+
     # Reject implausible future draft classes so a hand-typed ?draft_class=2033
     # cannot filter on a phantom year (mirrors the facet clamp).
     draft_class = _to_int(params.get("draft_class"))
@@ -336,8 +354,8 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     return ExplorerQuery(
         subject=subject,
         grain=grain,
-        year_min=_to_int(params.get("year_min")),
-        year_max=_to_int(params.get("year_max")),
+        year_min=year_min,
+        year_max=year_max,
         venue=venue,
         draft_class=draft_class,
         draft_round=_to_int(params.get("draft_round")),
@@ -557,9 +575,9 @@ def _player_sort_expr(sort_col: str, mode: str) -> Any:
     # Percentage stats — mode-independent NULLIF-guarded ratio expressions.
     _pct_exprs: dict[str, str] = {
         "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
-        "fg_pct": "SUM(fgm) / NULLIF(SUM(fga), 0)",
-        "fg3_pct": "SUM(fg3m) / NULLIF(SUM(fg3a), 0)",
-        "ft_pct": "SUM(ftm) / NULLIF(SUM(fta), 0)",
+        "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
+        "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
+        "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
         "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
     }
     if sort_col in _pct_exprs:
@@ -893,9 +911,9 @@ async def _query_players_per_competition(
     # weighted pace at season grain), so per_100 yields NULL and sorts last.
     _pc_pct_exprs: dict[str, str] = {
         "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
-        "fg_pct": "fgm / NULLIF(fga, 0)",
-        "fg3_pct": "fg3m / NULLIF(fg3a, 0)",
-        "ft_pct": "ftm / NULLIF(fta, 0)",
+        "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
+        "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
+        "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
         "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
     }
     if q.sort in _pc_pct_exprs:
@@ -1000,6 +1018,18 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
         conds.append(pm.birth_country.in_(country_variants(q.country)))  # type: ignore[union-attr]
     if q.round_type is not None:
         conds.append(game.round_label == q.round_type)  # type: ignore[arg-type]
+    # Age at the time of the game = competition year - birth year. Applied as a
+    # per-row WHERE (per_game is not aggregated). NULL birthdate yields NULL → the
+    # row is excluded, matching the career/per_competition grains. Without this the
+    # Age range control silently no-ops for grain=per_game.
+    if q.age_min is not None:
+        conds.append(
+            comp.year - func.extract("year", pm.birthdate) >= q.age_min  # type: ignore[arg-type]
+        )
+    if q.age_max is not None:
+        conds.append(
+            comp.year - func.extract("year", pm.birthdate) <= q.age_max  # type: ignore[arg-type]
+        )
 
     stmt = (
         select(
@@ -1047,9 +1077,9 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
     # Percentage sort expressions operate on raw per-game-log column labels.
     _pg_pct_exprs: dict[str, str] = {
         "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
-        "fg_pct": "fgm / NULLIF(fga, 0)",
-        "fg3_pct": "fg3m / NULLIF(fg3a, 0)",
-        "ft_pct": "ftm / NULLIF(fta, 0)",
+        "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
+        "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
+        "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
         "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
         "min": "sec",
         "gp": "1",  # every row is 1 game; stable but well-defined

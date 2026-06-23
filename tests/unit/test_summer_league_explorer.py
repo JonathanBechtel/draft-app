@@ -45,6 +45,53 @@ def test_ts_pct_is_advanced_not_base_column() -> None:
     assert "ts_pct" in _SORT_KEYS_BY_SUBJECT["players"]
 
 
+def test_composite_sort_key_coerced_off_non_advanced_query() -> None:
+    """Composite sort keys (PER/BPM/…) survive only on a single-competition
+    per_competition query; elsewhere they coerce to the default to avoid emitting
+    ORDER BY on a column the SELECT never exposes (would 500). ts_pct stays valid
+    everywhere since it is box-derived.
+    """
+    # career → coerced to the default 'pts'
+    assert parse_query({"sort": "per", "grain": "career"}).sort == "pts"
+    # per_competition but multi-year (not a single pinned competition) → coerced
+    assert (
+        parse_query(
+            {
+                "sort": "bpm",
+                "grain": "per_competition",
+                "year_min": "2023",
+                "year_max": "2024",
+                "venue": "las_vegas",
+            }
+        ).sort
+        == "pts"
+    )
+    # single-competition per_competition → composite key is kept
+    assert (
+        parse_query(
+            {
+                "sort": "per",
+                "grain": "per_competition",
+                "year_min": "2024",
+                "year_max": "2024",
+                "venue": "las_vegas",
+            }
+        ).sort
+        == "per"
+    )
+    # ts_pct is box-derived and valid on any grain
+    assert parse_query({"sort": "ts_pct", "grain": "career"}).sort == "ts_pct"
+
+
+def test_percent_sort_exprs_force_float_division() -> None:
+    """FG%/3P%/FT% sort expressions must force float division so Postgres integer
+    truncation doesn't collapse every sub-100% ratio to 0 (4/10 and 9/10 → 0).
+    """
+    for key in ("fg_pct", "fg3_pct", "ft_pct"):
+        expr = _player_sort_expr(key, "per_game")
+        assert "1.0" in expr, f"{key} sort expr must force float division: {expr!r}"
+
+
 def test_parse_query_defaults_and_validation() -> None:
     """Unknown subject/mode/sort fall back to safe defaults; ints coerce."""
     q = parse_query({"subject": "aliens", "mode": "warp", "sort": "evil", "dir": "x"})
@@ -273,7 +320,20 @@ def test_advanced_column_keys_in_players_sort_set() -> None:
 
 
 def test_parse_query_accepts_advanced_sort_keys() -> None:
-    """parse_query does not fall back to default when an advanced sort key is passed."""
+    """Advanced sort keys are accepted for a single-competition per_competition query —
+    the only scope whose SELECT exposes the composite columns. (On other scopes the
+    composite keys coerce to the default; see
+    test_composite_sort_key_coerced_off_non_advanced_query.)
+    """
     for col in _PLAYER_ADVANCED_COLUMNS:
-        q = parse_query({"subject": "players", "sort": col.key})
+        q = parse_query(
+            {
+                "subject": "players",
+                "sort": col.key,
+                "grain": "per_competition",
+                "year_min": "2024",
+                "year_max": "2024",
+                "venue": "las_vegas",
+            }
+        )
         assert q.sort == col.key, f"expected sort={col.key!r}, got {q.sort!r}"
