@@ -159,6 +159,10 @@
 
 /* ------------------------------------------------------------------ Board */
 .slg-board {
+  /* Contain the absolutely-positioned .scanlines overlay (inset:0) to this card.
+     Without a positioned ancestor the overlay escapes to the viewport and blankets
+     the whole page with the CRT scanline texture. */
+  position: relative;
   margin-bottom: 1.25rem;
 }
 .slg-tablewrap {
