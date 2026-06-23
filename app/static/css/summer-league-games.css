@@ -803,13 +803,27 @@
 .slg-explorer-results.is-loading { opacity: 0.5; pointer-events: none; transition: opacity 0.1s; }
 .slg-explorer-table th a { color: inherit; text-decoration: none; }
 .slg-explorer-table th a:hover { text-decoration: underline; }
-.slg-explorer-table th.slg-sort-active { color: var(--color-accent-emerald, #10b981); }
 .slg-explorer__label { text-align: left; }
-/* The Explorer table can carry 24+ columns (base box stats + advanced composites).
-   Override .sl-stats-table's width:100% — at full width the auto table layout
-   compresses columns until the right-aligned numbers spill into each other
-   ("25.415.3"). Sizing to content + nowrap keeps every cell at its natural width
-   with full padding; the .slg-tablewrap (overflow-x:auto) scrolls horizontally. */
+
+/* -- Clean Explorer results table ---------------------------------------------
+   The Explorer uses a flat, readable data-table look instead of the retro
+   scoreboard chrome: drop the green dot-matrix + CRT scanline textures and lean
+   on a crisp header rule, light row dividers, and a row hover. Scoped to the
+   Explorer so other SL scoreboards keep their retro treatment. */
+.slg-explorer-results .stats-scoreboard {
+  background-image: none; /* remove green dot-matrix texture */
+  outline: none;
+  border: 1px solid var(--color-slate-200);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+.slg-explorer-results .scanlines {
+  display: none; /* remove CRT scanline overlay */
+}
+
+/* The table can carry 24+ columns (base box stats + advanced composites). Override
+   .sl-stats-table's width:100% — at full width the auto layout compresses columns
+   until the right-aligned numbers collide ("25.415.3"). Size to content + nowrap so
+   every cell keeps its padding; the .slg-tablewrap (overflow-x:auto) scrolls. */
 .slg-explorer-table {
   width: auto;
   min-width: 100%;
@@ -817,13 +831,59 @@
 .slg-explorer-table th,
 .slg-explorer-table td {
   white-space: nowrap;
+  padding: 0.45rem 0.6rem;
 }
-/* Keep the player/label column readable while scrolling the dense stat columns. */
+
+/* Header row: light fill + a solid break line. (Not sticky-to-top — the global
+   navbar is position:fixed, so a top:0 sticky header would hide behind it.) */
+.slg-explorer-table thead th {
+  background: var(--color-slate-50, #f8fafc);
+  color: var(--color-slate-600, #475569);
+  font-size: 0.625rem;
+  border-bottom: 2px solid var(--color-slate-300, #cbd5e1);
+}
+.slg-explorer-table thead th.slg-sort-active {
+  color: var(--color-accent-emerald, #10b981);
+  background: #ecfdf5;
+}
+
+/* Clean horizontal break line between every row; none after the last. */
+.slg-explorer-table tbody td,
+.slg-explorer-table tbody th {
+  border-bottom: 1px solid var(--color-slate-100, #f1f5f9);
+}
+.slg-explorer-table tbody tr:last-child td,
+.slg-explorer-table tbody tr:last-child th {
+  border-bottom: none;
+}
+.slg-explorer-table tbody tr:hover td,
+.slg-explorer-table tbody tr:hover th.slg-explorer__label {
+  background: #ecfdf5;
+}
+/* Subtle tint on the active sort column so the eye tracks it down the table. */
+.slg-explorer-table tbody td.slg-strong {
+  background: rgba(16, 185, 129, 0.05);
+  font-weight: 600;
+  color: var(--color-slate-900);
+}
+
+/* Keep the player/label column pinned while scrolling the dense stat columns.
+   Backgrounds are section-aware so the pinned cell matches its row (header fill,
+   body white, emerald on hover) and hides columns sliding underneath. */
 .slg-explorer-table th.slg-explorer__label,
 .slg-explorer-table td.slg-explorer__label {
   position: sticky;
   left: 0;
+  z-index: 1;
+}
+.slg-explorer-table thead th.slg-explorer__label {
+  background: var(--color-slate-50, #f8fafc);
+}
+.slg-explorer-table tbody th.slg-explorer__label {
   background: var(--color-white, #fff);
+}
+.slg-explorer-table tbody tr:hover th.slg-explorer__label {
+  background: #ecfdf5;
 }
 .slg-explorer-pager { display: flex; gap: 0.6rem; margin-top: 1rem; justify-content: center; }
 .slg-pager-btn {
