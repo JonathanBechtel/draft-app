@@ -16,10 +16,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_index(
-        "ix_summer_league_games_round_label",
-        "summer_league_games",
-        ["round_label"],
+    # IF NOT EXISTS: on a from-scratch upgrade b6c7d8e9f0a1's create_all already
+    # materialized this index (round_label now has index=True in SQLModel).
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_summer_league_games_round_label"
+        " ON summer_league_games (round_label)"
     )
 
 
@@ -27,4 +28,5 @@ def downgrade() -> None:
     op.drop_index(
         "ix_summer_league_games_round_label",
         table_name="summer_league_games",
+        if_exists=True,
     )
