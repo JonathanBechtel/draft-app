@@ -15,6 +15,7 @@ from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     PAGE_SIZE,
     _PLAYER_ADVANCED_COLUMNS,
+    _PLAYER_STAT_COLUMNS,
     _build_result,
     _count_subquery,
     _is_single_competition,
@@ -31,6 +32,22 @@ from app.services.summer_league_explorer_service import (
 # --------------------------------------------------------------------------- #
 # parse_query (carried over / extended for Phase 3 completeness)
 # --------------------------------------------------------------------------- #
+
+
+def test_ts_pct_is_advanced_not_base_column() -> None:
+    """TS% is categorized as an advanced efficiency stat, not an always-on base column.
+
+    It should be absent from the base players catalog (so it does not show in the
+    default career/per_game/multi-competition views) and present in the advanced set
+    (shown only for a single adv-eligible per_competition). eFG% stays in base.
+    """
+    base_keys = {c.key for c in _PLAYER_STAT_COLUMNS}
+    adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
+    assert "ts_pct" not in base_keys
+    assert "ts_pct" in adv_keys
+    assert "efg_pct" in base_keys  # eFG% deliberately stays a base column
+    # TS% remains a valid players sort key (sortable even when the column is hidden).
+    assert "ts_pct" in _SORT_KEYS_BY_SUBJECT["players"]
 
 
 def test_parse_query_defaults_and_validation() -> None:

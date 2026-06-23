@@ -111,14 +111,16 @@ _PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("fg_pct", "FG%"),
     ExplorerColumn("fg3_pct", "3P%"),
     ExplorerColumn("ft_pct", "FT%"),
-    ExplorerColumn("ts_pct", "TS%"),
 ]
 
-# Advanced composite columns exposed only when grain=per_competition AND a single
-# adv-eligible competition is fully specified (one year + one venue).
-# These are pool-calibrated (PER/BPM/ratings/WS/VORP) and must NOT be mixed with
-# career or multi-competition aggregates.
+# Advanced columns exposed only when grain=per_competition AND a single adv-eligible
+# competition is fully specified (one year + one venue).
+# TS% leads the group: it is box-derived (recombines from summed PTS/FGA/FTA) so it is
+# always computed, but it reads as an advanced efficiency metric and is surfaced here
+# rather than in the always-on base columns. The remainder (PER/BPM/ratings/WS/VORP) are
+# pool-calibrated composites that must NOT be mixed with career/multi-competition rows.
 _PLAYER_ADVANCED_COLUMNS: list[ExplorerColumn] = [
+    ExplorerColumn("ts_pct", "TS%"),
     ExplorerColumn("per", "PER"),
     ExplorerColumn("ortg", "ORtg"),
     ExplorerColumn("drtg", "DRtg"),
