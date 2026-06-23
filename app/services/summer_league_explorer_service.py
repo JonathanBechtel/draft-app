@@ -55,7 +55,10 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import (
+    SummerLeagueMetricContext,
+    SummerLeaguePlayerSeason,
+)
 from app.services.summer_league_games_service import _venue_label
 
 SUBJECTS = ("players", "teams", "games")
@@ -111,6 +114,19 @@ _PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("ts_pct", "TS%"),
 ]
 
+# Advanced composite columns exposed only when grain=per_competition AND a single
+# adv-eligible competition is fully specified (one year + one venue).
+# These are pool-calibrated (PER/BPM/ratings/WS/VORP) and must NOT be mixed with
+# career or multi-competition aggregates.
+_PLAYER_ADVANCED_COLUMNS: list[ExplorerColumn] = [
+    ExplorerColumn("per", "PER"),
+    ExplorerColumn("ortg", "ORtg"),
+    ExplorerColumn("drtg", "DRtg"),
+    ExplorerColumn("bpm", "BPM"),
+    ExplorerColumn("ws", "WS"),
+    ExplorerColumn("vorp", "VORP"),
+]
+
 # Stat columns for the teams subject (one row per team-season). W-L and points
 # come from game scores; pace/ratings are team-box-log averages where present.
 _TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
@@ -140,6 +156,9 @@ _COLUMNS_BY_SUBJECT: dict[str, list[ExplorerColumn]] = {
 _SORT_KEYS_BY_SUBJECT: dict[str, set[str]] = {
     s: {c.key for c in cols} for s, cols in _COLUMNS_BY_SUBJECT.items()
 }
+# Advanced sort keys are valid for the players subject in single-competition mode.
+# Add them to the allowed set so parse_query does not reject them.
+_SORT_KEYS_BY_SUBJECT["players"] |= {c.key for c in _PLAYER_ADVANCED_COLUMNS}
 _DEFAULT_SORT_BY_SUBJECT: dict[str, str] = {
     "players": "pts",
     "teams": "diff",
@@ -231,6 +250,7 @@ class ExplorerResult:
     has_next: bool
     facets: ExplorerFacets
     query: ExplorerQuery
+    adv_eligible: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -611,6 +631,36 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     )
 
 
+def _is_single_competition(q: ExplorerQuery) -> bool:
+    """Return True when the query pins exactly one competition (one year, one venue).
+
+    Both year_min == year_max (pinned to a single year) and a non-None venue are
+    required.  This is the only case where pool-calibrated composites are valid.
+    """
+    return (
+        q.year_min is not None
+        and q.year_max is not None
+        and q.year_min == q.year_max
+        and q.venue is not None
+    )
+
+
+async def _fetch_adv_eligible(db: AsyncSession, year: int, venue_slug: str) -> bool:
+    """Look up the adv_eligible flag for a single (year, venue_slug) competition pool.
+
+    Returns False when no matching metric context row exists (pool not yet computed).
+    """
+    ctx = SummerLeagueMetricContext
+    result = await db.execute(
+        select(ctx.adv_eligible)  # type: ignore[call-overload]
+        .where(ctx.year == year)  # type: ignore[arg-type]
+        .where(ctx.venue_slug == venue_slug)  # type: ignore[arg-type]
+        .limit(1)
+    )
+    row = result.one_or_none()
+    return bool(row[0]) if row is not None else False
+
+
 async def _query_players_per_competition(
     db: AsyncSession, q: ExplorerQuery
 ) -> ExplorerResult:
@@ -618,10 +668,19 @@ async def _query_players_per_competition(
 
     Sort and pagination happen in SQL (ORDER BY + LIMIT + OFFSET).  Count uses
     a wrapping COUNT(*) subquery on the unsliced statement.
+
+    When the query pins a single competition (one year + one venue), composite
+    columns (PER, ORtg, DRtg, BPM, WS, VORP) from ``summer_league_player_seasons``
+    are appended to the result.  ``adv_eligible`` on the result tells the template
+    whether those composites are valid for this pool; when False a warning banner
+    is shown and the composite columns are omitted from the column list.
     """
     ps = SummerLeaguePlayerSeason
     comp = SummerLeagueCompetition
     pm = PlayerMaster
+
+    # Detect single-competition scope: composites are only valid within one pool.
+    single_comp = _is_single_competition(q)
 
     # Alias minutes*60 as sec so _compute_player_values works unchanged.
     # pace_sec is 0 — season rows have no weighted pace; per_100 mode yields None.
@@ -651,42 +710,57 @@ async def _query_players_per_competition(
     if q.country is not None:
         conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
 
+    base_select = [
+        pm.slug,
+        pm.display_name,
+        ps.year,
+        ps.venue_slug,
+        ps.gp.label("gp"),  # type: ignore[attr-defined]
+        (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
+        literal(0).label("pace_sec"),
+        ps.pts.label("pts"),  # type: ignore[attr-defined]
+        ps.reb.label("reb"),  # type: ignore[attr-defined]
+        ps.ast.label("ast"),  # type: ignore[attr-defined]
+        ps.stl.label("stl"),  # type: ignore[attr-defined]
+        ps.blk.label("blk"),  # type: ignore[attr-defined]
+        ps.tov.label("tov"),  # type: ignore[attr-defined]
+        ps.fgm.label("fgm"),  # type: ignore[attr-defined]
+        ps.fga.label("fga"),  # type: ignore[attr-defined]
+        ps.fg3m.label("fg3m"),  # type: ignore[attr-defined]
+        ps.fg3a.label("fg3a"),  # type: ignore[attr-defined]
+        ps.ftm.label("ftm"),  # type: ignore[attr-defined]
+        ps.fta.label("fta"),  # type: ignore[attr-defined]
+        ps.oreb.label("oreb"),  # type: ignore[attr-defined]
+        ps.dreb.label("dreb"),  # type: ignore[attr-defined]
+        ps.pf.label("pf"),  # type: ignore[attr-defined]
+        ps.plus_minus.label("plus_minus"),  # type: ignore[attr-defined]
+    ]
+
+    # When scoped to a single competition, also SELECT the composite columns so
+    # the template can display them when adv_eligible is True.
+    if single_comp:
+        base_select += [
+            ps.per.label("per"),  # type: ignore[attr-defined, union-attr]
+            ps.ortg.label("ortg"),  # type: ignore[attr-defined, union-attr]
+            ps.drtg.label("drtg"),  # type: ignore[attr-defined, union-attr]
+            ps.bpm.label("bpm"),  # type: ignore[attr-defined, union-attr]
+            ps.ws.label("ws"),  # type: ignore[attr-defined, union-attr]
+            ps.vorp.label("vorp"),  # type: ignore[attr-defined, union-attr]
+        ]
+
     stmt = (
-        select(
-            pm.slug,
-            pm.display_name,
-            ps.year,
-            ps.venue_slug,
-            ps.gp.label("gp"),  # type: ignore[attr-defined]
-            (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
-            literal(0).label("pace_sec"),
-            ps.pts.label("pts"),  # type: ignore[attr-defined]
-            ps.reb.label("reb"),  # type: ignore[attr-defined]
-            ps.ast.label("ast"),  # type: ignore[attr-defined]
-            ps.stl.label("stl"),  # type: ignore[attr-defined]
-            ps.blk.label("blk"),  # type: ignore[attr-defined]
-            ps.tov.label("tov"),  # type: ignore[attr-defined]
-            ps.fgm.label("fgm"),  # type: ignore[attr-defined]
-            ps.fga.label("fga"),  # type: ignore[attr-defined]
-            ps.fg3m.label("fg3m"),  # type: ignore[attr-defined]
-            ps.fg3a.label("fg3a"),  # type: ignore[attr-defined]
-            ps.ftm.label("ftm"),  # type: ignore[attr-defined]
-            ps.fta.label("fta"),  # type: ignore[attr-defined]
-            ps.oreb.label("oreb"),  # type: ignore[attr-defined]
-            ps.dreb.label("dreb"),  # type: ignore[attr-defined]
-            ps.pf.label("pf"),  # type: ignore[attr-defined]
-            ps.plus_minus.label("plus_minus"),  # type: ignore[attr-defined]
-        )  # type: ignore[call-overload, misc]
+        select(*base_select)  # type: ignore[call-overload, misc]
         .select_from(ps)
-        .join(comp, comp.id == ps.competition_id)
-        .join(pm, pm.id == ps.player_id)
+        .join(comp, comp.id == ps.competition_id)  # type: ignore[arg-type]
+        .join(pm, pm.id == ps.player_id)  # type: ignore[arg-type]
         .where(*conds)
     )
     if q.team_slug is not None:
         te = SummerLeagueTeamEntry
-        stmt = stmt.join(te, ps.primary_team_entry_id == te.id).where(  # type: ignore[arg-type]
-            te.team_slug == q.team_slug
-        )
+        stmt = stmt.join(
+            te,
+            ps.primary_team_entry_id == te.id,  # type: ignore[arg-type]
+        ).where(te.team_slug == q.team_slug)  # type: ignore[arg-type]
 
     # Count via wrapping subquery, then slice.
     total = await _count_subquery(db, stmt)
@@ -709,11 +783,35 @@ async def _query_players_per_competition(
 
     raw = list((await db.execute(stmt)).all())
 
+    # Determine adv_eligible for this query scope.
+    pool_adv_eligible = False
+    if single_comp and q.year_min is not None and q.venue is not None:
+        pool_adv_eligible = await _fetch_adv_eligible(db, q.year_min, q.venue)
+
+    # Build result column list: base stats always present; advanced appended when eligible.
+    columns: list[ExplorerColumn] = list(_PLAYER_STAT_COLUMNS)
+    if single_comp and pool_adv_eligible:
+        columns = columns + _PLAYER_ADVANCED_COLUMNS
+
+    def _adv_values(r: Any) -> dict[str, Any]:
+        """Extract composite values from a result row (only when single-comp selected)."""
+        return {
+            "per": getattr(r, "per", None),
+            "ortg": getattr(r, "ortg", None),
+            "drtg": getattr(r, "drtg", None),
+            "bpm": getattr(r, "bpm", None),
+            "ws": getattr(r, "ws", None),
+            "vorp": getattr(r, "vorp", None),
+        }
+
     rows = [
         ExplorerRow(
             label=f"{r.display_name} · {_venue_label(r.venue_slug)} {r.year}",
             href=f"/players/{r.slug}" if r.slug else None,
-            values=_compute_player_values(r, q.mode),
+            values={
+                **_compute_player_values(r, q.mode),
+                **(_adv_values(r) if (single_comp and pool_adv_eligible) else {}),
+            },
         )
         for r in raw
     ]
@@ -721,7 +819,7 @@ async def _query_players_per_competition(
     return ExplorerResult(
         subject="players",
         available=True,
-        columns=_PLAYER_STAT_COLUMNS,
+        columns=columns,
         rows=rows,
         total=total,
         page=q.page,
@@ -729,6 +827,7 @@ async def _query_players_per_competition(
         has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
         facets=ExplorerFacets(),
         query=q,
+        adv_eligible=pool_adv_eligible if single_comp else False,
     )
 
 

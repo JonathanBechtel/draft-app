@@ -22,9 +22,11 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueMetricContext, SummerLeaguePlayerSeason
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
+    _PLAYER_ADVANCED_COLUMNS,
+    _is_single_competition,
     parse_query,
     run_explorer_query,
 )
@@ -1472,3 +1474,358 @@ async def test_career_grain_asc_sort_page1_is_lowest(db_session: AsyncSession) -
     )
     # With pts=0 (total) as the minimum seeded value.
     assert result.rows[0].values["pts"] == 0.0  # per_game mode: 0 pts / 2 gp = 0.0
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4a: per_competition composites + adv_eligible gating
+# --------------------------------------------------------------------------- #
+
+
+async def _metric_context(
+    db: AsyncSession,
+    *,
+    comp_id: int,
+    year: int,
+    venue_slug: str,
+    adv_eligible: bool = True,
+) -> None:
+    """Seed a SummerLeagueMetricContext row for (comp_id, year, venue_slug)."""
+    ctx = SummerLeagueMetricContext(
+        competition_id=comp_id,
+        year=year,
+        venue_slug=venue_slug,
+        adv_eligible=adv_eligible,
+    )
+    db.add(ctx)
+    await db.flush()
+
+
+async def _season_with_composites(
+    db: AsyncSession,
+    *,
+    player: PlayerMaster,
+    comp_id: int,
+    year: int,
+    venue_slug: str,
+    gp: int = 3,
+    minutes: float = 90.0,
+    pts: int = 20,
+    per: float = 18.5,
+    ortg: float = 112.0,
+    drtg: float = 104.0,
+    bpm: float = 2.1,
+    ws: float = 0.8,
+    vorp: float = 0.4,
+    adv_eligible: bool = True,
+) -> None:
+    """Seed a SummerLeaguePlayerSeason with composite columns populated."""
+    assert player.id is not None
+    db.add(
+        SummerLeaguePlayerSeason(
+            competition_id=comp_id,
+            player_id=player.id,
+            year=year,
+            venue_slug=venue_slug,
+            gp=gp,
+            minutes=minutes,
+            pts=pts,
+            reb=5,
+            ast=3,
+            fgm=pts // 2,
+            fga=pts,
+            fg3m=0,
+            fg3a=0,
+            ftm=0,
+            fta=0,
+            oreb=1,
+            dreb=4,
+            blk=1,
+            stl=1,
+            tov=2,
+            pf=3,
+            plus_minus=10,
+            per=per if adv_eligible else None,
+            ortg=ortg if adv_eligible else None,
+            drtg=drtg if adv_eligible else None,
+            bpm=bpm if adv_eligible else None,
+            ws=ws if adv_eligible else None,
+            vorp=vorp if adv_eligible else None,
+            adv_eligible=adv_eligible,
+        )
+    )
+    await db.flush()
+
+
+async def _seed_adv_single_comp(
+    db: AsyncSession,
+    *,
+    adv_eligible: bool,
+    year: int = 2024,
+    venue_slug: str = "las_vegas",
+) -> int:
+    """One player + one competition, with a metric context row controlling eligibility.
+
+    Returns the competition id.
+    """
+    player = make_player("Adv", "Tester")
+    db.add(player)
+    await db.flush()
+
+    comp_id = await _comp(db, year=year, venue_slug=venue_slug, league_id="15")
+
+    await _season_with_composites(
+        db,
+        player=player,
+        comp_id=comp_id,
+        year=year,
+        venue_slug=venue_slug,
+        adv_eligible=adv_eligible,
+    )
+    await _metric_context(
+        db,
+        comp_id=comp_id,
+        year=year,
+        venue_slug=venue_slug,
+        adv_eligible=adv_eligible,
+    )
+    await db.commit()
+    return comp_id
+
+
+def test_is_single_competition_helper() -> None:
+    """_is_single_competition returns True only when year_min==year_max and venue is set."""
+    assert _is_single_competition(ExplorerQuery(year_min=2024, year_max=2024, venue="las_vegas"))
+    assert not _is_single_competition(ExplorerQuery(year_min=2024, year_max=2025, venue="las_vegas"))
+    assert not _is_single_competition(ExplorerQuery(year_min=2024, year_max=2024, venue=None))
+    assert not _is_single_competition(ExplorerQuery(year_min=None, year_max=2024, venue="las_vegas"))
+    assert not _is_single_competition(ExplorerQuery())  # no constraints at all
+
+
+@pytest.mark.asyncio
+async def test_adv_columns_present_when_eligible(db_session: AsyncSession) -> None:
+    """Single-competition per_competition query with adv_eligible=True surfaces PER/BPM/WS/VORP.
+
+    The result's columns list must include all _PLAYER_ADVANCED_COLUMNS, and each
+    row must have non-None values for PER, ORtg, DRtg, BPM, WS, VORP.
+    """
+    await _seed_adv_single_comp(db_session, adv_eligible=True)
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            year_min=2024,
+            year_max=2024,
+            venue="las_vegas",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+
+    assert result.adv_eligible is True
+    adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
+    result_col_keys = {c.key for c in result.columns}
+    assert adv_keys <= result_col_keys, f"missing advanced keys: {adv_keys - result_col_keys}"
+
+    # Verify values are present on the row.
+    assert result.total == 1
+    row = result.rows[0]
+    for key in ("per", "ortg", "drtg", "bpm", "ws", "vorp"):
+        assert row.values.get(key) is not None, f"expected non-None value for {key!r}"
+
+
+@pytest.mark.asyncio
+async def test_adv_columns_absent_when_not_eligible(db_session: AsyncSession) -> None:
+    """Single-competition per_competition query with adv_eligible=False: no composite columns.
+
+    The result's adv_eligible must be False, and the column list must NOT include
+    advanced keys. Row values for composite keys must be absent (or None).
+    """
+    await _seed_adv_single_comp(db_session, adv_eligible=False)
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            year_min=2024,
+            year_max=2024,
+            venue="las_vegas",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+
+    assert result.adv_eligible is False
+    adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
+    result_col_keys = {c.key for c in result.columns}
+    assert adv_keys.isdisjoint(result_col_keys), (
+        f"unexpected advanced keys in columns: {adv_keys & result_col_keys}"
+    )
+
+    # Row values should not include non-None composite values.
+    assert result.total == 1
+    row = result.rows[0]
+    for key in ("per", "ortg", "drtg", "bpm", "ws", "vorp"):
+        assert row.values.get(key) is None, f"expected None for {key!r} when not eligible"
+
+
+@pytest.mark.asyncio
+async def test_adv_columns_absent_multi_year(db_session: AsyncSession) -> None:
+    """Multi-year query (year_min != year_max): no composite columns regardless of eligibility.
+
+    Composites are pool-calibrated and must not be exposed when the query spans
+    multiple competitions.
+    """
+    # Seed two competitions (2024 Vegas + 2025 Vegas), both adv_eligible.
+    player = make_player("Multi", "Year")
+    db_session.add(player)
+    await db_session.flush()
+
+    c1 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2025, venue_slug="las_vegas", league_id="16")
+
+    for comp_id, year in ((c1, 2024), (c2, 2025)):
+        await _season_with_composites(
+            db_session, player=player, comp_id=comp_id, year=year,
+            venue_slug="las_vegas", adv_eligible=True,
+        )
+        await _metric_context(
+            db_session, comp_id=comp_id, year=year,
+            venue_slug="las_vegas", adv_eligible=True,
+        )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            year_min=2024,
+            year_max=2025,
+            venue="las_vegas",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+
+    # Multi-year: composites must be absent.
+    assert result.adv_eligible is False
+    adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
+    result_col_keys = {c.key for c in result.columns}
+    assert adv_keys.isdisjoint(result_col_keys)
+
+
+@pytest.mark.asyncio
+async def test_adv_columns_absent_all_venues(db_session: AsyncSession) -> None:
+    """No-venue filter (all-venues query): composite columns absent even with adv_eligible pools.
+
+    A query without a venue spans multiple competitions, so composites are not valid.
+    """
+    await _seed_adv_single_comp(db_session, adv_eligible=True)
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            year_min=2024,
+            year_max=2024,
+            venue=None,  # no venue → not a single competition
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+
+    assert result.adv_eligible is False
+    adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
+    result_col_keys = {c.key for c in result.columns}
+    assert adv_keys.isdisjoint(result_col_keys)
+
+
+@pytest.mark.asyncio
+async def test_adv_sort_by_per_when_eligible(db_session: AsyncSession) -> None:
+    """Sorting by 'per' in a single adv-eligible competition returns rows in PER order.
+
+    Seeds two players with different PER values; sort=per desc should put the
+    higher PER first.
+    """
+    player_hi = make_player("High", "PER")
+    player_lo = make_player("Low", "PER")
+    db_session.add_all([player_hi, player_lo])
+    await db_session.flush()
+
+    comp_id = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+
+    await _season_with_composites(
+        db_session, player=player_hi, comp_id=comp_id, year=2024,
+        venue_slug="las_vegas", per=25.0, adv_eligible=True,
+    )
+    await _season_with_composites(
+        db_session, player=player_lo, comp_id=comp_id, year=2024,
+        venue_slug="las_vegas", per=12.0, adv_eligible=True,
+    )
+    await _metric_context(
+        db_session, comp_id=comp_id, year=2024, venue_slug="las_vegas", adv_eligible=True
+    )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            year_min=2024,
+            year_max=2024,
+            venue="las_vegas",
+            sort="per",
+            direction="desc",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+
+    assert result.adv_eligible is True
+    assert result.total == 2
+    assert result.rows[0].label.startswith("High"), (
+        f"expected High PER first, got {result.rows[0].label!r}"
+    )
+    per_top = result.rows[0].values.get("per")
+    per_bot = result.rows[1].values.get("per")
+    assert per_top is not None and per_bot is not None
+    assert per_top > per_bot  # type: ignore[operator]
+
+
+@pytest.mark.asyncio
+async def test_adv_banner_rendered_when_not_eligible(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """HTML response includes the warning banner class when adv_eligible is False."""
+    await _seed_adv_single_comp(db_session, adv_eligible=False)
+
+    resp = await app_client.get(
+        "/stats/summer-league/explorer"
+        "?subject=players&grain=per_competition"
+        "&year_min=2024&year_max=2024&venue=las_vegas"
+        "&min_gp=1&min_min=1"
+    )
+    assert resp.status_code == 200
+    assert "slg-explorer-banner--warn" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_adv_banner_absent_when_eligible(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """HTML response does NOT include the warning banner when adv_eligible is True."""
+    await _seed_adv_single_comp(db_session, adv_eligible=True)
+
+    resp = await app_client.get(
+        "/stats/summer-league/explorer"
+        "?subject=players&grain=per_competition"
+        "&year_min=2024&year_max=2024&venue=las_vegas"
+        "&min_gp=1&min_min=1"
+    )
+    assert resp.status_code == 200
+    assert "slg-explorer-banner--warn" not in resp.text

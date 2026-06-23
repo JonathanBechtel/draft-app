@@ -16,14 +16,17 @@ from sqlalchemy.dialects import postgresql
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     PAGE_SIZE,
+    _PLAYER_ADVANCED_COLUMNS,
     _build_result,
     _count_subquery,
+    _is_single_competition,
     _player_sort_expr,
     parse_query,
     ExplorerColumn,
     ExplorerFacets,
     ExplorerRow,
     ExplorerResult,
+    _SORT_KEYS_BY_SUBJECT,
 )
 
 
@@ -210,3 +213,55 @@ def test_build_result_nulls_sort_last() -> None:
     assert result.rows[0].label == "B"
     assert result.rows[1].values["pts"] is None
     assert result.rows[2].values["pts"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4a: _is_single_competition + advanced sort key registration
+# --------------------------------------------------------------------------- #
+
+
+def test_is_single_competition_true_when_year_and_venue_pinned() -> None:
+    """year_min == year_max with a non-None venue → single competition."""
+    assert _is_single_competition(
+        ExplorerQuery(year_min=2024, year_max=2024, venue="las_vegas")
+    )
+
+
+def test_is_single_competition_false_multi_year() -> None:
+    """year_min != year_max → not a single competition."""
+    assert not _is_single_competition(
+        ExplorerQuery(year_min=2023, year_max=2024, venue="las_vegas")
+    )
+
+
+def test_is_single_competition_false_no_venue() -> None:
+    """Pinned year but no venue → not a single competition."""
+    assert not _is_single_competition(
+        ExplorerQuery(year_min=2024, year_max=2024, venue=None)
+    )
+
+
+def test_is_single_competition_false_no_constraints() -> None:
+    """Default ExplorerQuery (all years, all venues) is not a single competition."""
+    assert not _is_single_competition(ExplorerQuery())
+
+
+def test_advanced_column_keys_in_players_sort_set() -> None:
+    """All _PLAYER_ADVANCED_COLUMNS keys are valid sort keys for the players subject.
+
+    parse_query must not reject a sort key like 'per' or 'bpm' for players.
+    """
+    players_sort_keys = _SORT_KEYS_BY_SUBJECT["players"]
+    for col in _PLAYER_ADVANCED_COLUMNS:
+        assert col.key in players_sort_keys, (
+            f"advanced column key {col.key!r} missing from players sort set"
+        )
+
+
+def test_parse_query_accepts_advanced_sort_keys() -> None:
+    """parse_query does not fall back to default when an advanced sort key is passed."""
+    for col in _PLAYER_ADVANCED_COLUMNS:
+        q = parse_query({"subject": "players", "sort": col.key})
+        assert q.sort == col.key, (
+            f"expected sort={col.key!r}, got {q.sort!r}"
+        )
