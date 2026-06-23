@@ -809,9 +809,10 @@ async def test_country_filter(db_session: AsyncSession) -> None:
     )
     assert result.total == 1
     assert result.rows[0].label == "USA Player"
-    # Facet includes both countries (facet is unfiltered)
-    assert "US" in result.facets.countries
-    assert "FR" in result.facets.countries
+    # Facet includes both countries (facet is unfiltered), canonicalized to
+    # display names — raw ISO-2 codes (US/FR) are normalized for the dropdown.
+    assert "United States" in result.facets.countries
+    assert "France" in result.facets.countries
 
 
 # --------------------------------------------------------------------------- #
@@ -2412,3 +2413,200 @@ async def test_csv_download_link_absent_when_no_results(
     resp = await app_client.get("/stats/summer-league/explorer?min_gp=9999")
     assert resp.status_code == 200
     assert "Download CSV" not in resp.text
+
+
+# --------------------------------------------------------------------------- #
+# QA fixes #394–#397
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_position_facet_empty_when_no_position_data(
+    db_session: AsyncSession,
+) -> None:
+    """#394: the positions facet is empty when no player carries a position."""
+    await _seed(db_session)  # _seed players have no position set
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
+    assert result.facets.positions == []
+
+
+@pytest.mark.asyncio
+async def test_position_filter_hidden_when_facet_empty(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """#394: the Position control is omitted from the page when there is no data."""
+    await _seed(db_session)
+    resp = await app_client.get("/stats/summer-league/explorer")
+    assert resp.status_code == 200
+    assert 'id="ex-position"' not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_position_filter_shown_when_facet_populated(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """#394: the Position control reappears once position data exists."""
+    await _seed_with_positions(db_session)
+    resp = await app_client.get("/stats/summer-league/explorer")
+    assert resp.status_code == 200
+    assert 'id="ex-position"' in resp.text
+
+
+async def _seed_mixed_countries(db: AsyncSession) -> None:
+    """Three USA players stored under three encodings, plus one Australian."""
+    p_code = make_player("Code", "Yank")
+    p_code.birth_country = "US"
+    p_alias = make_player("Alias", "Yank")
+    p_alias.birth_country = "USA"
+    p_name = make_player("Name", "Yank")
+    p_name.birth_country = "United States"
+    aussie = make_player("Down", "Under")
+    aussie.birth_country = "AU"
+    db.add_all([p_code, p_alias, p_name, aussie])
+    await db.flush()
+
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db, comp_id=c)
+    for pl in (p_code, p_alias, p_name, aussie):
+        await _log(db, comp_id=c, team=t, player=pl, pts=20, games=2)
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_country_facet_has_no_duplicate_encodings(
+    db_session: AsyncSession,
+) -> None:
+    """#395: the country facet lists each country once, normalized and sorted."""
+    await _seed_mixed_countries(db_session)
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
+    countries = result.facets.countries
+    assert countries == sorted(countries)  # alphabetical
+    assert len(countries) == len(set(countries))  # no duplicates
+    assert "United States" in countries
+    assert "Australia" in countries
+    # No raw ISO codes or aliases leak through.
+    assert not {"US", "USA", "AU"} & set(countries)
+
+
+@pytest.mark.asyncio
+async def test_country_filter_matches_all_encodings(db_session: AsyncSession) -> None:
+    """#395: filtering by the canonical name matches every stored encoding."""
+    await _seed_mixed_countries(db_session)
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", country="United States")
+    )
+    # All three USA-encoded players match; the Australian does not.
+    assert result.total == 3
+    assert {r.label for r in result.rows} == {"Code Yank", "Alias Yank", "Name Yank"}
+
+
+@pytest.mark.asyncio
+async def test_draft_class_facet_clamps_future_years(db_session: AsyncSession) -> None:
+    """#396: implausible future draft classes never appear in the facet."""
+    future = make_player("Phantom", "Future")
+    future.draft_year = date.today().year + 5  # e.g. 2031
+    legit = make_player("Real", "Prospect")
+    legit.draft_year = 2024
+    db_session.add_all([future, legit])
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db_session, comp_id=c)
+    await _log(db_session, comp_id=c, team=t, player=future, pts=20, games=2)
+    await _log(db_session, comp_id=c, team=t, player=legit, pts=15, games=2)
+    await db_session.commit()
+
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
+    assert result.facets.draft_classes  # non-empty
+    assert max(result.facets.draft_classes) <= date.today().year + 1
+    assert (date.today().year + 5) not in result.facets.draft_classes
+
+
+async def _seed_uneven_gp(db: AsyncSession) -> None:
+    """Two players in one pool whose per-game and total rankings disagree.
+
+    High-rate plays 2 games at 30 PTS (60 total, 30.0/g); Grinder plays 5 games
+    at 25 PTS (125 total, 25.0/g). Sorting on totals would rank Grinder first
+    despite a lower per-game average — the #397 bug.
+    """
+    high_rate = make_player("High", "Rate")
+    grinder = make_player("Grind", "Er")
+    db.add_all([high_rate, grinder])
+    await db.flush()
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db, comp_id=c)
+    await _log(db, comp_id=c, team=t, player=high_rate, pts=30, games=2)
+    await _log(db, comp_id=c, team=t, player=grinder, pts=25, games=5)
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_career_per_game_sort_is_monotonic(db_session: AsyncSession) -> None:
+    """#397: a per-game career sort ranks on the displayed rate, not the total."""
+    await _seed_uneven_gp(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", mode="per_game", sort="pts"),
+    )
+    pts_col = [r.values["pts"] for r in result.rows]
+    assert pts_col == sorted(pts_col, reverse=True)  # visually monotonic
+    assert pts_col == [30.0, 25.0]
+    assert result.rows[0].label == "High Rate"
+
+
+@pytest.mark.asyncio
+async def test_career_totals_sort_still_ranks_by_total(
+    db_session: AsyncSession,
+) -> None:
+    """#397: totals mode still ranks by the season total (Grinder's 125 > 60)."""
+    await _seed_uneven_gp(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", mode="totals", sort="pts"),
+    )
+    assert result.rows[0].label == "Grind Er"
+    assert result.rows[0].values["pts"] == 125
+
+
+@pytest.mark.asyncio
+async def test_per_competition_per_game_sort_is_monotonic(
+    db_session: AsyncSession,
+) -> None:
+    """#397: per_competition per-game sort is monotonic on the displayed rate.
+
+    Two season rows in one pool whose per-game and total orderings disagree:
+    High-rate (2 GP, 60 PTS → 30.0/g) vs Grinder (5 GP, 125 PTS → 25.0/g).
+    Sorting on the season total would invert the displayed column.
+    """
+    high_rate = make_player("High", "Rate")
+    grinder = make_player("Grind", "Er")
+    db_session.add_all([high_rate, grinder])
+    await db_session.flush()
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    await _season(
+        db_session, player=high_rate, comp_id=c, year=2024, venue_slug="las_vegas",
+        gp=2, minutes=60.0, pts=60,
+    )
+    await _season(
+        db_session, player=grinder, comp_id=c, year=2024, venue_slug="las_vegas",
+        gp=5, minutes=150.0, pts=125,
+    )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            mode="per_game",
+            sort="pts",
+            year_min=2024,
+            year_max=2024,
+            venue="las_vegas",
+        ),
+    )
+    pts_col = [r.values["pts"] for r in result.rows]
+    assert pts_col == sorted(pts_col, reverse=True)
+    assert pts_col == [30.0, 25.0]
+    # per_competition labels carry a "· <competition>" suffix.
+    assert result.rows[0].label.startswith("High Rate")

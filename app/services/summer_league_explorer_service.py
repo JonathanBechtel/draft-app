@@ -41,6 +41,7 @@ as SQL arithmetic inside a CTE/subquery so they can be sorted in SQL.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Optional
 
 from sqlalchemy import func, literal, nulls_last, or_, select, text
@@ -60,6 +61,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeaguePlayerSeason,
 )
 from app.services.summer_league_games_service import _venue_label
+from app.utils.country import canonical_country, country_variants
 
 SUBJECTS = ("players", "teams", "games")
 DEFAULT_SUBJECT = "players"
@@ -71,6 +73,16 @@ MODES = ("per_game", "per_36", "per_100", "totals")
 DEFAULT_MODE = "per_game"
 
 _MINUTES_PER_GAME = 48.0
+
+
+def _max_plausible_draft_class() -> int:
+    """Upper bound for draft-class facet/filter values.
+
+    The next legitimately-knowable draft class is one year out; anything beyond
+    is a data artifact (the SL pool carries stray 2028–2033 draft years).  Used
+    to clamp both the facet dropdown and inbound filter values.
+    """
+    return date.today().year + 1
 
 
 # --------------------------------------------------------------------------- #
@@ -304,10 +316,18 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
 
     venue = params.get("venue") or None
     position = params.get("position") or None
-    country = params.get("country") or None
+    # Canonicalize so a raw ?country=US URL resolves to the same value the
+    # dropdown emits ("United States") and matches every stored encoding.
+    country = canonical_country(params.get("country"))
     team_slug = params.get("team_slug") or None
     round_type = params.get("round_type") or None
     undrafted = params.get("undrafted") == "1"
+
+    # Reject implausible future draft classes so a hand-typed ?draft_class=2033
+    # cannot filter on a phantom year (mirrors the facet clamp).
+    draft_class = _to_int(params.get("draft_class"))
+    if draft_class is not None and draft_class > _max_plausible_draft_class():
+        draft_class = None
 
     min_games = _to_int(params.get("min_gp"))
     min_minutes = _to_int(params.get("min_min"))
@@ -319,7 +339,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         year_min=_to_int(params.get("year_min")),
         year_max=_to_int(params.get("year_max")),
         venue=venue,
-        draft_class=_to_int(params.get("draft_class")),
+        draft_class=draft_class,
         draft_round=_to_int(params.get("draft_round")),
         draft_pick_min=_to_int(params.get("draft_pick_min")),
         draft_pick_max=_to_int(params.get("draft_pick_max")),
@@ -372,6 +392,9 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
             await db.execute(
                 select(PlayerMaster.draft_year)  # type: ignore[call-overload]
                 .where(PlayerMaster.draft_year.isnot(None))  # type: ignore[union-attr]
+                # Clamp out implausible future classes (data artifacts) so the
+                # dropdown never lists phantom years like 2030+.
+                .where(PlayerMaster.draft_year <= _max_plausible_draft_class())  # type: ignore[operator]
                 .distinct()
                 .order_by(PlayerMaster.draft_year.desc())  # type: ignore[union-attr]
             )
@@ -388,17 +411,22 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
             )
         ).all()
     ]
-    countries = [
-        str(c)
-        for (c,) in (
-            await db.execute(
-                select(PlayerMaster.birth_country)  # type: ignore[call-overload]
-                .where(PlayerMaster.birth_country.isnot(None))  # type: ignore[union-attr]
-                .distinct()
-                .order_by(PlayerMaster.birth_country)  # type: ignore[union-attr]
-            )
-        ).all()
-    ]
+    # Raw birth_country mixes ISO-2 codes, full names, and aliases across
+    # ingestion sources.  Normalize each to a canonical display name, then
+    # dedupe + sort so the dropdown lists every country exactly once.
+    countries = sorted(
+        {
+            name
+            for (c,) in (
+                await db.execute(
+                    select(PlayerMaster.birth_country)  # type: ignore[call-overload]
+                    .where(PlayerMaster.birth_country.isnot(None))  # type: ignore[union-attr]
+                    .distinct()
+                )
+            ).all()
+            if (name := canonical_country(c)) is not None
+        }
+    )
     teams = [
         str(s)
         for (s,) in (
@@ -494,27 +522,63 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
     }
 
 
-def _player_sort_expr(sort_col: str) -> Any:
-    """Return a SQL text expression used in ORDER BY for the players career/per_competition grain.
+def _scaled_sort_expr(num: str, gp: str, sec: str, pace_sec: str, mode: str) -> str:
+    """Scale a counting-stat numerator into the displayed per-mode rate.
 
-    Counting stats sort on their raw aggregate label, which is monotonically
-    equivalent to any per-mode rate (per-game, per-36, …) because each player's
-    denominator is fixed within the query.  Percentage stats need an explicit SQL
-    ratio expression so NULLS LAST ordering is correct.
-
-    The expression is used as ``text(...)`` so it references the column labels
-    produced by the SELECT list (e.g. ``"pts"`` maps to ``func.sum(pgl.pts).label("pts")``).
+    Mirrors the arithmetic in :func:`_compute_player_values` so ORDER BY ranks on
+    exactly what the cell shows.  ``num``/``gp``/``sec``/``pace_sec`` are SQL
+    fragments (aggregates for career, raw labels for per_competition); ``sec`` is
+    seconds played and ``pace_sec`` the pace-weighted seconds.
     """
-    # Percentage stats — build NULLIF-guarded ratio expressions.
+    if mode == "per_game":
+        # * 1.0 forces float division (counts/totals are integers in Postgres,
+        # and integer division would truncate the rate into non-monotonic ties).
+        return f"{num} * 1.0 / NULLIF({gp}, 0)"
+    if mode == "per_36":  # 36 min / (sec/60) = num * 36 * 60 / sec
+        return f"{num} * 2160.0 / NULLIF({sec}, 0)"
+    if mode == "per_100":  # 100 poss; poss = pace_sec / (60 * 48)
+        return f"{num} * 288000.0 / NULLIF({pace_sec}, 0)"
+    return num  # totals
+
+
+def _player_sort_expr(sort_col: str, mode: str) -> Any:
+    """Return a SQL text expression used in ORDER BY for the players career grain.
+
+    Counting stats sort on their **displayed per-mode rate** (computed in SQL by
+    repeating the SUM aggregates) so the sorted column is visually monotonic in
+    the selected mode — sorting on the raw SUM is only monotonic with totals, and
+    reads as "broken sort" in per-game/-36/-100.  Minutes sort on per-game minutes
+    (or total minutes in totals mode).  Percentage stats use NULLIF-guarded ratios.
+
+    Aggregates are repeated (e.g. ``SUM(pts)``) rather than referencing the SELECT
+    aliases because Postgres resolves names inside an ORDER BY *expression* against
+    input columns, not output labels.
+    """
+    # Percentage stats — mode-independent NULLIF-guarded ratio expressions.
     _pct_exprs: dict[str, str] = {
         "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
         "fg_pct": "SUM(fgm) / NULLIF(SUM(fga), 0)",
         "fg3_pct": "SUM(fg3m) / NULLIF(SUM(fg3a), 0)",
         "ft_pct": "SUM(ftm) / NULLIF(SUM(fta), 0)",
         "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
-        "min": "SUM(sec)",  # sort minutes by total seconds played
     }
-    return _pct_exprs.get(sort_col, sort_col)
+    if sort_col in _pct_exprs:
+        return _pct_exprs[sort_col]
+    if sort_col == "min":
+        total = "SUM(minutes_seconds)"
+        # Minutes display as per-game minutes in every rate mode (* 1.0 forces
+        # float division — seconds are integers).
+        return total if mode == "totals" else f"{total} * 1.0 / NULLIF(COUNT(*), 0)"
+    if sort_col in _COUNTING or sort_col == "plus_minus":
+        return _scaled_sort_expr(
+            f"SUM({sort_col})",
+            "COUNT(*)",
+            "SUM(minutes_seconds)",
+            "SUM(pace * minutes_seconds)",
+            mode,
+        )
+    # gp (mode-independent) and any other label: sort on the SELECT output alias.
+    return sort_col
 
 
 async def _count_subquery(db: AsyncSession, inner_stmt: Any) -> int:
@@ -574,7 +638,9 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
     if q.country is not None:
-        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
+        # q.country is a canonical name; match every raw encoding (code/alias)
+        # that normalizes to it so filtering is independent of stored form.
+        conds.append(pm.birth_country.in_(country_variants(q.country)))  # type: ignore[union-attr]
 
     stmt = (
         select(
@@ -640,7 +706,7 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     total = await _count_subquery(db, stmt)
 
     # Apply SQL ORDER BY (NULLS LAST) + LIMIT + OFFSET.
-    sort_expr = _player_sort_expr(q.sort)
+    sort_expr = _player_sort_expr(q.sort, q.mode)
     direction = "DESC" if q.direction == "desc" else "ASC"
     stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
     stmt = _apply_pagination(stmt, q)
@@ -747,7 +813,9 @@ async def _query_players_per_competition(
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
     if q.country is not None:
-        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
+        # q.country is a canonical name; match every raw encoding (code/alias)
+        # that normalizes to it so filtering is independent of stored form.
+        conds.append(pm.birth_country.in_(country_variants(q.country)))  # type: ignore[union-attr]
     # Age filter (per_competition grain): age = competition year − birth year.
     # One row per (player, competition), so the year is the competition year directly
     # (ps.year).  NULL birth dates naturally produce NULL age and are excluded (no match).
@@ -817,18 +885,28 @@ async def _query_players_per_competition(
     # Count via wrapping subquery, then slice.
     total = await _count_subquery(db, stmt)
 
-    # per_competition rows are not aggregated, so sort on the raw column label.
-    # For percentage keys, use the same NULLIF-guarded expression approach as
-    # career grain, but referencing the per_competition column labels directly.
+    # per_competition rows are one-per-(player, competition) season totals, so
+    # the sort references raw column labels (no aggregation).  Counting stats sort
+    # on the displayed per-mode rate — matching _compute_player_values — so the
+    # column stays visually monotonic; percentages use NULLIF-guarded ratios.
+    # ``minutes`` is stored in minutes; sec = minutes * 60, pace_sec is 0 (no
+    # weighted pace at season grain), so per_100 yields NULL and sorts last.
     _pc_pct_exprs: dict[str, str] = {
         "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
         "fg_pct": "fgm / NULLIF(fga, 0)",
         "fg3_pct": "fg3m / NULLIF(fg3a, 0)",
         "ft_pct": "ftm / NULLIF(fta, 0)",
         "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
-        "min": "sec",
     }
-    sort_expr = _pc_pct_exprs.get(q.sort, q.sort)
+    if q.sort in _pc_pct_exprs:
+        sort_expr: str = _pc_pct_exprs[q.sort]
+    elif q.sort == "min":
+        sort_expr = "minutes" if q.mode == "totals" else "minutes / NULLIF(gp, 0)"
+    elif q.sort in _COUNTING or q.sort == "plus_minus":
+        sort_expr = _scaled_sort_expr(q.sort, "gp", "minutes * 60", "0", q.mode)
+    else:
+        # gp and the advanced composites (per/ortg/bpm/…) sort on the raw label.
+        sort_expr = q.sort
     direction = "DESC" if q.direction == "desc" else "ASC"
     stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
     stmt = _apply_pagination(stmt, q)
@@ -917,7 +995,9 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
     if q.position is not None:
         conds.append(pm.position == q.position)  # type: ignore[arg-type]
     if q.country is not None:
-        conds.append(pm.birth_country == q.country)  # type: ignore[arg-type]
+        # q.country is a canonical name; match every raw encoding (code/alias)
+        # that normalizes to it so filtering is independent of stored form.
+        conds.append(pm.birth_country.in_(country_variants(q.country)))  # type: ignore[union-attr]
     if q.round_type is not None:
         conds.append(game.round_label == q.round_type)  # type: ignore[arg-type]
 

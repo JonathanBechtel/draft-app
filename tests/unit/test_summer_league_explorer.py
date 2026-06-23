@@ -7,9 +7,7 @@ clauses after the sort/pagination logic is applied.
 
 from __future__ import annotations
 
-import re
 
-import pytest
 
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
@@ -17,14 +15,11 @@ from app.services.summer_league_explorer_service import (
     _PLAYER_ADVANCED_COLUMNS,
     _PLAYER_STAT_COLUMNS,
     _build_result,
-    _count_subquery,
     _is_single_competition,
     _player_sort_expr,
     parse_query,
     ExplorerColumn,
-    ExplorerFacets,
     ExplorerRow,
-    ExplorerResult,
     _SORT_KEYS_BY_SUBJECT,
 )
 
@@ -71,30 +66,79 @@ def test_parse_query_page_clamped_to_1() -> None:
     assert parse_query({"page": "3"}).page == 3
 
 
+def test_parse_query_rejects_future_draft_class() -> None:
+    """#396: an implausible future draft class is dropped (filter off), not applied."""
+    from datetime import date
+
+    next_class = date.today().year + 1
+    assert parse_query({"draft_class": str(next_class)}).draft_class == next_class
+    assert parse_query({"draft_class": str(next_class + 1)}).draft_class is None
+    assert parse_query({"draft_class": "2033"}).draft_class is None
+    assert parse_query({"draft_class": "2021"}).draft_class == 2021
+
+
+def test_parse_query_canonicalizes_country() -> None:
+    """#395: a raw ?country=US URL resolves to the canonical dropdown value."""
+    assert parse_query({"country": "US"}).country == "United States"
+    assert parse_query({"country": "USA"}).country == "United States"
+    assert parse_query({"country": "United States"}).country == "United States"
+    assert parse_query({"country": ""}).country is None
+    assert parse_query({}).country is None
+
+
 # --------------------------------------------------------------------------- #
 # _player_sort_expr mapping
 # --------------------------------------------------------------------------- #
 
 
-def test_player_sort_expr_counting_stats_are_passthrough() -> None:
-    """Counting-stat sort keys return themselves (the aggregate label)."""
-    for key in ("pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "gp"):
-        assert _player_sort_expr(key) == key, f"expected passthrough for {key!r}"
+def test_player_sort_expr_counting_stats_totals_are_passthrough() -> None:
+    """In totals mode, counting stats sort on their raw SUM aggregate."""
+    for key in ("pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga"):
+        assert _player_sort_expr(key, "totals") == f"SUM({key})"
+
+
+def test_player_sort_expr_counting_stats_scale_to_displayed_rate() -> None:
+    """Counting stats sort on the displayed per-mode rate, not the raw total.
+
+    This is the #397 fix: a per-game/-36/-100 column must be visually monotonic,
+    which requires the ORDER BY to rank on the same rate the cell shows.
+    """
+    assert (
+        _player_sort_expr("pts", "per_game") == "SUM(pts) * 1.0 / NULLIF(COUNT(*), 0)"
+    )
+    assert "NULLIF(SUM(minutes_seconds), 0)" in _player_sort_expr("pts", "per_36")
+    assert "NULLIF(SUM(pace * minutes_seconds), 0)" in _player_sort_expr(
+        "pts", "per_100"
+    )
+
+
+def test_player_sort_expr_gp_is_passthrough() -> None:
+    """GP is mode-independent and sorts on the SELECT output alias."""
+    for mode in ("per_game", "per_36", "per_100", "totals"):
+        assert _player_sort_expr("gp", mode) == "gp"
 
 
 def test_player_sort_expr_percentage_stats_return_sql_expressions() -> None:
-    """Percentage sort keys return NULLIF-guarded SQL ratio expressions, not the key itself."""
+    """Percentage sort keys return NULLIF-guarded ratios, mode-independent."""
     for key in ("efg_pct", "fg_pct", "fg3_pct", "ft_pct", "ts_pct"):
-        expr = _player_sort_expr(key)
+        expr = _player_sort_expr(key, "per_game")
         assert expr != key, f"{key!r} should map to an expression, not itself"
-        assert "NULLIF" in expr, (
-            f"{key!r} expression should guard against division by zero"
-        )
+        assert "NULLIF" in expr
+        # Percentages do not vary by mode.
+        assert expr == _player_sort_expr(key, "totals")
 
 
-def test_player_sort_expr_min_maps_to_sec() -> None:
-    """'min' (displayed minutes) sorts by raw seconds-played aggregate."""
-    assert _player_sort_expr("min") == "SUM(sec)"
+def test_player_sort_expr_min_uses_real_column() -> None:
+    """'min' sorts by minutes_seconds (per-game in rate modes, total in totals).
+
+    The old expression referenced a non-existent ``sec`` column and raised at
+    query time; assert it now references the real ``minutes_seconds`` column.
+    """
+    assert _player_sort_expr("min", "totals") == "SUM(minutes_seconds)"
+    assert (
+        _player_sort_expr("min", "per_game")
+        == "SUM(minutes_seconds) * 1.0 / NULLIF(COUNT(*), 0)"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -148,7 +192,7 @@ def test_build_result_unpaginated_returns_all_rows() -> None:
 
 
 def test_build_result_sorts_desc() -> None:
-    """desc direction puts the highest value first."""
+    """Desc direction puts the highest value first."""
     rows = _make_rows(5)
     cols = [ExplorerColumn("pts", "PTS")]
     q = ExplorerQuery(sort="pts", direction="desc", page=1)
@@ -159,7 +203,7 @@ def test_build_result_sorts_desc() -> None:
 
 
 def test_build_result_sorts_asc() -> None:
-    """asc direction puts the lowest value first."""
+    """Asc direction puts the lowest value first."""
     rows = _make_rows(5)
     cols = [ExplorerColumn("pts", "PTS")]
     q = ExplorerQuery(sort="pts", direction="asc", page=1)

@@ -96,6 +96,9 @@
       <span>–</span>
       <input type="number" name="age_max" id="ex-age-max" value="{{ q.age_max or '' }}" min="16" max="40" placeholder="Max">
     </div>
+    {# Position data is absent for the SL player pool, so the facet is empty.
+       Hide the control entirely rather than render a dead "Any"-only dropdown. #}
+    {% if result.facets.positions %}
     <div class="slg-filter">
       <label for="ex-position">Position</label>
       <select id="ex-position" name="position">
@@ -103,6 +106,7 @@
         {% for pos in result.facets.positions %}<option value="{{ pos }}" {{ 'selected' if q.position == pos else '' }}>{{ pos }}</option>{% endfor %}
       </select>
     </div>
+    {% endif %}
     <div class="slg-filter">
       <label for="grain-select">Grain</label>
       <select id="grain-select" name="grain">
