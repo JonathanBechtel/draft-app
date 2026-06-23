@@ -880,3 +880,354 @@ async def test_round_types_facet_lists_values(db_session: AsyncSession) -> None:
     assert "Qualifying" in result.facets.round_types
     # Alphabetical order
     assert result.facets.round_types == sorted(result.facets.round_types)
+
+
+# --------------------------------------------------------------------------- #
+# Bug-fix coverage: filters on non-career grains + team rating round_type scope
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_per_comp_filters(db: AsyncSession) -> None:
+    """Two players seeded with season rows for per_competition filter tests.
+
+    - early_pick: draft_pick=5, country=USA, team_slug recorded via primary_team_entry_id
+    - late_pick:  draft_pick=25, country=France
+    Both have 2 GP and 60 minutes so they pass default eligibility.
+    """
+    early = make_player("Early", "Comp")
+    early.draft_year, early.draft_round, early.draft_pick = 2024, 1, 5
+    early.birth_country = "USA"
+    late = make_player("Late", "Comp")
+    late.draft_year, late.draft_round, late.draft_pick = 2024, 1, 25
+    late.birth_country = "France"
+    db.add_all([early, late])
+    await db.flush()
+
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    t_early = await _team(db, comp_id=c)
+    t_late = await _team(db, comp_id=c)
+
+    # Give each player a season row linked to their team.
+    for player, team, pts in ((early, t_early, 20), (late, t_late, 10)):
+        assert player.id is not None
+        assert team.id is not None
+        season = SummerLeaguePlayerSeason(
+            competition_id=c,
+            player_id=player.id,
+            year=2024,
+            venue_slug="las_vegas",
+            gp=2,
+            minutes=60.0,
+            pts=pts,
+            reb=3,
+            ast=2,
+            fgm=pts // 2,
+            fga=pts,
+            fg3m=0,
+            fg3a=0,
+            ftm=0,
+            fta=0,
+            oreb=1,
+            dreb=2,
+            blk=0,
+            stl=1,
+            tov=1,
+            pf=2,
+            plus_minus=5,
+            primary_team_entry_id=team.id,
+        )
+        db.add(season)
+    await db.flush()
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_per_competition_draft_pick_filter(db_session: AsyncSession) -> None:
+    """draft_pick_min/max filters apply in per_competition grain."""
+    await _seed_per_comp_filters(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            draft_pick_max=10,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result.total == 1
+    assert result.rows[0].label.startswith("Early")
+
+
+@pytest.mark.asyncio
+async def test_per_competition_country_filter(db_session: AsyncSession) -> None:
+    """Country filter applies in per_competition grain."""
+    await _seed_per_comp_filters(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            country="France",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result.total == 1
+    assert result.rows[0].label.startswith("Late")
+
+
+@pytest.mark.asyncio
+async def test_per_competition_team_slug_filter(db_session: AsyncSession) -> None:
+    """team_slug filter joins primary_team_entry_id in per_competition grain."""
+    await _seed_per_comp_filters(db_session)
+    # Look up the team slug that was created for the "Early" player's team.
+    result_all = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result_all.total == 2
+    # Grab a team slug from the facets and confirm filtering to it returns 1 row.
+    slug = result_all.facets.teams[0]
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            team_slug=slug,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result.total == 1
+
+
+@pytest.mark.asyncio
+async def test_per_competition_min_minutes_unit(db_session: AsyncSession) -> None:
+    """min_minutes is compared directly to the minutes column (already in minutes).
+
+    A player with 60 minutes should satisfy min_minutes=60 but not min_minutes=61.
+    """
+    await _seed_per_comp_filters(db_session)
+    result_pass = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            min_games=1,
+            min_minutes=60,
+        ),
+    )
+    result_fail = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            min_games=1,
+            min_minutes=61,
+        ),
+    )
+    assert result_pass.total == 2
+    assert result_fail.total == 0
+
+
+@pytest.mark.asyncio
+async def test_per_game_draft_pick_filter(db_session: AsyncSession) -> None:
+    """draft_pick_min/max applies in per_game grain."""
+    early = make_player("Early", "Game")
+    early.draft_year, early.draft_round, early.draft_pick = 2024, 1, 5
+    late = make_player("Late", "Game")
+    late.draft_year, late.draft_round, late.draft_pick = 2024, 1, 25
+    db_session.add_all([early, late])
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db_session, comp_id=c)
+    await _log(db_session, comp_id=c, team=t, player=early, pts=20, games=1)
+    await _log(db_session, comp_id=c, team=t, player=late, pts=10, games=1)
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", draft_pick_max=10),
+    )
+    assert result.total == 1
+    assert result.rows[0].label.startswith("Early")
+
+
+@pytest.mark.asyncio
+async def test_per_game_country_filter(db_session: AsyncSession) -> None:
+    """Country filter applies in per_game grain."""
+    french = make_player("French", "Player")
+    french.birth_country = "France"
+    american = make_player("American", "Player")
+    american.birth_country = "USA"
+    db_session.add_all([french, american])
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db_session, comp_id=c)
+    await _log(db_session, comp_id=c, team=t, player=french, pts=15, games=1)
+    await _log(db_session, comp_id=c, team=t, player=american, pts=15, games=1)
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", country="France"),
+    )
+    assert result.total == 1
+    assert result.rows[0].label.startswith("French")
+
+
+@pytest.mark.asyncio
+async def test_per_game_team_slug_filter(db_session: AsyncSession) -> None:
+    """team_slug filter joins team_entry_id in per_game grain."""
+    player = make_player("Lone", "Scorer")
+    db_session.add(player)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t1 = await _team(db_session, comp_id=c)
+    t2 = await _team(db_session, comp_id=c)
+    await _log(db_session, comp_id=c, team=t1, player=player, pts=20, games=1)
+    await db_session.commit()
+
+    # Filter to t2 (no logs) should return nothing.
+    assert t2.team_slug is not None
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", team_slug=t2.team_slug),
+    )
+    assert result.total == 0
+
+    # Filter to t1 should return the one log.
+    assert t1.team_slug is not None
+    result2 = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", team_slug=t1.team_slug),
+    )
+    assert result2.total == 1
+
+
+@pytest.mark.asyncio
+async def test_per_game_round_type_filter(db_session: AsyncSession) -> None:
+    """round_type filter applies in per_game grain."""
+    player = make_player("Round", "Tester")
+    db_session.add(player)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db_session, comp_id=c)
+    await _log(
+        db_session,
+        comp_id=c,
+        team=t,
+        player=player,
+        pts=10,
+        games=1,
+        round_label="Qualifying",
+    )
+    await _log(
+        db_session,
+        comp_id=c,
+        team=t,
+        player=player,
+        pts=20,
+        games=1,
+        round_label="Championship",
+    )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", round_type="Qualifying"),
+    )
+    assert result.total == 1
+    assert result.rows[0].values["pts"] == 10.0
+
+
+@pytest.mark.asyncio
+async def test_teams_round_type_scopes_rating_query(db_session: AsyncSession) -> None:
+    """When round_type is set, team pace/ORtg/DRtg are averaged only over matching games.
+
+    Seeds two rounds for the same team: Qualifying (pace=80) and Championship (pace=120).
+    Filtering to Qualifying should show pace~80, not the all-round average of 100.
+    """
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    alpha = await _team(db_session, comp_id=c)
+    bravo = await _team(db_session, comp_id=c)
+    alpha.raw_team_name, bravo.raw_team_name = "Alpha", "Bravo"
+    await db_session.flush()
+
+    # Qualifying game — pace 80
+    _N["i"] += 1
+    g_qual = SummerLeagueGame(
+        competition_id=c,
+        nba_stats_game_id=f"rt-game-{_N['i']}",
+        game_date=date(2024, 7, 4),
+        home_team_entry_id=alpha.id,
+        away_team_entry_id=bravo.id,
+        home_score=100,
+        away_score=90,
+        round_label="Qualifying",
+    )
+    db_session.add(g_qual)
+    await db_session.flush()
+    assert g_qual.id is not None
+    for entry in (alpha, bravo):
+        db_session.add(
+            SummerLeagueTeamGameLog(
+                competition_id=c,
+                game_id=g_qual.id,
+                team_entry_id=entry.id,
+                pts=100 if entry is alpha else 90,
+                plus_minus=10 if entry is alpha else -10,
+                pace=80.0,
+                off_rating=108.0,
+                def_rating=100.0,
+            )
+        )
+
+    # Championship game — pace 120
+    _N["i"] += 1
+    g_champ = SummerLeagueGame(
+        competition_id=c,
+        nba_stats_game_id=f"rt-game-{_N['i']}",
+        game_date=date(2024, 7, 8),
+        home_team_entry_id=alpha.id,
+        away_team_entry_id=bravo.id,
+        home_score=110,
+        away_score=95,
+        round_label="Championship",
+    )
+    db_session.add(g_champ)
+    await db_session.flush()
+    assert g_champ.id is not None
+    for entry in (alpha, bravo):
+        db_session.add(
+            SummerLeagueTeamGameLog(
+                competition_id=c,
+                game_id=g_champ.id,
+                team_entry_id=entry.id,
+                pts=110 if entry is alpha else 95,
+                plus_minus=15 if entry is alpha else -15,
+                pace=120.0,
+                off_rating=115.0,
+                def_rating=100.0,
+            )
+        )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="teams", round_type="Qualifying"),
+    )
+    assert result.total == 2
+    alpha_row = next(r for r in result.rows if r.label.startswith("Alpha"))
+    # Only the Qualifying game (pace=80) should be averaged, not both games (100).
+    assert alpha_row.values["pace"] == 80.0
