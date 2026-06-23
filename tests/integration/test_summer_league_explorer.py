@@ -1336,3 +1336,139 @@ async def test_per_game_year_and_pick_min_filters(db_session: AsyncSession) -> N
     )
     assert result_pick.total == 1
     assert result_pick.rows[0].label.startswith("Late")
+
+
+# --------------------------------------------------------------------------- #
+# Phase 3: SQL-level pagination boundary tests
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_many_players(db: AsyncSession, n: int) -> None:
+    """Seed ``n`` players, each with 2 game logs (so they qualify at default thresholds).
+
+    All players are seeded in a single competition with pts=i (0-indexed) so
+    that ordering by pts gives a deterministic sequence.
+    """
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db, comp_id=c)
+    for i in range(n):
+        p = make_player(f"Player{i:03d}", "Paged")
+        db.add(p)
+        await db.flush()
+        # Two game logs per player (to meet default min_games=2).
+        await _log(db, comp_id=c, team=t, player=p, pts=i, games=2)
+    await db.commit()
+
+
+async def _seed_many_game_logs(db: AsyncSession, n: int) -> None:
+    """Seed a single player with ``n`` game logs (one per game) to test per_game pagination."""
+    c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db, comp_id=c)
+    player = make_player("PagedGame", "Player")
+    db.add(player)
+    await db.flush()
+    # Seed n individual game logs.
+    await _log(db, comp_id=c, team=t, player=player, pts=20, games=n)
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_career_grain_pagination_55_players(db_session: AsyncSession) -> None:
+    """55 seeded players → page 1 = 50 rows, page 2 = 5 rows, total = 55, has_next correct.
+
+    Validates that SQL LIMIT/OFFSET is applied correctly and that total reflects
+    the full unsliced count.
+    """
+    await _seed_many_players(db_session, 55)
+
+    # Page 1.
+    result_p1 = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", page=1, min_games=2),
+    )
+    assert result_p1.total == 55
+    assert len(result_p1.rows) == 50
+    assert result_p1.has_next is True
+    assert result_p1.page == 1
+
+    # Page 2.
+    result_p2 = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", page=2, min_games=2),
+    )
+    assert result_p2.total == 55
+    assert len(result_p2.rows) == 5
+    assert result_p2.has_next is False
+    assert result_p2.page == 2
+
+
+@pytest.mark.asyncio
+async def test_per_game_grain_pagination_60_logs(db_session: AsyncSession) -> None:
+    """60 game logs → page 1 = 50 rows, page 2 = 10 rows, total = 60, has_next correct.
+
+    Validates SQL pagination for the per_game grain (highest row count in production).
+    """
+    await _seed_many_game_logs(db_session, 60)
+
+    # Default min_games=2 would exclude a single player with 60 logs (gp=60, fine).
+    # But min_minutes check: each log is 1800 sec = 30 min; 60 * 30 = 1800 total min >> 60.
+    result_p1 = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", page=1),
+    )
+    assert result_p1.total == 60
+    assert len(result_p1.rows) == 50
+    assert result_p1.has_next is True
+
+    result_p2 = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", page=2),
+    )
+    assert result_p2.total == 60
+    assert len(result_p2.rows) == 10
+    assert result_p2.has_next is False
+
+
+@pytest.mark.asyncio
+async def test_career_grain_sort_order_preserved_across_pages(
+    db_session: AsyncSession,
+) -> None:
+    """Sort order is consistent across pages: page 1 top row > page 2 top row.
+
+    Seeds 55 players with pts=0..54 (per log; 2 logs each → totals 0..108).
+    Sorted desc by pts, page-1 top should be pts=54 (total=108), page-2 top lower.
+    """
+    await _seed_many_players(db_session, 55)
+
+    result_p1 = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="career", sort="pts", direction="desc", page=1
+        ),
+    )
+    result_p2 = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="career", sort="pts", direction="desc", page=2
+        ),
+    )
+    # The top row of page 1 should have higher pts than the top row of page 2.
+    p1_top = result_p1.rows[0].values["pts"]
+    p2_top = result_p2.rows[0].values["pts"]
+    assert p1_top is not None and p2_top is not None
+    assert p1_top > p2_top  # type: ignore[operator]
+
+
+@pytest.mark.asyncio
+async def test_career_grain_asc_sort_page1_is_lowest(db_session: AsyncSession) -> None:
+    """Ascending sort on career grain: page 1 row 1 has the lowest pts value."""
+    await _seed_many_players(db_session, 55)
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="career", sort="pts", direction="asc", page=1
+        ),
+    )
+    # With pts=0 (total) as the minimum seeded value.
+    assert result.rows[0].values["pts"] == 0.0  # per_game mode: 0 pts / 2 gp = 0.0

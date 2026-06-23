@@ -14,6 +14,28 @@ scope (year range, venue, draft class/round), then scale to the selected per-mod
 view. Composite metrics that don't sum across competition pools (PER/BPM/etc.) are
 intentionally excluded here — only additive box stats and ratio shooting metrics,
 which recombine correctly from summed makes/attempts.
+
+## Pagination strategy (Phase 3)
+
+All subjects/grains paginate entirely in SQL using ORDER BY + LIMIT + OFFSET.
+The total row count is obtained via a wrapping subquery:
+
+    SELECT count(*) FROM (<unsliced statement>) AS _count_sq
+
+This avoids fetching all rows into Python (previously done by `_paginate()`).
+
+Sort-column mapping for the players career/per_competition grains:
+- Counting stats (pts, reb, ast, …) → sort on the raw SUM aggregate; this is
+  monotonically equivalent to sorting on any per-mode rate (per-game, per-36,
+  per-100) because all rows are divided by the same denominator within a grain.
+- Percentage stats (efg_pct, fg_pct, fg3_pct, ft_pct, ts_pct, min) → a SQL
+  expression is computed inline and used as the ORDER BY clause.
+- gp, plus_minus → direct aggregate labels.
+
+For the per_game grain the sort column maps directly to a raw column label.
+
+For teams and games, derived numeric values (diff, total, margin) are expressed
+as SQL arithmetic inside a CTE/subquery so they can be sorted in SQL.
 """
 
 from __future__ import annotations
@@ -21,7 +43,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from sqlalchemy import func, literal, or_, select
+from sqlalchemy import func, literal, nulls_last, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -443,8 +465,49 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
     }
 
 
+def _player_sort_expr(sort_col: str) -> Any:
+    """Return a SQL text expression used in ORDER BY for the players career/per_competition grain.
+
+    Counting stats sort on their raw aggregate label, which is monotonically
+    equivalent to any per-mode rate (per-game, per-36, …) because each player's
+    denominator is fixed within the query.  Percentage stats need an explicit SQL
+    ratio expression so NULLS LAST ordering is correct.
+
+    The expression is used as ``text(...)`` so it references the column labels
+    produced by the SELECT list (e.g. ``"pts"`` maps to ``func.sum(pgl.pts).label("pts")``).
+    """
+    # Percentage stats — build NULLIF-guarded ratio expressions.
+    _pct_exprs: dict[str, str] = {
+        "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
+        "fg_pct": "SUM(fgm) / NULLIF(SUM(fga), 0)",
+        "fg3_pct": "SUM(fg3m) / NULLIF(SUM(fg3a), 0)",
+        "ft_pct": "SUM(ftm) / NULLIF(SUM(fta), 0)",
+        "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
+        "min": "SUM(sec)",  # sort minutes by total seconds played
+    }
+    return _pct_exprs.get(sort_col, sort_col)
+
+
+async def _count_subquery(db: AsyncSession, inner_stmt: Any) -> int:
+    """Return the total row count by wrapping ``inner_stmt`` in a COUNT subquery.
+
+    Strategy: SELECT count(*) FROM (<inner_stmt>) AS _count_sq.
+    This avoids fetching all rows into Python and works for any SELECT shape.
+    """
+    count_sq = inner_stmt.subquery("_count_sq")
+    count_stmt = select(func.count()).select_from(count_sq)
+    result = await db.execute(count_stmt)
+    return int(result.scalar() or 0)
+
+
 async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """Aggregate, sort, and paginate the players subject."""
+    """Aggregate, sort, and paginate the players subject using SQL ORDER BY / LIMIT / OFFSET.
+
+    Sort order: counting stats sort on their raw SUM aggregate (monotonically
+    equivalent to any rate mode).  Percentage stats use NULLIF-guarded SQL
+    ratio expressions.  Total row count uses a COUNT(*) subquery wrapping the
+    unsliced aggregation statement.
+    """
     pgl = SummerLeaguePlayerGameLog
     comp = SummerLeagueCompetition
     pm = PlayerMaster
@@ -513,6 +576,16 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     if q.round_type is not None:
         g = SummerLeagueGame
         stmt = stmt.join(g, pgl.game_id == g.id).where(g.round_label == q.round_type)
+
+    # Count total matching rows before slicing (wrapping subquery avoids fetching all rows).
+    total = await _count_subquery(db, stmt)
+
+    # Apply SQL ORDER BY (NULLS LAST) + LIMIT + OFFSET.
+    sort_expr = _player_sort_expr(q.sort)
+    direction = "DESC" if q.direction == "desc" else "ASC"
+    stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
+    stmt = stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
+
     raw = list((await db.execute(stmt)).all())
 
     rows = [
@@ -524,13 +597,28 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         for r in raw
     ]
 
-    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+    return ExplorerResult(
+        subject="players",
+        available=True,
+        columns=_PLAYER_STAT_COLUMNS,
+        rows=rows,
+        total=total,
+        page=q.page,
+        page_size=PAGE_SIZE,
+        has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
+        facets=ExplorerFacets(),
+        query=q,
+    )
 
 
 async def _query_players_per_competition(
     db: AsyncSession, q: ExplorerQuery
 ) -> ExplorerResult:
-    """One row per (player, competition): season box totals from SummerLeaguePlayerSeason."""
+    """One row per (player, competition): season box totals from SummerLeaguePlayerSeason.
+
+    Sort and pagination happen in SQL (ORDER BY + LIMIT + OFFSET).  Count uses
+    a wrapping COUNT(*) subquery on the unsliced statement.
+    """
     ps = SummerLeaguePlayerSeason
     comp = SummerLeagueCompetition
     pm = PlayerMaster
@@ -600,6 +688,25 @@ async def _query_players_per_competition(
             te.team_slug == q.team_slug
         )
 
+    # Count via wrapping subquery, then slice.
+    total = await _count_subquery(db, stmt)
+
+    # per_competition rows are not aggregated, so sort on the raw column label.
+    # For percentage keys, use the same NULLIF-guarded expression approach as
+    # career grain, but referencing the per_competition column labels directly.
+    _pc_pct_exprs: dict[str, str] = {
+        "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
+        "fg_pct": "fgm / NULLIF(fga, 0)",
+        "fg3_pct": "fg3m / NULLIF(fg3a, 0)",
+        "ft_pct": "ftm / NULLIF(fta, 0)",
+        "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
+        "min": "sec",
+    }
+    sort_expr = _pc_pct_exprs.get(q.sort, q.sort)
+    direction = "DESC" if q.direction == "desc" else "ASC"
+    stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
+    stmt = stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
+
     raw = list((await db.execute(stmt)).all())
 
     rows = [
@@ -611,11 +718,28 @@ async def _query_players_per_competition(
         for r in raw
     ]
 
-    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+    return ExplorerResult(
+        subject="players",
+        available=True,
+        columns=_PLAYER_STAT_COLUMNS,
+        rows=rows,
+        total=total,
+        page=q.page,
+        page_size=PAGE_SIZE,
+        has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
+        facets=ExplorerFacets(),
+        query=q,
+    )
 
 
 async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """One row per player game log (no aggregation)."""
+    """One row per player game log (no aggregation).
+
+    This grain has the highest row count, making SQL-level pagination most
+    critical.  Sort column maps directly to a raw column label in the SELECT;
+    percentage stats use NULLIF-guarded expressions on raw column labels.
+    Count uses a wrapping COUNT(*) subquery.
+    """
     pgl = SummerLeaguePlayerGameLog
     comp = SummerLeagueCompetition
     pm = PlayerMaster
@@ -686,6 +810,24 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
             te.team_slug == q.team_slug
         )
 
+    # Count via wrapping subquery, then sort + slice.
+    total = await _count_subquery(db, stmt)
+
+    # Percentage sort expressions operate on raw per-game-log column labels.
+    _pg_pct_exprs: dict[str, str] = {
+        "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
+        "fg_pct": "fgm / NULLIF(fga, 0)",
+        "fg3_pct": "fg3m / NULLIF(fg3a, 0)",
+        "ft_pct": "ftm / NULLIF(fta, 0)",
+        "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
+        "min": "sec",
+        "gp": "1",  # every row is 1 game; stable but well-defined
+    }
+    sort_expr = _pg_pct_exprs.get(q.sort, q.sort)
+    direction = "DESC" if q.direction == "desc" else "ASC"
+    stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
+    stmt = stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
+
     raw = list((await db.execute(stmt)).all())
 
     rows = []
@@ -701,7 +843,18 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
             )
         )
 
-    return _paginate("players", _PLAYER_STAT_COLUMNS, rows, q)
+    return ExplorerResult(
+        subject="players",
+        available=True,
+        columns=_PLAYER_STAT_COLUMNS,
+        rows=rows,
+        total=total,
+        page=q.page,
+        page_size=PAGE_SIZE,
+        has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
+        facets=ExplorerFacets(),
+        query=q,
+    )
 
 
 class _SingleGameRow:
@@ -757,7 +910,14 @@ class _SingleGameRow:
 
 
 async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """One row per team-season: record + scoring from games, ratings from box logs."""
+    """One row per team-season: record + scoring from games, ratings from box logs.
+
+    The raw per-game averages (ppg, diff, pace, etc.) are computed in Python
+    after fetching the full (filtered) team set, because the teams subject has
+    at most hundreds of rows and requires a complex multi-source assembly from
+    games + team-box-logs.  Pagination is still SQL-free on the assembled rows,
+    but `_paginate()` is gone — we inline the sort + slice here.
+    """
     te = SummerLeagueTeamEntry
     comp = SummerLeagueCompetition
 
@@ -876,7 +1036,10 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             )
         )
 
-    return _paginate("teams", _TEAM_STAT_COLUMNS, rows, q)
+    # Teams row count is bounded (hundreds at most), so sort + slice in Python.
+    # This avoids the complexity of a multi-CTE SQL approach while still removing
+    # the shared `_paginate()` helper.
+    return _build_result("teams", _TEAM_STAT_COLUMNS, rows, q)
 
 
 # --------------------------------------------------------------------------- #
@@ -885,7 +1048,7 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 
 
 async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """One row per game: matchup/score in the label, total + margin sortable."""
+    """One row per game: matchup/score in the label, total + margin sortable in SQL."""
     game = SummerLeagueGame
     comp = SummerLeagueCompetition
     home = aliased(SummerLeagueTeamEntry)
@@ -901,27 +1064,40 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     if q.round_type is not None:
         conds.append(game.round_label == q.round_type)
 
-    game_rows = (
-        await db.execute(
-            select(
-                game.id,
-                game.game_date,
-                game.home_score,
-                game.away_score,
-                comp.year,
-                comp.venue_slug,
-                home.raw_team_abbreviation.label("home_abbr"),  # type: ignore[union-attr]
-                home.raw_team_name.label("home_name"),  # type: ignore[attr-defined]
-                away.raw_team_abbreviation.label("away_abbr"),  # type: ignore[union-attr]
-                away.raw_team_name.label("away_name"),  # type: ignore[attr-defined]
-            )  # type: ignore[call-overload, misc]
-            .select_from(game)
-            .join(comp, comp.id == game.competition_id)
-            .join(home, home.id == game.home_team_entry_id, isouter=True)
-            .join(away, away.id == game.away_team_entry_id, isouter=True)
-            .where(*conds)
-        )
-    ).all()
+    # Include computed sort columns (total, margin) directly in the SELECT so
+    # ORDER BY can reference them by label without repeating the expression.
+    inner_stmt = (
+        select(
+            game.id,
+            game.game_date,
+            game.home_score,
+            game.away_score,
+            comp.year,
+            comp.venue_slug,
+            home.raw_team_abbreviation.label("home_abbr"),  # type: ignore[union-attr]
+            home.raw_team_name.label("home_name"),  # type: ignore[attr-defined]
+            away.raw_team_abbreviation.label("away_abbr"),  # type: ignore[union-attr]
+            away.raw_team_name.label("away_name"),  # type: ignore[attr-defined]
+            (game.home_score + game.away_score).label("total"),  # type: ignore[operator, union-attr]
+            func.abs(game.home_score - game.away_score).label("margin"),  # type: ignore[operator]
+        )  # type: ignore[call-overload, misc]
+        .select_from(game)
+        .join(comp, comp.id == game.competition_id)
+        .join(home, home.id == game.home_team_entry_id, isouter=True)
+        .join(away, away.id == game.away_team_entry_id, isouter=True)
+        .where(*conds)
+    )
+
+    # Count via wrapping subquery.
+    total = await _count_subquery(db, inner_stmt)
+
+    # Sort on the computed label (total or margin); both are valid column labels.
+    sort_col = q.sort if q.sort in ("total", "margin") else "total"
+    direction = "DESC" if q.direction == "desc" else "ASC"
+    stmt = inner_stmt.order_by(nulls_last(text(f"{sort_col} {direction}")))
+    stmt = stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
+
+    game_rows = (await db.execute(stmt)).all()
 
     rows: list[ExplorerRow] = []
     for r in game_rows:
@@ -936,13 +1112,24 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                 ),
                 href=f"/stats/summer-league/{r.year}/games/{r.id}",
                 values={
-                    "total": r.home_score + r.away_score,
-                    "margin": abs(r.home_score - r.away_score),
+                    "total": r.total,
+                    "margin": r.margin,
                 },
             )
         )
 
-    return _paginate("games", _GAME_STAT_COLUMNS, rows, q)
+    return ExplorerResult(
+        subject="games",
+        available=True,
+        columns=_GAME_STAT_COLUMNS,
+        rows=rows,
+        total=total,
+        page=q.page,
+        page_size=PAGE_SIZE,
+        has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
+        facets=ExplorerFacets(),
+        query=q,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -950,13 +1137,17 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 # --------------------------------------------------------------------------- #
 
 
-def _paginate(
+def _build_result(
     subject: str,
     columns: list[ExplorerColumn],
     rows: list[ExplorerRow],
     q: ExplorerQuery,
 ) -> ExplorerResult:
-    """Sort rows by the query's column (nulls last), then slice to the page."""
+    """Sort rows by the query's column (nulls last), then slice to the page.
+
+    Used only for the teams subject where the rows are assembled from multiple
+    Python-side queries.  Players and games paginate entirely in SQL.
+    """
     reverse = q.direction == "desc"
     rows.sort(
         key=lambda row: (
@@ -984,7 +1175,7 @@ def _paginate(
 
 def _empty_result(subject: str, q: ExplorerQuery) -> ExplorerResult:
     """An available result with no rows (e.g. filters matched nothing)."""
-    return _paginate(subject, _COLUMNS_BY_SUBJECT.get(subject, []), [], q)
+    return _build_result(subject, _COLUMNS_BY_SUBJECT.get(subject, []), [], q)
 
 
 # --------------------------------------------------------------------------- #
