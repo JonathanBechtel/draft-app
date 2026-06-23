@@ -2124,3 +2124,173 @@ async def test_parse_query_age_invalid_values_become_none() -> None:
     q = parse_query({"age_min": "bad", "age_max": ""})
     assert q.age_min is None
     assert q.age_max is None
+
+
+# --------------------------------------------------------------------------- #
+# Phase 4b: CSV export
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_csv_export_players_status_and_headers(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """?format=csv returns 200, Content-Type: text/csv, Content-Disposition: attachment.
+
+    Seeds the standard two-player fixture and confirms the CSV response has the
+    correct HTTP status code and headers for a file download.
+    """
+    await _seed(db_session)
+    resp = await app_client.get("/stats/summer-league/explorer?format=csv")
+    assert resp.status_code == 200
+    assert "text/csv" in resp.headers["content-type"]
+    cd = resp.headers.get("content-disposition", "")
+    assert "attachment" in cd
+    assert "summer-league-explorer.csv" in cd
+
+
+@pytest.mark.asyncio
+async def test_csv_export_players_header_row_matches_columns(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """CSV header row starts with 'Player' and contains all Explorer column labels.
+
+    The header must include the leading label column ('Player') followed by every
+    stat column label in the players subject (GP, MIN, PTS, etc.).
+    """
+    await _seed(db_session)
+    resp = await app_client.get(
+        "/stats/summer-league/explorer?subject=players&format=csv"
+    )
+    assert resp.status_code == 200
+    lines = resp.text.strip().splitlines()
+    assert len(lines) >= 1
+    header = lines[0]
+    assert header.startswith("Player")
+    # A sample of expected stat column labels present in the header.
+    for label in ("GP", "PTS", "REB", "AST", "FGM", "FGA"):
+        assert label in header, f"expected column label {label!r} in CSV header"
+
+
+@pytest.mark.asyncio
+async def test_csv_export_players_data_rows_match_html(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """CSV data rows match what the HTML table would show for the same query.
+
+    Seeds two players (Big Scorer 30 PPG, Role Player 10 PPG). The CSV (sorted
+    desc by pts) should list Big Scorer first, Role Player second. The PTS column
+    value for Big Scorer must be 30.0 (per_game default).
+    """
+    await _seed(db_session)
+    resp = await app_client.get(
+        "/stats/summer-league/explorer?subject=players&sort=pts&dir=desc&format=csv"
+    )
+    assert resp.status_code == 200
+    lines = resp.text.strip().splitlines()
+    # lines[0] = header; lines[1] = Big Scorer (highest PTS); lines[2] = Role Player
+    assert len(lines) == 3
+    assert lines[1].startswith("Big Scorer")
+    assert lines[2].startswith("Role Player")
+    # PTS value for Big Scorer should be 30.0 in per_game mode.
+    header_cols = lines[0].split(",")
+    pts_idx = header_cols.index("PTS")
+    big_scorer_cols = lines[1].split(",")
+    assert big_scorer_cols[pts_idx] == "30.0"
+
+
+@pytest.mark.asyncio
+async def test_csv_export_teams_subject(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """?subject=teams&format=csv returns a valid CSV with 'Team' as the first header.
+
+    Seeds two teams (Alpha/Bravo). The CSV must start with 'Team' as the label
+    column and include the teams stat column labels (GP, W, L, etc.).
+    """
+    await _seed_teams(db_session)
+    resp = await app_client.get(
+        "/stats/summer-league/explorer?subject=teams&format=csv"
+    )
+    assert resp.status_code == 200
+    lines = resp.text.strip().splitlines()
+    assert len(lines) >= 3  # header + 2 team rows
+    assert lines[0].startswith("Team")
+    for label in ("GP", "W", "L"):
+        assert label in lines[0], f"expected {label!r} in teams CSV header"
+    # Both team rows should be present.
+    team_labels = [line.split(",")[0] for line in lines[1:]]
+    assert any("Alpha" in lbl for lbl in team_labels)
+    assert any("Bravo" in lbl for lbl in team_labels)
+
+
+@pytest.mark.asyncio
+async def test_csv_export_games_subject(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """?subject=games&format=csv returns a valid CSV with 'Game' as the first header.
+
+    Seeds two games (from _seed_teams). The CSV must start with 'Game', include
+    'Total' and 'Margin' columns, and have one data row per scored game.
+    """
+    await _seed_teams(db_session)
+    resp = await app_client.get(
+        "/stats/summer-league/explorer?subject=games&format=csv"
+    )
+    assert resp.status_code == 200
+    lines = resp.text.strip().splitlines()
+    assert len(lines) == 3  # header + 2 game rows
+    assert lines[0].startswith("Game")
+    assert "Total" in lines[0]
+    assert "Margin" in lines[0]
+
+
+@pytest.mark.asyncio
+async def test_csv_export_none_values_render_as_empty_string(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """None values in stat cells render as empty strings (not 'None') in the CSV.
+
+    Uses per_36 mode where plus_minus is suppressed (None). The corresponding
+    CSV cell for plus_minus should be empty, not the literal string 'None'.
+    """
+    await _seed(db_session)
+    resp = await app_client.get(
+        "/stats/summer-league/explorer?subject=players&mode=per_36&format=csv"
+    )
+    assert resp.status_code == 200
+    # 'None' must not appear anywhere in the CSV body.
+    assert "None" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_csv_download_link_present_in_html(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """The HTML Explorer page includes a 'Download CSV' link when results are present.
+
+    Confirms that the download link with format=csv is rendered in the results
+    section when the query returns at least one row.
+    """
+    await _seed(db_session)
+    resp = await app_client.get("/stats/summer-league/explorer")
+    assert resp.status_code == 200
+    assert "Download CSV" in resp.text
+    assert "format=csv" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_csv_download_link_absent_when_no_results(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """The 'Download CSV' link is absent when the query returns no rows.
+
+    Filters to a venue with no data (min_gp=9999) so the result is empty;
+    the download link must not appear.
+    """
+    await _seed(db_session)
+    resp = await app_client.get(
+        "/stats/summer-league/explorer?min_gp=9999"
+    )
+    assert resp.status_code == 200
+    assert "Download CSV" not in resp.text

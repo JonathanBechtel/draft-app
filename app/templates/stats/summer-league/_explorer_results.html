@@ -50,6 +50,9 @@
     {% if result.total > result.page_size %}
     · page {{ result.page }} of {{ (result.total // result.page_size) + (1 if result.total % result.page_size else 0) }}
     {% endif %}
+    {% if result.total > 0 %}
+    · <a class="slg-explorer-count__csv" href="{{ explorer_qs(result.query) }}&format=csv">Download CSV</a>
+    {% endif %}
   </p>
 
   <div class="stats-scoreboard slg-board">

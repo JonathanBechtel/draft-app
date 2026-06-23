@@ -6,11 +6,14 @@ raw-data surfaces over the normalized Summer League tables.
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response
 
 from app.services.summer_league_games_service import (
     GamesPage,
@@ -149,18 +152,65 @@ async def summer_league_leaders(
     )
 
 
+def _explorer_csv(result: object) -> StreamingResponse:
+    """Build a CSV StreamingResponse from an :class:`ExplorerResult`.
+
+    The first column is the row label (Player / Team / Game name); subsequent
+    columns follow ``result.columns`` in display order.  None values render as
+    empty strings.
+    """
+    from app.services.summer_league_explorer_service import ExplorerResult
+
+    assert isinstance(result, ExplorerResult)
+
+    # Determine the label column header from the subject.
+    label_header = {
+        "players": "Player",
+        "teams": "Team",
+        "games": "Game",
+    }.get(result.subject, "Name")
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+
+    # Header row: label column first, then stat columns.
+    writer.writerow([label_header] + [c.label for c in result.columns])
+
+    for row in result.rows:
+        writer.writerow(
+            [row.label]
+            + [
+                "" if row.values.get(c.key) is None else row.values.get(c.key)
+                for c in result.columns
+            ]
+        )
+
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="summer-league-explorer.csv"'
+        },
+    )
+
+
 @router.get("/stats/summer-league/explorer", response_class=HTMLResponse)
 async def summer_league_explorer(
     request: Request,
     db: AsyncSession = Depends(get_session),
-) -> HTMLResponse:
+) -> Response:
     """Faceted query builder over Summer League players, teams, and games.
 
     All state is URL-encoded so every query is shareable. ``?partial=1`` renders
     just the results table for in-place JS swaps; otherwise the full page renders.
+    ``?format=csv`` streams a CSV download of the current query result.
     """
     query = parse_query(dict(request.query_params))
     result = await run_explorer_query(db, query)
+
+    if request.query_params.get("format") == "csv":
+        return _explorer_csv(result)
 
     template = (
         "stats/summer-league/_explorer_results.html"
