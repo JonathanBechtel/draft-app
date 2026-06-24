@@ -82,7 +82,9 @@ def parse_lines(text: str) -> list[ParsedPick]:
     picks: list[ParsedPick] = []
     for raw in text.splitlines():
         line = raw.strip()
-        if not line:
+        # Skip blanks and comment lines. "#1" is still pick numbering, so a
+        # line only counts as a comment when "#" is not followed by a digit.
+        if not line or (line.startswith("#") and not line[1:2].isdigit()):
             continue
         m = _LINE.match(line)
         if not m:

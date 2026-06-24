@@ -44,3 +44,22 @@ def test_blank_and_garbage_lines_skipped() -> None:
     picks = parse_lines("\n\nsome commentary\n2 Dylan Harper SAS\n")
     assert len(picks) == 1
     assert picks[0].overall_pick == 2
+
+
+def test_comment_lines_skipped() -> None:
+    """Lines starting with '#' are comments — even when a number follows.
+
+    The canonical data files carry a '# 2026 NBA Draft ...' header; without
+    comment-skipping the leading year would be misread as pick #2026.
+    """
+    text = "# 2026 NBA Draft — Round 1\n# Format: pick name TEAM\n1 Cooper Flagg DAL\n"
+    picks = parse_lines(text)
+    assert [(p.overall_pick, p.player_name) for p in picks] == [(1, "Cooper Flagg")]
+
+
+def test_tab_separated_lines_parse() -> None:
+    """The canonical file is tab-separated; team is still the trailing token."""
+    picks = parse_lines("1\tAJ Dybantsa\tWAS\n")
+    assert picks[0].overall_pick == 1
+    assert picks[0].player_name == "AJ Dybantsa"
+    assert picks[0].team_abbr == "WAS"
