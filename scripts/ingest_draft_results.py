@@ -57,6 +57,7 @@ from app.services.player_mention_service import (
     build_player_name_lookup,
     find_existing_player,
 )
+from app.utils.db_async import _prepare_asyncpg_connection
 
 load_dotenv()
 
@@ -165,7 +166,11 @@ async def ingest(text: str, *, draft_year: int, source: str, dry_run: bool) -> N
         print("ERROR: DATABASE_URL not set", file=sys.stderr)
         sys.exit(1)
 
-    engine = create_async_engine(db_url)
+    # Normalize the URL exactly as the app does (asyncpg driver, strip Neon's
+    # sslmode/channel_binding query args) so the documented run paths and the
+    # CI deploy step work against the repo's standard DATABASE_URL forms.
+    normalized_url, connect_args = _prepare_asyncpg_connection(db_url)
+    engine = create_async_engine(normalized_url, connect_args=connect_args)
     session_factory = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )

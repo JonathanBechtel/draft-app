@@ -47,14 +47,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const DIR_LABEL = { riser: "Riser", faller: "Faller", "in range": "On the board" };
 
+  function row(cls, text) {
+    const el = document.createElement("span");
+    el.className = cls;
+    el.textContent = text; // textContent, never innerHTML — names are untrusted
+    return el;
+  }
+
   function show(face, evt) {
     const d = face.dataset;
     const dir = DIR_LABEL[d.dir] || "";
     const pos = d.pos ? `${d.pos} · ` : "";
-    tip.innerHTML =
-      `<span class="recap-tip__name">${d.name}</span>` +
-      `<span class="recap-tip__meta">${pos}${dir}</span>` +
-      `<span class="recap-tip__slot">Expected #${d.exp} → Drafted #${d.act}</span>`;
+    tip.replaceChildren(
+      row("recap-tip__name", d.name),
+      row("recap-tip__meta", `${pos}${dir}`),
+      row("recap-tip__slot", `Expected #${d.exp} → Drafted #${d.act}`),
+    );
     tip.dataset.dir = d.dir;
     tip.hidden = false;
     move(evt);
