@@ -78,6 +78,10 @@ jobs:
       - name: Sync draft results (canonical records)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Importing the app (for shared URL normalization + the matcher)
+          # instantiates Settings, which requires SECRET_KEY even though the
+          # ingest itself doesn't use it.
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
         run: |
           shopt -s nullglob
           for f in scripts/data/draft_results_*.txt; do
