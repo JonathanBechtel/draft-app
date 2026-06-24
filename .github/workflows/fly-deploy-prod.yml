@@ -71,6 +71,20 @@ jobs:
             --remote-only \
             --app draft-app-prod
 
+      # Hydrate the per-year draft-results from their committed canonical files.
+      # Idempotent (upsert by year+pick): re-running re-syncs, so appending a new
+      # year's file or new picks just needs a re-deploy. Names resolve against
+      # this environment's player DB; unmatched picks are reported, not fatal.
+      - name: Sync draft results (canonical records)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          shopt -s nullglob
+          for f in scripts/data/draft_results_*.txt; do
+            echo "== Ingesting $f =="
+            python scripts/ingest_draft_results.py --file "$f"
+          done
+
       - name: Update cron machine (if exists)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
