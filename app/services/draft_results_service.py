@@ -248,22 +248,24 @@ async def get_draft_recap(
 def split_movers(
     picks: list[RecapPick], *, limit: int = 10
 ) -> tuple[list[RecapPick], list[RecapPick]]:
-    """Split recap picks into ``(later, earlier)`` movers vs. the consensus range.
+    """Split recap picks into ``(later, earlier)`` movers vs. the consensus.
 
-    Pure helper so callers holding the picks list don't rebuild it. ``later`` =
-    drafted further past the field's worst projection (largest positive
-    ``range_surprise``); ``earlier`` = drafted further ahead of the best
-    projection (most negative). Neutral framing — direction, not value.
+    Pure helper so callers holding the picks list don't rebuild it. Membership is
+    range-based — a mover is a pick drafted *outside* its consensus high/low band
+    (``range_surprise`` nonzero), so a pick within the field's spread isn't a
+    surprise. But ranking and the displayed gap use the intuitive point delta
+    (``overall_pick - consensus_rank``), so "biggest" matches the expected-vs-
+    drafted numbers shown on the card. Neutral framing — direction, not value.
     """
     movers = [p for p in picks if p.range_surprise]
     later = sorted(
         (p for p in movers if (p.range_surprise or 0) > 0),
-        key=lambda p: p.range_surprise or 0,
+        key=lambda p: p.delta or 0,
         reverse=True,
     )[:limit]
     earlier = sorted(
         (p for p in movers if (p.range_surprise or 0) < 0),
-        key=lambda p: p.range_surprise or 0,
+        key=lambda p: p.delta or 0,
     )[:limit]
     return later, earlier
 

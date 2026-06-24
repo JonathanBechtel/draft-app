@@ -63,7 +63,7 @@
     </span>
   </span>
   <span class="dra-leader__delta dr-gap dr-gap--{{ kind }}">
-    {% if kind == 'later' %}↓ {{ p.range_surprise }}{% else %}↑ {{ -p.range_surprise }}{% endif %}
+    {% if kind == 'later' %}↓ {{ p.delta }}{% else %}↑ {{ -p.delta }}{% endif %}
   </span>
 </article>
 {% endmacro %}
@@ -115,7 +115,7 @@
         expected <strong>#{{ r.consensus_rank }}</strong> &middot; drafted
         <strong>#{{ r.overall_pick }}</strong> by {{ r.team_abbreviation or 'TBD' }}
       </p>
-      <p class="dr-card__big">↑ {{ -r.range_surprise }} <span>ahead of expectation</span></p>
+      <p class="dr-card__big">↑ {{ -r.delta }} <span>spots ahead of consensus</span></p>
     </article>
     {% endif %}
     {% if summary.biggest_later %}
@@ -127,7 +127,7 @@
         expected <strong>#{{ s.consensus_rank }}</strong> &middot; drafted
         <strong>#{{ s.overall_pick }}</strong> by {{ s.team_abbreviation or 'TBD' }}
       </p>
-      <p class="dr-card__big">↓ {{ s.range_surprise }} <span>past expectation</span></p>
+      <p class="dr-card__big">↓ {{ s.delta }} <span>spots past consensus</span></p>
     </article>
     {% endif %}
     <article class="dr-card dr-card--meter">
