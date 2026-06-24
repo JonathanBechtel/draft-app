@@ -79,9 +79,10 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           # Importing the app (for shared URL normalization + the matcher)
-          # instantiates Settings, which requires SECRET_KEY even though the
-          # ingest itself doesn't use it.
+          # instantiates Settings, which requires these even though the ingest
+          # itself doesn't use them.
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          ENV: prod
         run: |
           shopt -s nullglob
           for f in scripts/data/draft_results_*.txt; do
