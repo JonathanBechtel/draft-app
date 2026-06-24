@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+
+{% block title %}{{ draft_year }} NBA Draft Recap — Board vs. Reality — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/draft-recap.css') }}">
+{% endblock %}
+
+{# ---- shared macros ---- #}
+{% macro team_chip(p) %}
+  {% if p.team_abbreviation %}
+    <span class="dr-team" style="--team-color: {{ p.team_primary_color or '#334155' }}">
+      {% if p.team_logo_url %}<img class="dr-team__logo" src="{{ p.team_logo_url }}" alt="{{ p.team_abbreviation }}" loading="lazy">{% endif %}
+      <span class="dr-team__abbr">{{ p.team_abbreviation }}</span>
+    </span>
+  {% else %}
+    <span class="dr-team dr-team--tbd">—</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro expected_cell(p) %}
+  {% if p.consensus_rank %}
+    <span class="dr-exp-no">#{{ p.consensus_rank }}</span>
+    {% if p.high_rank and p.low_rank and p.high_rank != p.low_rank %}
+    <span class="dr-exp-range">range {{ p.high_rank }}–{{ p.low_rank }}</span>
+    {% endif %}
+  {% else %}
+    <span class="dr-exp-no dr-exp-no--none">—</span>
+  {% endif %}
+{% endmacro %}
+
+{# Neutral expected-vs-actual gap: a signed number, coloured by where the pick
+   landed in the consensus range. No value-laden labels. #}
+{% macro delta_cell(p) %}
+  {% if p.classification == 'unranked' %}
+    <span class="dr-gap dr-gap--unranked">off board</span>
+  {% elif p.classification == 'in_range' %}
+    <span class="dr-gap dr-gap--even">{% if p.delta > 0 %}+{% endif %}{{ p.delta }}</span>
+  {% elif p.classification == 'later' %}
+    <span class="dr-gap dr-gap--later" title="Faller — drafted later than expected">↓ {{ p.delta }}</span>
+  {% else %}
+    <span class="dr-gap dr-gap--earlier" title="Riser — drafted ahead of expectation">↑ {{ -p.delta }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% macro mover_row(p, idx, kind) %}
+<article class="dra-leader dra-leader--{{ kind }}">
+  <span class="dra-leader__rank">{{ idx }}</span>
+  {% if p.photo_url %}
+  <img class="dra-leader__photo" src="{{ p.photo_url }}" alt="" loading="lazy">
+  {% else %}
+  <span class="dra-leader__photo dra-leader__photo--blank">{{ (p.player_name or p.raw_player_name or '?')[:1] }}</span>
+  {% endif %}
+  <span class="dra-leader__meta">
+    {% if p.slug %}
+    <a class="dra-leader__name" href="/players/{{ p.slug }}">{{ p.player_name or p.raw_player_name }}</a>
+    {% else %}
+    <span class="dra-leader__name">{{ p.player_name or p.raw_player_name }}</span>
+    {% endif %}
+    <span class="dra-leader__detail">
+      expected #{{ p.consensus_rank }}{% if p.high_rank and p.low_rank and p.high_rank != p.low_rank %} ({{ p.high_rank }}–{{ p.low_rank }}){% endif %}
+      → pick #{{ p.overall_pick }}{% if p.team_abbreviation %} &middot; {{ p.team_abbreviation }}{% endif %}
+    </span>
+  </span>
+  <span class="dra-leader__delta dr-gap dr-gap--{{ kind }}">
+    {% if kind == 'later' %}↓ {{ p.range_surprise }}{% else %}↑ {{ -p.range_surprise }}{% endif %}
+  </span>
+</article>
+{% endmacro %}
+
+{% block content %}
+<main class="dr-page">
+
+  <header class="dr-header">
+    <p class="dr-eyebrow">{{ draft_year }} NBA Draft &middot; Recap</p>
+    <h1 class="dr-title">Board vs. Reality</h1>
+    <p class="dr-byline">
+      Every pick measured against the pre-draft <a href="/consensus">consensus</a> &mdash;
+      where the field expected each player to go, and where he actually landed.
+      We track the gap, not the grade.
+    </p>
+    {% if recap_years and recap_years|length > 1 %}
+    <nav class="dr-years" aria-label="Draft year">
+      {% for y in recap_years %}
+      <a class="dr-year {% if y == draft_year %}is-active{% endif %}" href="/draft-recap/{{ y }}">{{ y }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+  </header>
+
+  {% if not has_results %}
+  {# ---------- Pre-draft preview state ---------- #}
+  <section class="dr-preview">
+    <div class="dr-preview__card">
+      <p class="dr-preview__kicker">Live tonight</p>
+      <h2 class="dr-preview__headline">The board meets the real thing.</h2>
+      <p class="dr-preview__copy">
+        Round 1 goes tonight, Round 2 tomorrow. As each pick is announced it
+        lands here against the consensus big board &mdash; the risers, the
+        fallers, and which boards read the room. Check back through the night.
+      </p>
+      <a class="dr-preview__cta" href="/consensus">See the pre-draft consensus board →</a>
+    </div>
+  </section>
+  {% else %}
+
+  {# ---------- Headline cards ---------- #}
+  <section class="dr-cards" aria-label="Headline numbers">
+    {% if summary.biggest_earlier %}
+    {% set r = summary.biggest_earlier %}
+    <article class="dr-card dr-card--earlier">
+      <p class="dr-card__label">Biggest Riser</p>
+      <p class="dr-card__player">{{ r.player_name or r.raw_player_name }}</p>
+      <p class="dr-card__detail">
+        expected <strong>#{{ r.consensus_rank }}</strong> &middot; drafted
+        <strong>#{{ r.overall_pick }}</strong> by {{ r.team_abbreviation or 'TBD' }}
+      </p>
+      <p class="dr-card__big">↑ {{ -r.range_surprise }} <span>ahead of expectation</span></p>
+    </article>
+    {% endif %}
+    {% if summary.biggest_later %}
+    {% set s = summary.biggest_later %}
+    <article class="dr-card dr-card--later">
+      <p class="dr-card__label">Biggest Faller</p>
+      <p class="dr-card__player">{{ s.player_name or s.raw_player_name }}</p>
+      <p class="dr-card__detail">
+        expected <strong>#{{ s.consensus_rank }}</strong> &middot; drafted
+        <strong>#{{ s.overall_pick }}</strong> by {{ s.team_abbreviation or 'TBD' }}
+      </p>
+      <p class="dr-card__big">↓ {{ s.range_surprise }} <span>past expectation</span></p>
+    </article>
+    {% endif %}
+    <article class="dr-card dr-card--meter">
+      <p class="dr-card__label">Went to chalk</p>
+      <p class="dr-card__big">{{ summary.num_in_range }}<span class="dr-card__big-sub">/ {{ summary.num_ranked }}</span></p>
+      <p class="dr-card__detail">
+        picks landed within their consensus range
+        {% if summary.pct_in_range is not none %}&mdash; {{ summary.pct_in_range }}% of the board{% endif %}
+      </p>
+    </article>
+  </section>
+
+  {# ---------- Hero: face scatter ---------- #}
+  {% if scatter_svg %}
+  <section class="dra-section dra-scatter-section" aria-label="Ranked versus drafted">
+    <h2 class="dra-heading">Ranked vs. Drafted</h2>
+    <p class="dra-subhead">
+      Every prospect: where the consensus ranked him against where he actually
+      went. On the line, the field nailed it; above it he rose, below it he fell.
+      Hover any face for the details.
+    </p>
+    <div class="dra-scatter-wrap">
+      <div class="dra-scatter">{{ scatter_svg|safe }}</div>
+      <ul class="dra-scatter-legend">
+        <li><span class="ring ring--riser"></span> Riser &mdash; drafted ahead of expectation</li>
+        <li><span class="ring ring--faller"></span> Faller &mdash; drafted later than expected</li>
+        <li><span class="ring ring--even"></span> On the board &mdash; went about as expected</li>
+        <li class="dra-scatter-legend__note">Hover a face for name, position, and expected vs. actual slot.</li>
+      </ul>
+    </div>
+  </section>
+  {% endif %}
+
+  {# ---------- Pick-by-pick board ---------- #}
+  <section class="dra-section" aria-label="Pick by pick">
+    <h2 class="dra-heading">Pick by Pick</h2>
+    <div class="dr-controls" role="group" aria-label="Filter picks">
+      <button class="dr-filter is-active" data-filter="all">All picks</button>
+      <button class="dr-filter" data-filter="round-1">Round 1</button>
+      <button class="dr-filter" data-filter="round-2">Round 2</button>
+      <button class="dr-filter" data-filter="movers">Surprises</button>
+    </div>
+    <div class="dr-board">
+      <div class="dr-board__head" aria-hidden="true">
+        <span class="dr-col-pick">Pick</span>
+        <span class="dr-col-team">Team</span>
+        <span class="dr-col-player">Player</span>
+        <span class="dr-col-rank">Expected</span>
+        <span class="dr-col-delta">vs. Expected</span>
+      </div>
+      {% for p in picks %}
+      <article class="dr-row dr-row--{{ p.classification }}"
+               data-class="{{ p.classification }}" data-round="{{ p.round }}"
+               data-mover="{{ 1 if p.classification in ['earlier','later'] else 0 }}">
+        <span class="dr-col-pick">
+          <span class="dr-pick-no">{{ p.overall_pick }}</span>
+          <span class="dr-pick-rd">R{{ p.round }}</span>
+        </span>
+        <span class="dr-col-team">{{ team_chip(p) }}</span>
+        <span class="dr-col-player">
+          {% if p.photo_url %}
+          <img class="dr-photo" src="{{ p.photo_url }}" alt="" loading="lazy">
+          {% else %}
+          <span class="dr-photo dr-photo--blank">{{ (p.player_name or p.raw_player_name or '?')[:1] }}</span>
+          {% endif %}
+          <span class="dr-player-meta">
+            {% if p.slug %}
+            <a class="dr-player-name" href="/players/{{ p.slug }}">{{ p.player_name or p.raw_player_name }}</a>
+            {% else %}
+            <span class="dr-player-name">{{ p.player_name or p.raw_player_name }}</span>
+            {% endif %}
+            <span class="dr-player-sub">
+              {% if p.position %}{{ p.position }}{% endif %}
+              {% if p.position and p.school %} &middot; {% endif %}
+              {% if p.school %}{{ p.school }}{% endif %}
+            </span>
+          </span>
+        </span>
+        <span class="dr-col-rank">{{ expected_cell(p) }}</span>
+        <span class="dr-col-delta">{{ delta_cell(p) }}</span>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# ---------- Risers & fallers ---------- #}
+  <section class="dra-section" aria-label="Risers and fallers">
+    <div class="dra-columns">
+      <div class="dra-column">
+        <h2 class="dra-heading dra-heading--earlier">Risers</h2>
+        <p class="dra-subhead">Drafted furthest ahead of their consensus range.</p>
+        {% if earlier_movers %}
+        <div class="dra-leaders">
+          {% for p in earlier_movers %}{{ mover_row(p, loop.index, 'earlier') }}{% endfor %}
+        </div>
+        {% else %}<p class="dra-empty">No notable risers yet.</p>{% endif %}
+      </div>
+      <div class="dra-column">
+        <h2 class="dra-heading dra-heading--later">Fallers</h2>
+        <p class="dra-subhead">Drafted furthest past their consensus range.</p>
+        {% if later_movers %}
+        <div class="dra-leaders">
+          {% for p in later_movers %}{{ mover_row(p, loop.index, 'later') }}{% endfor %}
+        </div>
+        {% else %}<p class="dra-empty">No notable fallers yet.</p>{% endif %}
+      </div>
+    </div>
+  </section>
+
+  {# ---------- Predictability by tier ---------- #}
+  {% if depth %}
+  <section class="dra-section" aria-label="Predictability by draft range">
+    <h2 class="dra-heading">How Predictable Was Each Tier?</h2>
+    <p class="dra-subhead">
+      Share of picks in each range that landed within their consensus range.
+      The top is chalk; the field spreads out as the draft goes on.
+    </p>
+    <div class="dra-depth">
+      {% for b in depth %}
+      <div class="dra-depth-row">
+        <span class="dra-depth-label">{{ b.label }}<span class="dra-depth-range">{{ b.range_text }}</span></span>
+        <span class="dra-depth-track">
+          <span class="dra-depth-fill" style="width: {{ b.pct }}%"></span>
+        </span>
+        <span class="dra-depth-pct">{{ b.pct }}%</span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# ---------- Board accuracy ---------- #}
+  <section class="dra-section" aria-label="Board accuracy">
+    <h2 class="dra-heading">Which Boards Read the Room?</h2>
+    <p class="dra-subhead">
+      Each board scored on how closely its order matched the real thing
+      (order-match, 0&ndash;100; 50 = no better than chance).
+    </p>
+
+    {% if analysts %}
+    {% if top_analyst %}
+    <div class="dra-winner">
+      <div class="dra-winner__crown">🎯</div>
+      <div class="dra-winner__body">
+        <p class="dra-winner__label">Closest board of {{ draft_year }}</p>
+        <p class="dra-winner__name">{{ top_analyst.source_display_name }}</p>
+        <p class="dra-winner__sub">
+          {% if top_analyst.nailed_first_overall %}called #1 overall &middot; {% endif %}
+          {{ top_analyst.within_five }} of {{ top_analyst.num_shared }} picks within five slots
+        </p>
+      </div>
+      <div class="dra-winner__score">
+        <span class="dra-winner__num">{{ top_analyst.order_match if top_analyst.order_match is not none else '—' }}</span>
+        <span class="dra-winner__unit">order&nbsp;match</span>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if consensus_accuracy %}
+    {# The consensus is a benchmark, not a contestant — shown above the ranked
+       analyst boards with how it measured up, never crowned. #}
+    <div class="dra-benchmark">
+      <div class="dra-bar-row dra-bar-row--consensus">
+        <span class="dra-bar-rank dra-bar-rank--bench">◆</span>
+        <span class="dra-bar-name">
+          DraftGuru Consensus
+          <span class="dra-bar-tag dra-bar-tag--consensus">benchmark</span>
+        </span>
+        <span class="dra-bar-track">
+          <span class="dra-bar-fill dra-bar-fill--consensus"
+                style="width: {{ consensus_accuracy.order_match if consensus_accuracy.order_match is not none else 0 }}%"></span>
+        </span>
+        <span class="dra-bar-score">{{ consensus_accuracy.order_match if consensus_accuracy.order_match is not none else '—' }}</span>
+      </div>
+      <p class="dra-benchmark__note">
+        Blending every board scored <strong>{{ consensus_accuracy.order_match if consensus_accuracy.order_match is not none else '—' }}</strong>
+        &mdash; ahead of <strong>{{ consensus_beats }}</strong> of {{ num_analysts }} individual
+        analyst board{{ 's' if num_analysts != 1 else '' }}.
+      </p>
+    </div>
+    {% endif %}
+
+    <p class="dra-bars-label">Individual boards</p>
+    <div class="dra-bars">
+      {% for s in analysts %}
+      <div class="dra-bar-row">
+        <span class="dra-bar-rank">{{ loop.index }}</span>
+        <span class="dra-bar-name">
+          {{ s.source_display_name }}
+          <span class="dra-bar-tag">{{ 'Mock' if s.board_kind == 'MOCK_DRAFT' else 'Board' }}</span>
+          {% if s.nailed_first_overall %}<span class="dra-bar-flag">#1 ✓</span>{% endif %}
+        </span>
+        <span class="dra-bar-track">
+          <span class="dra-bar-fill" style="width: {{ s.order_match if s.order_match is not none else 0 }}%"></span>
+        </span>
+        <span class="dra-bar-score">{{ s.order_match if s.order_match is not none else '—' }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="dra-fineprint">
+      Order-match = rank correlation between a board's order and the actual draft
+      order, scaled 0&ndash;100. Boards sharing fewer than five drafted players are
+      omitted; the consensus is shown as a benchmark, not ranked against analysts.
+    </p>
+    {% else %}
+    <p class="dra-empty">
+      Not enough overlap yet between published boards and actual picks to score.
+    </p>
+    {% endif %}
+  </section>
+
+  <p class="dr-footnote">
+    Measured against the pre-draft consensus blend. Round 1 tonight, Round 2 tomorrow.
+    <a href="/consensus">See the consensus board →</a>
+  </p>
+  {% endif %}
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='js/draft-recap.js') }}"></script>
+{% endblock %}

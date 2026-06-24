@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}The Draft — Consensus Board & Recaps — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/draft-recap.css') }}">
+{% endblock %}
+
+{% block content %}
+<main class="dr-page dh-page">
+
+  <header class="dr-header">
+    <p class="dr-eyebrow">DraftGuru &middot; Draft Center</p>
+    <h1 class="dr-title">The Draft</h1>
+    <p class="dr-byline">
+      The blended consensus board before the picks, and the receipts after.
+      One home for how the field saw each draft &mdash; and how it actually went.
+    </p>
+  </header>
+
+  {# ---------- Live consensus board (primary) ---------- #}
+  <a class="dh-feature" href="/consensus">
+    <div class="dh-feature__body">
+      <p class="dh-feature__tag">
+        {% if draft_is_in %}Final pre-draft board{% else %}Live now{% endif %}
+      </p>
+      <h2 class="dh-feature__title">{{ draft_year }} Consensus Big Board</h2>
+      <p class="dh-feature__copy">
+        Every public big board blended into one ranking &mdash; with agreement,
+        movement, and the biggest disagreements between analysts.
+      </p>
+      <span class="dh-feature__cta">Open the board →</span>
+    </div>
+  </a>
+
+  {# ---------- Recap archive ---------- #}
+  <section class="dh-section" aria-label="Draft recaps">
+    <h2 class="dh-section__title">Draft Recaps</h2>
+    {% if recap_years %}
+    <p class="dh-section__sub">How each board held up once the picks were in.</p>
+    <div class="dh-grid">
+      {% for y in recap_years %}
+      <a class="dh-card" href="/draft-recap/{{ y }}">
+        <span class="dh-card__year">{{ y }}</span>
+        <span class="dh-card__label">Board vs. Reality</span>
+        <span class="dh-card__cta">View recap →</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% elif draft_is_in %}
+    <div class="dh-grid">
+      <a class="dh-card" href="/draft-recap">
+        <span class="dh-card__year">{{ draft_year }}</span>
+        <span class="dh-card__label">Board vs. Reality</span>
+        <span class="dh-card__cta">View recap →</span>
+      </a>
+    </div>
+    {% else %}
+    <p class="dh-empty">
+      The {{ draft_year }} recap goes live on draft night &mdash; pick-by-pick
+      against the consensus, the night's biggest slides and jumps, and which
+      boards read the room. <a href="/draft-recap">Preview it →</a>
+    </p>
+    {% endif %}
+  </section>
+
+</main>
+{% endblock %}
