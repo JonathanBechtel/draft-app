@@ -194,14 +194,16 @@ async def test_consensus_page_no_snapshot_empty_state(
 async def test_consensus_nav_link_present(
     app_client: AsyncClient,
 ) -> None:
-    """The navbar contains a link to /consensus on any page.
+    """The navbar links to the Draft hub on any page.
 
-    Checks the consensus page itself since it includes navbar.html.
+    Checks the consensus page itself since it includes navbar.html. The direct
+    "Consensus Mock" nav link was consolidated into the /draft hub, which in turn
+    links to the consensus board.
     """
     resp = await app_client.get("/consensus")
     assert resp.status_code == 200
     html = resp.text
-    assert 'href="/consensus"' in html
+    assert 'href="/draft"' in html
     assert "Consensus" in html
 
 

@@ -1,0 +1,34 @@
+# 2026 NBA Draft — Round 1 actual results (canonical source).
+# Format: <overall_pick>\t<player name>\t<team abbr>. Team = selecting
+# team at the slot (trades not reflected in the chip). Load with:
+#   scripts/ingest_draft_results.py --file scripts/data/draft_results_2026.txt
+1	AJ Dybantsa	WAS
+2	Darryn Peterson	UTA
+3	Cameron Boozer	MEM
+4	Caleb Wilson	CHI
+5	Keaton Wagler	LAC
+6	Mikel Brown Jr.	BKN
+7	Darius Acuff Jr.	SAC
+8	Kingston Flemings	ATL
+9	Morez Johnson Jr.	DAL
+10	Brayden Burries	MIL
+11	Yaxel Lendeborg	GSW
+12	Aday Mara	OKC
+13	Nate Ament	MIA
+14	Hannes Steinbach	CHA
+15	Dailyn Swain	CHI
+16	Bennett Stirtz	MEM
+17	Ebuka Okorie	OKC
+18	Christian Anderson	CHA
+19	Allen Graves	TOR
+20	Jayden Quaintance	SAS
+21	Karim López	DET
+22	Labaron Philon Jr.	PHI
+23	Zuby Ejiofor	ATL
+24	Cameron Carr	NYK
+25	Sergio De Larrea	LAL
+26	Tarris Reed Jr.	DEN
+27	Chris Cenac Jr.	BOS
+28	Joshua Jefferson	MIN
+29	Alex Karaban	CLE
+30	Koa Peat	DAL

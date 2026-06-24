@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.expanded_trending_service import get_expanded_trending_players
@@ -38,6 +38,15 @@ from app.services.consensus_read_service import (
     get_source_overlays,
     get_source_spotlight,
 )
+from app.services.draft_results_service import (
+    depth_buckets,
+    get_draft_recap,
+    get_recap_years,
+    get_source_accuracy,
+    has_draft_results,
+    split_movers,
+)
+from app.utils.recap_charts import build_recap_scatter_svg
 from app.services.podcast_service import (
     get_latest_podcast_episodes,
     get_player_podcast_feed,
@@ -1275,6 +1284,9 @@ async def consensus_page(
         db, draft_year=CONSENSUS_DRAFT_YEAR, top_n=14
     )
 
+    # Post-draft handoff: once actual picks land, surface a banner to the recap.
+    draft_is_in = await has_draft_results(db, draft_year=CONSENSUS_DRAFT_YEAR)
+
     return request.app.state.templates.TemplateResponse(
         "consensus.html",
         {
@@ -1282,6 +1294,7 @@ async def consensus_page(
             # Board heading
             "board_kind": board_kind,
             "draft_year": CONSENSUS_DRAFT_YEAR,
+            "draft_is_in": draft_is_in,
             # Full consensus board
             "consensus_rows": consensus_rows,
             # Board freshness footnote
@@ -1304,6 +1317,117 @@ async def consensus_page(
             "current_year": datetime.now().year,
         },
     )
+
+
+@router.get("/draft", response_class=HTMLResponse)
+async def draft_hub_page(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+):
+    """Draft hub: one entry point for the live consensus board and recap archive.
+
+    Consolidates the draft surfaces under a single nav slot that scales as more
+    draft years accumulate — the live board up top, the per-year recaps below.
+    """
+    recap_years = await get_recap_years(db)
+    draft_is_in = await has_draft_results(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    return request.app.state.templates.TemplateResponse(
+        "draft-hub.html",
+        {
+            "request": request,
+            "draft_year": CONSENSUS_DRAFT_YEAR,
+            "recap_years": recap_years,
+            "draft_is_in": draft_is_in,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+async def _render_draft_recap(request: Request, db: AsyncSession, draft_year: int):
+    """Build the single-page draft recap for one draft year.
+
+    One page covers the whole story: the face scatter of how the field played
+    out, the pick-by-pick board (expected-vs-actual, coloured by where each pick
+    landed in its consensus range), the slid/jumped movers, predictability by
+    draft range, and how each board — including the blended consensus — matched
+    the real order. Renders a "picks come in tonight" preview until results land.
+    """
+    picks, summary = await get_draft_recap(db, draft_year=draft_year)
+    later, earlier = split_movers(picks, limit=10)
+    source_accuracy = await get_source_accuracy(
+        db, draft_year=draft_year, min_shared=5, include_consensus=True
+    )
+    # The consensus is a benchmark, not a contestant: keep the numbered
+    # leaderboard to the individual analyst boards, and report the blend's score
+    # against them separately (how many it out-predicted) rather than ranking it.
+    analysts = [r for r in source_accuracy if not r.is_consensus]
+    consensus_accuracy = next((r for r in source_accuracy if r.is_consensus), None)
+    consensus_beats = (
+        sum(
+            1
+            for r in analysts
+            if (r.order_match or -1) < (consensus_accuracy.order_match or 0)
+        )
+        if consensus_accuracy
+        else 0
+    )
+    # Years with results power the archive switcher (only shown when >1 exists).
+    recap_years = await get_recap_years(db)
+
+    return request.app.state.templates.TemplateResponse(
+        "draft-recap.html",
+        {
+            "request": request,
+            "draft_year": draft_year,
+            "recap_years": recap_years,
+            "picks": picks,
+            "summary": summary,
+            "later_movers": later,
+            "earlier_movers": earlier,
+            "scatter_svg": build_recap_scatter_svg(picks),
+            "depth": depth_buckets(picks),
+            "analysts": analysts,
+            "top_analyst": analysts[0] if analysts else None,
+            "consensus_accuracy": consensus_accuracy,
+            "consensus_beats": consensus_beats,
+            "num_analysts": len(analysts),
+            "has_results": bool(picks),
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/draft-recap", response_class=HTMLResponse)
+async def draft_recap_page(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+):
+    """Latest draft recap — the most recent year with results, else this cycle.
+
+    Stays a stable, shareable URL as the archive grows; individual years live at
+    ``/draft-recap/<year>``.
+    """
+    years = await get_recap_years(db)
+    draft_year = years[0] if years else CONSENSUS_DRAFT_YEAR
+    return await _render_draft_recap(request, db, draft_year)
+
+
+@router.get("/draft-recap/analysis", response_class=RedirectResponse)
+async def draft_recap_analysis_redirect() -> RedirectResponse:
+    """Permanent redirect: the analysis merged into the single recap page."""
+    return RedirectResponse("/draft-recap", status_code=301)
+
+
+@router.get("/draft-recap/{year}", response_class=HTMLResponse)
+async def draft_recap_year_page(
+    year: int,
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+):
+    """A specific draft year's recap (the per-year archive entry)."""
+    return await _render_draft_recap(request, db, year)
 
 
 # Legal pages

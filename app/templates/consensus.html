@@ -62,6 +62,17 @@
     {% endif %}
   </header>
 
+  {% if draft_is_in %}
+  {# Post-draft handoff: the live board becomes history once picks are in. #}
+  <a class="consensus-recap-banner" href="/draft-recap">
+    <span class="consensus-recap-banner__tag">The draft is in the books</span>
+    <span class="consensus-recap-banner__text">
+      See how this board held up &mdash; steals, reaches &amp; which mock won
+    </span>
+    <span class="consensus-recap-banner__cta">View the {{ draft_year }} recap →</span>
+  </a>
+  {% endif %}
+
   {# Aggregation / content-rights attribution — credits the analysts. #}
   {% include "partials/consensus/attribution.html" %}
 

@@ -1469,3 +1469,45 @@
 .cb-team--empty {
   color: var(--color-slate-400, #94a3b8);
 }
+
+/* ---------------------------------------------------------------------------
+   Post-draft handoff banner — links the live consensus board to the recap once
+   actual picks land. Defined here since the consensus page loads consensus.css.
+   --------------------------------------------------------------------------- */
+.consensus-recap-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin: 0 0 1.5rem;
+  padding: 0.95rem 1.4rem;
+  border-radius: var(--border-radius, 0.75rem);
+  background: linear-gradient(135deg, #0f172a, #334155);
+  color: #fff;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 10px 26px -16px rgba(15, 23, 42, 0.7);
+}
+.consensus-recap-banner:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 34px -16px rgba(15, 23, 42, 0.8);
+}
+.consensus-recap-banner__tag {
+  font-family: var(--font-mono, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.66rem;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.14);
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.consensus-recap-banner__text { flex: 1; min-width: 200px; font-size: 0.96rem; }
+.consensus-recap-banner__cta {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
