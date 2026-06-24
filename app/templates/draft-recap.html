@@ -10,7 +10,7 @@
 {% macro team_chip(p) %}
   {% if p.team_abbreviation %}
     <span class="dr-team" style="--team-color: {{ p.team_primary_color or '#334155' }}">
-      {% if p.team_logo_url %}<img class="dr-team__logo" src="{{ p.team_logo_url }}" alt="{{ p.team_abbreviation }}" loading="lazy">{% endif %}
+      {% if p.team_logo_url %}<img class="dr-team__logo" src="{{ p.team_logo_url }}" alt="" loading="lazy" onerror="this.remove()">{% endif %}
       <span class="dr-team__abbr">{{ p.team_abbreviation }}</span>
     </span>
   {% else %}
