@@ -71,6 +71,17 @@ jobs:
             --remote-only \
             --app draft-app-prod
 
+      # Reference data the recap joins against (idempotent — skips existing).
+      # nba_teams is needed for the team chips; the consensus path doesn't seed
+      # it, so do it here before ingesting picks.
+      - name: Seed reference data (NBA teams)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          ENV: prod
+        run: |
+          python scripts/seed_nba_teams.py
+
       # Hydrate the per-year draft-results from their committed canonical files.
       # Idempotent (upsert by year+pick): re-running re-syncs, so appending a new
       # year's file or new picks just needs a re-deploy. Names resolve against

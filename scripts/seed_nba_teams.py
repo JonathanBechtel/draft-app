@@ -71,13 +71,17 @@ async def seed_nba_teams() -> None:
         print("ERROR: DATABASE_URL not set")
         sys.exit(1)
 
-    engine = create_async_engine(db_url)
+    # Import here to avoid import-time side effects.
+    from app.schemas.nba_teams import NbaTeam
+    from app.utils.db_async import _prepare_asyncpg_connection
+
+    # Normalize as the app does (asyncpg driver, drop Neon sslmode/channel_binding)
+    # so the CI deploy seed step works against prod's DATABASE_URL forms.
+    normalized_url, connect_args = _prepare_asyncpg_connection(db_url)
+    engine = create_async_engine(normalized_url, connect_args=connect_args)
     session_factory = async_sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False
     )
-
-    # Import here to avoid import-time side effects
-    from app.schemas.nba_teams import NbaTeam
 
     added = 0
     skipped = 0
@@ -85,7 +89,9 @@ async def seed_nba_teams() -> None:
     async with session_factory() as session:
         for team_data in NBA_TEAMS:
             result = await session.execute(
-                select(NbaTeam).where(NbaTeam.abbreviation == team_data["abbreviation"])
+                select(NbaTeam).where(  # type: ignore[call-overload]
+                    NbaTeam.abbreviation == team_data["abbreviation"]  # type: ignore[arg-type]
+                )
             )
             existing = result.scalar_one_or_none()
 
