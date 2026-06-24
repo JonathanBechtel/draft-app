@@ -914,6 +914,122 @@ async def get_source_detail(
     }
 
 
+async def get_source_overlays(
+    db: AsyncSession,
+    *,
+    draft_year: int,
+    consensus_rows: list[ConsensusRow],
+) -> list[dict]:
+    """Return every contributing source's board-vs-consensus overlay, batched.
+
+    Produces the same per-source overlay payloads as calling
+    :func:`get_source_detail` once per source, but resolves all sources,
+    boards, entries, players, logos, and photos in a handful of bulk queries
+    instead of re-running the whole pipeline — and rebuilding the consensus
+    board — for every source. The shared ``consensus_rows`` (already built by
+    the caller for the main board) supply the consensus ranks, so the board is
+    not recomputed here at all.
+
+    Args:
+        db: Async DB session.
+        draft_year: Draft class to query.
+        consensus_rows: The current consensus board rows (caller-built);
+            supplies the consensus rank each source's picks are measured
+            against. Their order is irrelevant — only the rank lookup is used.
+
+    Returns:
+        One dict per source, ordered by ``contrarian_score`` desc (same order
+        and shape as the per-source ``get_source_detail`` results). Empty when
+        no source analytics exist for ``draft_year``.
+    """
+    from app.utils.slug import generate_slug
+
+    analytics_rows = await get_source_analytics(db, draft_year=draft_year)
+    if not analytics_rows:
+        return []
+
+    consensus_rank_map = {r.player_id: r.consensus_rank for r in consensus_rows}
+
+    # Each source's latest board → bulk-fetch all their entries in one query.
+    board_ids = [
+        r.latest_board_id for r in analytics_rows if r.latest_board_id is not None
+    ]
+    entries_by_board: dict[int, list[tuple[int, int]]] = {}
+    if board_ids:
+        entry_rows = (
+            await db.execute(
+                select(  # type: ignore[call-overload]
+                    BoardEntry.board_id, BoardEntry.player_id, BoardEntry.position
+                )
+                .where(BoardEntry.board_id.in_(board_ids))  # type: ignore[union-attr, attr-defined]
+                .order_by(BoardEntry.position)  # type: ignore[arg-type]
+            )
+        ).all()
+        for row in entry_rows:
+            if row.player_id is None:
+                continue
+            entries_by_board.setdefault(row.board_id, []).append(
+                (row.player_id, row.position)
+            )
+
+    # One batched metadata pass across every player on every source board.
+    all_player_ids = list(
+        {pid for entries in entries_by_board.values() for pid, _ in entries}
+    )
+    player_map = await _player_name_map(db, all_player_ids)
+    logo_map = await get_logo_urls_for_schools(
+        db, [p.school for p in player_map.values()]
+    )
+    photo_map = await get_current_image_urls_for_players(
+        db, player_ids=all_player_ids, style=_CONSENSUS_PHOTO_STYLE
+    )
+
+    overlays: list[dict] = []
+    for sa in analytics_rows:
+        entries = entries_by_board.get(sa.latest_board_id or -1, [])
+        overlay_rows: list[dict] = []
+        for pid, source_rank in entries:
+            player = player_map.get(pid)
+            consensus_rank = consensus_rank_map.get(pid)
+            overlay_rows.append(
+                {
+                    "player_id": pid,
+                    "player_name": player.display_name if player else None,
+                    "player_slug": player.slug if player else None,
+                    "school": player.school if player else None,
+                    "photo_url": photo_map.get(pid),
+                    "school_logo_url": (
+                        logo_map.get(player.school or "") if player else None
+                    ),
+                    "source_rank": source_rank,
+                    "consensus_rank": consensus_rank,
+                    "delta": (
+                        source_rank - consensus_rank  # positive = source lower
+                        if consensus_rank is not None
+                        else None
+                    ),
+                    "is_biggest_outlier": pid == sa.biggest_outlier_player_id,
+                }
+            )
+        overlays.append(
+            {
+                "news_source_id": sa.news_source_id,
+                "source_name": sa.source_name,
+                "source_display_name": sa.source_display_name,
+                "source_slug": generate_slug(sa.source_name),
+                "avg_deviation": sa.avg_deviation,
+                "contrarian_score": sa.contrarian_score,
+                "outlier_delta": sa.outlier_delta,
+                "biggest_outlier_player_id": sa.biggest_outlier_player_id,
+                "alignment": sa.alignment,
+                "alignment_score": _alignment_score(sa.alignment),
+                "overlay_rows": overlay_rows,
+                "draft_year": draft_year,
+            }
+        )
+    return overlays
+
+
 async def get_snapshots(
     db: AsyncSession,
     *,
@@ -1357,6 +1473,7 @@ async def get_source_spotlight(
     db: AsyncSession,
     *,
     draft_year: int,
+    consensus_rows: Optional[list[ConsensusRow]] = None,
 ) -> Optional[dict]:
     """Return two spotlight-worthy contributors, each with a distinct award.
 
@@ -1369,6 +1486,10 @@ async def get_source_spotlight(
     Args:
         db: Async DB session.
         draft_year: Draft class to query.
+        consensus_rows: The current consensus board rows, when the caller has
+            already built them (e.g. the consensus page). Supplied to avoid
+            rebuilding the board here; ``None`` lets this helper fetch the
+            latest board itself.
 
     Returns:
         ``{"slots": [slot, ...]}`` with one or two slots, or ``None`` when no
@@ -1392,9 +1513,10 @@ async def get_source_spotlight(
     if not sa_rows:
         return None
 
-    consensus_rows = await get_consensus_board(
-        db, draft_year=draft_year, snapshot_id=sid
-    )
+    if consensus_rows is None:
+        consensus_rows = await get_consensus_board(
+            db, draft_year=draft_year, snapshot_id=sid
+        )
     consensus_by_player = {r.player_id: r for r in consensus_rows}
 
     profiles = await _build_source_profiles(db, sa_rows, consensus_by_player)

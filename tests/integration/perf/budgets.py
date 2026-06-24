@@ -37,10 +37,15 @@ from __future__ import annotations
 # this guard's introduction. They are a regression ratchet, not a target — if a
 # refactor *lowers* a count, lower the budget too so the win is locked in.
 #
-# NOTE: `/` (52) and `/consensus` (80) are high relative to the seeded data
-# volume and likely contain N+1 / per-row query patterns. The guard freezes them
-# at today's level so they cannot get worse; reducing them is a separate
-# optimization (profile with scripts/explain_route.py).
+# NOTE: `/` (52) is high relative to the seeded data volume and likely still
+# contains N+1 / per-row query patterns; the guard freezes it at today's level
+# so it cannot get worse (reducing it is a separate optimization — profile with
+# scripts/explain_route.py).
+# `/consensus` was 80: the per-source overlay loop re-ran the whole source-detail
+# pipeline — rebuilding the full consensus board — once per contributing source.
+# Replaced with a single batched `get_source_overlays` pass that reuses the
+# already-built board, bringing it to 43 here (and a larger win in prod, where
+# the loop cost scaled with the number of sources).
 ROUTE_BUDGETS: dict[str, int] = {
     "/": 52,
     "/news": 8,
@@ -50,7 +55,7 @@ ROUTE_BUDGETS: dict[str, int] = {
     # summer_league_player_seasons by player_id.
     "/players/{slug}": 25,
     "/players/{slug}/summer-league": 2,
-    "/consensus": 80,
+    "/consensus": 43,
     # Hub: combine-year coverage + SL-year coverage, one indexed read each.
     "/stats/": 2,
     "/stats/summer-league": 8,
