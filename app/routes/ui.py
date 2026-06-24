@@ -35,6 +35,7 @@ from app.services.consensus_read_service import (
     get_source_breakdown_matrix,
     get_source_detail,
     get_source_leaderboard,
+    get_source_overlays,
     get_source_spotlight,
 )
 from app.services.podcast_service import (
@@ -1242,29 +1243,28 @@ async def consensus_page(
     ]
 
     # --- Supporting panels: freshness, movers, controversial, spotlight --------
+    # The consensus board (``consensus_rows_raw``) is reused by the spotlight and
+    # the per-source overlays below so neither has to rebuild it.
     board_freshness = await get_board_freshness(db, draft_year=CONSENSUS_DRAFT_YEAR)
     biggest_movers = await get_biggest_movers(db, draft_year=CONSENSUS_DRAFT_YEAR, k=5)
     most_controversial = await get_most_controversial(
         db, draft_year=CONSENSUS_DRAFT_YEAR, limit=5
     )
-    source_spotlight = await get_source_spotlight(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    source_spotlight = await get_source_spotlight(
+        db, draft_year=CONSENSUS_DRAFT_YEAR, consensus_rows=list(consensus_rows_raw)
+    )
 
     # --- Source leaderboard + per-source overlays -----------------------------
     source_leaderboard = await get_source_leaderboard(
         db, draft_year=CONSENSUS_DRAFT_YEAR
     )
 
-    # Per-source overlays: fetch detail for each source in the leaderboard.
-    # These power the agreement scatter and source-detail section.
-    source_overlays: list[dict] = []
-    for src_row in source_leaderboard:
-        slug = src_row.get("source_slug", "")
-        if slug:
-            detail = await get_source_detail(
-                db, source_slug=slug, draft_year=CONSENSUS_DRAFT_YEAR
-            )
-            if detail is not None:
-                source_overlays.append(detail)
+    # Per-source overlays (agreement scatter + source-detail section), built in
+    # one batched pass over the prebuilt consensus board instead of re-running
+    # the full source-detail pipeline — and rebuilding the board — per source.
+    source_overlays = await get_source_overlays(
+        db, draft_year=CONSENSUS_DRAFT_YEAR, consensus_rows=list(consensus_rows_raw)
+    )
 
     # --- Matrix + trajectories (ticket #270 additions) ------------------------
     # 14 rows = the full lottery (top-14 picks).
