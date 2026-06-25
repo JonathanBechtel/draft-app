@@ -141,8 +141,9 @@
 .dr-row { border-bottom: 1px solid var(--color-slate-100); transition: background var(--transition-speed); }
 .dr-row:last-child { border-bottom: none; }
 .dr-row:hover { background: var(--color-slate-50); }
-.dr-row--later { background: rgba(245, 158, 11, 0.07); }
-.dr-row--earlier { background: rgba(99, 102, 241, 0.06); }
+/* Row tint deepens with the size of the move (--dr-shade, 0..1). */
+.dr-row--later { background: rgb(245 158 11 / calc(0.05 + var(--dr-shade, 0) * 0.13)); }
+.dr-row--earlier { background: rgb(99 102 241 / calc(0.04 + var(--dr-shade, 0) * 0.13)); }
 .dr-row--unranked { background: rgba(6, 182, 212, 0.06); }
 
 .dr-col-pick { display: flex; flex-direction: column; align-items: flex-start; }
@@ -173,10 +174,11 @@ a.dr-player-name:hover { color: var(--color-primary); }
 .dr-exp-no--none { color: var(--color-slate-300); }
 .dr-exp-range { font-family: var(--font-mono); font-size: 0.66rem; color: var(--color-slate-400); }
 
-/* vs-Expected gap chip — number only, coloured by range position */
+/* Move-vs-consensus chip — directional, on a gradient that deepens with the
+   size of the move (--dr-shade, 0..1; defaults to a readable floor). */
 .dr-gap { display: inline-block; font-family: var(--font-mono); font-weight: 700; font-size: 0.86rem; padding: 0.28rem 0.55rem; border-radius: 6px; white-space: nowrap; }
-.dr-gap--later { background: rgba(245, 158, 11, 0.16); color: #b45309; }
-.dr-gap--earlier { background: rgba(99, 102, 241, 0.14); color: #4338ca; }
+.dr-gap--later { background: rgb(245 158 11 / calc(0.14 + var(--dr-shade, 0) * 0.5)); color: #b45309; }
+.dr-gap--earlier { background: rgb(99 102 241 / calc(0.12 + var(--dr-shade, 0) * 0.5)); color: #4338ca; }
 .dr-gap--even { background: var(--color-slate-100); color: var(--color-slate-500); }
 .dr-gap--unranked { background: rgba(6, 182, 212, 0.14); color: #0e7490; font-size: 0.72rem; }
 
