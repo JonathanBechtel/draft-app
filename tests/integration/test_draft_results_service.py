@@ -206,13 +206,44 @@ async def test_movers_leaderboards(
     db_session: AsyncSession, seeded: dict[str, object]
 ) -> None:
     """Later sorts by descending surprise, earlier ascending; in-range excluded."""
-    later, earlier = await svc.get_movers(
-        db_session, draft_year=DRAFT_YEAR, limit=10
-    )
+    later, earlier = await svc.get_movers(db_session, draft_year=DRAFT_YEAR, limit=10)
     assert [p.overall_pick for p in later] == [12]
     assert [p.overall_pick for p in earlier] == [3]
     # In-range chalk pick is in neither list.
     assert all(p.overall_pick != 1 for p in later + earlier)
+
+
+@pytest.mark.asyncio
+async def test_wide_range_pick_is_a_mover_by_point_delta(
+    db_session: AsyncSession,
+) -> None:
+    """A big point swing reads as a riser even inside a wide consensus band.
+
+    Mirrors the real case (Nate Ament: expected #22, range 10–38, drafted #13):
+    the range test calls the pick chalk, but the nine-slot jump should still
+    surface as a riser and drive the colour gradient via ``direction`` /
+    ``delta_shade``. Membership is point-delta based, not range based.
+    """
+    mia = await _team(db_session, "MIA")
+    ament = await _player(db_session, "Nate", "Ament")
+    await _snapshot(db_session, [(ament, 22, 10, 38)])
+    await _result(db_session, pick=13, player=ament, team=mia)
+    await db_session.commit()
+
+    picks, summary = await svc.get_draft_recap(db_session, draft_year=DRAFT_YEAR)
+    p = picks[0]
+    # Range-based stat still treats the wide band as chalk...
+    assert p.classification == "in_range"
+    # ...but the point delta makes him a nine-slot riser with a deep tint.
+    assert p.delta == -9
+    assert p.direction == "earlier"
+    assert p.delta_shade == pytest.approx(9 / 12)
+    assert summary.biggest_earlier is not None
+    assert summary.biggest_earlier.player_id == ament.id
+
+    later, earlier = svc.split_movers(picks)
+    assert [pp.overall_pick for pp in earlier] == [13]
+    assert later == []
 
 
 @pytest.mark.asyncio

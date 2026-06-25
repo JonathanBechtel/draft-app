@@ -21,16 +21,16 @@ _Y0, _Y1 = 24.0, 312.0  # top/bottom of plot area
 
 _FACE_R = 11.5  # radius of a player-face thumbnail
 
-# Direction ring + hover label per classification. "earlier" (drafted ahead of
-# the consensus range) reads as a riser; "later" as a faller.
+# Direction ring + hover label per delta direction. "earlier" (drafted ahead of
+# the consensus rank) reads as a riser; "later" as a faller; "even" sat on it.
 _DIR = {
     "earlier": ("recap-scatter__face--riser", "riser"),
     "later": ("recap-scatter__face--faller", "faller"),
-    "in_range": ("recap-scatter__face--even", "in range"),
+    "even": ("recap-scatter__face--even", "in range"),
     "unranked": ("recap-scatter__face--even", "unranked"),
 }
-# Movers draw last so their rings sit above the in-range crowd near the line.
-_DRAW_ORDER = {"in_range": 0, "earlier": 1, "later": 1, "unranked": 0}
+# Movers draw last so their rings sit above the on-the-line crowd.
+_DRAW_ORDER = {"even": 0, "earlier": 1, "later": 1, "unranked": 0}
 
 
 def _nice_ticks(max_n: int) -> list[int]:
@@ -96,9 +96,7 @@ def build_recap_scatter_svg(picks: list[RecapPick]) -> str:
     )
 
     # A face per player; in-range first, movers last so their rings sit on top.
-    ordered = sorted(
-        enumerate(pts), key=lambda ip: _DRAW_ORDER.get(ip[1].classification, 0)
-    )
+    ordered = sorted(enumerate(pts), key=lambda ip: _DRAW_ORDER.get(ip[1].direction, 0))
     for i, p in ordered:
         parts.append(_face(p, i, x_of(p.consensus_rank or 1), y_of(p.overall_pick)))
 
@@ -108,7 +106,7 @@ def build_recap_scatter_svg(picks: list[RecapPick]) -> str:
 
 def _face(p: RecapPick, idx: int, cx: float, cy: float) -> str:
     """Render one player's face marker (photo or avatar) with hover data."""
-    ring_cls, direction = _DIR.get(p.classification, _DIR["in_range"])
+    ring_cls, direction = _DIR.get(p.direction, _DIR["even"])
     name = p.player_name or p.raw_player_name or "Unknown"
     attrs = (
         f'data-name="{html.escape(name, quote=True)}" '

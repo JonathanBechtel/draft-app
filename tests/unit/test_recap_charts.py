@@ -12,6 +12,7 @@ from typing import Optional
 from app.models.draft_results import RecapPick
 from app.services.draft_results_service import (
     _classify_range,
+    _delta_direction,
     depth_buckets,
     split_movers,
 )
@@ -26,8 +27,10 @@ def _pick(
     low: Optional[int] = None,
     photo: Optional[str] = None,
 ) -> RecapPick:
-    """Build a RecapPick with range classification computed like the service."""
+    """Build a RecapPick with range + delta annotations computed like the service."""
     classification, surprise = _classify_range(pick, rank, high, low)
+    delta = (pick - rank) if rank is not None else None
+    direction, delta_shade = _delta_direction(delta)
     return RecapPick(
         overall_pick=pick,
         round=1 if pick <= 30 else 2,
@@ -38,9 +41,11 @@ def _pick(
         consensus_rank=rank,
         high_rank=high,
         low_rank=low,
-        delta=(pick - rank) if rank is not None else None,
+        delta=delta,
         range_surprise=surprise,
         classification=classification,
+        direction=direction,
+        delta_shade=delta_shade,
     )
 
 

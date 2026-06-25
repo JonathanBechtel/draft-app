@@ -54,10 +54,20 @@ class RecapPick(SQLModel):
     delta: Optional[int] = None
     # Signed distance OUTSIDE the consensus range: 0 when within range,
     # positive when drafted later than the worst projection, negative when
-    # earlier than the best. None when unranked. Drives the movers leaderboards.
+    # earlier than the best. None when unranked. Drives the neutral "chalk" stat
+    # (how many picks landed within the field's whole spread) and the
+    # predictability-by-tier bars — NOT the rise/fall direction.
     range_surprise: Optional[int] = None
-    # "earlier" | "later" | "in_range" | "unranked"
+    # Range-based bucket for the chalk/predictability stats:
+    # "earlier" | "later" | "in_range" | "unranked".
     classification: str = "unranked"
+    # Delta-based rise/fall direction — the intuitive point gap, not the range
+    # band. Drives the table arrows/colour, scatter rings, and movers boards:
+    # "earlier" (rose), "later" (fell), "even" (on the number), "unranked".
+    direction: str = "unranked"
+    # Gradient intensity 0..1 scaled to |delta|; 0 for even/unranked. Powers the
+    # smooth colour ramp on the pick-by-pick board (bigger move = stronger tint).
+    delta_shade: float = 0.0
 
 
 class RecapSummary(SQLModel):

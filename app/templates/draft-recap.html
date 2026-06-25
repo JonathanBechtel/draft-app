@@ -7,6 +7,10 @@
 {% endblock %}
 
 {# ---- shared macros ---- #}
+{# Inline custom-property carrying a pick's gradient intensity (0..1). Kept on
+   one line so it emits no stray whitespace inside the host element's tag. #}
+{% macro shade_attr(shade) %}style="--dr-shade: {{ '%.2f'|format(shade) }}"{% endmacro %}
+
 {% macro team_chip(p) %}
   {% if p.team_abbreviation %}
     <span class="dr-team" style="--team-color: {{ p.team_primary_color or '#334155' }}">
@@ -29,17 +33,18 @@
   {% endif %}
 {% endmacro %}
 
-{# Neutral expected-vs-actual gap: a signed number, coloured by where the pick
-   landed in the consensus range. No value-laden labels. #}
+{# Rise/fall vs. the consensus rank: a directional move (↑ rose / ↓ fell),
+   coloured on a gradient that deepens with the size of the move. Neutral
+   framing — direction and distance, never a value judgement. #}
 {% macro delta_cell(p) %}
-  {% if p.classification == 'unranked' %}
+  {% if p.direction == 'unranked' %}
     <span class="dr-gap dr-gap--unranked">off board</span>
-  {% elif p.classification == 'in_range' %}
-    <span class="dr-gap dr-gap--even">{% if p.delta > 0 %}+{% endif %}{{ p.delta }}</span>
-  {% elif p.classification == 'later' %}
-    <span class="dr-gap dr-gap--later" title="Faller — drafted later than expected">↓ {{ p.delta }}</span>
+  {% elif p.direction == 'earlier' %}
+    <span class="dr-gap dr-gap--earlier" {{ shade_attr(p.delta_shade) }} title="Rose {{ -p.delta }} spots vs. consensus">↑ {{ -p.delta }}</span>
+  {% elif p.direction == 'later' %}
+    <span class="dr-gap dr-gap--later" {{ shade_attr(p.delta_shade) }} title="Fell {{ p.delta }} spots vs. consensus">↓ {{ p.delta }}</span>
   {% else %}
-    <span class="dr-gap dr-gap--earlier" title="Riser — drafted ahead of expectation">↑ {{ -p.delta }}</span>
+    <span class="dr-gap dr-gap--even" title="Drafted right on his consensus number">even</span>
   {% endif %}
 {% endmacro %}
 
@@ -62,7 +67,7 @@
       → pick #{{ p.overall_pick }}{% if p.team_abbreviation %} &middot; {{ p.team_abbreviation }}{% endif %}
     </span>
   </span>
-  <span class="dra-leader__delta dr-gap dr-gap--{{ kind }}">
+  <span class="dra-leader__delta dr-gap dr-gap--{{ kind }}" {{ shade_attr(p.delta_shade) }}>
     {% if kind == 'later' %}↓ {{ p.delta }}{% else %}↑ {{ -p.delta }}{% endif %}
   </span>
 </article>
@@ -176,12 +181,13 @@
         <span class="dr-col-team">Team</span>
         <span class="dr-col-player">Player</span>
         <span class="dr-col-rank">Expected</span>
-        <span class="dr-col-delta">vs. Expected</span>
+        <span class="dr-col-delta">Move vs. Consensus</span>
       </div>
       {% for p in picks %}
-      <article class="dr-row dr-row--{{ p.classification }}"
-               data-class="{{ p.classification }}" data-round="{{ p.round }}"
-               data-mover="{{ 1 if p.classification in ['earlier','later'] else 0 }}">
+      <article class="dr-row dr-row--{{ p.direction }}"
+               {{ shade_attr(p.delta_shade) }}
+               data-class="{{ p.direction }}" data-round="{{ p.round }}"
+               data-mover="{{ 1 if p.range_surprise else 0 }}">
         <span class="dr-col-pick">
           <span class="dr-pick-no">{{ p.overall_pick }}</span>
           <span class="dr-pick-rd">R{{ p.round }}</span>
@@ -218,7 +224,7 @@
     <div class="dra-columns">
       <div class="dra-column">
         <h2 class="dra-heading dra-heading--earlier">Risers</h2>
-        <p class="dra-subhead">Drafted furthest ahead of their consensus range.</p>
+        <p class="dra-subhead">Drafted furthest ahead of their consensus rank.</p>
         {% if earlier_movers %}
         <div class="dra-leaders">
           {% for p in earlier_movers %}{{ mover_row(p, loop.index, 'earlier') }}{% endfor %}
@@ -227,7 +233,7 @@
       </div>
       <div class="dra-column">
         <h2 class="dra-heading dra-heading--later">Fallers</h2>
-        <p class="dra-subhead">Drafted furthest past their consensus range.</p>
+        <p class="dra-subhead">Drafted furthest past their consensus rank.</p>
         {% if later_movers %}
         <div class="dra-leaders">
           {% for p in later_movers %}{{ mover_row(p, loop.index, 'later') }}{% endfor %}

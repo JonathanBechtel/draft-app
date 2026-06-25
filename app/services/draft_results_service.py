@@ -48,6 +48,11 @@ _DEPTH_BUCKETS: tuple[tuple[str, int, int], ...] = (
 # spread (single-source rank): picks within this many slots read as in-range.
 _RANGE_FALLBACK_PAD = 3
 
+# |delta| at which the rise/fall colour gradient saturates. A pick that moved
+# this many slots (or more) from its consensus rank gets the strongest tint;
+# smaller moves ramp down linearly toward neutral.
+_SHADE_CAP = 12
+
 _PHOTO_STYLE = "default"
 
 
@@ -141,6 +146,28 @@ def _classify_range(
     return "in_range", 0
 
 
+def _delta_direction(delta: Optional[int]) -> tuple[str, float]:
+    """Map a point delta to a rise/fall direction and gradient intensity.
+
+    ``delta`` is ``overall_pick - consensus_rank``: negative means drafted
+    *earlier* (higher) than the field expected — a riser; positive means drafted
+    later — a faller. Returns ``(direction, shade)`` where ``shade`` is a 0..1
+    ramp scaled to ``|delta|`` (capped at :data:`_SHADE_CAP`) for the colour
+    gradient. ``"even"`` (exactly on the number) and ``"unranked"`` carry no tint.
+
+    This is deliberately point-delta based, not range based: with real consensus
+    boards the high/low spread is wide enough to swallow most picks, so a
+    range-only test collapses the board to neutral. The delta keeps the intuitive
+    "rose 9 spots" reading that matches the displayed numbers.
+    """
+    if delta is None:
+        return "unranked", 0.0
+    if delta == 0:
+        return "even", 0.0
+    shade = min(1.0, abs(delta) / _SHADE_CAP)
+    return ("earlier" if delta < 0 else "later"), shade
+
+
 async def _recap_picks(db: AsyncSession, *, draft_year: int) -> list[RecapPick]:
     """Build the ordered pick-by-pick recap rows for a draft year."""
     results = (
@@ -187,6 +214,7 @@ async def _recap_picks(db: AsyncSession, *, draft_year: int) -> list[RecapPick]:
             bbc.high_rank if bbc else None,
             bbc.low_rank if bbc else None,
         )
+        direction, delta_shade = _delta_direction(delta)
         picks.append(
             RecapPick(
                 overall_pick=r.overall_pick,
@@ -213,6 +241,8 @@ async def _recap_picks(db: AsyncSession, *, draft_year: int) -> list[RecapPick]:
                 delta=delta,
                 range_surprise=range_surprise,
                 classification=classification,
+                direction=direction,
+                delta_shade=delta_shade,
             )
         )
     return picks
@@ -250,21 +280,22 @@ def split_movers(
 ) -> tuple[list[RecapPick], list[RecapPick]]:
     """Split recap picks into ``(later, earlier)`` movers vs. the consensus.
 
-    Pure helper so callers holding the picks list don't rebuild it. Membership is
-    range-based — a mover is a pick drafted *outside* its consensus high/low band
-    (``range_surprise`` nonzero), so a pick within the field's spread isn't a
-    surprise. But ranking and the displayed gap use the intuitive point delta
-    (``overall_pick - consensus_rank``), so "biggest" matches the expected-vs-
-    drafted numbers shown on the card. Neutral framing — direction, not value.
+    Pure helper so callers holding the picks list don't rebuild it. Membership
+    and ranking both use the point delta (``overall_pick - consensus_rank``): any
+    ranked pick that moved off its consensus number is a mover, ``later`` (fell)
+    when drafted past it, ``earlier`` (rose) when drafted ahead of it. This keeps
+    the leaderboards in step with the numbers the board shows — a player who beat
+    his rank by nine slots is the biggest riser even if his (wide) consensus range
+    technically contained the pick. Neutral framing — direction, not value.
     """
-    movers = [p for p in picks if p.range_surprise]
+    movers = [p for p in picks if p.delta]  # nonzero, ranked
     later = sorted(
-        (p for p in movers if (p.range_surprise or 0) > 0),
+        (p for p in movers if (p.delta or 0) > 0),
         key=lambda p: p.delta or 0,
         reverse=True,
     )[:limit]
     earlier = sorted(
-        (p for p in movers if (p.range_surprise or 0) < 0),
+        (p for p in movers if (p.delta or 0) < 0),
         key=lambda p: p.delta or 0,
     )[:limit]
     return later, earlier
