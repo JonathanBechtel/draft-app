@@ -37,6 +37,22 @@ def render(data: dict, faces: dict, params: dict | None = None) -> str:
     year = data.get("draft_year", "")
 
     ranked = [p for p in picks if p.get("consensus_rank") is not None]
+    if not ranked:
+        # No consensus-ranked picks (e.g. a year with results but no consensus
+        # snapshot, or an empty DB). Render a clear no-data state rather than
+        # crashing on max() over an empty sequence.
+        body = (
+            T.DEFS
+            + T.background()
+            + T.header(
+                "Who Beat the Board?",
+                "Actual draft slot vs. consensus expectation",
+                "No consensus-ranked picks for this draft year yet.",
+            )
+            + T.footer()
+        )
+        return T.document(body, f"Who Beat the Board? — {year} NBA Draft Recap")
+
     max_n = max(2, max(max(p["consensus_rank"], p["overall_pick"]) for p in ranked))
     span = max_n - 1
 
