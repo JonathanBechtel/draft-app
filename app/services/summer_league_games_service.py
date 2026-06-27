@@ -27,6 +27,10 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
+from app.services.summer_league_shotchart_service import (
+    get_game_shot_dots,
+    get_game_shot_zones,
+)
 
 # Human-readable venue labels keyed by the competition ``venue_slug``.
 VENUE_LABELS: dict[str, str] = {
@@ -713,3 +717,60 @@ async def get_player_game_logs(
             )
         )
     return seasons
+
+
+async def get_game_shotchart_context(
+    db: AsyncSession,
+    game_id: int,
+    team_entry_id: Optional[int] = None,
+    player_id: Optional[int] = None,
+) -> Optional[dict]:
+    """Assemble the ``window.SL_SHOTCHART`` payload for the game box-score page.
+
+    Delegates to :func:`get_game_shot_zones` and :func:`get_game_shot_dots`
+    from the shotchart service, scoped to the given ``game_id`` and optional
+    ``team_entry_id`` / ``player_id`` filters.
+
+    Returns ``None`` when the game has no shot events in the requested scope so
+    callers can show a graceful empty state.
+
+    Game-scope zones have no pool baseline (a single game has too few shots to
+    form a meaningful pool), so ``pool_fg_pct`` is ``None`` on all zone rows.
+    Dot coordinates are included when coordinate data is present.
+
+    Args:
+        db: Async database session.
+        game_id: ``SummerLeagueGame.id``.
+        team_entry_id: Optional team filter; ``None`` = whole game.
+        player_id: Optional player filter; ``None`` = all players in scope.
+
+    Returns:
+        A JSON-serialisable dict shaped for ``window.SL_SHOTCHART``, or ``None``
+        when no shot events exist for the given scope.
+    """
+    zones_dto = await get_game_shot_zones(
+        db, game_id=game_id, team_entry_id=team_entry_id, player_id=player_id
+    )
+    if zones_dto.total_fga == 0:
+        return None
+
+    dots = await get_game_shot_dots(
+        db, game_id=game_id, team_entry_id=team_entry_id, player_id=player_id
+    )
+
+    return {
+        "total_fga": zones_dto.total_fga,
+        "suppressed": zones_dto.suppressed,
+        "zones": [
+            {
+                "shot_zone_basic": z.shot_zone_basic,
+                "fga": z.fga,
+                "fgm": z.fgm,
+                "fg_pct": z.fg_pct,
+                "freq_pct": z.freq_pct,
+                "pool_fg_pct": z.pool_fg_pct,
+            }
+            for z in zones_dto.zones
+        ],
+        "dots": [{"loc_x": d.loc_x, "loc_y": d.loc_y, "made": d.made} for d in dots],
+    }

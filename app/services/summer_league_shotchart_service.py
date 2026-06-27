@@ -347,6 +347,51 @@ async def get_player_shot_dots(
     )
 
 
+async def get_game_shot_dots(
+    session: AsyncSession,
+    game_id: int,
+    team_entry_id: Optional[int] = None,
+    player_id: Optional[int] = None,
+) -> list[ShotDot]:
+    """Return raw shot locations for a game, optionally filtered to team/player.
+
+    Only shots with non-null ``loc_x`` / ``loc_y`` are included.  An empty
+    list is returned when no coordinate data exists.
+
+    Args:
+        session: Async DB session.
+        game_id: ``SummerLeagueGame.id``.
+        team_entry_id: Optional ``SummerLeagueTeamEntry.id`` filter.
+        player_id: Optional canonical ``PlayerMaster.id`` filter.
+
+    Returns:
+        List of :class:`ShotDot` (may be empty).
+    """
+    stmt = (
+        select(  # type: ignore[call-overload]
+            SummerLeagueShotEvent.loc_x,
+            SummerLeagueShotEvent.loc_y,
+            SummerLeagueShotEvent.made,
+        )
+        .where(SummerLeagueShotEvent.game_id == game_id)  # type: ignore[arg-type]
+        .where(SummerLeagueShotEvent.loc_x.isnot(None))  # type: ignore[union-attr]
+        .where(SummerLeagueShotEvent.loc_y.isnot(None))  # type: ignore[union-attr]
+    )
+    if team_entry_id is not None:
+        stmt = stmt.where(
+            SummerLeagueShotEvent.team_entry_id == team_entry_id  # type: ignore[arg-type]
+        )
+    if player_id is not None:
+        stmt = stmt.where(
+            SummerLeagueShotEvent.player_id == player_id  # type: ignore[arg-type]
+        )
+    stmt = stmt.order_by(SummerLeagueShotEvent.id)
+    result = await session.execute(stmt)
+    return [
+        ShotDot(loc_x=row[0], loc_y=row[1], made=bool(row[2])) for row in result.all()
+    ]
+
+
 async def get_game_shot_zones(
     session: AsyncSession,
     game_id: int,

@@ -59,6 +59,7 @@ class SeededData:
     sl_year: int = 2025
     sl_venue: str = "las_vegas"
     sl_team: str = "perf-home"
+    sl_game_id: int = 0
 
 
 @pytest.fixture(autouse=True)
@@ -291,4 +292,7 @@ async def representative_dataset(db_session: AsyncSession) -> SeededData:
 
     await db_session.commit()
 
-    return SeededData(player_slug=players[0].slug or "alpha-prospect")
+    return SeededData(
+        player_slug=players[0].slug or "alpha-prospect",
+        sl_game_id=sl_game.id,
+    )

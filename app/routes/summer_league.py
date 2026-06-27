@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import io
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -18,6 +19,7 @@ from starlette.responses import Response
 from app.services.summer_league_games_service import (
     GamesPage,
     get_game_box_score,
+    get_game_shotchart_context,
     get_games_facets,
     get_player_game_logs,
     resolve_player_ref,
@@ -265,6 +267,8 @@ async def summer_league_game_box_score(
     request: Request,
     year: int,
     game_id: int,
+    team_entry_id: Optional[int] = Query(default=None),
+    player_id: Optional[int] = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
     """Full box score for one Summer League game."""
@@ -272,11 +276,18 @@ async def summer_league_game_box_score(
     if box is None:
         raise HTTPException(status_code=404, detail="Summer League game not found")
 
+    sl_shotchart = await get_game_shotchart_context(
+        db, game_id=game_id, team_entry_id=team_entry_id, player_id=player_id
+    )
+
     return request.app.state.templates.TemplateResponse(
         "stats/summer-league/game-detail.html",
         {
             "request": request,
             "box": box,
+            "sl_shotchart": sl_shotchart,
+            "selected_team_entry_id": team_entry_id,
+            "selected_player_id": player_id,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

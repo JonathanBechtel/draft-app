@@ -69,6 +69,11 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/stats/": 2,
     "/stats/summer-league": 8,
     "/stats/summer-league/games": 5,
+    # Box score: header query (1) + player lines (1) + team totals (1) +
+    # shot-zone aggregation (1) = 4 indexed reads in the perf dataset.
+    # The perf dataset seeds no shot events, so total_fga=0 and the dot
+    # follow-up query is skipped (budget would be 5 on a game with shots).
+    "/stats/summer-league/{year}/games/{game_id}": 4,
     # Both counting (aggregate + years) and advanced (competition list +
     # per-competition rows) modes fire 2 indexed queries.
     "/stats/summer-league/leaders": 3,
