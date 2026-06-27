@@ -23,6 +23,10 @@ from app.services.summer_league_games_service import (
     resolve_player_ref,
     search_games,
 )
+from app.services.summer_league_stats_service import (
+    get_competition_id_for_player_year,
+    get_player_shotchart_context,
+)
 from app.services.summer_league_explorer_service import (
     parse_query,
     run_explorer_query,
@@ -304,6 +308,49 @@ async def player_summer_league_logs(
             },
             "seasons": seasons,
             "total_games": total_games,
+            "footer_links": FOOTER_LINKS,
+            "current_year": datetime.now().year,
+        },
+    )
+
+
+@router.get("/players/{slug}/summer-league/{year}", response_class=HTMLResponse)
+async def player_summer_league_season(
+    request: Request,
+    slug: str,
+    year: int,
+    db: AsyncSession = Depends(get_session),
+) -> HTMLResponse:
+    """Per-season Summer League view: game logs + shot chart for one year."""
+    ref = await resolve_player_ref(db, slug)
+    if ref is None:
+        raise HTTPException(status_code=404, detail="Player not found")
+
+    all_seasons = await get_player_game_logs(db, ref.id)
+    year_seasons = [s for s in all_seasons if s.year == year]
+    total_games = sum(len(s.rows) for s in year_seasons)
+
+    # Shot chart: scoped to this year's most-marquee competition.
+    sl_shotchart: dict | None = None
+    comp_id = await get_competition_id_for_player_year(db, ref.id, year)
+    if comp_id is not None:
+        sl_shotchart = await get_player_shotchart_context(
+            db, player_id=ref.id, competition_id=comp_id
+        )
+
+    return request.app.state.templates.TemplateResponse(
+        "players/summer-league-season.html",
+        {
+            "request": request,
+            "player": {
+                "id": ref.id,
+                "slug": ref.slug,
+                "name": ref.name,
+            },
+            "year": year,
+            "seasons": year_seasons,
+            "total_games": total_games,
+            "sl_shotchart": sl_shotchart,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

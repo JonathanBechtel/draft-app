@@ -26,6 +26,11 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamEntry,
 )
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.summer_league_shotchart_service import (
+    get_player_shot_dots,
+    get_player_shot_zones,
+)
 
 # Human-readable venue labels keyed by the competition ``venue_slug``.
 VENUE_LABELS: dict[str, str] = {
@@ -394,3 +399,140 @@ async def get_summer_league_profile_by_player_id(
 def summer_league_to_context(profile: SummerLeagueProfile) -> dict:
     """Serialize a profile to a JSON-able dict for the template and window data."""
     return asdict(profile)
+
+
+async def get_competition_id_for_player_year(
+    db: AsyncSession,
+    player_id: int,
+    year: int,
+) -> Optional[int]:
+    """Return the most-marquee competition_id for a player in a given year.
+
+    When the player appeared in more than one venue that year, the ordering in
+    ``_VENUE_ORDER`` is used (Las Vegas > Salt Lake City > California Classic >
+    Orlando).  Returns ``None`` when the player has no
+    :class:`~app.schemas.summer_league_metrics.SummerLeaguePlayerSeason` row
+    for that year — i.e. the season table has not been materialised yet or the
+    player had no resolved logs.
+
+    Args:
+        db: Async database session.
+        player_id: Canonical ``players_master`` id.
+        year: Summer League year to look up.
+
+    Returns:
+        The competition id of the most marquee competition, or ``None``.
+    """
+    stmt = select(  # type: ignore[call-overload]
+        SummerLeaguePlayerSeason.competition_id,
+        SummerLeaguePlayerSeason.venue_slug,
+    ).where(
+        SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
+        SummerLeaguePlayerSeason.year == year,  # type: ignore[arg-type]
+    )
+    rows = (await db.execute(stmt)).all()
+    if not rows:
+        return None
+    rows_sorted = sorted(rows, key=lambda r: _VENUE_ORDER.get(r.venue_slug, 99))
+    return int(rows_sorted[0].competition_id)
+
+
+async def get_player_shotchart_context(
+    db: AsyncSession,
+    player_id: int,
+    competition_id: Optional[int] = None,
+) -> Optional[dict]:
+    """Assemble the ``window.SL_SHOTCHART`` payload for player templates.
+
+    Returns ``None`` when the player has no shot events so callers can skip
+    rendering the chart component entirely.
+
+    When ``competition_id`` is ``None`` a career-level zone rollup is produced:
+    zone counts are summed across all competitions, ``pool_fg_pct`` is ``None``
+    on every zone (no single reference pool), and ``dots`` is an empty list
+    (dots are only meaningful within one competition).  The shot-diet row comes
+    from the most recent :class:`SummerLeaguePlayerSeason` row for the player.
+
+    When ``competition_id`` is provided the zones are scoped to that pool
+    (``pool_fg_pct`` is populated), dots are fetched, and shot-diet comes from
+    the matching ``SummerLeaguePlayerSeason`` row.
+
+    Args:
+        db: Async database session.
+        player_id: Canonical ``players_master`` id.
+        competition_id: Optional competition scope; ``None`` = career rollup.
+
+    Returns:
+        A JSON-serialisable dict shaped for ``window.SL_SHOTCHART``, or ``None``
+        when the player has no shot events.
+    """
+    # ── 1. Zone aggregation (always fires; 1 query for career, 2 for scoped) ──
+    zones_dto = await get_player_shot_zones(db, player_id, competition_id)
+    if zones_dto.total_fga == 0:
+        return None
+
+    # ── 2. Shot-diet from SummerLeaguePlayerSeason ────────────────────────────
+    if competition_id is not None:
+        diet_stmt = select(SummerLeaguePlayerSeason).where(  # type: ignore[call-overload]
+            SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
+            SummerLeaguePlayerSeason.competition_id == competition_id,  # type: ignore[arg-type]
+        )
+    else:
+        # Career view: use the most recent competition's rates as the "latest" diet.
+        diet_stmt = (
+            select(SummerLeaguePlayerSeason)  # type: ignore[call-overload]
+            .where(
+                SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
+            )
+            .order_by(
+                desc(SummerLeaguePlayerSeason.year),  # type: ignore[arg-type]
+                SummerLeaguePlayerSeason.venue_slug,
+            )
+            .limit(1)
+        )
+    diet_row: Optional[SummerLeaguePlayerSeason] = (
+        await db.execute(diet_stmt)
+    ).scalar_one_or_none()
+
+    shot_diet: Optional[dict] = None
+    if diet_row is not None and any(
+        v is not None
+        for v in (
+            diet_row.rim_rate,
+            diet_row.mid_rate,
+            diet_row.three_rate,
+            diet_row.corner3_rate,
+        )
+    ):
+        shot_diet = {
+            "rim_rate": diet_row.rim_rate,
+            "mid_rate": diet_row.mid_rate,
+            "three_rate": diet_row.three_rate,
+            "corner3_rate": diet_row.corner3_rate,
+        }
+
+    # ── 3. Dots (per-competition only; empty for career) ─────────────────────
+    dots: list[dict] = []
+    if competition_id is not None:
+        dots_dto = await get_player_shot_dots(db, player_id, competition_id)
+        dots = [
+            {"loc_x": d.loc_x, "loc_y": d.loc_y, "made": d.made} for d in dots_dto.dots
+        ]
+
+    return {
+        "total_fga": zones_dto.total_fga,
+        "suppressed": zones_dto.suppressed,
+        "zones": [
+            {
+                "shot_zone_basic": z.shot_zone_basic,
+                "fga": z.fga,
+                "fgm": z.fgm,
+                "fg_pct": z.fg_pct,
+                "freq_pct": z.freq_pct,
+                "pool_fg_pct": z.pool_fg_pct,
+            }
+            for z in zones_dto.zones
+        ],
+        "dots": dots,
+        "shot_diet": shot_diet,
+    }
