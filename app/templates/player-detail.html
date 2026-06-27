@@ -369,6 +369,28 @@
            pool is complete enough to qualify (adv_eligible). Its own tab. #}
         {% if sl_metrics %}
         <div class="sl-advanced sl-mode-group" data-sl-modes="advanced" style="display:none;">
+          {# Career headline pills for the advanced view: minute-weighted PER/TS%/
+             BPM across the player's adv-eligible competitions. #}
+          <div class="stats-headline-row">
+            <div class="stat-hero">
+              <span class="stat-hero__label">PER</span>
+              <div class="stat-hero__value">{{ '%.1f' % sl_metrics.career.per_avg if sl_metrics.career.per_avg is not none else '—' }}</div>
+              <div class="stat-hero__sub">Efficiency</div>
+            </div>
+            <div class="stat-hero">
+              <span class="stat-hero__label">TS%</span>
+              <div class="stat-hero__value">{{ '%.1f' % sl_metrics.career.ts_avg if sl_metrics.career.ts_avg is not none else '—' }}</div>
+              <div class="stat-hero__sub">True Shooting</div>
+            </div>
+            <div class="stat-hero">
+              <span class="stat-hero__label">BPM</span>
+              <div class="stat-hero__value">{{ '%+.1f' % sl_metrics.career.bpm_avg if sl_metrics.career.bpm_avg is not none else '—' }}</div>
+              <div class="stat-hero__sub">Box +/-</div>
+            </div>
+          </div>
+          <div class="sl-career-meta">
+            Career averages · minute-weighted across {{ sl_metrics.career.adv_pools }} qualified competition{{ '' if sl_metrics.career.adv_pools == 1 else 's' }}
+          </div>
           <div class="stats-section-label" title="Advanced metrics are recalibrated to the Summer League itself, separately per competition (PER to a 15.0 mean, BPM to 0.0). Only competitions with a complete enough pool of games qualify.">
             Advanced Metrics
           </div>
@@ -421,7 +443,7 @@
                   <td>{{ sl_metrics.career.gp }}</td>
                   <td>{{ sl_n(sl_metrics.career.minutes) }}</td>
                   <td class="sl-col-rate">{{ sl_n(sl_metrics.career.per_avg) }}</td>
-                  <td>—</td>
+                  <td>{{ sl_n(sl_metrics.career.ts_avg) }}</td>
                   <td>—</td>
                   <td>—</td>
                   <td>—</td>
@@ -437,7 +459,7 @@
           </div>
           {% if sl_metrics.seasons | length > 1 %}
           <div class="sl-career-meta">
-            * Career WS and VORP are cumulative totals across qualified competitions; PER, BPM, and the /82 projections are minute-weighted averages. Ratings and usage aren't pooled across competitions.
+            * Career WS and VORP are cumulative totals across qualified competitions; PER, TS%, BPM, and the /82 projections are minute-weighted averages. Ratings and usage aren't pooled across competitions.
           </div>
           {% endif %}
         </div>

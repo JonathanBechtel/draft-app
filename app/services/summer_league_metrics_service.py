@@ -105,9 +105,9 @@ class PlayerMetricSeason:
 class PlayerMetricCareer:
     """Career rollup across a player's adv-eligible competitions.
 
-    Only the additive shares (Win Shares, VORP) are summed. ``per_avg`` and
-    ``bpm_avg`` are minute-weighted means kept as soft "career average" context,
-    never as a recalibrated headline.
+    Only the additive shares (Win Shares, VORP) are summed. ``per_avg``,
+    ``ts_avg``, and ``bpm_avg`` are minute-weighted means kept as soft "career
+    average" context, never as a recalibrated headline.
     """
 
     adv_pools: int
@@ -119,6 +119,7 @@ class PlayerMetricCareer:
     ws40: Optional[float]
     # Rates/projections are minute-weighted averages, never summed.
     per_avg: Optional[float]
+    ts_avg: Optional[float]
     bpm_avg: Optional[float]
     ws82_avg: Optional[float]
     vorp82_avg: Optional[float]
@@ -166,6 +167,7 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
         vorp=round(sum(vorp_vals), 1) if vorp_vals else None,
         ws40=round(ws40, 2) if ws40 is not None else None,
         per_avg=_round1(_weighted_mean([(s.per, s.minutes) for s in seasons])),
+        ts_avg=_round1(_weighted_mean([(s.ts_pct, s.minutes) for s in seasons])),
         bpm_avg=_round1(_weighted_mean([(s.bpm, s.minutes) for s in seasons])),
         ws82_avg=_round1(_weighted_mean([(s.ws82, s.minutes) for s in seasons])),
         vorp82_avg=_round1(_weighted_mean([(s.vorp82, s.minutes) for s in seasons])),
