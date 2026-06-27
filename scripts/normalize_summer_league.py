@@ -19,6 +19,7 @@ from app.config import settings  # noqa: E402
 from app.services.summer_league.normalization import (  # noqa: E402
     normalize_competition_games,
     normalize_player_game_logs,
+    normalize_shot_events,
 )
 
 
@@ -41,6 +42,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--player-logs-only",
         action="store_true",
         help="Only normalize source players and player game logs.",
+    )
+    parser.add_argument(
+        "--include-shot-events",
+        action="store_true",
+        help="Also parse shotchartdetail snapshots into shot events after games.",
     )
     return parser
 
@@ -75,6 +81,14 @@ async def run_normalization(args: argparse.Namespace) -> int:
                     league_id=args.league_id,
                     raw_root=args.raw_root,
                 )
+            shot_report = None
+            if args.include_shot_events and not args.player_logs_only:
+                shot_report = await normalize_shot_events(
+                    db,
+                    year=args.year,
+                    league_id=args.league_id,
+                    raw_root=args.raw_root,
+                )
             await db.commit()
     except (FileNotFoundError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -95,6 +109,13 @@ async def run_normalization(args: argparse.Namespace) -> int:
             f"source_players={player_report.source_players_upserted} "
             f"player_logs={player_report.player_game_logs_upserted} "
             f"skipped_player_logs={player_report.player_game_logs_skipped}"
+        )
+    if shot_report is not None:
+        messages.append(
+            f"{shot_report.year}/{shot_report.league_id}: "
+            f"shot_events={shot_report.shot_events_upserted} "
+            f"games_processed={shot_report.games_processed} "
+            f"games_with_shots={shot_report.games_with_shots}"
         )
     print("\n".join(messages), flush=True)
     return 0

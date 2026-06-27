@@ -22,6 +22,7 @@ from app.schemas.summer_league import (
     SummerLeagueRawFileStatus,
     SummerLeagueRawRun,
     SummerLeagueResolutionStatus,
+    SummerLeagueShotEvent,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
@@ -141,6 +142,41 @@ class ParsedPlayerBoxRow:
     pct_pts_2pt: float | None = None
     pct_pts_3pt: float | None = None
     pct_pts_ft: float | None = None
+
+
+@dataclass(frozen=True)
+class ParsedShotEvent:
+    """Parsed shot attempt row from a shotchartdetail JSON snapshot."""
+
+    nba_stats_game_id: str
+    nba_stats_game_event_id: int
+    nba_stats_person_id: str
+    raw_player_name: str
+    nba_stats_team_id: str
+    period: int | None
+    minutes_remaining: int | None
+    seconds_remaining: int | None
+    loc_x: int | None
+    loc_y: int | None
+    shot_distance: int | None
+    shot_type: str | None
+    shot_zone_basic: str | None
+    shot_zone_area: str | None
+    shot_zone_range: str | None
+    action_type: str | None
+    made: bool
+
+
+@dataclass(frozen=True)
+class SummerLeagueShotEventReport:
+    """Counts from one Summer League shot event normalization run."""
+
+    year: int
+    league_id: str
+    competition_id: int
+    shot_events_upserted: int
+    games_processed: int
+    games_with_shots: int
 
 
 @dataclass(frozen=True)
@@ -353,6 +389,122 @@ async def normalize_player_game_logs(
     )
 
 
+async def normalize_shot_events(
+    db: AsyncSession,
+    *,
+    year: int,
+    league_id: str,
+    raw_root: Path,
+    limit_games: int | None = None,
+) -> SummerLeagueShotEventReport:
+    """Normalize shot events from shotchartdetail snapshots for one slice.
+
+    Reads each game's shotchartdetail.json, parses shot rows, resolves players
+    via the shared nba_stats_person_id resolver, and idempotently upserts into
+    SummerLeagueShotEvent keyed on (nba_stats_game_id, nba_stats_game_event_id).
+
+    Also updates SummerLeagueRawFile.parse_status for the shotchartdetail
+    endpoint and sets SummerLeagueCompetition.shotchart_available only when
+    at least one game has parsed shot rows.
+
+    Args:
+        db: Async database session (caller handles commit/rollback).
+        year: Competition year.
+        league_id: NBA.com LeagueID string.
+        raw_root: Root directory for raw NBA Stats snapshots.
+        limit_games: Optional cap on games processed (for testing).
+
+    Returns:
+        Structured report with upsert counts.
+    """
+    competition = await _get_competition(db, year=year, league_id=league_id)
+    if competition.id is None:
+        raise RuntimeError("Competition id was not populated")
+
+    season_dir = raw_root / f"{year}/{league_id}"
+    limited_game_ids = _limited_game_ids(
+        raw_root=raw_root,
+        year=year,
+        league_id=league_id,
+        limit_games=limit_games,
+    )
+    games_by_source_id = await _games_by_source_id(db, competition.id)
+    teams_by_source_id = await _teams_by_source_id(db, competition.id)
+    raw_files_by_game = await _shot_raw_files_by_game(
+        db,
+        raw_run_id=competition.raw_run_id,
+    )
+
+    total_upserted = 0
+    games_processed = 0
+    games_with_shots = 0
+    games_root = season_dir / "games"
+
+    for game_dir in _iter_game_dirs(games_root, limited_game_ids):
+        nba_game_id = game_dir.name
+        shot_path = game_dir / "shotchartdetail.json"
+        if not shot_path.exists():
+            continue
+
+        games_processed += 1
+        game = games_by_source_id.get(nba_game_id)
+        if game is None or game.id is None:
+            continue
+
+        shot_rows = parse_shot_rows(shot_path)
+
+        raw_file = raw_files_by_game.get(nba_game_id)
+        if raw_file is not None:
+            raw_file.parse_status = SummerLeagueRawFileStatus.PARSED
+            raw_file.updated_at = _utc_now_naive()
+
+        if not shot_rows:
+            continue
+
+        games_with_shots += 1
+        for shot_row in shot_rows:
+            source_player = await _upsert_source_player(
+                db,
+                ParsedPlayerGamelogRow(
+                    nba_stats_person_id=shot_row.nba_stats_person_id,
+                    raw_player_name=shot_row.raw_player_name,
+                    nba_stats_team_id=shot_row.nba_stats_team_id,
+                ),
+                year=year,
+            )
+            await db.flush()
+
+            team = teams_by_source_id.get(shot_row.nba_stats_team_id)
+            if team is None or team.id is None or source_player.id is None:
+                continue
+
+            await _upsert_shot_event(
+                db,
+                competition.id,
+                game.id,
+                team.id,
+                source_player,
+                shot_row,
+            )
+            total_upserted += 1
+
+    await db.flush()
+
+    # Set availability from actual parsed rows, not file presence.
+    competition.shotchart_available = games_with_shots > 0
+    competition.updated_at = _utc_now_naive()
+    await db.flush()
+
+    return SummerLeagueShotEventReport(
+        year=year,
+        league_id=league_id,
+        competition_id=competition.id,
+        shot_events_upserted=total_upserted,
+        games_processed=games_processed,
+        games_with_shots=games_with_shots,
+    )
+
+
 def parse_team_gamelog(path: Path) -> list[ParsedTeamGamelogRow]:
     """Parse source team gamelog rows."""
     payload = _read_payload(path)
@@ -435,6 +587,32 @@ def parse_player_box_rows(
                     scoring.get(key),
                 )
             )
+    return rows
+
+
+def parse_shot_rows(path: Path) -> list[ParsedShotEvent]:
+    """Parse shot attempt rows from a shotchartdetail JSON snapshot.
+
+    Args:
+        path: Path to the shotchartdetail.json file.
+
+    Returns:
+        Parsed shot event rows; empty list when the file is missing or has no rows.
+    """
+    payload = _read_payload(path)
+    result_sets = extract_result_sets(payload)
+    shot_set = next(
+        (rs for rs in result_sets if rs.name == "Shot_Chart_Detail"),
+        None,
+    )
+    if shot_set is None:
+        return []
+    rows: list[ParsedShotEvent] = []
+    for row in shot_set.rows:
+        row_map = _row_map(shot_set.headers, row)
+        parsed = _parse_shot_row(row_map)
+        if parsed is not None:
+            rows.append(parsed)
     return rows
 
 
@@ -1124,6 +1302,114 @@ def _home_row(rows: list[ParsedTeamGamelogRow]) -> ParsedTeamGamelogRow | None:
         (row for row in rows if row.matchup and " vs. " in row.matchup),
         rows[0] if rows else None,
     )
+
+
+def _parse_shot_row(row_map: dict[str, Any]) -> ParsedShotEvent | None:
+    game_id = str(row_map.get("GAME_ID") or "")
+    event_id_raw = row_map.get("GAME_EVENT_ID")
+    person_id = str(row_map.get("PLAYER_ID") or "")
+    team_id = str(row_map.get("TEAM_ID") or "")
+    if not game_id or event_id_raw is None or not person_id or not team_id:
+        return None
+    event_id = _int_or_none(event_id_raw)
+    if event_id is None:
+        return None
+    raw_name = str(row_map.get("PLAYER_NAME") or person_id)
+    made_flag = _int_or_none(row_map.get("SHOT_MADE_FLAG"))
+    return ParsedShotEvent(
+        nba_stats_game_id=game_id,
+        nba_stats_game_event_id=event_id,
+        nba_stats_person_id=person_id,
+        raw_player_name=raw_name,
+        nba_stats_team_id=team_id,
+        period=_int_or_none(row_map.get("PERIOD")),
+        minutes_remaining=_int_or_none(row_map.get("MINUTES_REMAINING")),
+        seconds_remaining=_int_or_none(row_map.get("SECONDS_REMAINING")),
+        loc_x=_int_or_none(row_map.get("LOC_X")),
+        loc_y=_int_or_none(row_map.get("LOC_Y")),
+        shot_distance=_int_or_none(row_map.get("SHOT_DISTANCE")),
+        shot_type=_str_or_none(row_map.get("SHOT_TYPE")),
+        shot_zone_basic=_str_or_none(row_map.get("SHOT_ZONE_BASIC")),
+        shot_zone_area=_str_or_none(row_map.get("SHOT_ZONE_AREA")),
+        shot_zone_range=_str_or_none(row_map.get("SHOT_ZONE_RANGE")),
+        action_type=_str_or_none(row_map.get("ACTION_TYPE")),
+        made=bool(made_flag) if made_flag is not None else False,
+    )
+
+
+async def _upsert_shot_event(
+    db: AsyncSession,
+    competition_id: int,
+    game_id: int,
+    team_entry_id: int,
+    source_player: SummerLeagueSourcePlayer,
+    shot_row: ParsedShotEvent,
+) -> SummerLeagueShotEvent:
+    result = await db.execute(
+        select(SummerLeagueShotEvent).where(
+            SummerLeagueShotEvent.nba_stats_game_id == shot_row.nba_stats_game_id,  # type: ignore[arg-type]
+            SummerLeagueShotEvent.nba_stats_game_event_id
+            == shot_row.nba_stats_game_event_id,  # type: ignore[arg-type]
+        )
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        if source_player.id is None:
+            raise RuntimeError("Source player id was not populated")
+        row = SummerLeagueShotEvent(
+            game_id=game_id,
+            competition_id=competition_id,
+            team_entry_id=team_entry_id,
+            source_player_id=source_player.id,
+            nba_stats_person_id=shot_row.nba_stats_person_id,
+            nba_stats_game_id=shot_row.nba_stats_game_id,
+            nba_stats_game_event_id=shot_row.nba_stats_game_event_id,
+            made=shot_row.made,
+        )
+        db.add(row)
+    if source_player.id is None:
+        raise RuntimeError("Source player id was not populated")
+    row.game_id = game_id
+    row.competition_id = competition_id
+    row.team_entry_id = team_entry_id
+    row.source_player_id = source_player.id
+    row.player_id = source_player.canonical_player_id
+    row.nba_stats_person_id = shot_row.nba_stats_person_id
+    row.period = shot_row.period
+    row.minutes_remaining = shot_row.minutes_remaining
+    row.seconds_remaining = shot_row.seconds_remaining
+    row.loc_x = shot_row.loc_x
+    row.loc_y = shot_row.loc_y
+    row.shot_distance = shot_row.shot_distance
+    row.shot_type = shot_row.shot_type
+    row.shot_zone_basic = shot_row.shot_zone_basic
+    row.shot_zone_area = shot_row.shot_zone_area
+    row.shot_zone_range = shot_row.shot_zone_range
+    row.action_type = shot_row.action_type
+    row.made = shot_row.made
+    row.updated_at = _utc_now_naive()
+    return row
+
+
+async def _shot_raw_files_by_game(
+    db: AsyncSession,
+    *,
+    raw_run_id: int | None,
+) -> dict[str, SummerLeagueRawFile]:
+    """Return shotchartdetail raw file records keyed by nba_stats_game_id."""
+    if raw_run_id is None:
+        return {}
+    result = await db.execute(
+        select(SummerLeagueRawFile).where(
+            SummerLeagueRawFile.raw_run_id == raw_run_id,  # type: ignore[arg-type]
+            SummerLeagueRawFile.endpoint == "shotchartdetail",  # type: ignore[arg-type]
+        )
+    )
+    return {
+        file.game_id: file
+        for file in result.scalars().all()
+        if file.game_id is not None
+    }
 
 
 def _read_payload(path: Path) -> dict[str, Any]:
