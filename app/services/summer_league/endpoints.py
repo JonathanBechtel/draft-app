@@ -152,29 +152,27 @@ def build_schedule_params(*, league_id: str, season: int | str) -> dict[str, str
     }
 
 
-def build_shotchart_params(
-    *,
-    league_id: str,
-    season: int | str,
-    game_id: str,
-) -> dict[str, str]:
+def build_shotchart_params(*, game_id: str) -> dict[str, str]:
     """Build params for the NBA Stats ``shotchartdetail`` endpoint.
 
+    Constrains the query to a single game (``GameID``) with
+    ``ContextMeasure=FGA``.  Season-scoped keys (``LeagueID``, ``Season``,
+    ``SeasonType``) are intentionally omitted: the probe found that when those
+    keys are present the endpoint keys off *Season* and can return rows beyond
+    the requested game (e.g. non-empty shot counts for games with empty box
+    scores).  ``GameID`` is therefore the sole scope anchor.
+
     Args:
-        league_id: Summer League NBA Stats LeagueID.
-        season: Four-digit Summer League season year.
         game_id: NBA Stats ``GAME_ID``.
 
     Returns:
-        Complete query parameter dictionary for FGA shot chart rows.
+        Query parameter dictionary scoped to the given game's FGA rows.
     """
     return {
-        "LeagueID": normalize_league_id(league_id),
-        "Season": normalize_season(season),
-        "SeasonType": "Regular Season",
+        "GameID": game_id.strip(),
+        "ContextMeasure": "FGA",
         "TeamID": "0",
         "PlayerID": "0",
-        "GameID": game_id.strip(),
         "Outcome": "",
         "Location": "",
         "Month": "0",
@@ -189,6 +187,5 @@ def build_shotchart_params(
         "GameSegment": "",
         "Period": "0",
         "LastNGames": "0",
-        "ContextMeasure": "FGA",
         "PlayerPosition": "",
     }

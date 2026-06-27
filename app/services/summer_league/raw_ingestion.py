@@ -311,9 +311,5 @@ def _game_endpoint_params(
     if endpoint == "playbyplayv2":
         return build_playbyplay_params(game_id)
     if endpoint == "shotchartdetail":
-        return build_shotchart_params(
-            league_id=league_id,
-            season=year,
-            game_id=game_id,
-        )
+        return build_shotchart_params(game_id=game_id)
     return build_boxscore_params(game_id)

@@ -151,21 +151,29 @@ def test_build_playbyplay_params_matches_probe_shape() -> None:
     }
 
 
-def test_build_shotchart_params_includes_required_filters() -> None:
-    """Shot chart params constrain the query to game-level FGA rows."""
-    params = build_shotchart_params(
-        league_id="13",
-        season="2024",
-        game_id="1322400001",
-    )
+def test_build_shotchart_params_scopes_to_game_and_fga() -> None:
+    """Shot chart params constrain to GameID+FGA; season-scoped keys are absent.
 
-    assert params["LeagueID"] == "13"
-    assert params["Season"] == "2024"
+    The NBA Stats ``shotchartdetail`` endpoint keys off Season when that param
+    is present, which causes it to return rows beyond the requested game (the
+    probe found non-empty counts for games with empty box scores).  Omitting
+    Season, LeagueID, and SeasonType forces the endpoint to scope exclusively
+    to the supplied GameID.
+    """
+    params = build_shotchart_params(game_id="1322400001")
+
+    # Primary scope anchors must be present.
     assert params["GameID"] == "1322400001"
     assert params["ContextMeasure"] == "FGA"
+
+    # Neutral all-player / all-team selectors.
     assert params["TeamID"] == "0"
     assert params["PlayerID"] == "0"
-    assert params["SeasonType"] == "Regular Season"
+
+    # Season-scoped keys must be absent to prevent leakage.
+    assert "Season" not in params
+    assert "LeagueID" not in params
+    assert "SeasonType" not in params
 
 
 def test_extract_result_sets_handles_result_sets_list() -> None:
