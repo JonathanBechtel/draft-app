@@ -689,6 +689,7 @@ _PLAYER_ADVANCED_COLUMNS: list[ExplorerColumn] = [
 
 # Stat columns for the teams subject (one row per team-season). W-L and points
 # come from game scores; pace/ratings are team-box-log averages where present.
+# net_rtg = ORtg - DRtg; None when either component is unavailable.
 _TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("gp", "GP"),
     ExplorerColumn("w", "W"),
@@ -699,6 +700,7 @@ _TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("pace", "PACE"),
     ExplorerColumn("ortg", "ORtg"),
     ExplorerColumn("drtg", "DRtg"),
+    ExplorerColumn("net_rtg", "NetRtg"),
 ]
 
 # Stat columns for the games subject (one row per game). The label carries date
@@ -2316,6 +2318,15 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             continue
         rt = ratings.get(r.id)
         name = r.raw_team_name or r.raw_team_abbreviation or "Team"
+        # Derive box-log averages; emit None when the log is absent or all-NULL
+        # so missing inputs degrade cleanly instead of producing 0 / NaN.
+        ortg_val = _r1(rt.ortg) if rt else None
+        drtg_val = _r1(rt.drtg) if rt else None
+        net_rtg_val = (
+            round(ortg_val - drtg_val, 1)
+            if (ortg_val is not None and drtg_val is not None)
+            else None
+        )
         rows.append(
             ExplorerRow(
                 label=f"{name} · {_venue_label(r.venue_slug)} {r.year}",
@@ -2328,8 +2339,9 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                     "opp_ppg": round(pa / gp, 1),
                     "diff": round((pf - pa) / gp, 1),
                     "pace": _r1(rt.pace) if rt else None,
-                    "ortg": _r1(rt.ortg) if rt else None,
-                    "drtg": _r1(rt.drtg) if rt else None,
+                    "ortg": ortg_val,
+                    "drtg": drtg_val,
+                    "net_rtg": net_rtg_val,
                 },
             )
         )

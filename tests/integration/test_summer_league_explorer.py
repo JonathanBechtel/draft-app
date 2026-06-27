@@ -377,6 +377,81 @@ async def test_teams_default_sort_is_valid_for_subject(
     assert q.sort == "diff"  # 'ts_pct' is not a team column
 
 
+@pytest.mark.asyncio
+async def test_teams_advanced_columns(db_session: AsyncSession) -> None:
+    """Teams subject exposes ORtg/DRtg/Pace/NetRtg derived from box-log averages.
+
+    _seed_teams creates logs with off_rating=110.0, def_rating=105.0, pace=100.0
+    for both teams in both games. Verified: NetRtg = ORtg - DRtg = 5.0; all four
+    columns are present, populated, and accepted as sort keys.
+    """
+    await _seed_teams(db_session)
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="teams"))
+
+    # All four advanced columns appear in the column list.
+    col_keys = {c.key for c in result.columns}
+    assert {"pace", "ortg", "drtg", "net_rtg"} <= col_keys
+
+    # Both teams have the same seeded ratings; check via the first row.
+    row = result.rows[0]
+    assert row.values["ortg"] == 110.0
+    assert row.values["drtg"] == 105.0
+    assert row.values["pace"] == 100.0
+    # NetRtg is derived in Python as ORtg - DRtg.
+    assert row.values["net_rtg"] == 5.0
+
+    # net_rtg is accepted as a valid sort key for the teams subject.
+    q_net = parse_query({"subject": "teams", "sort": "net_rtg"})
+    assert q_net.sort == "net_rtg"
+
+    # Sorting by net_rtg desc returns a non-empty result without error.
+    result_sorted = await run_explorer_query(
+        db_session, ExplorerQuery(subject="teams", sort="net_rtg", direction="desc")
+    )
+    assert result_sorted.total > 0
+    assert result_sorted.rows[0].values["net_rtg"] == 5.0
+
+
+@pytest.mark.asyncio
+async def test_teams_advanced_missing_inputs_graceful(db_session: AsyncSession) -> None:
+    """Teams with no box-log data produce None for all rating columns without error.
+
+    Seeds a game with scores but no SummerLeagueTeamGameLog rows. The ratings
+    query returns no rows for those entries, so pace/ortg/drtg/net_rtg should all
+    degrade to None rather than 0 or raising.
+    """
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    alpha = await _team(db_session, comp_id=c)
+    bravo = await _team(db_session, comp_id=c)
+    alpha.raw_team_name, bravo.raw_team_name = "Alpha", "Bravo"
+    await db_session.flush()
+
+    # Game with scores but NO team box logs — ratings will be absent.
+    _N["i"] += 1
+    g = SummerLeagueGame(
+        competition_id=c,
+        nba_stats_game_id=f"nolog-game-{_N['i']}",
+        game_date=date(2024, 7, 4),
+        home_team_entry_id=alpha.id,
+        away_team_entry_id=bravo.id,
+        home_score=100,
+        away_score=90,
+    )
+    db_session.add(g)
+    await db_session.commit()
+
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="teams"))
+    assert result.available is True
+    assert result.total == 2
+
+    for row in result.rows:
+        # All rating-derived columns degrade to None, not 0/NaN.
+        assert row.values["pace"] is None
+        assert row.values["ortg"] is None
+        assert row.values["drtg"] is None
+        assert row.values["net_rtg"] is None
+
+
 # --------------------------------------------------------------------------- #
 # games subject (Phase 3)
 # --------------------------------------------------------------------------- #
