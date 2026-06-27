@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Optional
 
-from sqlalchemy import func, literal, nulls_last, or_, select, text
+from sqlalchemy import case, func, literal, nulls_last, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -1302,26 +1302,81 @@ def _apply_pagination(stmt: Any, q: ExplorerQuery) -> Any:
     return stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
 
 
-async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """Aggregate, sort, and paginate the players subject using SQL ORDER BY / LIMIT / OFFSET.
+def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
+    """Sort expression for career grain sourced from ``summer_league_player_seasons``.
 
-    Sort order: counting stats sort on their raw SUM aggregate (monotonically
-    equivalent to any rate mode).  Percentage stats use NULLIF-guarded SQL
-    ratio expressions.  Total row count uses a COUNT(*) subquery wrapping the
-    unsliced aggregation statement.
+    Uses season-table column aggregates (``SUM(gp)``, ``SUM(minutes)``) instead of
+    the game-log aggregates (``COUNT(*)``, ``SUM(minutes_seconds)``) used by the
+    old implementation.  The ``per_100`` mode is unsupported at career grain (no
+    pace-weighted denominator at season level) and sorts on a NULL expression,
+    which places all rows equally at the bottom — matching the None display value.
     """
-    pgl = SummerLeaguePlayerGameLog
-    comp = SummerLeagueCompetition
-    pm = PlayerMaster
-    sec: Any = pgl.minutes_seconds
+    _pct_exprs: dict[str, str] = {
+        "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
+        "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
+        "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
+        "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
+        "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
+    }
+    if sort_col in _pct_exprs:
+        return _pct_exprs[sort_col]
+    if sort_col == "min":
+        # Minutes display: total in totals mode; per-game rate otherwise.
+        return (
+            "SUM(minutes)"
+            if mode == "totals"
+            else "SUM(minutes) * 1.0 / NULLIF(SUM(gp), 0)"
+        )
+    if sort_col in _COUNTING or sort_col == "plus_minus":
+        # sec equivalent = SUM(minutes) * 60; pace_sec = 0 (per_100 → NULL).
+        return _scaled_sort_expr(
+            f"SUM({sort_col})",
+            "SUM(gp)",
+            "SUM(minutes) * 60",
+            "0",
+            mode,
+        )
+    # gp, ws, vorp, per, ortg, drtg, bpm: sort on the labeled SELECT aggregate.
+    return sort_col
 
-    conds: list[Any] = [pgl.player_id.isnot(None), sec > 0]  # type: ignore[union-attr]
+
+async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
+    """Aggregate career totals from ``summer_league_player_seasons`` via catalog roll-ups.
+
+    Ticket #405 source switch: reads materialized season rows (one per
+    player-competition) rather than raw ``SummerLeaguePlayerGameLog`` records.
+
+    Roll-up semantics per catalog bucket:
+
+    * ``additive``       — ``SUM()`` across competitions (box totals, GP, WS, VORP).
+    * ``recombinable``   — recomputed in ``_compute_player_values`` from the summed
+                           box components (eFG%, FG%, TS%, etc.) — unchanged.
+    * ``rate_composite`` — minute-weighted average in SQL
+                           ``SUM(metric × minutes) / SUM(eligible minutes)``
+                           where eligible means the metric is non-NULL.
+
+    Box-stat values are lossless versus the prior game-log-sum implementation
+    because the season table stores exact box totals accumulated from those logs.
+
+    Limitations versus the old game-log query:
+
+    * ``per_100`` mode is not supported at career grain (season rows carry no
+      pace-weighted denominator); counting-stat cells display ``None`` in that mode.
+    * Round-type filtering is not available at career grain — season rows aggregate
+      an entire competition rather than individual rounds.  The ``round_type``
+      filter param is silently ignored here; use ``grain=per_game`` to filter by
+      round type.
+    """
+    ps = SummerLeaguePlayerSeason
+    pm = PlayerMaster
+
+    conds: list[Any] = []
     if q.year_min is not None:
-        conds.append(comp.year >= q.year_min)  # type: ignore[arg-type]
+        conds.append(ps.year >= q.year_min)  # type: ignore[arg-type]
     if q.year_max is not None:
-        conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
+        conds.append(ps.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
-        conds.append(comp.venue_slug == q.venue)
+        conds.append(ps.venue_slug == q.venue)
     if q.undrafted:
         conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
     else:
@@ -1340,82 +1395,113 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         # that normalizes to it so filtering is independent of stored form.
         conds.append(pm.birth_country.in_(country_variants(q.country)))  # type: ignore[union-attr]
 
+    def _rate_composite_agg(col: Any) -> Any:
+        """``SUM(col × minutes) / NULLIF(SUM(eligible_minutes), 0)``.
+
+        Eligible minutes = minutes from pools where ``col`` is not NULL.
+        Mirrors :func:`rollup_rate_composite`: pools with NULL values contribute
+        neither to the numerator nor the denominator.
+        """
+        eligible_min = func.sum(  # type: ignore[attr-defined]
+            case((col.isnot(None), ps.minutes), else_=literal(0))  # type: ignore[attr-defined]
+        )
+        return func.sum(col * ps.minutes) / func.nullif(eligible_min, 0)  # type: ignore[attr-defined]
+
     stmt = (
         select(
             pm.slug,
             pm.display_name,
-            func.count().label("gp"),
-            func.sum(sec).label("sec"),
-            func.sum(pgl.pace * sec).label("pace_sec"),
-            func.sum(pgl.pts).label("pts"),
-            func.sum(pgl.reb).label("reb"),
-            func.sum(pgl.ast).label("ast"),
-            func.sum(pgl.stl).label("stl"),
-            func.sum(pgl.blk).label("blk"),
-            func.sum(pgl.tov).label("tov"),
-            func.sum(pgl.fgm).label("fgm"),
-            func.sum(pgl.fga).label("fga"),
-            func.sum(pgl.fg3m).label("fg3m"),
-            func.sum(pgl.fg3a).label("fg3a"),
-            func.sum(pgl.ftm).label("ftm"),
-            func.sum(pgl.fta).label("fta"),
-            func.sum(pgl.oreb).label("oreb"),
-            func.sum(pgl.dreb).label("dreb"),
-            func.sum(pgl.pf).label("pf"),
-            func.sum(pgl.plus_minus).label("plus_minus"),
+            func.sum(ps.gp).label("gp"),  # type: ignore[attr-defined]
+            # _compute_player_values expects seconds; minutes * 60 converts.
+            (func.sum(ps.minutes) * 60).label("sec"),  # type: ignore[attr-defined]
+            # pace_sec = 0: per_100 mode unsupported at career grain (no weighted pace).
+            literal(0).label("pace_sec"),
+            func.sum(ps.pts).label("pts"),  # type: ignore[attr-defined]
+            func.sum(ps.reb).label("reb"),  # type: ignore[attr-defined]
+            func.sum(ps.ast).label("ast"),  # type: ignore[attr-defined]
+            func.sum(ps.stl).label("stl"),  # type: ignore[attr-defined]
+            func.sum(ps.blk).label("blk"),  # type: ignore[attr-defined]
+            func.sum(ps.tov).label("tov"),  # type: ignore[attr-defined]
+            func.sum(ps.fgm).label("fgm"),  # type: ignore[attr-defined]
+            func.sum(ps.fga).label("fga"),  # type: ignore[attr-defined]
+            func.sum(ps.fg3m).label("fg3m"),  # type: ignore[attr-defined]
+            func.sum(ps.fg3a).label("fg3a"),  # type: ignore[attr-defined]
+            func.sum(ps.ftm).label("ftm"),  # type: ignore[attr-defined]
+            func.sum(ps.fta).label("fta"),  # type: ignore[attr-defined]
+            func.sum(ps.oreb).label("oreb"),  # type: ignore[attr-defined]
+            func.sum(ps.dreb).label("dreb"),  # type: ignore[attr-defined]
+            func.sum(ps.pf).label("pf"),  # type: ignore[attr-defined]
+            func.sum(ps.plus_minus).label("plus_minus"),  # type: ignore[attr-defined]
+            # Additive advanced (exact sum across competitions):
+            func.sum(ps.ws).label("ws"),  # type: ignore[attr-defined]
+            func.sum(ps.vorp).label("vorp"),  # type: ignore[attr-defined]
+            # Rate-composite advanced (minute-weighted average across competitions):
+            _rate_composite_agg(ps.per).label("per"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.ortg).label("ortg"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.drtg).label("drtg"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.bpm).label("bpm"),  # type: ignore[attr-defined]
         )  # type: ignore[call-overload, misc]
-        .select_from(pgl)
-        .join(comp, comp.id == pgl.competition_id)
-        .join(pm, pm.id == pgl.player_id)
+        .select_from(ps)
+        .join(pm, pm.id == ps.player_id)  # type: ignore[arg-type]
         .where(*conds)
-        .group_by(pgl.player_id, pm.slug, pm.display_name)
-        .having(func.count() >= q.min_games)
-        .having(func.sum(sec) >= q.min_minutes * 60)
+        .group_by(ps.player_id, pm.slug, pm.display_name)  # type: ignore[attr-defined]
+        .having(func.sum(ps.gp) >= q.min_games)  # type: ignore[attr-defined]
+        .having(func.sum(ps.minutes) >= q.min_minutes)  # type: ignore[attr-defined]
     )
-    # Age filter (career grain): age = year of the player's EARLIEST summer league in scope
-    # minus birth year.  We use MIN(comp.year) — the populated integer competition year —
-    # NOT EXTRACT(YEAR FROM comp.starts_on): starts_on is unpopulated for ingested
-    # competitions, so deriving the year from it would NULL out every age.  MIN(comp.year)
-    # anchors age to the player's first appearance in the filtered pool, the most meaningful
-    # anchor for prospect-era analysis (e.g., "19-year-old rookies").
-    # birthdate is constant per player but the PK is not in GROUP BY, so wrap it in MIN() to
-    # satisfy Postgres grouping rules; MIN of a per-player constant is that constant.  NULL
-    # birthdate yields NULL age → comparison is NULL → row excluded (no false match).
+    # Age filter (career grain): age = MIN(ps.year) − birth year, anchored to the
+    # player's EARLIEST competition in the filtered pool.  ps.year is the integer
+    # competition year, equivalent to the old MIN(comp.year) used when joining game
+    # logs.  NULL birthdate → NULL age → row excluded (no false match).
     if q.age_min is not None:
         stmt = stmt.having(
-            func.min(comp.year) - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
+            func.min(ps.year)  # type: ignore[attr-defined]
+            - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
             >= q.age_min
         )
     if q.age_max is not None:
         stmt = stmt.having(
-            func.min(comp.year) - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
+            func.min(ps.year)  # type: ignore[attr-defined]
+            - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
             <= q.age_max
         )
     if q.team_slug is not None:
         te = SummerLeagueTeamEntry
-        stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
+        stmt = stmt.join(te, ps.primary_team_entry_id == te.id).where(  # type: ignore[arg-type]
             te.team_slug == q.team_slug
         )
-    if q.round_type is not None:
-        g = SummerLeagueGame
-        stmt = stmt.join(g, pgl.game_id == g.id).where(g.round_label == q.round_type)
+    # round_type is not supported at career grain — season rows aggregate a full
+    # competition, not individual round games.  Silently ignored here.
 
     # Count total matching rows before slicing (wrapping subquery avoids fetching all rows).
     total = await _count_subquery(db, stmt)
 
     # Apply SQL ORDER BY (NULLS LAST) + LIMIT + OFFSET.
-    sort_expr = _player_sort_expr(q.sort, q.mode)
+    sort_expr = _player_sort_expr_career(q.sort, q.mode)
     direction = "DESC" if q.direction == "desc" else "ASC"
     stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
     stmt = _apply_pagination(stmt, q)
 
     raw = list((await db.execute(stmt)).all())
 
+    def _r1(v: Any) -> Optional[float]:
+        return round(float(v), 1) if v is not None else None
+
     rows = [
         ExplorerRow(
             label=r.display_name or "Player",
             href=f"/players/{r.slug}" if r.slug else None,
-            values=_compute_player_values(r, q.mode),
+            values={
+                **_compute_player_values(r, q.mode),
+                # Advanced roll-up values (ticket #405).
+                # Additive: exact sum across all competitions in scope.
+                "ws": _r1(r.ws),
+                "vorp": _r1(r.vorp),
+                # Rate composite: minute-weighted average (approximate; labelled "#406").
+                "per": _r1(r.per),
+                "ortg": _r1(r.ortg),
+                "drtg": _r1(r.drtg),
+                "bpm": _r1(r.bpm),
+            },
         )
         for r in raw
     ]

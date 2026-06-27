@@ -128,6 +128,8 @@ async def _seed(db: AsyncSession) -> None:
     """Two players across two years/venues, each with 2 GP so they qualify.
 
     Scorer: 30 PPG (2024 Vegas). Roleplayer: 10 PPG (2025 Salt Lake).
+    Season rows are seeded alongside game logs so both career grain (season table,
+    ticket #405) and per_game grain (game logs) work from the same fixture.
     """
     scorer = make_player("Big", "Scorer")
     role = make_player("Role", "Player")
@@ -139,10 +141,16 @@ async def _seed(db: AsyncSession) -> None:
     c1 = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
     t1 = await _team(db, comp_id=c1)
     await _log(db, comp_id=c1, team=t1, player=scorer, pts=30, games=2)
+    # Season row: total of 2 × 30 pts = 60 pts, 2 × 30 min = 60 min.
+    await _season(db, player=scorer, comp_id=c1, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=60)
 
     c2 = await _comp(db, year=2025, venue_slug="salt_lake_city", league_id="16")
     t2 = await _team(db, comp_id=c2)
     await _log(db, comp_id=c2, team=t2, player=role, pts=10, games=2)
+    # Season row: total of 2 × 10 pts = 20 pts, 2 × 30 min = 60 min.
+    await _season(db, player=role, comp_id=c2, year=2025, venue_slug="salt_lake_city",
+                  gp=2, minutes=60.0, pts=20)
     await db.commit()
 
 
@@ -479,6 +487,9 @@ async def test_csv_export_returns_full_result_set(
     team = await _team(db_session, comp_id=cid)
     for i, p in enumerate(players):
         await _log(db_session, comp_id=cid, team=team, player=p, pts=30 - i, games=2)
+        # Season rows for career grain (ticket #405 source switch).
+        await _season(db_session, player=p, comp_id=cid, year=2024,
+                      venue_slug="las_vegas", gp=2, minutes=60.0, pts=(30 - i) * 2)
     await db_session.commit()
 
     # HTML page is paginated to PAGE_SIZE rows.
@@ -531,6 +542,13 @@ async def _seed_with_positions(db: AsyncSession) -> None:
     await _log(db, comp_id=c, team=t, player=guard, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=forward, pts=15, games=2)
     await _log(db, comp_id=c, team=t, player=undrafted, pts=10, games=2)
+    # Season rows required for career grain (ticket #405 source switch).
+    await _season(db, player=guard, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40)
+    await _season(db, player=forward, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=30)
+    await _season(db, player=undrafted, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=20)
     await db.commit()
 
 
@@ -609,6 +627,12 @@ async def _season(
     gp: int = 2,
     minutes: float = 60.0,
     pts: int = 20,
+    primary_team_entry_id: int | None = None,
+    ws: float | None = None,
+    vorp: float | None = None,
+    per: float | None = None,
+    bpm: float | None = None,
+    adv_eligible: bool = False,
 ) -> None:
     """Add one SummerLeaguePlayerSeason row for a (player, competition)."""
     assert player.id is not None
@@ -636,6 +660,12 @@ async def _season(
             tov=2,
             pf=3,
             plus_minus=10,
+            primary_team_entry_id=primary_team_entry_id,
+            ws=ws,
+            vorp=vorp,
+            per=per,
+            bpm=bpm,
+            adv_eligible=adv_eligible,
         )
     )
     await db.flush()
@@ -759,6 +789,11 @@ async def _seed_with_picks(db: AsyncSession) -> None:
     t = await _team(db, comp_id=c)
     await _log(db, comp_id=c, team=t, player=early, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=late, pts=15, games=2)
+    # Season rows required for career grain (ticket #405 source switch).
+    await _season(db, player=early, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40)
+    await _season(db, player=late, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=30)
     await db.commit()
 
 
@@ -794,6 +829,11 @@ async def _seed_with_countries(db: AsyncSession) -> None:
     t = await _team(db, comp_id=c)
     await _log(db, comp_id=c, team=t, player=us_player, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=fr_player, pts=15, games=2)
+    # Season rows required for career grain (ticket #405 source switch).
+    await _season(db, player=us_player, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40)
+    await _season(db, player=fr_player, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=30)
     await db.commit()
 
 
@@ -835,6 +875,12 @@ async def _seed_with_two_teams(
 
     await _log(db, comp_id=c, team=team_a, player=player_a, pts=20, games=2)
     await _log(db, comp_id=c, team=team_b, player=player_b, pts=15, games=2)
+    # Season rows with primary_team_entry_id so team filter works at career grain.
+    assert team_a.id is not None and team_b.id is not None
+    await _season(db, player=player_a, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40, primary_team_entry_id=team_a.id)
+    await _season(db, player=player_b, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=30, primary_team_entry_id=team_b.id)
     await db.commit()
     return team_a, team_b
 
@@ -860,6 +906,11 @@ async def _seed_round_types(db: AsyncSession) -> None:
     """Two players: one in Qualifying games, one in Championship games.
 
     Each player has 2 GP so they exceed the default min_games threshold.
+    Season rows are also seeded so career grain works (ticket #405 source switch).
+    Note: round_type is not applicable at career grain — season rows aggregate a
+    full competition regardless of round.  Round-type filtering at career grain
+    was removed as part of the season-table source switch; use per_game grain for
+    round-type-scoped results.
     """
     qualifier = make_player("Qual", "Player")
     champion = make_player("Champ", "Player")
@@ -886,23 +937,34 @@ async def _seed_round_types(db: AsyncSession) -> None:
         games=2,
         round_label="Championship",
     )
+    # Season rows: career grain aggregates the full competition, no round distinction.
+    await _season(db, player=qualifier, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=20)
+    await _season(db, player=champion, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40)
     await db.commit()
 
 
 @pytest.mark.asyncio
 async def test_round_type_filter_players(db_session: AsyncSession) -> None:
-    """round_type filter narrows player results to games with that round_label.
+    """round_type is silently ignored at career grain; use per_game for round-scoped results.
 
-    Seeding one player in Qualifying games and one in Championship games, then
-    filtering to Qualifying should return only the qualifying player.
+    After ticket #405 the career grain reads summer_league_player_seasons (one row per
+    full competition).  Season rows aggregate all games in a competition regardless of
+    round, so a round_type filter cannot narrow career results.  Both the Qualifying
+    and Championship players appear even when round_type='Qualifying' is set.
+    For genuine round-type scoping see test_per_game_round_type_filter (per_game grain).
     """
     await _seed_round_types(db_session)
+    # Career grain (default): round_type is ignored — both players appear.
     result = await run_explorer_query(
         db_session,
         ExplorerQuery(subject="players", round_type="Qualifying", min_games=1),
     )
-    assert result.total == 1
-    assert result.rows[0].label == "Qual Player"
+    assert result.total == 2  # both players visible; round_type has no effect at career grain
+    labels = {r.label for r in result.rows}
+    assert "Qual Player" in labels
+    assert "Champ Player" in labels
 
 
 @pytest.mark.asyncio
@@ -1402,6 +1464,7 @@ async def _seed_many_players(db: AsyncSession, n: int) -> None:
 
     All players are seeded in a single competition with pts=i (0-indexed) so
     that ordering by pts gives a deterministic sequence.
+    Season rows are also seeded for career grain (ticket #405 source switch).
     """
     c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
     t = await _team(db, comp_id=c)
@@ -1411,6 +1474,9 @@ async def _seed_many_players(db: AsyncSession, n: int) -> None:
         await db.flush()
         # Two game logs per player (to meet default min_games=2).
         await _log(db, comp_id=c, team=t, player=p, pts=i, games=2)
+        # Season row: total pts = i * 2 games, 2 × 30 min = 60 min.
+        await _season(db, player=p, comp_id=c, year=2024, venue_slug="las_vegas",
+                      gp=2, minutes=60.0, pts=i * 2)
     await db.commit()
 
 
@@ -1937,6 +2003,7 @@ async def _seed_age_filter(
 
     Both have 2 GP and 60 minutes so they qualify at default thresholds.
     Competition year is 2023 (starts_on is NULL, as in production).
+    Season rows seeded alongside game logs for career grain (ticket #405 source switch).
     """
     young = make_player("Young", "Rookie")
     young.birthdate = date(2004, 1, 1)
@@ -1947,13 +2014,18 @@ async def _seed_age_filter(
     db.add_all([young, old])
     await db.flush()
 
-    # Competition year is 2023 (comp.year), used directly for career-grain age
+    # Competition year is 2023 (ps.year is used in new impl, same value as comp.year).
     # young career age: 2023 - 2004 = 19
     # old   career age: 2023 - 1999 = 24
     c = await _comp(db, year=2023, venue_slug="las_vegas", league_id="15")
     t = await _team(db, comp_id=c)
     await _log(db, comp_id=c, team=t, player=young, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=old, pts=15, games=2)
+    # Season rows: career grain reads these (ticket #405 source switch).
+    await _season(db, player=young, comp_id=c, year=2023, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40)
+    await _season(db, player=old, comp_id=c, year=2023, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=30)
     await db.commit()
     return young, old
 
@@ -2033,7 +2105,7 @@ async def test_age_filter_career_anchors_to_earliest_competition(
     One player (born 2004-01-01) appears in two SL competitions: 2023 and 2025.
     Earliest-anchor age = 2023 - 2004 = 19; latest-anchor age = 2025 - 2004 = 21.
     Filtering age_max=20 must INCLUDE the player (19 <= 20). If the implementation
-    anchored to MAX(comp.year) instead of MIN, the age would read 21 and the player
+    anchored to MAX(ps.year) instead of MIN, the age would read 21 and the player
     would be wrongly excluded — so this distinguishes the two semantics.
     """
     player = make_player("Two", "Comps")
@@ -2049,6 +2121,11 @@ async def test_age_filter_career_anchors_to_earliest_competition(
         db_session, comp_id=c_early, team=t_early, player=player, pts=20, games=2
     )
     await _log(db_session, comp_id=c_late, team=t_late, player=player, pts=18, games=2)
+    # Season rows for both competitions (career grain reads ps.year for age).
+    await _season(db_session, player=player, comp_id=c_early, year=2023,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=40)
+    await _season(db_session, player=player, comp_id=c_late, year=2025,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=36)
     await db_session.commit()
 
     result = await run_explorer_query(
@@ -2105,6 +2182,11 @@ async def test_age_filter_career_no_birthdate_excluded(
     t = await _team(db_session, comp_id=c)
     await _log(db_session, comp_id=c, team=t, player=no_birth, pts=10, games=2)
     await _log(db_session, comp_id=c, team=t, player=has_birth, pts=20, games=2)
+    # Season rows required for career grain (ticket #405 source switch).
+    await _season(db_session, player=no_birth, comp_id=c, year=2023,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=20)
+    await _season(db_session, player=has_birth, comp_id=c, year=2023,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=40)
     await db_session.commit()
 
     result = await run_explorer_query(
@@ -2242,6 +2324,13 @@ async def test_age_filter_composes_with_venue_filter(
     await _log(db_session, comp_id=c_lv, team=t_lv, player=young, pts=20, games=2)
     await _log(db_session, comp_id=c_lv, team=t_lv, player=old, pts=15, games=2)
     await _log(db_session, comp_id=c_slc, team=t_slc, player=old, pts=15, games=2)
+    # Season rows for career grain (ticket #405 source switch).
+    await _season(db_session, player=young, comp_id=c_lv, year=2023,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=40)
+    await _season(db_session, player=old, comp_id=c_lv, year=2023,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=30)
+    await _season(db_session, player=old, comp_id=c_slc, year=2023,
+                  venue_slug="salt_lake_city", gp=2, minutes=60.0, pts=30)
     await db_session.commit()
 
     result = await run_explorer_query(
@@ -2495,6 +2584,9 @@ async def _seed_mixed_countries(db: AsyncSession) -> None:
     t = await _team(db, comp_id=c)
     for pl in (p_code, p_alias, p_name, aussie):
         await _log(db, comp_id=c, team=t, player=pl, pts=20, games=2)
+        # Season rows required for career grain (ticket #405 source switch).
+        await _season(db, player=pl, comp_id=c, year=2024, venue_slug="las_vegas",
+                      gp=2, minutes=60.0, pts=40)
     await db.commit()
 
 
@@ -2554,6 +2646,7 @@ async def _seed_uneven_gp(db: AsyncSession) -> None:
     High-rate plays 2 games at 30 PTS (60 total, 30.0/g); Grinder plays 5 games
     at 25 PTS (125 total, 25.0/g). Sorting on totals would rank Grinder first
     despite a lower per-game average — the #397 bug.
+    Season rows match the game-log totals for career grain (ticket #405 source switch).
     """
     high_rate = make_player("High", "Rate")
     grinder = make_player("Grind", "Er")
@@ -2563,6 +2656,11 @@ async def _seed_uneven_gp(db: AsyncSession) -> None:
     t = await _team(db, comp_id=c)
     await _log(db, comp_id=c, team=t, player=high_rate, pts=30, games=2)
     await _log(db, comp_id=c, team=t, player=grinder, pts=25, games=5)
+    # Season rows: gp/minutes/pts match the game-log sums exactly.
+    await _season(db, player=high_rate, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=60)
+    await _season(db, player=grinder, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=5, minutes=150.0, pts=125)
     await db.commit()
 
 
@@ -2636,3 +2734,201 @@ async def test_per_competition_per_game_sort_is_monotonic(
     assert pts_col == [30.0, 25.0]
     # per_competition labels carry a "· <competition>" suffix.
     assert result.rows[0].label.startswith("High Rate")
+
+
+# --------------------------------------------------------------------------- #
+# Ticket #405: season-table source switch for career grain
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_career_box_parity_after_source_switch(
+    db_session: AsyncSession,
+) -> None:
+    """Career box totals from season table exactly equal the corresponding game-log sums.
+
+    Seeds a player with 3 game logs (5 pts/game = 15 pts total) plus a matching
+    season row (pts=15, gp=3, minutes=90.0). Asserts that the explorer career grain
+    (now reading from summer_league_player_seasons) returns the same GP, PTS, REB,
+    and shooting totals that a direct sum of the game logs would produce.
+    """
+    player = make_player("Parity", "Player")
+    db_session.add(player)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db_session, comp_id=c)
+
+    # Seed 3 game logs: each has pts=5, reb=3, ast=2, fgm=2, fga=5, 30 min.
+    for _ in range(3):
+        _N["i"] += 1
+        g = SummerLeagueGame(
+            competition_id=c,
+            nba_stats_game_id=f"parity-game-{_N['i']}",
+            game_date=date(2024, 7, 10),
+            home_team_entry_id=t.id,
+            away_team_entry_id=t.id,
+            home_score=100,
+            away_score=90,
+        )
+        db_session.add(g)
+        await db_session.flush()
+        assert g.id is not None
+        sp = SummerLeagueSourcePlayer(
+            nba_stats_person_id=f"parity-sp-{_N['i']}",
+            raw_player_name=player.display_name or "Player",
+            normalized_name=(player.display_name or "player").lower(),
+            canonical_player_id=player.id,
+        )
+        db_session.add(sp)
+        await db_session.flush()
+        db_session.add(
+            SummerLeaguePlayerGameLog(
+                competition_id=c,
+                game_id=g.id,
+                team_entry_id=t.id,
+                source_player_id=sp.id,
+                player_id=player.id,
+                nba_stats_person_id=sp.nba_stats_person_id,
+                raw_player_name=player.display_name or "Player",
+                minutes_seconds=1800,  # 30 min
+                pts=5,
+                reb=3,
+                ast=2,
+                fgm=2,
+                fga=5,
+            )
+        )
+    await db_session.flush()
+
+    # Season row: exact totals of the 3 game logs.
+    assert player.id is not None
+    db_session.add(
+        SummerLeaguePlayerSeason(
+            competition_id=c,
+            player_id=player.id,
+            year=2024,
+            venue_slug="las_vegas",
+            gp=3,
+            minutes=90.0,   # 3 × 30 min
+            pts=15,          # 3 × 5
+            reb=9,           # 3 × 3
+            ast=6,           # 3 × 2
+            fgm=6,           # 3 × 2
+            fga=15,          # 3 × 5
+            fg3m=0,
+            fg3a=0,
+            ftm=0,
+            fta=0,
+            oreb=0,
+            dreb=9,
+            blk=0,
+            stl=0,
+            tov=0,
+            pf=0,
+            plus_minus=0,
+        )
+    )
+    await db_session.flush()
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", mode="totals", min_games=1),
+    )
+    assert result.total == 1
+    row = result.rows[0]
+    # Lossless box parity: career totals must match summed game logs.
+    assert row.values["gp"] == 3
+    assert row.values["pts"] == 15   # totals mode: raw sum
+    assert row.values["reb"] == 9
+    assert row.values["ast"] == 6
+    assert row.values["fgm"] == 6
+    assert row.values["fga"] == 15
+    # Per-game mode cross-check: 15 pts / 3 gp = 5.0
+    result_pg = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", mode="per_game", min_games=1),
+    )
+    assert result_pg.rows[0].values["pts"] == 5.0
+    # FG% in totals mode: fgm/fga = 6/15 = 40.0%
+    assert row.values["fg_pct"] == 40.0
+
+
+@pytest.mark.asyncio
+async def test_career_additive_sum(
+    db_session: AsyncSession,
+) -> None:
+    """Career WS and VORP equal the sum of per-competition season rows.
+
+    Seeds two competitions for one player, each with WS/VORP values.
+    The career grain must sum them (additive bucket), not average.
+    """
+    player = make_player("Additive", "Star")
+    db_session.add(player)
+    await db_session.flush()
+
+    c1 = await _comp(db_session, year=2023, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+
+    # Competition 1: WS=0.8, VORP=0.3
+    await _season(db_session, player=player, comp_id=c1, year=2023,
+                  venue_slug="las_vegas", gp=3, minutes=90.0, pts=45,
+                  ws=0.8, vorp=0.3, adv_eligible=True)
+    # Competition 2: WS=1.2, VORP=0.5
+    await _season(db_session, player=player, comp_id=c2, year=2024,
+                  venue_slug="las_vegas", gp=4, minutes=120.0, pts=60,
+                  ws=1.2, vorp=0.5, adv_eligible=True)
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", mode="totals", min_games=1),
+    )
+    assert result.total == 1
+    row = result.rows[0]
+    # Additive: career WS = 0.8 + 1.2 = 2.0; VORP = 0.3 + 0.5 = 0.8
+    assert row.values["ws"] == pytest.approx(2.0, abs=0.05)
+    assert row.values["vorp"] == pytest.approx(0.8, abs=0.05)
+    # GP and PTS should also be summed additive totals.
+    assert row.values["gp"] == 7   # 3 + 4
+    assert row.values["pts"] == 105  # 45 + 60
+
+
+@pytest.mark.asyncio
+async def test_per_game_still_reads_game_logs(
+    db_session: AsyncSession,
+) -> None:
+    """per_game grain continues to read SummerLeaguePlayerGameLog, not season rows.
+
+    Seeds a player with game logs but NO season rows. The per_game grain must
+    still return results (proving it reads game logs, not the season table).
+    Seeds a second player with a season row but NO game logs; that player must
+    NOT appear in the per_game result (confirming per_game ignores season rows).
+    """
+    # Player A: game logs only (no season row).
+    player_a = make_player("LogOnly", "Player")
+    db_session.add(player_a)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db_session, comp_id=c)
+    await _log(db_session, comp_id=c, team=t, player=player_a, pts=20, games=1)
+
+    # Player B: season row only (no game logs).
+    player_b = make_player("SeasonOnly", "Player")
+    db_session.add(player_b)
+    await db_session.flush()
+    await _season(db_session, player=player_b, comp_id=c, year=2024,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=30)
+
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", min_games=1),
+    )
+    labels = {r.label.split(" · ")[0] for r in result.rows}
+    # LogOnly player appears (has game logs); SeasonOnly does not (no game logs).
+    assert "LogOnly Player" in labels
+    assert "SeasonOnly Player" not in labels
