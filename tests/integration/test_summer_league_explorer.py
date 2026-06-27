@@ -31,6 +31,7 @@ from app.services.summer_league_explorer_service import (
     _PLAYER_ADVANCED_COLUMNS,
     _is_single_competition,
     parse_query,
+    rollup_rate_composite,
     run_explorer_query,
 )
 from tests.integration.conftest import make_player
@@ -2836,12 +2837,15 @@ async def test_per_competition_per_game_sort_is_monotonic(
 async def test_career_box_parity_after_source_switch(
     db_session: AsyncSession,
 ) -> None:
-    """Career box totals from season table exactly equal the corresponding game-log sums.
+    """Career grain sources box totals from the season table, not game-log sums.
 
-    Seeds a player with 3 game logs (5 pts/game = 15 pts total) plus a matching
-    season row (pts=15, gp=3, minutes=90.0). Asserts that the explorer career grain
-    (now reading from summer_league_player_seasons) returns the same GP, PTS, REB,
-    and shooting totals that a direct sum of the game logs would produce.
+    Seeds a player with 3 game logs (summing to pts=15, reb=9, ast=6, fgm=6, fga=15)
+    AND a season row whose box totals are deliberately DIFFERENT (pts=20, reb=11, …).
+    The explorer career grain now reads summer_league_player_seasons, so it must
+    return the SEASON values, not the game-log sums. Choosing divergent values makes
+    this test genuinely guard the source switch: it would fail if the career grain
+    reverted to summing game logs. (Materialization correctness — that a season row's
+    totals equal its logs — is the rebuild job's concern, not the explorer's.)
     """
     player = make_player("Parity", "Player")
     db_session.add(player)
@@ -2892,7 +2896,9 @@ async def test_career_box_parity_after_source_switch(
         )
     await db_session.flush()
 
-    # Season row: exact totals of the 3 game logs.
+    # Season row: box totals deliberately DIFFERENT from the game-log sums above
+    # (logs sum to pts=15/reb=9/ast=6/fgm=6/fga=15). The explorer must surface these
+    # season values, proving it reads the season table rather than the game logs.
     assert player.id is not None
     db_session.add(
         SummerLeaguePlayerSeason(
@@ -2901,18 +2907,18 @@ async def test_career_box_parity_after_source_switch(
             year=2024,
             venue_slug="las_vegas",
             gp=3,
-            minutes=90.0,   # 3 × 30 min
-            pts=15,          # 3 × 5
-            reb=9,           # 3 × 3
-            ast=6,           # 3 × 2
-            fgm=6,           # 3 × 2
-            fga=15,          # 3 × 5
+            minutes=95.0,    # ≠ 90 (3 × 30 min log sum)
+            pts=20,          # ≠ 15 (log sum)
+            reb=11,          # ≠ 9
+            ast=7,           # ≠ 6
+            fgm=8,           # ≠ 6
+            fga=18,          # ≠ 15
             fg3m=0,
             fg3a=0,
             ftm=0,
             fta=0,
             oreb=0,
-            dreb=9,
+            dreb=11,
             blk=0,
             stl=0,
             tov=0,
@@ -2929,21 +2935,24 @@ async def test_career_box_parity_after_source_switch(
     )
     assert result.total == 1
     row = result.rows[0]
-    # Lossless box parity: career totals must match summed game logs.
+    # Career grain must return the SEASON-table totals, not the game-log sums.
     assert row.values["gp"] == 3
-    assert row.values["pts"] == 15   # totals mode: raw sum
-    assert row.values["reb"] == 9
-    assert row.values["ast"] == 6
-    assert row.values["fgm"] == 6
-    assert row.values["fga"] == 15
-    # Per-game mode cross-check: 15 pts / 3 gp = 5.0
+    assert row.values["pts"] == 20   # season value, not the log sum (15)
+    assert row.values["reb"] == 11
+    assert row.values["ast"] == 7
+    assert row.values["fgm"] == 8
+    assert row.values["fga"] == 18
+    # Explicit guard against a revert to game-log sourcing:
+    assert row.values["pts"] != 15
+    assert row.values["fga"] != 15
+    # Per-game mode cross-check: 20 pts / 3 gp = 6.7 (1-decimal)
     result_pg = await run_explorer_query(
         db_session,
         ExplorerQuery(subject="players", grain="career", mode="per_game", min_games=1),
     )
-    assert result_pg.rows[0].values["pts"] == 5.0
-    # FG% in totals mode: fgm/fga = 6/15 = 40.0%
-    assert row.values["fg_pct"] == 40.0
+    assert result_pg.rows[0].values["pts"] == 6.7
+    # FG% in totals mode: fgm/fga = 8/18 = 44.4%
+    assert row.values["fg_pct"] == 44.4
 
 
 @pytest.mark.asyncio
@@ -2984,6 +2993,65 @@ async def test_career_additive_sum(
     # GP and PTS should also be summed additive totals.
     assert row.values["gp"] == 7   # 3 + 4
     assert row.values["pts"] == 105  # 45 + 60
+
+
+@pytest.mark.asyncio
+async def test_career_rate_composite_minute_weighted_across_distinct_pools(
+    db_session: AsyncSession,
+) -> None:
+    """Career PER is the minute-weighted mean of distinct per-competition pools.
+
+    Guards the *production* SQL roll-up ``_rate_composite_agg`` (not the standalone
+    ``rollup_rate_composite`` helper). Two competitions with DISTINCT PER and DISTINCT
+    minutes are seeded so that minute-weighted-avg, simple-mean, and sum all differ —
+    making the assertion fail loudly if the SQL aggregate is inverted (e.g. swapped to
+    a plain SUM or an unweighted AVG) or if minute-weighting is dropped.
+
+    Pool 1: PER 20 @ 100 min; Pool 2: PER 10 @ 200 min.
+      minute-weighted = (20*100 + 10*200) / (100+200) = 4000/300 ≈ 13.33
+      simple mean      = 15.00
+      sum              = 30.00
+    """
+    player = make_player("Weighted", "Composite")
+    db_session.add(player)
+    await db_session.flush()
+
+    c1 = await _comp(db_session, year=2023, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+
+    await _season_with_composites(
+        db_session, player=player, comp_id=c1, year=2023, venue_slug="las_vegas",
+        gp=3, minutes=100.0, per=20.0, adv_eligible=True,
+    )
+    await _season_with_composites(
+        db_session, player=player, comp_id=c2, year=2024, venue_slug="las_vegas",
+        gp=3, minutes=200.0, per=10.0, adv_eligible=True,
+    )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", min_games=1, min_minutes=1),
+    )
+    assert result.total == 1
+    per_value = result.rows[0].values["per"]
+    assert per_value is not None
+
+    # Cross-check the SQL result against the standalone roll-up primitive on the same
+    # data so the two implementations cannot drift apart silently.
+    from types import SimpleNamespace
+
+    pools = [
+        SimpleNamespace(per=20.0, minutes=100.0),
+        SimpleNamespace(per=10.0, minutes=200.0),
+    ]
+    expected = rollup_rate_composite(pools, "per")
+    assert expected == pytest.approx(13.333, abs=0.01)
+
+    # Minute-weighted mean — NOT the simple mean (15.0) and NOT the sum (30.0).
+    assert per_value == pytest.approx(expected, abs=0.05)
+    assert per_value != pytest.approx(15.0, abs=0.05)
+    assert per_value != pytest.approx(30.0, abs=0.05)
 
 
 @pytest.mark.asyncio

@@ -1793,14 +1793,19 @@ async def _fetch_adv_counts(db: AsyncSession, q: ExplorerQuery) -> tuple[int, in
     if q.venue:
         conds.append(ctx.venue_slug == q.venue)
 
-    total_stmt = select(func.count()).select_from(ctx)
+    # Single grouped query: total rows + eligible rows via a conditional sum. Folding
+    # these into one statement keeps the route's query budget tight (one count query,
+    # not two) versus issuing separate total/eligible COUNT(*) statements.
+    eligible_expr = func.coalesce(
+        func.sum(case((ctx.adv_eligible.is_(True), 1), else_=literal(0))),  # type: ignore[attr-defined]
+        0,
+    )
+    stmt = select(func.count(), eligible_expr).select_from(ctx)
     if conds:
-        total_stmt = total_stmt.where(*conds)
-    total_m = int((await db.execute(total_stmt)).scalar() or 0)
-
-    elig_conds = list(conds) + [ctx.adv_eligible.is_(True)]  # type: ignore[union-attr, attr-defined]
-    elig_stmt = select(func.count()).select_from(ctx).where(*elig_conds)
-    eligible_n = int((await db.execute(elig_stmt)).scalar() or 0)
+        stmt = stmt.where(*conds)
+    row = (await db.execute(stmt)).one()
+    total_m = int(row[0] or 0)
+    eligible_n = int(row[1] or 0)
 
     return eligible_n, total_m
 
