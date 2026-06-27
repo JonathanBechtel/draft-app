@@ -1,7 +1,7 @@
 """Add assisted-FG count columns to summer_league_player_seasons.
 
 Revision ID: b9c0d1e2f3a4
-Revises: f1a2b3c4d5e6
+Revises: a1d2e3f4b5c6
 Create Date: 2026-06-27
 
 Adds ast_fgm and unast_fgm (nullable INTEGER) to the materialized
@@ -21,7 +21,7 @@ from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
 revision: str = "b9c0d1e2f3a4"
-down_revision: Union[str, None] = "f1a2b3c4d5e6"
+down_revision: Union[str, None] = "a1d2e3f4b5c6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

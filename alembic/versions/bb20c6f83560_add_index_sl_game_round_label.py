@@ -6,7 +6,7 @@ Create Date: 2026-06-22
 
 """
 
-from alembic import op
+from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
 revision: str = "bb20c6f83560"

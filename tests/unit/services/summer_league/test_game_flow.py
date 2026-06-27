@@ -11,8 +11,6 @@ Tests cover:
 
 from __future__ import annotations
 
-import pytest
-
 from app.services.summer_league_games_service import (
     _elapsed_seconds,
     _parse_clock,
@@ -107,102 +105,9 @@ def test_elapsed_seconds_overtime():
     assert _elapsed_seconds(5, 0) == 4 * 720.0 + 300.0
 
 
-# ---------------------------------------------------------------------------
-# End-to-end series properties (pure computation, no DB)
-# ---------------------------------------------------------------------------
-
-
-def _make_series(events: list[tuple[int, str, int]]) -> list[dict]:
-    """Build a game-flow series from (period, clock, margin) tuples.
-
-    Mirrors the logic in get_game_flow_series without a database.
-    """
-    from app.services.summer_league_games_service import (
-        _elapsed_seconds,
-        _parse_clock,
-    )
-
-    series: list[dict] = [{"t": 0.0, "margin": 0}]
-    seen_t: float = 0.0
-    for period, clock, margin in events:
-        remaining = _parse_clock(clock)
-        if remaining is None:
-            continue
-        t = _elapsed_seconds(period, remaining)
-        if t < seen_t:
-            t = seen_t
-        seen_t = t
-        series.append({"t": t, "margin": margin})
-    return series
-
-
-def test_series_monotonic_time():
-    """Elapsed time t is non-decreasing across all points."""
-    events = [
-        (1, "10:00", 0),
-        (1, "08:00", 2),
-        (1, "06:00", -1),
-        (2, "10:00", 3),
-        (4, "00:00", 5),
-    ]
-    series = _make_series(events)
-    times = [p["t"] for p in series]
-    assert times == sorted(times), "times must be non-decreasing"
-
-
-def test_series_endpoints_match_final_score():
-    """Last point margin equals the final score margin."""
-    events = [
-        (1, "10:00", 0),
-        (2, "05:00", 4),
-        (4, "00:00", 7),  # final margin = home +7
-    ]
-    series = _make_series(events)
-    assert series[0] == {"t": 0.0, "margin": 0}
-    assert series[-1]["margin"] == 7
-
-
-def test_series_origin_always_zero():
-    """Series always starts at (0, 0) regardless of first event."""
-    events = [(1, "11:30", 3)]
-    series = _make_series(events)
-    assert series[0] == {"t": 0.0, "margin": 0}
-
-
-def test_series_lead_changes():
-    """Lead changes produce correctly signed margin values."""
-    events = [
-        (1, "08:00", 2),   # home +2
-        (1, "06:00", -1),  # away +1
-        (1, "04:00", 3),   # home +3
-    ]
-    series = _make_series(events)
-    margins = [p["margin"] for p in series]
-    # Must include both positive and negative margins
-    assert any(m > 0 for m in margins)
-    assert any(m < 0 for m in margins)
-
-
-def test_series_skips_events_without_clock():
-    """None clock strings are silently skipped."""
-    events = [
-        (1, "10:00", 2),
-        (1, None, 99),  # type: ignore[list-item]  # should be dropped
-        (1, "08:00", 4),
-    ]
-    series = _make_series(events)  # type: ignore[arg-type]
-    # Only 2 scored events + origin
-    assert len(series) == 3
-    assert series[-1]["margin"] == 4
-
-
-def test_series_overtime_extends_beyond_regulation():
-    """OT events produce elapsed times > 2880 s (4 × 720)."""
-    events = [
-        (4, "00:00", 0),  # tie at end of regulation
-        (5, "04:00", 2),  # 1 min into OT1
-        (5, "00:00", 3),  # end of OT1
-    ]
-    series = _make_series(events)
-    ot_times = [p["t"] for p in series if p["t"] > 4 * 720]
-    assert len(ot_times) >= 2, "OT events should extend past 2880 s"
+# End-to-end series properties (origin (0,0), monotonic time, lead changes,
+# OT extension, no-clock skipping) are verified against the real
+# ``get_game_flow_series`` with a live DB in
+# tests/integration/test_game_flow_route.py.  A pure-Python re-implementation
+# was intentionally removed here: it could pass even if the production series
+# builder were inverted, and it duplicated logic that would silently drift.

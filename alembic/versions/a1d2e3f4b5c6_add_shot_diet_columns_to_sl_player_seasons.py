@@ -1,6 +1,6 @@
 """Add shot-diet rate columns to summer_league_player_seasons.
 
-Revision ID: f1a2b3c4d5e6
+Revision ID: a1d2e3f4b5c6
 Revises: 7a7804ad90cb
 Create Date: 2026-06-27
 
@@ -19,7 +19,7 @@ from typing import Sequence, Union
 from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
-revision: str = "f1a2b3c4d5e6"
+revision: str = "a1d2e3f4b5c6"
 down_revision: Union[str, None] = "7a7804ad90cb"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
