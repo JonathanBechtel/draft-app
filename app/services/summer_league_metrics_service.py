@@ -78,6 +78,11 @@ class PlayerMetricSeason:
     venue_abbr: str
     gp: int
     minutes: float
+    # Raw shooting totals, kept so career TS% can pool possessions (TS% is
+    # weighted by shooting volume, not minutes).
+    pts: int
+    fga: int
+    fta: int
     # Shooting / efficiency.
     ts_pct: Optional[float]
     efg_pct: Optional[float]
@@ -105,9 +110,10 @@ class PlayerMetricSeason:
 class PlayerMetricCareer:
     """Career rollup across a player's adv-eligible competitions.
 
-    Only the additive shares (Win Shares, VORP) are summed. ``per_avg``,
-    ``ts_avg``, and ``bpm_avg`` are minute-weighted means kept as soft "career
-    average" context, never as a recalibrated headline.
+    Only the additive shares (Win Shares, VORP) are summed. ``per_avg`` and
+    ``bpm_avg`` are minute-weighted means kept as soft "career average" context,
+    never as a recalibrated headline. ``ts_avg`` instead pools the raw shot
+    totals (TS% is weighted by shooting possessions, not minutes).
     """
 
     adv_pools: int
@@ -151,6 +157,20 @@ def _weighted_mean(
     return num / den if den else None
 
 
+def _pooled_ts(seasons: list[PlayerMetricSeason]) -> Optional[float]:
+    """Career True Shooting % pooled from raw shot totals across competitions.
+
+    TS% = PTS / (2 · (FGA + 0.44 · FTA)). Aggregating it correctly means summing
+    the underlying possessions, not minute-weighting each pool's percentage — a
+    player with uneven shot volume per minute would otherwise read a misstated
+    career mark. Returned on the same 0-100 scale as the stored per-pool values;
+    ``None`` when there are no true-shooting attempts to divide by.
+    """
+    pts = sum(s.pts for s in seasons)
+    tsa = 2.0 * sum(s.fga + 0.44 * s.fta for s in seasons)
+    return _round1(100.0 * pts / tsa) if tsa > 0 else None
+
+
 def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
     """Roll adv-eligible seasons into a career line per the grain rules."""
     minutes = sum(s.minutes for s in seasons)
@@ -167,7 +187,7 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
         vorp=round(sum(vorp_vals), 1) if vorp_vals else None,
         ws40=round(ws40, 2) if ws40 is not None else None,
         per_avg=_round1(_weighted_mean([(s.per, s.minutes) for s in seasons])),
-        ts_avg=_round1(_weighted_mean([(s.ts_pct, s.minutes) for s in seasons])),
+        ts_avg=_pooled_ts(seasons),
         bpm_avg=_round1(_weighted_mean([(s.bpm, s.minutes) for s in seasons])),
         ws82_avg=_round1(_weighted_mean([(s.ws82, s.minutes) for s in seasons])),
         vorp82_avg=_round1(_weighted_mean([(s.vorp82, s.minutes) for s in seasons])),
@@ -187,6 +207,9 @@ def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
         venue_abbr=VENUE_ABBR.get(row.venue_slug, row.venue_slug),
         gp=row.gp,
         minutes=row.minutes,
+        pts=row.pts,
+        fga=row.fga,
+        fta=row.fta,
         # Shooting / rate columns are already stored as percentages (e.g. 60.6),
         # not 0-1 fractions, so they only need rounding — not a ×100 rescale.
         ts_pct=_round1(row.ts_pct),

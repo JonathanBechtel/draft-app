@@ -389,7 +389,7 @@
             </div>
           </div>
           <div class="sl-career-meta">
-            Career averages · minute-weighted across {{ sl_metrics.career.adv_pools }} qualified competition{{ '' if sl_metrics.career.adv_pools == 1 else 's' }}
+            Career averages across {{ sl_metrics.career.adv_pools }} qualified competition{{ '' if sl_metrics.career.adv_pools == 1 else 's' }}
           </div>
           <div class="stats-section-label" title="Advanced metrics are recalibrated to the Summer League itself, separately per competition (PER to a 15.0 mean, BPM to 0.0). Only competitions with a complete enough pool of games qualify.">
             Advanced Metrics
@@ -459,7 +459,7 @@
           </div>
           {% if sl_metrics.seasons | length > 1 %}
           <div class="sl-career-meta">
-            * Career WS and VORP are cumulative totals across qualified competitions; PER, TS%, BPM, and the /82 projections are minute-weighted averages. Ratings and usage aren't pooled across competitions.
+            * Career WS and VORP are cumulative totals across qualified competitions; PER, BPM, and the /82 projections are minute-weighted averages, and TS% pools shot totals. Ratings and usage aren't pooled across competitions.
           </div>
           {% endif %}
         </div>
