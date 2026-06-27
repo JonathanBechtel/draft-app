@@ -19,6 +19,7 @@ from starlette.responses import Response
 from app.services.summer_league_games_service import (
     GamesPage,
     get_game_box_score,
+    get_game_flow_series,
     get_game_shotchart_context,
     get_games_facets,
     get_player_game_logs,
@@ -280,12 +281,15 @@ async def summer_league_game_box_score(
         db, game_id=game_id, team_entry_id=team_entry_id, player_id=player_id
     )
 
+    sl_game_flow = await get_game_flow_series(db, game_id=game_id)
+
     return request.app.state.templates.TemplateResponse(
         "stats/summer-league/game-detail.html",
         {
             "request": request,
             "box": box,
             "sl_shotchart": sl_shotchart,
+            "sl_game_flow": sl_game_flow,
             "selected_team_entry_id": team_entry_id,
             "selected_player_id": player_id,
             "footer_links": FOOTER_LINKS,

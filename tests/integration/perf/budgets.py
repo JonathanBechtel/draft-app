@@ -70,10 +70,11 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/stats/summer-league": 8,
     "/stats/summer-league/games": 5,
     # Box score: header query (1) + player lines (1) + team totals (1) +
-    # shot-zone aggregation (1) = 4 indexed reads in the perf dataset.
-    # The perf dataset seeds no shot events, so total_fga=0 and the dot
-    # follow-up query is skipped (budget would be 5 on a game with shots).
-    "/stats/summer-league/{year}/games/{game_id}": 4,
+    # shot-zone aggregation (1) + game-flow PBP events (1) = 5 indexed reads.
+    # The perf dataset seeds no shot events, so total_fga=0 and the shot-dot
+    # follow-up query is skipped (budget would be 6 on a game with both shots
+    # and PBP). The PBP query always fires; it returns empty → no chart rendered.
+    "/stats/summer-league/{year}/games/{game_id}": 5,
     # Both counting (aggregate + years) and advanced (competition list +
     # per-competition rows) modes fire 2 indexed queries.
     "/stats/summer-league/leaders": 3,

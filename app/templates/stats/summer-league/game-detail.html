@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
 {% if sl_shotchart %}<link rel="stylesheet" href="{{ url_for('static', path='summer-league-shotchart.css') }}">{% endif %}
+{% if sl_game_flow %}<link rel="stylesheet" href="{{ url_for('static', path='css/game-flow-chart.css') }}">{% endif %}
 {% endblock %}
 
 {% macro n(v) %}{{ v if v is not none else '—' }}{% endmacro %}
@@ -136,6 +137,25 @@
     {{ team_box(box.home) }}
   </div>
 
+  {# Game-flow chart section #}
+  {% if sl_game_flow %}
+  <section class="sl-game-flow-section">
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="stats-header">
+        <div class="stats-title">Score Margin</div>
+      </div>
+      <div class="sl-game-flow__wrap">
+        <div id="sl-game-flow-root" class="sl-game-flow__chart" aria-label="Score margin over time chart"></div>
+      </div>
+      <p class="sl-game-flow__legend">
+        <span class="sl-game-flow__legend-home">{{ box.home.abbr or box.home.name }}</span> lead &nbsp;|&nbsp;
+        <span class="sl-game-flow__legend-away">{{ box.away.abbr or box.away.name }}</span> lead
+      </p>
+    </div>
+  </section>
+  {% endif %}
+
   {# Shot chart section #}
   <section class="sl-shotchart-section">
     <div class="stats-scoreboard slg-board">
@@ -219,6 +239,12 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', path='summer-league-games.js') }}"></script>
+{% if sl_game_flow %}
+<script>
+  window.SL_GAME_FLOW = {{ sl_game_flow | tojson | safe }};
+</script>
+<script src="{{ url_for('static', path='js/game-flow-chart.js') }}"></script>
+{% endif %}
 {% if sl_shotchart %}
 <script>
   window.SL_SHOTCHART = {{ sl_shotchart | tojson | safe }};
