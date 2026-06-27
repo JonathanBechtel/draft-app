@@ -191,6 +191,14 @@ class SummerLeaguePlayerSeason(SQLModel, table=True):  # type: ignore[call-arg]
     three_rate: Optional[float] = Field(default=None)
     corner3_rate: Optional[float] = Field(default=None)
 
+    # Assisted-FG counts derived from play-by-play events (PBP era only).
+    # ast_fgm  — made FGs where a recorded assister (person2_id) exists.
+    # unast_fgm — made FGs with no recorded assister.
+    # Both are NULL when no PBP made-FG events exist for the player-competition;
+    # never fabricated from box data.  Sum across competitions for career totals.
+    ast_fgm: Optional[int] = Field(default=None)
+    unast_fgm: Optional[int] = Field(default=None)
+
     # Rate stats (need team + opponent context).
     usg_pct: Optional[float] = Field(default=None)
     ast_pct: Optional[float] = Field(default=None)

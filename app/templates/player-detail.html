@@ -514,6 +514,12 @@
                 <span class="sl-shot-diet__label">Corner 3</span>
                 <span class="sl-shot-diet__val">{% if d.corner3_rate is not none %}{{ '%.0f' % (d.corner3_rate * 100) }}%{% else %}—{% endif %}</span>
               </div>
+              {% if d.assisted_fg_pct is defined and d.assisted_fg_pct is not none %}
+              <div class="sl-shot-diet__item">
+                <span class="sl-shot-diet__label" title="% of made FGs that were assisted (PBP era only)">Ast FG%</span>
+                <span class="sl-shot-diet__val">{{ '%.0f' % (d.assisted_fg_pct * 100) }}%</span>
+              </div>
+              {% endif %}
             </div>
           </div>
           {% endif %}

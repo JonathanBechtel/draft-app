@@ -504,11 +504,21 @@ async def get_player_shotchart_context(
             diet_row.corner3_rate,
         )
     ):
+        # Compute assisted-FG% when PBP counts are available for this row.
+        ast_fgm = diet_row.ast_fgm
+        unast_fgm = diet_row.unast_fgm
+        total_pbp_fgm = (ast_fgm or 0) + (unast_fgm or 0)
+        assisted_fg_pct: Optional[float] = (
+            round(ast_fgm / total_pbp_fgm, 4)
+            if ast_fgm is not None and unast_fgm is not None and total_pbp_fgm > 0
+            else None
+        )
         shot_diet = {
             "rim_rate": diet_row.rim_rate,
             "mid_rate": diet_row.mid_rate,
             "three_rate": diet_row.three_rate,
             "corner3_rate": diet_row.corner3_rate,
+            "assisted_fg_pct": assisted_fg_pct,
         }
 
     # ── 3. Dots (per-competition only; empty for career) ─────────────────────

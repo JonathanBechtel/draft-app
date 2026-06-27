@@ -36,6 +36,7 @@ from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
+    SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
     SummerLeagueShotEvent,
     SummerLeagueTeamGameLog,
@@ -647,6 +648,9 @@ class ComputeResult:
     # Shot-diet zone FGA per (player_id, competition_id); empty dict when no
     # shot-chart data exists (no SummerLeagueShotEvent rows ingested yet).
     shot_diet: dict[tuple[int, int], dict[str, int]] = field(default_factory=dict)
+    # Assisted-FG counts per (player_id, competition_id) from PBP made-FG events;
+    # value is (ast_fgm, unast_fgm). Empty when no PBP data has been ingested.
+    assisted_fg: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)
 
 
 async def _load_shot_diet(
@@ -680,6 +684,46 @@ async def _load_shot_diet(
     for player_id, competition_id, zone, fga in rows:
         out[(int(player_id), int(competition_id))][str(zone)] = int(fga)
     return out
+
+
+async def _load_assisted_fg(
+    db: AsyncSession,
+) -> dict[tuple[int, int], tuple[int, int]]:
+    """Query PBP made-FG events and count assisted vs unassisted per (player_id, competition_id).
+
+    A made-FG event is identified by ``event_msg_type == 1``.  An assisted made
+    FG is one where ``person2_id`` (the assister) is non-NULL; unassisted events
+    have ``person2_id IS NULL``.  Only events with a resolved scorer
+    (``person1_id`` not NULL) are counted.
+
+    Returns a mapping of ``(player_id, competition_id)`` → ``(ast_fgm, unast_fgm)``.
+    The mapping is empty when no PBP made-FG data has been ingested.
+    """
+    stmt = (
+        select(  # type: ignore[call-overload]
+            SummerLeaguePlayByPlayEvent.person1_id,
+            SummerLeaguePlayByPlayEvent.competition_id,
+            func.count()
+            .filter(SummerLeaguePlayByPlayEvent.person2_id.isnot(None))  # type: ignore[union-attr]
+            .label("ast_fgm"),
+            func.count()
+            .filter(SummerLeaguePlayByPlayEvent.person2_id.is_(None))  # type: ignore[union-attr]
+            .label("unast_fgm"),
+        )
+        .where(
+            SummerLeaguePlayByPlayEvent.event_msg_type == 1,  # type: ignore[arg-type]
+            SummerLeaguePlayByPlayEvent.person1_id.isnot(None),  # type: ignore[union-attr]
+        )
+        .group_by(
+            SummerLeaguePlayByPlayEvent.person1_id,
+            SummerLeaguePlayByPlayEvent.competition_id,
+        )
+    )
+    rows = (await db.execute(stmt)).all()
+    return {
+        (int(player_id), int(competition_id)): (int(ast_fgm), int(unast_fgm))
+        for player_id, competition_id, ast_fgm, unast_fgm in rows
+    }
 
 
 async def _load(db: AsyncSession) -> tuple[Any, ...]:
@@ -819,6 +863,7 @@ async def compute(db: AsyncSession) -> ComputeResult:
     """Load raw logs and compute every metric in memory."""
     comps, games, team_rows, team_mp, player_rows = await _load(db)
     shot_diet = await _load_shot_diet(db)
+    assisted_fg = await _load_assisted_fg(db)
     team_box, opp_box, team_comp, contexts, records = _build(
         comps, games, team_rows, team_mp
     )
@@ -910,6 +955,7 @@ async def compute(db: AsyncSession) -> ComputeResult:
         bpm_r2=r2,
         bpm_n_fit=n_fit,
         shot_diet=shot_diet,
+        assisted_fg=assisted_fg,
     )
 
 
@@ -921,9 +967,11 @@ def _season_columns(
     model_version: str,
     adv_eligible: bool,
     zone_fga: dict[str, int],
+    pbp_counts: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     b, m = ps.box, ps.metrics
     diet = compute_shot_diet(zone_fga)
+    ast_fgm, unast_fgm = pbp_counts if pbp_counts is not None else (None, None)
     return {
         "competition_id": ps.competition_id,
         "player_id": ps.player_id,
@@ -967,6 +1015,8 @@ def _season_columns(
         "mid_rate": diet["mid_rate"],
         "three_rate": diet["three_rate"],
         "corner3_rate": diet["corner3_rate"],
+        "ast_fgm": ast_fgm,
+        "unast_fgm": unast_fgm,
         "adv_eligible": adv_eligible,
         "model_version": model_version,
     }
@@ -1024,7 +1074,10 @@ async def rebuild(
     n_seasons = 0
     for ps in result.seasons:
         zone_fga = result.shot_diet.get((ps.player_id, ps.competition_id), {})
-        cols = _season_columns(ps, version, ps.competition_id in adv_cids, zone_fga)
+        pbp_counts = result.assisted_fg.get((ps.player_id, ps.competition_id))
+        cols = _season_columns(
+            ps, version, ps.competition_id in adv_cids, zone_fga, pbp_counts
+        )
         db.add(SummerLeaguePlayerSeason(**cols))
         n_seasons += 1
 
