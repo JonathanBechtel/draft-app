@@ -716,9 +716,9 @@ _COLUMNS_BY_SUBJECT: dict[str, list[ExplorerColumn]] = {
 _SORT_KEYS_BY_SUBJECT: dict[str, set[str]] = {
     s: {c.key for c in cols} for s, cols in _COLUMNS_BY_SUBJECT.items()
 }
-# Advanced sort keys are valid for the players subject in single-competition mode.
-# Add them to the allowed set so parse_query does not reject them.
-_SORT_KEYS_BY_SUBJECT["players"] |= {c.key for c in _PLAYER_ADVANCED_COLUMNS}
+# Players sort keys: generated from the catalog's sortable flag.
+# Covers box, shooting, and advanced (ts_pct, per, ortg, drtg, bpm, ws, vorp) columns.
+_SORT_KEYS_BY_SUBJECT["players"] = {c.key for c in PLAYER_COLUMN_CATALOG if c.sortable}
 _DEFAULT_SORT_BY_SUBJECT: dict[str, str] = {
     "players": "pts",
     "teams": "diff",
@@ -740,6 +740,13 @@ _COUNTING = (
     "fg3a",
     "ftm",
     "fta",
+)
+# Advanced composite keys not available in the per_game SELECT (game-log rows have no
+# pre-computed composite metrics).  Used by parse_query to coerce invalid per_game sorts.
+_ADV_COMPOSITE_SORT_KEYS: frozenset[str] = frozenset(
+    c.key
+    for c in PLAYER_COLUMN_CATALOG
+    if c.group == _GROUP_ADVANCED and c.sortable and c.key != "ts_pct"
 )
 
 
@@ -950,6 +957,13 @@ class ExplorerResult:
     facets: ExplorerFacets
     query: ExplorerQuery
     adv_eligible: bool = False
+    # Keys of result columns whose values are minute-weighted pooled averages (career grain).
+    # These are rate_composite columns that span multiple competition pools; shown with
+    # an "≈ avg" marker in the UI to signal they are approximate aggregates.
+    pooled_composite_keys: frozenset[str] = field(default_factory=frozenset)
+    # N-of-M counts for the eligibility banner.
+    adv_eligible_n: int = 0  # competitions in scope with adv_eligible=True
+    adv_eligible_m: int = 0  # total competitions in scope with a metric context row
 
 
 # --------------------------------------------------------------------------- #
@@ -1006,19 +1020,12 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     year_min = _to_int(params.get("year_min"))
     year_max = _to_int(params.get("year_max"))
 
-    # Composite sort keys (PER/ORtg/DRtg/BPM/WS/VORP) are only SELECTed by the
-    # single-competition per_competition query; on any other grain/scope they would
-    # become ORDER BY on a column the SELECT never exposes. Coerce them back to the
-    # default sort so a hand-typed ?sort=per&grain=career — or sorting by PER and then
-    # switching grain — can't 500. (ts_pct stays valid everywhere; it's box-derived.)
-    composite_sort_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS if c.key != "ts_pct"}
-    single_comp_scope = (
-        grain == "per_competition"
-        and year_min is not None
-        and year_min == year_max
-        and venue is not None
-    )
-    if sort in composite_sort_keys and not single_comp_scope:
+    # Advanced composite sort keys (PER/ORtg/DRtg/BPM/WS/VORP) are computed by the
+    # career and per_competition queries but NOT available in the per_game SELECT
+    # (individual game logs have no pre-computed composite metrics).
+    # Coerce to the default only when grain=per_game to prevent ORDER BY on a missing column.
+    # ts_pct stays valid everywhere — it is box-derived (recombinable).
+    if grain == "per_game" and sort in _ADV_COMPOSITE_SORT_KEYS:
         sort = default_sort
 
     # Reject implausible future draft classes so a hand-typed ?draft_class=2033
@@ -1506,10 +1513,11 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         for r in raw
     ]
 
+    elig_n, elig_m = await _fetch_adv_counts(db, q)
     return ExplorerResult(
         subject="players",
         available=True,
-        columns=_PLAYER_STAT_COLUMNS,
+        columns=_PLAYER_STAT_COLUMNS + _PLAYER_ADVANCED_COLUMNS,
         rows=rows,
         total=total,
         page=q.page,
@@ -1517,6 +1525,13 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
         facets=ExplorerFacets(),
         query=q,
+        pooled_composite_keys=frozenset(
+            c.key
+            for c in _PLAYER_ADVANCED_COLUMNS
+            if c.bucket == _BUCKET_RATE_COMPOSITE
+        ),
+        adv_eligible_n=elig_n,
+        adv_eligible_m=elig_m,
     )
 
 
@@ -1548,6 +1563,42 @@ async def _fetch_adv_eligible(db: AsyncSession, year: int, venue_slug: str) -> b
     )
     row = result.one_or_none()
     return bool(row[0]) if row is not None else False
+
+
+async def _fetch_adv_counts(db: AsyncSession, q: ExplorerQuery) -> tuple[int, int]:
+    """Count eligible and total competitions in the query scope for the N-of-M banner.
+
+    Queries ``SummerLeagueMetricContext`` with the same year/venue filters as the
+    main player query.  Returns ``(eligible_n, total_m)`` where ``eligible_n`` is
+    the count with ``adv_eligible=True`` and ``total_m`` is the total count of rows
+    with a metric context (competitions without a context row are not counted).
+
+    Args:
+        db: Async database session.
+        q:  Parsed explorer query providing year/venue filter bounds.
+
+    Returns:
+        Tuple ``(eligible_n, total_m)``.
+    """
+    ctx = SummerLeagueMetricContext
+    conds: list[Any] = []
+    if q.year_min is not None:
+        conds.append(ctx.year >= q.year_min)  # type: ignore[arg-type]
+    if q.year_max is not None:
+        conds.append(ctx.year <= q.year_max)  # type: ignore[arg-type]
+    if q.venue:
+        conds.append(ctx.venue_slug == q.venue)
+
+    total_stmt = select(func.count()).select_from(ctx)
+    if conds:
+        total_stmt = total_stmt.where(*conds)
+    total_m = int((await db.execute(total_stmt)).scalar() or 0)
+
+    elig_conds = list(conds) + [ctx.adv_eligible.is_(True)]  # type: ignore[union-attr, attr-defined]
+    elig_stmt = select(func.count()).select_from(ctx).where(*elig_conds)
+    eligible_n = int((await db.execute(elig_stmt)).scalar() or 0)
+
+    return eligible_n, total_m
 
 
 async def _query_players_per_competition(
@@ -1640,17 +1691,17 @@ async def _query_players_per_competition(
         ps.plus_minus.label("plus_minus"),  # type: ignore[attr-defined]
     ]
 
-    # When scoped to a single competition, also SELECT the composite columns so
-    # the template can display them when adv_eligible is True.
-    if single_comp:
-        base_select += [
-            ps.per.label("per"),  # type: ignore[attr-defined, union-attr]
-            ps.ortg.label("ortg"),  # type: ignore[attr-defined, union-attr]
-            ps.drtg.label("drtg"),  # type: ignore[attr-defined, union-attr]
-            ps.bpm.label("bpm"),  # type: ignore[attr-defined, union-attr]
-            ps.ws.label("ws"),  # type: ignore[attr-defined, union-attr]
-            ps.vorp.label("vorp"),  # type: ignore[attr-defined, union-attr]
-        ]
+    # Always SELECT composite columns so they are available at all per_competition
+    # scopes (single-comp and multi-comp).  The column list and template control
+    # whether they are displayed; values are NULL when a pool is not eligible.
+    base_select += [
+        ps.per.label("per"),  # type: ignore[attr-defined, union-attr]
+        ps.ortg.label("ortg"),  # type: ignore[attr-defined, union-attr]
+        ps.drtg.label("drtg"),  # type: ignore[attr-defined, union-attr]
+        ps.bpm.label("bpm"),  # type: ignore[attr-defined, union-attr]
+        ps.ws.label("ws"),  # type: ignore[attr-defined, union-attr]
+        ps.vorp.label("vorp"),  # type: ignore[attr-defined, union-attr]
+    ]
 
     stmt = (
         select(*base_select)  # type: ignore[call-overload, misc]
@@ -1697,18 +1748,26 @@ async def _query_players_per_competition(
 
     raw = list((await db.execute(stmt)).all())
 
-    # Determine adv_eligible for this query scope.
+    # Determine adv_eligible for single-competition scope.
     pool_adv_eligible = False
     if single_comp and q.year_min is not None and q.venue is not None:
         pool_adv_eligible = await _fetch_adv_eligible(db, q.year_min, q.venue)
 
-    # Build result column list: base stats always present; advanced appended when eligible.
-    columns: list[ExplorerColumn] = list(_PLAYER_STAT_COLUMNS)
-    if single_comp and pool_adv_eligible:
-        columns = columns + _PLAYER_ADVANCED_COLUMNS
+    # N-of-M counts for the eligibility banner.
+    elig_n, elig_m = await _fetch_adv_counts(db, q)
+
+    # Build result column list.
+    # - Single-comp + eligible: advanced columns shown (exact within one pool, no caveat).
+    # - Single-comp + not eligible: base columns only (warning banner shown by template).
+    # - Multi-comp: advanced columns always shown (N-of-M banner; each row is one pool,
+    #   so per-row values are exact within that pool — no "avg" marker needed here).
+    if single_comp and not pool_adv_eligible:
+        columns: list[ExplorerColumn] = list(_PLAYER_STAT_COLUMNS)
+    else:
+        columns = list(_PLAYER_STAT_COLUMNS) + list(_PLAYER_ADVANCED_COLUMNS)
 
     def _adv_values(r: Any) -> dict[str, Any]:
-        """Extract composite values from a result row (only when single-comp selected)."""
+        """Extract composite values from a result row (always present in SELECT now)."""
         return {
             "per": getattr(r, "per", None),
             "ortg": getattr(r, "ortg", None),
@@ -1724,7 +1783,7 @@ async def _query_players_per_competition(
             href=f"/players/{r.slug}" if r.slug else None,
             values={
                 **_compute_player_values(r, q.mode),
-                **(_adv_values(r) if (single_comp and pool_adv_eligible) else {}),
+                **_adv_values(r),
             },
         )
         for r in raw
@@ -1742,6 +1801,8 @@ async def _query_players_per_competition(
         facets=ExplorerFacets(),
         query=q,
         adv_eligible=pool_adv_eligible if single_comp else False,
+        adv_eligible_n=elig_n,
+        adv_eligible_m=elig_m,
     )
 
 

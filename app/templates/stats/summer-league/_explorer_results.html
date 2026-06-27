@@ -33,14 +33,35 @@
   </p>
   {% else %}
 
-  {# Advanced-composites eligibility banner (per_competition grain, single competition only) #}
-  {% if result.query.grain == 'per_competition' and result.query.year_min == result.query.year_max and result.query.year_min and result.query.venue %}
-    {% if not result.adv_eligible %}
+  {# ── Eligibility banners ─────────────────────────────────────────────── #}
+
+  {# Career grain: N-of-M banner explaining pooled averages. #}
+  {% if result.query.grain == 'career' and result.adv_eligible_m > 0 %}
+  <div class="slg-explorer-banner {{ 'slg-explorer-banner--warn' if result.adv_eligible_n == 0 else 'slg-explorer-banner--info' }}" role="alert">
+    <span class="slg-explorer-banner__icon">{% if result.adv_eligible_n == 0 %}&#9888;{% else %}&#9432;{% endif %}</span>
+    {{ result.adv_eligible_n }} of {{ result.adv_eligible_m }} competition{{ 's' if result.adv_eligible_m != 1 else '' }} in this scope qualify for advanced composites.
+    {% if result.adv_eligible_n > 0 %}
+    Rate metrics (PER, ORtg, DRtg, BPM) are pooled averages across competitions and are approximate
+    (marked <abbr title="Pooled average — approximate">avg</abbr>).
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# Per_competition grain: single-comp warning OR multi-comp N-of-M banner. #}
+  {% if result.query.grain == 'per_competition' %}
+    {%- set is_single_comp = result.query.year_min == result.query.year_max and result.query.year_min and result.query.venue -%}
+    {% if is_single_comp and not result.adv_eligible %}
   <div class="slg-explorer-banner slg-explorer-banner--warn" role="alert">
     <span class="slg-explorer-banner__icon">&#9888;</span>
     Advanced composites (PER, ORtg, DRtg, BPM, WS, VORP) require a minimum pool
     size that this competition has not yet met. Select a larger competition or
     check back after more games are complete.
+  </div>
+    {% elif not is_single_comp and result.adv_eligible_m > 0 %}
+  <div class="slg-explorer-banner {{ 'slg-explorer-banner--warn' if result.adv_eligible_n == 0 else 'slg-explorer-banner--info' }}" role="alert">
+    <span class="slg-explorer-banner__icon">{% if result.adv_eligible_n == 0 %}&#9888;{% else %}&#9432;{% endif %}</span>
+    {{ result.adv_eligible_n }} of {{ result.adv_eligible_m }} competition{{ 's' if result.adv_eligible_m != 1 else '' }} in this pool qualify for advanced composites.
+    Rows from other competitions may show blank composite values.
   </div>
     {% endif %}
   {% endif %}
@@ -82,9 +103,15 @@
               {% if row.href %}<a href="{{ row.href }}">{{ row.label }}</a>{% else %}<span class="slg-bx-name--stub">{{ row.label }}</span>{% endif %}
             </th>
             {% for col in result.columns %}
+            {%- set v = row.values.get(col.key) -%}
             <td class="{{ 'slg-strong' if col.key == result.query.sort else '' }}">
-              {% set v = row.values.get(col.key) %}
-              {% if col.key in ('gp', 'w', 'l', 'total', 'margin') %}{{ v }}{% else %}{{ n1(v) }}{% endif %}
+              {%- if col.key in ('gp', 'w', 'l', 'total', 'margin') -%}
+                {{ v }}
+              {%- elif col.key in result.pooled_composite_keys and v is not none -%}
+                {{ n1(v) }}<sup class="slg-pooled-mark" title="Pooled average across competitions — approximate">avg</sup>
+              {%- else -%}
+                {{ n1(v) }}
+              {%- endif -%}
             </td>
             {% endfor %}
           </tr>

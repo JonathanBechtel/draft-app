@@ -1802,11 +1802,14 @@ async def test_adv_columns_absent_when_not_eligible(db_session: AsyncSession) ->
 
 
 @pytest.mark.asyncio
-async def test_adv_columns_absent_multi_year(db_session: AsyncSession) -> None:
-    """Multi-year query (year_min != year_max): no composite columns regardless of eligibility.
+async def test_adv_columns_present_multi_year(db_session: AsyncSession) -> None:
+    """#406: Multi-year per_competition query now exposes advanced columns.
 
-    Composites are pool-calibrated and must not be exposed when the query spans
-    multiple competitions.
+    Previously composites were hidden for multi-year queries; after ticket #406 they
+    are always shown at per_competition grain (each row is one pool, values are
+    exact within that pool).  adv_eligible is False (not single-comp) but the
+    column list still includes advanced columns with the N-of-M banner providing
+    the eligibility context.
     """
     # Seed two competitions (2024 Vegas + 2025 Vegas), both adv_eligible.
     player = make_player("Multi", "Year")
@@ -1847,18 +1850,28 @@ async def test_adv_columns_absent_multi_year(db_session: AsyncSession) -> None:
         ),
     )
 
-    # Multi-year: composites must be absent.
+    # Multi-comp: adv_eligible is False (not single-comp scope), but advanced
+    # columns ARE present in the column list (ticket #406 change).
     assert result.adv_eligible is False
     adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
     result_col_keys = {c.key for c in result.columns}
-    assert adv_keys.isdisjoint(result_col_keys)
+    assert adv_keys <= result_col_keys, (
+        f"missing advanced keys at multi-year per_competition: {adv_keys - result_col_keys}"
+    )
+    # Two rows (one per competition); each row's values for composites are non-None.
+    assert result.total == 2
+    for row in result.rows:
+        assert row.values.get("per") is not None
+        assert row.values.get("ws") is not None
 
 
 @pytest.mark.asyncio
-async def test_adv_columns_absent_all_venues(db_session: AsyncSession) -> None:
-    """No-venue filter (all-venues query): composite columns absent even with adv_eligible pools.
+async def test_adv_columns_present_all_venues(db_session: AsyncSession) -> None:
+    """#406: No-venue per_competition query now exposes advanced columns.
 
-    A query without a venue spans multiple competitions, so composites are not valid.
+    Previously composite columns were hidden when no venue was specified.  After
+    ticket #406 they are always shown at per_competition grain; the N-of-M banner
+    provides eligibility context.
     """
     await _seed_adv_single_comp(db_session, adv_eligible=True)
 
@@ -1869,16 +1882,19 @@ async def test_adv_columns_absent_all_venues(db_session: AsyncSession) -> None:
             grain="per_competition",
             year_min=2024,
             year_max=2024,
-            venue=None,  # no venue → not a single competition
+            venue=None,  # no venue → multi-comp scope
             min_games=1,
             min_minutes=1,
         ),
     )
 
+    # adv_eligible is False (not single-comp), but columns ARE present now (#406).
     assert result.adv_eligible is False
     adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
     result_col_keys = {c.key for c in result.columns}
-    assert adv_keys.isdisjoint(result_col_keys)
+    assert adv_keys <= result_col_keys, (
+        f"missing advanced keys at all-venues per_competition: {adv_keys - result_col_keys}"
+    )
 
 
 @pytest.mark.asyncio
@@ -2932,3 +2948,177 @@ async def test_per_game_still_reads_game_logs(
     # LogOnly player appears (has game logs); SeasonOnly does not (no game logs).
     assert "LogOnly Player" in labels
     assert "SeasonOnly Player" not in labels
+
+
+# --------------------------------------------------------------------------- #
+# Ticket #406: advanced columns at all grains, catalog-driven sort, pooled marker
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_advanced_columns_present_and_sortable_all_grains(
+    db_session: AsyncSession,
+) -> None:
+    """#406: Advanced columns appear in result.columns for career and per_competition grains.
+
+    Also verifies that sorting by advanced keys (per, bpm, ws, vorp, ts_pct)
+    is valid at both grains and does not coerce to the default sort key.
+    Per_game grain must NOT surface advanced composite columns in its column list.
+    """
+    player = make_player("Adv", "Star")
+    db_session.add(player)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    await _metric_context(db_session, comp_id=c, year=2024, venue_slug="las_vegas",
+                          adv_eligible=True)
+    await _season_with_composites(
+        db_session, player=player, comp_id=c, year=2024, venue_slug="las_vegas",
+        per=20.0, bpm=2.5, ws=1.0, vorp=0.5,
+    )
+    t = await _team(db_session, comp_id=c)
+    await _log(db_session, comp_id=c, team=t, player=player, pts=20, games=3)
+    await db_session.commit()
+
+    adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
+
+    # Career grain: advanced columns always present.
+    career = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", min_games=1, min_minutes=1),
+    )
+    career_col_keys = {c.key for c in career.columns}
+    assert adv_keys <= career_col_keys, f"missing at career: {adv_keys - career_col_keys}"
+    # Row values populated for advanced keys.
+    assert career.rows[0].values.get("ws") is not None
+    assert career.rows[0].values.get("per") is not None
+
+    # Career grain: sorting by advanced keys accepted (no coercion to default).
+    for sort_key in ("per", "bpm", "ws", "vorp", "ts_pct"):
+        q_sort = parse_query({"grain": "career", "sort": sort_key})
+        assert q_sort.sort == sort_key, (
+            f"sort={sort_key!r} at career coerced to {q_sort.sort!r}"
+        )
+
+    # Per_competition multi-comp: advanced columns also present.
+    pc_multi = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="per_competition", min_games=1, min_minutes=1
+        ),
+    )
+    pc_col_keys = {c.key for c in pc_multi.columns}
+    assert adv_keys <= pc_col_keys, f"missing at per_competition: {adv_keys - pc_col_keys}"
+
+    # Per_game grain: advanced composite columns NOT in result.columns.
+    pg = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game"),
+    )
+    pg_col_keys = {c.key for c in pg.columns}
+    composite_adv_keys = {k for k in adv_keys if k != "ts_pct"}
+    assert pg_col_keys.isdisjoint(composite_adv_keys), (
+        f"per_game should not have composite adv columns: {pg_col_keys & composite_adv_keys}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_pooled_avg_marker_and_eligibility_banner(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """#406: Career grain rows carry pooled_composite_keys; HTML shows 'avg' marker and N-of-M banner.
+
+    Verifies:
+    - result.pooled_composite_keys contains rate_composite column keys (per, ortg, drtg, bpm)
+      at career grain.
+    - result.pooled_composite_keys is empty at per_competition grain (each row is one pool).
+    - HTML response for career grain includes the 'avg' marker text and the N-of-M banner.
+    """
+    player = make_player("Pool", "Tester")
+    db_session.add(player)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    await _metric_context(db_session, comp_id=c, year=2024, venue_slug="las_vegas",
+                          adv_eligible=True)
+    await _season_with_composites(
+        db_session, player=player, comp_id=c, year=2024, venue_slug="las_vegas",
+        per=18.0, bpm=1.5, ws=0.9, vorp=0.4,
+    )
+    await db_session.commit()
+
+    # Career grain: pooled_composite_keys must contain rate_composite keys.
+    career = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", min_games=1, min_minutes=1),
+    )
+    assert "per" in career.pooled_composite_keys
+    assert "bpm" in career.pooled_composite_keys
+    assert "ortg" in career.pooled_composite_keys
+    assert "drtg" in career.pooled_composite_keys
+    # Additive columns are exact (not pooled).
+    assert "ws" not in career.pooled_composite_keys
+    assert "vorp" not in career.pooled_composite_keys
+    # Recombinable (ts_pct) is exact.
+    assert "ts_pct" not in career.pooled_composite_keys
+    # adv_eligible_n/m populated.
+    assert career.adv_eligible_m > 0
+    assert career.adv_eligible_n >= 0
+
+    # Per_competition grain: pooled_composite_keys is empty.
+    pc = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="per_competition", min_games=1, min_minutes=1
+        ),
+    )
+    assert len(pc.pooled_composite_keys) == 0
+
+    # HTML: career grain page shows "avg" marker text and N-of-M banner.
+    resp = await app_client.get(
+        "/stats/summer-league/explorer?grain=career&min_gp=1&min_min=1"
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    # N-of-M banner is present (the count text includes "of").
+    assert "slg-explorer-banner" in body
+    assert " of " in body  # N of M text
+    # "avg" marker is present for pooled composites.
+    assert "slg-pooled-mark" in body
+
+
+@pytest.mark.asyncio
+async def test_invalid_sort_coerces(db_session: AsyncSession) -> None:
+    """#406: Invalid or inapplicable sort keys coerce to the default without 500.
+
+    - ?sort=bogus → coerces to 'pts' (not a valid key at all).
+    - ?sort=per&grain=per_game → coerces to 'pts' (per not in per_game SELECT).
+    - ?sort=per&grain=career → stays 'per' (valid at career).
+    - ?sort=ts_pct&grain=per_game → stays 'ts_pct' (ts_pct is box-derived, valid).
+    """
+    # Pure parse_query checks (no DB needed).
+    q_bogus = parse_query({"sort": "bogus"})
+    assert q_bogus.sort == "pts", f"expected 'pts', got {q_bogus.sort!r}"
+
+    q_per_pg = parse_query({"sort": "per", "grain": "per_game"})
+    assert q_per_pg.sort == "pts", f"expected 'pts' for per at per_game, got {q_per_pg.sort!r}"
+
+    q_per_career = parse_query({"sort": "per", "grain": "career"})
+    assert q_per_career.sort == "per", (
+        f"expected 'per' at career grain, got {q_per_career.sort!r}"
+    )
+
+    q_ts_pg = parse_query({"sort": "ts_pct", "grain": "per_game"})
+    assert q_ts_pg.sort == "ts_pct", (
+        f"ts_pct should be valid at per_game (box-derived), got {q_ts_pg.sort!r}"
+    )
+
+    q_bpm_career = parse_query({"sort": "bpm", "grain": "career"})
+    assert q_bpm_career.sort == "bpm", (
+        f"bpm should be valid at career grain, got {q_bpm_career.sort!r}"
+    )
+
+    q_ws_pc = parse_query({"sort": "ws", "grain": "per_competition"})
+    assert q_ws_pc.sort == "ws", (
+        f"ws should be valid at per_competition grain, got {q_ws_pc.sort!r}"
+    )
