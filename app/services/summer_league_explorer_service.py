@@ -40,6 +40,7 @@ as SQL arithmetic inside a CTE/subquery so they can be sorted in SQL.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Optional
@@ -89,56 +90,601 @@ def _max_plausible_draft_class() -> int:
 # Column catalog (players)
 # --------------------------------------------------------------------------- #
 
+# Bucket constants — one of three roll-up semantics (see rollup_* functions below).
+_BUCKET_RECOMBINABLE = "recombinable"  # exact: recompute from summed box components
+_BUCKET_ADDITIVE = "additive"  # exact: sum across pools, null-skip
+_BUCKET_RATE_COMPOSITE = (
+    "rate_composite"  # approximate: minute-weighted avg across pools
+)
+
+# Group constants — broad display category.
+_GROUP_BOX = "box"
+_GROUP_SHOOTING = "shooting"
+_GROUP_ADVANCED = "advanced"
+
 
 @dataclass(frozen=True)
 class ExplorerColumn:
-    """One sortable result column."""
+    """One sortable result column with metric taxonomy for roll-up dispatch.
+
+    Fields:
+        key:        Unique column identifier (matches query param and result dict key).
+        label:      Display label shown in the UI table header.
+        group:      Display category: ``"box"`` | ``"shooting"`` | ``"advanced"``.
+        bucket:     Roll-up semantic: ``"recombinable"`` | ``"additive"`` |
+                    ``"rate_composite"``.  Drives which of the three ``rollup_*``
+                    functions should aggregate multi-competition rows of this column.
+        sortable:   Whether this column is a valid ORDER BY target in the Explorer.
+                    False for catalog-only columns not yet wired into the UI.
+        filterable: Whether this column can be used as a min/max stat filter
+                    (reserved for future use; currently False for all columns).
+        fmt:        Display-format hint: ``"int"`` (no decimals), ``"f1"`` (1 decimal),
+                    ``"f2"`` (2 decimals), ``"pct"`` (1 decimal + ``%`` suffix).
+        shown:      True when this column appears in the live Explorer column list.
+                    False for catalog-classified columns not yet surfaced in the UI
+                    (consumed by ticket #405 roll-ups and future phase expansions).
+        numeric:    Kept for backward compatibility; True for all numeric columns.
+    """
 
     key: str
     label: str
-    numeric: bool = True
+    group: str = _GROUP_BOX
+    bucket: str = _BUCKET_ADDITIVE
+    sortable: bool = True
+    filterable: bool = False
+    fmt: str = "f1"
+    shown: bool = True
+    numeric: bool = True  # backward compat — always True for player stat columns
 
 
-# Stat columns shown for the players subject, in display order.
-_PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
-    ExplorerColumn("gp", "GP"),
-    ExplorerColumn("min", "MIN"),
-    ExplorerColumn("pts", "PTS"),
-    ExplorerColumn("reb", "REB"),
-    ExplorerColumn("ast", "AST"),
-    ExplorerColumn("stl", "STL"),
-    ExplorerColumn("blk", "BLK"),
-    ExplorerColumn("tov", "TOV"),
-    ExplorerColumn("oreb", "OREB"),
-    ExplorerColumn("dreb", "DREB"),
-    ExplorerColumn("pf", "PF"),
-    ExplorerColumn("plus_minus", "+/-"),
-    ExplorerColumn("efg_pct", "eFG%"),
-    ExplorerColumn("fgm", "FGM"),
-    ExplorerColumn("fga", "FGA"),
-    ExplorerColumn("fg3m", "3PM"),
-    ExplorerColumn("fg3a", "3PA"),
-    ExplorerColumn("ftm", "FTM"),
-    ExplorerColumn("fta", "FTA"),
-    ExplorerColumn("fg_pct", "FG%"),
-    ExplorerColumn("fg3_pct", "3P%"),
-    ExplorerColumn("ft_pct", "FT%"),
+# --------------------------------------------------------------------------- #
+# Full declarative catalog — every player column with taxonomy.
+#
+# Ordering within each group mirrors the existing display order so that the
+# derived _PLAYER_STAT_COLUMNS / _PLAYER_ADVANCED_COLUMNS lists are identical
+# to the lists they replace (preserving all existing caller behaviour).
+# --------------------------------------------------------------------------- #
+PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
+    # ── Box totals (always-on, shown) ──────────────────────────────────────
+    # Raw counting stats sum across pools exactly (additive).
+    ExplorerColumn(
+        "gp",
+        "GP",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="int",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "min",
+        "MIN",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "pts",
+        "PTS",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "reb",
+        "REB",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ast",
+        "AST",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "stl",
+        "STL",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "blk",
+        "BLK",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "tov",
+        "TOV",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "oreb",
+        "OREB",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "dreb",
+        "DREB",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "pf",
+        "PF",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "plus_minus",
+        "+/-",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    # ── Shooting stats (always-on, shown) ─────────────────────────────────
+    # eFG% is box-derived (recombinable) and lives in the always-on base columns.
+    ExplorerColumn(
+        "efg_pct",
+        "eFG%",
+        _GROUP_SHOOTING,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=False,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fgm",
+        "FGM",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fga",
+        "FGA",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fg3m",
+        "3PM",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fg3a",
+        "3PA",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ftm",
+        "FTM",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fta",
+        "FTA",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fg_pct",
+        "FG%",
+        _GROUP_SHOOTING,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=False,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fg3_pct",
+        "3P%",
+        _GROUP_SHOOTING,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=False,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ft_pct",
+        "FT%",
+        _GROUP_SHOOTING,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=False,
+        fmt="pct",
+        shown=True,
+    ),
+    # ── Advanced (shown only in single-competition per_competition view) ───
+    # TS% is box-derived (recombinable) but reads as an advanced efficiency metric,
+    # so it is surfaced with the composites rather than the always-on shooting columns.
+    ExplorerColumn(
+        "ts_pct",
+        "TS%",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=False,
+        fmt="pct",
+        shown=True,
+    ),
+    # PER / ORtg / DRtg / BPM / WS / VORP are pool-calibrated composites that must
+    # NOT be mixed across multiple competition pools (rate_composite or additive).
+    ExplorerColumn(
+        "per",
+        "PER",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ortg",
+        "ORtg",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "drtg",
+        "DRtg",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "bpm",
+        "BPM",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ws",
+        "WS",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "vorp",
+        "VORP",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    # ── Advanced (catalog-classified; not yet shown in Explorer UI) ────────
+    # These columns are present in summer_league_player_seasons and classified here
+    # so that ticket #405 can drive roll-ups from the catalog without new constants.
+    #
+    # Recombinable: recompute from summed box components, exact at any grain.
+    ExplorerColumn(
+        "fg3ar",
+        "3PAr",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "ftr",
+        "FTr",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "pts_per100",
+        "Pts/100",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    # Additive: sum across competition pools, null-skip.
+    # gmsc (Game Score) is a per-game cumulative metric; sums across competitions.
+    ExplorerColumn(
+        "gmsc",
+        "GmSc",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    # OWS / DWS are Win Shares components — cumulative shares, additive like WS.
+    ExplorerColumn(
+        "ows",
+        "OWS",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "dws",
+        "DWS",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    # ws82 / vorp82 are season projections; treated as additive-style (summing
+    # projections across pools is a reasonable estimate of career pace).
+    ExplorerColumn(
+        "ws82",
+        "WS/82",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "vorp82",
+        "VORP/82",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    # Rate composites: minute-weighted average across pools (approximate).
+    # net_rtg / obpm / dbpm expand the single-competition composite basket.
+    ExplorerColumn(
+        "net_rtg",
+        "NRtg",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "obpm",
+        "OBPM",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "dbpm",
+        "DBPM",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    # ws40: WS per 40 minutes — a rate derived from cumulative WS / minutes; treated
+    # as rate_composite because WS itself is league-calibrated, so cross-pool
+    # averaging is more meaningful than summing.
+    ExplorerColumn(
+        "ws40",
+        "WS/40",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="f2",
+        shown=False,
+    ),
+    # Usage / participation rates (stored as percentages, e.g. 25.6 not 0.256).
+    ExplorerColumn(
+        "usg_pct",
+        "USG%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "ast_pct",
+        "AST%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "orb_pct",
+        "ORB%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "drb_pct",
+        "DRB%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "trb_pct",
+        "TRB%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "stl_pct",
+        "STL%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "blk_pct",
+        "BLK%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "tov_pct",
+        "TOV%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "pace",
+        "Pace",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
 ]
 
-# Advanced columns exposed only when grain=per_competition AND a single adv-eligible
-# competition is fully specified (one year + one venue).
-# TS% leads the group: it is box-derived (recombines from summed PTS/FGA/FTA) so it is
-# always computed, but it reads as an advanced efficiency metric and is surfaced here
-# rather than in the always-on base columns. The remainder (PER/BPM/ratings/WS/VORP) are
-# pool-calibrated composites that must NOT be mixed with career/multi-competition rows.
+# Derived views for backward compatibility with existing callers.
+# The catalog is the single source of truth; these lists are window views.
+
+# Columns shown in the always-on players table (box + shooting groups, shown=True).
+_PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
+    c for c in PLAYER_COLUMN_CATALOG if c.shown and c.group != _GROUP_ADVANCED
+]
+
+# Advanced columns exposed in single-competition per_competition view (shown=True, advanced group).
+# TS% leads the group (box-derived but reads as advanced); composites follow.
+# These must NOT be mixed into career / multi-competition rows.
 _PLAYER_ADVANCED_COLUMNS: list[ExplorerColumn] = [
-    ExplorerColumn("ts_pct", "TS%"),
-    ExplorerColumn("per", "PER"),
-    ExplorerColumn("ortg", "ORtg"),
-    ExplorerColumn("drtg", "DRtg"),
-    ExplorerColumn("bpm", "BPM"),
-    ExplorerColumn("ws", "WS"),
-    ExplorerColumn("vorp", "VORP"),
+    c for c in PLAYER_COLUMN_CATALOG if c.shown and c.group == _GROUP_ADVANCED
 ]
 
 # Stat columns for the teams subject (one row per team-season). W-L and points
@@ -195,6 +741,140 @@ _COUNTING = (
     "ftm",
     "fta",
 )
+
+
+# --------------------------------------------------------------------------- #
+# Roll-up primitives
+#
+# Each function accepts a sequence of per-competition rows (objects with
+# numeric attributes — typically SummerLeaguePlayerSeason instances) and folds
+# them into one pooled value for the requested column key.  Rows whose value is
+# None are always skipped (they contribute no weight or sum).
+#
+# Three buckets, three functions — driven by the catalog's ``bucket`` field:
+#
+#   recombinable   → rollup_recombinable   (sum box components, recompute ratio)
+#   additive       → rollup_additive       (sum values, skip None)
+#   rate_composite → rollup_rate_composite (minute-weighted avg, skip None pools)
+#
+# All percentage columns are stored as percentages (e.g. 60.6 not 0.606) and
+# the roll-up output preserves that convention.
+# --------------------------------------------------------------------------- #
+
+
+def _sum_attr(rows: Sequence[Any], attr: str) -> float:
+    """Sum a numeric attribute across rows, treating None / missing as zero."""
+    return sum(float(getattr(r, attr, None) or 0) for r in rows)
+
+
+def rollup_additive(rows: Sequence[Any], key: str) -> Optional[float]:
+    """Sum ``key`` across competition rows; returns ``None`` when all values are None.
+
+    Null-safe: rows where ``getattr(row, key)`` is ``None`` are skipped.  If every
+    row is ``None`` (no data at all) the function returns ``None`` rather than 0 to
+    distinguish "no data" from "zero total".
+
+    Args:
+        rows: Per-competition rows with numeric attributes.
+        key:  Attribute name to sum (e.g. ``"ws"``, ``"vorp"``, ``"pts"``).
+
+    Returns:
+        Summed value, or ``None`` when all rows have ``None`` for ``key``.
+    """
+    if not rows:
+        return None
+    vals = [getattr(r, key, None) for r in rows]
+    if all(v is None for v in vals):
+        return None
+    return sum(float(v) for v in vals if v is not None)
+
+
+def rollup_rate_composite(rows: Sequence[Any], key: str) -> Optional[float]:
+    """Minute-weighted average of ``key`` across competition pools; skips null pools.
+
+    Ineligible pools (``None`` value or zero/negative minutes) are excluded from
+    both numerator and denominator so they do not drag the average toward zero.
+    Returns ``None`` when no eligible pool has sufficient data.
+
+    Args:
+        rows: Per-competition rows; each must have a ``minutes`` attribute.
+        key:  Attribute name (e.g. ``"per"``, ``"bpm"``, ``"usg_pct"``).
+
+    Returns:
+        Minute-weighted mean, or ``None`` when no eligible pool exists.
+    """
+    num = 0.0
+    den = 0.0
+    for r in rows:
+        val = getattr(r, key, None)
+        mins = float(getattr(r, "minutes", 0) or 0)
+        if val is None or mins <= 0:
+            continue  # skip ineligible pool (missing composite or sub-zero minutes)
+        num += float(val) * mins
+        den += mins
+    return num / den if den else None
+
+
+def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
+    """Recompute ``key`` from summed box components (exact at any grain).
+
+    Summing per-competition values of a ratio metric (e.g. averaging TS% rows)
+    is inexact because small pools are over-weighted.  This function sums the
+    underlying box totals first and then applies the ratio formula once, which
+    gives the same result as computing the metric over the full multi-competition
+    box sheet.
+
+    Supported keys: ``ts_pct``, ``efg_pct``, ``fg_pct``, ``fg3_pct``, ``ft_pct``,
+    ``fg3ar``, ``ftr``, ``pts_per100``.
+
+    Args:
+        rows: Per-competition rows with box-total attributes (``pts``, ``fgm``, …).
+        key:  Recombinable metric key.
+
+    Returns:
+        Recomputed metric value (stored as a percentage, e.g. 60.6), or ``None``
+        when the denominator sums to zero (no attempts).
+    """
+    if not rows:
+        return None
+
+    fgm = _sum_attr(rows, "fgm")
+    fga = _sum_attr(rows, "fga")
+    fg3m = _sum_attr(rows, "fg3m")
+    fg3a = _sum_attr(rows, "fg3a")
+    ftm = _sum_attr(rows, "ftm")
+    fta = _sum_attr(rows, "fta")
+    pts = _sum_attr(rows, "pts")
+
+    if key == "ts_pct":
+        denom = 2.0 * (fga + 0.44 * fta)
+        return 100.0 * pts / denom if denom else None
+    if key == "efg_pct":
+        return 100.0 * (fgm + 0.5 * fg3m) / fga if fga else None
+    if key == "fg_pct":
+        return 100.0 * fgm / fga if fga else None
+    if key == "fg3_pct":
+        return 100.0 * fg3m / fg3a if fg3a else None
+    if key == "ft_pct":
+        return 100.0 * ftm / fta if fta else None
+    if key == "fg3ar":
+        # 3-point attempt rate: proportion of field-goal attempts that are 3-pointers.
+        return 100.0 * fg3a / fga if fga else None
+    if key == "ftr":
+        # Free-throw rate: FTA per FGA (measures ability to draw fouls).
+        return 100.0 * fta / fga if fga else None
+    if key == "pts_per100":
+        # Pool possessions as pace (poss/40 min) × minutes / 40.  Summing pace×minutes
+        # across competitions gives a weighted possession estimate, exact to the
+        # accuracy of the underlying pace measurement.
+        pace_min_sum = sum(
+            float(getattr(r, "pace", None) or 0) * float(getattr(r, "minutes", 0) or 0)
+            for r in rows
+        )
+        poss = pace_min_sum / 40.0
+        return 100.0 * pts / poss if poss else None
+    # Unknown key — callers should only pass recombinable keys from the catalog.
+    return None
 
 
 # --------------------------------------------------------------------------- #
