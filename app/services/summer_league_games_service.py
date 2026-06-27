@@ -27,6 +27,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
+from app.services.summer_league.metrics import game_score_from_row
 
 # Human-readable venue labels keyed by the competition ``venue_slug``.
 VENUE_LABELS: dict[str, str] = {
@@ -194,6 +195,8 @@ class PlayerLogRow:
     ftm: Optional[int]
     fta: Optional[int]
     plus_minus: Optional[int]
+    # Hollinger Game Score for this single game.
+    gmsc: Optional[float] = None
 
 
 @dataclass
@@ -649,6 +652,9 @@ async def get_player_game_logs(
             pgl.fg3a,
             pgl.ftm,
             pgl.fta,
+            pgl.oreb,
+            pgl.dreb,
+            pgl.pf,
             pgl.plus_minus,
         )  # type: ignore[call-overload, misc]
         .select_from(pgl)
@@ -697,6 +703,7 @@ async def get_player_game_logs(
                 ftm=r.ftm,
                 fta=r.fta,
                 plus_minus=r.plus_minus,
+                gmsc=round(game_score_from_row(r), 1),
             )
         )
 
