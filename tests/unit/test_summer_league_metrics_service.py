@@ -24,6 +24,7 @@ def _season(
     *,
     minutes: float,
     per: Optional[float] = None,
+    ts: Optional[float] = None,
     bpm: Optional[float] = None,
     ws: Optional[float] = None,
     vorp: Optional[float] = None,
@@ -38,7 +39,7 @@ def _season(
         venue_abbr="LV",
         gp=3,
         minutes=minutes,
-        ts_pct=None,
+        ts_pct=ts,
         efg_pct=None,
         gmsc=None,
         usg_pct=None,
@@ -104,8 +105,12 @@ def test_weighted_mean_empty_is_none() -> None:
 def test_career_sums_additive_shares() -> None:
     """Cumulative WS/VORP are summed; PER/BPM and the /82 rates are weighted."""
     seasons = [
-        _season(minutes=100.0, per=18.0, bpm=4.0, ws=1.0, vorp=0.6, ws82=8.0, vorp82=6.0),
-        _season(minutes=300.0, per=22.0, bpm=8.0, ws=2.0, vorp=1.4, ws82=12.0, vorp82=10.0),
+        _season(
+            minutes=100.0, per=18.0, ts=54.0, bpm=4.0, ws=1.0, vorp=0.6, ws82=8.0, vorp82=6.0
+        ),
+        _season(
+            minutes=300.0, per=22.0, ts=58.0, bpm=8.0, ws=2.0, vorp=1.4, ws82=12.0, vorp82=10.0
+        ),
     ]
     career = _career(seasons)
 
@@ -117,6 +122,8 @@ def test_career_sums_additive_shares() -> None:
     # Minute-weighted: (18*100 + 22*300)/400 = 21.0 ; (4*100 + 8*300)/400 = 7.0
     assert career.per_avg == 21.0
     assert career.bpm_avg == 7.0
+    # TS% is minute-weighted too: (54*100 + 58*300)/400 = 57.0
+    assert career.ts_avg == 57.0
     # Projections are minute-weighted, not summed:
     # (8*100 + 12*300)/400 = 11.0 ; (6*100 + 10*300)/400 = 9.0
     assert career.ws82_avg == 11.0
