@@ -153,7 +153,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="int",
         shown=True,
     ),
@@ -173,7 +173,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -183,7 +183,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -193,7 +193,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -203,7 +203,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -213,7 +213,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -223,7 +223,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -275,7 +275,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_SHOOTING,
         _BUCKET_RECOMBINABLE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="pct",
         shown=True,
     ),
@@ -345,7 +345,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_SHOOTING,
         _BUCKET_RECOMBINABLE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="pct",
         shown=True,
     ),
@@ -355,7 +355,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_SHOOTING,
         _BUCKET_RECOMBINABLE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="pct",
         shown=True,
     ),
@@ -365,7 +365,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_SHOOTING,
         _BUCKET_RECOMBINABLE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="pct",
         shown=True,
     ),
@@ -378,7 +378,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_ADVANCED,
         _BUCKET_RECOMBINABLE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="pct",
         shown=True,
     ),
@@ -390,7 +390,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_ADVANCED,
         _BUCKET_RATE_COMPOSITE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -400,7 +400,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_ADVANCED,
         _BUCKET_RATE_COMPOSITE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -410,7 +410,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_ADVANCED,
         _BUCKET_RATE_COMPOSITE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -420,7 +420,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_ADVANCED,
         _BUCKET_RATE_COMPOSITE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -430,7 +430,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_ADVANCED,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -440,7 +440,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_ADVANCED,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -885,6 +885,190 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
 
 
 # --------------------------------------------------------------------------- #
+# Metric threshold filter
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class MetricFilter:
+    """A validated metric threshold filter for the Explorer.
+
+    Attributes:
+        col:   Catalog column key with filterable=True.
+        op:    Operator: ``">="`` or ``"<="``; URL form ``"gte"``/``"lte"`` is mapped
+               during parsing.
+        value: Numeric threshold.
+    """
+
+    col: str
+    op: str  # ">=" | "<="
+    value: float
+
+
+# Derived set of filterable column keys (from catalog).
+_FILTERABLE_KEYS: frozenset[str] = frozenset(
+    c.key for c in PLAYER_COLUMN_CATALOG if c.filterable
+)
+
+
+def parse_metric_filters(params: dict[str, str]) -> list[MetricFilter]:
+    """Parse ``fcol0/fop0/fval0`` … ``fcol2/fop2/fval2`` into validated filters.
+
+    Accepts up to 3 indexed filter rows. Each filter needs a filterable catalog
+    key (``fcol{i}``), a valid operator (``fop{i}``: ``"gte"`` or ``"lte"``), and a
+    numeric threshold (``fval{i}``). Invalid predicates are silently dropped —
+    this function never raises; other valid filters still apply.
+
+    Args:
+        params: Raw URL query-string params (one value per key).
+
+    Returns:
+        List of up to 3 validated :class:`MetricFilter` instances (may be empty).
+    """
+    _OP_MAP = {"gte": ">=", "lte": "<="}
+    filters: list[MetricFilter] = []
+    for i in range(3):
+        col = params.get(f"fcol{i}", "").strip()
+        op_raw = params.get(f"fop{i}", "").strip()
+        val_str = params.get(f"fval{i}", "").strip()
+        if not col or not op_raw or not val_str:
+            continue
+        if col not in _FILTERABLE_KEYS:
+            continue
+        op = _OP_MAP.get(op_raw)
+        if op is None:
+            continue
+        try:
+            value = float(val_str)
+        except ValueError:
+            continue
+        filters.append(MetricFilter(col=col, op=op, value=value))
+    return filters
+
+
+def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
+    """HAVING expression for a metric filter at career grain.
+
+    Filters are applied to SQL aggregate expressions, not mode-scaled display
+    rates. Counting stats (pts/reb/etc.) filter on career totals (SUM) for
+    mode-independent URL round-trips — ``fcol0=pts&fval0=40`` means "40 total
+    career points" regardless of the selected display mode. Percentage and
+    advanced metrics are mode-independent by nature.
+    """
+
+    def _op(expr: Any) -> Any:
+        return expr >= f.value if f.op == ">=" else expr <= f.value
+
+    col = f.col
+    # Rate composites: minute-weighted average (mirrors _rate_composite_agg).
+    if col in ("per", "ortg", "drtg", "bpm"):
+        attr = getattr(ps, col)
+        eligible_min = func.sum(  # type: ignore[attr-defined]
+            case((attr.isnot(None), ps.minutes), else_=literal(0))  # type: ignore[attr-defined]
+        )
+        return _op(func.sum(attr * ps.minutes) / func.nullif(eligible_min, 0))  # type: ignore[attr-defined]
+    # Additive advanced (exact sum).
+    if col in ("ws", "vorp"):
+        return _op(func.sum(getattr(ps, col)))  # type: ignore[attr-defined]
+    # Box counting stats — filter on career totals.
+    if col in ("pts", "reb", "ast", "stl", "blk", "tov", "gp"):
+        return _op(func.sum(getattr(ps, col)))  # type: ignore[attr-defined]
+    # Minutes (career total in minutes).
+    if col == "min":
+        return _op(func.sum(ps.minutes))  # type: ignore[attr-defined]
+    # Recombinable percentage metrics — pool ratio from summed box components.
+    if col == "efg_pct":
+        return _op(
+            100.0
+            * (func.sum(ps.fgm) + 0.5 * func.sum(ps.fg3m))  # type: ignore[attr-defined]
+            / func.nullif(func.sum(ps.fga), 0)  # type: ignore[attr-defined]
+        )
+    if col == "fg_pct":
+        return _op(100.0 * func.sum(ps.fgm) / func.nullif(func.sum(ps.fga), 0))  # type: ignore[attr-defined]
+    if col == "fg3_pct":
+        return _op(100.0 * func.sum(ps.fg3m) / func.nullif(func.sum(ps.fg3a), 0))  # type: ignore[attr-defined]
+    if col == "ft_pct":
+        return _op(100.0 * func.sum(ps.ftm) / func.nullif(func.sum(ps.fta), 0))  # type: ignore[attr-defined]
+    if col == "ts_pct":
+        denom = 2.0 * (func.sum(ps.fga) + 0.44 * func.sum(ps.fta))  # type: ignore[attr-defined]
+        return _op(100.0 * func.sum(ps.pts) / func.nullif(denom, 0))  # type: ignore[attr-defined]
+    return None
+
+
+def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
+    """WHERE condition for a metric filter at per_competition grain.
+
+    Each row is one competition's season totals. Filters apply to raw season
+    column values, not mode-scaled display rates.
+    """
+
+    def _op(expr: Any) -> Any:
+        return expr >= f.value if f.op == ">=" else expr <= f.value
+
+    col = f.col
+    # Stored composite values: filter directly on the season column.
+    if col in ("per", "ortg", "drtg", "bpm", "ws", "vorp"):
+        return _op(getattr(ps, col))
+    # Box counting season totals.
+    if col in ("pts", "reb", "ast", "stl", "blk", "tov", "gp"):
+        return _op(getattr(ps, col))
+    # Minutes stored as minutes in the season table.
+    if col == "min":
+        return _op(ps.minutes)
+    # Recombinable percentages from season box components.
+    if col == "efg_pct":
+        return _op(100.0 * (ps.fgm + 0.5 * ps.fg3m) / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
+    if col == "fg_pct":
+        return _op(100.0 * ps.fgm / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
+    if col == "fg3_pct":
+        return _op(100.0 * ps.fg3m / func.nullif(ps.fg3a, 0))  # type: ignore[attr-defined]
+    if col == "ft_pct":
+        return _op(100.0 * ps.ftm / func.nullif(ps.fta, 0))  # type: ignore[attr-defined]
+    if col == "ts_pct":
+        denom = 2.0 * (ps.fga + 0.44 * ps.fta)
+        return _op(100.0 * ps.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
+    return None
+
+
+def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
+    """WHERE condition for a metric filter at per_game grain.
+
+    Each row is a single game log. Advanced composites (per/ortg/bpm/ws/vorp)
+    are not stored on game logs and are silently skipped.
+    """
+
+    def _op(expr: Any) -> Any:
+        return expr >= f.value if f.op == ">=" else expr <= f.value
+
+    col = f.col
+    # Per-game box stats (raw game log values — the displayed value in per_game mode).
+    if col in ("pts", "reb", "ast", "stl", "blk", "tov"):
+        return _op(getattr(pgl, col))
+    # gp per row is always 1 — filter not meaningful; skip.
+    if col == "gp":
+        return None
+    # Minutes per game: minutes_seconds / 60.
+    if col == "min":
+        return _op(pgl.minutes_seconds / 60.0)  # type: ignore[attr-defined]
+    # Percentage metrics from game-log box columns.
+    if col == "efg_pct":
+        return _op(
+            100.0 * (pgl.fgm + 0.5 * pgl.fg3m) / func.nullif(pgl.fga, 0)  # type: ignore[attr-defined]
+        )
+    if col == "fg_pct":
+        return _op(100.0 * pgl.fgm / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
+    if col == "fg3_pct":
+        return _op(100.0 * pgl.fg3m / func.nullif(pgl.fg3a, 0))  # type: ignore[attr-defined]
+    if col == "ft_pct":
+        return _op(100.0 * pgl.ftm / func.nullif(pgl.fta, 0))  # type: ignore[attr-defined]
+    if col == "ts_pct":
+        denom = 2.0 * (pgl.fga + 0.44 * pgl.fta)
+        return _op(100.0 * pgl.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
+    # Advanced composites not stored on game logs — silently skip.
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # DTOs
 # --------------------------------------------------------------------------- #
 
@@ -915,6 +1099,8 @@ class ExplorerQuery:
     sort: str = "pts"
     direction: str = "desc"
     page: int = 1
+    # Metric threshold filters (up to 3); parsed from fcol{i}/fop{i}/fval{i} params.
+    metric_filters: list[MetricFilter] = field(default_factory=list)
     # When False, query builders skip LIMIT/OFFSET and return every matching
     # row (used by the CSV export so downloads are not capped to one page).
     paginate: bool = True
@@ -1037,6 +1223,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     min_games = _to_int(params.get("min_gp"))
     min_minutes = _to_int(params.get("min_min"))
     page = _to_int(params.get("page")) or 1
+    metric_filters = parse_metric_filters(params)
 
     return ExplorerQuery(
         subject=subject,
@@ -1061,6 +1248,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         sort=sort,
         direction=direction,
         page=max(1, page),
+        metric_filters=metric_filters,
     )
 
 
@@ -1479,6 +1667,14 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     # round_type is not supported at career grain — season rows aggregate a full
     # competition, not individual round games.  Silently ignored here.
 
+    # Apply metric threshold filters as HAVING clauses (career grain).
+    # Filters are on SQL aggregate expressions — career totals for counting stats,
+    # pooled ratios for percentages, minute-weighted averages for rate composites.
+    for mf in q.metric_filters:
+        having_expr = _career_metric_having(mf, ps)
+        if having_expr is not None:
+            stmt = stmt.having(having_expr)  # type: ignore[arg-type]
+
     # Count total matching rows before slicing (wrapping subquery avoids fetching all rows).
     total = await _count_subquery(db, stmt)
 
@@ -1664,6 +1860,13 @@ async def _query_players_per_competition(
             ps.year - func.extract("year", pm.birthdate)  # type: ignore[arg-type]
             <= q.age_max
         )
+    # Metric threshold filters applied as WHERE conditions on season column values.
+    # Each row is one competition's season totals; filters are on raw column values,
+    # not mode-scaled display rates.
+    for mf in q.metric_filters:
+        where_expr = _per_comp_metric_where(mf, ps)
+        if where_expr is not None:
+            conds.append(where_expr)
 
     base_select = [
         pm.slug,
@@ -1857,6 +2060,13 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
         conds.append(
             comp.year - func.extract("year", pm.birthdate) <= q.age_max  # type: ignore[arg-type]
         )
+    # Metric threshold filters applied as WHERE conditions on game-log columns.
+    # Advanced composites (per/ortg/bpm/ws/vorp) are not stored on game logs and are
+    # silently skipped by _per_game_metric_where.
+    for mf in q.metric_filters:
+        where_expr = _per_game_metric_where(mf, pgl)
+        if where_expr is not None:
+            conds.append(where_expr)
 
     stmt = (
         select(

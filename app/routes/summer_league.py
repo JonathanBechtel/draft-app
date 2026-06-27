@@ -24,6 +24,7 @@ from app.services.summer_league_games_service import (
     search_games,
 )
 from app.services.summer_league_explorer_service import (
+    PLAYER_COLUMN_CATALOG,
     parse_query,
     run_explorer_query,
 )
@@ -223,11 +224,13 @@ async def summer_league_explorer(
         if request.query_params.get("partial")
         else "stats/summer-league/explorer.html"
     )
+    filterable_columns = [c for c in PLAYER_COLUMN_CATALOG if c.filterable]
     return request.app.state.templates.TemplateResponse(
         template,
         {
             "request": request,
             "result": result,
+            "filterable_columns": filterable_columns,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

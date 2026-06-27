@@ -4,6 +4,13 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+<style>
+.slg-hidden { display: none; }
+.slg-metric-filter-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.3rem; }
+.slg-metric-filter-col { min-width: 6rem; }
+.slg-metric-filter-val { width: 5rem; }
+.slg-add-filter-btn { font-size: 0.8rem; background: none; border: 1px solid var(--accent, #4aa8ff); border-radius: 3px; padding: 0.2rem 0.5rem; cursor: pointer; color: var(--accent, #4aa8ff); }
+</style>
 {% endblock %}
 
 {% block extra_js %}
@@ -149,6 +156,30 @@
     <div class="slg-filter grain-hide-per-game">
       <label for="ex-min-min">Min MIN</label>
       <input id="ex-min-min" type="number" name="min_min" min="0" value="{{ q.min_minutes }}">
+    </div>
+    {# ── Metric threshold filters (up to 3 rows) ──────────────────────────── #}
+    <div class="slg-filter slg-filter--full" id="metric-filter-section">
+      <label class="slg-filter__label--metric">Stat filters</label>
+      <div id="metric-filter-rows">
+        {% for i in range(3) %}
+        {%- set mf = q.metric_filters[i] if i < q.metric_filters|length else none -%}
+        <div class="slg-metric-filter-row{% if mf is none and i > 0 %} slg-hidden{% endif %}" id="metric-filter-row-{{ i }}">
+          <select name="fcol{{ i }}" class="slg-metric-filter-col">
+            <option value="">— stat —</option>
+            {% for col in filterable_columns %}
+            <option value="{{ col.key }}"{{ ' selected' if mf and mf.col == col.key else '' }}>{{ col.label }}</option>
+            {% endfor %}
+          </select>
+          <select name="fop{{ i }}" class="slg-metric-filter-op">
+            <option value="gte"{{ ' selected' if mf and mf.op == '>=' else '' }}>&ge;</option>
+            <option value="lte"{{ ' selected' if mf and mf.op == '<=' else '' }}>&le;</option>
+          </select>
+          <input type="number" name="fval{{ i }}" class="slg-metric-filter-val"
+                 value="{{ mf.value if mf else '' }}" step="any" placeholder="value">
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="slg-add-filter-btn" id="add-metric-filter">+ Add filter</button>
     </div>
     {% endif %}
     <div class="slg-filter slg-filter--actions">

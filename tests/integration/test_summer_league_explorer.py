@@ -3122,3 +3122,139 @@ async def test_invalid_sort_coerces(db_session: AsyncSession) -> None:
     assert q_ws_pc.sort == "ws", (
         f"ws should be valid at per_competition grain, got {q_ws_pc.sort!r}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# Ticket #407: Metric threshold filters
+# --------------------------------------------------------------------------- #
+
+from app.services.summer_league_explorer_service import (  # noqa: E402
+    MetricFilter,
+    parse_metric_filters,
+)
+
+
+@pytest.mark.asyncio
+async def test_metric_threshold_filter(db_session: AsyncSession) -> None:
+    """Metric filter on career pts narrows results: pts >= 40 keeps high scorers only.
+
+    Scorer: 60 career pts (2 x 30). Role: 20 career pts (2 x 10).
+    fcol0=pts, fop0=gte, fval0=40 → Scorer only.
+    fcol0=pts, fop0=lte, fval0=25 → Role only.
+    """
+    await _seed(db_session)
+
+    q_high = parse_query({"fcol0": "pts", "fop0": "gte", "fval0": "40"})
+    result_high = await run_explorer_query(db_session, q_high)
+    assert result_high.total == 1
+    assert result_high.rows[0].label == "Big Scorer"
+
+    q_low = parse_query({"fcol0": "pts", "fop0": "lte", "fval0": "25"})
+    result_low = await run_explorer_query(db_session, q_low)
+    assert result_low.total == 1
+    assert result_low.rows[0].label == "Role Player"
+
+
+@pytest.mark.asyncio
+async def test_metric_filter_with_facets(db_session: AsyncSession) -> None:
+    """Metric filter combines with existing facet filters (venue).
+
+    Both players would pass pts >= 5 alone. Combining with venue=las_vegas
+    (Scorer only) should return only Scorer.
+    """
+    await _seed(db_session)
+
+    q = parse_query({"fcol0": "pts", "fop0": "gte", "fval0": "5", "venue": "las_vegas"})
+    result = await run_explorer_query(db_session, q)
+    assert result.total == 1
+    assert result.rows[0].label == "Big Scorer"
+
+
+@pytest.mark.asyncio
+async def test_metric_filter_invalid_inputs_graceful(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """Invalid metric filter inputs are silently dropped — never a 500.
+
+    Tests: unknown column, unknown operator, non-numeric value, non-filterable column.
+    Valid filters in the same request still apply (or none if all invalid).
+    """
+    await _seed(db_session)
+
+    # Unknown column: ignored, all 2 players returned.
+    r1 = await app_client.get(
+        "/stats/summer-league/explorer?fcol0=nonexistent_col&fop0=gte&fval0=10"
+    )
+    assert r1.status_code == 200
+    assert "2 results" in r1.text
+
+    # Non-filterable column (fgm is box but not filterable).
+    r2 = await app_client.get(
+        "/stats/summer-league/explorer?fcol0=fgm&fop0=gte&fval0=5"
+    )
+    assert r2.status_code == 200
+    assert "2 results" in r2.text
+
+    # Bad operator: ignored.
+    r3 = await app_client.get(
+        "/stats/summer-league/explorer?fcol0=pts&fop0=INVALID&fval0=10"
+    )
+    assert r3.status_code == 200
+    assert "2 results" in r3.text
+
+    # Non-numeric value: ignored.
+    r4 = await app_client.get(
+        "/stats/summer-league/explorer?fcol0=pts&fop0=gte&fval0=not_a_number"
+    )
+    assert r4.status_code == 200
+    assert "2 results" in r4.text
+
+    # Mixed: one invalid + one valid (pts >= 40 keeps Scorer only).
+    r5 = await app_client.get(
+        "/stats/summer-league/explorer"
+        "?fcol0=BADCOL&fop0=gte&fval0=99"
+        "&fcol1=pts&fop1=gte&fval1=40"
+    )
+    assert r5.status_code == 200
+    assert "1 result" in r5.text
+    assert "Big Scorer" in r5.text
+
+
+@pytest.mark.asyncio
+async def test_advanced_url_roundtrip(db_session: AsyncSession) -> None:
+    """Metric filters round-trip through parse_query and produce correct DB results.
+
+    parse_query correctly parses fcol/fop/fval params into MetricFilter objects.
+    The same params produce the same result as running ExplorerQuery directly.
+    """
+    # parse_metric_filters unit checks.
+    filters = parse_metric_filters({
+        "fcol0": "pts", "fop0": "gte", "fval0": "20",
+        "fcol1": "per", "fop1": "lte", "fval1": "15.5",
+        "fcol2": "efg_pct", "fop2": "gte", "fval2": "50",
+    })
+    assert len(filters) == 3
+    assert filters[0] == MetricFilter(col="pts", op=">=", value=20.0)
+    assert filters[1] == MetricFilter(col="per", op="<=", value=15.5)
+    assert filters[2] == MetricFilter(col="efg_pct", op=">=", value=50.0)
+
+    # Round-trip: URL params → parse_query → same filters.
+    q = parse_query({
+        "fcol0": "pts", "fop0": "gte", "fval0": "40",
+    })
+    assert len(q.metric_filters) == 1
+    assert q.metric_filters[0] == MetricFilter(col="pts", op=">=", value=40.0)
+
+    # DB result: pts >= 40 (career totals) → Scorer (60 pts) passes, Role (20 pts) fails.
+    await _seed(db_session)
+    result = await run_explorer_query(db_session, q)
+    assert result.total == 1
+    assert result.rows[0].label == "Big Scorer"
+
+    # Both valid filters: pts >= 5 (both qualify) and gp >= 2 (both qualify).
+    q2 = parse_query({
+        "fcol0": "pts", "fop0": "gte", "fval0": "5",
+        "fcol1": "gp", "fop1": "gte", "fval1": "2",
+    })
+    result2 = await run_explorer_query(db_session, q2)
+    assert result2.total == 2  # both players qualify

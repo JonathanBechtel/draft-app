@@ -22,6 +22,9 @@
 {%- if q.undrafted %}&undrafted=1{% endif %}
 {%- if q.age_min %}&age_min={{ q.age_min }}{% endif %}
 {%- if q.age_max %}&age_max={{ q.age_max }}{% endif %}
+{%- for mf in q.metric_filters -%}
+&fcol{{ loop.index0 }}={{ mf.col }}&fop{{ loop.index0 }}={{ 'gte' if mf.op == '>=' else 'lte' }}&fval{{ loop.index0 }}={{ mf.value }}
+{%- endfor -%}
 {%- if page %}&page={{ page }}{% endif %}
 {%- endmacro -%}
 

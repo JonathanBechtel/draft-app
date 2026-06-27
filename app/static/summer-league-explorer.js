@@ -17,6 +17,9 @@
   // The persistent ancestor we delegate clicks from (survives result swaps).
   var main = resultsHost.closest("main") || document.body;
 
+  // "Add filter" button — referenced in syncForm too, so hoist.
+  var addBtn = document.getElementById("add-metric-filter");
+
   function withPartial(url) {
     return url + (url.indexOf("?") === -1 ? "?" : "&") + "partial=1";
   }
@@ -38,6 +41,18 @@
       if (!el.name || el.type === "submit" || el.type === "button") return;
       el.value = params.has(el.name) ? params.get(el.name) : "";
     });
+    // Reveal metric filter rows that have data in the URL.
+    for (var i = 0; i < 3; i++) {
+      var row = document.getElementById("metric-filter-row-" + i);
+      if (!row) continue;
+      var hasData = params.get("fcol" + i) && params.get("fval" + i);
+      if (hasData) row.classList.remove("slg-hidden");
+    }
+    // Sync add-filter button visibility.
+    if (addBtn) {
+      var anyHidden = document.querySelectorAll(".slg-metric-filter-row.slg-hidden").length > 0;
+      addBtn.style.display = anyHidden ? "" : "none";
+    }
   }
 
   function load(url, push) {
@@ -107,4 +122,18 @@
   window.addEventListener("popstate", function () {
     load(window.location.href, false);
   });
+
+  // Metric filter row reveal: "Add filter" shows the next hidden row.
+  if (addBtn) {
+    addBtn.addEventListener("click", function () {
+      var rows = document.querySelectorAll(".slg-metric-filter-row.slg-hidden");
+      if (rows.length > 0) {
+        rows[0].classList.remove("slg-hidden");
+      }
+      // Hide the button once all rows are visible.
+      if (document.querySelectorAll(".slg-metric-filter-row.slg-hidden").length === 0) {
+        addBtn.style.display = "none";
+      }
+    });
+  }
 })();
