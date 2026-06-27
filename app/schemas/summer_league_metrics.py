@@ -168,9 +168,28 @@ class SummerLeaguePlayerSeason(SQLModel, table=True):  # type: ignore[call-arg]
     # Shooting / efficiency (player-only).
     ts_pct: Optional[float] = Field(default=None)
     efg_pct: Optional[float] = Field(default=None)
+    # fg3ar: 3PA / FGA derived from box data (fraction, 0–1, rounded to 3 dp).
+    # three_rate: same concept but derived from shot-chart zone data; the two
+    # will differ when shot-chart coverage is incomplete (unresolved players,
+    # missing game files) and can be used as a cross-check.  Both are fractions.
     fg3ar: Optional[float] = Field(default=None)
     ftr: Optional[float] = Field(default=None)
     gmsc: Optional[float] = Field(default=None)  # per-game Game Score
+
+    # Shot-diet rates derived from SummerLeagueShotEvent zone data.
+    # Populated only when shot-chart data exists for the player-competition;
+    # NULL otherwise (never fabricated from box data).
+    # Stored as fractions (0.0–1.0), rounded to 4 decimal places, consistent
+    # with fg3ar / ftr.  Backcourt shots excluded from the denominator.
+    # Zone mapping (NBA SHOT_ZONE_BASIC):
+    #   rim_rate     — Restricted Area
+    #   mid_rate     — In The Paint (Non-RA) + Mid-Range
+    #   three_rate   — Left Corner 3 + Right Corner 3 + Above the Break 3
+    #   corner3_rate — Left Corner 3 + Right Corner 3 (subset of three_rate)
+    rim_rate: Optional[float] = Field(default=None)
+    mid_rate: Optional[float] = Field(default=None)
+    three_rate: Optional[float] = Field(default=None)
+    corner3_rate: Optional[float] = Field(default=None)
 
     # Rate stats (need team + opponent context).
     usg_pct: Optional[float] = Field(default=None)
