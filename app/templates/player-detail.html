@@ -449,7 +449,16 @@
            since they span multiple pools. #}
         {% if sl_shotchart %}
         <div class="sl-shotchart-wrap">
-          <div class="stats-section-label">Shot Chart <span class="sl-shotchart-scope">(Career)</span></div>
+          <div class="stats-section-label" style="display:flex;align-items:center;justify-content:space-between;">
+            <span>Shot Chart <span class="sl-shotchart-scope">(Career)</span></span>
+            <button class="export-btn" title="Save as Image" onclick="exportSLShotChart()" style="margin-left:12px;">
+              <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
+          </div>
           <div id="sl-shotchart-root"></div>
           {# Zone table — always shown regardless of suppressed state #}
           {% if sl_shotchart.zones %}

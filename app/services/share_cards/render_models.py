@@ -191,6 +191,51 @@ class DraftYearRenderModel:
     template_version: str = TEMPLATE_VERSION
 
 
+@dataclass
+class SLZoneRow:
+    """One shot-zone row for the SL shot-chart share card."""
+
+    shot_zone_basic: str
+    fga: int
+    fgm: int
+    fg_pct: Optional[float]  # None when fga == 0
+    freq_pct: float  # fraction of total FGA (0–1)
+    pool_fg_pct: Optional[float]  # competition-pool baseline; None for career
+    fg_pct_display: str  # pre-formatted, e.g. "47.2%"
+    freq_pct_display: str  # pre-formatted, e.g. "34%"
+    # vs_pool: "above" | "below" | "average" | "unknown"
+    vs_pool: str = "unknown"
+
+
+@dataclass
+class SLShotDiet:
+    """Shot-diet summary for the SL shot-chart share card."""
+
+    rim_rate: Optional[float]
+    mid_rate: Optional[float]
+    three_rate: Optional[float]
+    corner3_rate: Optional[float]
+    rim_display: str = "—"
+    mid_display: str = "—"
+    three_display: str = "—"
+    corner3_display: str = "—"
+
+
+@dataclass
+class SLShotChartRenderModel:
+    """Player SL shot-chart share card."""
+
+    title: str  # e.g., "WEMBY — SL SHOT CHART"
+    subtitle: str  # e.g., "Summer League · Career · 87 FGA"
+    player: PlayerBadge
+    total_fga: int
+    suppressed: bool  # True when < 20 FGA
+    zones: list[SLZoneRow] = field(default_factory=list)
+    shot_diet: Optional[SLShotDiet] = None
+    accent_color: str = "#f97316"  # orange
+    template_version: str = TEMPLATE_VERSION
+
+
 # Type alias for all render model types
 RenderModel = (
     VSArenaRenderModel
@@ -199,4 +244,5 @@ RenderModel = (
     | CompsRenderModel
     | MetricLeadersRenderModel
     | DraftYearRenderModel
+    | SLShotChartRenderModel
 )
