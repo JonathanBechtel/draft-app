@@ -25,6 +25,7 @@ from app.services.summer_league_games_service import (
 )
 from app.services.summer_league_explorer_service import (
     PLAYER_COLUMN_CATALOG,
+    get_player_drilldown_rows,
     parse_query,
     run_explorer_query,
 )
@@ -192,6 +193,39 @@ def _explorer_csv(result: object) -> StreamingResponse:
         media_type="text/csv",
         headers={
             "Content-Disposition": 'attachment; filename="summer-league-explorer.csv"'
+        },
+    )
+
+
+@router.get("/stats/summer-league/explorer/drilldown", response_class=HTMLResponse)
+async def summer_league_explorer_drilldown(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Per-competition drill-down for a single career-grain player row.
+
+    Returns an HTML partial containing ``<tr>`` rows for each competition the
+    player appeared in within the filtered scope.  Consumed by the JS expand
+    affordance on career-grain rows in the Explorer.
+
+    Query params: ``player_slug`` (required) + any Explorer scope filters
+    (``year_min``, ``year_max``, ``venue``, ``mode``, …).  A missing or blank
+    ``player_slug`` returns HTTP 400.
+    """
+    params = dict(request.query_params)
+    player_slug = params.get("player_slug", "").strip()
+    if not player_slug:
+        return HTMLResponse("", status_code=400)
+
+    scope_q = parse_query(params)
+    result = await get_player_drilldown_rows(db, player_slug, scope_q)
+
+    return request.app.state.templates.TemplateResponse(
+        "stats/summer-league/_explorer_drilldown.html",
+        {
+            "request": request,
+            "result": result,
+            "player_slug": player_slug,
         },
     )
 

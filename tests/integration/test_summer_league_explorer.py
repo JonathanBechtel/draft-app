@@ -3333,3 +3333,94 @@ async def test_advanced_url_roundtrip(db_session: AsyncSession) -> None:
     })
     result2 = await run_explorer_query(db_session, q2)
     assert result2.total == 2  # both players qualify
+
+
+# --------------------------------------------------------------------------- #
+# Ticket #409: CSV advanced columns + per-pool drill-down
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_csv_export_advanced(
+    db_session: AsyncSession,
+    app_client: AsyncClient,
+) -> None:
+    """CSV export for career grain includes advanced column headers and all rows.
+
+    Career grain always returns _PLAYER_STAT_COLUMNS + _PLAYER_ADVANCED_COLUMNS
+    in result.columns; the CSV writer iterates result.columns so the header and
+    data rows automatically include PER, BPM, TS%, WS, VORP.
+    """
+    await _seed(db_session)  # 2 qualifying players
+
+    resp = await app_client.get("/stats/summer-league/explorer?format=csv")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+
+    lines = [ln for ln in resp.text.splitlines() if ln.strip()]
+    header = lines[0]
+
+    # Advanced column labels must appear in the header.
+    for label in ("TS%", "PER", "ORtg", "DRtg", "BPM", "WS", "VORP"):
+        assert label in header, f"expected {label!r} in CSV header, got: {header}"
+
+    # Row count: header + 2 players.
+    assert len(lines) == 3, f"expected 3 lines (header + 2 rows), got {len(lines)}"
+
+
+@pytest.mark.asyncio
+async def test_pool_drilldown(
+    db_session: AsyncSession,
+    app_client: AsyncClient,
+) -> None:
+    """Drill-down endpoint returns per-competition rows composing a career row.
+
+    Seeds one player who appeared in two competitions (Vegas 2024 and SLC 2025).
+    The drill-down response must contain one row per competition, rendered as
+    slg-drilldown-row elements, and reference both years in the row labels.
+    """
+    player = make_player("Drill", "Downer")
+    db_session.add(player)
+    await db_session.flush()
+
+    c1 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2025, venue_slug="salt_lake_city", league_id="16")
+
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=20,
+    )
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c2,
+        year=2025,
+        venue_slug="salt_lake_city",
+        gp=2,
+        minutes=60.0,
+        pts=30,
+    )
+    await db_session.commit()
+
+    assert player.slug is not None
+    resp = await app_client.get(
+        f"/stats/summer-league/explorer/drilldown?player_slug={player.slug}"
+    )
+    assert resp.status_code == 200
+    body = resp.text
+
+    # Both competition years must appear in the rendered rows.
+    assert "2024" in body, "expected 2024 competition row in drilldown"
+    assert "2025" in body, "expected 2025 competition row in drilldown"
+    # Drilldown rows carry the identifying CSS class.
+    assert "slg-drilldown-row" in body
+
+    # Missing player_slug returns 400.
+    bad = await app_client.get("/stats/summer-league/explorer/drilldown")
+    assert bad.status_code == 400

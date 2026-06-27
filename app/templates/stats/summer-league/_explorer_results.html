@@ -91,7 +91,7 @@
             {% for col in result.columns %}
             {%- set is_active = result.query.sort == col.key -%}
             {%- set next_dir = 'asc' if (is_active and result.query.direction == 'desc') else 'desc' -%}
-            <th scope="col" class="{{ 'slg-sort-active' if is_active else '' }}">
+            <th scope="col" class="{{ 'slg-sort-active' if is_active else '' }}" data-col-group="{{ col.group }}">
               <a href="{{ explorer_qs(result.query, sort=col.key, direction=next_dir) }}">
                 {{ col.label }}{% if is_active %} {{ '▾' if result.query.direction == 'desc' else '▴' }}{% endif %}
               </a>
@@ -104,10 +104,14 @@
           <tr>
             <th scope="row" class="slg-explorer__label">
               {% if row.href %}<a href="{{ row.href }}">{{ row.label }}</a>{% else %}<span class="slg-bx-name--stub">{{ row.label }}</span>{% endif %}
+              {%- if result.query.grain == 'career' and result.subject == 'players' and row.href -%}
+              {%- set player_slug = row.href.split('/')[-1] -%}
+              <button class="slg-expand-btn" data-player-slug="{{ player_slug }}" aria-expanded="false" type="button" title="Expand per-competition breakdown">&#9654;</button>
+              {%- endif -%}
             </th>
             {% for col in result.columns %}
             {%- set v = row.values.get(col.key) -%}
-            <td class="{{ 'slg-strong' if col.key == result.query.sort else '' }}">
+            <td class="{{ 'slg-strong' if col.key == result.query.sort else '' }}" data-col-group="{{ col.group }}">
               {%- if col.key in ('gp', 'w', 'l', 'total', 'margin') -%}
                 {{ v }}
               {%- elif col.key in result.pooled_composite_keys and v is not none -%}

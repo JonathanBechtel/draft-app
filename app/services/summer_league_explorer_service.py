@@ -697,10 +697,12 @@ _TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("ppg", "PPG"),
     ExplorerColumn("opp_ppg", "OPP"),
     ExplorerColumn("diff", "DIFF"),
-    ExplorerColumn("pace", "PACE"),
-    ExplorerColumn("ortg", "ORtg"),
-    ExplorerColumn("drtg", "DRtg"),
-    ExplorerColumn("net_rtg", "NetRtg"),
+    # Advanced team metrics (pace + ratings) — grouped so the column-group toggle
+    # can show/hide them alongside the player advanced columns.
+    ExplorerColumn("pace", "PACE", _GROUP_ADVANCED),
+    ExplorerColumn("ortg", "ORtg", _GROUP_ADVANCED),
+    ExplorerColumn("drtg", "DRtg", _GROUP_ADVANCED),
+    ExplorerColumn("net_rtg", "NetRtg", _GROUP_ADVANCED),
 ]
 
 # Stat columns for the games subject (one row per game). The label carries date
@@ -1106,6 +1108,10 @@ class ExplorerQuery:
     # When False, query builders skip LIMIT/OFFSET and return every matching
     # row (used by the CSV export so downloads are not capped to one page).
     paginate: bool = True
+    # Internal: when set, per_competition queries filter results to this single
+    # player slug.  Not a user-facing URL param — set programmatically for
+    # the drill-down endpoint so it can reuse ``_query_players_per_competition``.
+    player_slug: Optional[str] = None
 
 
 @dataclass
@@ -1921,6 +1927,8 @@ async def _query_players_per_competition(
             te,
             ps.primary_team_entry_id == te.id,  # type: ignore[arg-type]
         ).where(te.team_slug == q.team_slug)  # type: ignore[arg-type]
+    if q.player_slug is not None:
+        stmt = stmt.where(pm.slug == q.player_slug)  # type: ignore[arg-type]
 
     # Count via wrapping subquery, then slice.
     total = await _count_subquery(db, stmt)
@@ -2492,6 +2500,56 @@ def _build_result(
 def _empty_result(subject: str, q: ExplorerQuery) -> ExplorerResult:
     """An available result with no rows (e.g. filters matched nothing)."""
     return _build_result(subject, _COLUMNS_BY_SUBJECT.get(subject, []), [], q)
+
+
+# --------------------------------------------------------------------------- #
+# Drill-down
+# --------------------------------------------------------------------------- #
+
+
+async def get_player_drilldown_rows(
+    db: AsyncSession,
+    player_slug: str,
+    scope_q: ExplorerQuery,
+) -> ExplorerResult:
+    """Per-competition breakdown for a single player (drill-down from career grain).
+
+    Fetches all per-competition season rows for the player within the same scope
+    (year/venue) as the career query, with minimum-game/minute floors relaxed to
+    ``1`` so sparse early-career competitions are included.  Pagination is
+    disabled — a player typically appears in at most a handful of competitions.
+
+    Advanced columns are always shown when available per pool; composite values
+    are exact within each pool (no "avg" marker) since each row is one competition.
+
+    Args:
+        db:        Async database session.
+        player_slug: Slug of the player to expand.
+        scope_q:   The active career-grain query providing year/venue scope.
+
+    Returns:
+        :class:`ExplorerResult` with per-competition rows for the player.
+    """
+    # Coerce sort away from advanced-composite keys not available in per_game
+    # (we stay in per_competition where they are available, but reuse the guard).
+    safe_sort = scope_q.sort if scope_q.sort not in _ADV_COMPOSITE_SORT_KEYS else "pts"
+
+    drill_q = ExplorerQuery(
+        subject="players",
+        grain="per_competition",
+        year_min=scope_q.year_min,
+        year_max=scope_q.year_max,
+        venue=scope_q.venue,
+        min_games=1,  # no GP floor — show all competitions for this player
+        min_minutes=1,  # no MIN floor
+        mode=scope_q.mode,
+        sort=safe_sort,
+        direction=scope_q.direction,
+        page=1,
+        paginate=False,  # always return all rows; drilldowns are always small
+        player_slug=player_slug,
+    )
+    return await _query_players_per_competition(db, drill_q)
 
 
 # --------------------------------------------------------------------------- #

@@ -10,6 +10,17 @@
 .slg-metric-filter-col { min-width: 6rem; }
 .slg-metric-filter-val { width: 5rem; }
 .slg-add-filter-btn { font-size: 0.8rem; background: none; border: 1px solid var(--accent, #4aa8ff); border-radius: 3px; padding: 0.2rem 0.5rem; cursor: pointer; color: var(--accent, #4aa8ff); }
+/* Column-group toggle */
+.slg-col-group-toggle { display: flex; align-items: center; gap: 0.4rem; margin: 0.6rem 0 0.3rem; }
+.slg-col-group-label { font-size: 0.8rem; opacity: 0.6; }
+.slg-col-group-btn { font-size: 0.75rem; background: none; border: 1px solid var(--border, #ccc); border-radius: 3px; padding: 0.15rem 0.45rem; cursor: pointer; color: var(--muted, #888); transition: background 0.15s, color 0.15s; }
+.slg-col-group-btn.is-active { background: var(--accent, #4aa8ff); border-color: var(--accent, #4aa8ff); color: #fff; }
+/* Expand button for drill-down */
+.slg-expand-btn { font-size: 0.65rem; background: none; border: 1px solid var(--border, #ccc); border-radius: 2px; padding: 0 0.25rem; cursor: pointer; margin-left: 0.35rem; color: var(--muted, #888); line-height: 1.4; vertical-align: middle; }
+.slg-expand-btn[aria-expanded="true"] { color: var(--accent, #4aa8ff); border-color: var(--accent, #4aa8ff); }
+/* Drill-down rows */
+.slg-drilldown-row { background: var(--surface-alt, rgba(0,0,0,0.04)); font-size: 0.88em; }
+.slg-drilldown__indent { margin-right: 0.3rem; opacity: 0.5; }
 </style>
 {% endblock %}
 
@@ -201,6 +212,22 @@
     toggle();
   })();
   </script>
+  {% endif %}
+
+  {# Column-group toggle — persists across AJAX result swaps; JS re-applies state. #}
+  {% if q.subject == 'players' %}
+  <div class="slg-col-group-toggle" id="col-group-toggle">
+    <span class="slg-col-group-label">Columns:</span>
+    <button type="button" class="slg-col-group-btn is-active" data-group="box">Box</button>
+    <button type="button" class="slg-col-group-btn is-active" data-group="shooting">Shooting</button>
+    <button type="button" class="slg-col-group-btn is-active" data-group="advanced">Advanced</button>
+  </div>
+  {% elif q.subject == 'teams' %}
+  <div class="slg-col-group-toggle" id="col-group-toggle">
+    <span class="slg-col-group-label">Columns:</span>
+    <button type="button" class="slg-col-group-btn is-active" data-group="box">Box</button>
+    <button type="button" class="slg-col-group-btn is-active" data-group="advanced">Ratings</button>
+  </div>
   {% endif %}
 
   {% include "stats/summer-league/_explorer_results.html" %}
