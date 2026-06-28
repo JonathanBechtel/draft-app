@@ -20,6 +20,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
+from app.schemas.player_affiliation import AffiliationStatus
+
 
 class SummerLeagueRawRunStatus(str, Enum):
     """Status of auditing one raw Summer League manifest/run."""
@@ -454,6 +456,10 @@ class SummerLeaguePlayerGameLog(SQLModel, table=True):  # type: ignore[call-arg]
             "ix_summer_league_player_game_logs_nba_stats_person_id",
             "nba_stats_person_id",
         ),
+        Index(
+            "ix_summer_league_player_game_logs_participation_id",
+            "participation_id",
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -462,6 +468,10 @@ class SummerLeaguePlayerGameLog(SQLModel, table=True):  # type: ignore[call-arg]
     team_entry_id: int = Field(foreign_key="summer_league_team_entries.id")
     source_player_id: int = Field(foreign_key="summer_league_source_players.id")
     player_id: Optional[int] = Field(default=None, foreign_key="players_master.id")
+    # Nullable FK to the stable participation bridge; backfilled for 2026+ rows.
+    participation_id: Optional[int] = Field(
+        default=None, foreign_key="summer_league_participation.id"
+    )
     nba_stats_person_id: str = Field(nullable=False)
     raw_player_name: str = Field(nullable=False)
     starter_position: Optional[str] = Field(default=None)
@@ -505,6 +515,70 @@ class SummerLeaguePlayerGameLog(SQLModel, table=True):  # type: ignore[call-arg]
     pct_pts_3pt: Optional[float] = Field(default=None)
     pct_pts_ft: Optional[float] = Field(default=None)
     source_endpoint: str = Field(default="boxscoretraditionalv2", nullable=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+
+
+class SummerLeagueParticipation(SQLModel, table=True):  # type: ignore[call-arg]
+    """Stable bridge: one row per (player, team_entry, stint) in a competition.
+
+    Player game logs reference this row, not raw (player, edition). A stint
+    captures a mid-competition team change or guest/replacement appearance
+    (journey-graph §7b).
+    """
+
+    __tablename__ = "summer_league_participation"
+    __table_args__ = (
+        UniqueConstraint(
+            "competition_id",
+            "team_entry_id",
+            "source_player_id",
+            "stint_no",
+            name="uq_summer_league_participation_comp_team_source_stint",
+        ),
+        Index("ix_summer_league_participation_player_id", "player_id"),
+        Index(
+            "ix_summer_league_participation_competition_team",
+            "competition_id",
+            "team_entry_id",
+        ),
+        Index(
+            "ix_summer_league_participation_source_player_id",
+            "source_player_id",
+        ),
+        Index("ix_summer_league_participation_affiliation_id", "affiliation_id"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    competition_id: int = Field(foreign_key="summer_league_competitions.id")
+    team_entry_id: int = Field(foreign_key="summer_league_team_entries.id")
+    source_player_id: int = Field(foreign_key="summer_league_source_players.id")
+    # Backfilled on resolution, mirroring the game-log player_id pattern.
+    player_id: Optional[int] = Field(default=None, foreign_key="players_master.id")
+    # Current roster assertion for this participation (the append-only stream).
+    affiliation_id: Optional[int] = Field(
+        default=None, foreign_key="player_affiliations.id"
+    )
+    stint_no: int = Field(default=1, nullable=False)
+
+    # Denormalized current roster state (the assertion history lives in
+    # player_affiliations; this is the fast read).
+    roster_status: AffiliationStatus = Field(
+        default=AffiliationStatus.ANNOUNCED,
+        sa_column=Column(
+            SAEnum(
+                AffiliationStatus, name="affiliation_status_enum", create_type=False
+            ),
+            nullable=False,
+            server_default=AffiliationStatus.ANNOUNCED.value,
+        ),
+    )
+    jersey_number: Optional[str] = Field(default=None)
+    roster_position: Optional[str] = Field(default=None)
+    first_game_date: Optional[date] = Field(default=None)
+    last_game_date: Optional[date] = Field(default=None)
+    games_played: Optional[int] = Field(default=None)
+
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
