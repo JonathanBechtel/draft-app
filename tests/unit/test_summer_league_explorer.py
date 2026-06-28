@@ -179,14 +179,15 @@ def test_ts_pct_is_advanced_not_base_column() -> None:
 
 
 def test_composite_sort_key_coerced_off_non_advanced_query() -> None:
-    """Composite sort keys (PER/BPM/…) survive only on a single-competition
-    per_competition query; elsewhere they coerce to the default to avoid emitting
-    ORDER BY on a column the SELECT never exposes (would 500). ts_pct stays valid
-    everywhere since it is box-derived.
+    """Composite sort keys (PER/BPM/…) are first-class at career and per_competition
+    grains (#406: advanced metrics visible/sortable at all aggregated grains) and are
+    coerced to the default only at ``per_game`` grain, whose SELECT never exposes the
+    composite columns (sorting on them would emit ORDER BY on a missing column and 500).
+    ts_pct stays valid everywhere since it is box-derived.
     """
-    # career → coerced to the default 'pts'
-    assert parse_query({"sort": "per", "grain": "career"}).sort == "pts"
-    # per_competition but multi-year (not a single pinned competition) → coerced
+    # career → composite key is KEPT (sortable at career grain).
+    assert parse_query({"sort": "per", "grain": "career"}).sort == "per"
+    # per_competition multi-year → composite key is KEPT (sortable at any per_competition scope).
     assert (
         parse_query(
             {
@@ -197,9 +198,9 @@ def test_composite_sort_key_coerced_off_non_advanced_query() -> None:
                 "venue": "las_vegas",
             }
         ).sort
-        == "pts"
+        == "bpm"
     )
-    # single-competition per_competition → composite key is kept
+    # single-competition per_competition → composite key is kept.
     assert (
         parse_query(
             {
@@ -212,7 +213,9 @@ def test_composite_sort_key_coerced_off_non_advanced_query() -> None:
         ).sort
         == "per"
     )
-    # ts_pct is box-derived and valid on any grain
+    # per_game → composite key coerced to the default (no composite columns in the SELECT).
+    assert parse_query({"sort": "per", "grain": "per_game"}).sort == "pts"
+    # ts_pct is box-derived and valid on any grain.
     assert parse_query({"sort": "ts_pct", "grain": "career"}).sort == "ts_pct"
 
 

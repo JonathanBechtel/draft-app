@@ -24,6 +24,8 @@ from app.services.summer_league_games_service import (
     search_games,
 )
 from app.services.summer_league_explorer_service import (
+    PLAYER_COLUMN_CATALOG,
+    get_player_drilldown_rows,
     parse_query,
     run_explorer_query,
 )
@@ -195,6 +197,39 @@ def _explorer_csv(result: object) -> StreamingResponse:
     )
 
 
+@router.get("/stats/summer-league/explorer/drilldown", response_class=HTMLResponse)
+async def summer_league_explorer_drilldown(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    """Per-competition drill-down for a single career-grain player row.
+
+    Returns an HTML partial containing ``<tr>`` rows for each competition the
+    player appeared in within the filtered scope.  Consumed by the JS expand
+    affordance on career-grain rows in the Explorer.
+
+    Query params: ``player_slug`` (required) + any Explorer scope filters
+    (``year_min``, ``year_max``, ``venue``, ``mode``, …).  A missing or blank
+    ``player_slug`` returns HTTP 400.
+    """
+    params = dict(request.query_params)
+    player_slug = params.get("player_slug", "").strip()
+    if not player_slug:
+        return HTMLResponse("", status_code=400)
+
+    scope_q = parse_query(params)
+    result = await get_player_drilldown_rows(db, player_slug, scope_q)
+
+    return request.app.state.templates.TemplateResponse(
+        "stats/summer-league/_explorer_drilldown.html",
+        {
+            "request": request,
+            "result": result,
+            "player_slug": player_slug,
+        },
+    )
+
+
 @router.get("/stats/summer-league/explorer", response_class=HTMLResponse)
 async def summer_league_explorer(
     request: Request,
@@ -223,11 +258,13 @@ async def summer_league_explorer(
         if request.query_params.get("partial")
         else "stats/summer-league/explorer.html"
     )
+    filterable_columns = [c for c in PLAYER_COLUMN_CATALOG if c.filterable]
     return request.app.state.templates.TemplateResponse(
         template,
         {
             "request": request,
             "result": result,
+            "filterable_columns": filterable_columns,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

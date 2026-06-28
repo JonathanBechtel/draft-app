@@ -31,6 +31,7 @@ from app.services.summer_league_explorer_service import (
     _PLAYER_ADVANCED_COLUMNS,
     _is_single_competition,
     parse_query,
+    rollup_rate_composite,
     run_explorer_query,
 )
 from tests.integration.conftest import make_player
@@ -128,6 +129,8 @@ async def _seed(db: AsyncSession) -> None:
     """Two players across two years/venues, each with 2 GP so they qualify.
 
     Scorer: 30 PPG (2024 Vegas). Roleplayer: 10 PPG (2025 Salt Lake).
+    Season rows are seeded alongside game logs so both career grain (season table,
+    ticket #405) and per_game grain (game logs) work from the same fixture.
     """
     scorer = make_player("Big", "Scorer")
     role = make_player("Role", "Player")
@@ -139,10 +142,16 @@ async def _seed(db: AsyncSession) -> None:
     c1 = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
     t1 = await _team(db, comp_id=c1)
     await _log(db, comp_id=c1, team=t1, player=scorer, pts=30, games=2)
+    # Season row: total of 2 × 30 pts = 60 pts, 2 × 30 min = 60 min.
+    await _season(db, player=scorer, comp_id=c1, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=60)
 
     c2 = await _comp(db, year=2025, venue_slug="salt_lake_city", league_id="16")
     t2 = await _team(db, comp_id=c2)
     await _log(db, comp_id=c2, team=t2, player=role, pts=10, games=2)
+    # Season row: total of 2 × 10 pts = 20 pts, 2 × 30 min = 60 min.
+    await _season(db, player=role, comp_id=c2, year=2025, venue_slug="salt_lake_city",
+                  gp=2, minutes=60.0, pts=20)
     await db.commit()
 
 
@@ -369,6 +378,81 @@ async def test_teams_default_sort_is_valid_for_subject(
     assert q.sort == "diff"  # 'ts_pct' is not a team column
 
 
+@pytest.mark.asyncio
+async def test_teams_advanced_columns(db_session: AsyncSession) -> None:
+    """Teams subject exposes ORtg/DRtg/Pace/NetRtg derived from box-log averages.
+
+    _seed_teams creates logs with off_rating=110.0, def_rating=105.0, pace=100.0
+    for both teams in both games. Verified: NetRtg = ORtg - DRtg = 5.0; all four
+    columns are present, populated, and accepted as sort keys.
+    """
+    await _seed_teams(db_session)
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="teams"))
+
+    # All four advanced columns appear in the column list.
+    col_keys = {c.key for c in result.columns}
+    assert {"pace", "ortg", "drtg", "net_rtg"} <= col_keys
+
+    # Both teams have the same seeded ratings; check via the first row.
+    row = result.rows[0]
+    assert row.values["ortg"] == 110.0
+    assert row.values["drtg"] == 105.0
+    assert row.values["pace"] == 100.0
+    # NetRtg is derived in Python as ORtg - DRtg.
+    assert row.values["net_rtg"] == 5.0
+
+    # net_rtg is accepted as a valid sort key for the teams subject.
+    q_net = parse_query({"subject": "teams", "sort": "net_rtg"})
+    assert q_net.sort == "net_rtg"
+
+    # Sorting by net_rtg desc returns a non-empty result without error.
+    result_sorted = await run_explorer_query(
+        db_session, ExplorerQuery(subject="teams", sort="net_rtg", direction="desc")
+    )
+    assert result_sorted.total > 0
+    assert result_sorted.rows[0].values["net_rtg"] == 5.0
+
+
+@pytest.mark.asyncio
+async def test_teams_advanced_missing_inputs_graceful(db_session: AsyncSession) -> None:
+    """Teams with no box-log data produce None for all rating columns without error.
+
+    Seeds a game with scores but no SummerLeagueTeamGameLog rows. The ratings
+    query returns no rows for those entries, so pace/ortg/drtg/net_rtg should all
+    degrade to None rather than 0 or raising.
+    """
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    alpha = await _team(db_session, comp_id=c)
+    bravo = await _team(db_session, comp_id=c)
+    alpha.raw_team_name, bravo.raw_team_name = "Alpha", "Bravo"
+    await db_session.flush()
+
+    # Game with scores but NO team box logs — ratings will be absent.
+    _N["i"] += 1
+    g = SummerLeagueGame(
+        competition_id=c,
+        nba_stats_game_id=f"nolog-game-{_N['i']}",
+        game_date=date(2024, 7, 4),
+        home_team_entry_id=alpha.id,
+        away_team_entry_id=bravo.id,
+        home_score=100,
+        away_score=90,
+    )
+    db_session.add(g)
+    await db_session.commit()
+
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="teams"))
+    assert result.available is True
+    assert result.total == 2
+
+    for row in result.rows:
+        # All rating-derived columns degrade to None, not 0/NaN.
+        assert row.values["pace"] is None
+        assert row.values["ortg"] is None
+        assert row.values["drtg"] is None
+        assert row.values["net_rtg"] is None
+
+
 # --------------------------------------------------------------------------- #
 # games subject (Phase 3)
 # --------------------------------------------------------------------------- #
@@ -479,6 +563,9 @@ async def test_csv_export_returns_full_result_set(
     team = await _team(db_session, comp_id=cid)
     for i, p in enumerate(players):
         await _log(db_session, comp_id=cid, team=team, player=p, pts=30 - i, games=2)
+        # Season rows for career grain (ticket #405 source switch).
+        await _season(db_session, player=p, comp_id=cid, year=2024,
+                      venue_slug="las_vegas", gp=2, minutes=60.0, pts=(30 - i) * 2)
     await db_session.commit()
 
     # HTML page is paginated to PAGE_SIZE rows.
@@ -531,6 +618,13 @@ async def _seed_with_positions(db: AsyncSession) -> None:
     await _log(db, comp_id=c, team=t, player=guard, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=forward, pts=15, games=2)
     await _log(db, comp_id=c, team=t, player=undrafted, pts=10, games=2)
+    # Season rows required for career grain (ticket #405 source switch).
+    await _season(db, player=guard, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40)
+    await _season(db, player=forward, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=30)
+    await _season(db, player=undrafted, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=20)
     await db.commit()
 
 
@@ -609,6 +703,12 @@ async def _season(
     gp: int = 2,
     minutes: float = 60.0,
     pts: int = 20,
+    primary_team_entry_id: int | None = None,
+    ws: float | None = None,
+    vorp: float | None = None,
+    per: float | None = None,
+    bpm: float | None = None,
+    adv_eligible: bool = False,
 ) -> None:
     """Add one SummerLeaguePlayerSeason row for a (player, competition)."""
     assert player.id is not None
@@ -636,6 +736,12 @@ async def _season(
             tov=2,
             pf=3,
             plus_minus=10,
+            primary_team_entry_id=primary_team_entry_id,
+            ws=ws,
+            vorp=vorp,
+            per=per,
+            bpm=bpm,
+            adv_eligible=adv_eligible,
         )
     )
     await db.flush()
@@ -818,6 +924,11 @@ async def _seed_with_picks(db: AsyncSession) -> None:
     t = await _team(db, comp_id=c)
     await _log(db, comp_id=c, team=t, player=early, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=late, pts=15, games=2)
+    # Season rows required for career grain (ticket #405 source switch).
+    await _season(db, player=early, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40)
+    await _season(db, player=late, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=30)
     await db.commit()
 
 
@@ -853,6 +964,11 @@ async def _seed_with_countries(db: AsyncSession) -> None:
     t = await _team(db, comp_id=c)
     await _log(db, comp_id=c, team=t, player=us_player, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=fr_player, pts=15, games=2)
+    # Season rows required for career grain (ticket #405 source switch).
+    await _season(db, player=us_player, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40)
+    await _season(db, player=fr_player, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=30)
     await db.commit()
 
 
@@ -894,6 +1010,12 @@ async def _seed_with_two_teams(
 
     await _log(db, comp_id=c, team=team_a, player=player_a, pts=20, games=2)
     await _log(db, comp_id=c, team=team_b, player=player_b, pts=15, games=2)
+    # Season rows with primary_team_entry_id so team filter works at career grain.
+    assert team_a.id is not None and team_b.id is not None
+    await _season(db, player=player_a, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40, primary_team_entry_id=team_a.id)
+    await _season(db, player=player_b, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=30, primary_team_entry_id=team_b.id)
     await db.commit()
     return team_a, team_b
 
@@ -919,6 +1041,11 @@ async def _seed_round_types(db: AsyncSession) -> None:
     """Two players: one in Qualifying games, one in Championship games.
 
     Each player has 2 GP so they exceed the default min_games threshold.
+    Season rows are also seeded so career grain works (ticket #405 source switch).
+    Note: round_type is not applicable at career grain — season rows aggregate a
+    full competition regardless of round.  Round-type filtering at career grain
+    was removed as part of the season-table source switch; use per_game grain for
+    round-type-scoped results.
     """
     qualifier = make_player("Qual", "Player")
     champion = make_player("Champ", "Player")
@@ -945,23 +1072,34 @@ async def _seed_round_types(db: AsyncSession) -> None:
         games=2,
         round_label="Championship",
     )
+    # Season rows: career grain aggregates the full competition, no round distinction.
+    await _season(db, player=qualifier, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=20)
+    await _season(db, player=champion, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40)
     await db.commit()
 
 
 @pytest.mark.asyncio
 async def test_round_type_filter_players(db_session: AsyncSession) -> None:
-    """round_type filter narrows player results to games with that round_label.
+    """round_type is silently ignored at career grain; use per_game for round-scoped results.
 
-    Seeding one player in Qualifying games and one in Championship games, then
-    filtering to Qualifying should return only the qualifying player.
+    After ticket #405 the career grain reads summer_league_player_seasons (one row per
+    full competition).  Season rows aggregate all games in a competition regardless of
+    round, so a round_type filter cannot narrow career results.  Both the Qualifying
+    and Championship players appear even when round_type='Qualifying' is set.
+    For genuine round-type scoping see test_per_game_round_type_filter (per_game grain).
     """
     await _seed_round_types(db_session)
+    # Career grain (default): round_type is ignored — both players appear.
     result = await run_explorer_query(
         db_session,
         ExplorerQuery(subject="players", round_type="Qualifying", min_games=1),
     )
-    assert result.total == 1
-    assert result.rows[0].label == "Qual Player"
+    assert result.total == 2  # both players visible; round_type has no effect at career grain
+    labels = {r.label for r in result.rows}
+    assert "Qual Player" in labels
+    assert "Champ Player" in labels
 
 
 @pytest.mark.asyncio
@@ -1461,6 +1599,7 @@ async def _seed_many_players(db: AsyncSession, n: int) -> None:
 
     All players are seeded in a single competition with pts=i (0-indexed) so
     that ordering by pts gives a deterministic sequence.
+    Season rows are also seeded for career grain (ticket #405 source switch).
     """
     c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
     t = await _team(db, comp_id=c)
@@ -1470,6 +1609,9 @@ async def _seed_many_players(db: AsyncSession, n: int) -> None:
         await db.flush()
         # Two game logs per player (to meet default min_games=2).
         await _log(db, comp_id=c, team=t, player=p, pts=i, games=2)
+        # Season row: total pts = i * 2 games, 2 × 30 min = 60 min.
+        await _season(db, player=p, comp_id=c, year=2024, venue_slug="las_vegas",
+                      gp=2, minutes=60.0, pts=i * 2)
     await db.commit()
 
 
@@ -1795,11 +1937,14 @@ async def test_adv_columns_absent_when_not_eligible(db_session: AsyncSession) ->
 
 
 @pytest.mark.asyncio
-async def test_adv_columns_absent_multi_year(db_session: AsyncSession) -> None:
-    """Multi-year query (year_min != year_max): no composite columns regardless of eligibility.
+async def test_adv_columns_present_multi_year(db_session: AsyncSession) -> None:
+    """#406: Multi-year per_competition query now exposes advanced columns.
 
-    Composites are pool-calibrated and must not be exposed when the query spans
-    multiple competitions.
+    Previously composites were hidden for multi-year queries; after ticket #406 they
+    are always shown at per_competition grain (each row is one pool, values are
+    exact within that pool).  adv_eligible is False (not single-comp) but the
+    column list still includes advanced columns with the N-of-M banner providing
+    the eligibility context.
     """
     # Seed two competitions (2024 Vegas + 2025 Vegas), both adv_eligible.
     player = make_player("Multi", "Year")
@@ -1840,18 +1985,28 @@ async def test_adv_columns_absent_multi_year(db_session: AsyncSession) -> None:
         ),
     )
 
-    # Multi-year: composites must be absent.
+    # Multi-comp: adv_eligible is False (not single-comp scope), but advanced
+    # columns ARE present in the column list (ticket #406 change).
     assert result.adv_eligible is False
     adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
     result_col_keys = {c.key for c in result.columns}
-    assert adv_keys.isdisjoint(result_col_keys)
+    assert adv_keys <= result_col_keys, (
+        f"missing advanced keys at multi-year per_competition: {adv_keys - result_col_keys}"
+    )
+    # Two rows (one per competition); each row's values for composites are non-None.
+    assert result.total == 2
+    for row in result.rows:
+        assert row.values.get("per") is not None
+        assert row.values.get("ws") is not None
 
 
 @pytest.mark.asyncio
-async def test_adv_columns_absent_all_venues(db_session: AsyncSession) -> None:
-    """No-venue filter (all-venues query): composite columns absent even with adv_eligible pools.
+async def test_adv_columns_present_all_venues(db_session: AsyncSession) -> None:
+    """#406: No-venue per_competition query now exposes advanced columns.
 
-    A query without a venue spans multiple competitions, so composites are not valid.
+    Previously composite columns were hidden when no venue was specified.  After
+    ticket #406 they are always shown at per_competition grain; the N-of-M banner
+    provides eligibility context.
     """
     await _seed_adv_single_comp(db_session, adv_eligible=True)
 
@@ -1862,16 +2017,19 @@ async def test_adv_columns_absent_all_venues(db_session: AsyncSession) -> None:
             grain="per_competition",
             year_min=2024,
             year_max=2024,
-            venue=None,  # no venue → not a single competition
+            venue=None,  # no venue → multi-comp scope
             min_games=1,
             min_minutes=1,
         ),
     )
 
+    # adv_eligible is False (not single-comp), but columns ARE present now (#406).
     assert result.adv_eligible is False
     adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
     result_col_keys = {c.key for c in result.columns}
-    assert adv_keys.isdisjoint(result_col_keys)
+    assert adv_keys <= result_col_keys, (
+        f"missing advanced keys at all-venues per_competition: {adv_keys - result_col_keys}"
+    )
 
 
 @pytest.mark.asyncio
@@ -1996,6 +2154,7 @@ async def _seed_age_filter(
 
     Both have 2 GP and 60 minutes so they qualify at default thresholds.
     Competition year is 2023 (starts_on is NULL, as in production).
+    Season rows seeded alongside game logs for career grain (ticket #405 source switch).
     """
     young = make_player("Young", "Rookie")
     young.birthdate = date(2004, 1, 1)
@@ -2006,13 +2165,18 @@ async def _seed_age_filter(
     db.add_all([young, old])
     await db.flush()
 
-    # Competition year is 2023 (comp.year), used directly for career-grain age
+    # Competition year is 2023 (ps.year is used in new impl, same value as comp.year).
     # young career age: 2023 - 2004 = 19
     # old   career age: 2023 - 1999 = 24
     c = await _comp(db, year=2023, venue_slug="las_vegas", league_id="15")
     t = await _team(db, comp_id=c)
     await _log(db, comp_id=c, team=t, player=young, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=old, pts=15, games=2)
+    # Season rows: career grain reads these (ticket #405 source switch).
+    await _season(db, player=young, comp_id=c, year=2023, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=40)
+    await _season(db, player=old, comp_id=c, year=2023, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=30)
     await db.commit()
     return young, old
 
@@ -2092,7 +2256,7 @@ async def test_age_filter_career_anchors_to_earliest_competition(
     One player (born 2004-01-01) appears in two SL competitions: 2023 and 2025.
     Earliest-anchor age = 2023 - 2004 = 19; latest-anchor age = 2025 - 2004 = 21.
     Filtering age_max=20 must INCLUDE the player (19 <= 20). If the implementation
-    anchored to MAX(comp.year) instead of MIN, the age would read 21 and the player
+    anchored to MAX(ps.year) instead of MIN, the age would read 21 and the player
     would be wrongly excluded — so this distinguishes the two semantics.
     """
     player = make_player("Two", "Comps")
@@ -2108,6 +2272,11 @@ async def test_age_filter_career_anchors_to_earliest_competition(
         db_session, comp_id=c_early, team=t_early, player=player, pts=20, games=2
     )
     await _log(db_session, comp_id=c_late, team=t_late, player=player, pts=18, games=2)
+    # Season rows for both competitions (career grain reads ps.year for age).
+    await _season(db_session, player=player, comp_id=c_early, year=2023,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=40)
+    await _season(db_session, player=player, comp_id=c_late, year=2025,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=36)
     await db_session.commit()
 
     result = await run_explorer_query(
@@ -2164,6 +2333,11 @@ async def test_age_filter_career_no_birthdate_excluded(
     t = await _team(db_session, comp_id=c)
     await _log(db_session, comp_id=c, team=t, player=no_birth, pts=10, games=2)
     await _log(db_session, comp_id=c, team=t, player=has_birth, pts=20, games=2)
+    # Season rows required for career grain (ticket #405 source switch).
+    await _season(db_session, player=no_birth, comp_id=c, year=2023,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=20)
+    await _season(db_session, player=has_birth, comp_id=c, year=2023,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=40)
     await db_session.commit()
 
     result = await run_explorer_query(
@@ -2301,6 +2475,13 @@ async def test_age_filter_composes_with_venue_filter(
     await _log(db_session, comp_id=c_lv, team=t_lv, player=young, pts=20, games=2)
     await _log(db_session, comp_id=c_lv, team=t_lv, player=old, pts=15, games=2)
     await _log(db_session, comp_id=c_slc, team=t_slc, player=old, pts=15, games=2)
+    # Season rows for career grain (ticket #405 source switch).
+    await _season(db_session, player=young, comp_id=c_lv, year=2023,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=40)
+    await _season(db_session, player=old, comp_id=c_lv, year=2023,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=30)
+    await _season(db_session, player=old, comp_id=c_slc, year=2023,
+                  venue_slug="salt_lake_city", gp=2, minutes=60.0, pts=30)
     await db_session.commit()
 
     result = await run_explorer_query(
@@ -2554,6 +2735,9 @@ async def _seed_mixed_countries(db: AsyncSession) -> None:
     t = await _team(db, comp_id=c)
     for pl in (p_code, p_alias, p_name, aussie):
         await _log(db, comp_id=c, team=t, player=pl, pts=20, games=2)
+        # Season rows required for career grain (ticket #405 source switch).
+        await _season(db, player=pl, comp_id=c, year=2024, venue_slug="las_vegas",
+                      gp=2, minutes=60.0, pts=40)
     await db.commit()
 
 
@@ -2613,6 +2797,7 @@ async def _seed_uneven_gp(db: AsyncSession) -> None:
     High-rate plays 2 games at 30 PTS (60 total, 30.0/g); Grinder plays 5 games
     at 25 PTS (125 total, 25.0/g). Sorting on totals would rank Grinder first
     despite a lower per-game average — the #397 bug.
+    Season rows match the game-log totals for career grain (ticket #405 source switch).
     """
     high_rate = make_player("High", "Rate")
     grinder = make_player("Grind", "Er")
@@ -2622,6 +2807,11 @@ async def _seed_uneven_gp(db: AsyncSession) -> None:
     t = await _team(db, comp_id=c)
     await _log(db, comp_id=c, team=t, player=high_rate, pts=30, games=2)
     await _log(db, comp_id=c, team=t, player=grinder, pts=25, games=5)
+    # Season rows: gp/minutes/pts match the game-log sums exactly.
+    await _season(db, player=high_rate, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=2, minutes=60.0, pts=60)
+    await _season(db, player=grinder, comp_id=c, year=2024, venue_slug="las_vegas",
+                  gp=5, minutes=150.0, pts=125)
     await db.commit()
 
 
@@ -2695,3 +2885,721 @@ async def test_per_competition_per_game_sort_is_monotonic(
     assert pts_col == [30.0, 25.0]
     # per_competition labels carry a "· <competition>" suffix.
     assert result.rows[0].label.startswith("High Rate")
+
+
+# --------------------------------------------------------------------------- #
+# Ticket #405: season-table source switch for career grain
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_career_box_parity_after_source_switch(
+    db_session: AsyncSession,
+) -> None:
+    """Career grain sources box totals from the season table, not game-log sums.
+
+    Seeds a player with 3 game logs (summing to pts=15, reb=9, ast=6, fgm=6, fga=15)
+    AND a season row whose box totals are deliberately DIFFERENT (pts=20, reb=11, …).
+    The explorer career grain now reads summer_league_player_seasons, so it must
+    return the SEASON values, not the game-log sums. Choosing divergent values makes
+    this test genuinely guard the source switch: it would fail if the career grain
+    reverted to summing game logs. (Materialization correctness — that a season row's
+    totals equal its logs — is the rebuild job's concern, not the explorer's.)
+    """
+    player = make_player("Parity", "Player")
+    db_session.add(player)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db_session, comp_id=c)
+
+    # Seed 3 game logs: each has pts=5, reb=3, ast=2, fgm=2, fga=5, 30 min.
+    for _ in range(3):
+        _N["i"] += 1
+        g = SummerLeagueGame(
+            competition_id=c,
+            nba_stats_game_id=f"parity-game-{_N['i']}",
+            game_date=date(2024, 7, 10),
+            home_team_entry_id=t.id,
+            away_team_entry_id=t.id,
+            home_score=100,
+            away_score=90,
+        )
+        db_session.add(g)
+        await db_session.flush()
+        assert g.id is not None
+        sp = SummerLeagueSourcePlayer(
+            nba_stats_person_id=f"parity-sp-{_N['i']}",
+            raw_player_name=player.display_name or "Player",
+            normalized_name=(player.display_name or "player").lower(),
+            canonical_player_id=player.id,
+        )
+        db_session.add(sp)
+        await db_session.flush()
+        db_session.add(
+            SummerLeaguePlayerGameLog(
+                competition_id=c,
+                game_id=g.id,
+                team_entry_id=t.id,
+                source_player_id=sp.id,
+                player_id=player.id,
+                nba_stats_person_id=sp.nba_stats_person_id,
+                raw_player_name=player.display_name or "Player",
+                minutes_seconds=1800,  # 30 min
+                pts=5,
+                reb=3,
+                ast=2,
+                fgm=2,
+                fga=5,
+            )
+        )
+    await db_session.flush()
+
+    # Season row: box totals deliberately DIFFERENT from the game-log sums above
+    # (logs sum to pts=15/reb=9/ast=6/fgm=6/fga=15). The explorer must surface these
+    # season values, proving it reads the season table rather than the game logs.
+    assert player.id is not None
+    db_session.add(
+        SummerLeaguePlayerSeason(
+            competition_id=c,
+            player_id=player.id,
+            year=2024,
+            venue_slug="las_vegas",
+            gp=3,
+            minutes=95.0,    # ≠ 90 (3 × 30 min log sum)
+            pts=20,          # ≠ 15 (log sum)
+            reb=11,          # ≠ 9
+            ast=7,           # ≠ 6
+            fgm=8,           # ≠ 6
+            fga=18,          # ≠ 15
+            fg3m=0,
+            fg3a=0,
+            ftm=0,
+            fta=0,
+            oreb=0,
+            dreb=11,
+            blk=0,
+            stl=0,
+            tov=0,
+            pf=0,
+            plus_minus=0,
+        )
+    )
+    await db_session.flush()
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", mode="totals", min_games=1),
+    )
+    assert result.total == 1
+    row = result.rows[0]
+    # Career grain must return the SEASON-table totals, not the game-log sums.
+    assert row.values["gp"] == 3
+    assert row.values["pts"] == 20   # season value, not the log sum (15)
+    assert row.values["reb"] == 11
+    assert row.values["ast"] == 7
+    assert row.values["fgm"] == 8
+    assert row.values["fga"] == 18
+    # Explicit guard against a revert to game-log sourcing:
+    assert row.values["pts"] != 15
+    assert row.values["fga"] != 15
+    # Per-game mode cross-check: 20 pts / 3 gp = 6.7 (1-decimal)
+    result_pg = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", mode="per_game", min_games=1),
+    )
+    assert result_pg.rows[0].values["pts"] == 6.7
+    # FG% in totals mode: fgm/fga = 8/18 = 44.4%
+    assert row.values["fg_pct"] == 44.4
+
+
+@pytest.mark.asyncio
+async def test_career_additive_sum(
+    db_session: AsyncSession,
+) -> None:
+    """Career WS and VORP equal the sum of per-competition season rows.
+
+    Seeds two competitions for one player, each with WS/VORP values.
+    The career grain must sum them (additive bucket), not average.
+    """
+    player = make_player("Additive", "Star")
+    db_session.add(player)
+    await db_session.flush()
+
+    c1 = await _comp(db_session, year=2023, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+
+    # Competition 1: WS=0.8, VORP=0.3
+    await _season(db_session, player=player, comp_id=c1, year=2023,
+                  venue_slug="las_vegas", gp=3, minutes=90.0, pts=45,
+                  ws=0.8, vorp=0.3, adv_eligible=True)
+    # Competition 2: WS=1.2, VORP=0.5
+    await _season(db_session, player=player, comp_id=c2, year=2024,
+                  venue_slug="las_vegas", gp=4, minutes=120.0, pts=60,
+                  ws=1.2, vorp=0.5, adv_eligible=True)
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", mode="totals", min_games=1),
+    )
+    assert result.total == 1
+    row = result.rows[0]
+    # Additive: career WS = 0.8 + 1.2 = 2.0; VORP = 0.3 + 0.5 = 0.8
+    assert row.values["ws"] == pytest.approx(2.0, abs=0.05)
+    assert row.values["vorp"] == pytest.approx(0.8, abs=0.05)
+    # GP and PTS should also be summed additive totals.
+    assert row.values["gp"] == 7   # 3 + 4
+    assert row.values["pts"] == 105  # 45 + 60
+
+
+@pytest.mark.asyncio
+async def test_career_rate_composite_minute_weighted_across_distinct_pools(
+    db_session: AsyncSession,
+) -> None:
+    """Career PER is the minute-weighted mean of distinct per-competition pools.
+
+    Guards the *production* SQL roll-up ``_rate_composite_agg`` (not the standalone
+    ``rollup_rate_composite`` helper). Two competitions with DISTINCT PER and DISTINCT
+    minutes are seeded so that minute-weighted-avg, simple-mean, and sum all differ —
+    making the assertion fail loudly if the SQL aggregate is inverted (e.g. swapped to
+    a plain SUM or an unweighted AVG) or if minute-weighting is dropped.
+
+    Pool 1: PER 20 @ 100 min; Pool 2: PER 10 @ 200 min.
+      minute-weighted = (20*100 + 10*200) / (100+200) = 4000/300 ≈ 13.33
+      simple mean      = 15.00
+      sum              = 30.00
+    """
+    player = make_player("Weighted", "Composite")
+    db_session.add(player)
+    await db_session.flush()
+
+    c1 = await _comp(db_session, year=2023, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+
+    await _season_with_composites(
+        db_session, player=player, comp_id=c1, year=2023, venue_slug="las_vegas",
+        gp=3, minutes=100.0, per=20.0, adv_eligible=True,
+    )
+    await _season_with_composites(
+        db_session, player=player, comp_id=c2, year=2024, venue_slug="las_vegas",
+        gp=3, minutes=200.0, per=10.0, adv_eligible=True,
+    )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", min_games=1, min_minutes=1),
+    )
+    assert result.total == 1
+    per_value = result.rows[0].values["per"]
+    assert per_value is not None
+
+    # Cross-check the SQL result against the standalone roll-up primitive on the same
+    # data so the two implementations cannot drift apart silently.
+    from types import SimpleNamespace
+
+    pools = [
+        SimpleNamespace(per=20.0, minutes=100.0),
+        SimpleNamespace(per=10.0, minutes=200.0),
+    ]
+    expected = rollup_rate_composite(pools, "per")
+    assert expected == pytest.approx(13.333, abs=0.01)
+
+    # Minute-weighted mean — NOT the simple mean (15.0) and NOT the sum (30.0).
+    assert per_value == pytest.approx(expected, abs=0.05)
+    assert per_value != pytest.approx(15.0, abs=0.05)
+    assert per_value != pytest.approx(30.0, abs=0.05)
+
+
+@pytest.mark.asyncio
+async def test_per_game_still_reads_game_logs(
+    db_session: AsyncSession,
+) -> None:
+    """per_game grain continues to read SummerLeaguePlayerGameLog, not season rows.
+
+    Seeds a player with game logs but NO season rows. The per_game grain must
+    still return results (proving it reads game logs, not the season table).
+    Seeds a second player with a season row but NO game logs; that player must
+    NOT appear in the per_game result (confirming per_game ignores season rows).
+    """
+    # Player A: game logs only (no season row).
+    player_a = make_player("LogOnly", "Player")
+    db_session.add(player_a)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t = await _team(db_session, comp_id=c)
+    await _log(db_session, comp_id=c, team=t, player=player_a, pts=20, games=1)
+
+    # Player B: season row only (no game logs).
+    player_b = make_player("SeasonOnly", "Player")
+    db_session.add(player_b)
+    await db_session.flush()
+    await _season(db_session, player=player_b, comp_id=c, year=2024,
+                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=30)
+
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", min_games=1),
+    )
+    labels = {r.label.split(" · ")[0] for r in result.rows}
+    # LogOnly player appears (has game logs); SeasonOnly does not (no game logs).
+    assert "LogOnly Player" in labels
+    assert "SeasonOnly Player" not in labels
+
+
+# --------------------------------------------------------------------------- #
+# Ticket #406: advanced columns at all grains, catalog-driven sort, pooled marker
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_advanced_columns_present_and_sortable_all_grains(
+    db_session: AsyncSession,
+) -> None:
+    """#406: Advanced columns appear in result.columns for career and per_competition grains.
+
+    Also verifies that sorting by advanced keys (per, bpm, ws, vorp, ts_pct)
+    is valid at both grains and does not coerce to the default sort key.
+    Per_game grain must NOT surface advanced composite columns in its column list.
+    """
+    player = make_player("Adv", "Star")
+    db_session.add(player)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    await _metric_context(db_session, comp_id=c, year=2024, venue_slug="las_vegas",
+                          adv_eligible=True)
+    await _season_with_composites(
+        db_session, player=player, comp_id=c, year=2024, venue_slug="las_vegas",
+        per=20.0, bpm=2.5, ws=1.0, vorp=0.5,
+    )
+    t = await _team(db_session, comp_id=c)
+    await _log(db_session, comp_id=c, team=t, player=player, pts=20, games=3)
+    await db_session.commit()
+
+    adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
+
+    # Career grain: advanced columns always present.
+    career = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", min_games=1, min_minutes=1),
+    )
+    career_col_keys = {c.key for c in career.columns}
+    assert adv_keys <= career_col_keys, f"missing at career: {adv_keys - career_col_keys}"
+    # Row values populated for advanced keys.
+    assert career.rows[0].values.get("ws") is not None
+    assert career.rows[0].values.get("per") is not None
+
+    # Career grain: sorting by advanced keys accepted (no coercion to default).
+    for sort_key in ("per", "bpm", "ws", "vorp", "ts_pct"):
+        q_sort = parse_query({"grain": "career", "sort": sort_key})
+        assert q_sort.sort == sort_key, (
+            f"sort={sort_key!r} at career coerced to {q_sort.sort!r}"
+        )
+
+    # Per_competition multi-comp: advanced columns also present.
+    pc_multi = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="per_competition", min_games=1, min_minutes=1
+        ),
+    )
+    pc_col_keys = {c.key for c in pc_multi.columns}
+    assert adv_keys <= pc_col_keys, f"missing at per_competition: {adv_keys - pc_col_keys}"
+
+    # Per_game grain: advanced composite columns NOT in result.columns.
+    pg = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game"),
+    )
+    pg_col_keys = {c.key for c in pg.columns}
+    composite_adv_keys = {k for k in adv_keys if k != "ts_pct"}
+    assert pg_col_keys.isdisjoint(composite_adv_keys), (
+        f"per_game should not have composite adv columns: {pg_col_keys & composite_adv_keys}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_pooled_avg_marker_and_eligibility_banner(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """#406: Career grain rows carry pooled_composite_keys; HTML shows 'avg' marker and N-of-M banner.
+
+    Verifies:
+    - result.pooled_composite_keys contains rate_composite column keys (per, ortg, drtg, bpm)
+      at career grain.
+    - result.pooled_composite_keys is empty at per_competition grain (each row is one pool).
+    - HTML response for career grain includes the 'avg' marker text and the N-of-M banner.
+    """
+    player = make_player("Pool", "Tester")
+    db_session.add(player)
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    await _metric_context(db_session, comp_id=c, year=2024, venue_slug="las_vegas",
+                          adv_eligible=True)
+    await _season_with_composites(
+        db_session, player=player, comp_id=c, year=2024, venue_slug="las_vegas",
+        per=18.0, bpm=1.5, ws=0.9, vorp=0.4,
+    )
+    await db_session.commit()
+
+    # Career grain: pooled_composite_keys must contain rate_composite keys.
+    career = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", min_games=1, min_minutes=1),
+    )
+    assert "per" in career.pooled_composite_keys
+    assert "bpm" in career.pooled_composite_keys
+    assert "ortg" in career.pooled_composite_keys
+    assert "drtg" in career.pooled_composite_keys
+    # Additive columns are exact (not pooled).
+    assert "ws" not in career.pooled_composite_keys
+    assert "vorp" not in career.pooled_composite_keys
+    # Recombinable (ts_pct) is exact.
+    assert "ts_pct" not in career.pooled_composite_keys
+    # adv_eligible_n/m populated.
+    assert career.adv_eligible_m > 0
+    assert career.adv_eligible_n >= 0
+
+    # Per_competition grain: pooled_composite_keys is empty.
+    pc = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="per_competition", min_games=1, min_minutes=1
+        ),
+    )
+    assert len(pc.pooled_composite_keys) == 0
+
+    # HTML: career grain page shows "avg" marker text and N-of-M banner.
+    resp = await app_client.get(
+        "/stats/summer-league/explorer?grain=career&min_gp=1&min_min=1"
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    # N-of-M banner is present (the count text includes "of").
+    assert "slg-explorer-banner" in body
+    assert " of " in body  # N of M text
+    # "avg" marker is present for pooled composites.
+    assert "slg-pooled-mark" in body
+
+
+@pytest.mark.asyncio
+async def test_invalid_sort_coerces(db_session: AsyncSession) -> None:
+    """#406: Invalid or inapplicable sort keys coerce to the default without 500.
+
+    - ?sort=bogus → coerces to 'pts' (not a valid key at all).
+    - ?sort=per&grain=per_game → coerces to 'pts' (per not in per_game SELECT).
+    - ?sort=per&grain=career → stays 'per' (valid at career).
+    - ?sort=ts_pct&grain=per_game → stays 'ts_pct' (ts_pct is box-derived, valid).
+    """
+    # Pure parse_query checks (no DB needed).
+    q_bogus = parse_query({"sort": "bogus"})
+    assert q_bogus.sort == "pts", f"expected 'pts', got {q_bogus.sort!r}"
+
+    q_per_pg = parse_query({"sort": "per", "grain": "per_game"})
+    assert q_per_pg.sort == "pts", f"expected 'pts' for per at per_game, got {q_per_pg.sort!r}"
+
+    q_per_career = parse_query({"sort": "per", "grain": "career"})
+    assert q_per_career.sort == "per", (
+        f"expected 'per' at career grain, got {q_per_career.sort!r}"
+    )
+
+    q_ts_pg = parse_query({"sort": "ts_pct", "grain": "per_game"})
+    assert q_ts_pg.sort == "ts_pct", (
+        f"ts_pct should be valid at per_game (box-derived), got {q_ts_pg.sort!r}"
+    )
+
+    q_bpm_career = parse_query({"sort": "bpm", "grain": "career"})
+    assert q_bpm_career.sort == "bpm", (
+        f"bpm should be valid at career grain, got {q_bpm_career.sort!r}"
+    )
+
+    q_ws_pc = parse_query({"sort": "ws", "grain": "per_competition"})
+    assert q_ws_pc.sort == "ws", (
+        f"ws should be valid at per_competition grain, got {q_ws_pc.sort!r}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Ticket #407: Metric threshold filters
+# --------------------------------------------------------------------------- #
+
+from app.services.summer_league_explorer_service import (  # noqa: E402
+    MetricFilter,
+    parse_metric_filters,
+)
+
+
+@pytest.mark.asyncio
+async def test_metric_threshold_filter(db_session: AsyncSession) -> None:
+    """Metric filter on career pts narrows results: pts >= 40 keeps high scorers only.
+
+    Scorer: 60 career pts (2 x 30). Role: 20 career pts (2 x 10).
+    fcol0=pts, fop0=gte, fval0=40 → Scorer only.
+    fcol0=pts, fop0=lte, fval0=25 → Role only.
+    """
+    await _seed(db_session)
+
+    q_high = parse_query({"fcol0": "pts", "fop0": "gte", "fval0": "40"})
+    result_high = await run_explorer_query(db_session, q_high)
+    assert result_high.total == 1
+    assert result_high.rows[0].label == "Big Scorer"
+
+    q_low = parse_query({"fcol0": "pts", "fop0": "lte", "fval0": "25"})
+    result_low = await run_explorer_query(db_session, q_low)
+    assert result_low.total == 1
+    assert result_low.rows[0].label == "Role Player"
+
+
+@pytest.mark.asyncio
+async def test_metric_filter_with_facets(db_session: AsyncSession) -> None:
+    """Metric filter combines with existing facet filters (venue).
+
+    Both players would pass pts >= 5 alone. Combining with venue=las_vegas
+    (Scorer only) should return only Scorer.
+    """
+    await _seed(db_session)
+
+    q = parse_query({"fcol0": "pts", "fop0": "gte", "fval0": "5", "venue": "las_vegas"})
+    result = await run_explorer_query(db_session, q)
+    assert result.total == 1
+    assert result.rows[0].label == "Big Scorer"
+
+
+@pytest.mark.asyncio
+async def test_metric_filter_invalid_inputs_graceful(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """Invalid metric filter inputs are silently dropped — never a 500.
+
+    Tests: unknown column, unknown operator, non-numeric value, non-filterable column.
+    Valid filters in the same request still apply (or none if all invalid).
+    """
+    await _seed(db_session)
+
+    # Unknown column: ignored, all 2 players returned.
+    r1 = await app_client.get(
+        "/stats/summer-league/explorer?fcol0=nonexistent_col&fop0=gte&fval0=10"
+    )
+    assert r1.status_code == 200
+    assert "2 results" in r1.text
+
+    # Non-filterable column (fgm is box but not filterable).
+    r2 = await app_client.get(
+        "/stats/summer-league/explorer?fcol0=fgm&fop0=gte&fval0=5"
+    )
+    assert r2.status_code == 200
+    assert "2 results" in r2.text
+
+    # Bad operator: ignored.
+    r3 = await app_client.get(
+        "/stats/summer-league/explorer?fcol0=pts&fop0=INVALID&fval0=10"
+    )
+    assert r3.status_code == 200
+    assert "2 results" in r3.text
+
+    # Non-numeric value: ignored.
+    r4 = await app_client.get(
+        "/stats/summer-league/explorer?fcol0=pts&fop0=gte&fval0=not_a_number"
+    )
+    assert r4.status_code == 200
+    assert "2 results" in r4.text
+
+    # Mixed: one invalid + one valid (pts >= 40 keeps Scorer only).
+    r5 = await app_client.get(
+        "/stats/summer-league/explorer"
+        "?fcol0=BADCOL&fop0=gte&fval0=99"
+        "&fcol1=pts&fop1=gte&fval1=40"
+    )
+    assert r5.status_code == 200
+    assert "1 result" in r5.text
+    assert "Big Scorer" in r5.text
+
+
+@pytest.mark.asyncio
+async def test_advanced_url_roundtrip(db_session: AsyncSession) -> None:
+    """Metric filters round-trip through parse_query and produce correct DB results.
+
+    parse_query correctly parses fcol/fop/fval params into MetricFilter objects.
+    The same params produce the same result as running ExplorerQuery directly.
+    """
+    # parse_metric_filters unit checks.
+    filters = parse_metric_filters({
+        "fcol0": "pts", "fop0": "gte", "fval0": "20",
+        "fcol1": "per", "fop1": "lte", "fval1": "15.5",
+        "fcol2": "efg_pct", "fop2": "gte", "fval2": "50",
+    })
+    assert len(filters) == 3
+    assert filters[0] == MetricFilter(col="pts", op=">=", value=20.0)
+    assert filters[1] == MetricFilter(col="per", op="<=", value=15.5)
+    assert filters[2] == MetricFilter(col="efg_pct", op=">=", value=50.0)
+
+    # Round-trip: URL params → parse_query → same filters.
+    q = parse_query({
+        "fcol0": "pts", "fop0": "gte", "fval0": "40",
+    })
+    assert len(q.metric_filters) == 1
+    assert q.metric_filters[0] == MetricFilter(col="pts", op=">=", value=40.0)
+
+    # DB result: pts >= 40 (career totals) → Scorer (60 pts) passes, Role (20 pts) fails.
+    await _seed(db_session)
+    result = await run_explorer_query(db_session, q)
+    assert result.total == 1
+    assert result.rows[0].label == "Big Scorer"
+
+    # Both valid filters: pts >= 5 (both qualify) and gp >= 2 (both qualify).
+    q2 = parse_query({
+        "fcol0": "pts", "fop0": "gte", "fval0": "5",
+        "fcol1": "gp", "fop1": "gte", "fval1": "2",
+    })
+    result2 = await run_explorer_query(db_session, q2)
+    assert result2.total == 2  # both players qualify
+
+
+# --------------------------------------------------------------------------- #
+# Ticket #409: CSV advanced columns + per-pool drill-down
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_csv_export_advanced(
+    db_session: AsyncSession,
+    app_client: AsyncClient,
+) -> None:
+    """CSV export for career grain includes advanced column headers and all rows.
+
+    Career grain always returns _PLAYER_STAT_COLUMNS + _PLAYER_ADVANCED_COLUMNS
+    in result.columns; the CSV writer iterates result.columns so the header and
+    data rows automatically include PER, BPM, TS%, WS, VORP.
+    """
+    await _seed(db_session)  # 2 qualifying players
+
+    resp = await app_client.get("/stats/summer-league/explorer?format=csv")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+
+    lines = [ln for ln in resp.text.splitlines() if ln.strip()]
+    header = lines[0]
+
+    # Advanced column labels must appear in the header.
+    for label in ("TS%", "PER", "ORtg", "DRtg", "BPM", "WS", "VORP"):
+        assert label in header, f"expected {label!r} in CSV header, got: {header}"
+
+    # Row count: header + 2 players.
+    assert len(lines) == 3, f"expected 3 lines (header + 2 rows), got {len(lines)}"
+
+
+@pytest.mark.asyncio
+async def test_pool_drilldown(
+    db_session: AsyncSession,
+    app_client: AsyncClient,
+) -> None:
+    """Drill-down endpoint returns per-competition rows composing a career row.
+
+    Seeds one player who appeared in two competitions (Vegas 2024 and SLC 2025).
+    The drill-down response must contain one row per competition, rendered as
+    slg-drilldown-row elements, and reference both years in the row labels.
+    """
+    player = make_player("Drill", "Downer")
+    db_session.add(player)
+    await db_session.flush()
+
+    c1 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2025, venue_slug="salt_lake_city", league_id="16")
+
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=20,
+    )
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c2,
+        year=2025,
+        venue_slug="salt_lake_city",
+        gp=2,
+        minutes=60.0,
+        pts=30,
+    )
+    await db_session.commit()
+
+    assert player.slug is not None
+    resp = await app_client.get(
+        f"/stats/summer-league/explorer/drilldown?player_slug={player.slug}"
+    )
+    assert resp.status_code == 200
+    body = resp.text
+
+    # Both competition years must appear in the rendered rows.
+    assert "2024" in body, "expected 2024 competition row in drilldown"
+    assert "2025" in body, "expected 2025 competition row in drilldown"
+    # Drilldown rows carry the identifying CSS class.
+    assert "slg-drilldown-row" in body
+
+    # Missing player_slug returns 400.
+    bad = await app_client.get("/stats/summer-league/explorer/drilldown")
+    assert bad.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_pool_drilldown_respects_team_scope(
+    db_session: AsyncSession,
+    app_client: AsyncClient,
+) -> None:
+    """Drill-down honors the parent row's team_slug scope.
+
+    A career row filtered by team_slug aggregates only that team's competitions,
+    so its breakdown must too. Seeds one player on team A (Vegas 2024) and team B
+    (SLC 2025); a drilldown scoped to team A must show only the 2024 row, not 2025.
+    Regression for the drill-down dropping team_slug from its scope query.
+    """
+    player = make_player("Scoped", "Driller")
+    db_session.add(player)
+    await db_session.flush()
+
+    c1 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2025, venue_slug="salt_lake_city", league_id="16")
+    team_a = await _team(db_session, comp_id=c1)
+    team_b = await _team(db_session, comp_id=c2)
+
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        primary_team_entry_id=team_a.id,
+    )
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c2,
+        year=2025,
+        venue_slug="salt_lake_city",
+        primary_team_entry_id=team_b.id,
+    )
+    await db_session.commit()
+
+    assert player.slug is not None
+    resp = await app_client.get(
+        "/stats/summer-league/explorer/drilldown"
+        f"?player_slug={player.slug}&team_slug={team_a.team_slug}"
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    assert "2024" in body, "team A's 2024 competition must appear in the breakdown"
+    assert "2025" not in body, (
+        "team B's 2025 competition must NOT appear when scoped to team A"
+    )

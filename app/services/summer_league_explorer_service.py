@@ -40,11 +40,12 @@ as SQL arithmetic inside a CTE/subquery so they can be sorted in SQL.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Callable, Optional
 
-from sqlalchemy import func, literal, nulls_last, or_, select, text
+from sqlalchemy import case, func, literal, nulls_last, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -90,63 +91,608 @@ def _max_plausible_draft_class() -> int:
 # Column catalog (players)
 # --------------------------------------------------------------------------- #
 
+# Bucket constants — one of three roll-up semantics (see rollup_* functions below).
+_BUCKET_RECOMBINABLE = "recombinable"  # exact: recompute from summed box components
+_BUCKET_ADDITIVE = "additive"  # exact: sum across pools, null-skip
+_BUCKET_RATE_COMPOSITE = (
+    "rate_composite"  # approximate: minute-weighted avg across pools
+)
+
+# Group constants — broad display category.
+_GROUP_BOX = "box"
+_GROUP_SHOOTING = "shooting"
+_GROUP_ADVANCED = "advanced"
+
 
 @dataclass(frozen=True)
 class ExplorerColumn:
-    """One sortable result column."""
+    """One sortable result column with metric taxonomy for roll-up dispatch.
+
+    Fields:
+        key:        Unique column identifier (matches query param and result dict key).
+        label:      Display label shown in the UI table header.
+        group:      Display category: ``"box"`` | ``"shooting"`` | ``"advanced"``.
+        bucket:     Roll-up semantic: ``"recombinable"`` | ``"additive"`` |
+                    ``"rate_composite"``.  Drives which of the three ``rollup_*``
+                    functions should aggregate multi-competition rows of this column.
+        sortable:   Whether this column is a valid ORDER BY target in the Explorer.
+                    False for catalog-only columns not yet wired into the UI.
+        filterable: Whether this column can be used as a min/max stat filter
+                    (reserved for future use; currently False for all columns).
+        fmt:        Display-format hint: ``"int"`` (no decimals), ``"f1"`` (1 decimal),
+                    ``"f2"`` (2 decimals), ``"pct"`` (1 decimal + ``%`` suffix).
+        shown:      True when this column appears in the live Explorer column list.
+                    False for catalog-classified columns not yet surfaced in the UI
+                    (consumed by ticket #405 roll-ups and future phase expansions).
+        numeric:    Kept for backward compatibility; True for all numeric columns.
+    """
 
     key: str
     label: str
-    numeric: bool = True
+    group: str = _GROUP_BOX
+    bucket: str = _BUCKET_ADDITIVE
+    sortable: bool = True
+    filterable: bool = False
+    fmt: str = "f1"
+    shown: bool = True
+    numeric: bool = True  # backward compat — always True for player stat columns
 
 
-# Stat columns shown for the players subject, in display order.
-_PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
-    ExplorerColumn("gp", "GP"),
-    ExplorerColumn("min", "MIN"),
-    ExplorerColumn("pts", "PTS"),
-    ExplorerColumn("reb", "REB"),
-    ExplorerColumn("ast", "AST"),
-    ExplorerColumn("stl", "STL"),
-    ExplorerColumn("blk", "BLK"),
-    ExplorerColumn("tov", "TOV"),
-    ExplorerColumn("oreb", "OREB"),
-    ExplorerColumn("dreb", "DREB"),
-    ExplorerColumn("pf", "PF"),
-    ExplorerColumn("plus_minus", "+/-"),
-    ExplorerColumn("efg_pct", "eFG%"),
-    ExplorerColumn("fgm", "FGM"),
-    ExplorerColumn("fga", "FGA"),
-    ExplorerColumn("fg3m", "3PM"),
-    ExplorerColumn("fg3a", "3PA"),
-    ExplorerColumn("ftm", "FTM"),
-    ExplorerColumn("fta", "FTA"),
-    ExplorerColumn("fg_pct", "FG%"),
-    ExplorerColumn("fg3_pct", "3P%"),
-    ExplorerColumn("ft_pct", "FT%"),
+# --------------------------------------------------------------------------- #
+# Full declarative catalog — every player column with taxonomy.
+#
+# Ordering within each group mirrors the existing display order so that the
+# derived _PLAYER_STAT_COLUMNS / _PLAYER_ADVANCED_COLUMNS lists are identical
+# to the lists they replace (preserving all existing caller behaviour).
+# --------------------------------------------------------------------------- #
+PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
+    # ── Box totals (always-on, shown) ──────────────────────────────────────
+    # Raw counting stats sum across pools exactly (additive).
+    ExplorerColumn(
+        "gp",
+        "GP",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=True,
+        fmt="int",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "min",
+        "MIN",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "pts",
+        "PTS",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "reb",
+        "REB",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ast",
+        "AST",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "stl",
+        "STL",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "blk",
+        "BLK",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "tov",
+        "TOV",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "oreb",
+        "OREB",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "dreb",
+        "DREB",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "pf",
+        "PF",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "plus_minus",
+        "+/-",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    # ── Shooting stats (always-on, shown) ─────────────────────────────────
+    # eFG% is box-derived (recombinable) and lives in the always-on base columns.
+    ExplorerColumn(
+        "efg_pct",
+        "eFG%",
+        _GROUP_SHOOTING,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fgm",
+        "FGM",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fga",
+        "FGA",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fg3m",
+        "3PM",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fg3a",
+        "3PA",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ftm",
+        "FTM",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fta",
+        "FTA",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fg_pct",
+        "FG%",
+        _GROUP_SHOOTING,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "fg3_pct",
+        "3P%",
+        _GROUP_SHOOTING,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ft_pct",
+        "FT%",
+        _GROUP_SHOOTING,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    # ── Advanced (shown only in single-competition per_competition view) ───
+    # TS% is box-derived (recombinable) but reads as an advanced efficiency metric,
+    # so it is surfaced with the composites rather than the always-on shooting columns.
+    ExplorerColumn(
+        "ts_pct",
+        "TS%",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    # PER / ORtg / DRtg / BPM / WS / VORP are pool-calibrated composites that must
+    # NOT be mixed across multiple competition pools (rate_composite or additive).
+    ExplorerColumn(
+        "per",
+        "PER",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ortg",
+        "ORtg",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "drtg",
+        "DRtg",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "bpm",
+        "BPM",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ws",
+        "WS",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "vorp",
+        "VORP",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    # ── Advanced (catalog-classified; not yet shown in Explorer UI) ────────
+    # These columns are present in summer_league_player_seasons and classified here
+    # so that ticket #405 can drive roll-ups from the catalog without new constants.
+    #
+    # Recombinable: recompute from summed box components, exact at any grain.
+    ExplorerColumn(
+        "fg3ar",
+        "3PAr",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "ftr",
+        "FTr",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "pts_per100",
+        "Pts/100",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
     # Game Score is additive/linear in the box stats (not pool-recalibrated like
-    # PER/BPM), so it is exact at every grain and lives with the base columns.
-    ExplorerColumn("gmsc", "GmSc"),
+    # PER/BPM), so it is exact at every grain and lives with the base columns
+    # (shown + sortable), per #426. Value is recomputed from box stats in
+    # _compute_player_values via game_score_from_row.
+    ExplorerColumn(
+        "gmsc",
+        "GmSc",
+        _GROUP_BOX,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=False,
+        fmt="f1",
+        shown=True,
+    ),
+    # OWS / DWS are Win Shares components — cumulative shares, additive like WS.
+    ExplorerColumn(
+        "ows",
+        "OWS",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "dws",
+        "DWS",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    # ws82 / vorp82 are season projections; treated as additive-style (summing
+    # projections across pools is a reasonable estimate of career pace).
+    ExplorerColumn(
+        "ws82",
+        "WS/82",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "vorp82",
+        "VORP/82",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    # Rate composites: minute-weighted average across pools (approximate).
+    # net_rtg / obpm / dbpm expand the single-competition composite basket.
+    ExplorerColumn(
+        "net_rtg",
+        "NRtg",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "obpm",
+        "OBPM",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "dbpm",
+        "DBPM",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    # ws40: WS per 40 minutes — a rate derived from cumulative WS / minutes; treated
+    # as rate_composite because WS itself is league-calibrated, so cross-pool
+    # averaging is more meaningful than summing.
+    ExplorerColumn(
+        "ws40",
+        "WS/40",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="f2",
+        shown=False,
+    ),
+    # Usage / participation rates (stored as percentages, e.g. 25.6 not 0.256).
+    ExplorerColumn(
+        "usg_pct",
+        "USG%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "ast_pct",
+        "AST%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "orb_pct",
+        "ORB%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "drb_pct",
+        "DRB%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "trb_pct",
+        "TRB%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "stl_pct",
+        "STL%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "blk_pct",
+        "BLK%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "tov_pct",
+        "TOV%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="pct",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "pace",
+        "Pace",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
 ]
 
-# Advanced columns exposed only when grain=per_competition AND a single adv-eligible
-# competition is fully specified (one year + one venue).
-# TS% leads the group: it is box-derived (recombines from summed PTS/FGA/FTA) so it is
-# always computed, but it reads as an advanced efficiency metric and is surfaced here
-# rather than in the always-on base columns. The remainder (PER/BPM/ratings/WS/VORP) are
-# pool-calibrated composites that must NOT be mixed with career/multi-competition rows.
+# Derived views for backward compatibility with existing callers.
+# The catalog is the single source of truth; these lists are window views.
+
+# Columns shown in the always-on players table (box + shooting groups, shown=True).
+_PLAYER_STAT_COLUMNS: list[ExplorerColumn] = [
+    c for c in PLAYER_COLUMN_CATALOG if c.shown and c.group != _GROUP_ADVANCED
+]
+
+# Advanced columns exposed in single-competition per_competition view (shown=True, advanced group).
+# TS% leads the group (box-derived but reads as advanced); composites follow.
+# These must NOT be mixed into career / multi-competition rows.
 _PLAYER_ADVANCED_COLUMNS: list[ExplorerColumn] = [
-    ExplorerColumn("ts_pct", "TS%"),
-    ExplorerColumn("per", "PER"),
-    ExplorerColumn("ortg", "ORtg"),
-    ExplorerColumn("drtg", "DRtg"),
-    ExplorerColumn("bpm", "BPM"),
-    ExplorerColumn("ws", "WS"),
-    ExplorerColumn("vorp", "VORP"),
+    c for c in PLAYER_COLUMN_CATALOG if c.shown and c.group == _GROUP_ADVANCED
 ]
 
 # Stat columns for the teams subject (one row per team-season). W-L and points
 # come from game scores; pace/ratings are team-box-log averages where present.
+# net_rtg = ORtg - DRtg; None when either component is unavailable.
 _TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("gp", "GP"),
     ExplorerColumn("w", "W"),
@@ -154,9 +700,12 @@ _TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("ppg", "PPG"),
     ExplorerColumn("opp_ppg", "OPP"),
     ExplorerColumn("diff", "DIFF"),
-    ExplorerColumn("pace", "PACE"),
-    ExplorerColumn("ortg", "ORtg"),
-    ExplorerColumn("drtg", "DRtg"),
+    # Advanced team metrics (pace + ratings) — grouped so the column-group toggle
+    # can show/hide them alongside the player advanced columns.
+    ExplorerColumn("pace", "PACE", _GROUP_ADVANCED),
+    ExplorerColumn("ortg", "ORtg", _GROUP_ADVANCED),
+    ExplorerColumn("drtg", "DRtg", _GROUP_ADVANCED),
+    ExplorerColumn("net_rtg", "NetRtg", _GROUP_ADVANCED),
 ]
 
 # Stat columns for the games subject (one row per game). The label carries date
@@ -174,9 +723,9 @@ _COLUMNS_BY_SUBJECT: dict[str, list[ExplorerColumn]] = {
 _SORT_KEYS_BY_SUBJECT: dict[str, set[str]] = {
     s: {c.key for c in cols} for s, cols in _COLUMNS_BY_SUBJECT.items()
 }
-# Advanced sort keys are valid for the players subject in single-competition mode.
-# Add them to the allowed set so parse_query does not reject them.
-_SORT_KEYS_BY_SUBJECT["players"] |= {c.key for c in _PLAYER_ADVANCED_COLUMNS}
+# Players sort keys: generated from the catalog's sortable flag.
+# Covers box, shooting, and advanced (ts_pct, per, ortg, drtg, bpm, ws, vorp) columns.
+_SORT_KEYS_BY_SUBJECT["players"] = {c.key for c in PLAYER_COLUMN_CATALOG if c.sortable}
 _DEFAULT_SORT_BY_SUBJECT: dict[str, str] = {
     "players": "pts",
     "teams": "diff",
@@ -199,6 +748,331 @@ _COUNTING = (
     "ftm",
     "fta",
 )
+# Advanced composite keys not available in the per_game SELECT (game-log rows have no
+# pre-computed composite metrics).  Used by parse_query to coerce invalid per_game sorts.
+_ADV_COMPOSITE_SORT_KEYS: frozenset[str] = frozenset(
+    c.key
+    for c in PLAYER_COLUMN_CATALOG
+    if c.group == _GROUP_ADVANCED and c.sortable and c.key != "ts_pct"
+)
+
+
+# --------------------------------------------------------------------------- #
+# Roll-up primitives
+#
+# Each function accepts a sequence of per-competition rows (objects with
+# numeric attributes — typically SummerLeaguePlayerSeason instances) and folds
+# them into one pooled value for the requested column key.  Rows whose value is
+# None are always skipped (they contribute no weight or sum).
+#
+# Three buckets, three functions — driven by the catalog's ``bucket`` field:
+#
+#   recombinable   → rollup_recombinable   (sum box components, recompute ratio)
+#   additive       → rollup_additive       (sum values, skip None)
+#   rate_composite → rollup_rate_composite (minute-weighted avg, skip None pools)
+#
+# All percentage columns are stored as percentages (e.g. 60.6 not 0.606) and
+# the roll-up output preserves that convention.
+# --------------------------------------------------------------------------- #
+
+
+def _sum_attr(rows: Sequence[Any], attr: str) -> float:
+    """Sum a numeric attribute across rows, treating None / missing as zero."""
+    return sum(float(getattr(r, attr, None) or 0) for r in rows)
+
+
+def rollup_additive(rows: Sequence[Any], key: str) -> Optional[float]:
+    """Sum ``key`` across competition rows; returns ``None`` when all values are None.
+
+    Null-safe: rows where ``getattr(row, key)`` is ``None`` are skipped.  If every
+    row is ``None`` (no data at all) the function returns ``None`` rather than 0 to
+    distinguish "no data" from "zero total".
+
+    Args:
+        rows: Per-competition rows with numeric attributes.
+        key:  Attribute name to sum (e.g. ``"ws"``, ``"vorp"``, ``"pts"``).
+
+    Returns:
+        Summed value, or ``None`` when all rows have ``None`` for ``key``.
+    """
+    if not rows:
+        return None
+    vals = [getattr(r, key, None) for r in rows]
+    if all(v is None for v in vals):
+        return None
+    return sum(float(v) for v in vals if v is not None)
+
+
+def rollup_rate_composite(rows: Sequence[Any], key: str) -> Optional[float]:
+    """Minute-weighted average of ``key`` across competition pools; skips null pools.
+
+    Ineligible pools (``None`` value or zero/negative minutes) are excluded from
+    both numerator and denominator so they do not drag the average toward zero.
+    Returns ``None`` when no eligible pool has sufficient data.
+
+    Args:
+        rows: Per-competition rows; each must have a ``minutes`` attribute.
+        key:  Attribute name (e.g. ``"per"``, ``"bpm"``, ``"usg_pct"``).
+
+    Returns:
+        Minute-weighted mean, or ``None`` when no eligible pool exists.
+    """
+    num = 0.0
+    den = 0.0
+    for r in rows:
+        val = getattr(r, key, None)
+        mins = float(getattr(r, "minutes", 0) or 0)
+        if val is None or mins <= 0:
+            continue  # skip ineligible pool (missing composite or sub-zero minutes)
+        num += float(val) * mins
+        den += mins
+    return num / den if den else None
+
+
+def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
+    """Recompute ``key`` from summed box components (exact at any grain).
+
+    Summing per-competition values of a ratio metric (e.g. averaging TS% rows)
+    is inexact because small pools are over-weighted.  This function sums the
+    underlying box totals first and then applies the ratio formula once, which
+    gives the same result as computing the metric over the full multi-competition
+    box sheet.
+
+    Supported keys: ``ts_pct``, ``efg_pct``, ``fg_pct``, ``fg3_pct``, ``ft_pct``,
+    ``fg3ar``, ``ftr``, ``pts_per100``.
+
+    Args:
+        rows: Per-competition rows with box-total attributes (``pts``, ``fgm``, …).
+        key:  Recombinable metric key.
+
+    Returns:
+        Recomputed metric value (stored as a percentage, e.g. 60.6), or ``None``
+        when the denominator sums to zero (no attempts).
+    """
+    if not rows:
+        return None
+
+    fgm = _sum_attr(rows, "fgm")
+    fga = _sum_attr(rows, "fga")
+    fg3m = _sum_attr(rows, "fg3m")
+    fg3a = _sum_attr(rows, "fg3a")
+    ftm = _sum_attr(rows, "ftm")
+    fta = _sum_attr(rows, "fta")
+    pts = _sum_attr(rows, "pts")
+
+    if key == "ts_pct":
+        denom = 2.0 * (fga + 0.44 * fta)
+        return 100.0 * pts / denom if denom else None
+    if key == "efg_pct":
+        return 100.0 * (fgm + 0.5 * fg3m) / fga if fga else None
+    if key == "fg_pct":
+        return 100.0 * fgm / fga if fga else None
+    if key == "fg3_pct":
+        return 100.0 * fg3m / fg3a if fg3a else None
+    if key == "ft_pct":
+        return 100.0 * ftm / fta if fta else None
+    if key == "fg3ar":
+        # 3-point attempt rate: proportion of field-goal attempts that are 3-pointers.
+        return 100.0 * fg3a / fga if fga else None
+    if key == "ftr":
+        # Free-throw rate: FTA per FGA (measures ability to draw fouls).
+        return 100.0 * fta / fga if fga else None
+    if key == "pts_per100":
+        # Pool possessions as pace (poss/40 min) × minutes / 40.  Summing pace×minutes
+        # across competitions gives a weighted possession estimate, exact to the
+        # accuracy of the underlying pace measurement.
+        pace_min_sum = sum(
+            float(getattr(r, "pace", None) or 0) * float(getattr(r, "minutes", 0) or 0)
+            for r in rows
+        )
+        poss = pace_min_sum / 40.0
+        return 100.0 * pts / poss if poss else None
+    # Unknown key — callers should only pass recombinable keys from the catalog.
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# Metric threshold filter
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class MetricFilter:
+    """A validated metric threshold filter for the Explorer.
+
+    Attributes:
+        col:   Catalog column key with filterable=True.
+        op:    Operator: ``">="`` or ``"<="``; URL form ``"gte"``/``"lte"`` is mapped
+               during parsing.
+        value: Numeric threshold.
+    """
+
+    col: str
+    op: str  # ">=" | "<="
+    value: float
+
+
+# Derived set of filterable column keys (from catalog).
+_FILTERABLE_KEYS: frozenset[str] = frozenset(
+    c.key for c in PLAYER_COLUMN_CATALOG if c.filterable
+)
+
+
+def parse_metric_filters(params: dict[str, str]) -> list[MetricFilter]:
+    """Parse ``fcol0/fop0/fval0`` … ``fcol2/fop2/fval2`` into validated filters.
+
+    Accepts up to 3 indexed filter rows. Each filter needs a filterable catalog
+    key (``fcol{i}``), a valid operator (``fop{i}``: ``"gte"`` or ``"lte"``), and a
+    numeric threshold (``fval{i}``). Invalid predicates are silently dropped —
+    this function never raises; other valid filters still apply.
+
+    Args:
+        params: Raw URL query-string params (one value per key).
+
+    Returns:
+        List of up to 3 validated :class:`MetricFilter` instances (may be empty).
+    """
+    _OP_MAP = {"gte": ">=", "lte": "<="}
+    filters: list[MetricFilter] = []
+    for i in range(3):
+        col = params.get(f"fcol{i}", "").strip()
+        op_raw = params.get(f"fop{i}", "").strip()
+        val_str = params.get(f"fval{i}", "").strip()
+        if not col or not op_raw or not val_str:
+            continue
+        if col not in _FILTERABLE_KEYS:
+            continue
+        op = _OP_MAP.get(op_raw)
+        if op is None:
+            continue
+        try:
+            value = float(val_str)
+        except ValueError:
+            continue
+        filters.append(MetricFilter(col=col, op=op, value=value))
+    return filters
+
+
+def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
+    """HAVING expression for a metric filter at career grain.
+
+    Filters are applied to SQL aggregate expressions, not mode-scaled display
+    rates. Counting stats (pts/reb/etc.) filter on career totals (SUM) for
+    mode-independent URL round-trips — ``fcol0=pts&fval0=40`` means "40 total
+    career points" regardless of the selected display mode. Percentage and
+    advanced metrics are mode-independent by nature.
+    """
+
+    def _op(expr: Any) -> Any:
+        return expr >= f.value if f.op == ">=" else expr <= f.value
+
+    col = f.col
+    # Rate composites: minute-weighted average (mirrors _rate_composite_agg).
+    if col in ("per", "ortg", "drtg", "bpm"):
+        attr = getattr(ps, col)
+        eligible_min = func.sum(  # type: ignore[attr-defined]
+            case((attr.isnot(None), ps.minutes), else_=literal(0))  # type: ignore[attr-defined]
+        )
+        return _op(func.sum(attr * ps.minutes) / func.nullif(eligible_min, 0))  # type: ignore[attr-defined]
+    # Additive advanced (exact sum).
+    if col in ("ws", "vorp"):
+        return _op(func.sum(getattr(ps, col)))  # type: ignore[attr-defined]
+    # Box counting stats — filter on career totals.
+    if col in ("pts", "reb", "ast", "stl", "blk", "tov", "gp"):
+        return _op(func.sum(getattr(ps, col)))  # type: ignore[attr-defined]
+    # Minutes (career total in minutes).
+    if col == "min":
+        return _op(func.sum(ps.minutes))  # type: ignore[attr-defined]
+    # Recombinable percentage metrics — pool ratio from summed box components.
+    if col == "efg_pct":
+        return _op(
+            100.0
+            * (func.sum(ps.fgm) + 0.5 * func.sum(ps.fg3m))  # type: ignore[attr-defined]
+            / func.nullif(func.sum(ps.fga), 0)  # type: ignore[attr-defined]
+        )
+    if col == "fg_pct":
+        return _op(100.0 * func.sum(ps.fgm) / func.nullif(func.sum(ps.fga), 0))  # type: ignore[attr-defined]
+    if col == "fg3_pct":
+        return _op(100.0 * func.sum(ps.fg3m) / func.nullif(func.sum(ps.fg3a), 0))  # type: ignore[attr-defined]
+    if col == "ft_pct":
+        return _op(100.0 * func.sum(ps.ftm) / func.nullif(func.sum(ps.fta), 0))  # type: ignore[attr-defined]
+    if col == "ts_pct":
+        denom = 2.0 * (func.sum(ps.fga) + 0.44 * func.sum(ps.fta))  # type: ignore[attr-defined]
+        return _op(100.0 * func.sum(ps.pts) / func.nullif(denom, 0))  # type: ignore[attr-defined]
+    return None
+
+
+def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
+    """WHERE condition for a metric filter at per_competition grain.
+
+    Each row is one competition's season totals. Filters apply to raw season
+    column values, not mode-scaled display rates.
+    """
+
+    def _op(expr: Any) -> Any:
+        return expr >= f.value if f.op == ">=" else expr <= f.value
+
+    col = f.col
+    # Stored composite values: filter directly on the season column.
+    if col in ("per", "ortg", "drtg", "bpm", "ws", "vorp"):
+        return _op(getattr(ps, col))
+    # Box counting season totals.
+    if col in ("pts", "reb", "ast", "stl", "blk", "tov", "gp"):
+        return _op(getattr(ps, col))
+    # Minutes stored as minutes in the season table.
+    if col == "min":
+        return _op(ps.minutes)
+    # Recombinable percentages from season box components.
+    if col == "efg_pct":
+        return _op(100.0 * (ps.fgm + 0.5 * ps.fg3m) / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
+    if col == "fg_pct":
+        return _op(100.0 * ps.fgm / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
+    if col == "fg3_pct":
+        return _op(100.0 * ps.fg3m / func.nullif(ps.fg3a, 0))  # type: ignore[attr-defined]
+    if col == "ft_pct":
+        return _op(100.0 * ps.ftm / func.nullif(ps.fta, 0))  # type: ignore[attr-defined]
+    if col == "ts_pct":
+        denom = 2.0 * (ps.fga + 0.44 * ps.fta)
+        return _op(100.0 * ps.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
+    return None
+
+
+def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
+    """WHERE condition for a metric filter at per_game grain.
+
+    Each row is a single game log. Advanced composites (per/ortg/bpm/ws/vorp)
+    are not stored on game logs and are silently skipped.
+    """
+
+    def _op(expr: Any) -> Any:
+        return expr >= f.value if f.op == ">=" else expr <= f.value
+
+    col = f.col
+    # Per-game box stats (raw game log values — the displayed value in per_game mode).
+    if col in ("pts", "reb", "ast", "stl", "blk", "tov"):
+        return _op(getattr(pgl, col))
+    # gp per row is always 1 — filter not meaningful; skip.
+    if col == "gp":
+        return None
+    # Minutes per game: minutes_seconds / 60.
+    if col == "min":
+        return _op(pgl.minutes_seconds / 60.0)  # type: ignore[attr-defined]
+    # Percentage metrics from game-log box columns.
+    if col == "efg_pct":
+        return _op(
+            100.0 * (pgl.fgm + 0.5 * pgl.fg3m) / func.nullif(pgl.fga, 0)  # type: ignore[attr-defined]
+        )
+    if col == "fg_pct":
+        return _op(100.0 * pgl.fgm / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
+    if col == "fg3_pct":
+        return _op(100.0 * pgl.fg3m / func.nullif(pgl.fg3a, 0))  # type: ignore[attr-defined]
+    if col == "ft_pct":
+        return _op(100.0 * pgl.ftm / func.nullif(pgl.fta, 0))  # type: ignore[attr-defined]
+    if col == "ts_pct":
+        denom = 2.0 * (pgl.fga + 0.44 * pgl.fta)
+        return _op(100.0 * pgl.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
+    # Advanced composites not stored on game logs — silently skip.
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -232,9 +1106,15 @@ class ExplorerQuery:
     sort: str = "pts"
     direction: str = "desc"
     page: int = 1
+    # Metric threshold filters (up to 3); parsed from fcol{i}/fop{i}/fval{i} params.
+    metric_filters: list[MetricFilter] = field(default_factory=list)
     # When False, query builders skip LIMIT/OFFSET and return every matching
     # row (used by the CSV export so downloads are not capped to one page).
     paginate: bool = True
+    # Internal: when set, per_competition queries filter results to this single
+    # player slug.  Not a user-facing URL param — set programmatically for
+    # the drill-down endpoint so it can reuse ``_query_players_per_competition``.
+    player_slug: Optional[str] = None
 
 
 @dataclass
@@ -274,6 +1154,13 @@ class ExplorerResult:
     facets: ExplorerFacets
     query: ExplorerQuery
     adv_eligible: bool = False
+    # Keys of result columns whose values are minute-weighted pooled averages (career grain).
+    # These are rate_composite columns that span multiple competition pools; shown with
+    # an "≈ avg" marker in the UI to signal they are approximate aggregates.
+    pooled_composite_keys: frozenset[str] = field(default_factory=frozenset)
+    # N-of-M counts for the eligibility banner.
+    adv_eligible_n: int = 0  # competitions in scope with adv_eligible=True
+    adv_eligible_m: int = 0  # total competitions in scope with a metric context row
 
 
 # --------------------------------------------------------------------------- #
@@ -330,19 +1217,12 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     year_min = _to_int(params.get("year_min"))
     year_max = _to_int(params.get("year_max"))
 
-    # Composite sort keys (PER/ORtg/DRtg/BPM/WS/VORP) are only SELECTed by the
-    # single-competition per_competition query; on any other grain/scope they would
-    # become ORDER BY on a column the SELECT never exposes. Coerce them back to the
-    # default sort so a hand-typed ?sort=per&grain=career — or sorting by PER and then
-    # switching grain — can't 500. (ts_pct stays valid everywhere; it's box-derived.)
-    composite_sort_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS if c.key != "ts_pct"}
-    single_comp_scope = (
-        grain == "per_competition"
-        and year_min is not None
-        and year_min == year_max
-        and venue is not None
-    )
-    if sort in composite_sort_keys and not single_comp_scope:
+    # Advanced composite sort keys (PER/ORtg/DRtg/BPM/WS/VORP) are computed by the
+    # career and per_competition queries but NOT available in the per_game SELECT
+    # (individual game logs have no pre-computed composite metrics).
+    # Coerce to the default only when grain=per_game to prevent ORDER BY on a missing column.
+    # ts_pct stays valid everywhere — it is box-derived (recombinable).
+    if grain == "per_game" and sort in _ADV_COMPOSITE_SORT_KEYS:
         sort = default_sort
 
     # Reject implausible future draft classes so a hand-typed ?draft_class=2033
@@ -354,6 +1234,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     min_games = _to_int(params.get("min_gp"))
     min_minutes = _to_int(params.get("min_min"))
     page = _to_int(params.get("page")) or 1
+    metric_filters = parse_metric_filters(params)
 
     return ExplorerQuery(
         subject=subject,
@@ -378,6 +1259,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         sort=sort,
         direction=direction,
         page=max(1, page),
+        metric_filters=metric_filters,
     )
 
 
@@ -668,26 +1550,92 @@ def _apply_pagination(stmt: Any, q: ExplorerQuery) -> Any:
     return stmt.limit(PAGE_SIZE).offset((q.page - 1) * PAGE_SIZE)
 
 
-async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """Aggregate, sort, and paginate the players subject using SQL ORDER BY / LIMIT / OFFSET.
+def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
+    """Sort expression for career grain sourced from ``summer_league_player_seasons``.
 
-    Sort order: counting stats sort on their raw SUM aggregate (monotonically
-    equivalent to any rate mode).  Percentage stats use NULLIF-guarded SQL
-    ratio expressions.  Total row count uses a COUNT(*) subquery wrapping the
-    unsliced aggregation statement.
+    Uses season-table column aggregates (``SUM(gp)``, ``SUM(minutes)``) instead of
+    the game-log aggregates (``COUNT(*)``, ``SUM(minutes_seconds)``) used by the
+    old implementation.  The ``per_100`` mode is unsupported at career grain (no
+    pace-weighted denominator at season level) and sorts on a NULL expression,
+    which places all rows equally at the bottom — matching the None display value.
     """
-    pgl = SummerLeaguePlayerGameLog
-    comp = SummerLeagueCompetition
-    pm = PlayerMaster
-    sec: Any = pgl.minutes_seconds
+    _pct_exprs: dict[str, str] = {
+        "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
+        "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
+        "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
+        "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
+        "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
+    }
+    if sort_col in _pct_exprs:
+        return _pct_exprs[sort_col]
+    if sort_col == "gmsc":
+        # Game Score is additive/linear: SUM of per-competition scores == score of
+        # the summed box. Recompute from the summed box and scale into the displayed
+        # per-mode rate (matches _compute_player_values' game_score_from_row).
+        return _scaled_sort_expr(
+            _GMSC_SQL_AGG,
+            "SUM(gp)",
+            "SUM(minutes) * 60",
+            "0",
+            mode,
+        )
+    if sort_col == "min":
+        # Minutes display: total in totals mode; per-game rate otherwise.
+        return (
+            "SUM(minutes)"
+            if mode == "totals"
+            else "SUM(minutes) * 1.0 / NULLIF(SUM(gp), 0)"
+        )
+    if sort_col in _COUNTING or sort_col == "plus_minus":
+        # sec equivalent = SUM(minutes) * 60; pace_sec = 0 (per_100 → NULL).
+        return _scaled_sort_expr(
+            f"SUM({sort_col})",
+            "SUM(gp)",
+            "SUM(minutes) * 60",
+            "0",
+            mode,
+        )
+    # gp, ws, vorp, per, ortg, drtg, bpm: sort on the labeled SELECT aggregate.
+    return sort_col
 
-    conds: list[Any] = [pgl.player_id.isnot(None), sec > 0]  # type: ignore[union-attr]
+
+async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
+    """Aggregate career totals from ``summer_league_player_seasons`` via catalog roll-ups.
+
+    Ticket #405 source switch: reads materialized season rows (one per
+    player-competition) rather than raw ``SummerLeaguePlayerGameLog`` records.
+
+    Roll-up semantics per catalog bucket:
+
+    * ``additive``       — ``SUM()`` across competitions (box totals, GP, WS, VORP).
+    * ``recombinable``   — recomputed in ``_compute_player_values`` from the summed
+                           box components (eFG%, FG%, TS%, etc.) — unchanged.
+    * ``rate_composite`` — minute-weighted average in SQL
+                           ``SUM(metric × minutes) / SUM(eligible minutes)``
+                           where eligible means the metric is non-NULL.
+
+    Box-stat values are lossless versus the prior game-log-sum implementation
+    because the season table stores exact box totals accumulated from those logs.
+
+    Limitations versus the old game-log query:
+
+    * ``per_100`` mode is not supported at career grain (season rows carry no
+      pace-weighted denominator); counting-stat cells display ``None`` in that mode.
+    * Round-type filtering is not available at career grain — season rows aggregate
+      an entire competition rather than individual rounds.  The ``round_type``
+      filter param is silently ignored here; use ``grain=per_game`` to filter by
+      round type.
+    """
+    ps = SummerLeaguePlayerSeason
+    pm = PlayerMaster
+
+    conds: list[Any] = []
     if q.year_min is not None:
-        conds.append(comp.year >= q.year_min)  # type: ignore[arg-type]
+        conds.append(ps.year >= q.year_min)  # type: ignore[arg-type]
     if q.year_max is not None:
-        conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
+        conds.append(ps.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
-        conds.append(comp.venue_slug == q.venue)
+        conds.append(ps.venue_slug == q.venue)
     if q.undrafted:
         conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
     else:
@@ -706,90 +1654,130 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         # that normalizes to it so filtering is independent of stored form.
         conds.append(pm.birth_country.in_(country_variants(q.country)))  # type: ignore[union-attr]
 
+    def _rate_composite_agg(col: Any) -> Any:
+        """``SUM(col × minutes) / NULLIF(SUM(eligible_minutes), 0)``.
+
+        Eligible minutes = minutes from pools where ``col`` is not NULL.
+        Mirrors :func:`rollup_rate_composite`: pools with NULL values contribute
+        neither to the numerator nor the denominator.
+        """
+        eligible_min = func.sum(  # type: ignore[attr-defined]
+            case((col.isnot(None), ps.minutes), else_=literal(0))  # type: ignore[attr-defined]
+        )
+        return func.sum(col * ps.minutes) / func.nullif(eligible_min, 0)  # type: ignore[attr-defined]
+
     stmt = (
         select(
             pm.slug,
             pm.display_name,
-            func.count().label("gp"),
-            func.sum(sec).label("sec"),
-            func.sum(pgl.pace * sec).label("pace_sec"),
-            func.sum(pgl.pts).label("pts"),
-            func.sum(pgl.reb).label("reb"),
-            func.sum(pgl.ast).label("ast"),
-            func.sum(pgl.stl).label("stl"),
-            func.sum(pgl.blk).label("blk"),
-            func.sum(pgl.tov).label("tov"),
-            func.sum(pgl.fgm).label("fgm"),
-            func.sum(pgl.fga).label("fga"),
-            func.sum(pgl.fg3m).label("fg3m"),
-            func.sum(pgl.fg3a).label("fg3a"),
-            func.sum(pgl.ftm).label("ftm"),
-            func.sum(pgl.fta).label("fta"),
-            func.sum(pgl.oreb).label("oreb"),
-            func.sum(pgl.dreb).label("dreb"),
-            func.sum(pgl.pf).label("pf"),
-            func.sum(pgl.plus_minus).label("plus_minus"),
+            func.sum(ps.gp).label("gp"),  # type: ignore[attr-defined]
+            # _compute_player_values expects seconds; minutes * 60 converts.
+            (func.sum(ps.minutes) * 60).label("sec"),  # type: ignore[attr-defined]
+            # pace_sec = 0: per_100 mode unsupported at career grain (no weighted pace).
+            literal(0).label("pace_sec"),
+            func.sum(ps.pts).label("pts"),  # type: ignore[attr-defined]
+            func.sum(ps.reb).label("reb"),  # type: ignore[attr-defined]
+            func.sum(ps.ast).label("ast"),  # type: ignore[attr-defined]
+            func.sum(ps.stl).label("stl"),  # type: ignore[attr-defined]
+            func.sum(ps.blk).label("blk"),  # type: ignore[attr-defined]
+            func.sum(ps.tov).label("tov"),  # type: ignore[attr-defined]
+            func.sum(ps.fgm).label("fgm"),  # type: ignore[attr-defined]
+            func.sum(ps.fga).label("fga"),  # type: ignore[attr-defined]
+            func.sum(ps.fg3m).label("fg3m"),  # type: ignore[attr-defined]
+            func.sum(ps.fg3a).label("fg3a"),  # type: ignore[attr-defined]
+            func.sum(ps.ftm).label("ftm"),  # type: ignore[attr-defined]
+            func.sum(ps.fta).label("fta"),  # type: ignore[attr-defined]
+            func.sum(ps.oreb).label("oreb"),  # type: ignore[attr-defined]
+            func.sum(ps.dreb).label("dreb"),  # type: ignore[attr-defined]
+            func.sum(ps.pf).label("pf"),  # type: ignore[attr-defined]
+            func.sum(ps.plus_minus).label("plus_minus"),  # type: ignore[attr-defined]
+            # Additive advanced (exact sum across competitions):
+            func.sum(ps.ws).label("ws"),  # type: ignore[attr-defined]
+            func.sum(ps.vorp).label("vorp"),  # type: ignore[attr-defined]
+            # Rate-composite advanced (minute-weighted average across competitions):
+            _rate_composite_agg(ps.per).label("per"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.ortg).label("ortg"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.drtg).label("drtg"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.bpm).label("bpm"),  # type: ignore[attr-defined]
         )  # type: ignore[call-overload, misc]
-        .select_from(pgl)
-        .join(comp, comp.id == pgl.competition_id)
-        .join(pm, pm.id == pgl.player_id)
+        .select_from(ps)
+        .join(pm, pm.id == ps.player_id)  # type: ignore[arg-type]
         .where(*conds)
-        .group_by(pgl.player_id, pm.slug, pm.display_name)
-        .having(func.count() >= q.min_games)
-        .having(func.sum(sec) >= q.min_minutes * 60)
+        .group_by(ps.player_id, pm.slug, pm.display_name)  # type: ignore[attr-defined]
+        .having(func.sum(ps.gp) >= q.min_games)  # type: ignore[attr-defined]
+        .having(func.sum(ps.minutes) >= q.min_minutes)  # type: ignore[attr-defined]
     )
-    # Age filter (career grain): age = year of the player's EARLIEST summer league in scope
-    # minus birth year.  We use MIN(comp.year) — the populated integer competition year —
-    # NOT EXTRACT(YEAR FROM comp.starts_on): starts_on is unpopulated for ingested
-    # competitions, so deriving the year from it would NULL out every age.  MIN(comp.year)
-    # anchors age to the player's first appearance in the filtered pool, the most meaningful
-    # anchor for prospect-era analysis (e.g., "19-year-old rookies").
-    # birthdate is constant per player but the PK is not in GROUP BY, so wrap it in MIN() to
-    # satisfy Postgres grouping rules; MIN of a per-player constant is that constant.  NULL
-    # birthdate yields NULL age → comparison is NULL → row excluded (no false match).
+    # Age filter (career grain): age = MIN(ps.year) − birth year, anchored to the
+    # player's EARLIEST competition in the filtered pool.  ps.year is the integer
+    # competition year, equivalent to the old MIN(comp.year) used when joining game
+    # logs.  NULL birthdate → NULL age → row excluded (no false match).
     if q.age_min is not None:
         stmt = stmt.having(
-            func.min(comp.year) - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
+            func.min(ps.year)  # type: ignore[attr-defined]
+            - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
             >= q.age_min
         )
     if q.age_max is not None:
         stmt = stmt.having(
-            func.min(comp.year) - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
+            func.min(ps.year)  # type: ignore[attr-defined]
+            - func.extract("year", func.min(pm.birthdate))  # type: ignore[arg-type]
             <= q.age_max
         )
     if q.team_slug is not None:
         te = SummerLeagueTeamEntry
-        stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
+        stmt = stmt.join(te, ps.primary_team_entry_id == te.id).where(  # type: ignore[arg-type]
             te.team_slug == q.team_slug
         )
-    if q.round_type is not None:
-        g = SummerLeagueGame
-        stmt = stmt.join(g, pgl.game_id == g.id).where(g.round_label == q.round_type)
+    # round_type is not supported at career grain — season rows aggregate a full
+    # competition, not individual round games.  Silently ignored here.
+
+    # Apply metric threshold filters as HAVING clauses (career grain).
+    # Filters are on SQL aggregate expressions — career totals for counting stats,
+    # pooled ratios for percentages, minute-weighted averages for rate composites.
+    for mf in q.metric_filters:
+        having_expr = _career_metric_having(mf, ps)
+        if having_expr is not None:
+            stmt = stmt.having(having_expr)  # type: ignore[arg-type]
 
     # Count total matching rows before slicing (wrapping subquery avoids fetching all rows).
     total = await _count_subquery(db, stmt)
 
     # Apply SQL ORDER BY (NULLS LAST) + LIMIT + OFFSET.
-    sort_expr = _player_sort_expr(q.sort, q.mode)
+    sort_expr = _player_sort_expr_career(q.sort, q.mode)
     direction = "DESC" if q.direction == "desc" else "ASC"
     stmt = stmt.order_by(nulls_last(text(f"{sort_expr} {direction}")))
     stmt = _apply_pagination(stmt, q)
 
     raw = list((await db.execute(stmt)).all())
 
+    def _r1(v: Any) -> Optional[float]:
+        return round(float(v), 1) if v is not None else None
+
     rows = [
         ExplorerRow(
             label=r.display_name or "Player",
             href=f"/players/{r.slug}" if r.slug else None,
-            values=_compute_player_values(r, q.mode),
+            values={
+                **_compute_player_values(r, q.mode),
+                # Advanced roll-up values (ticket #405).
+                # Additive: exact sum across all competitions in scope.
+                "ws": _r1(r.ws),
+                "vorp": _r1(r.vorp),
+                # Rate composite: minute-weighted average (approximate; labelled "#406").
+                "per": _r1(r.per),
+                "ortg": _r1(r.ortg),
+                "drtg": _r1(r.drtg),
+                "bpm": _r1(r.bpm),
+            },
         )
         for r in raw
     ]
 
+    elig_n, elig_m = await _fetch_adv_counts(db, q)
     return ExplorerResult(
         subject="players",
         available=True,
-        columns=_PLAYER_STAT_COLUMNS,
+        columns=_PLAYER_STAT_COLUMNS + _PLAYER_ADVANCED_COLUMNS,
         rows=rows,
         total=total,
         page=q.page,
@@ -797,6 +1785,13 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         has_next=(q.page - 1) * PAGE_SIZE + len(rows) < total,
         facets=ExplorerFacets(),
         query=q,
+        pooled_composite_keys=frozenset(
+            c.key
+            for c in _PLAYER_ADVANCED_COLUMNS
+            if c.bucket == _BUCKET_RATE_COMPOSITE
+        ),
+        adv_eligible_n=elig_n,
+        adv_eligible_m=elig_m,
     )
 
 
@@ -828,6 +1823,47 @@ async def _fetch_adv_eligible(db: AsyncSession, year: int, venue_slug: str) -> b
     )
     row = result.one_or_none()
     return bool(row[0]) if row is not None else False
+
+
+async def _fetch_adv_counts(db: AsyncSession, q: ExplorerQuery) -> tuple[int, int]:
+    """Count eligible and total competitions in the query scope for the N-of-M banner.
+
+    Queries ``SummerLeagueMetricContext`` with the same year/venue filters as the
+    main player query.  Returns ``(eligible_n, total_m)`` where ``eligible_n`` is
+    the count with ``adv_eligible=True`` and ``total_m`` is the total count of rows
+    with a metric context (competitions without a context row are not counted).
+
+    Args:
+        db: Async database session.
+        q:  Parsed explorer query providing year/venue filter bounds.
+
+    Returns:
+        Tuple ``(eligible_n, total_m)``.
+    """
+    ctx = SummerLeagueMetricContext
+    conds: list[Any] = []
+    if q.year_min is not None:
+        conds.append(ctx.year >= q.year_min)  # type: ignore[arg-type]
+    if q.year_max is not None:
+        conds.append(ctx.year <= q.year_max)  # type: ignore[arg-type]
+    if q.venue:
+        conds.append(ctx.venue_slug == q.venue)
+
+    # Single grouped query: total rows + eligible rows via a conditional sum. Folding
+    # these into one statement keeps the route's query budget tight (one count query,
+    # not two) versus issuing separate total/eligible COUNT(*) statements.
+    eligible_expr = func.coalesce(
+        func.sum(case((ctx.adv_eligible.is_(True), 1), else_=literal(0))),  # type: ignore[attr-defined]
+        0,
+    )
+    stmt = select(func.count(), eligible_expr).select_from(ctx)
+    if conds:
+        stmt = stmt.where(*conds)
+    row = (await db.execute(stmt)).one()
+    total_m = int(row[0] or 0)
+    eligible_n = int(row[1] or 0)
+
+    return eligible_n, total_m
 
 
 async def _query_players_per_competition(
@@ -893,6 +1929,13 @@ async def _query_players_per_competition(
             ps.year - func.extract("year", pm.birthdate)  # type: ignore[arg-type]
             <= q.age_max
         )
+    # Metric threshold filters applied as WHERE conditions on season column values.
+    # Each row is one competition's season totals; filters are on raw column values,
+    # not mode-scaled display rates.
+    for mf in q.metric_filters:
+        where_expr = _per_comp_metric_where(mf, ps)
+        if where_expr is not None:
+            conds.append(where_expr)
 
     base_select = [
         pm.slug,
@@ -920,17 +1963,17 @@ async def _query_players_per_competition(
         ps.plus_minus.label("plus_minus"),  # type: ignore[attr-defined]
     ]
 
-    # When scoped to a single competition, also SELECT the composite columns so
-    # the template can display them when adv_eligible is True.
-    if single_comp:
-        base_select += [
-            ps.per.label("per"),  # type: ignore[attr-defined, union-attr]
-            ps.ortg.label("ortg"),  # type: ignore[attr-defined, union-attr]
-            ps.drtg.label("drtg"),  # type: ignore[attr-defined, union-attr]
-            ps.bpm.label("bpm"),  # type: ignore[attr-defined, union-attr]
-            ps.ws.label("ws"),  # type: ignore[attr-defined, union-attr]
-            ps.vorp.label("vorp"),  # type: ignore[attr-defined, union-attr]
-        ]
+    # Always SELECT composite columns so they are available at all per_competition
+    # scopes (single-comp and multi-comp).  The column list and template control
+    # whether they are displayed; values are NULL when a pool is not eligible.
+    base_select += [
+        ps.per.label("per"),  # type: ignore[attr-defined, union-attr]
+        ps.ortg.label("ortg"),  # type: ignore[attr-defined, union-attr]
+        ps.drtg.label("drtg"),  # type: ignore[attr-defined, union-attr]
+        ps.bpm.label("bpm"),  # type: ignore[attr-defined, union-attr]
+        ps.ws.label("ws"),  # type: ignore[attr-defined, union-attr]
+        ps.vorp.label("vorp"),  # type: ignore[attr-defined, union-attr]
+    ]
 
     stmt = (
         select(*base_select)  # type: ignore[call-overload, misc]
@@ -945,6 +1988,8 @@ async def _query_players_per_competition(
             te,
             ps.primary_team_entry_id == te.id,  # type: ignore[arg-type]
         ).where(te.team_slug == q.team_slug)  # type: ignore[arg-type]
+    if q.player_slug is not None:
+        stmt = stmt.where(pm.slug == q.player_slug)  # type: ignore[arg-type]
 
     # Count via wrapping subquery, then slice.
     total = await _count_subquery(db, stmt)
@@ -979,18 +2024,26 @@ async def _query_players_per_competition(
 
     raw = list((await db.execute(stmt)).all())
 
-    # Determine adv_eligible for this query scope.
+    # Determine adv_eligible for single-competition scope.
     pool_adv_eligible = False
     if single_comp and q.year_min is not None and q.venue is not None:
         pool_adv_eligible = await _fetch_adv_eligible(db, q.year_min, q.venue)
 
-    # Build result column list: base stats always present; advanced appended when eligible.
-    columns: list[ExplorerColumn] = list(_PLAYER_STAT_COLUMNS)
-    if single_comp and pool_adv_eligible:
-        columns = columns + _PLAYER_ADVANCED_COLUMNS
+    # N-of-M counts for the eligibility banner.
+    elig_n, elig_m = await _fetch_adv_counts(db, q)
+
+    # Build result column list.
+    # - Single-comp + eligible: advanced columns shown (exact within one pool, no caveat).
+    # - Single-comp + not eligible: base columns only (warning banner shown by template).
+    # - Multi-comp: advanced columns always shown (N-of-M banner; each row is one pool,
+    #   so per-row values are exact within that pool — no "avg" marker needed here).
+    if single_comp and not pool_adv_eligible:
+        columns: list[ExplorerColumn] = list(_PLAYER_STAT_COLUMNS)
+    else:
+        columns = list(_PLAYER_STAT_COLUMNS) + list(_PLAYER_ADVANCED_COLUMNS)
 
     def _adv_values(r: Any) -> dict[str, Any]:
-        """Extract composite values from a result row (only when single-comp selected)."""
+        """Extract composite values from a result row (always present in SELECT now)."""
         return {
             "per": getattr(r, "per", None),
             "ortg": getattr(r, "ortg", None),
@@ -1006,7 +2059,7 @@ async def _query_players_per_competition(
             href=f"/players/{r.slug}" if r.slug else None,
             values={
                 **_compute_player_values(r, q.mode),
-                **(_adv_values(r) if (single_comp and pool_adv_eligible) else {}),
+                **_adv_values(r),
             },
         )
         for r in raw
@@ -1024,6 +2077,8 @@ async def _query_players_per_competition(
         facets=ExplorerFacets(),
         query=q,
         adv_eligible=pool_adv_eligible if single_comp else False,
+        adv_eligible_n=elig_n,
+        adv_eligible_m=elig_m,
     )
 
 
@@ -1078,6 +2133,13 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
         conds.append(
             comp.year - func.extract("year", pm.birthdate) <= q.age_max  # type: ignore[arg-type]
         )
+    # Metric threshold filters applied as WHERE conditions on game-log columns.
+    # Advanced composites (per/ortg/bpm/ws/vorp) are not stored on game logs and are
+    # silently skipped by _per_game_metric_where.
+    for mf in q.metric_filters:
+        where_expr = _per_game_metric_where(mf, pgl)
+        if where_expr is not None:
+            conds.append(where_expr)
 
     stmt = (
         select(
@@ -1329,6 +2391,15 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             continue
         rt = ratings.get(r.id)
         name = r.raw_team_name or r.raw_team_abbreviation or "Team"
+        # Derive box-log averages; emit None when the log is absent or all-NULL
+        # so missing inputs degrade cleanly instead of producing 0 / NaN.
+        ortg_val = _r1(rt.ortg) if rt else None
+        drtg_val = _r1(rt.drtg) if rt else None
+        net_rtg_val = (
+            round(ortg_val - drtg_val, 1)
+            if (ortg_val is not None and drtg_val is not None)
+            else None
+        )
         rows.append(
             ExplorerRow(
                 label=f"{name} · {_venue_label(r.venue_slug)} {r.year}",
@@ -1341,8 +2412,9 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                     "opp_ppg": round(pa / gp, 1),
                     "diff": round((pf - pa) / gp, 1),
                     "pace": _r1(rt.pace) if rt else None,
-                    "ortg": _r1(rt.ortg) if rt else None,
-                    "drtg": _r1(rt.drtg) if rt else None,
+                    "ortg": ortg_val,
+                    "drtg": drtg_val,
+                    "net_rtg": net_rtg_val,
                 },
             )
         )
@@ -1493,6 +2565,60 @@ def _build_result(
 def _empty_result(subject: str, q: ExplorerQuery) -> ExplorerResult:
     """An available result with no rows (e.g. filters matched nothing)."""
     return _build_result(subject, _COLUMNS_BY_SUBJECT.get(subject, []), [], q)
+
+
+# --------------------------------------------------------------------------- #
+# Drill-down
+# --------------------------------------------------------------------------- #
+
+
+async def get_player_drilldown_rows(
+    db: AsyncSession,
+    player_slug: str,
+    scope_q: ExplorerQuery,
+) -> ExplorerResult:
+    """Per-competition breakdown for a single player (drill-down from career grain).
+
+    Fetches all per-competition season rows for the player within the same scope
+    (year/venue) as the career query, with minimum-game/minute floors relaxed to
+    ``1`` so sparse early-career competitions are included.  Pagination is
+    disabled — a player typically appears in at most a handful of competitions.
+
+    Advanced columns are always shown when available per pool; composite values
+    are exact within each pool (no "avg" marker) since each row is one competition.
+
+    Args:
+        db:        Async database session.
+        player_slug: Slug of the player to expand.
+        scope_q:   The active career-grain query providing year/venue scope.
+
+    Returns:
+        :class:`ExplorerResult` with per-competition rows for the player.
+    """
+    # Coerce sort away from advanced-composite keys not available in per_game
+    # (we stay in per_competition where they are available, but reuse the guard).
+    safe_sort = scope_q.sort if scope_q.sort not in _ADV_COMPOSITE_SORT_KEYS else "pts"
+
+    drill_q = ExplorerQuery(
+        subject="players",
+        grain="per_competition",
+        year_min=scope_q.year_min,
+        year_max=scope_q.year_max,
+        venue=scope_q.venue,
+        # Carry the team scope so the breakdown matches the (team-scoped) parent
+        # career row — without it, a player on multiple SL teams would show
+        # competitions that did not contribute to the displayed total.
+        team_slug=scope_q.team_slug,
+        min_games=1,  # no GP floor — show all competitions for this player
+        min_minutes=1,  # no MIN floor
+        mode=scope_q.mode,
+        sort=safe_sort,
+        direction=scope_q.direction,
+        page=1,
+        paginate=False,  # always return all rows; drilldowns are always small
+        player_slug=player_slug,
+    )
+    return await _query_players_per_competition(db, drill_q)
 
 
 # --------------------------------------------------------------------------- #
