@@ -24,10 +24,15 @@ from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
+    SummerLeaguePlayByPlayEvent,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
 from app.services.summer_league.metrics import game_score_from_row
+from app.services.summer_league_shotchart_service import (
+    get_game_shot_dots,
+    get_game_shot_zones,
+)
 
 # Human-readable venue labels keyed by the competition ``venue_slug``.
 VENUE_LABELS: dict[str, str] = {
@@ -720,3 +725,181 @@ async def get_player_game_logs(
             )
         )
     return seasons
+
+
+async def get_game_shotchart_context(
+    db: AsyncSession,
+    game_id: int,
+    team_entry_id: Optional[int] = None,
+    player_id: Optional[int] = None,
+) -> Optional[dict]:
+    """Assemble the ``window.SL_SHOTCHART`` payload for the game box-score page.
+
+    Delegates to :func:`get_game_shot_zones` and :func:`get_game_shot_dots`
+    from the shotchart service, scoped to the given ``game_id`` and optional
+    ``team_entry_id`` / ``player_id`` filters.
+
+    Returns ``None`` when the game has no shot events in the requested scope so
+    callers can show a graceful empty state.
+
+    Game-scope zones have no pool baseline (a single game has too few shots to
+    form a meaningful pool), so ``pool_fg_pct`` is ``None`` on all zone rows.
+    Dot coordinates are included when coordinate data is present.
+
+    Args:
+        db: Async database session.
+        game_id: ``SummerLeagueGame.id``.
+        team_entry_id: Optional team filter; ``None`` = whole game.
+        player_id: Optional player filter; ``None`` = all players in scope.
+
+    Returns:
+        A JSON-serialisable dict shaped for ``window.SL_SHOTCHART``, or ``None``
+        when no shot events exist for the given scope.
+    """
+    zones_dto = await get_game_shot_zones(
+        db, game_id=game_id, team_entry_id=team_entry_id, player_id=player_id
+    )
+    if zones_dto.total_fga == 0:
+        return None
+
+    dots = await get_game_shot_dots(
+        db, game_id=game_id, team_entry_id=team_entry_id, player_id=player_id
+    )
+
+    return {
+        "total_fga": zones_dto.total_fga,
+        "suppressed": zones_dto.suppressed,
+        "zones": [
+            {
+                "shot_zone_basic": z.shot_zone_basic,
+                "fga": z.fga,
+                "fgm": z.fgm,
+                "fg_pct": z.fg_pct,
+                "freq_pct": z.freq_pct,
+                "pool_fg_pct": z.pool_fg_pct,
+            }
+            for z in zones_dto.zones
+        ],
+        "dots": [{"loc_x": d.loc_x, "loc_y": d.loc_y, "made": d.made} for d in dots],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Game-flow chart helpers
+# ---------------------------------------------------------------------------
+
+_REGULAR_PERIOD_SECONDS = 10 * 60  # 600 s per regulation quarter (Summer League)
+_OT_PERIOD_SECONDS = 5 * 60  # 300 s per overtime period
+_N_REGULATION_PERIODS = 4
+
+
+def _period_start_seconds(period: int) -> int:
+    """Return the elapsed-game-time (in seconds) at the start of ``period``.
+
+    Periods are 1-indexed. Summer League regulation periods (1–4) are
+    10 minutes each; overtime periods (≥5) are 5 minutes each.
+    """
+    if period <= _N_REGULATION_PERIODS:
+        return (period - 1) * _REGULAR_PERIOD_SECONDS
+    regulation_total = _N_REGULATION_PERIODS * _REGULAR_PERIOD_SECONDS
+    ot_index = period - _N_REGULATION_PERIODS - 1
+    return regulation_total + ot_index * _OT_PERIOD_SECONDS
+
+
+def _period_duration_seconds(period: int) -> int:
+    """Return the duration (seconds) of ``period``."""
+    return (
+        _REGULAR_PERIOD_SECONDS
+        if period <= _N_REGULATION_PERIODS
+        else _OT_PERIOD_SECONDS
+    )
+
+
+def _parse_clock(clock: Optional[str]) -> Optional[int]:
+    """Convert a ``MM:SS`` clock string to remaining seconds, or ``None``."""
+    if not clock:
+        return None
+    parts = clock.split(":")
+    if len(parts) != 2:
+        return None
+    try:
+        mins, secs = int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+    return mins * 60 + secs
+
+
+def _elapsed_seconds(period: int, remaining: int) -> float:
+    """Return total elapsed game time (seconds) given ``period`` and ``remaining`` clock."""
+    period_start = _period_start_seconds(period)
+    period_dur = _period_duration_seconds(period)
+    elapsed_in_period = period_dur - remaining
+    return float(period_start + elapsed_in_period)
+
+
+async def get_game_flow_series(
+    db: AsyncSession,
+    game_id: int,
+) -> Optional[list[dict[str, Any]]]:
+    """Build a score-margin-over-time series from play-by-play events.
+
+    The series spans all periods; time is monotonically increasing (elapsed
+    seconds from tip-off). Only events that carry a non-null ``score_margin``
+    are included. The series is prepended with a ``(0, 0)`` origin point so
+    the chart starts at tip-off.
+
+    A positive margin means the home team is ahead (home − away), matching
+    how ``score_margin`` is stored in :class:`SummerLeaguePlayByPlayEvent`.
+
+    Returns ``None`` when the game has no PBP events so callers can omit the
+    chart gracefully.
+
+    Args:
+        db: Async database session.
+        game_id: Internal ``summer_league_games.id``.
+
+    Returns:
+        A list of ``{"t": float, "margin": int}`` dicts ordered by elapsed
+        time, or ``None`` when no PBP events exist for this game.
+    """
+    # Single query: fetch all PBP events ordered by period + event_num.
+    # This lets us detect existence (non-empty result) and extract scored events
+    # in one round-trip, avoiding a separate COUNT query.
+    stmt = (
+        select(  # type: ignore[call-overload]
+            SummerLeaguePlayByPlayEvent.period,
+            SummerLeaguePlayByPlayEvent.clock,
+            SummerLeaguePlayByPlayEvent.score_margin,
+        )
+        .where(SummerLeaguePlayByPlayEvent.game_id == game_id)  # type: ignore[arg-type]
+        .order_by(
+            SummerLeaguePlayByPlayEvent.period,
+            SummerLeaguePlayByPlayEvent.event_num,
+        )
+    )
+    all_rows = (await db.execute(stmt)).all()
+
+    # No PBP data at all → omit chart gracefully.
+    if not all_rows:
+        return None
+
+    # Build the series: always start at the origin (0 s elapsed, 0 margin).
+    series: list[dict[str, Any]] = [{"t": 0.0, "margin": 0}]
+
+    seen_t: float = 0.0
+    for row in all_rows:
+        # Skip events that have no score information.
+        if row.score_margin is None:
+            continue
+        period = row.period
+        remaining = _parse_clock(row.clock)
+        if period is None or remaining is None:
+            continue
+        t = _elapsed_seconds(period, remaining)
+        # Clamp to ensure monotonicity (should not happen with well-formed data).
+        if t < seen_t:
+            t = seen_t
+        seen_t = t
+        series.append({"t": t, "margin": row.score_margin})
+
+    return series

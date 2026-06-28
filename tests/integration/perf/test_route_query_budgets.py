@@ -40,6 +40,7 @@ async def test_route_within_query_budget(
         year=representative_dataset.sl_year,
         venue=representative_dataset.sl_venue,
         team=representative_dataset.sl_team,
+        game_id=representative_dataset.sl_game_id,
     )
     budget = ROUTE_BUDGETS[route_template]
 

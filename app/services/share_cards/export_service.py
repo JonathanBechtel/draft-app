@@ -19,6 +19,7 @@ from app.services.share_cards.model_builders import (
     build_h2h_model,
     build_metric_leaders_model,
     build_performance_model,
+    build_sl_shot_chart_model,
 )
 from app.services.share_cards.rasterizer import get_rasterizer
 from app.services.share_cards.render_models import RenderModel
@@ -28,7 +29,13 @@ from app.services.share_cards.svg_renderer import get_svg_renderer
 logger = logging.getLogger(__name__)
 
 ComponentType = Literal[
-    "vs_arena", "performance", "h2h", "comps", "metric_leaders", "draft_year"
+    "vs_arena",
+    "performance",
+    "h2h",
+    "comps",
+    "metric_leaders",
+    "draft_year",
+    "sl_shot_chart",
 ]
 
 # Map component types to template files
@@ -40,6 +47,7 @@ COMPONENT_TEMPLATES = {
     "comps": "comps.svg",
     "metric_leaders": "metric_leaders.svg",
     "draft_year": "draft_year.svg",
+    "sl_shot_chart": "sl_shot_chart.svg",
 }
 
 
@@ -199,6 +207,8 @@ class ImageExportService:
             return await build_metric_leaders_model(self.db, player_ids, context)
         elif component == "draft_year":
             return await build_draft_year_model(self.db, player_ids, context)
+        elif component == "sl_shot_chart":
+            return await build_sl_shot_chart_model(self.db, player_ids, context)
         else:
             raise ValueError(f"Unknown component: {component}")
 
@@ -246,6 +256,7 @@ class ImageExportService:
             H2HRenderModel,
             MetricLeadersRenderModel,
             PerformanceRenderModel,
+            SLShotChartRenderModel,
         )
 
         if isinstance(model, H2HRenderModel):
@@ -254,5 +265,7 @@ class ImageExportService:
             return [model.player.name]
         elif isinstance(model, MetricLeadersRenderModel):
             return [model.metric_label]
+        elif isinstance(model, SLShotChartRenderModel):
+            return [model.player.name]
         else:
             return ["Player"]

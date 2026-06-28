@@ -63,6 +63,7 @@ COMPONENT_ACCENTS = {
     "comps": COLORS["cyan"],
     "metric_leaders": COLORS["amber"],
     "draft_year": COLORS["indigo"],
+    "sl_shot_chart": "#f97316",  # orange — Summer League brand accent
 }
 
 # Fixed list lengths for determinism

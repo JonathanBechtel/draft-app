@@ -1670,6 +1670,20 @@ function shareCompsTweet() {
 }
 
 /**
+ * Export player SL shot-chart share card
+ */
+function exportSLShotChart() {
+  const player = window.PLAYER_DATA;
+  if (!player?.id) return;
+
+  // Career-level card (competition_id: null); scoped variant deferred to future.
+  ExportModal.export('sl_shot_chart', [player.id], {
+    _raw: { competition_id: null },
+    redirectPath: window.location.pathname,
+  });
+}
+
+/**
  * ============================================================================
  * APPLICATION INITIALIZATION
  * Initialize all modules when DOM is ready

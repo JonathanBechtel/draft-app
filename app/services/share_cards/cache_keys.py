@@ -75,6 +75,10 @@ def generate_filename(
         category = (context or {}).get("category", "combine")
         return f"{year}-combine-{category}.png"
 
+    if component == "sl_shot_chart":
+        slug = _slugify(player_names[0]) if player_names else "player"
+        return f"{slug}-sl-shot-chart.png"
+
     slugified = [_slugify(name) for name in player_names]
 
     if component in ("vs_arena", "h2h"):
@@ -126,6 +130,8 @@ def generate_title(
         return f"{player_names[0]} — Performance"
     elif component == "comps":
         return f"{player_names[0]} — Comparisons"
+    elif component == "sl_shot_chart":
+        return f"{player_names[0]} — SL Shot Chart"
     else:
         return player_names[0]
 

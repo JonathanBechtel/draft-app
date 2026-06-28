@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}{{ player.name }} — {{ year }} Summer League — DraftGuru{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% if sl_shotchart %}<link rel="stylesheet" href="{{ url_for('static', path='summer-league-shotchart.css') }}">{% endif %}
+{% endblock %}
+
+{% macro n(v) %}{{ v if v is not none else '—' }}{% endmacro %}
+{% macro mins(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
+{% macro pct(v) %}{% if v is not none %}{{ '%.1f' % (v * 100) }}%{% else %}—{% endif %}{% endmacro %}
+
+{% block content %}
+<main class="container slg-page slg-logs">
+
+  <a class="slg-back" href="/players/{{ player.slug }}">&larr; {{ player.name }}</a>
+
+  <header class="slg-head">
+    <p class="slg-eyebrow">Summer League &middot; {{ year }}</p>
+    <h1 class="slg-title">{{ player.name }}</h1>
+    <p class="slg-sub">
+      {{ year }} Summer League &middot;
+      {{ total_games }} game{{ '' if total_games == 1 else 's' }}
+    </p>
+  </header>
+
+  {# Game logs for this year #}
+  {% if not seasons %}
+  <div class="stats-scoreboard slg-board">
+    <div class="scanlines"></div>
+    <p class="slg-empty slg-empty--block">{{ player.name }} hasn't played Summer League in {{ year }}.</p>
+  </div>
+  {% endif %}
+
+  {% for s in seasons %}
+  <section class="slg-season">
+    <div class="slg-season__head">
+      <h2 class="slg-season__title">{{ s.label }}</h2>
+      <span class="slg-season__gp">{{ s.rows | length }} G</span>
+    </div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-logs-table">
+          <thead>
+            <tr>
+              <th scope="col">Date</th><th scope="col">Opp</th>
+              <th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th>
+              <th scope="col">AST</th><th scope="col">STL</th><th scope="col">BLK</th>
+              <th scope="col">TOV</th>
+              <th scope="col" title="Field goals made">FGM</th><th scope="col" title="Field goals attempted">FGA</th>
+              <th scope="col" title="3-pointers made">3PM</th><th scope="col" title="3-pointers attempted">3PA</th>
+              <th scope="col" title="Free throws made">FTM</th><th scope="col" title="Free throws attempted">FTA</th>
+              <th scope="col">+/−</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for g in s.rows %}
+            <tr>
+              <th scope="row"><a class="slg-game-link" href="/stats/summer-league/{{ s.year }}/games/{{ g.game_id }}">{{ g.game_date or '—' }}</a></th>
+              <td>{{ g.opponent or '—' }}</td>
+              <td>{{ mins(g.minutes) }}</td><td class="slg-strong">{{ n(g.pts) }}</td>
+              <td>{{ n(g.reb) }}</td><td>{{ n(g.ast) }}</td><td>{{ n(g.stl) }}</td>
+              <td>{{ n(g.blk) }}</td><td>{{ n(g.tov) }}</td>
+              <td>{{ n(g.fgm) }}</td><td>{{ n(g.fga) }}</td><td>{{ n(g.fg3m) }}</td><td>{{ n(g.fg3a) }}</td><td>{{ n(g.ftm) }}</td><td>{{ n(g.fta) }}</td>
+              <td>{{ n(g.plus_minus) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+
+  {# Shot chart section #}
+  {% if sl_shotchart %}
+  <section class="slg-season sl-shotchart-section">
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="stats-header">
+        <div class="stats-title">Shot Chart</div>
+        <span class="sl-shotchart-scope">{{ year }} &middot; pool-calibrated</span>
+      </div>
+      <div id="sl-shotchart-root"></div>
+
+      {# Zone table — always visible regardless of suppressed state #}
+      {% if sl_shotchart.zones %}
+      <div class="sl-table-wrap sl-shotchart-zone-table">
+        <table class="sl-stats-table">
+          <thead>
+            <tr>
+              <th scope="col">Zone</th>
+              <th scope="col" title="Field goals attempted">FGA</th>
+              <th scope="col" title="Field goals made">FGM</th>
+              <th scope="col" title="Field goal percentage">FG%</th>
+              <th scope="col" title="Frequency — share of total FGA">Freq%</th>
+              <th scope="col" title="Pool average FG% for this zone (same competition)">Pool%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for z in sl_shotchart.zones %}
+            <tr>
+              <th scope="row">{{ z.shot_zone_basic }}</th>
+              <td>{{ z.fga }}</td>
+              <td>{{ z.fgm }}</td>
+              <td>{{ pct(z.fg_pct) }}</td>
+              <td>{{ '%.1f' % (z.freq_pct * 100) }}%</td>
+              <td>{{ pct(z.pool_fg_pct) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+
+      {% if sl_shotchart.suppressed %}
+      <div class="sl-career-meta sl-shotchart-note">Small sample ({{ sl_shotchart.total_fga }} FGA) — zone table only; heat chart requires &ge;20 FGA.</div>
+      {% endif %}
+
+      {# Shot-diet row #}
+      {% if sl_shotchart.shot_diet %}
+      {% set d = sl_shotchart.shot_diet %}
+      <div class="sl-shot-diet">
+        <div class="stats-section-label">Shot Diet</div>
+        <div class="sl-shot-diet__row">
+          <div class="sl-shot-diet__item">
+            <span class="sl-shot-diet__label">Rim</span>
+            <span class="sl-shot-diet__val">{% if d.rim_rate is not none %}{{ '%.0f' % (d.rim_rate * 100) }}%{% else %}—{% endif %}</span>
+          </div>
+          <div class="sl-shot-diet__item">
+            <span class="sl-shot-diet__label">Mid</span>
+            <span class="sl-shot-diet__val">{% if d.mid_rate is not none %}{{ '%.0f' % (d.mid_rate * 100) }}%{% else %}—{% endif %}</span>
+          </div>
+          <div class="sl-shot-diet__item">
+            <span class="sl-shot-diet__label">3PT</span>
+            <span class="sl-shot-diet__val">{% if d.three_rate is not none %}{{ '%.0f' % (d.three_rate * 100) }}%{% else %}—{% endif %}</span>
+          </div>
+          <div class="sl-shot-diet__item">
+            <span class="sl-shot-diet__label">Corner 3</span>
+            <span class="sl-shot-diet__val">{% if d.corner3_rate is not none %}{{ '%.0f' % (d.corner3_rate * 100) }}%{% else %}—{% endif %}</span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {# Empty shot-data state for resolved players with logs but no shot events #}
+  {% if not sl_shotchart and seasons %}
+  <section class="slg-season">
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <p class="slg-empty slg-empty--block">No shot-chart data available for {{ player.name }} in {{ year }}.</p>
+    </div>
+  </section>
+  {% endif %}
+
+</main>
+{% endblock %}
+
+{% block extra_js %}
+{% if sl_shotchart %}
+<script>
+  window.SL_SHOTCHART = {{ sl_shotchart | tojson | safe }};
+</script>
+<script src="{{ url_for('static', path='summer-league-shotchart.js') }}"></script>
+{% endif %}
+{% endblock %}

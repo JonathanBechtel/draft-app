@@ -76,6 +76,7 @@ from app.services.player_service import (
 from app.services.school_logo_service import get_logo_url_for_school
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from app.services.summer_league_stats_service import (
+    get_player_shotchart_context,
     get_summer_league_profile_by_player_id,
     summer_league_to_context,
 )
@@ -959,6 +960,15 @@ async def player_detail(
     if player_profile.id is not None:
         sl_metrics = await get_player_metric_seasons(db, player_id=player_profile.id)
 
+    # Shot chart + shot-diet (career rollup): zones aggregated across all
+    # competitions; no pool colours and no dots (career mixes pools).  None
+    # when the player has no parsed shot events => chart section omitted.
+    sl_shotchart: dict | None = None
+    if player_profile.id is not None:
+        sl_shotchart = await get_player_shotchart_context(
+            db, player_id=player_profile.id, competition_id=None
+        )
+
     # Fetch consensus detail for this player.
     # Treat a None result (player not on any board) as "omit the section" — do
     # NOT raise 404; the rest of the page must still render normally.
@@ -1160,6 +1170,7 @@ async def player_detail(
             "college_stats": college_stats,
             "summer_league": summer_league,
             "sl_metrics": sl_metrics,
+            "sl_shotchart": sl_shotchart,
             "percentile_data": percentile_data,
             "comparison_data": comparison_data,
             "player_feed": player_feed,

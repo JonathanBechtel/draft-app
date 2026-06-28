@@ -1,0 +1,87 @@
+/* Game-flow (score-margin-over-time) chart — BEM: .sl-game-flow */
+
+.sl-game-flow-section {
+  margin-bottom: 1.5rem;
+}
+
+.sl-game-flow__wrap {
+  padding: 0.75rem 1rem 0.5rem;
+  overflow-x: auto;
+}
+
+.sl-game-flow__chart {
+  width: 100%;
+  min-height: 140px;
+}
+
+.sl-game-flow__chart svg {
+  display: block;
+  width: 100%;
+  height: 160px;
+  overflow: visible;
+}
+
+/* Zero-line (tie) */
+.sl-game-flow__zero-line {
+  stroke: var(--color-slate-300);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+/* Score-margin line segments */
+.sl-game-flow__line--home {
+  fill: none;
+  stroke: var(--color-accent-emerald);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.sl-game-flow__line--away {
+  fill: none;
+  stroke: var(--color-accent-rose);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* Quarter/period dividers */
+.sl-game-flow__period-line {
+  stroke: var(--color-slate-200);
+  stroke-width: 1;
+}
+
+.sl-game-flow__period-label {
+  fill: var(--color-slate-500);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+/* Y-axis labels */
+.sl-game-flow__ylabel {
+  fill: var(--color-slate-500);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-anchor: end;
+  dominant-baseline: middle;
+}
+
+/* Legend */
+.sl-game-flow__legend {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-slate-500);
+  text-align: center;
+  margin: 0 0 0.5rem;
+}
+
+.sl-game-flow__legend-home {
+  color: var(--color-accent-emerald);
+  font-weight: 700;
+}
+
+.sl-game-flow__legend-away {
+  color: var(--color-accent-rose);
+  font-weight: 700;
+}

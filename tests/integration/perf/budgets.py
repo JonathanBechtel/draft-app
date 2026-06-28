@@ -53,13 +53,28 @@ ROUTE_BUDGETS: dict[str, int] = {
     # +1 over the prior 24 for the SL advanced-metrics read
     # (get_player_metric_seasons): one indexed lookup on
     # summer_league_player_seasons by player_id.
-    "/players/{slug}": 25,
+    # +1 over 25 for the career shot-zone query (get_player_shotchart_context):
+    # one indexed lookup on summer_league_shot_events by player_id.  When the
+    # player has no shot events (total_fga == 0) the function returns None
+    # immediately without issuing the shot-diet follow-up query.
+    "/players/{slug}": 26,
     "/players/{slug}/summer-league": 2,
+    # Per-season page: resolve_player_ref (1) + get_player_game_logs (1) +
+    # get_competition_id_for_player_year query on summer_league_player_seasons (1).
+    # Shot-chart queries only fire when a SummerLeaguePlayerSeason row exists;
+    # the perf dataset seeds game logs but no season rows, so the budget is 3.
+    "/players/{slug}/summer-league/{year}": 3,
     "/consensus": 43,
     # Hub: combine-year coverage + SL-year coverage, one indexed read each.
     "/stats/": 2,
     "/stats/summer-league": 8,
     "/stats/summer-league/games": 5,
+    # Box score: header query (1) + player lines (1) + team totals (1) +
+    # shot-zone aggregation (1) + game-flow PBP events (1) = 5 indexed reads.
+    # The perf dataset seeds no shot events, so total_fga=0 and the shot-dot
+    # follow-up query is skipped (budget would be 6 on a game with both shots
+    # and PBP). The PBP query always fires; it returns empty → no chart rendered.
+    "/stats/summer-league/{year}/games/{game_id}": 5,
     # Both counting (aggregate + years) and advanced (competition list +
     # per-competition rows) modes fire 2 indexed queries.
     "/stats/summer-league/leaders": 3,

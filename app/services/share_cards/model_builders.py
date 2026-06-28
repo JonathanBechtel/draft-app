@@ -33,6 +33,9 @@ from app.services.share_cards.render_models import (
     PerformanceRenderModel,
     PerformanceRow,
     PlayerBadge,
+    SLShotChartRenderModel,
+    SLShotDiet,
+    SLZoneRow,
     VSArenaRenderModel,
     VSRow,
     WinnerSide,
@@ -911,3 +914,179 @@ def _get_metric_display_name(metric_key: str) -> str:
     if col_def:
         return col_def.display_name
     return _shorten_label(metric_key.replace("_", " ").title())
+
+
+def _vs_pool_label(fg_pct: Optional[float], pool_fg_pct: Optional[float]) -> str:
+    """Return a comparison label for FG% vs pool baseline.
+
+    Returns:
+        "above" when ≥5pp above pool, "below" when ≥5pp below, "average" when within
+        ±5pp, "unknown" when either value is missing.
+    """
+    if fg_pct is None or pool_fg_pct is None:
+        return "unknown"
+    diff = fg_pct - pool_fg_pct
+    if diff >= 0.05:
+        return "above"
+    if diff <= -0.05:
+        return "below"
+    return "average"
+
+
+async def build_sl_shot_chart_model(
+    db: AsyncSession,
+    player_ids: list[int],
+    context: dict[str, Any],
+) -> SLShotChartRenderModel:
+    """Build SL Shot Chart render model from player ID and context.
+
+    Reuses the player shot-zone service path (same data source as the
+    on-page chart component).  No separate computation: just formats
+    zone data and optional shot-diet into a card-ready dataclass.
+
+    Args:
+        db: Database session.
+        player_ids: List with a single player ID.
+        context: Export context; may include ``competition_id`` (int or None).
+
+    Returns:
+        SLShotChartRenderModel ready for SVG template rendering.
+
+    Raises:
+        ValueError: If player not found or invalid player_ids.
+    """
+    from sqlalchemy import desc
+
+    from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+    from app.services.summer_league_shotchart_service import get_player_shot_zones
+
+    if len(player_ids) != 1:
+        raise ValueError("sl_shot_chart requires exactly 1 player_id")
+
+    player_id = player_ids[0]
+    competition_id: Optional[int] = context.get("competition_id")
+
+    # ── Player identity ──────────────────────────────────────────────────────
+    (
+        display_name,
+        _slug,
+        subtitle,
+        image_url,
+        _pos_parents,
+        _draft_year,
+    ) = await _resolve_player_info(db, player_id)
+    player_badge = await _build_player_badge(db, player_id)
+
+    # ── Zone aggregation ─────────────────────────────────────────────────────
+    zones_dto = await get_player_shot_zones(db, player_id, competition_id)
+
+    scope_label = "Career" if competition_id is None else "Season"
+    card_subtitle = (
+        f"Summer League · {scope_label} · {zones_dto.total_fga} FGA"
+        if zones_dto.total_fga > 0
+        else f"Summer League · {scope_label} · No shot data"
+    )
+
+    zone_rows: list[SLZoneRow] = []
+    for z in zones_dto.zones:
+        fg_pct_display = f"{z.fg_pct * 100:.1f}%" if z.fg_pct is not None else "—"
+        freq_pct_display = f"{z.freq_pct * 100:.0f}%"
+        zone_rows.append(
+            SLZoneRow(
+                shot_zone_basic=z.shot_zone_basic,
+                fga=z.fga,
+                fgm=z.fgm,
+                fg_pct=z.fg_pct,
+                freq_pct=z.freq_pct,
+                pool_fg_pct=z.pool_fg_pct,
+                fg_pct_display=fg_pct_display,
+                freq_pct_display=freq_pct_display,
+                vs_pool=_vs_pool_label(z.fg_pct, z.pool_fg_pct),
+            )
+        )
+
+    # ── Shot diet (from SummerLeaguePlayerSeason) ────────────────────────────
+    shot_diet: Optional[SLShotDiet] = None
+    if competition_id is not None:
+        diet_stmt = select(SummerLeaguePlayerSeason).where(  # type: ignore[call-overload]
+            SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
+            SummerLeaguePlayerSeason.competition_id == competition_id,  # type: ignore[arg-type]
+        )
+    else:
+        diet_stmt = (
+            select(SummerLeaguePlayerSeason)  # type: ignore[call-overload]
+            .where(SummerLeaguePlayerSeason.player_id == player_id)  # type: ignore[arg-type]
+            .order_by(
+                desc(SummerLeaguePlayerSeason.year),  # type: ignore[arg-type]
+                SummerLeaguePlayerSeason.venue_slug,
+            )
+            .limit(1)
+        )
+    diet_row: Optional[SummerLeaguePlayerSeason] = (
+        await db.execute(diet_stmt)
+    ).scalar_one_or_none()
+
+    if diet_row is not None and any(
+        v is not None
+        for v in (
+            diet_row.rim_rate,
+            diet_row.mid_rate,
+            diet_row.three_rate,
+            diet_row.corner3_rate,
+        )
+    ):
+
+        def _pct_str(v: Optional[float]) -> str:
+            return f"{v * 100:.0f}%" if v is not None else "—"
+
+        shot_diet = SLShotDiet(
+            rim_rate=diet_row.rim_rate,
+            mid_rate=diet_row.mid_rate,
+            three_rate=diet_row.three_rate,
+            corner3_rate=diet_row.corner3_rate,
+            rim_display=_pct_str(diet_row.rim_rate),
+            mid_display=_pct_str(diet_row.mid_rate),
+            three_display=_pct_str(diet_row.three_rate),
+            corner3_display=_pct_str(diet_row.corner3_rate),
+        )
+
+    # ── Kernel-smoothed heat field (embedded PNG) ────────────────────────────
+    has_pool = any(z.pool_fg_pct is not None for z in zones_dto.zones)
+    heat_data_uri: Optional[str] = None
+    if not zones_dto.suppressed and zones_dto.total_fga > 0:
+        from app.schemas.summer_league import SummerLeagueShotEvent
+        from app.services.share_cards.sl_heat_render import (
+            _Dot,
+            render_shot_heat_data_uri,
+        )
+
+        dot_stmt = select(  # type: ignore[call-overload]
+            SummerLeagueShotEvent.loc_x,
+            SummerLeagueShotEvent.loc_y,
+            SummerLeagueShotEvent.made,
+        ).where(
+            SummerLeagueShotEvent.player_id == player_id,  # type: ignore[arg-type]
+            SummerLeagueShotEvent.loc_x.isnot(None),  # type: ignore[union-attr]
+            SummerLeagueShotEvent.loc_y.isnot(None),  # type: ignore[union-attr]
+        )
+        if competition_id is not None:
+            dot_stmt = dot_stmt.where(
+                SummerLeagueShotEvent.competition_id == competition_id  # type: ignore[arg-type]
+            )
+        dot_rows = (await db.execute(dot_stmt)).all()
+        dots = [_Dot(float(x), float(y), bool(m)) for x, y, m in dot_rows]
+        zone_pool = {z.shot_zone_basic: z.pool_fg_pct for z in zones_dto.zones}
+        heat_data_uri = render_shot_heat_data_uri(dots, zone_pool, has_pool)
+
+    return SLShotChartRenderModel(
+        title=f"{display_name.split()[0].upper()} — SL SHOT CHART",
+        subtitle=card_subtitle,
+        player=player_badge,
+        total_fga=zones_dto.total_fga,
+        suppressed=zones_dto.suppressed,
+        zones=zone_rows,
+        shot_diet=shot_diet,
+        heat_data_uri=heat_data_uri,
+        has_pool=has_pool,
+        accent_color=COMPONENT_ACCENTS["sl_shot_chart"],
+    )

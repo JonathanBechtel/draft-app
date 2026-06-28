@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/feed.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/film-room.css') }}">
+{% if sl_shotchart %}<link rel="stylesheet" href="{{ url_for('static', path='summer-league-shotchart.css') }}">{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -462,6 +463,88 @@
           {% if sl_metrics.seasons | length > 1 %}
           <div class="sl-career-meta">
             * Career WS and VORP are cumulative totals across qualified competitions; PER, BPM, and the /82 projections are minute-weighted averages, and TS% pools shot totals. Ratings and usage aren't pooled across competitions.
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {# Shot chart (career rollup): zone heat with suppressed/table-only
+           fallback when FGA < threshold. Dots are omitted for the career view
+           since they span multiple pools. #}
+        {% if sl_shotchart %}
+        <div class="sl-shotchart-wrap">
+          <div class="stats-section-label" style="display:flex;align-items:center;justify-content:space-between;">
+            <span>Shot Chart <span class="sl-shotchart-scope">(Career)</span></span>
+            <button class="export-btn" title="Save as Image" onclick="exportSLShotChart()" style="margin-left:12px;">
+              <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" fill="none">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
+          </div>
+          <div id="sl-shotchart-root"></div>
+          {# Zone table — always shown regardless of suppressed state #}
+          {% if sl_shotchart.zones %}
+          <div class="sl-table-wrap sl-shotchart-zone-table">
+            <table class="sl-stats-table">
+              <thead>
+                <tr>
+                  <th scope="col">Zone</th>
+                  <th scope="col" title="Field goals attempted">FGA</th>
+                  <th scope="col" title="Field goals made">FGM</th>
+                  <th scope="col" title="Field goal percentage">FG%</th>
+                  <th scope="col" title="Frequency — share of total FGA">Freq%</th>
+                  <th scope="col" title="Pool average FG% for this zone (same competition)">Pool%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for z in sl_shotchart.zones %}
+                <tr>
+                  <th scope="row">{{ z.shot_zone_basic }}</th>
+                  <td>{{ z.fga }}</td>
+                  <td>{{ z.fgm }}</td>
+                  <td>{% if z.fg_pct is not none %}{{ '%.1f' % (z.fg_pct * 100) }}%{% else %}—{% endif %}</td>
+                  <td>{{ '%.1f' % (z.freq_pct * 100) }}%</td>
+                  <td>{% if z.pool_fg_pct is not none %}{{ '%.1f' % (z.pool_fg_pct * 100) }}%{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+          {% if sl_shotchart.suppressed %}
+          <div class="sl-career-meta sl-shotchart-note">Small sample (&lt;{{ sl_shotchart.total_fga }} FGA) — zone table only; heat chart requires ≥20 FGA.</div>
+          {% endif %}
+          {# Shot-diet row (latest competition) #}
+          {% if sl_shotchart.shot_diet %}
+          <div class="sl-shot-diet">
+            <div class="stats-section-label">Shot Diet</div>
+            <div class="sl-shot-diet__row">
+              {% set d = sl_shotchart.shot_diet %}
+              <div class="sl-shot-diet__item">
+                <span class="sl-shot-diet__label">Rim</span>
+                <span class="sl-shot-diet__val">{% if d.rim_rate is not none %}{{ '%.0f' % (d.rim_rate * 100) }}%{% else %}—{% endif %}</span>
+              </div>
+              <div class="sl-shot-diet__item">
+                <span class="sl-shot-diet__label">Mid</span>
+                <span class="sl-shot-diet__val">{% if d.mid_rate is not none %}{{ '%.0f' % (d.mid_rate * 100) }}%{% else %}—{% endif %}</span>
+              </div>
+              <div class="sl-shot-diet__item">
+                <span class="sl-shot-diet__label">3PT</span>
+                <span class="sl-shot-diet__val">{% if d.three_rate is not none %}{{ '%.0f' % (d.three_rate * 100) }}%{% else %}—{% endif %}</span>
+              </div>
+              <div class="sl-shot-diet__item">
+                <span class="sl-shot-diet__label">Corner 3</span>
+                <span class="sl-shot-diet__val">{% if d.corner3_rate is not none %}{{ '%.0f' % (d.corner3_rate * 100) }}%{% else %}—{% endif %}</span>
+              </div>
+              {% if d.assisted_fg_pct is defined and d.assisted_fg_pct is not none %}
+              <div class="sl-shot-diet__item">
+                <span class="sl-shot-diet__label" title="% of made FGs that were assisted (PBP era only)">Ast FG%</span>
+                <span class="sl-shot-diet__val">{{ '%.0f' % (d.assisted_fg_pct * 100) }}%</span>
+              </div>
+              {% endif %}
+            </div>
           </div>
           {% endif %}
         </div>
@@ -986,7 +1069,10 @@
   window.consensusHistory = {{ (consensus.history if consensus else none) | tojson | safe }};
   // Summer League profile (seasons/career/recent_games); null when player has none.
   window.SUMMER_LEAGUE_DATA = {{ summer_league | tojson | safe }};
+  // Shot chart payload (career zone rollup); null when no shot data.
+  window.SL_SHOTCHART = {{ sl_shotchart | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/player-detail.js') }}"></script>
 <script src="{{ url_for('static', path='js/film-room.js') }}"></script>
+{% if sl_shotchart %}<script src="{{ url_for('static', path='summer-league-shotchart.js') }}"></script>{% endif %}
 {% endblock %}

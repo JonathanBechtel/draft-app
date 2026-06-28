@@ -31,13 +31,21 @@ class ExportContext(BaseModel):
     year: Optional[int] = None
     category: Optional[str] = None
     position: Optional[str] = None
+    # SL shot-chart specific field
+    competition_id: Optional[int] = None
 
 
 class ExportRequest(BaseModel):
     """Request body for image export."""
 
     component: Literal[
-        "vs_arena", "performance", "h2h", "comps", "metric_leaders", "draft_year"
+        "vs_arena",
+        "performance",
+        "h2h",
+        "comps",
+        "metric_leaders",
+        "draft_year",
+        "sl_shot_chart",
     ]
     player_ids: list[int] = Field(default_factory=list, max_length=2)
     context: ExportContext = Field(default_factory=ExportContext)
