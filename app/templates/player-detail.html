@@ -265,7 +265,7 @@
 
   {% macro sl_row(s, m, is_career, slug='') %}
   <tr{% if is_career %} class="sl-stats-table__career"{% endif %}>
-    <th scope="row">{% if not is_career and slug and s.year %}<a class="sl-game-link" href="/players/{{ slug }}/summer-league/{{ s.year }}" title="View {{ s.season_label }} shot chart & game logs">{{ s.season_label }}</a>{% else %}{{ s.season_label }}{% endif %}</th>
+    <th scope="row">{% if not is_career and slug and s.year %}<a class="sl-game-link" href="/players/{{ slug }}/summer-league/{{ s.year }}{% if s.venue_slug %}?venue={{ s.venue_slug }}{% endif %}" title="View {{ s.season_label }}{% if s.venue_abbr %} {{ s.venue_abbr }}{% endif %} shot chart & game logs">{{ s.season_label }}</a>{% else %}{{ s.season_label }}{% endif %}</th>
     <td class="sl-col-lg">{{ s.venue_abbr or '—' }}</td>
     <td>{{ s.gp }}</td>
     <td>{{ sl_n(s.mpg) }}</td>

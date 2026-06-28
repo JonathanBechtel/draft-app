@@ -371,9 +371,15 @@ async def player_summer_league_season(
     request: Request,
     slug: str,
     year: int,
+    venue: Optional[str] = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
-    """Per-season Summer League view: game logs + shot chart for one year."""
+    """Per-season Summer League view: game logs + shot chart for one year.
+
+    ``venue`` (a competition ``venue_slug``) scopes the shot chart to the exact
+    competition the user clicked; without it, the year's marquee competition is
+    used.
+    """
     ref = await resolve_player_ref(db, slug)
     if ref is None:
         raise HTTPException(status_code=404, detail="Player not found")
@@ -382,9 +388,11 @@ async def player_summer_league_season(
     year_seasons = [s for s in all_seasons if s.year == year]
     total_games = sum(len(s.rows) for s in year_seasons)
 
-    # Shot chart: scoped to this year's most-marquee competition.
+    # Shot chart: scoped to the clicked competition (venue) or the marquee one.
     sl_shotchart: dict | None = None
-    comp_id = await get_competition_id_for_player_year(db, ref.id, year)
+    comp_id = await get_competition_id_for_player_year(
+        db, ref.id, year, venue_slug=venue
+    )
     if comp_id is not None:
         sl_shotchart = await get_player_shotchart_context(
             db, player_id=ref.id, competition_id=comp_id

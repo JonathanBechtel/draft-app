@@ -148,6 +148,9 @@ class SummerLeagueSeason:
     modes: dict[str, SummerLeagueModeStats]
     # Venue/league abbreviation (LV/SLC/CC/ORL) for a competition row; None for Career.
     venue_abbr: Optional[str] = None
+    # Canonical venue slug for a competition row (used to target the per-season
+    # page at the exact competition); None for Career.
+    venue_slug: Optional[str] = None
 
 
 @dataclass
@@ -378,6 +381,7 @@ async def get_summer_league_profile_by_player_id(
         )
         if season is not None:
             season.venue_abbr = _VENUE_ABBR.get(venue_slug, venue_slug)
+            season.venue_slug = venue_slug
             seasons.append(season)
 
     if not seasons:
@@ -430,12 +434,15 @@ async def get_competition_id_for_player_year(
     db: AsyncSession,
     player_id: int,
     year: int,
+    venue_slug: Optional[str] = None,
 ) -> Optional[int]:
-    """Return the most-marquee competition_id for a player in a given year.
+    """Return a competition_id for a player in a given year.
 
-    When the player appeared in more than one venue that year, the ordering in
-    ``_VENUE_ORDER`` is used (Las Vegas > Salt Lake City > California Classic >
-    Orlando).  Returns ``None`` when the player has no
+    When ``venue_slug`` is given, return that exact competition (so a clicked
+    Salt Lake / California Classic row opens its own shot chart rather than the
+    marquee one). Otherwise the most-marquee competition is chosen using the
+    ordering in ``_VENUE_ORDER`` (Las Vegas > Salt Lake City > California
+    Classic > Orlando).  Returns ``None`` when the player has no
     :class:`~app.schemas.summer_league_metrics.SummerLeaguePlayerSeason` row
     for that year — i.e. the season table has not been materialised yet or the
     player had no resolved logs.
@@ -444,9 +451,11 @@ async def get_competition_id_for_player_year(
         db: Async database session.
         player_id: Canonical ``players_master`` id.
         year: Summer League year to look up.
+        venue_slug: Optional competition venue to target exactly; when ``None``
+            the most-marquee competition for the year is returned.
 
     Returns:
-        The competition id of the most marquee competition, or ``None``.
+        The resolved competition id, or ``None``.
     """
     stmt = select(  # type: ignore[call-overload]
         SummerLeaguePlayerSeason.competition_id,
@@ -455,6 +464,10 @@ async def get_competition_id_for_player_year(
         SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
         SummerLeaguePlayerSeason.year == year,  # type: ignore[arg-type]
     )
+    if venue_slug is not None:
+        stmt = stmt.where(
+            SummerLeaguePlayerSeason.venue_slug == venue_slug  # type: ignore[arg-type]
+        )
     rows = (await db.execute(stmt)).all()
     if not rows:
         return None

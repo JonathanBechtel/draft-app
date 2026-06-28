@@ -448,3 +448,48 @@ async def test_season_page_wrong_year_shows_no_logs(
 
     assert "hasn't played Summer League in 2019" in html
     assert 'id="sl-shotchart-root"' not in html
+
+
+@pytest.mark.asyncio
+async def test_competition_resolver_honors_venue(db_session: AsyncSession) -> None:
+    """get_competition_id_for_player_year targets the clicked venue, else marquee.
+
+    Regression for the per-season link: a player with multiple competitions in
+    one year (Las Vegas + Salt Lake City) must resolve to the exact competition
+    when a venue_slug is given, instead of always the marquee (Las Vegas) one.
+    """
+    from app.services.summer_league_stats_service import (
+        get_competition_id_for_player_year,
+    )
+
+    player = make_player("Multi", "Venue", school="Duke")
+    db_session.add(player)
+    await db_session.flush()
+    await db_session.refresh(player)
+    assert player.id is not None
+
+    lv = await _make_competition(db_session, year=2024, venue_slug="las_vegas")
+    slc = await _make_competition(db_session, year=2024, venue_slug="salt_lake_city")
+    for comp, venue in ((lv, "las_vegas"), (slc, "salt_lake_city")):
+        assert comp.id is not None
+        db_session.add(
+            SummerLeaguePlayerSeason(
+                competition_id=comp.id,
+                player_id=player.id,
+                year=2024,
+                venue_slug=venue,
+                gp=1,
+                minutes=20.0,
+            )
+        )
+    await db_session.flush()
+
+    # Default → marquee (Las Vegas).
+    assert await get_competition_id_for_player_year(db_session, player.id, 2024) == lv.id
+    # Venue-scoped → the exact competition.
+    assert (
+        await get_competition_id_for_player_year(
+            db_session, player.id, 2024, venue_slug="salt_lake_city"
+        )
+        == slc.id
+    )
