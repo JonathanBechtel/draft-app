@@ -232,6 +232,8 @@ class SLShotChartRenderModel:
     suppressed: bool  # True when < 20 FGA
     zones: list[SLZoneRow] = field(default_factory=list)
     shot_diet: Optional[SLShotDiet] = None
+    heat_data_uri: Optional[str] = None  # base64 PNG of the kernel-smoothed heat field
+    has_pool: bool = False  # True when zones carry a competition-pool baseline
     accent_color: str = "#f97316"  # orange
     template_version: str = TEMPLATE_VERSION
 

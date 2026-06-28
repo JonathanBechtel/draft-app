@@ -5,43 +5,42 @@
       .title { font-family: 'Russo One', sans-serif; font-size: 80px; fill: #0f172a; text-transform: uppercase; }
       .subtitle { font-family: 'Azeret Mono', monospace; font-size: 36px; fill: #64748b; }
       .section-label { font-family: 'Russo One', sans-serif; font-size: 36px; fill: #64748b; text-transform: uppercase; letter-spacing: 2px; }
-      .zone-name { font-family: 'Azeret Mono', monospace; font-size: 32px; fill: #334155; }
+      .zone-name { font-family: 'Azeret Mono', monospace; font-size: 34px; fill: #334155; }
       .zone-value { font-family: 'Azeret Mono', monospace; font-size: 36px; fill: #0f172a; font-weight: 600; }
-      .zone-freq { font-family: 'Azeret Mono', monospace; font-size: 28px; fill: #64748b; }
-      .fga-count { font-family: 'Azeret Mono', monospace; font-size: 28px; fill: #94a3b8; }
-      .diet-label { font-family: 'Russo One', sans-serif; font-size: 32px; fill: #64748b; text-transform: uppercase; letter-spacing: 1px; }
-      .diet-value { font-family: 'Azeret Mono', monospace; font-size: 48px; fill: #0f172a; font-weight: 600; }
-      .diet-key { font-family: 'Azeret Mono', monospace; font-size: 26px; fill: #64748b; }
+      .col-head { font-family: 'Russo One', sans-serif; font-size: 26px; fill: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+      .diet-key { font-family: 'Azeret Mono', monospace; font-size: 28px; fill: #64748b; }
+      .diet-value { font-family: 'Azeret Mono', monospace; font-size: 52px; fill: #0f172a; font-weight: 600; }
       .player-name { font-family: 'Russo One', sans-serif; font-size: 40px; fill: #0f172a; }
       .player-subtitle { font-family: 'Azeret Mono', monospace; font-size: 28px; fill: #64748b; }
       .watermark { font-family: 'Azeret Mono', monospace; font-size: 32px; fill: #ffffff; }
-      .suppressed-note { font-family: 'Azeret Mono', monospace; font-size: 30px; fill: #f59e0b; }
+      .legend { font-family: 'Azeret Mono', monospace; font-size: 26px; fill: #64748b; }
+      .note { font-family: 'Azeret Mono', monospace; font-size: 32px; fill: #f59e0b; }
+      .court-line { stroke: #8a8170; stroke-width: 3; fill: none; }
     </style>
-    <!-- Scanlines pattern -->
     <pattern id="scanlines" patternUnits="userSpaceOnUse" width="4" height="4">
       <line x1="0" y1="0" x2="4" y2="0" stroke="#0f172a" stroke-width="1" opacity="0.03"/>
     </pattern>
-    <!-- Dot matrix pattern -->
     <pattern id="dotmatrix" patternUnits="userSpaceOnUse" width="24" height="24">
       <circle cx="12" cy="12" r="1" fill="#64748b" opacity="0.1"/>
     </pattern>
+    <linearGradient id="grad-div" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e11d48"/><stop offset="0.5" stop-color="#eee8dc"/><stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="grad-seq" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2563eb"/><stop offset="0.4" stop-color="#38bdf8"/><stop offset="0.7" stop-color="#facc15"/><stop offset="1" stop-color="#ef4444"/>
+    </linearGradient>
   </defs>
 
   <!-- Background -->
   <rect width="2400" height="1260" fill="#f8fafc"/>
   <rect width="2400" height="1260" fill="url(#dotmatrix)"/>
   <rect width="2400" height="1260" fill="url(#scanlines)"/>
-
-  <!-- Accent bar at top -->
   <rect x="0" y="0" width="2400" height="12" fill="{{ accent_color }}"/>
 
-  <!-- Header section -->
+  <!-- Header -->
   <g transform="translate(96, 80)">
-    <!-- Player photo or placeholder -->
     {% if player.has_photo and player.photo_data_uri %}
-    <clipPath id="photo-clip">
-      <rect x="0" y="30" width="200" height="200" rx="12"/>
-    </clipPath>
+    <clipPath id="photo-clip"><rect x="0" y="30" width="200" height="200" rx="12"/></clipPath>
     <image href="{{ player.photo_data_uri }}" x="0" y="30" width="200" height="200" clip-path="url(#photo-clip)" preserveAspectRatio="xMidYMid slice"/>
     <rect x="0" y="30" width="200" height="200" rx="12" fill="none" stroke="{{ accent_color }}" stroke-width="4"/>
     {% else %}
@@ -51,132 +50,103 @@
     <text x="100" y="160" text-anchor="middle" class="zone-name" fill="#475569">{{ player.name.split()[1:] | join(' ') }}</text>
     {% endif %}
     {% endif %}
-
-    <!-- Title and subtitle -->
     <text x="240" y="50" class="title">{{ title }}</text>
     <text x="240" y="105" class="subtitle">{{ subtitle }}</text>
-
-    <!-- Player info -->
     <text x="240" y="185" class="player-name">{{ player.name }}</text>
     <text x="240" y="225" class="player-subtitle">{{ player.subtitle }}</text>
-
-    <!-- FGA badge (top right) -->
     <rect x="1940" y="30" width="368" height="72" rx="8" fill="{{ accent_color }}" opacity="0.12"/>
     <rect x="1940" y="30" width="368" height="72" rx="8" fill="none" stroke="{{ accent_color }}" stroke-width="2"/>
     <text x="2124" y="82" text-anchor="middle" font-family="'Russo One', sans-serif" font-size="40" fill="{{ accent_color }}">{{ total_fga }} FGA</text>
   </g>
-
-  <!-- Divider line -->
   <line x1="96" y1="338" x2="2304" y2="338" stroke="#e2e8f0" stroke-width="2"/>
 
-  {% if suppressed %}
-  <!-- Small sample notice (chart suppressed) -->
-  <g transform="translate(96, 375)">
-    <text x="0" y="0" class="section-label">Zone Breakdown</text>
-    <text x="0" y="50" class="suppressed-note">⚠ Small sample (&lt;20 FGA) — zone table shown; heat chart requires ≥20 FGA</text>
-  </g>
-  {% else %}
-  <g transform="translate(96, 375)">
-    <text x="0" y="0" class="section-label">Zone Breakdown</text>
-  </g>
+  <!-- ───────── LEFT: heat-map court ───────── -->
+  <rect x="96" y="372" width="864" height="648" rx="10" fill="#f4efe6"/>
+  {% if heat_data_uri %}
+  <image href="{{ heat_data_uri }}" x="96" y="372" width="864" height="648" preserveAspectRatio="none"/>
   {% endif %}
-
-  <!-- Column headers -->
-  <g transform="translate(96, 415)">
-    <text x="0" y="0" class="section-label" font-size="28" fill="#94a3b8">Zone</text>
-    <text x="520" y="0" class="section-label" font-size="28" fill="#94a3b8">Freq%</text>
-    <text x="1320" y="0" class="section-label" font-size="28" fill="#94a3b8">FG%</text>
-    <text x="1750" y="0" class="section-label" font-size="28" fill="#94a3b8">vs Pool</text>
-    <text x="2208" y="0" text-anchor="end" class="section-label" font-size="28" fill="#94a3b8">FGA</text>
+  <!-- court lines (court coords 0..500 × 95..470, scaled 1.728 into the 864×648 box) -->
+  <g transform="translate(96, 372) scale(1.728) translate(0, -95)">
+    <path class="court-line" d="M 0 470 L 500 470"/>
+    <path class="court-line" d="M 0 95 L 0 470"/>
+    <path class="court-line" d="M 500 95 L 500 470"/>
+    <rect class="court-line" x="170" y="228" width="160" height="242"/>
+    <path class="court-line" d="M 190 228 A 60 60 0 0 1 310 228"/>
+    <path class="court-line" d="M 190 228 A 60 60 0 0 0 310 228" stroke-dasharray="6 6"/>
+    <path class="court-line" d="M 210 418 A 40 40 0 0 1 290 418"/>
+    <path class="court-line" d="M 220 430 L 280 430"/>
+    <circle class="court-line" cx="250" cy="418" r="7.5"/>
+    <path class="court-line" d="M 30 470 L 30 328"/>
+    <path class="court-line" d="M 470 470 L 470 328"/>
+    <path class="court-line" d="M 30 328 A 237.5 237.5 0 0 1 470 328"/>
+  </g>
+  {% if not heat_data_uri %}
+  <text x="528" y="700" text-anchor="middle" class="note">{% if suppressed %}Small sample (&lt;20 FGA){% else %}No shot-location data{% endif %}</text>
+  {% endif %}
+  <!-- legend under court (kept within the 864px court width) -->
+  <g transform="translate(96, 1050)">
+    <rect x="0" y="-22" width="56" height="22" rx="3" fill="url(#{% if has_pool %}grad-div{% else %}grad-seq{% endif %})"/>
+    <text x="70" y="-3" class="legend" font-size="23">{% if has_pool %}red=below · green=above{% else %}cool → hot (FG%){% endif %} · opacity=density</text>
   </g>
 
-  <!-- Zone rows -->
-  <g transform="translate(96, 445)">
+  <!-- ───────── RIGHT: zone table ───────── -->
+  <g transform="translate(1040, 400)">
+    <text x="0" y="0" class="section-label">Zone Breakdown</text>
+    <g transform="translate(0, 56)">
+      <text x="0" y="0" class="col-head">Zone</text>
+      <text x="560" y="0" text-anchor="end" class="col-head">Freq</text>
+      <text x="760" y="0" text-anchor="end" class="col-head">FG%</text>
+      <text x="900" y="0" text-anchor="end" class="col-head">FGA</text>
+      <text x="1142" y="0" text-anchor="middle" class="col-head">vs Pool</text>
+    </g>
     {% for zone in zones %}
-    {% set y_offset = loop.index0 * 93 %}
-    <g transform="translate(0, {{ y_offset }})">
-
-      <!-- Zone name -->
-      <text x="0" y="55" class="zone-name">{{ zone.shot_zone_basic }}</text>
-
-      <!-- Freq% bar track -->
-      <rect x="480" y="22" width="760" height="40" rx="6" fill="#e2e8f0"/>
-
-      <!-- Freq% bar fill -->
-      {% set freq_bar_width = (zone.freq_pct * 760) | round(0) %}
-      <rect x="480" y="22" width="{{ freq_bar_width }}" height="40" rx="6" fill="{{ accent_color }}" opacity="0.7"/>
-
-      <!-- Freq% text -->
-      <text x="1260" y="53" text-anchor="end" class="zone-freq">{{ zone.freq_pct_display }}</text>
-
-      <!-- FG% value -->
+    <g transform="translate(0, {{ 92 + loop.index0 * 88 }})">
+      <text x="0" y="0" class="zone-name">{{ zone.shot_zone_basic }}</text>
+      <text x="560" y="0" text-anchor="end" class="zone-name" fill="#64748b">{{ zone.freq_pct_display }}</text>
+      {% if zone.vs_pool == "above" %}{% set fg_color = "#10b981" %}
+      {% elif zone.vs_pool == "below" %}{% set fg_color = "#f43f5e" %}
+      {% elif zone.vs_pool == "average" %}{% set fg_color = "#d97706" %}
+      {% else %}{% set fg_color = "#334155" %}{% endif %}
+      <text x="760" y="0" text-anchor="end" class="zone-value" fill="{{ fg_color }}">{{ zone.fg_pct_display }}</text>
+      <text x="900" y="0" text-anchor="end" class="zone-name" fill="#94a3b8">{{ zone.fga }}</text>
       {% if zone.vs_pool == "above" %}
-      {% set fg_color = "#10b981" %}
+      <rect x="1020" y="-34" width="244" height="46" rx="6" fill="#d1fae5"/>
+      <text x="1142" y="0" text-anchor="middle" font-family="'Azeret Mono', monospace" font-size="28" fill="#059669" font-weight="600">▲ above</text>
       {% elif zone.vs_pool == "below" %}
-      {% set fg_color = "#f43f5e" %}
+      <rect x="1020" y="-34" width="244" height="46" rx="6" fill="#ffe4e6"/>
+      <text x="1142" y="0" text-anchor="middle" font-family="'Azeret Mono', monospace" font-size="28" fill="#e11d48" font-weight="600">▼ below</text>
       {% elif zone.vs_pool == "average" %}
-      {% set fg_color = "#f59e0b" %}
+      <rect x="1020" y="-34" width="244" height="46" rx="6" fill="#fef3c7"/>
+      <text x="1142" y="0" text-anchor="middle" font-family="'Azeret Mono', monospace" font-size="28" fill="#d97706" font-weight="600">≈ avg</text>
       {% else %}
-      {% set fg_color = "#334155" %}
+      <text x="1142" y="0" text-anchor="middle" font-family="'Azeret Mono', monospace" font-size="28" fill="#94a3b8">—</text>
       {% endif %}
-      <text x="1320" y="55" class="zone-value" fill="{{ fg_color }}">{{ zone.fg_pct_display }}</text>
-
-      <!-- vs Pool indicator -->
-      {% if zone.vs_pool == "above" %}
-      <rect x="1720" y="20" width="140" height="44" rx="6" fill="#d1fae5"/>
-      <text x="1790" y="52" text-anchor="middle" font-family="'Azeret Mono', monospace" font-size="26" fill="#10b981" font-weight="600">▲ above</text>
-      {% elif zone.vs_pool == "below" %}
-      <rect x="1720" y="20" width="140" height="44" rx="6" fill="#ffe4e6"/>
-      <text x="1790" y="52" text-anchor="middle" font-family="'Azeret Mono', monospace" font-size="26" fill="#f43f5e" font-weight="600">▼ below</text>
-      {% elif zone.vs_pool == "average" %}
-      <rect x="1720" y="20" width="140" height="44" rx="6" fill="#fef3c7"/>
-      <text x="1790" y="52" text-anchor="middle" font-family="'Azeret Mono', monospace" font-size="26" fill="#d97706" font-weight="600">≈ avg</text>
-      {% else %}
-      <text x="1790" y="52" text-anchor="middle" font-family="'Azeret Mono', monospace" font-size="26" fill="#94a3b8">—</text>
-      {% endif %}
-
-      <!-- FGA count -->
-      <text x="2208" y="55" text-anchor="end" class="fga-count">{{ zone.fga }}</text>
-
-      <!-- Row separator (subtle) -->
-      {% if not loop.last %}
-      <line x1="0" y1="80" x2="2112" y2="80" stroke="#e2e8f0" stroke-width="1" opacity="0.7"/>
-      {% endif %}
-
+      {% if not loop.last %}<line x1="0" y1="26" x2="1264" y2="26" stroke="#e2e8f0" stroke-width="1"/>{% endif %}
     </g>
     {% endfor %}
   </g>
 
-  <!-- Shot diet row -->
+  <!-- Shot diet (right column, below table) -->
   {% if shot_diet %}
-  {% set zones_height = zones | length * 93 %}
-  {% set diet_y = 445 + zones_height + 20 %}
-  <line x1="96" y1="{{ diet_y - 10 }}" x2="2304" y2="{{ diet_y - 10 }}" stroke="#e2e8f0" stroke-width="2"/>
-  <g transform="translate(96, {{ diet_y }})">
-    <text x="0" y="35" class="section-label">Shot Diet</text>
-    <!-- 4 diet items spread across card -->
-    <g transform="translate(0, 55)">
-      <!-- Rim -->
-      <text x="200" y="0" text-anchor="middle" class="diet-key">Rim</text>
-      <text x="200" y="55" text-anchor="middle" class="diet-value">{{ shot_diet.rim_display }}</text>
-      <!-- Mid -->
-      <text x="720" y="0" text-anchor="middle" class="diet-key">Mid</text>
-      <text x="720" y="55" text-anchor="middle" class="diet-value">{{ shot_diet.mid_display }}</text>
-      <!-- 3PT -->
-      <text x="1240" y="0" text-anchor="middle" class="diet-key">3PT</text>
-      <text x="1240" y="55" text-anchor="middle" class="diet-value">{{ shot_diet.three_display }}</text>
-      <!-- Corner 3 -->
-      <text x="1760" y="0" text-anchor="middle" class="diet-key">Corner 3</text>
-      <text x="1760" y="55" text-anchor="middle" class="diet-value">{{ shot_diet.corner3_display }}</text>
+  <g transform="translate(1040, 998)">
+    <line x1="0" y1="-22" x2="1264" y2="-22" stroke="#e2e8f0" stroke-width="2"/>
+    <text x="0" y="22" class="section-label" font-size="30">Shot Diet</text>
+    <g transform="translate(0, 66)">
+      <text x="120" y="0" text-anchor="middle" class="diet-key">Rim</text>
+      <text x="120" y="58" text-anchor="middle" class="diet-value">{{ shot_diet.rim_display }}</text>
+      <text x="460" y="0" text-anchor="middle" class="diet-key">Mid</text>
+      <text x="460" y="58" text-anchor="middle" class="diet-value">{{ shot_diet.mid_display }}</text>
+      <text x="800" y="0" text-anchor="middle" class="diet-key">3PT</text>
+      <text x="800" y="58" text-anchor="middle" class="diet-value">{{ shot_diet.three_display }}</text>
+      <text x="1160" y="0" text-anchor="middle" class="diet-key">Corner 3</text>
+      <text x="1160" y="58" text-anchor="middle" class="diet-value">{{ shot_diet.corner3_display }}</text>
     </g>
   </g>
   {% endif %}
 
-  <!-- Footer watermark bar -->
+  <!-- Footer -->
   <rect x="0" y="1148" width="2400" height="112" fill="#1e293b"/>
   <text x="2304" y="1216" text-anchor="end" class="watermark">nbadraft.app</text>
-  <!-- Footer accent stripe -->
   <rect x="0" y="1148" width="2400" height="6" fill="{{ accent_color }}" opacity="0.6"/>
-  <!-- Scanlines overlay on footer -->
   <rect x="0" y="1148" width="2400" height="112" fill="url(#scanlines)" opacity="0.5"/>
 </svg>

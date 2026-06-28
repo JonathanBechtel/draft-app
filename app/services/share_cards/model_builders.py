@@ -1050,6 +1050,34 @@ async def build_sl_shot_chart_model(
             corner3_display=_pct_str(diet_row.corner3_rate),
         )
 
+    # ── Kernel-smoothed heat field (embedded PNG) ────────────────────────────
+    has_pool = any(z.pool_fg_pct is not None for z in zones_dto.zones)
+    heat_data_uri: Optional[str] = None
+    if not zones_dto.suppressed and zones_dto.total_fga > 0:
+        from app.schemas.summer_league import SummerLeagueShotEvent
+        from app.services.share_cards.sl_heat_render import (
+            _Dot,
+            render_shot_heat_data_uri,
+        )
+
+        dot_stmt = select(  # type: ignore[call-overload]
+            SummerLeagueShotEvent.loc_x,
+            SummerLeagueShotEvent.loc_y,
+            SummerLeagueShotEvent.made,
+        ).where(
+            SummerLeagueShotEvent.player_id == player_id,  # type: ignore[arg-type]
+            SummerLeagueShotEvent.loc_x.isnot(None),  # type: ignore[union-attr]
+            SummerLeagueShotEvent.loc_y.isnot(None),  # type: ignore[union-attr]
+        )
+        if competition_id is not None:
+            dot_stmt = dot_stmt.where(
+                SummerLeagueShotEvent.competition_id == competition_id  # type: ignore[arg-type]
+            )
+        dot_rows = (await db.execute(dot_stmt)).all()
+        dots = [_Dot(float(x), float(y), bool(m)) for x, y, m in dot_rows]
+        zone_pool = {z.shot_zone_basic: z.pool_fg_pct for z in zones_dto.zones}
+        heat_data_uri = render_shot_heat_data_uri(dots, zone_pool, has_pool)
+
     return SLShotChartRenderModel(
         title=f"{display_name.split()[0].upper()} — SL SHOT CHART",
         subtitle=card_subtitle,
@@ -1058,5 +1086,7 @@ async def build_sl_shot_chart_model(
         suppressed=zones_dto.suppressed,
         zones=zone_rows,
         shot_diet=shot_diet,
+        heat_data_uri=heat_data_uri,
+        has_pool=has_pool,
         accent_color=COMPONENT_ACCENTS["sl_shot_chart"],
     )
