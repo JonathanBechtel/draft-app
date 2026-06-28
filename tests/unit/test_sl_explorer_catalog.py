@@ -14,9 +14,16 @@ from __future__ import annotations
 
 import pytest
 
+from app.schemas.summer_league import SummerLeaguePlayerGameLog
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league_explorer_service import (
     PLAYER_COLUMN_CATALOG,
     ExplorerColumn,
+    MetricFilter,
+    _career_metric_having,
+    _FILTERABLE_KEYS,
+    _per_comp_metric_where,
+    _per_game_metric_where,
     _PLAYER_ADVANCED_COLUMNS,
     _PLAYER_STAT_COLUMNS,
     _SORT_KEYS_BY_SUBJECT,
@@ -262,3 +269,43 @@ def test_explorer_column_two_arg_compat() -> None:
     assert col.fmt == "f1"
     assert col.shown is True
     assert col.numeric is True
+
+
+# --------------------------------------------------------------------------- #
+# Metric-filter builder coverage — every filterable column across all 3 grains.
+# These build SQL expressions (no DB), so a parametrized pass exercises every
+# per-column branch of the career/per-competition/per-game filter builders.
+# --------------------------------------------------------------------------- #
+
+# Columns the per_game builder intentionally cannot filter (not on game logs,
+# or not meaningful per single game): advanced composites + GP.
+_PER_GAME_UNSUPPORTED = {"gp", "per", "ortg", "drtg", "bpm", "ws", "vorp"}
+
+
+@pytest.mark.parametrize("col", sorted(_FILTERABLE_KEYS | {"min"}))
+def test_metric_filter_builders_cover_every_column(col: str) -> None:
+    """Each builder produces an expression for every filterable column.
+
+    Career (HAVING on aggregates) and per_competition (WHERE on season columns)
+    support all filterable columns plus ``min``. Per_game cannot filter advanced
+    composites or GP and returns None for those by design.
+    """
+    f = MetricFilter(col=col, op=">=", value=1.0)
+
+    assert _career_metric_having(f, SummerLeaguePlayerSeason) is not None
+    assert _per_comp_metric_where(f, SummerLeaguePlayerSeason) is not None
+
+    per_game_expr = _per_game_metric_where(f, SummerLeaguePlayerGameLog)
+    if col in _PER_GAME_UNSUPPORTED:
+        assert per_game_expr is None
+    else:
+        assert per_game_expr is not None
+
+
+@pytest.mark.parametrize("op", [">=", "<="])
+def test_metric_filter_builders_honor_operator(op: str) -> None:
+    """Both operators build a valid expression (covers the _op ternary branches)."""
+    f = MetricFilter(col="pts", op=op, value=10.0)
+    assert _career_metric_having(f, SummerLeaguePlayerSeason) is not None
+    assert _per_comp_metric_where(f, SummerLeaguePlayerSeason) is not None
+    assert _per_game_metric_where(f, SummerLeaguePlayerGameLog) is not None
