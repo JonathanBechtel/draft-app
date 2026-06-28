@@ -836,6 +836,65 @@ async def test_grain_career_default_unchanged(
 
 
 @pytest.mark.asyncio
+async def test_gmsc_sorts_on_career_and_per_game_grains(
+    db_session: AsyncSession,
+) -> None:
+    """GmSc is a valued, sortable base column at the career and per_game grains.
+
+    Exercises the SUM-aggregate (career) and single-game (per_game) SQL sort
+    expressions, so a bad fragment surfaces as a query error rather than a silent
+    mis-sort.  _seed gives two players (30 vs 10 PPG) over game logs.
+    """
+    await _seed(db_session)
+
+    career = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", sort="gmsc", direction="desc"),
+    )
+    assert career.total == 2
+    assert "gmsc" in career.rows[0].values
+    # GmSc is monotonic with the scoring gap here: Big Scorer (30) > Role Player (10).
+    assert career.rows[0].label == "Big Scorer"
+    assert career.rows[0].values["gmsc"] > career.rows[1].values["gmsc"]
+
+    per_game = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="per_game", sort="gmsc", direction="desc"
+        ),
+    )
+    assert per_game.total >= 1
+    assert all("gmsc" in r.values for r in per_game.rows)
+
+
+@pytest.mark.asyncio
+async def test_gmsc_sorts_on_per_competition_grain(
+    db_session: AsyncSession,
+) -> None:
+    """per_competition GmSc reads the materialized season rows and sorts on the raw-label expr.
+
+    _seed_grain gives one player across two events; the 30-PTS Vegas line outscores
+    the 10-PTS Salt Lake line, so it sorts first under gmsc desc.
+    """
+    await _seed_grain(db_session)
+    per_comp = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            sort="gmsc",
+            direction="desc",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert per_comp.total == 2
+    assert all("gmsc" in r.values for r in per_comp.rows)
+    assert "2024" in per_comp.rows[0].label
+    assert per_comp.rows[0].values["gmsc"] > per_comp.rows[1].values["gmsc"]
+
+
+@pytest.mark.asyncio
 async def test_grain_parse_query_valid_grains() -> None:
     """parse_query accepts career/per_competition/per_game and rejects invalid values."""
     assert parse_query({"grain": "career"}).grain == "career"

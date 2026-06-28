@@ -33,6 +33,9 @@ def _row(**kwargs: object) -> SimpleNamespace:
         fg3a=0,
         ftm=0,
         fta=0,
+        oreb=0,
+        dreb=0,
+        pf=0,
     )
     base.update(kwargs)
     return SimpleNamespace(**base)
@@ -168,3 +171,58 @@ def test_all_dnp_returns_none() -> None:
     """A span with only DNP rows aggregates to None (caller suppresses it)."""
     rows = [_row(minutes_seconds=0), _row(minutes_seconds=None)]
     assert _aggregate_season(rows, year=2024, season_label="2024") is None
+
+
+def test_season_gmsc_is_per_game_average_game_score() -> None:
+    """Season GmSc is the per-game-average Hollinger Game Score over the span."""
+    from app.services.summer_league.metrics import Box, game_score
+
+    rows = [
+        _row(
+            minutes_seconds=1800,
+            pts=20,
+            fgm=8,
+            fga=15,
+            ftm=3,
+            fta=4,
+            oreb=2,
+            dreb=5,
+            ast=4,
+            stl=2,
+            blk=1,
+            tov=2,
+            pf=3,
+        ),
+        _row(
+            minutes_seconds=1800,
+            pts=10,
+            fgm=4,
+            fga=9,
+            ftm=1,
+            fta=2,
+            oreb=1,
+            dreb=3,
+            ast=2,
+            stl=1,
+            blk=0,
+            tov=1,
+            pf=2,
+        ),
+    ]
+    season = _aggregate_season(rows, year=2024, season_label="2024")
+    assert season is not None
+    summed = Box(
+        pts=30,
+        fgm=12,
+        fga=24,
+        ftm=4,
+        fta=6,
+        oreb=3,
+        dreb=8,
+        ast=6,
+        stl=3,
+        blk=1,
+        tov=3,
+        pf=5,
+    )
+    assert season.gmsc == round(game_score(summed) / 2, 1)

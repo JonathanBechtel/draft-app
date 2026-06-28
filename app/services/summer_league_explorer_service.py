@@ -43,7 +43,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from sqlalchemy import case, func, literal, nulls_last, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,6 +61,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
+from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_games_service import _venue_label
 from app.utils.country import canonical_country, country_variants
 
@@ -479,17 +480,19 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         fmt="f1",
         shown=False,
     ),
-    # Additive: sum across competition pools, null-skip.
-    # gmsc (Game Score) is a per-game cumulative metric; sums across competitions.
+    # Game Score is additive/linear in the box stats (not pool-recalibrated like
+    # PER/BPM), so it is exact at every grain and lives with the base columns
+    # (shown + sortable), per #426. Value is recomputed from box stats in
+    # _compute_player_values via game_score_from_row.
     ExplorerColumn(
         "gmsc",
         "GmSc",
-        _GROUP_ADVANCED,
+        _GROUP_BOX,
         _BUCKET_ADDITIVE,
-        sortable=False,
+        sortable=True,
         filterable=False,
         fmt="f1",
-        shown=False,
+        shown=True,
     ),
     # OWS / DWS are Win Shares components — cumulative shares, additive like WS.
     ExplorerColumn(
@@ -1410,6 +1413,11 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
     else:
         plus_minus_val = None
 
+    # Game Score is linear in the box stats, so scaling the summed-box Game Score
+    # by the same per-mode factor is exact: per_game → mean per-game GmSc (matches
+    # the materialized season value), totals → cumulative, per_36/per_100 → rate.
+    gmsc_total = game_score_from_row(r)
+
     return {
         "gp": gp,
         "min": min_val,
@@ -1420,6 +1428,7 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
         "fg3_pct": _pct(_safe_div(float(r.fg3m or 0), float(r.fg3a or 0))),
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
         "ts_pct": _pct(_safe_div(float(r.pts or 0), 2.0 * (fga + 0.44 * fta))),
+        "gmsc": scaled(gmsc_total),
     }
 
 
@@ -1440,6 +1449,32 @@ def _scaled_sort_expr(num: str, gp: str, sec: str, pace_sec: str, mode: str) -> 
     if mode == "per_100":  # 100 poss; poss = pace_sec / (60 * 48)
         return f"{num} * 288000.0 / NULLIF({pace_sec}, 0)"
     return num  # totals
+
+
+def _game_score_sql(box: Callable[[str], str]) -> str:
+    """Build the Hollinger Game Score expression in SQL.
+
+    ``box`` maps a column name to its SQL fragment so the same formula serves
+    both the career grain (``SUM(pts)`` …) and the per-competition / per-game
+    grains (raw labels ``pts`` …). Mirrors :func:`game_score` exactly so an
+    ORDER BY on GmSc ranks on the same value the cell shows (before per-mode
+    scaling, which the caller layers on via :func:`_scaled_sort_expr`).
+    """
+    return (
+        f"({box('pts')} + 0.4 * {box('fgm')} - 0.7 * {box('fga')} "
+        f"- 0.4 * ({box('fta')} - {box('ftm')}) + 0.7 * {box('oreb')} "
+        f"+ 0.3 * {box('dreb')} + {box('stl')} + 0.7 * {box('ast')} "
+        f"+ 0.7 * {box('blk')} - 0.4 * {box('pf')} - {box('tov')})"
+    )
+
+
+# GmSc numerator fragments: raw column labels (per_competition / per_game) and
+# SUM aggregates (career).  Scaled into the displayed per-mode rate at call time.
+# Each component is COALESCEd to 0 so a NULL box stat (e.g. unrecorded OREB on an
+# older log) does not poison the whole expression to NULL — matching the Python
+# display path, which coalesces None to 0 via :func:`game_score_line`.
+_GMSC_SQL_RAW = _game_score_sql(lambda c: f"COALESCE({c}, 0)")
+_GMSC_SQL_AGG = _game_score_sql(lambda c: f"COALESCE(SUM({c}), 0)")
 
 
 def _player_sort_expr(sort_col: str, mode: str) -> Any:
@@ -1465,6 +1500,16 @@ def _player_sort_expr(sort_col: str, mode: str) -> Any:
     }
     if sort_col in _pct_exprs:
         return _pct_exprs[sort_col]
+    if sort_col == "gmsc":
+        # Game Score is additive, so SUM of the per-game scores == the score of
+        # the summed box; scale it into the displayed per-mode rate.
+        return _scaled_sort_expr(
+            _GMSC_SQL_AGG,
+            "COUNT(*)",
+            "SUM(minutes_seconds)",
+            "SUM(pace * minutes_seconds)",
+            mode,
+        )
     if sort_col == "min":
         total = "SUM(minutes_seconds)"
         # Minutes display as per-game minutes in every rate mode (* 1.0 forces
@@ -1523,6 +1568,17 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
     }
     if sort_col in _pct_exprs:
         return _pct_exprs[sort_col]
+    if sort_col == "gmsc":
+        # Game Score is additive/linear: SUM of per-competition scores == score of
+        # the summed box. Recompute from the summed box and scale into the displayed
+        # per-mode rate (matches _compute_player_values' game_score_from_row).
+        return _scaled_sort_expr(
+            _GMSC_SQL_AGG,
+            "SUM(gp)",
+            "SUM(minutes) * 60",
+            "0",
+            mode,
+        )
     if sort_col == "min":
         # Minutes display: total in totals mode; per-game rate otherwise.
         return (
@@ -1953,6 +2009,8 @@ async def _query_players_per_competition(
     }
     if q.sort in _pc_pct_exprs:
         sort_expr: str = _pc_pct_exprs[q.sort]
+    elif q.sort == "gmsc":
+        sort_expr = _scaled_sort_expr(_GMSC_SQL_RAW, "gp", "minutes * 60", "0", q.mode)
     elif q.sort == "min":
         sort_expr = "minutes" if q.mode == "totals" else "minutes / NULLIF(gp, 0)"
     elif q.sort in _COUNTING or q.sort == "plus_minus":
@@ -2135,6 +2193,8 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
         "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
         "min": "sec",
         "gp": "1",  # every row is 1 game; stable but well-defined
+        # Single game: GmSc is the raw box score (gp=1), matching the displayed cell.
+        "gmsc": _GMSC_SQL_RAW,
     }
     sort_expr = _pg_pct_exprs.get(q.sort, q.sort)
     direction = "DESC" if q.direction == "desc" else "ASC"

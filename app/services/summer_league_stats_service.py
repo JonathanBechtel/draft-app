@@ -26,6 +26,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamEntry,
 )
+from app.services.summer_league.metrics import game_score_from_row
 
 # Human-readable venue labels keyed by the competition ``venue_slug``.
 VENUE_LABELS: dict[str, str] = {
@@ -53,8 +54,19 @@ _VENUE_ORDER: dict[str, int] = {
 
 # Counting stats that scale with the per-36 / per-100 rate transforms.
 _RATE_STATS = ("pts", "reb", "ast", "stl", "blk", "tov")
-# All box-score totals we sum per span.
-_SUM_STATS = _RATE_STATS + ("fgm", "fga", "fg3m", "fg3a", "ftm", "fta")
+# All box-score totals we sum per span. oreb/dreb/pf are not displayed as their
+# own columns but are summed so Game Score (which weights them) can be derived.
+_SUM_STATS = _RATE_STATS + (
+    "fgm",
+    "fga",
+    "fg3m",
+    "fg3a",
+    "ftm",
+    "fta",
+    "oreb",
+    "dreb",
+    "pf",
+)
 
 _MINUTES_PER_GAME = 48.0
 _RECENT_GAME_LIMIT = 5
@@ -103,6 +115,8 @@ class SummerLeagueGameLine:
     fg3a: Optional[int]
     ftm: Optional[int]
     fta: Optional[int]
+    # Hollinger Game Score for this single game.
+    gmsc: Optional[float] = None
 
 
 @dataclass
@@ -124,6 +138,8 @@ class SummerLeagueSeason:
     ts_pct: Optional[float]
     fg3a_per_g: Optional[float]
     fta_per_g: Optional[float]
+    # Per-game average Hollinger Game Score across the span.
+    gmsc: Optional[float]
     modes: dict[str, SummerLeagueModeStats]
     # Venue/league abbreviation (LV/SLC/CC/ORL) for a competition row; None for Career.
     venue_abbr: Optional[str] = None
@@ -230,6 +246,10 @@ def _aggregate_season(
     ts_denom = 2.0 * (sums["fga"] + 0.44 * sums["fta"])
     ts_pct = _pct(_safe_div(sums["pts"], ts_denom))
 
+    # Per-game average Game Score: Game Score is linear in the box stats, so the
+    # mean per-game value equals game_score(summed box) / gp.
+    gmsc = round(game_score_from_row(sums) / gp, 1)
+
     return SummerLeagueSeason(
         year=year,
         season_label=season_label,
@@ -245,6 +265,7 @@ def _aggregate_season(
         ts_pct=ts_pct,
         fg3a_per_g=sums["fg3a"] / gp,
         fta_per_g=sums["fta"] / gp,
+        gmsc=gmsc,
         modes=modes,
     )
 
@@ -304,6 +325,9 @@ async def get_summer_league_profile_by_player_id(
             pgl.fg3a,
             pgl.ftm,
             pgl.fta,
+            pgl.oreb,
+            pgl.dreb,
+            pgl.pf,
         )  # type: ignore[call-overload, misc]
         .select_from(pgl)
         .join(SummerLeagueCompetition, SummerLeagueCompetition.id == pgl.competition_id)
@@ -378,6 +402,7 @@ async def get_summer_league_profile_by_player_id(
                 fg3a=row.fg3a,
                 ftm=row.ftm,
                 fta=row.fta,
+                gmsc=round(game_score_from_row(row), 1),
             )
         )
         if len(recent_games) >= _RECENT_GAME_LIMIT:

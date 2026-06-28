@@ -187,8 +187,8 @@ def test_player_advanced_columns_includes_ts_pct() -> None:
 
 
 def test_player_stat_columns_count() -> None:
-    """The base column list must contain the same 22 columns as before."""
-    assert len(_PLAYER_STAT_COLUMNS) == 22
+    """Base column list = the legacy 22 plus Game Score (gmsc), surfaced by #426."""
+    assert len(_PLAYER_STAT_COLUMNS) == 23
 
 
 def test_player_advanced_columns_count() -> None:
@@ -204,6 +204,7 @@ def test_player_stat_columns_preserves_display_order() -> None:
         "efg_pct",
         "fgm", "fga", "fg3m", "fg3a", "ftm", "fta",
         "fg_pct", "fg3_pct", "ft_pct",
+        "gmsc",  # Game Score — additive/box-derived base column (#426)
     ]
     actual_keys = [c.key for c in _PLAYER_STAT_COLUMNS]
     assert actual_keys == expected_keys
