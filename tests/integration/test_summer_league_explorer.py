@@ -3287,6 +3287,13 @@ async def test_pooled_avg_marker_and_eligibility_banner(
     assert " of " in body  # N of M text
     # "avg" marker is present for pooled composites.
     assert "slg-pooled-mark" in body
+    # #429: the banner message (incl. the inline "avg" abbr) lives in a single
+    # flex item so it flows as normal text. Guard: the <abbr> marker sits INSIDE
+    # the slg-explorer-banner__text wrapper, not as a bare flex sibling.
+    assert "slg-explorer-banner__text" in body
+    _i = body.index('slg-explorer-banner__text"')
+    _text_span = body[_i : body.index("</span>", _i)]
+    assert "<abbr" in _text_span, "avg marker must be inside the banner text wrapper"
 
 
 @pytest.mark.asyncio
