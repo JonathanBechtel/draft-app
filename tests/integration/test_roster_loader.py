@@ -292,8 +292,11 @@ async def test_history_reconstruction(db_session: AsyncSession) -> None:
     - T1: load P1 + P3 (P2 cut, P3 added).
 
     Asserts:
-    - "Roster as of T0" query returns 2 players (P1, P2 — P2 not yet superseded).
-    - "Roster as of T1" query returns 2 players (P1, P3 — P2 superseded at T1).
+    - "Roster as of T0" query returns exactly {P1, P2} (by person id).
+    - "Roster as of T1" query returns exactly {P1, P3} (P2 superseded at T1).
+
+    Identity (not just counts) is asserted so a loader that superseded the
+    *wrong* row (e.g. cut P1 instead of P2) would fail here.
     """
     # T0: P1 and P2 announced.
     await load_roster_snapshot(
@@ -307,46 +310,36 @@ async def test_history_reconstruction(db_session: AsyncSession) -> None:
     )
     await db_session.commit()
 
-    # --- Point-in-time query: "who was on the roster as of T0?" ---
-    # An ANNOUNCED assertion is "active at T" if:
-    #   recorded_at <= T
-    #   AND (superseded_at IS NULL OR superseded_at > T)
-    #   AND status != CUT
-    as_of_t0 = (
-        await db_session.execute(
-            select(PlayerAffiliation).where(
-                PlayerAffiliation.affiliation_type  # type: ignore[arg-type]
-                == AffiliationType.SUMMER_LEAGUE_ROSTER,
-                PlayerAffiliation.status != AffiliationStatus.CUT,  # type: ignore[arg-type]
-                PlayerAffiliation.recorded_at <= T0,  # type: ignore[arg-type]
-                or_(
-                    PlayerAffiliation.superseded_at.is_(None),  # type: ignore[union-attr]
-                    PlayerAffiliation.superseded_at > T0,  # type: ignore[arg-type,operator]
-                ),
-            )
-        )
-    ).scalars().all()
-    # P1 and P2 were both announced at T0; P2 not yet superseded at T0.
-    assert len(as_of_t0) == 2
+    async def _roster_person_ids_as_of(at: datetime) -> set[str]:
+        """Reconstruct the active roster's person ids from the assertion stream.
 
-    # --- Point-in-time query: "who was on the roster as of T1?" ---
-    as_of_t1 = (
-        await db_session.execute(
-            select(PlayerAffiliation).where(
-                PlayerAffiliation.affiliation_type  # type: ignore[arg-type]
-                == AffiliationType.SUMMER_LEAGUE_ROSTER,
-                PlayerAffiliation.status != AffiliationStatus.CUT,  # type: ignore[arg-type]
-                PlayerAffiliation.recorded_at <= T1,  # type: ignore[arg-type]
-                or_(
-                    PlayerAffiliation.superseded_at.is_(None),  # type: ignore[union-attr]
-                    PlayerAffiliation.superseded_at > T1,  # type: ignore[arg-type,operator]
-                ),
+        An ANNOUNCED assertion is "active at ``at``" when it was recorded on or
+        before ``at`` and was not yet superseded as of ``at``. This queries the
+        append-only assertion stream *directly* (not via participation, which
+        only points at the current assertion). The affiliation's ``player_id``
+        is null pre-resolution, so the person id is recovered from ``source_ref``
+        (``"{league_id}/{team_id}/{person_id}"``), which the CUT row also carries.
+        """
+        rows = (
+            await db_session.execute(
+                select(PlayerAffiliation).where(
+                    PlayerAffiliation.affiliation_type  # type: ignore[arg-type]
+                    == AffiliationType.SUMMER_LEAGUE_ROSTER,
+                    PlayerAffiliation.status != AffiliationStatus.CUT,  # type: ignore[arg-type]
+                    PlayerAffiliation.recorded_at <= at,  # type: ignore[arg-type]
+                    or_(
+                        PlayerAffiliation.superseded_at.is_(None),  # type: ignore[union-attr]
+                        PlayerAffiliation.superseded_at > at,  # type: ignore[arg-type,operator]
+                    ),
+                )
             )
-        )
-    ).scalars().all()
-    # P2's ANNOUNCED row was superseded at T1 (not > T1), so it is excluded.
-    # P1 (announced T0, still active) and P3 (announced T1) remain.
-    assert len(as_of_t1) == 2
+        ).scalars().all()
+        return {(aff.source_ref or "").rsplit("/", 1)[-1] for aff in rows}
+
+    # P1 and P2 were both announced at T0; P2 not yet superseded at T0.
+    assert await _roster_person_ids_as_of(T0) == {"P1", "P2"}
+    # P2's ANNOUNCED row was superseded at T1; P1 (still active) and P3 (new) remain.
+    assert await _roster_person_ids_as_of(T1) == {"P1", "P3"}
 
 
 @pytest.mark.asyncio

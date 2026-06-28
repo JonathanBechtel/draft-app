@@ -250,3 +250,100 @@ async def test_backfill_canonical_ids(db_session: AsyncSession) -> None:
     # Verify affiliation.player_id was backfilled.
     await db_session.refresh(affiliations[0])
     assert affiliations[0].player_id == canonical.id
+
+
+@pytest.mark.asyncio
+async def test_backfill_walks_supersedes_chain_for_cut_player(
+    db_session: AsyncSession,
+) -> None:
+    """Resolution backfills the superseded ANNOUNCED ancestor of a CUT player.
+
+    Exercises the ``supersedes_id`` chain-walk in
+    ``_backfill_participation_and_affiliation``: when a player is cut, the
+    participation's current pointer is the CUT assertion, while the prior
+    ANNOUNCED assertion is reachable only via ``supersedes_id``. Both must be
+    backfilled so the historical assertion is not left with a NULL ``player_id``.
+
+    Sequence:
+    - Load v1 with PERSON_CUT_01 on TEAM_A → one ANNOUNCED assertion.
+    - Load v2 with a different player on TEAM_A → PERSON_CUT_01 is cut
+      (new CUT assertion supersedes the ANNOUNCED row).
+    - Resolve PERSON_CUT_01 via its nba_stats external id.
+
+    Asserts:
+    - Both PERSON_CUT_01 assertions (ANNOUNCED ancestor + CUT) get the canonical
+      ``player_id``.
+    - The unrelated other player's assertion is NOT backfilled (scoped to the
+      resolved source player only).
+    """
+    # v1: PERSON_CUT_01 announced on TEAM_A.
+    await load_roster_snapshot(
+        db_session, COMPETITION, [_entry("PERSON_CUT_01", "Cut Player")], recorded_at=T0
+    )
+    await db_session.commit()
+
+    # v2: PERSON_CUT_01 dropped, a different player added → CUT supersedes ANNOUNCED.
+    await load_roster_snapshot(
+        db_session,
+        COMPETITION,
+        [_entry("PERSON_OTHER_02", "Other Player")],
+        recorded_at=datetime(2026, 7, 2, 0, 0, 0),
+    )
+    await db_session.commit()
+
+    # Two assertions exist for the cut player: the superseded ANNOUNCED + the CUT.
+    cut_player_affs = (
+        await db_session.execute(
+            select(PlayerAffiliation).where(
+                PlayerAffiliation.source_ref.like("%/PERSON_CUT_01")  # type: ignore[union-attr]
+            )
+        )
+    ).scalars().all()
+    assert len(cut_player_affs) == 2
+    assert {a.status for a in cut_player_affs} == {
+        AffiliationStatus.ANNOUNCED,
+        AffiliationStatus.CUT,
+    }
+    assert all(a.player_id is None for a in cut_player_affs)
+
+    # Canonical player + nba_stats external id for the cut player.
+    canonical = _make_player("Cut Player")
+    db_session.add(canonical)
+    await db_session.flush()
+    db_session.add(
+        PlayerExternalId(
+            player_id=canonical.id,
+            system="nba_stats",
+            external_id="PERSON_CUT_01",
+        )
+    )
+    await db_session.flush()
+
+    source_player = (
+        await db_session.execute(
+            select(SummerLeagueSourcePlayer).where(
+                SummerLeagueSourcePlayer.nba_stats_person_id == "PERSON_CUT_01"  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+
+    result = await resolve_source_player(db_session, source_player)
+    await db_session.commit()
+
+    assert result.status == SummerLeagueResolutionStatus.EXTERNAL_ID
+    assert result.player_id == canonical.id
+
+    # BOTH the CUT row and its superseded ANNOUNCED ancestor must be backfilled.
+    for aff in cut_player_affs:
+        await db_session.refresh(aff)
+        assert aff.player_id == canonical.id
+
+    # The unrelated player's assertion stays NULL (backfill is source-scoped).
+    other_aff = (
+        await db_session.execute(
+            select(PlayerAffiliation).where(
+                PlayerAffiliation.source_ref.like("%/PERSON_OTHER_02")  # type: ignore[union-attr]
+            )
+        )
+    ).scalar_one()
+    assert other_aff.player_id is None

@@ -12,7 +12,7 @@ Create Date: 2026-06-28
 
 from __future__ import annotations
 
-from alembic import op
+from alembic import op  # type: ignore[attr-defined]
 
 revision = "c0d1e2f3a4b5"
 down_revision = "b9c0d1e2f3a4"
