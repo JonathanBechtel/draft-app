@@ -209,6 +209,7 @@ def _pbp_event(
     event_num: int,
     scorer_id: int | None,
     assister_id: int | None = None,
+    assister_nba_id: str | None = None,
     event_msg_type: int = 1,
 ) -> SummerLeaguePlayByPlayEvent:
     """Create a PBP event row directly (bypasses normalization pipeline).
@@ -231,7 +232,18 @@ def _pbp_event(
         period=1,
         clock="10:00",
         person1_id=scorer_id,
+        person1_nba_id=str(scorer_id) if scorer_id is not None else None,
         person2_id=assister_id,
+        # assisted-FG counting keys on the raw NBA assister id (present whenever
+        # the box records an assist, even if the assister isn't canonically
+        # resolved). Defaults to mirroring assister_id, but can be set
+        # independently to simulate an unresolved assister (person2_id NULL,
+        # raw id present).
+        person2_nba_id=(
+            assister_nba_id
+            if assister_nba_id is not None
+            else (str(assister_id) if assister_id is not None else None)
+        ),
     )
 
 
@@ -339,6 +351,90 @@ async def test_assisted_fg_columns_populate_after_rebuild(
 
     assert season.ast_fgm == 4
     assert season.unast_fgm == 3
+
+
+@pytest.mark.asyncio
+async def test_assisted_fg_counts_unresolved_assister(
+    db_session: AsyncSession,
+) -> None:
+    """An assist with an UNRESOLVED assister still counts as assisted.
+
+    Regression for the codex review finding: assisted/unassisted must key on the
+    raw ``person2_nba_id`` (present whenever the box notes an assist), not the
+    canonical ``person2_id`` which is NULL until the assister is resolved.
+    Seeds 2 assisted made-FGs whose assister is unresolved (person2_id NULL,
+    person2_nba_id present) → both must be counted assisted, not unassisted.
+    """
+    comp = await _make_competition(db_session, year=2022, league_id="15")
+    assert comp.id is not None
+    team = await _make_team_entry(
+        db_session, competition_id=comp.id, nba_stats_team_id="1610612753"
+    )
+    assert team.id is not None
+    opp_team = await _make_team_entry(
+        db_session, competition_id=comp.id, nba_stats_team_id="1610612739"
+    )
+    assert opp_team.id is not None
+    game = await _make_game(
+        db_session, competition_id=comp.id, nba_stats_game_id="1522200201"
+    )
+    assert game.id is not None
+    scorer = await _make_player(db_session, slug="unres-assist-scorer")
+    assert scorer.id is not None
+    sp_scorer = await _make_source_player(
+        db_session, nba_stats_person_id="8883", canonical_player_id=scorer.id
+    )
+    assert sp_scorer.id is not None
+
+    db_session.add(
+        _player_game_log(
+            competition_id=comp.id,
+            player_id=scorer.id,
+            source_player_id=sp_scorer.id,
+            team_entry_id=team.id,
+            game_id=game.id,
+            nba_stats_person_id="8883",
+            fgm=5,
+            fga=10,
+        )
+    )
+    db_session.add(
+        _team_game_log(competition_id=comp.id, team_entry_id=team.id, game_id=game.id)
+    )
+    db_session.add(
+        _team_game_log(
+            competition_id=comp.id, team_entry_id=opp_team.id, game_id=game.id
+        )
+    )
+    # 2 assisted made-FGs whose assister is NOT canonically resolved:
+    # person2_id is None but the raw person2_nba_id is present.
+    for i in range(2):
+        db_session.add(
+            _pbp_event(
+                game_id=game.id,
+                competition_id=comp.id,
+                nba_stats_game_id="1522200201",
+                event_num=i + 1,
+                scorer_id=scorer.id,
+                assister_id=None,
+                assister_nba_id="999999",
+            )
+        )
+    await db_session.flush()
+
+    await rebuild(db_session)
+    await db_session.flush()
+
+    season = (
+        await db_session.execute(
+            select(SummerLeaguePlayerSeason).where(
+                SummerLeaguePlayerSeason.player_id == scorer.id  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+
+    assert season.ast_fgm == 2
+    assert season.unast_fgm == 0
 
 
 @pytest.mark.asyncio

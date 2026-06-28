@@ -577,6 +577,13 @@ class SummerLeagueShotEvent(SQLModel, table=True):  # type: ignore[call-arg]
             "competition_id",
         ),
         Index("ix_summer_league_shot_events_game_id", "game_id"),
+        # competition-leading index for the pool-baseline aggregation
+        # (_fetch_pool_baseline groups by zone within a single competition).
+        Index(
+            "ix_summer_league_shot_events_competition_zone",
+            "competition_id",
+            "shot_zone_basic",
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)

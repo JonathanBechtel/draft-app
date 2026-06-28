@@ -6,8 +6,8 @@
  * lightweight SVG into #sl-game-flow-root.
  *
  * Positive margin → home team ahead (green); negative → away team (rose).
- * Period dividers are drawn at 12-min intervals (720 s) for regulation and
- * 5-min intervals (300 s) for overtime.
+ * Period dividers are drawn at 10-min intervals (600 s) for Summer League
+ * regulation quarters and 5-min intervals (300 s) for overtime.
  */
 (function () {
   'use strict';
@@ -23,7 +23,7 @@
   const INNER_W = SVG_W - PAD.left - PAD.right;
   const INNER_H = SVG_H - PAD.top - PAD.bottom;
 
-  const REG_PERIOD_S = 12 * 60;
+  const REG_PERIOD_S = 10 * 60; // Summer League regulation quarters are 10 min
   const OT_PERIOD_S = 5 * 60;
   const REG_PERIODS = 4;
 

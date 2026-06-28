@@ -788,7 +788,7 @@ async def get_game_shotchart_context(
 # Game-flow chart helpers
 # ---------------------------------------------------------------------------
 
-_REGULAR_PERIOD_SECONDS = 12 * 60  # 720 s per regulation quarter
+_REGULAR_PERIOD_SECONDS = 10 * 60  # 600 s per regulation quarter (Summer League)
 _OT_PERIOD_SECONDS = 5 * 60  # 300 s per overtime period
 _N_REGULATION_PERIODS = 4
 
@@ -796,8 +796,8 @@ _N_REGULATION_PERIODS = 4
 def _period_start_seconds(period: int) -> int:
     """Return the elapsed-game-time (in seconds) at the start of ``period``.
 
-    Periods are 1-indexed. Periods 1–4 are 12 minutes each; overtime
-    periods (≥5) are 5 minutes each.
+    Periods are 1-indexed. Summer League regulation periods (1–4) are
+    10 minutes each; overtime periods (≥5) are 5 minutes each.
     """
     if period <= _N_REGULATION_PERIODS:
         return (period - 1) * _REGULAR_PERIOD_SECONDS

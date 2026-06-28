@@ -764,8 +764,11 @@ async def _load_assisted_fg(
     """Query PBP made-FG events and count assisted vs unassisted per (player_id, competition_id).
 
     A made-FG event is identified by ``event_msg_type == 1``.  An assisted made
-    FG is one where ``person2_id`` (the assister) is non-NULL; unassisted events
-    have ``person2_id IS NULL``.  Only events with a resolved scorer
+    FG is one where an assister was recorded — keyed on the raw
+    ``person2_nba_id`` (present whenever the box notes an assist) rather than the
+    canonical ``person2_id``, which is NULL when the assister isn't yet
+    resolved to our player table and would otherwise undercount assists on
+    partially-resolved data.  Only events with a resolved scorer
     (``person1_id`` not NULL) are counted.
 
     Returns a mapping of ``(player_id, competition_id)`` → ``(ast_fgm, unast_fgm)``.
@@ -776,10 +779,10 @@ async def _load_assisted_fg(
             SummerLeaguePlayByPlayEvent.person1_id,
             SummerLeaguePlayByPlayEvent.competition_id,
             func.count()
-            .filter(SummerLeaguePlayByPlayEvent.person2_id.isnot(None))  # type: ignore[union-attr]
+            .filter(SummerLeaguePlayByPlayEvent.person2_nba_id.isnot(None))  # type: ignore[union-attr]
             .label("ast_fgm"),
             func.count()
-            .filter(SummerLeaguePlayByPlayEvent.person2_id.is_(None))  # type: ignore[union-attr]
+            .filter(SummerLeaguePlayByPlayEvent.person2_nba_id.is_(None))  # type: ignore[union-attr]
             .label("unast_fgm"),
         )
         .where(
