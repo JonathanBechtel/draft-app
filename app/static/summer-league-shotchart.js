@@ -1,500 +1,274 @@
 /* summer-league-shotchart.js
  *
- * Renders a zone-heat half-court shot chart from window.SL_SHOTCHART.
- * Default: zone heat (FG% vs pool average → green/red gradient).
- * Toggle:  raw shot dots (make=filled green, miss=hollow red).
- * Suppressed (<20 FGA or missing data): graceful placeholder + table only.
+ * Continuous (kernel-smoothed) shot heat map from window.SL_SHOTCHART.
+ *   • A Gaussian kernel is sampled over a fine grid, so color varies SMOOTHLY
+ *     across the floor instead of jumping bin-to-bin.
+ *   • COLOR  = shooting efficiency — vs the SL pool for that area when a pool
+ *     baseline exists (red below → green above), else a sequential FG% scale.
+ *   • OPACITY/INTENSITY = where the shots actually are (density), so empty floor
+ *     stays clear and hot spots glow.
+ *   • Toggle to raw makes/misses dots. Hover for a local readout.
+ *   • <20 FGA or no data → graceful placeholder + table only.
  *
  * Data contract (window.SL_SHOTCHART):
- *   total_fga  : int
- *   suppressed : bool   — true → skip court, show table + small-sample note
- *   zones      : [ { shot_zone_basic, fga, fgm, fg_pct, freq_pct, pool_fg_pct } ]
- *   dots       : [ { loc_x, loc_y, made } ]   — may be absent/empty
- *
- * Mount point: <div id="sl-shotchart-root"></div>
- * Loaded by the page via {% block extra_js %}; no bundler.
+ *   total_fga, suppressed,
+ *   zones : [ { shot_zone_basic, fga, fgm, fg_pct, freq_pct, pool_fg_pct } ],
+ *   dots  : [ { loc_x, loc_y, made } ]   (NBA tenths-of-feet; hoop at 0,0)
  */
 (function () {
   "use strict";
 
-  /* ── Constants ─────────────────────────────────────────────────────────── */
-
   var SVG_NS = "http://www.w3.org/2000/svg";
 
-  // Half-court viewBox: 500 wide × 470 tall (standard NBA half).
-  // Origin (0,0) = top-left. Basket at (250, 415).
-  var VB_W = 500;
-  var VB_H = 470;
-  var BASKET_X = 250;
-  var BASKET_Y = 415;
+  /* Court coords: 1 unit = 1 tenth-foot. Hoop at (250, 418); baseline y=470.
+   * We crop the view to y ∈ [95, 470] (baseline → just above the arc).        */
+  var VB_W = 500, VB_H = 470, HOOP_X = 250, HOOP_Y = 418, BASELINE_Y = 470;
+  var CROP_TOP = 95, CROP_H = VB_H - CROP_TOP; // 375
+  function sx(x) { return HOOP_X + x; }
+  function sy(y) { return HOOP_Y - y; }
 
-  // NBA canonical zone labels (shot_zone_basic field values).
-  var ZONES = [
-    "Restricted Area",
-    "In The Paint (Non-RA)",
-    "Mid-Range",
-    "Left Corner 3",
-    "Right Corner 3",
-    "Above the Break 3",
-  ];
+  var ZONES = ["Restricted Area","In The Paint (Non-RA)","Mid-Range","Left Corner 3","Right Corner 3","Above the Break 3"];
+  var ZONE_SHORT = { "Restricted Area":"RA","In The Paint (Non-RA)":"Paint","Mid-Range":"Mid","Left Corner 3":"LC3","Right Corner 3":"RC3","Above the Break 3":"ATB 3" };
 
-  // Zone display names (shorter for labels).
-  var ZONE_SHORT = {
-    "Restricted Area": "RA",
-    "In The Paint (Non-RA)": "Paint",
-    "Mid-Range": "Mid",
-    "Left Corner 3": "LC3",
-    "Right Corner 3": "RC3",
-    "Above the Break 3": "ATB 3",
-  };
-
-  // Label anchor points (cx, cy) for each zone on the half-court SVG.
-  var ZONE_LABEL_POS = {
-    "Restricted Area":        { x: 250, y: 390 },
-    "In The Paint (Non-RA)": { x: 250, y: 340 },
-    "Mid-Range":              { x: 250, y: 250 },
-    "Left Corner 3":          { x: 60,  y: 390 },
-    "Right Corner 3":         { x: 440, y: 390 },
-    "Above the Break 3":      { x: 250, y: 120 },
-  };
-
-  /* ── Colour helpers ────────────────────────────────────────────────────── */
-
-  // Interpolate between two hex colours by t ∈ [0,1].
-  function lerpHex(a, b, t) {
-    var ar = parseInt(a.slice(1, 3), 16);
-    var ag = parseInt(a.slice(3, 5), 16);
-    var ab = parseInt(a.slice(5, 7), 16);
-    var br = parseInt(b.slice(1, 3), 16);
-    var bg = parseInt(b.slice(3, 5), 16);
-    var bb = parseInt(b.slice(5, 7), 16);
-    var rr = Math.round(ar + (br - ar) * t);
-    var rg = Math.round(ag + (bg - ag) * t);
-    var rb = Math.round(ab + (bb - ab) * t);
-    return (
-      "#" +
-      rr.toString(16).padStart(2, "0") +
-      rg.toString(16).padStart(2, "0") +
-      rb.toString(16).padStart(2, "0")
-    );
+  function classifyZone(x, y) {
+    var dist = Math.sqrt(x * x + y * y);
+    if (Math.abs(x) >= 220 && y <= 92) return x < 0 ? "Left Corner 3" : "Right Corner 3";
+    if (dist >= 237.5) return "Above the Break 3";
+    if (dist <= 40) return "Restricted Area";
+    if (Math.abs(x) <= 80 && y <= 190) return "In The Paint (Non-RA)";
+    return "Mid-Range";
   }
 
-  // Map a fg_pct vs pool_fg_pct to a fill colour.
-  // delta > 0 → greener; delta < 0 → redder; no pool → neutral slate.
-  var COLD   = "#f43f5e"; // --color-accent-rose
-  var NEUTRAL= "#94a3b8"; // slate-400
-  var HOT    = "#10b981"; // --color-accent-emerald
-  var MAX_DELTA = 0.12;   // ±12 pp clamps to full red/green
-
-  function zoneColor(fg_pct, pool_fg_pct) {
-    if (fg_pct === null || fg_pct === undefined) return NEUTRAL;
-    if (pool_fg_pct === null || pool_fg_pct === undefined) return NEUTRAL;
-    var delta = fg_pct - pool_fg_pct;
-    var t = Math.max(-1, Math.min(1, delta / MAX_DELTA));
-    if (t >= 0) return lerpHex(NEUTRAL, HOT, t);
-    return lerpHex(NEUTRAL, COLD, -t);
+  /* ── Colour ramps (return [r,g,b]) ──────────────────────────────────────── */
+  function mix(a, b, t) { return [Math.round(a[0]+(b[0]-a[0])*t), Math.round(a[1]+(b[1]-a[1])*t), Math.round(a[2]+(b[2]-a[2])*t)]; }
+  var C_COLD = [225,29,72], C_MID = [238,232,220], C_HOT = [16,185,129];          // diverging vs pool (cream midpoint → no amber band)
+  var S0 = [37,99,235], S1 = [56,189,248], S2 = [250,204,21], S3 = [239,68,68];  // sequential FG% (blue→cyan→amber→red)
+  var MAX_DELTA = 0.10;
+  function divColor(fg, pool) {
+    var t = Math.max(-1, Math.min(1, (fg - pool) / MAX_DELTA));
+    return t >= 0 ? mix(C_MID, C_HOT, t) : mix(C_MID, C_COLD, -t);
   }
-
-  /* ── SVG helpers ───────────────────────────────────────────────────────── */
+  function seqColor(fg) {
+    var t = Math.max(0, Math.min(1, fg / 0.65));
+    if (t < 0.34) return mix(S0, S1, t / 0.34);
+    if (t < 0.67) return mix(S1, S2, (t - 0.34) / 0.33);
+    return mix(S2, S3, (t - 0.67) / 0.33);
+  }
+  function rgbStr(c, a) { return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")"; }
+  function rgbHex(c) { return "#" + c.map(function(n){return n.toString(16).padStart(2,"0");}).join(""); }
 
   function svgEl(tag, attrs) {
     var el = document.createElementNS(SVG_NS, tag);
-    Object.keys(attrs).forEach(function (k) {
-      el.setAttribute(k, attrs[k]);
-    });
+    Object.keys(attrs).forEach(function (k) { el.setAttribute(k, attrs[k]); });
     return el;
   }
 
-  /* ── Court path data ───────────────────────────────────────────────────── */
-  // All zones are drawn as SVG paths in the half-court coordinate system.
-  // NBA key: 16ft wide = 160 units, free-throw line 190 from baseline = y=225 (VB_H-415+190 → 245 from top)
-  // 3-point line: arc r=23.75ft=237.5 units from basket; corners at x=30/470, y >= 350 (=65 from baseline)
-  // We scale: 1 foot = 10 units.  Basket at (250,415).
-  // Baseline = y=470 (bottom edge, extended 5 units past basket for visual).
-  // FT line:  y = 415 - 190 = 225.
-  // Key width: 80 units each side of basket center → x=170 to x=330.
-  // Restricted area: r=40 units (4ft).
-  // Corner 3: x ≤ 30+220=250? No. Corners are x=30 (left) and x=470 (right), y from 415 down.
-  //   In NBA: corner 3pt line is 22ft from basket at x=±220 from center; corners are at sideline (x=250±250).
-  //   Simplified: corner 3 region: x<80 or x>420, y >= 350 (≥6.5ft from baseline).
-  //   Above-break 3: arc area outside paint, not corner.
-
-  // Zone paths as SVG path `d` strings. Clipped to half-court (y >= 0 means only top half shown).
-  var ZONE_PATHS = {
-    "Restricted Area": (function () {
-      // Circle r=40 around basket (250,415), clipped by FT lane bottom at y=415 (same as basket).
-      // Show a semicircle toward the top.
-      return "M 210 415 A 40 40 0 0 1 290 415 Z";
-    }()),
-
-    "In The Paint (Non-RA)": (function () {
-      // Key rectangle x=170..330, y=225..415 minus the restricted area semicircle.
-      // Path: outer rect, then subtract RA arc.
-      return (
-        "M 170 415 L 170 225 L 330 225 L 330 415 " +
-        "L 290 415 A 40 40 0 0 0 210 415 Z"
-      );
-    }()),
-
-    "Mid-Range": (function () {
-      // Region inside 3pt arc but outside paint, plus the area above the FT line inside 3pt arc.
-      // 3pt arc: r=237.5 from basket (250,415), but clipped to court boundary.
-      // Corner cutoffs: x<30 or x>470 (sideline). y<470 (court end). y>0 (top of our view).
-      // This is complex; approximate as the 3pt arc region minus paint minus corners.
-      // We draw: arc from left non-corner point to right non-corner point (y=350 on both sides, approximately).
-      // Corner 3 region x <= 80 or x >= 420, y >= 350.
-      // Left non-corner 3pt point: approx (30, 350) transitioning to arc.
-      // For simplicity: mid-range = big arc region excluding paint and corners.
-      // Path: outer 3pt arc (large) then inner paint rectangle.
-      return (
-        // Outer boundary: left sideline corner → up to arc start → arc → right arc end → down to right corner → across baseline
-        "M 30 470 L 30 350 " + // left sideline going up to corner-3 top
-        "A 237.5 237.5 0 0 1 470 350 " + // 3pt arc from left to right (approximate)
-        "L 470 470 " + // right sideline down to baseline
-        "Z " + // close outer shape
-        // Inner paint cut-out (subtractive — browsers fill with even-odd).
-        "M 170 415 L 170 225 L 330 225 L 330 415 " +
-        "L 290 415 A 40 40 0 0 0 210 415 Z"
-      );
-    }()),
-
-    "Left Corner 3": (function () {
-      // Left corner region: x=0..30 to x=~80..., y=350..470
-      return "M 0 470 L 0 350 L 30 350 L 30 470 Z";
-    }()),
-
-    "Right Corner 3": (function () {
-      return "M 470 470 L 470 350 L 500 350 L 500 470 Z";
-    }()),
-
-    "Above the Break 3": (function () {
-      // Everything above (lower y) the 3pt arc, within the half-court.
-      // = court rectangle (0,0)→(500,0)→(500,470)→(0,470) MINUS mid-range MINUS paint MINUS corners MINUS RA.
-      // Simplest: rectangle from y=0 to y=350 (approximate arc top) + the arc caps.
-      // We approximate: above-break = court top down to the top of the 3pt arc.
-      // The 3pt arc peaks at y = 415 - 237.5 = 177.5 ≈ 178 from top.
-      return (
-        "M 0 0 L 500 0 L 500 350 " +
-        "A 237.5 237.5 0 0 0 0 350 " +
-        "Z"
-      );
-    }()),
-  };
-
-  /* ── SVG court background lines ─────────────────────────────────────────── */
-
-  function buildCourtLines(svg) {
-    var g = svgEl("g", { class: "sl-shotchart__court-lines", stroke: "#334155", "stroke-width": "1.5", fill: "none" });
-
-    // Court boundary
-    g.appendChild(svgEl("rect", { x: 0, y: 0, width: VB_W, height: VB_H, fill: "#1e293b", stroke: "none" }));
-
-    // Baseline
-    g.appendChild(svgEl("line", { x1: 0, y1: VB_H, x2: VB_W, y2: VB_H }));
-    // Sidelines
-    g.appendChild(svgEl("line", { x1: 0, y1: 0, x2: 0, y2: VB_H }));
-    g.appendChild(svgEl("line", { x1: VB_W, y1: 0, x2: VB_W, y2: VB_H }));
-
-    // Paint (key) outline
-    g.appendChild(svgEl("rect", { x: 170, y: 225, width: 160, height: 190, fill: "none" }));
-
-    // Free-throw circle (top half only) — center at (250, 225), r=60
-    var ftArc = svgEl("path", { d: "M 190 225 A 60 60 0 0 1 310 225", fill: "none" });
-    g.appendChild(ftArc);
-    // Bottom half dashed
-    var ftArcD = svgEl("path", { d: "M 190 225 A 60 60 0 0 0 310 225", fill: "none", "stroke-dasharray": "4 4" });
-    g.appendChild(ftArcD);
-
-    // Restricted area arc
-    g.appendChild(svgEl("path", { d: "M 210 415 A 40 40 0 0 1 290 415", fill: "none" }));
-
-    // 3-point arc (from corner to corner)
-    // Corner lines: x=30 from y=415 to y=350, x=470 same
-    g.appendChild(svgEl("line", { x1: 30, y1: VB_H, x2: 30, y2: 350 }));
-    g.appendChild(svgEl("line", { x1: 470, y1: VB_H, x2: 470, y2: 350 }));
-    // Arc from (30,350) to (470,350) — large arc of r=237.5 centered at basket (250,415)
-    g.appendChild(svgEl("path", { d: "M 30 350 A 237.5 237.5 0 0 1 470 350", fill: "none" }));
-
-    // Backboard (at y=400, x=225..275)
-    g.appendChild(svgEl("line", { x1: 220, y1: 400, x2: 280, y2: 400, "stroke-width": "3" }));
-
-    // Basket (circle at basket center)
-    g.appendChild(svgEl("circle", { cx: BASKET_X, cy: BASKET_Y, r: 10, fill: "none", "stroke-width": "2" }));
-
-    svg.appendChild(g);
-  }
-
-  /* ── Zone rendering ────────────────────────────────────────────────────── */
-
-  function buildZones(svg, zones, zoneMap) {
-    var g = svgEl("g", { class: "sl-shotchart__zones" });
-
-    ZONES.forEach(function (zoneName) {
-      var pathD = ZONE_PATHS[zoneName];
-      if (!pathD) return;
-      var zd = zoneMap[zoneName];
-      var color = zd ? zoneColor(zd.fg_pct, zd.pool_fg_pct) : NEUTRAL;
-
-      var path = svgEl("path", {
-        d: pathD,
-        fill: color,
-        class: "sl-shotchart__zone",
-        "data-zone": zoneName,
-        "fill-rule": "evenodd",
-      });
-      path.setAttribute("title", zoneName);
-      g.appendChild(path);
-
-      // Zone label
-      var pos = ZONE_LABEL_POS[zoneName];
-      if (pos && zd && zd.fga > 0) {
-        var pct = zd.fg_pct !== null ? (zd.fg_pct * 100).toFixed(0) + "%" : "—";
-        var line1 = svgEl("text", {
-          x: pos.x,
-          y: pos.y - 6,
-          class: "sl-shotchart__zone-label",
-        });
-        line1.textContent = pct;
-        g.appendChild(line1);
-
-        var line2 = svgEl("text", {
-          x: pos.x,
-          y: pos.y + 7,
-          class: "sl-shotchart__zone-label",
-          style: "font-size:7px;opacity:0.8",
-        });
-        line2.textContent = zd.fga + " FGA";
-        g.appendChild(line2);
-      }
-    });
-
-    svg.appendChild(g);
-    return g;
-  }
-
-  /* ── Dot rendering ─────────────────────────────────────────────────────── */
-  // NBA loc_x/loc_y use tenths of feet from basket center; max range ≈ ±250x ±47.5y.
-  // Our SVG basket is at (250, 415). Scale: 1 NBA unit = 1 SVG unit (both ~1ft).
-  // So: svgX = 250 + loc_x/10, svgY = 415 - loc_y/10.
-  // (loc_y is distance from basket toward half-court, so positive = away from basket = lower y in our coords)
-
-  function buildDots(svg, dots) {
-    if (!dots || dots.length === 0) return;
-    var g = svgEl("g", { class: "sl-shotchart__dots" });
-
-    dots.forEach(function (dot) {
-      var sx = BASKET_X + dot.loc_x / 10;
-      var sy = BASKET_Y - dot.loc_y / 10;
-      // Clip to half-court view
-      if (sx < 0 || sx > VB_W || sy < 0 || sy > VB_H) return;
-
-      var r = 4;
-      if (dot.made) {
-        var c = svgEl("circle", {
-          cx: sx, cy: sy, r: r,
-          class: "sl-shotchart__dot sl-shotchart__dot--made",
-        });
-        g.appendChild(c);
-      } else {
-        // Miss: hollow circle (an X is also common but circle is simpler/cleaner)
-        var c2 = svgEl("circle", {
-          cx: sx, cy: sy, r: r,
-          class: "sl-shotchart__dot sl-shotchart__dot--miss",
-        });
-        g.appendChild(c2);
-      }
-    });
-
-    svg.appendChild(g);
-  }
-
-  /* ── Court SVG builder ─────────────────────────────────────────────────── */
-
-  function buildCourtSVG(data, zoneMap) {
-    var svg = svgEl("svg", {
-      viewBox: "0 0 " + VB_W + " " + VB_H,
-      "aria-label": "Shot chart half-court",
-      role: "img",
-    });
-
-    buildCourtLines(svg);
-    buildZones(svg, data.zones, zoneMap);
-    buildDots(svg, data.dots);
-
+  /* ── Court lines (SVG overlay above the heat canvas) ───────────────────── */
+  function buildCourtSVG() {
+    var svg = svgEl("svg", { viewBox: "0 " + CROP_TOP + " " + VB_W + " " + CROP_H, class: "sl-shotchart__court", role: "img", "aria-label": "Shot heat map" });
+    var line = function (a) { a.class = "sl-shotchart__line"; svg.appendChild(svgEl("line", a)); };
+    var path = function (d, dash) { var o = { d: d, class: "sl-shotchart__line", fill: "none" }; if (dash) o["stroke-dasharray"] = "5 5"; svg.appendChild(svgEl("path", o)); };
+    line({ x1: 0, y1: BASELINE_Y, x2: VB_W, y2: BASELINE_Y });
+    line({ x1: 0, y1: CROP_TOP, x2: 0, y2: BASELINE_Y });
+    line({ x1: VB_W, y1: CROP_TOP, x2: VB_W, y2: BASELINE_Y });
+    var FT_Y = sy(190);
+    svg.appendChild(svgEl("rect", { x: 170, y: FT_Y, width: 160, height: BASELINE_Y - FT_Y, fill: "none", class: "sl-shotchart__line" }));
+    path("M 190 " + FT_Y + " A 60 60 0 0 1 310 " + FT_Y);
+    path("M 190 " + FT_Y + " A 60 60 0 0 0 310 " + FT_Y, true);
+    path("M " + sx(-40) + " " + sy(0) + " A 40 40 0 0 1 " + sx(40) + " " + sy(0));
+    line({ x1: sx(-30), y1: sy(-12), x2: sx(30), y2: sy(-12) });
+    svg.appendChild(svgEl("circle", { cx: HOOP_X, cy: sy(0), r: 7.5, fill: "none", class: "sl-shotchart__line" }));
+    var cY = sy(90);
+    line({ x1: sx(-220), y1: BASELINE_Y, x2: sx(-220), y2: cY });
+    line({ x1: sx(220), y1: BASELINE_Y, x2: sx(220), y2: cY });
+    path("M " + sx(-220) + " " + cY + " A 237.5 237.5 0 0 1 " + sx(220) + " " + cY);
     return svg;
   }
 
-  /* ── Zone table ────────────────────────────────────────────────────────── */
+  /* ── Kernel-smoothed heat onto a canvas ─────────────────────────────────── */
+  var SIGMA = 28;       // kernel bandwidth in court units (~2.8 ft)
+  var GW = 200, GH = Math.round(GW * CROP_H / VB_W); // offscreen grid res
+
+  function drawHeat(canvas, dots, zoneMap, hasPool) {
+    var shots = dots.filter(function (d) { return d.loc_y <= 405 && d.loc_y >= -55; });
+    if (!shots.length) return;
+    // Precompute display-space shot positions (court coords).
+    var pts = shots.map(function (d) { return { x: sx(d.loc_x), y: sy(d.loc_y), m: d.made ? 1 : 0 }; });
+
+    var off = document.createElement("canvas");
+    off.width = GW; off.height = GH;
+    var octx = off.getContext("2d");
+    var img = octx.createImageData(GW, GH);
+    var data = img.data;
+    var twoSig2 = 2 * SIGMA * SIGMA;
+    var cell_x = VB_W / GW, cell_y = CROP_H / GH;
+
+    // First pass: weight + weighted makes per cell; track max weight for normalisation.
+    var W = new Float32Array(GW * GH), M = new Float32Array(GW * GH), maxW = 0;
+    for (var gy = 0; gy < GH; gy++) {
+      var cy = CROP_TOP + (gy + 0.5) * cell_y;
+      for (var gx = 0; gx < GW; gx++) {
+        var cx = (gx + 0.5) * cell_x;
+        var w = 0, wm = 0;
+        for (var i = 0; i < pts.length; i++) {
+          var dx = cx - pts[i].x, dy = cy - pts[i].y;
+          var d2 = dx * dx + dy * dy;
+          if (d2 > twoSig2 * 4) continue;       // skip far shots (>~2.8σ)
+          var e = Math.exp(-d2 / twoSig2);
+          w += e; wm += e * pts[i].m;
+        }
+        var idx = gy * GW + gx;
+        W[idx] = w; M[idx] = wm;
+        if (w > maxW) maxW = w;
+      }
+    }
+    // Second pass: colour by efficiency, alpha by density.
+    for (var p = 0; p < GW * GH; p++) {
+      var wgt = W[p];
+      var di = p * 4;
+      if (wgt < maxW * 0.05) { data[di + 3] = 0; continue; } // clear empty floor
+      var eff = M[p] / wgt;
+      var gx2 = p % GW, gy2 = (p / GW) | 0;
+      var col;
+      if (hasPool) {
+        var lx = (gx2 + 0.5) * cell_x - HOOP_X;
+        var ly = HOOP_Y - (CROP_TOP + (gy2 + 0.5) * cell_y);
+        var zd = zoneMap[classifyZone(lx, ly)];
+        var pool = zd && zd.pool_fg_pct != null ? zd.pool_fg_pct : null;
+        col = pool != null ? divColor(eff, pool) : seqColor(eff);
+      } else {
+        col = seqColor(eff);
+      }
+      var intensity = Math.pow(wgt / maxW, 0.6);
+      data[di] = col[0]; data[di + 1] = col[1]; data[di + 2] = col[2];
+      data[di + 3] = Math.round(Math.min(0.92, 0.18 + 0.78 * intensity) * 255);
+    }
+    octx.putImageData(img, 0, 0);
+
+    // Scale the small grid up onto the display canvas → bilinear smoothing.
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
+  }
+
+  function buildDots(svg, dots) {
+    var g = svgEl("g", { class: "sl-shotchart__dots" });
+    dots.forEach(function (d) {
+      if (d.loc_y > 405 || d.loc_y < -55) return;
+      g.appendChild(svgEl("circle", { cx: sx(d.loc_x), cy: sy(d.loc_y), r: 4, class: "sl-shotchart__dot " + (d.made ? "sl-shotchart__dot--made" : "sl-shotchart__dot--miss") }));
+    });
+    svg.appendChild(g);
+  }
+
+  /* ── Legend / table / placeholder ───────────────────────────────────────── */
+  function buildLegend(hasPool) {
+    var l = document.createElement("div");
+    l.className = "sl-shotchart__legend";
+    var grad = hasPool
+      ? "<span class='sl-shotchart__grad sl-shotchart__grad--div'></span> efficiency vs SL pool (red below · green above)"
+      : "<span class='sl-shotchart__grad sl-shotchart__grad--seq'></span> FG% (cool → hot)";
+    l.innerHTML =
+      "<span class='sl-shotchart__legend-item'><span class='sl-shotchart__fade'></span> shot density</span>" +
+      "<span class='sl-shotchart__legend-item'>" + grad + "</span>";
+    return l;
+  }
 
   function buildTable(zoneMap) {
     var table = document.createElement("table");
     table.className = "sl-shotchart__table";
-
-    var thead = document.createElement("thead");
-    thead.innerHTML =
-      "<tr>" +
-      "<th>Zone</th>" +
-      "<th>FGA</th>" +
-      "<th>FG%</th>" +
-      "<th>Freq%</th>" +
-      "<th>vs Pool</th>" +
-      "</tr>";
-    table.appendChild(thead);
-
-    var tbody = document.createElement("tbody");
-
-    ZONES.forEach(function (zoneName) {
-      var zd = zoneMap[zoneName];
+    var tip = "Player FG% in this zone minus the average FG% of every player in the same Summer League competition. +pp better than the field, −pp worse. Blank when there's no pool (career or single game).";
+    table.innerHTML = "<thead><tr><th>Zone</th><th>FGA</th><th>FG%</th><th>Freq</th><th><abbr class='sl-shotchart__abbr' title=\"" + tip + "\">vs Pool</abbr></th></tr></thead>";
+    var tb = document.createElement("tbody");
+    ZONES.forEach(function (z) {
+      var zd = zoneMap[z];
       if (!zd || zd.fga === 0) return;
-
-      var color = zoneColor(zd.fg_pct, zd.pool_fg_pct);
-      var pct = zd.fg_pct !== null ? (zd.fg_pct * 100).toFixed(1) + "%" : "—";
-      var freq = zd.freq_pct !== null ? (zd.freq_pct * 100).toFixed(1) + "%" : "—";
-
-      var vsLabel = "—";
-      var vsClass = "sl-shotchart__vs--neutral";
-      if (zd.fg_pct !== null && zd.pool_fg_pct !== null) {
-        var delta = (zd.fg_pct - zd.pool_fg_pct) * 100;
-        var sign = delta >= 0 ? "+" : "";
-        vsLabel = sign + delta.toFixed(1) + " pp";
-        vsClass = delta >= 0.5 ? "sl-shotchart__vs--above" : delta <= -0.5 ? "sl-shotchart__vs--below" : "sl-shotchart__vs--neutral";
-      } else if (zd.fg_pct !== null) {
-        vsLabel = pct;
-        vsClass = "sl-shotchart__vs--neutral";
-      }
-
+      var pct = zd.fg_pct != null ? (zd.fg_pct * 100).toFixed(1) + "%" : "—";
+      var freq = zd.freq_pct != null ? (zd.freq_pct * 100).toFixed(1) + "%" : "—";
+      var vs = "—", cls = "is-neutral", sw = "#94a3b8";
+      if (zd.fg_pct != null && zd.pool_fg_pct != null) {
+        var d = (zd.fg_pct - zd.pool_fg_pct) * 100;
+        vs = (d >= 0 ? "+" : "") + d.toFixed(1) + " pp";
+        cls = d >= 0.5 ? "is-above" : d <= -0.5 ? "is-below" : "is-neutral";
+        sw = rgbHex(divColor(zd.fg_pct, zd.pool_fg_pct));
+      } else if (zd.fg_pct != null) { sw = rgbHex(seqColor(zd.fg_pct)); }
       var tr = document.createElement("tr");
-      tr.innerHTML =
-        "<td>" +
-          "<span class='sl-shotchart__swatch' style='background:" + color + "'></span>" +
-          (ZONE_SHORT[zoneName] || zoneName) +
-        "</td>" +
-        "<td>" + zd.fga + "</td>" +
-        "<td>" + pct + "</td>" +
-        "<td>" + freq + "</td>" +
-        "<td><span class='sl-shotchart__vs " + vsClass + "'>" + vsLabel + "</span></td>";
-      tbody.appendChild(tr);
+      tr.innerHTML = "<td><span class='sl-shotchart__swatch' style='background:" + sw + "'></span>" + (ZONE_SHORT[z] || z) + "</td>" +
+        "<td>" + zd.fga + "</td><td>" + pct + "</td><td>" + freq + "</td>" +
+        "<td><span class='sl-shotchart__vs " + cls + "'>" + vs + "</span></td>";
+      tb.appendChild(tr);
     });
-
-    table.appendChild(tbody);
+    table.appendChild(tb);
     return table;
   }
 
-  /* ── Suppressed / placeholder ──────────────────────────────────────────── */
-
-  function buildPlaceholder(totalFga) {
+  function buildPlaceholder(total) {
     var div = document.createElement("div");
     div.className = "sl-shotchart__placeholder";
-    var icon = document.createElement("span");
-    icon.className = "sl-shotchart__placeholder-icon";
-    icon.textContent = "◎";
-    div.appendChild(icon);
-    var msg = document.createElement("p");
-    if (totalFga === 0 || totalFga === null || totalFga === undefined) {
-      msg.textContent = "No shot data available for this selection.";
-    } else {
-      msg.textContent =
-        "Small sample (" + totalFga + " FGA). Zone chart not shown — " +
-        "≥20 attempts required for reliable heat display.";
-    }
-    div.appendChild(msg);
+    div.innerHTML = "<span class='sl-shotchart__placeholder-icon'>◎</span><p>" +
+      (!total ? "No shot data available for this selection." : "Small sample (" + total + " FGA). Heat map hidden — ≥20 attempts needed.") + "</p>";
     return div;
   }
 
-  /* ── Main render ───────────────────────────────────────────────────────── */
-
+  /* ── Render ─────────────────────────────────────────────────────────────── */
   function render(root, data) {
     root.innerHTML = "";
     root.className = "sl-shotchart";
-
-    var hasDots = data.dots && data.dots.length > 0;
-
-    // Index zones by name for O(1) lookup.
     var zoneMap = {};
-    (data.zones || []).forEach(function (z) {
-      zoneMap[z.shot_zone_basic] = z;
-    });
+    (data.zones || []).forEach(function (z) { zoneMap[z.shot_zone_basic] = z; });
+    var hasDots = data.dots && data.dots.length > 0;
+    var hasPool = (data.zones || []).some(function (z) { return z.pool_fg_pct != null; });
 
-    // ── Header
     var header = document.createElement("div");
     header.className = "sl-shotchart__header";
-
-    var title = document.createElement("h3");
-    title.className = "sl-shotchart__title";
-    title.textContent = "Shot Chart";
-    header.appendChild(title);
-
-    var fgaBadge = document.createElement("span");
-    fgaBadge.className = "sl-shotchart__badge";
-    fgaBadge.textContent = (data.total_fga || 0) + " FGA";
-    header.appendChild(fgaBadge);
-
-    if (data.suppressed) {
-      var warnBadge = document.createElement("span");
-      warnBadge.className = "sl-shotchart__badge sl-shotchart__badge--warn";
-      warnBadge.textContent = "Small sample";
-      header.appendChild(warnBadge);
-    }
-
-    var caveat = document.createElement("span");
-    caveat.className = "sl-shotchart__caveat";
-    caveat.textContent = "calibrated to SL pool";
-    header.appendChild(caveat);
-
+    header.innerHTML = "<h3 class='sl-shotchart__title'>Shot Chart</h3>" +
+      "<span class='sl-shotchart__badge'>" + (data.total_fga || 0) + " FGA</span>" +
+      (data.suppressed ? "<span class='sl-shotchart__badge sl-shotchart__badge--warn'>Small sample</span>" : "");
     root.appendChild(header);
 
-    // ── Court or placeholder
-    if (!data.suppressed) {
-      var toggleBtn = null;
-      if (hasDots) {
-        toggleBtn = document.createElement("button");
-        toggleBtn.className = "sl-shotchart__toggle";
-        toggleBtn.type = "button";
-        toggleBtn.innerHTML = "&#9632; Dots";
-        toggleBtn.setAttribute("aria-pressed", "false");
-        header.insertBefore(toggleBtn, caveat);
-      }
-
-      var wrap = document.createElement("div");
-      wrap.className = "sl-shotchart__court-wrap";
-      var svg = buildCourtSVG(data, zoneMap);
-      wrap.appendChild(svg);
-      root.appendChild(wrap);
-
-      if (toggleBtn) {
-        toggleBtn.addEventListener("click", function () {
-          var on = root.classList.toggle("sl-shotchart--dots");
-          toggleBtn.setAttribute("aria-pressed", on ? "true" : "false");
-        });
-      }
-    } else {
+    if (data.suppressed || !hasDots) {
       root.appendChild(buildPlaceholder(data.total_fga));
+      if (data.zones && data.zones.length) root.appendChild(buildTable(zoneMap));
+      return;
     }
 
-    // ── Zone table always shown
-    if (data.zones && data.zones.length > 0) {
-      root.appendChild(buildTable(zoneMap));
-    }
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "sl-shotchart__toggle";
+    toggle.textContent = "Show shots";
+    header.appendChild(toggle);
+
+    var wrap = document.createElement("div");
+    wrap.className = "sl-shotchart__court-wrap";
+    var canvas = document.createElement("canvas");
+    canvas.className = "sl-shotchart__heat";
+    canvas.width = VB_W * 2; canvas.height = CROP_H * 2; // hi-dpi backing store
+    wrap.appendChild(canvas);
+    var svg = buildCourtSVG();
+    buildDots(svg, data.dots);
+    wrap.appendChild(svg);
+    root.appendChild(wrap);
+    root.appendChild(buildLegend(hasPool));
+    root.appendChild(buildTable(zoneMap));
+
+    drawHeat(canvas, data.dots, zoneMap, hasPool);
+
+    toggle.addEventListener("click", function () {
+      var on = root.classList.toggle("sl-shotchart--dots");
+      toggle.textContent = on ? "Show heat" : "Show shots";
+      toggle.setAttribute("aria-pressed", on ? "true" : "false");
+    });
   }
-
-  /* ── Boot ───────────────────────────────────────────────────────────────── */
 
   function init() {
     var root = document.getElementById("sl-shotchart-root");
     if (!root) return;
-
     var data = window.SL_SHOTCHART;
-    if (!data) {
-      root.textContent = "Shot chart data unavailable.";
-      return;
-    }
-
+    if (!data) { root.textContent = "Shot chart data unavailable."; return; }
     render(root, data);
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+  else init();
 }());
