@@ -52,6 +52,7 @@
               <th scope="col" title="3-pointers made">3PM</th><th scope="col" title="3-pointers attempted">3PA</th>
               <th scope="col" title="Free throws made">FTM</th><th scope="col" title="Free throws attempted">FTA</th>
               <th scope="col">+/−</th>
+              <th scope="col" title="Hollinger Game Score — single-number summary of this game's box-score production">GmSc</th>
             </tr>
           </thead>
           <tbody>
@@ -64,6 +65,7 @@
               <td>{{ n(g.blk) }}</td><td>{{ n(g.tov) }}</td>
               <td>{{ n(g.fgm) }}</td><td>{{ n(g.fga) }}</td><td>{{ n(g.fg3m) }}</td><td>{{ n(g.fg3a) }}</td><td>{{ n(g.ftm) }}</td><td>{{ n(g.fta) }}</td>
               <td>{{ n(g.plus_minus) }}</td>
+              <td class="slg-strong">{{ '%.1f' % g.gmsc if g.gmsc is not none else '—' }}</td>
             </tr>
             {% endfor %}
           </tbody>

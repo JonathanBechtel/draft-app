@@ -89,7 +89,9 @@ ROUTE_BUDGETS: dict[str, int] = {
     # Python _paginate(), which fetched every row into memory) requires a separate COUNT to
     # report the total without materializing the full result set — a deliberate +1 over the
     # prior all-rows-in-Python approach.
-    "/stats/summer-league/explorer": 9,
+    # +1 for _fetch_adv_counts: the N-of-M banner (#406) needs eligible_n + total_m over
+    # SummerLeagueMetricContext, folded into a single grouped count query.
+    "/stats/summer-league/explorer": 10,
 }
 
 # Admin route budgets (authentication-gated; tested separately via

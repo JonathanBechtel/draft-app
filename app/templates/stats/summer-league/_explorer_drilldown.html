@@ -1,0 +1,26 @@
+{# Per-competition drill-down rows for a single career-grain player.
+   These <tr> elements are fetched by the Explorer JS and inserted into the
+   main results table immediately after the parent career-grain player row.
+   Each row is one competition's season totals (exact within its pool — no
+   "avg" marker needed since values are not pooled across competitions). #}
+{%- macro n1(v) -%}{{ '%.1f' % v if v is not none else '—' }}{%- endmacro -%}
+{% for row in result.rows %}
+<tr class="slg-drilldown-row" data-drilldown="{{ player_slug }}">
+  <th scope="row" class="slg-explorer__label slg-drilldown__label">
+    <span class="slg-drilldown__indent">&#8627;</span>{{ row.label }}
+  </th>
+  {% for col in result.columns %}
+  <td data-col-group="{{ col.group }}">
+    {%- if col.key in ('gp', 'w', 'l', 'total', 'margin') -%}
+      {{ row.values.get(col.key) }}
+    {%- else -%}
+      {{ n1(row.values.get(col.key)) }}
+    {%- endif -%}
+  </td>
+  {% endfor %}
+</tr>
+{% else %}
+<tr class="slg-drilldown-row" data-drilldown="{{ player_slug }}">
+  <td colspan="100" class="slg-empty">No per-competition data found.</td>
+</tr>
+{% endfor %}

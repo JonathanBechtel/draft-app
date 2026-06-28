@@ -799,6 +799,10 @@
   color: var(--color-amber-800, #92400e);
 }
 .slg-explorer-banner__icon { flex: 0 0 auto; font-size: 0.95rem; line-height: 1.2; }
+/* Keep the whole message in one flex item so the inline "avg" marker flows as
+   normal text — a bare text run + the <abbr> would otherwise become separate
+   flex items and scramble the sentence. */
+.slg-explorer-banner__text { flex: 1 1 auto; min-width: 0; }
 .slg-explorer-soon { padding: 2rem; text-align: center; }
 .slg-explorer-results.is-loading { opacity: 0.5; pointer-events: none; transition: opacity 0.1s; }
 .slg-explorer-table th a { color: inherit; text-decoration: none; }

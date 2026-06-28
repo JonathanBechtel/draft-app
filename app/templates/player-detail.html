@@ -285,6 +285,7 @@
     <td>{{ sl_n(s.fg3_pct) }}</td>
     <td>{{ sl_n(s.ft_pct) }}</td>
     <td>{{ sl_n(s.ts_pct) }}</td>
+    <td>{{ sl_n(s.gmsc) }}</td>
   </tr>
   {% endmacro %}
 
@@ -349,6 +350,7 @@
                 <th scope="col">3P%</th>
                 <th scope="col">FT%</th>
                 <th scope="col">TS%</th>
+                <th scope="col" title="Hollinger Game Score — a single-number summary of overall box-score production (per game)">GmSc</th>
               </tr>
             </thead>
             {% for mode in ['per_game', 'per_36', 'per_100'] %}
@@ -370,6 +372,28 @@
            pool is complete enough to qualify (adv_eligible). Its own tab. #}
         {% if sl_metrics %}
         <div class="sl-advanced sl-mode-group" data-sl-modes="advanced" style="display:none;">
+          {# Career headline pills for the advanced view: minute-weighted PER/TS%/
+             BPM across the player's adv-eligible competitions. #}
+          <div class="stats-headline-row">
+            <div class="stat-hero">
+              <span class="stat-hero__label">PER</span>
+              <div class="stat-hero__value">{{ '%.1f' % sl_metrics.career.per_avg if sl_metrics.career.per_avg is not none else '—' }}</div>
+              <div class="stat-hero__sub">Efficiency</div>
+            </div>
+            <div class="stat-hero">
+              <span class="stat-hero__label">TS%</span>
+              <div class="stat-hero__value">{{ '%.1f' % sl_metrics.career.ts_avg if sl_metrics.career.ts_avg is not none else '—' }}</div>
+              <div class="stat-hero__sub">True Shooting</div>
+            </div>
+            <div class="stat-hero">
+              <span class="stat-hero__label">BPM</span>
+              <div class="stat-hero__value">{{ '%+.1f' % sl_metrics.career.bpm_avg if sl_metrics.career.bpm_avg is not none else '—' }}</div>
+              <div class="stat-hero__sub">Box +/-</div>
+            </div>
+          </div>
+          <div class="sl-career-meta">
+            Career averages across {{ sl_metrics.career.adv_pools }} qualified competition{{ '' if sl_metrics.career.adv_pools == 1 else 's' }}
+          </div>
           <div class="stats-section-label" title="Advanced metrics are recalibrated to the Summer League itself, separately per competition (PER to a 15.0 mean, BPM to 0.0). Only competitions with a complete enough pool of games qualify.">
             Advanced Metrics
           </div>
@@ -422,7 +446,7 @@
                   <td>{{ sl_metrics.career.gp }}</td>
                   <td>{{ sl_n(sl_metrics.career.minutes) }}</td>
                   <td class="sl-col-rate">{{ sl_n(sl_metrics.career.per_avg) }}</td>
-                  <td>—</td>
+                  <td>{{ sl_n(sl_metrics.career.ts_avg) }}</td>
                   <td>—</td>
                   <td>—</td>
                   <td>—</td>
@@ -438,7 +462,7 @@
           </div>
           {% if sl_metrics.seasons | length > 1 %}
           <div class="sl-career-meta">
-            * Career WS and VORP are cumulative totals across qualified competitions; PER, BPM, and the /82 projections are minute-weighted averages. Ratings and usage aren't pooled across competitions.
+            * Career WS and VORP are cumulative totals across qualified competitions; PER, BPM, and the /82 projections are minute-weighted averages, and TS% pools shot totals. Ratings and usage aren't pooled across competitions.
           </div>
           {% endif %}
         </div>
@@ -535,7 +559,7 @@
           <div class="sl-table-wrap">
             <table class="sl-stats-table sl-recent__table">
               <thead>
-                <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col">Opp</th><th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th><th scope="col">AST</th><th scope="col" title="Field goals made">FGM</th><th scope="col" title="Field goals attempted">FGA</th><th scope="col" title="3-pointers made">3PM</th><th scope="col" title="3-pointers attempted">3PA</th><th scope="col" title="Free throws made">FTM</th><th scope="col" title="Free throws attempted">FTA</th></tr>
+                <tr><th scope="col">Date</th><th scope="col">Venue</th><th scope="col">Opp</th><th scope="col">MIN</th><th scope="col">PTS</th><th scope="col">REB</th><th scope="col">AST</th><th scope="col" title="Field goals made">FGM</th><th scope="col" title="Field goals attempted">FGA</th><th scope="col" title="3-pointers made">3PM</th><th scope="col" title="3-pointers attempted">3PA</th><th scope="col" title="Free throws made">FTM</th><th scope="col" title="Free throws attempted">FTA</th><th scope="col" title="Hollinger Game Score — single-number summary of this game's box-score production">GmSc</th></tr>
               </thead>
               <tbody>
                 {% for g in summer_league.recent_games %}
@@ -555,6 +579,7 @@
                   <td>{{ g.fg3a if g.fg3a is not none else '—' }}</td>
                   <td>{{ g.ftm if g.ftm is not none else '—' }}</td>
                   <td>{{ g.fta if g.fta is not none else '—' }}</td>
+                  <td>{{ '%.1f' % g.gmsc if g.gmsc is not none else '—' }}</td>
                 </tr>
                 {% endfor %}
               </tbody>

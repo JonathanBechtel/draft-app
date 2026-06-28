@@ -8,13 +8,16 @@ clauses after the sort/pagination logic is applied.
 from __future__ import annotations
 
 
+from types import SimpleNamespace
 
+from app.services.summer_league.metrics import Box, game_score
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     PAGE_SIZE,
     _PLAYER_ADVANCED_COLUMNS,
     _PLAYER_STAT_COLUMNS,
     _build_result,
+    _compute_player_values,
     _is_single_competition,
     _player_sort_expr,
     parse_query,
@@ -22,6 +25,136 @@ from app.services.summer_league_explorer_service import (
     ExplorerRow,
     _SORT_KEYS_BY_SUBJECT,
 )
+
+
+# --------------------------------------------------------------------------- #
+# Game Score (GmSc)
+# --------------------------------------------------------------------------- #
+
+
+def _player_row(**kw: float) -> SimpleNamespace:
+    """A summed-box row stand-in for _compute_player_values (defaults to 0)."""
+    fields = {
+        "gp": 1,
+        "sec": 0.0,
+        "pace_sec": 0.0,
+        "plus_minus": 0,
+        "pts": 0,
+        "reb": 0,
+        "ast": 0,
+        "stl": 0,
+        "blk": 0,
+        "tov": 0,
+        "oreb": 0,
+        "dreb": 0,
+        "pf": 0,
+        "fgm": 0,
+        "fga": 0,
+        "fg3m": 0,
+        "fg3a": 0,
+        "ftm": 0,
+        "fta": 0,
+    }
+    fields.update(kw)
+    return SimpleNamespace(**fields)
+
+
+def test_gmsc_is_a_base_column_and_sort_key() -> None:
+    """GmSc rides with the always-on base columns (it is additive, not pool-calibrated)."""
+    base_keys = {c.key for c in _PLAYER_STAT_COLUMNS}
+    adv_keys = {c.key for c in _PLAYER_ADVANCED_COLUMNS}
+    assert "gmsc" in base_keys
+    assert "gmsc" not in adv_keys
+    assert "gmsc" in _SORT_KEYS_BY_SUBJECT["players"]
+
+
+def test_gmsc_per_game_value_matches_hollinger_average() -> None:
+    """per_game GmSc == game_score(summed box) / gp, matching the season materialization."""
+    row = _player_row(
+        gp=4,
+        sec=4 * 30 * 60,
+        pts=80,
+        fgm=32,
+        fga=60,
+        ftm=12,
+        fta=16,
+        oreb=8,
+        dreb=20,
+        ast=16,
+        stl=8,
+        blk=4,
+        tov=12,
+        pf=8,
+    )
+    expected = round(
+        game_score(
+            Box(
+                pts=80,
+                fgm=32,
+                fga=60,
+                ftm=12,
+                fta=16,
+                oreb=8,
+                dreb=20,
+                ast=16,
+                stl=8,
+                blk=4,
+                tov=12,
+                pf=8,
+            )
+        )
+        / 4,
+        1,
+    )
+    assert _compute_player_values(row, "per_game")["gmsc"] == expected
+
+
+def test_gmsc_totals_is_cumulative_per_game_times_gp() -> None:
+    """totals GmSc is the cumulative box-score Game Score (per_game * gp)."""
+    row = _player_row(
+        gp=4,
+        sec=4 * 30 * 60,
+        pts=80,
+        fgm=32,
+        fga=60,
+        ftm=12,
+        fta=16,
+        oreb=8,
+        dreb=20,
+        ast=16,
+        stl=8,
+        blk=4,
+        tov=12,
+        pf=8,
+    )
+    per_game = _compute_player_values(row, "per_game")["gmsc"]
+    totals = _compute_player_values(row, "totals")["gmsc"]
+    assert totals == round(per_game * 4)
+
+
+def test_gmsc_sort_expr_per_competition_scales_by_mode() -> None:
+    """per_competition / per_game grains expose a raw-label GmSc sort expression.
+
+    Each component is NULL-coalesced so a missing box stat does not poison the
+    sort to NULL — keeping it consistent with the coalescing display path.
+    """
+    from app.services.summer_league_explorer_service import _GMSC_SQL_AGG, _GMSC_SQL_RAW
+
+    assert "0.7 * COALESCE(oreb, 0)" in _GMSC_SQL_RAW
+    assert "0.3 * COALESCE(dreb, 0)" in _GMSC_SQL_RAW
+    assert "0.4 * COALESCE(pf, 0)" in _GMSC_SQL_RAW
+    # Career grain sums each component before applying the same weights.
+    assert "COALESCE(SUM(oreb), 0)" in _GMSC_SQL_AGG
+    assert "COALESCE(SUM(pf), 0)" in _GMSC_SQL_AGG
+
+
+def test_gmsc_career_sort_expr_scales_to_displayed_rate() -> None:
+    """Career GmSc sorts on the per-mode rate of the summed Game Score."""
+    expr = _player_sort_expr("gmsc", "per_game")
+    assert "SUM(pts)" in expr
+    assert "NULLIF(COUNT(*), 0)" in expr
+    # totals mode is the unscaled cumulative aggregate (no per-game division).
+    assert "COUNT(*)" not in _player_sort_expr("gmsc", "totals")
 
 
 # --------------------------------------------------------------------------- #
@@ -46,14 +179,15 @@ def test_ts_pct_is_advanced_not_base_column() -> None:
 
 
 def test_composite_sort_key_coerced_off_non_advanced_query() -> None:
-    """Composite sort keys (PER/BPM/…) survive only on a single-competition
-    per_competition query; elsewhere they coerce to the default to avoid emitting
-    ORDER BY on a column the SELECT never exposes (would 500). ts_pct stays valid
-    everywhere since it is box-derived.
+    """Composite sort keys (PER/BPM/…) are first-class at career and per_competition
+    grains (#406: advanced metrics visible/sortable at all aggregated grains) and are
+    coerced to the default only at ``per_game`` grain, whose SELECT never exposes the
+    composite columns (sorting on them would emit ORDER BY on a missing column and 500).
+    ts_pct stays valid everywhere since it is box-derived.
     """
-    # career → coerced to the default 'pts'
-    assert parse_query({"sort": "per", "grain": "career"}).sort == "pts"
-    # per_competition but multi-year (not a single pinned competition) → coerced
+    # career → composite key is KEPT (sortable at career grain).
+    assert parse_query({"sort": "per", "grain": "career"}).sort == "per"
+    # per_competition multi-year → composite key is KEPT (sortable at any per_competition scope).
     assert (
         parse_query(
             {
@@ -64,9 +198,9 @@ def test_composite_sort_key_coerced_off_non_advanced_query() -> None:
                 "venue": "las_vegas",
             }
         ).sort
-        == "pts"
+        == "bpm"
     )
-    # single-competition per_competition → composite key is kept
+    # single-competition per_competition → composite key is kept.
     assert (
         parse_query(
             {
@@ -79,7 +213,9 @@ def test_composite_sort_key_coerced_off_non_advanced_query() -> None:
         ).sort
         == "per"
     )
-    # ts_pct is box-derived and valid on any grain
+    # per_game → composite key coerced to the default (no composite columns in the SELECT).
+    assert parse_query({"sort": "per", "grain": "per_game"}).sort == "pts"
+    # ts_pct is box-derived and valid on any grain.
     assert parse_query({"sort": "ts_pct", "grain": "career"}).sort == "ts_pct"
 
 

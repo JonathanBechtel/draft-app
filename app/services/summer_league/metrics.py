@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
@@ -281,6 +282,77 @@ def game_score(b: Box) -> float:
         - 0.4 * b.pf
         - b.tov
     )
+
+
+def game_score_line(
+    *,
+    pts: Any,
+    fgm: Any,
+    fga: Any,
+    ftm: Any,
+    fta: Any,
+    oreb: Any,
+    dreb: Any,
+    ast: Any,
+    stl: Any,
+    blk: Any,
+    tov: Any,
+    pf: Any,
+) -> float:
+    """Hollinger Game Score from raw box components, ``None``-coalescing to 0.
+
+    A single source of truth for the read-side surfaces (player-detail season +
+    game logs, the explorer) that need Game Score from a box line — be it one
+    game, a summed competition, or a summed career. Because Game Score is linear
+    in the box stats, ``game_score_line(summed) / gp`` equals the mean per-game
+    Game Score, matching the materialized ``SummerLeaguePlayerSeason.gmsc``.
+    """
+    return game_score(
+        Box(
+            pts=float(pts or 0),
+            fgm=float(fgm or 0),
+            fga=float(fga or 0),
+            ftm=float(ftm or 0),
+            fta=float(fta or 0),
+            oreb=float(oreb or 0),
+            dreb=float(dreb or 0),
+            ast=float(ast or 0),
+            stl=float(stl or 0),
+            blk=float(blk or 0),
+            tov=float(tov or 0),
+            pf=float(pf or 0),
+        )
+    )
+
+
+# The twelve box components Game Score weights, in :func:`game_score_line` order.
+_GAME_SCORE_BOX_FIELDS = (
+    "pts",
+    "fgm",
+    "fga",
+    "ftm",
+    "fta",
+    "oreb",
+    "dreb",
+    "ast",
+    "stl",
+    "blk",
+    "tov",
+    "pf",
+)
+
+
+def game_score_from_row(row: Any) -> float:
+    """Game Score from any row exposing the box components (missing/None → 0).
+
+    Accepts either a mapping of summed totals or an object with the box-stat
+    attributes (a SQLAlchemy result row, an ORM instance, a ``SimpleNamespace``),
+    so every read surface funnels through one field-mapping path instead of
+    repeating the twelve-keyword :func:`game_score_line` call.
+    """
+    if isinstance(row, Mapping):
+        return game_score_line(**{f: row.get(f, 0) for f in _GAME_SCORE_BOX_FIELDS})
+    return game_score_line(**{f: getattr(row, f, 0) for f in _GAME_SCORE_BOX_FIELDS})
 
 
 def compute_uper(b: Box, tm: Box, ctx: LeagueContext) -> float:
