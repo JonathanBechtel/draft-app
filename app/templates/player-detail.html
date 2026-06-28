@@ -263,9 +263,9 @@
 
   {% macro sl_n(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
 
-  {% macro sl_row(s, m, is_career) %}
+  {% macro sl_row(s, m, is_career, slug='') %}
   <tr{% if is_career %} class="sl-stats-table__career"{% endif %}>
-    <th scope="row">{{ s.season_label }}</th>
+    <th scope="row">{% if not is_career and slug and s.year %}<a class="sl-game-link" href="/players/{{ slug }}/summer-league/{{ s.year }}" title="View {{ s.season_label }} shot chart & game logs">{{ s.season_label }}</a>{% else %}{{ s.season_label }}{% endif %}</th>
     <td class="sl-col-lg">{{ s.venue_abbr or '—' }}</td>
     <td>{{ s.gp }}</td>
     <td>{{ sl_n(s.mpg) }}</td>
@@ -356,10 +356,10 @@
             {% for mode in ['per_game', 'per_36', 'per_100'] %}
             <tbody class="sl-mode-data" data-sl-mode="{{ mode }}"{% if mode != 'per_game' %} style="display:none;"{% endif %}>
               {% for s in summer_league.seasons %}
-              {{ sl_row(s, s.modes[mode], false) }}
+              {{ sl_row(s, s.modes[mode], false, player.slug) }}
               {% endfor %}
               {% if summer_league.seasons | length > 1 %}
-              {{ sl_row(summer_league.career, summer_league.career.modes[mode], true) }}
+              {{ sl_row(summer_league.career, summer_league.career.modes[mode], true, player.slug) }}
               {% endif %}
             </tbody>
             {% endfor %}

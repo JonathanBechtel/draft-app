@@ -473,10 +473,12 @@ async def get_player_shotchart_context(
     rendering the chart component entirely.
 
     When ``competition_id`` is ``None`` a career-level zone rollup is produced:
-    zone counts are summed across all competitions, ``pool_fg_pct`` is ``None``
-    on every zone (no single reference pool), and ``dots`` is an empty list
-    (dots are only meaningful within one competition).  The shot-diet row comes
-    from the most recent :class:`SummerLeaguePlayerSeason` row for the player.
+    zone counts are summed across all competitions and ``pool_fg_pct`` is
+    ``None`` on every zone (no single reference pool, so the heat falls back to
+    a sequential FG% scale).  ``dots`` still spans the player's whole career —
+    shot locations share one court system, so the heat map renders correctly.
+    The shot-diet row comes from the most recent
+    :class:`SummerLeaguePlayerSeason` row for the player.
 
     When ``competition_id`` is provided the zones are scoped to that pool
     (``pool_fg_pct`` is populated), dots are fetched, and shot-diet comes from
@@ -546,13 +548,12 @@ async def get_player_shotchart_context(
             "assisted_fg_pct": assisted_fg_pct,
         }
 
-    # ── 3. Dots (per-competition only; empty for career) ─────────────────────
-    dots: list[dict] = []
-    if competition_id is not None:
-        dots_dto = await get_player_shot_dots(db, player_id, competition_id)
-        dots = [
-            {"loc_x": d.loc_x, "loc_y": d.loc_y, "made": d.made} for d in dots_dto.dots
-        ]
+    # ── 3. Dots — career (all shots) or scoped to one competition ────────────
+    # Career still plots dots: shot locations share one court system, so the
+    # heat map renders fine; only the vs-pool COLOURING is competition-specific
+    # (career falls back to the sequential FG% scale).
+    dots_dto = await get_player_shot_dots(db, player_id, competition_id)
+    dots = [{"loc_x": d.loc_x, "loc_y": d.loc_y, "made": d.made} for d in dots_dto.dots]
 
     return {
         "total_fga": zones_dto.total_fga,
