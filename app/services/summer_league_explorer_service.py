@@ -2605,6 +2605,10 @@ async def get_player_drilldown_rows(
         year_min=scope_q.year_min,
         year_max=scope_q.year_max,
         venue=scope_q.venue,
+        # Carry the team scope so the breakdown matches the (team-scoped) parent
+        # career row — without it, a player on multiple SL teams would show
+        # competitions that did not contribute to the displayed total.
+        team_slug=scope_q.team_slug,
         min_games=1,  # no GP floor — show all competitions for this player
         min_minutes=1,  # no MIN floor
         mode=scope_q.mode,

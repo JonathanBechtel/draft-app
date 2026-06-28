@@ -3551,3 +3551,55 @@ async def test_pool_drilldown(
     # Missing player_slug returns 400.
     bad = await app_client.get("/stats/summer-league/explorer/drilldown")
     assert bad.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_pool_drilldown_respects_team_scope(
+    db_session: AsyncSession,
+    app_client: AsyncClient,
+) -> None:
+    """Drill-down honors the parent row's team_slug scope.
+
+    A career row filtered by team_slug aggregates only that team's competitions,
+    so its breakdown must too. Seeds one player on team A (Vegas 2024) and team B
+    (SLC 2025); a drilldown scoped to team A must show only the 2024 row, not 2025.
+    Regression for the drill-down dropping team_slug from its scope query.
+    """
+    player = make_player("Scoped", "Driller")
+    db_session.add(player)
+    await db_session.flush()
+
+    c1 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2025, venue_slug="salt_lake_city", league_id="16")
+    team_a = await _team(db_session, comp_id=c1)
+    team_b = await _team(db_session, comp_id=c2)
+
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        primary_team_entry_id=team_a.id,
+    )
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c2,
+        year=2025,
+        venue_slug="salt_lake_city",
+        primary_team_entry_id=team_b.id,
+    )
+    await db_session.commit()
+
+    assert player.slug is not None
+    resp = await app_client.get(
+        "/stats/summer-league/explorer/drilldown"
+        f"?player_slug={player.slug}&team_slug={team_a.team_slug}"
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    assert "2024" in body, "team A's 2024 competition must appear in the breakdown"
+    assert "2025" not in body, (
+        "team B's 2025 competition must NOT appear when scoped to team A"
+    )
