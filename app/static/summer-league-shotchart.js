@@ -55,7 +55,6 @@
     return mix(S2, S3, (t - 0.67) / 0.33);
   }
   function rgbStr(c, a) { return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")"; }
-  function rgbHex(c) { return "#" + c.map(function(n){return n.toString(16).padStart(2,"0");}).join(""); }
 
   function svgEl(tag, attrs) {
     var el = document.createElementNS(SVG_NS, tag);
@@ -175,34 +174,6 @@
     return l;
   }
 
-  function buildTable(zoneMap) {
-    var table = document.createElement("table");
-    table.className = "sl-shotchart__table";
-    var tip = "Player FG% in this zone minus the average FG% of every player in the same Summer League competition. +pp better than the field, −pp worse. Blank when there's no pool (career or single game).";
-    table.innerHTML = "<thead><tr><th>Zone</th><th>FGA</th><th>FG%</th><th>Freq</th><th><abbr class='sl-shotchart__abbr' title=\"" + tip + "\">vs Pool</abbr></th></tr></thead>";
-    var tb = document.createElement("tbody");
-    ZONES.forEach(function (z) {
-      var zd = zoneMap[z];
-      if (!zd || zd.fga === 0) return;
-      var pct = zd.fg_pct != null ? (zd.fg_pct * 100).toFixed(1) + "%" : "—";
-      var freq = zd.freq_pct != null ? (zd.freq_pct * 100).toFixed(1) + "%" : "—";
-      var vs = "—", cls = "is-neutral", sw = "#94a3b8";
-      if (zd.fg_pct != null && zd.pool_fg_pct != null) {
-        var d = (zd.fg_pct - zd.pool_fg_pct) * 100;
-        vs = (d >= 0 ? "+" : "") + d.toFixed(1) + " pp";
-        cls = d >= 0.5 ? "is-above" : d <= -0.5 ? "is-below" : "is-neutral";
-        sw = rgbHex(divColor(zd.fg_pct, zd.pool_fg_pct));
-      } else if (zd.fg_pct != null) { sw = rgbHex(seqColor(zd.fg_pct)); }
-      var tr = document.createElement("tr");
-      tr.innerHTML = "<td><span class='sl-shotchart__swatch' style='background:" + sw + "'></span>" + (ZONE_SHORT[z] || z) + "</td>" +
-        "<td>" + zd.fga + "</td><td>" + pct + "</td><td>" + freq + "</td>" +
-        "<td><span class='sl-shotchart__vs " + cls + "'>" + vs + "</span></td>";
-      tb.appendChild(tr);
-    });
-    table.appendChild(tb);
-    return table;
-  }
-
   function buildPlaceholder(total) {
     var div = document.createElement("div");
     div.className = "sl-shotchart__placeholder";
@@ -228,8 +199,9 @@
     root.appendChild(header);
 
     if (data.suppressed || !hasDots) {
+      // Zone table is rendered server-side by each page template; the component
+      // only owns the court + heat, so here we just show the placeholder.
       root.appendChild(buildPlaceholder(data.total_fga));
-      if (data.zones && data.zones.length) root.appendChild(buildTable(zoneMap));
       return;
     }
 
@@ -250,7 +222,6 @@
     wrap.appendChild(svg);
     root.appendChild(wrap);
     root.appendChild(buildLegend(hasPool));
-    root.appendChild(buildTable(zoneMap));
 
     drawHeat(canvas, data.dots, zoneMap, hasPool);
 

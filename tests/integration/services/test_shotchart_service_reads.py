@@ -536,6 +536,55 @@ async def test_get_player_shot_dots_excludes_null_coordinates(db_session: AsyncS
 
 
 @pytest.mark.asyncio
+async def test_get_player_shot_dots_career_spans_competitions(
+    db_session: AsyncSession,
+) -> None:
+    """competition_id=None returns the player's shots across all competitions.
+
+    Regression for the player-page career chart, which previously omitted dots
+    (so the heat map never rendered). Career must aggregate dots across pools.
+    """
+    comp1 = await _make_competition(db_session, year=2023, league_id="15")
+    comp2 = await _make_competition(db_session, year=2024, league_id="15")
+    assert comp1.id is not None and comp2.id is not None
+    player = await _make_player(db_session, display_name="Career Dots", slug="career-dots")
+    assert player.id is not None
+
+    for i, comp in enumerate((comp1, comp2)):
+        cid = comp.id
+        assert cid is not None
+        team = await _make_team_entry(db_session, competition_id=cid)
+        game = await _make_game(
+            db_session, competition_id=cid,
+            nba_stats_game_id=f"152{comp.year}0001",
+        )
+        sp = await _make_source_player(
+            db_session, nba_stats_person_id=f"700{i}", competition_id=cid,
+            canonical_player_id=player.id,
+        )
+        assert team.id is not None and game.id is not None and sp.id is not None
+        db_session.add(
+            _shot(
+                game_id=game.id, competition_id=cid, team_entry_id=team.id,
+                source_player_id=sp.id, player_id=player.id,
+                nba_stats_person_id=f"700{i}", nba_stats_game_event_id=1,
+                nba_stats_game_id=f"152{comp.year}0001",
+                loc_x=10 * (i + 1), loc_y=40, made=True,
+            )
+        )
+    await db_session.flush()
+
+    career = await get_player_shot_dots(db_session, player_id=player.id)
+    scoped = await get_player_shot_dots(
+        db_session, player_id=player.id, competition_id=comp1.id
+    )
+
+    assert len(career.dots) == 2  # both competitions
+    assert career.competition_id is None
+    assert len(scoped.dots) == 1  # only comp1
+
+
+@pytest.mark.asyncio
 async def test_get_game_shot_zones_all_shots(db_session: AsyncSession) -> None:
     """Game-scoped zones sum all shots in the game."""
     comp = await _make_competition(db_session)

@@ -119,10 +119,14 @@ class ShotDot:
 
 @dataclass
 class PlayerShotDots:
-    """Raw shot locations for a player within one competition."""
+    """Raw shot locations for a player.
+
+    ``competition_id`` is the scope: an int for a single competition, or
+    ``None`` for the career rollup (all of the player's shots).
+    """
 
     player_id: int
-    competition_id: int
+    competition_id: Optional[int]
     dots: list[ShotDot]
 
 
@@ -305,7 +309,7 @@ async def get_player_shot_zones(
 async def get_player_shot_dots(
     session: AsyncSession,
     player_id: int,
-    competition_id: int,
+    competition_id: Optional[int] = None,
 ) -> PlayerShotDots:
     """Return raw shot locations for the dot-toggle overlay.
 
@@ -315,7 +319,9 @@ async def get_player_shot_dots(
     Args:
         session: Async DB session.
         player_id: Canonical ``PlayerMaster.id``.
-        competition_id: Competition scope (required — dots span one pool).
+        competition_id: Competition scope; ``None`` = career (all the player's
+            shots across competitions). Shot locations share one court system,
+            so career dots plot correctly even across pools.
 
     Returns:
         :class:`PlayerShotDots` with ``dots`` list (may be empty).
@@ -329,13 +335,14 @@ async def get_player_shot_dots(
         .where(
             SummerLeagueShotEvent.player_id == player_id  # type: ignore[arg-type]
         )
-        .where(
-            SummerLeagueShotEvent.competition_id == competition_id  # type: ignore[arg-type]
-        )
         .where(SummerLeagueShotEvent.loc_x.isnot(None))  # type: ignore[union-attr]
         .where(SummerLeagueShotEvent.loc_y.isnot(None))  # type: ignore[union-attr]
         .order_by(SummerLeagueShotEvent.id)
     )
+    if competition_id is not None:
+        stmt = stmt.where(
+            SummerLeagueShotEvent.competition_id == competition_id  # type: ignore[arg-type]
+        )
     result = await session.execute(stmt)
     dots = [
         ShotDot(loc_x=row[0], loc_y=row[1], made=bool(row[2])) for row in result.all()
