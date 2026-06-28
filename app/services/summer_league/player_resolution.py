@@ -388,10 +388,12 @@ async def _backfill_participation_and_affiliation(
                 PlayerAffiliation.supersedes_id.isnot(None),  # type: ignore[union-attr]
             )
         )
+        # The query already filters ``supersedes_id IS NOT NULL``, so every row
+        # here has a non-null parent id; only dedupe against ids already seen.
         new_parent_ids = [
             int(row[0])
             for row in parent_result.all()
-            if row[0] is not None and int(row[0]) not in affiliation_ids
+            if int(row[0]) not in affiliation_ids
         ]
         affiliation_ids.update(new_parent_ids)
         frontier = new_parent_ids
