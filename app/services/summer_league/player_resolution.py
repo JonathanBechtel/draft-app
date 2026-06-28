@@ -9,15 +9,17 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.player_affiliation import PlayerAffiliation
 from app.schemas.player_aliases import PlayerAlias
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
+    SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
     SummerLeaguePlayerResolutionReview,
     SummerLeagueReviewStatus,
@@ -85,6 +87,7 @@ class SummerLeagueResolutionResult:
     external_id_created: bool = False
     stub_created: bool = False
     logs_backfilled: int = 0
+    participations_backfilled: int = 0
 
     @property
     def resolved(self) -> bool:
@@ -108,6 +111,7 @@ class SummerLeagueResolutionReport:
     candidate_source_players: int
     stubs_created: int
     player_game_logs_backfilled: int
+    participation_rows_backfilled: int
     results: list[SummerLeagueResolutionResult] = field(default_factory=list)
 
 
@@ -244,6 +248,7 @@ def _result_from_confirmed_link(
     method: str,
     external_id_created: bool,
     logs_backfilled: int,
+    participations_backfilled: int = 0,
     stub_created: bool = False,
 ) -> SummerLeagueResolutionResult:
     """Build a standard result for a confirmed resolution."""
@@ -258,6 +263,7 @@ def _result_from_confirmed_link(
         external_id_created=external_id_created,
         stub_created=stub_created,
         logs_backfilled=logs_backfilled,
+        participations_backfilled=participations_backfilled,
     )
 
 
@@ -322,6 +328,84 @@ async def _backfill_player_game_logs(
     return int(rowcount) if rowcount is not None else 0
 
 
+async def _backfill_participation_and_affiliation(
+    db: AsyncSession,
+    *,
+    source_player_id: int | None,
+    player_id: int,
+) -> int:
+    """Backfill canonical player_id onto participation and linked affiliation rows.
+
+    Mirrors ``_backfill_player_game_logs`` but targets the roster-foundation
+    tables.  Walks the ``supersedes_id`` chain on affiliation rows so that prior
+    ANNOUNCED assertions are also backfilled when a CUT row is the current
+    pointer on the participation.
+
+    Args:
+        db: Async database session.
+        source_player_id: PK of the ``SummerLeagueSourcePlayer`` whose rows
+            should be backfilled.  Returns 0 immediately when ``None``.
+        player_id: Canonical ``players_master.id`` to write into each row.
+
+    Returns:
+        Number of ``summer_league_participation`` rows updated.
+    """
+    if source_player_id is None:
+        return 0
+
+    # 1. Bulk-update all participation rows for this source player.
+    part_result = cast(
+        CursorResult[Any],
+        await db.execute(
+            update(SummerLeagueParticipation)
+            .where(
+                SummerLeagueParticipation.source_player_id == source_player_id  # type: ignore[arg-type]
+            )
+            .values(player_id=player_id, updated_at=datetime.utcnow())
+        ),
+    )
+    rowcount = int(part_result.rowcount) if part_result.rowcount is not None else 0
+
+    # 2. Collect affiliation IDs directly referenced by those participations.
+    aff_result = await db.execute(
+        select(SummerLeagueParticipation.affiliation_id).where(  # type: ignore[call-overload]
+            SummerLeagueParticipation.source_player_id == source_player_id,  # type: ignore[arg-type]
+            SummerLeagueParticipation.affiliation_id.isnot(None),  # type: ignore[union-attr]
+        )
+    )
+    affiliation_ids: set[int] = {int(row[0]) for row in aff_result.all()}
+
+    if not affiliation_ids:
+        return rowcount
+
+    # 3. Walk the supersedes_id chain to collect all ancestor affiliation IDs
+    #    (e.g. the prior ANNOUNCED row when the current pointer is a CUT row).
+    frontier = list(affiliation_ids)
+    while frontier:
+        parent_result = await db.execute(
+            select(PlayerAffiliation.supersedes_id).where(  # type: ignore[call-overload]
+                PlayerAffiliation.id.in_(frontier),  # type: ignore[union-attr]
+                PlayerAffiliation.supersedes_id.isnot(None),  # type: ignore[union-attr]
+            )
+        )
+        new_parent_ids = [
+            int(row[0])
+            for row in parent_result.all()
+            if row[0] is not None and int(row[0]) not in affiliation_ids
+        ]
+        affiliation_ids.update(new_parent_ids)
+        frontier = new_parent_ids
+
+    # 4. Bulk-update all collected affiliation rows.
+    await db.execute(
+        update(PlayerAffiliation)
+        .where(PlayerAffiliation.id.in_(list(affiliation_ids)))  # type: ignore[union-attr]
+        .values(player_id=player_id, updated_at=datetime.utcnow())
+    )
+
+    return rowcount
+
+
 async def _confirm_resolution(
     db: AsyncSession,
     source_player: SummerLeagueSourcePlayer,
@@ -353,6 +437,11 @@ async def _confirm_resolution(
         source_player_id=source_player.id,
         player_id=player_id,
     )
+    participations_backfilled = await _backfill_participation_and_affiliation(
+        db,
+        source_player_id=source_player.id,
+        player_id=player_id,
+    )
     return _result_from_confirmed_link(
         source_player,
         player_id=player_id,
@@ -361,6 +450,7 @@ async def _confirm_resolution(
         external_id_created=external_id_created,
         stub_created=stub_created,
         logs_backfilled=logs_backfilled,
+        participations_backfilled=participations_backfilled,
     )
 
 
@@ -619,23 +709,44 @@ async def _load_source_players(
         )
         return list(result.scalars().all())
 
-    stmt = (
-        select(SummerLeagueSourcePlayer)
-        .join(
-            SummerLeaguePlayerGameLog,
-            SummerLeaguePlayerGameLog.source_player_id == SummerLeagueSourcePlayer.id,  # type: ignore[arg-type]
-        )
+    # Build shared competition filter clauses (applied to both subqueries below).
+    comp_filters = []
+    if year is not None:
+        comp_filters.append(SummerLeagueCompetition.year == year)  # type: ignore[arg-type]
+    if league_id is not None:
+        comp_filters.append(SummerLeagueCompetition.league_id == league_id)  # type: ignore[arg-type]
+
+    # Source players reachable via game logs (pre-2026 stats pipeline).
+    gamelog_subq = (
+        select(SummerLeaguePlayerGameLog.source_player_id)  # type: ignore[call-overload]
         .join(
             SummerLeagueCompetition,
             SummerLeagueCompetition.id == SummerLeaguePlayerGameLog.competition_id,  # type: ignore[arg-type]
         )
-        .order_by(SummerLeagueSourcePlayer.id)  # type: ignore[arg-type]
+        .where(*comp_filters)
     )
-    if year is not None:
-        stmt = stmt.where(SummerLeagueCompetition.year == year)  # type: ignore[arg-type]
-    if league_id is not None:
-        stmt = stmt.where(SummerLeagueCompetition.league_id == league_id)  # type: ignore[arg-type]
-    stmt = stmt.distinct(SummerLeagueSourcePlayer.id)  # type: ignore[arg-type]
+
+    # Source players reachable via participation rows (roster-loaded, no logs yet).
+    participation_subq = (
+        select(SummerLeagueParticipation.source_player_id)  # type: ignore[call-overload]
+        .join(
+            SummerLeagueCompetition,
+            SummerLeagueCompetition.id == SummerLeagueParticipation.competition_id,  # type: ignore[arg-type]
+        )
+        .where(*comp_filters)
+    )
+
+    stmt = (
+        select(SummerLeagueSourcePlayer)
+        .where(
+            or_(
+                SummerLeagueSourcePlayer.id.in_(gamelog_subq),  # type: ignore[union-attr]
+                SummerLeagueSourcePlayer.id.in_(participation_subq),  # type: ignore[union-attr]
+            )
+        )
+        .order_by(SummerLeagueSourcePlayer.id)  # type: ignore[arg-type]
+        .distinct()
+    )
 
     result = await db.execute(stmt)
     return list(result.scalars().all())
@@ -665,6 +776,9 @@ def _build_report(
         candidate_source_players=sum(1 for result in results if result.candidates),
         stubs_created=sum(1 for result in results if result.stub_created),
         player_game_logs_backfilled=sum(result.logs_backfilled for result in results),
+        participation_rows_backfilled=sum(
+            result.participations_backfilled for result in results
+        ),
         results=results,
     )
 
