@@ -468,10 +468,13 @@ class SummerLeaguePlayerGameLog(SQLModel, table=True):  # type: ignore[call-arg]
     team_entry_id: int = Field(foreign_key="summer_league_team_entries.id")
     source_player_id: int = Field(foreign_key="summer_league_source_players.id")
     player_id: Optional[int] = Field(default=None, foreign_key="players_master.id")
-    # Nullable FK to the stable participation bridge; backfilled for 2026+ rows.
-    participation_id: Optional[int] = Field(
-        default=None, foreign_key="summer_league_participation.id"
-    )
+    # Soft reference to the stable participation bridge; backfilled for 2026+ rows.
+    # Deliberately NOT a DB-level FK: summer_league_player_game_logs is created by an
+    # earlier create_all() migration (b6c7d8e9f0a1) that reflects the live model, so a
+    # hard FK here would forward-reference summer_league_participation (created later in
+    # 2f09df4af11c) and break `alembic upgrade head` from base. The link is maintained by
+    # the loader/resolution layer; see docs/plans/summer-league-2026-workstream0-schema.md.
+    participation_id: Optional[int] = Field(default=None)
     nba_stats_person_id: str = Field(nullable=False)
     raw_player_name: str = Field(nullable=False)
     starter_position: Optional[str] = Field(default=None)

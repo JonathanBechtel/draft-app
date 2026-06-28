@@ -29,9 +29,6 @@ down_revision: Union[str, None] = "c0d1e2f3a4b5"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# FK constraint name for the additive column (needed to drop it cleanly).
-_FK_PARTICIPATION_GAME_LOG = "fk_summer_league_player_game_logs_participation_id"
-
 
 def upgrade() -> None:
     """Create both new tables and add participation_id to game logs."""
@@ -194,10 +191,12 @@ def upgrade() -> None:
 
     # 4. Add participation_id to summer_league_player_game_logs (additive, nullable).
     #    Pre-2026 rows remain NULL; 2026+ rows are backfilled by the loader.
+    #    Soft reference (no DB-level FK): the game-log table is created by an earlier
+    #    create_all() migration that reflects the live model, so a hard FK here would
+    #    forward-reference summer_league_participation and break upgrade-from-base.
     op.execute(
         "ALTER TABLE summer_league_player_game_logs "
-        "ADD COLUMN IF NOT EXISTS participation_id INTEGER "
-        "REFERENCES summer_league_participation(id)"
+        "ADD COLUMN IF NOT EXISTS participation_id INTEGER"
     )
     op.create_index(
         "ix_summer_league_player_game_logs_participation_id",
