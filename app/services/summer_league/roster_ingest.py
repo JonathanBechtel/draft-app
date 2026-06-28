@@ -289,6 +289,12 @@ async def _announce_player(
 ) -> SummerLeagueParticipation:
     """Insert one ANNOUNCED assertion and one participation bridge row.
 
+    If the player was previously cut (roster_status == CUT), the existing
+    participation is reactivated: a new ANNOUNCED assertion supersedes the
+    prior CUT assertion and the stable bridge row is updated in place. This
+    preserves the append-only contract while preventing a duplicate
+    participation row that would collide on the stint uniqueness constraint.
+
     Args:
         db: Async database session.
         competition_id: PK of the parent competition.
@@ -298,8 +304,66 @@ async def _announce_player(
         recorded_at: Timestamp to stamp on the new assertion.
 
     Returns:
-        The newly-created ``SummerLeagueParticipation`` row.
+        The newly-created or reactivated ``SummerLeagueParticipation`` row.
     """
+    source_player_id: int = source_player.id  # type: ignore[assignment]
+
+    # Check for any existing participation (including CUT) before inserting.
+    # A previously-cut player who reappears must reuse the same bridge row to
+    # avoid colliding on uq_summer_league_participation_comp_team_source_stint.
+    existing_result = await db.execute(
+        select(SummerLeagueParticipation).where(
+            SummerLeagueParticipation.competition_id == competition_id,  # type: ignore[arg-type]
+            SummerLeagueParticipation.team_entry_id == team_entry_id,  # type: ignore[arg-type]
+            SummerLeagueParticipation.source_player_id == source_player_id,  # type: ignore[arg-type]
+        )
+    )
+    existing = existing_result.scalar_one_or_none()
+
+    if existing is not None:
+        if existing.roster_status == AffiliationStatus.CUT:
+            # Reactivation: supersede the CUT assertion with a fresh ANNOUNCED one.
+            prior_id: Optional[int] = existing.affiliation_id
+            prior_affiliation: Optional[PlayerAffiliation] = None
+            if prior_id is not None:
+                prior_result = await db.execute(
+                    select(PlayerAffiliation).where(
+                        PlayerAffiliation.id == prior_id  # type: ignore[arg-type]
+                    )
+                )
+                prior_affiliation = prior_result.scalar_one_or_none()
+
+            new_affiliation = PlayerAffiliation(
+                player_id=prior_affiliation.player_id if prior_affiliation else None,
+                nba_team_id=(
+                    prior_affiliation.nba_team_id if prior_affiliation else None
+                ),
+                affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
+                status=AffiliationStatus.ANNOUNCED,
+                recorded_at=recorded_at,
+                supersedes_id=prior_id,
+                source="nba_summer_league_roster",
+                source_ref=(
+                    f"{entry.league_id}/{entry.team_id}/{entry.nba_stats_person_id}"
+                ),
+            )
+            db.add(new_affiliation)
+            await db.flush()  # populate new_affiliation.id
+
+            # Stamp the prior CUT row as superseded (timestamp only — identity untouched).
+            if prior_affiliation is not None:
+                prior_affiliation.superseded_at = recorded_at
+                prior_affiliation.updated_at = _utc_now()
+
+            # Update the stable bridge (bridge is not an assertion; mutation is OK).
+            existing.affiliation_id = new_affiliation.id
+            existing.roster_status = AffiliationStatus.ANNOUNCED
+            existing.jersey_number = entry.jersey
+            existing.roster_position = entry.position
+            existing.updated_at = _utc_now()
+            await db.flush()
+        return existing
+
     affiliation = PlayerAffiliation(
         player_id=source_player.canonical_player_id,
         nba_team_id=None,  # resolved later (T4 ticket)
@@ -312,7 +376,6 @@ async def _announce_player(
     db.add(affiliation)
     await db.flush()  # populate affiliation.id
 
-    source_player_id: int = source_player.id  # type: ignore[assignment]
     participation = SummerLeagueParticipation(
         competition_id=competition_id,
         team_entry_id=team_entry_id,
@@ -436,6 +499,28 @@ async def load_roster_snapshot(
         team_rows[nba_stats_team_id] = team_row
     await db.flush()
 
+    # 3b. Find teams that have active participations but are absent from this
+    # snapshot — their players must all be cut (empty-team cut, Bug 1).
+    absent_result = await db.execute(
+        select(SummerLeagueTeamEntry).where(
+            SummerLeagueTeamEntry.competition_id == competition_id,  # type: ignore[arg-type]
+            SummerLeagueTeamEntry.id.in_(  # type: ignore[union-attr]
+                select(SummerLeagueParticipation.team_entry_id)  # type: ignore[call-overload]
+                .where(
+                    SummerLeagueParticipation.competition_id == competition_id,  # type: ignore[arg-type]
+                    SummerLeagueParticipation.roster_status  # type: ignore[arg-type]
+                    != AffiliationStatus.CUT,
+                )
+                .distinct()
+            ),
+        )
+    )
+    absent_teams = [
+        row
+        for row in absent_result.scalars().all()
+        if row.nba_stats_team_id not in by_team
+    ]
+
     # 4. Process each team.
     report = RosterDiffReport()
 
@@ -484,10 +569,19 @@ async def load_roster_snapshot(
             )
             team_diff.added += 1
 
-        # 4e. Handle unchanged: update source-player metadata only, no new rows.
+        # 4e. Handle unchanged: update source-player metadata; refresh denormalized
+        # convenience fields on the bridge if jersey/position changed (no new assertion).
         for person_id in unchanged_ids:
             entry = incoming_by_person_id[person_id]
             await _upsert_roster_source_player(db, entry, competition.year)
+            participation = current_by_person_id[person_id]
+            if (
+                participation.jersey_number != entry.jersey
+                or participation.roster_position != entry.position
+            ):
+                participation.jersey_number = entry.jersey
+                participation.roster_position = entry.position
+                participation.updated_at = _utc_now()
             team_diff.unchanged += 1
 
         # 4f. Handle cuts: new CUT assertion superseding the prior.
@@ -500,6 +594,35 @@ async def load_roster_snapshot(
         report.added += team_diff.added
         report.unchanged += team_diff.unchanged
         report.cut += team_diff.cut
+
+    # 5. Cut all active players for teams absent from this snapshot (Bug 1).
+    for absent_team in absent_teams:
+        absent_team_entry_id: int = absent_team.id  # type: ignore[assignment]
+        absent_active = await _load_active_participations(
+            db, competition_id, absent_team_entry_id
+        )
+        if not absent_active:
+            continue
+
+        sp_result = await db.execute(
+            select(SummerLeagueSourcePlayer).where(
+                SummerLeagueSourcePlayer.id.in_(  # type: ignore[union-attr]
+                    list(absent_active.keys())
+                )
+            )
+        )
+        absent_by_person_id: dict[str, SummerLeagueParticipation] = {}
+        for sp in sp_result.scalars().all():
+            if sp.id is not None:
+                absent_by_person_id[sp.nba_stats_person_id] = absent_active[sp.id]
+
+        absent_diff = TeamDiff()
+        for person_id in absent_by_person_id:
+            await _cut_player(db, absent_by_person_id[person_id], recorded_at)
+            absent_diff.cut += 1
+
+        report.per_team[absent_team.nba_stats_team_id] = absent_diff
+        report.cut += absent_diff.cut
 
     await db.flush()
     return report

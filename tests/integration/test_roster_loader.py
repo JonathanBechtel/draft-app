@@ -386,3 +386,155 @@ async def test_diff_report(db_session: AsyncSession) -> None:
     assert report2.added == 1
     assert report2.unchanged == 2
     assert report2.cut == 1
+
+
+@pytest.mark.asyncio
+async def test_empty_team_cuts_all_players(db_session: AsyncSession) -> None:
+    """A team absent from the snapshot receives CUT assertions for all active players.
+
+    Scenario: Load TEAM_A with P1+P2 at T0, then reload with zero entries at T1.
+
+    Asserts:
+    - Both prior ANNOUNCED rows are retained with superseded_at=T1 (not deleted).
+    - Two new CUT assertions are written, each supersedes_id pointing to a prior row.
+    - Both participation rows have roster_status==CUT after T1 load.
+    - Diff report shows cut=2.
+    """
+    initial = [_entry("P1", TEAM_A), _entry("P2", TEAM_A)]
+    await load_roster_snapshot(db_session, COMPETITION, initial, recorded_at=T0)
+    await db_session.commit()
+
+    # Second snapshot has zero entries — TEAM_A is entirely absent.
+    report = await load_roster_snapshot(db_session, COMPETITION, [], recorded_at=T1)
+    await db_session.commit()
+
+    # 2 original ANNOUNCED + 2 new CUT = 4 affiliations.
+    assert await _aff_count(db_session) == 4
+    # Participation rows are never deleted.
+    assert await _part_count(db_session) == 2
+
+    all_affs = (await db_session.execute(select(PlayerAffiliation))).scalars().all()
+    announced = [a for a in all_affs if a.status == AffiliationStatus.ANNOUNCED]
+    cut_affs = [a for a in all_affs if a.status == AffiliationStatus.CUT]
+
+    assert len(announced) == 2
+    assert len(cut_affs) == 2
+    for cut in cut_affs:
+        assert cut.supersedes_id is not None
+        prior = next(a for a in announced if a.id == cut.supersedes_id)
+        assert prior.superseded_at == T1
+
+    # All participation rows are now CUT.
+    parts = (
+        await db_session.execute(select(SummerLeagueParticipation))
+    ).scalars().all()
+    assert all(p.roster_status == AffiliationStatus.CUT for p in parts)
+
+    assert report.added == 0
+    assert report.unchanged == 0
+    assert report.cut == 2
+
+
+@pytest.mark.asyncio
+async def test_readd_after_cut_reactivates(db_session: AsyncSession) -> None:
+    """Re-adding a previously cut player reuses the existing participation row.
+
+    Sequence: load P1 at T0 → cut at T1 → re-add at T2.
+
+    Asserts:
+    - No IntegrityError (no duplicate stint_no=1 row).
+    - Exactly one participation row exists for P1.
+    - roster_status returns to ANNOUNCED after T2 load.
+    - Affiliation chain is ANNOUNCED(T0)→CUT(T1)→ANNOUNCED(T2) via supersedes_id.
+    - The stable bridge points at the latest (T2) assertion.
+    """
+    T2 = T1 + timedelta(days=1)
+
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T0)
+    await db_session.commit()
+
+    # Cut P1 by sending an empty snapshot.
+    await load_roster_snapshot(db_session, COMPETITION, [], recorded_at=T1)
+    await db_session.commit()
+
+    # Re-add P1.
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T2)
+    await db_session.commit()
+
+    # One stable participation row (never duplicated).
+    assert await _part_count(db_session) == 1
+    # Three assertions: ANNOUNCED → CUT → ANNOUNCED.
+    assert await _aff_count(db_session) == 3
+
+    part = (
+        await db_session.execute(select(SummerLeagueParticipation))
+    ).scalar_one()
+    assert part.roster_status == AffiliationStatus.ANNOUNCED
+
+    all_affs = (
+        await db_session.execute(
+            select(PlayerAffiliation).order_by(PlayerAffiliation.id)
+        )
+    ).scalars().all()
+    aff_t0, aff_cut, aff_t2 = all_affs
+
+    assert aff_t0.status == AffiliationStatus.ANNOUNCED
+    assert aff_t0.superseded_at == T1
+
+    assert aff_cut.status == AffiliationStatus.CUT
+    assert aff_cut.supersedes_id == aff_t0.id
+    assert aff_cut.superseded_at == T2
+
+    assert aff_t2.status == AffiliationStatus.ANNOUNCED
+    assert aff_t2.supersedes_id == aff_cut.id
+    assert aff_t2.superseded_at is None
+
+    # Participation points at the re-announce assertion.
+    assert part.affiliation_id == aff_t2.id
+
+
+@pytest.mark.asyncio
+async def test_unchanged_refreshes_metadata(db_session: AsyncSession) -> None:
+    """Unchanged players get updated jersey/position without a new affiliation row.
+
+    Scenario: Load P1 with jersey "5", re-load P1 with jersey "10".
+
+    Asserts:
+    - No new affiliation or participation rows after the second load.
+    - participation.jersey_number == "10" after the reload.
+    """
+    from app.services.summer_league.roster_parse import RosterEntry
+
+    def _entry_jersey(jersey: str) -> RosterEntry:
+        return RosterEntry(
+            nba_stats_person_id="P1",
+            raw_player_name="Player P1",
+            team_id=TEAM_A,
+            jersey=jersey,
+            position="G",
+            height="6-3",
+            weight="185",
+            birth_date=None,
+            school=None,
+            how_acquired=None,
+            league_id="15",
+        )
+
+    await load_roster_snapshot(
+        db_session, COMPETITION, [_entry_jersey("5")], recorded_at=T0
+    )
+    await db_session.commit()
+
+    await load_roster_snapshot(
+        db_session, COMPETITION, [_entry_jersey("10")], recorded_at=T1
+    )
+    await db_session.commit()
+
+    # No new assertion rows written for a metadata-only change.
+    assert await _aff_count(db_session) == 1
+    assert await _part_count(db_session) == 1
+
+    part = (
+        await db_session.execute(select(SummerLeagueParticipation))
+    ).scalar_one()
+    assert part.jersey_number == "10"
