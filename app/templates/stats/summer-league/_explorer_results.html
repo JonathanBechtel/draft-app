@@ -42,11 +42,11 @@
   {% if result.query.grain == 'career' and result.adv_eligible_m > 0 %}
   <div class="slg-explorer-banner {{ 'slg-explorer-banner--warn' if result.adv_eligible_n == 0 else 'slg-explorer-banner--info' }}" role="alert">
     <span class="slg-explorer-banner__icon">{% if result.adv_eligible_n == 0 %}&#9888;{% else %}&#9432;{% endif %}</span>
-    {{ result.adv_eligible_n }} of {{ result.adv_eligible_m }} competition{{ 's' if result.adv_eligible_m != 1 else '' }} in this scope qualify for advanced composites.
+    <span class="slg-explorer-banner__text">{{ result.adv_eligible_n }} of {{ result.adv_eligible_m }} competition{{ 's' if result.adv_eligible_m != 1 else '' }} in this scope qualify for advanced composites.
     {% if result.adv_eligible_n > 0 %}
     Rate metrics (PER, ORtg, DRtg, BPM) are pooled averages across competitions and are approximate
     (marked <abbr title="Pooled average — approximate">avg</abbr>).
-    {% endif %}
+    {% endif %}</span>
   </div>
   {% endif %}
 
@@ -56,15 +56,15 @@
     {% if is_single_comp and not result.adv_eligible %}
   <div class="slg-explorer-banner slg-explorer-banner--warn" role="alert">
     <span class="slg-explorer-banner__icon">&#9888;</span>
-    Advanced composites (PER, ORtg, DRtg, BPM, WS, VORP) require a minimum pool
+    <span class="slg-explorer-banner__text">Advanced composites (PER, ORtg, DRtg, BPM, WS, VORP) require a minimum pool
     size that this competition has not yet met. Select a larger competition or
-    check back after more games are complete.
+    check back after more games are complete.</span>
   </div>
     {% elif not is_single_comp and result.adv_eligible_m > 0 %}
   <div class="slg-explorer-banner {{ 'slg-explorer-banner--warn' if result.adv_eligible_n == 0 else 'slg-explorer-banner--info' }}" role="alert">
     <span class="slg-explorer-banner__icon">{% if result.adv_eligible_n == 0 %}&#9888;{% else %}&#9432;{% endif %}</span>
-    {{ result.adv_eligible_n }} of {{ result.adv_eligible_m }} competition{{ 's' if result.adv_eligible_m != 1 else '' }} in this pool qualify for advanced composites.
-    Rows from other competitions may show blank composite values.
+    <span class="slg-explorer-banner__text">{{ result.adv_eligible_n }} of {{ result.adv_eligible_m }} competition{{ 's' if result.adv_eligible_m != 1 else '' }} in this pool qualify for advanced composites.
+    Rows from other competitions may show blank composite values.</span>
   </div>
     {% endif %}
   {% endif %}
