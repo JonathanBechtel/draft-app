@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.nba_teams import NbaTeam as _NbaTeam  # noqa: F401
+from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueDataQuality,
@@ -19,6 +20,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
+    SummerLeagueParticipation,
     SummerLeagueRawFile,
     SummerLeagueRawFileStatus,
     SummerLeagueRawRun,
@@ -1123,6 +1125,69 @@ async def _upsert_source_player(
     return row
 
 
+async def _ensure_participation(
+    db: AsyncSession,
+    competition_id: int,
+    team_entry_id: int,
+    source_player: SummerLeagueSourcePlayer,
+) -> SummerLeagueParticipation:
+    """Return the stable participation bridge for a (competition, team, player).
+
+    Player game logs reference this bridge rather than the raw (player, edition)
+    pair, decoupling the stat layer from roster identity (journey-graph §7b). If
+    roster ingest already announced this player the existing bridge is reused;
+    otherwise the player was discovered straight from a box score — a late add
+    with no pre-event roster entry — and a CONFIRMED participation is created.
+
+    The append-only affiliation stream is intentionally left to the roster /
+    reconcile layer: a box-score-discovered bridge carries ``affiliation_id`` =
+    ``None`` until reconciliation (Workstream B2) writes the corroborating
+    assertion. This keeps the normalizer a pure stat-bridge writer.
+
+    Args:
+        db: Async database session.
+        competition_id: PK of the parent competition.
+        team_entry_id: PK of the team entry the player appeared for.
+        source_player: The resolved (or stub) source-player row; ``id`` must be
+            populated.
+
+    Returns:
+        The reused or newly-created ``SummerLeagueParticipation`` row, flushed so
+        its ``id`` is available for stamping onto the game log.
+    """
+    source_player_id: int = source_player.id  # type: ignore[assignment]
+    result = await db.execute(
+        select(SummerLeagueParticipation)
+        .where(
+            SummerLeagueParticipation.competition_id == competition_id,  # type: ignore[arg-type]
+            SummerLeagueParticipation.team_entry_id == team_entry_id,  # type: ignore[arg-type]
+            SummerLeagueParticipation.source_player_id == source_player_id,  # type: ignore[arg-type]
+        )
+        .order_by(SummerLeagueParticipation.stint_no.desc())  # type: ignore[attr-defined]
+    )
+    participation = result.scalars().first()
+    if participation is None:
+        participation = SummerLeagueParticipation(
+            competition_id=competition_id,
+            team_entry_id=team_entry_id,
+            source_player_id=source_player_id,
+            player_id=source_player.canonical_player_id,
+            affiliation_id=None,
+            stint_no=1,
+            roster_status=AffiliationStatus.CONFIRMED,
+        )
+        db.add(participation)
+        await db.flush()
+        return participation
+    # Keep the resolved canonical id in sync as resolution backfills it, mirroring
+    # the game-log player_id behavior. Roster status / assertions are owned by the
+    # roster + reconcile layer and left untouched here.
+    if participation.player_id != source_player.canonical_player_id:
+        participation.player_id = source_player.canonical_player_id
+        participation.updated_at = _utc_now_naive()
+    return participation
+
+
 async def _upsert_player_game_log(
     db: AsyncSession,
     competition_id: int,
@@ -1156,6 +1221,10 @@ async def _upsert_player_game_log(
         raise RuntimeError("Source player id was not populated")
     row.source_player_id = source_player.id
     row.player_id = source_player.canonical_player_id
+    participation = await _ensure_participation(
+        db, competition_id, team_entry_id, source_player
+    )
+    row.participation_id = participation.id
     row.raw_player_name = box_row.raw_player_name
     for field_name in ParsedPlayerBoxRow.__dataclass_fields__:
         if field_name in {

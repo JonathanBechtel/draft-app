@@ -9,8 +9,10 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
+    SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
     SummerLeagueResolutionStatus,
     SummerLeagueSourcePlayer,
@@ -407,7 +409,9 @@ async def test_normalize_player_game_logs_is_idempotent_and_allows_unresolved(
     assert source_player_count == 3
     assert player_log_count == 2
     assert unresolved_source.canonical_player_id is None
-    assert unresolved_source.resolution_status == SummerLeagueResolutionStatus.UNRESOLVED
+    assert (
+        unresolved_source.resolution_status == SummerLeagueResolutionStatus.UNRESOLVED
+    )
     assert unresolved_log.source_player_id == unresolved_source.id
     assert unresolved_log.player_id is None
     assert unresolved_log.minutes_seconds == 1468
@@ -421,3 +425,129 @@ async def test_normalize_player_game_logs_is_idempotent_and_allows_unresolved(
     assert resolved_log.player_id == player.id
     assert resolved_log.comment == "DNP - Coach's Decision"
     assert resolved_log.minutes_seconds is None
+
+
+@pytest.mark.asyncio
+async def test_normalize_player_game_logs_wires_participation_bridge(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """Every written game log references a stable participation bridge.
+
+    Box-score-discovered players (no pre-event roster entry) get a CONFIRMED
+    participation with no affiliation; re-running normalization reuses the bridge
+    (idempotent, no duplicates); and an existing roster-announced bridge is
+    reused without clobbering its roster_status.
+    """
+    _write_fixture(tmp_path)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    player = PlayerMaster(display_name="Resolved Prospect", slug="resolved-prospect")
+    db_session.add(player)
+    await db_session.flush()
+    assert player.id is not None
+    db_session.add(
+        SummerLeagueSourcePlayer(
+            nba_stats_person_id="1640002",
+            raw_player_name="Resolved Prospect",
+            normalized_name=_normalized_name_key("Resolved Prospect"),
+            first_seen_year=2023,
+            last_seen_year=2023,
+            canonical_player_id=player.id,
+            resolution_status=SummerLeagueResolutionStatus.EXTERNAL_ID,
+            resolution_confidence=1.0,
+            resolved_by="test",
+        )
+    )
+    await db_session.flush()
+
+    await normalize_player_game_logs(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+    # Idempotent re-run must not duplicate participation rows.
+    await normalize_player_game_logs(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    logs = (await db_session.execute(select(SummerLeaguePlayerGameLog))).scalars().all()
+    assert logs
+    assert all(log.participation_id is not None for log in logs)
+
+    participations = (
+        (await db_session.execute(select(SummerLeagueParticipation))).scalars().all()
+    )
+    # Two written logs (the third row is skipped on team mismatch) → two bridges.
+    assert len(participations) == 2
+    assert all(p.roster_status == AffiliationStatus.CONFIRMED for p in participations)
+    assert all(p.affiliation_id is None for p in participations)
+
+    by_source = {p.source_player_id: p for p in participations}
+    resolved_log = (
+        await db_session.execute(
+            select(SummerLeaguePlayerGameLog).where(
+                SummerLeaguePlayerGameLog.nba_stats_person_id == "1640002"  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    unresolved_log = (
+        await db_session.execute(
+            select(SummerLeaguePlayerGameLog).where(
+                SummerLeaguePlayerGameLog.nba_stats_person_id == "1640001"  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    # Each log points at its own source-player bridge, and player_id mirrors.
+    assert resolved_log.participation_id == by_source[resolved_log.source_player_id].id
+    assert (
+        unresolved_log.participation_id == by_source[unresolved_log.source_player_id].id
+    )
+    assert by_source[resolved_log.source_player_id].player_id == player.id
+    assert by_source[unresolved_log.source_player_id].player_id is None
+
+    # Simulate a roster-announced bridge: the normalizer must reuse it as-is and
+    # never flip its roster_status (the affiliation stream is owned elsewhere).
+    announced = participations[0]
+    announced.roster_status = AffiliationStatus.ANNOUNCED
+    await db_session.flush()
+    await normalize_player_game_logs(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+    await db_session.refresh(announced)
+    assert announced.roster_status == AffiliationStatus.ANNOUNCED
+    participation_count = await db_session.scalar(
+        select(func.count()).select_from(SummerLeagueParticipation)
+    )
+    assert participation_count == 2
+
+    # Resolution backfill after logs exist must propagate the canonical id onto
+    # the previously-unresolved bridge on the next normalize pass.
+    unresolved_source = (
+        await db_session.execute(
+            select(SummerLeagueSourcePlayer).where(
+                SummerLeagueSourcePlayer.nba_stats_person_id == "1640001"  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    late_player = PlayerMaster(
+        display_name="Unresolved Prospect", slug="unresolved-prospect"
+    )
+    db_session.add(late_player)
+    await db_session.flush()
+    unresolved_source.canonical_player_id = late_player.id
+    await db_session.flush()
+    await normalize_player_game_logs(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+    backfilled = (
+        await db_session.execute(
+            select(SummerLeagueParticipation).where(
+                SummerLeagueParticipation.source_player_id == unresolved_source.id  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    assert backfilled.player_id == late_player.id
