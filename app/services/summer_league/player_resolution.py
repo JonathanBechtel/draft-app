@@ -310,6 +310,82 @@ async def _ensure_nba_stats_external_id(
     return True
 
 
+@dataclass
+class ExternalIdBackfillReport:
+    """Outcome of seeding nba_stats external ids from resolved source players.
+
+    Attributes:
+        seeded: New ``player_external_ids`` rows inserted.
+        already_present: Pairs that were already linked (idempotent no-ops).
+        conflicts: ``(person_id, existing_player_id, attempted_player_id)``
+            tuples where a PERSON_ID is already linked to a different player than
+            the resolved source player claims — surfaced for manual review rather
+            than crashing the sweep (a resolution inconsistency, not a seed bug).
+    """
+
+    seeded: int = 0
+    already_present: int = 0
+    conflicts: list[tuple[str, int, int]] = field(default_factory=list)
+
+
+async def backfill_nba_stats_external_ids(
+    db: AsyncSession,
+) -> ExternalIdBackfillReport:
+    """Seed ``player_external_ids(system='nba_stats')`` from resolved SL players.
+
+    Every resolved ``SummerLeagueSourcePlayer`` already carries both a canonical
+    ``player_id`` and an NBA Stats ``PERSON_ID``. This promotes that pair into the
+    canonical external-id table so that (a) future resolution is deterministic — an
+    O(1) PERSON_ID lookup instead of a fuzzy name match — and (b) C1 headshot URLs
+    can join ``players_master`` → external id → the NBA CDN. The sweep is
+    idempotent: re-running over unchanged data inserts nothing.
+
+    The caller owns the transaction (commit/rollback); this only flushes.
+
+    Args:
+        db: Async database session.
+
+    Returns:
+        An :class:`ExternalIdBackfillReport` summarizing the sweep.
+    """
+    # nba_stats_person_id is unique and non-nullable on source players, so the
+    # result carries no duplicate PERSON_IDs — no in-loop dedup is needed.
+    result = await db.execute(
+        select(  # type: ignore[call-overload]
+            SummerLeagueSourcePlayer.canonical_player_id,
+            SummerLeagueSourcePlayer.nba_stats_person_id,
+        ).where(
+            SummerLeagueSourcePlayer.canonical_player_id.isnot(None),  # type: ignore[union-attr]
+        )
+    )
+    report = ExternalIdBackfillReport()
+    for canonical_player_id, person_id in result.all():
+        if canonical_player_id is None or not person_id:
+            continue
+        person_key = str(person_id)
+        try:
+            created = await _ensure_nba_stats_external_id(
+                db,
+                player_id=int(canonical_player_id),
+                nba_stats_person_id=person_key,
+            )
+        except ValueError:
+            existing = await _find_external_id_player(db, person_key)
+            report.conflicts.append(
+                (
+                    person_key,
+                    int(existing) if existing is not None else -1,
+                    int(canonical_player_id),
+                )
+            )
+            continue
+        if created:
+            report.seeded += 1
+        else:
+            report.already_present += 1
+    return report
+
+
 async def _backfill_player_game_logs(
     db: AsyncSession,
     *,
