@@ -149,6 +149,7 @@ async def test_backfill_runs_stages_in_order(
             candidate_source_players=0,
             stubs_created=0,
             player_game_logs_backfilled=1,
+            participation_rows_backfilled=0,
         )
 
     monkeypatch.setattr(backfill, "audit_summer_league_raw", fake_audit)
@@ -231,6 +232,7 @@ async def test_dry_run_rolls_back_nested_transaction(
             candidate_source_players=0,
             stubs_created=0,
             player_game_logs_backfilled=0,
+            participation_rows_backfilled=0,
         )
 
     monkeypatch.setattr(backfill, "audit_summer_league_raw", fake_audit)

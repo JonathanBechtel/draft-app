@@ -63,7 +63,8 @@ def summarize_resolution_report(report: SummerLeagueResolutionReport) -> str:
         f"alias={report.alias_resolutions} "
         f"candidate={report.candidate_source_players} "
         f"stubs={report.stubs_created} "
-        f"logs_backfilled={report.player_game_logs_backfilled}"
+        f"logs_backfilled={report.player_game_logs_backfilled} "
+        f"participations_backfilled={report.participation_rows_backfilled}"
     )
 
 
