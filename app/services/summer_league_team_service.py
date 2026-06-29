@@ -262,7 +262,7 @@ async def get_team_season(
                 te.id,
                 te.raw_team_name,
                 te.nba_stats_team_id,
-                comp.id,
+                comp.id.label("competition_id"),  # type: ignore[union-attr]
                 NbaTeam.slug.label("franchise_slug"),  # type: ignore[attr-defined]
             )  # type: ignore[call-overload, misc]
             .select_from(te)
@@ -420,6 +420,9 @@ async def get_team_season(
             .join(sp, sp.id == part.source_player_id)
             .join(PlayerMaster, PlayerMaster.id == part.player_id, isouter=True)
             .where(
+                # Lead with competition_id so the composite
+                # (competition_id, team_entry_id) index is used, not a seq scan.
+                part.competition_id == header.competition_id,  # type: ignore[arg-type]
                 part.team_entry_id == team_entry_id,  # type: ignore[arg-type]
                 part.roster_status != AffiliationStatus.CUT,  # type: ignore[arg-type]
             )
