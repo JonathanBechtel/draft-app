@@ -360,7 +360,9 @@ async def backfill_nba_stats_external_ids(
     )
     report = ExternalIdBackfillReport()
     for canonical_player_id, person_id in result.all():
-        if canonical_player_id is None or not person_id:
+        # canonical_player_id is non-null by the WHERE above; guard only the
+        # (data-integrity) empty PERSON_ID case.
+        if not person_id:
             continue
         person_key = str(person_id)
         try:

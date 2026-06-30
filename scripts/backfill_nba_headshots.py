@@ -124,6 +124,12 @@ async def _run(
         f"fallback={len(report.fallback)}",
         flush=True,
     )
+    if not (report.set_count or report.skipped_existing or report.fallback):
+        print(
+            "No players with an nba_stats external id were found — run "
+            "scripts/seed_nba_stats_external_ids.py (C5) first to seed them.",
+            flush=True,
+        )
     if report.fallback:
         print("Fallback (player_id, person_id) — no CDN headshot, source manually:")
         for player_id, person_id in report.fallback:
