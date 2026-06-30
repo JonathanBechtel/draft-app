@@ -412,6 +412,7 @@ async def get_team_season(
                 part.roster_position,
                 part.roster_status,
                 PlayerMaster.slug,
+                PlayerMaster.is_stub,
                 PlayerMaster.display_name,
                 PlayerMaster.reference_image_url,
                 sp.raw_player_name,
@@ -433,7 +434,10 @@ async def get_team_season(
     for r in announced_rows:
         announced_roster.append(
             AnnouncedRosterRow(
-                slug=r.slug,
+                # Only fully-resolved players link; stub-created masters (is_stub,
+                # which the insert hook still slugs) render as plain text rather
+                # than a link to a near-empty placeholder page.
+                slug=None if r.is_stub else r.slug,
                 name=r.display_name or r.raw_player_name or "—",
                 jersey=r.jersey_number,
                 position=r.roster_position,

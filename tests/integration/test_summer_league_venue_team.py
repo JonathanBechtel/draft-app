@@ -284,6 +284,19 @@ async def test_team_season_shows_announced_roster_pre_event(
     db_session.add(rookie)
     await db_session.flush()
 
+    # A stub-created master (is_stub=True) is still slugged by the insert hook,
+    # but must NOT render as a link to a near-empty placeholder page.
+    stub = PlayerMaster(
+        first_name="Stub",
+        last_name="Prospect",
+        display_name="Stub Prospect",
+        is_stub=True,
+        bio_source="test",
+    )
+    db_session.add(stub)
+    await db_session.flush()
+    assert stub.slug is not None  # the hook slugs it
+
     # Jersey 7 (resolved) should sort before jersey 23 (stub); CUT is excluded.
     await _announce(
         db_session,
@@ -305,7 +318,7 @@ async def test_team_season_shows_announced_roster_pre_event(
         jersey="23",
         position="F",
         status=AffiliationStatus.ANNOUNCED,
-        canonical=None,
+        canonical=stub,
     )
     # Two-way ("TW") and unnumbered slots exercise the non-numeric / blank
     # jersey sort branches: numeric first, then non-numeric, then blank.
@@ -365,7 +378,10 @@ async def test_team_season_shows_announced_roster_pre_event(
     assert first.slug == rookie.slug
     assert (first.jersey, first.position, first.status) == ("7", "G", "ANNOUNCED")
     assert first.headshot_url is not None and first.headshot_url.endswith("1640999.png")
-    assert ts.announced_roster[1].slug is None  # stub has no canonical link
+    # Stub Prospect is a stub master with a real slug, but the DTO clears it so
+    # it never links to a placeholder page.
+    assert ts.announced_roster[1].name == "Stub Prospect"
+    assert ts.announced_roster[1].slug is None
 
     resp = await app_client.get(f"/stats/summer-league/2026/las_vegas/{team.team_slug}")
     assert resp.status_code == 200
@@ -373,6 +389,8 @@ async def test_team_season_shows_announced_roster_pre_event(
     assert "Announced roster" in html
     assert "Announced Rookie" in html
     assert "Stub Prospect" in html
+    # The stub's slug must not appear as a player link.
+    assert f'href="/players/{stub.slug}"' not in html
     assert "Cut Player" not in html
 
 
