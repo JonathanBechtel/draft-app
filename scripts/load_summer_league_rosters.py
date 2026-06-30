@@ -45,7 +45,7 @@ from app.services.summer_league.roster_ingest import (
     load_roster_snapshot,
 )
 from app.services.summer_league.roster_parse import RosterEntry
-from app.utils.db_async import _prepare_asyncpg_connection
+from app.utils.db_async import _prepare_asyncpg_connection, load_schema_modules
 
 load_dotenv()
 
@@ -114,6 +114,11 @@ async def _run(
     if not db_url:
         print("ERROR: DATABASE_URL not set", file=sys.stderr)
         sys.exit(1)
+
+    # Register every SQLModel table so cross-table FKs (e.g.
+    # summer_league_team_entries.nba_team_id -> nba_teams) resolve when the
+    # loader's models are mapped; the loader's own imports don't pull nba_teams.
+    load_schema_modules()
 
     # Resolve the snapshot path.
     store = SummerLeagueRawStore()
