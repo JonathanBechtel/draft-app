@@ -19,11 +19,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.schemas.nba_teams import NbaTeam
+from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
+    SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
+    SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league.team_logos import franchise_logo_url
@@ -36,6 +39,16 @@ def _ratio_pct(num: float, den: float) -> Optional[float]:
     if not den:
         return None
     return round(100.0 * num / den, 1)
+
+
+def _jersey_sort_key(jersey: Optional[str]) -> tuple[int, int, str]:
+    """Sort key ordering numeric jerseys first, then non-numeric, then blanks."""
+    if jersey is None or jersey == "":
+        return (2, 0, "")
+    try:
+        return (0, int(jersey), "")
+    except ValueError:
+        return (1, 0, jersey)
 
 
 # --------------------------------------------------------------------------- #
@@ -90,6 +103,23 @@ class RosterRow:
 
 
 @dataclass
+class AnnouncedRosterRow:
+    """One announced/confirmed roster slot for a team-season (pre-/early-event).
+
+    Sourced from ``summer_league_participation`` assertions rather than box
+    scores, so it is populated before any game is played (the A4 preview). As
+    games tip the same player surfaces in the stats-derived :class:`RosterRow`.
+    """
+
+    slug: Optional[str]
+    name: str
+    jersey: Optional[str]
+    position: Optional[str]
+    status: str
+    headshot_url: Optional[str]
+
+
+@dataclass
 class TeamGameRow:
     """One game on a team-season schedule."""
 
@@ -118,6 +148,7 @@ class TeamSeason:
     logo_url: Optional[str] = None
     franchise_slug: Optional[str] = None
     roster: list[RosterRow] = field(default_factory=list)
+    announced_roster: list[AnnouncedRosterRow] = field(default_factory=list)
     schedule: list[TeamGameRow] = field(default_factory=list)
 
 
@@ -231,7 +262,7 @@ async def get_team_season(
                 te.id,
                 te.raw_team_name,
                 te.nba_stats_team_id,
-                comp.id,
+                comp.id.label("competition_id"),  # type: ignore[union-attr]
                 NbaTeam.slug.label("franchise_slug"),  # type: ignore[attr-defined]
             )  # type: ignore[call-overload, misc]
             .select_from(te)
@@ -369,6 +400,53 @@ async def get_team_season(
         )
     roster.sort(key=lambda x: x.ppg or 0.0, reverse=True)
 
+    # Announced roster (A4 preview): participation assertions, populated before
+    # any box score exists. CUT slots are excluded; the rest surface with their
+    # current status so the page transitions announced -> confirmed as games tip.
+    part = SummerLeagueParticipation
+    sp = SummerLeagueSourcePlayer
+    announced_rows = (
+        await db.execute(
+            select(
+                part.jersey_number,
+                part.roster_position,
+                part.roster_status,
+                PlayerMaster.slug,
+                PlayerMaster.is_stub,
+                PlayerMaster.display_name,
+                PlayerMaster.reference_image_url,
+                sp.raw_player_name,
+            )  # type: ignore[call-overload, misc]
+            .select_from(part)
+            .join(sp, sp.id == part.source_player_id)
+            .join(PlayerMaster, PlayerMaster.id == part.player_id, isouter=True)
+            .where(
+                # Lead with competition_id so the composite
+                # (competition_id, team_entry_id) index is used, not a seq scan.
+                part.competition_id == header.competition_id,  # type: ignore[arg-type]
+                part.team_entry_id == team_entry_id,  # type: ignore[arg-type]
+                part.roster_status != AffiliationStatus.CUT,  # type: ignore[arg-type]
+            )
+        )
+    ).all()
+
+    announced_roster: list[AnnouncedRosterRow] = []
+    for r in announced_rows:
+        announced_roster.append(
+            AnnouncedRosterRow(
+                # Only fully-resolved players link; stub-created masters (is_stub,
+                # which the insert hook still slugs) render as plain text rather
+                # than a link to a near-empty placeholder page.
+                slug=None if r.is_stub else r.slug,
+                name=r.display_name or r.raw_player_name or "—",
+                jersey=r.jersey_number,
+                position=r.roster_position,
+                status=_enum_str(r.roster_status) or "",
+                headshot_url=r.reference_image_url,
+            )
+        )
+    announced_roster.sort(key=lambda x: (_jersey_sort_key(x.jersey), x.name.lower()))
+
     return TeamSeason(
         year=year,
         venue_slug=venue_slug,
@@ -382,6 +460,7 @@ async def get_team_season(
         logo_url=franchise_logo_url(header.nba_stats_team_id),
         franchise_slug=header.franchise_slug,
         roster=roster,
+        announced_roster=announced_roster,
         schedule=schedule,
     )
 

@@ -15,10 +15,12 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
+    SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
@@ -211,6 +213,185 @@ async def test_team_season_renders_record_and_roster(
 
     missing = await app_client.get("/stats/summer-league/2025/las_vegas/no-such-team")
     assert missing.status_code == 404
+
+
+async def _announce(
+    db: AsyncSession,
+    *,
+    comp_id: int,
+    team_entry_id: int,
+    name: str,
+    person_id: str,
+    jersey: str,
+    position: str,
+    status: AffiliationStatus,
+    canonical: PlayerMaster | None,
+) -> None:
+    """Seed one announced/cut participation row (no game logs)."""
+    sp = SummerLeagueSourcePlayer(
+        nba_stats_person_id=person_id,
+        raw_player_name=name,
+        normalized_name=name.lower(),
+        canonical_player_id=canonical.id if canonical is not None else None,
+    )
+    db.add(sp)
+    await db.flush()
+    db.add(
+        SummerLeagueParticipation(
+            competition_id=comp_id,
+            team_entry_id=team_entry_id,
+            source_player_id=sp.id,
+            player_id=canonical.id if canonical is not None else None,
+            stint_no=1,
+            roster_status=status,
+            jersey_number=jersey,
+            roster_position=position,
+        )
+    )
+    await db.flush()
+
+
+@pytest.mark.asyncio
+async def test_team_season_shows_announced_roster_pre_event(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Before any game, the team page surfaces the announced roster (A4).
+
+    Resolved and stub players both render, ordered by jersey number; CUT slots
+    are excluded; the stats-derived roster stays empty until box scores exist.
+    """
+    _N["i"] += 1
+    comp = SummerLeagueCompetition(
+        year=2026,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2026 las_vegas",
+        starts_on=date(2026, 7, 9),
+        ends_on=date(2026, 7, 19),
+    )
+    db_session.add(comp)
+    await db_session.flush()
+    assert comp.id is not None
+    team = await _team(db_session, comp_id=comp.id, name="Preview Team", abbr="PRV")
+    team_entry_id = team.id
+    assert team_entry_id is not None
+
+    rookie = make_player("Announced", "Rookie", school="Baylor")
+    rookie.reference_image_url = (
+        "https://cdn.nba.com/headshots/nba/latest/1040x760/1640999.png"
+    )
+    db_session.add(rookie)
+    await db_session.flush()
+
+    # A stub-created master (is_stub=True) is still slugged by the insert hook,
+    # but must NOT render as a link to a near-empty placeholder page.
+    stub = PlayerMaster(
+        first_name="Stub",
+        last_name="Prospect",
+        display_name="Stub Prospect",
+        is_stub=True,
+        bio_source="test",
+    )
+    db_session.add(stub)
+    await db_session.flush()
+    assert stub.slug is not None  # the hook slugs it
+
+    # Jersey 7 (resolved) should sort before jersey 23 (stub); CUT is excluded.
+    await _announce(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team_entry_id,
+        name="Announced Rookie",
+        person_id="1640999",
+        jersey="7",
+        position="G",
+        status=AffiliationStatus.ANNOUNCED,
+        canonical=rookie,
+    )
+    await _announce(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team_entry_id,
+        name="Stub Prospect",
+        person_id="1640998",
+        jersey="23",
+        position="F",
+        status=AffiliationStatus.ANNOUNCED,
+        canonical=stub,
+    )
+    # Two-way ("TW") and unnumbered slots exercise the non-numeric / blank
+    # jersey sort branches: numeric first, then non-numeric, then blank.
+    await _announce(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team_entry_id,
+        name="Two Way",
+        person_id="1640996",
+        jersey="TW",
+        position="G",
+        status=AffiliationStatus.ANNOUNCED,
+        canonical=None,
+    )
+    sp_blank = SummerLeagueSourcePlayer(
+        nba_stats_person_id="1640995",
+        raw_player_name="No Number",
+        normalized_name="no number",
+    )
+    db_session.add(sp_blank)
+    await db_session.flush()
+    db_session.add(
+        SummerLeagueParticipation(
+            competition_id=comp.id,
+            team_entry_id=team_entry_id,
+            source_player_id=sp_blank.id,
+            player_id=None,
+            stint_no=1,
+            roster_status=AffiliationStatus.ANNOUNCED,
+            jersey_number=None,
+            roster_position="F",
+        )
+    )
+    await _announce(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team_entry_id,
+        name="Cut Player",
+        person_id="1640997",
+        jersey="0",
+        position="C",
+        status=AffiliationStatus.CUT,
+        canonical=None,
+    )
+    await db_session.commit()
+
+    ts = await get_team_season(db_session, 2026, "las_vegas", team.team_slug)
+    assert ts is not None
+    assert ts.roster == []  # no box scores yet
+    assert [r.name for r in ts.announced_roster] == [
+        "Announced Rookie",
+        "Stub Prospect",
+        "Two Way",
+        "No Number",
+    ]
+    first = ts.announced_roster[0]
+    assert first.slug == rookie.slug
+    assert (first.jersey, first.position, first.status) == ("7", "G", "ANNOUNCED")
+    assert first.headshot_url is not None and first.headshot_url.endswith("1640999.png")
+    # Stub Prospect is a stub master with a real slug, but the DTO clears it so
+    # it never links to a placeholder page.
+    assert ts.announced_roster[1].name == "Stub Prospect"
+    assert ts.announced_roster[1].slug is None
+
+    resp = await app_client.get(f"/stats/summer-league/2026/las_vegas/{team.team_slug}")
+    assert resp.status_code == 200
+    html = resp.text
+    assert "Announced roster" in html
+    assert "Announced Rookie" in html
+    assert "Stub Prospect" in html
+    # The stub's slug must not appear as a player link.
+    assert f'href="/players/{stub.slug}"' not in html
+    assert "Cut Player" not in html
 
 
 @pytest.mark.asyncio

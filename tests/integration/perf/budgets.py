@@ -80,7 +80,9 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/stats/summer-league/leaders": 3,
     "/stats/summer-league/{year}": 7,
     "/stats/summer-league/{year}/{venue}": 7,
-    "/stats/summer-league/{year}/{venue}/{team}": 3,
+    # Header + schedule + stats roster + announced roster (A4 pre-event preview,
+    # one indexed read on summer_league_participation by team_entry_id) = 4.
+    "/stats/summer-league/{year}/{venue}/{team}": 4,
     # Franchise history: header + entries + games + top-performers + career
     # player aggregates = 5 indexed reads.
     "/stats/summer-league/teams/{team}": 5,

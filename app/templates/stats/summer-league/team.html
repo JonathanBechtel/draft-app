@@ -49,6 +49,7 @@
     <div class="stats-scoreboard slg-board">
       <div class="scanlines"></div>
       <div class="slg-tablewrap">
+        {% if team.roster %}
         <table class="sl-stats-table slg-roster">
           <thead>
             <tr>
@@ -72,11 +73,39 @@
               <td>{{ n1(p.fgm) }}</td><td>{{ n1(p.fga) }}</td><td>{{ n1(p.fg3m) }}</td><td>{{ n1(p.fg3a) }}</td><td>{{ n1(p.ftm) }}</td><td>{{ n1(p.fta) }}</td>
               <td>{{ n1(p.fg_pct) }}</td>
             </tr>
-            {% else %}
-            <tr><td colspan="12" class="slg-empty">No roster data.</td></tr>
             {% endfor %}
           </tbody>
         </table>
+        {% elif team.announced_roster %}
+        <p class="slg-roster__note">Announced roster — fills in with stats once games tip off.</p>
+        <table class="sl-stats-table slg-roster slg-roster--announced">
+          <thead>
+            <tr>
+              <th scope="col" class="slg-roster__num">#</th>
+              <th scope="col" class="slg-roster__name">Player</th>
+              <th scope="col">Pos</th>
+              <th scope="col">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in team.announced_roster %}
+            <tr>
+              <td class="slg-roster__num">{{ p.jersey or '—' }}</td>
+              <th scope="row" class="slg-roster__name">
+                {% if p.headshot_url %}<img class="slg-roster__hs" src="{{ p.headshot_url }}" alt="" loading="lazy" width="28" height="28">{% endif %}
+                {% if p.slug %}<a href="/players/{{ p.slug }}">{{ p.name }}</a>{% else %}<span class="slg-bx-name--stub">{{ p.name }}</span>{% endif %}
+              </th>
+              <td>{{ p.position or '—' }}</td>
+              <td><span class="slg-roster__status slg-roster__status--{{ p.status | lower }}">{{ p.status | capitalize }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <table class="sl-stats-table slg-roster">
+          <tbody><tr><td class="slg-empty">No roster data.</td></tr></tbody>
+        </table>
+        {% endif %}
       </div>
     </div>
   </section>

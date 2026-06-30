@@ -592,6 +592,39 @@
 .slg-roster__name a { color: var(--color-slate-900); text-decoration: none; font-weight: 600; }
 .slg-roster__name a:hover { color: var(--color-accent-emerald); text-decoration: underline; }
 
+/* Announced roster (A4 pre-event preview) */
+.slg-roster__note {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-400);
+}
+.slg-roster__num { width: 2.5rem; color: var(--color-slate-400); font-family: var(--font-mono); }
+.slg-roster__hs {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: top center;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+  background: var(--color-slate-100);
+}
+.slg-roster__status {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--color-slate-100);
+  color: var(--color-slate-400);
+}
+.slg-roster__status--announced { background: #fef3c7; color: #92400e; }
+.slg-roster__status--confirmed { background: #d1fae5; color: #065f46; }
+.slg-roster__status--active { background: #d1fae5; color: #065f46; }
+
 /* Schedule result chips */
 .slg-loc { color: var(--color-slate-400); font-family: var(--font-mono); }
 .slg-res {

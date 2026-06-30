@@ -312,13 +312,17 @@ async def _announce_player(
     # A previously-cut player who reappears must reuse the same bridge row to
     # avoid colliding on uq_summer_league_participation_comp_team_source_stint.
     existing_result = await db.execute(
-        select(SummerLeagueParticipation).where(
+        select(SummerLeagueParticipation)
+        .where(
             SummerLeagueParticipation.competition_id == competition_id,  # type: ignore[arg-type]
             SummerLeagueParticipation.team_entry_id == team_entry_id,  # type: ignore[arg-type]
             SummerLeagueParticipation.source_player_id == source_player_id,  # type: ignore[arg-type]
         )
+        # Latest stint wins; ``.first()`` (not ``scalar_one_or_none``) so a future
+        # multi-stint row never raises MultipleResultsFound here.
+        .order_by(SummerLeagueParticipation.stint_no.desc())  # type: ignore[attr-defined]
     )
-    existing = existing_result.scalar_one_or_none()
+    existing = existing_result.scalars().first()
 
     if existing is not None:
         if existing.roster_status == AffiliationStatus.CUT:
