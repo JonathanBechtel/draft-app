@@ -9,7 +9,11 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.player_affiliation import AffiliationStatus
+from app.schemas.player_affiliation import (
+    AffiliationStatus,
+    AffiliationType,
+    PlayerAffiliation,
+)
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueParticipation,
@@ -435,9 +439,10 @@ async def test_normalize_player_game_logs_wires_participation_bridge(
     """Every written game log references a stable participation bridge.
 
     Box-score-discovered players (no pre-event roster entry) get a CONFIRMED
-    participation with no affiliation; re-running normalization reuses the bridge
-    (idempotent, no duplicates); and an existing roster-announced bridge is
-    reused without clobbering its roster_status.
+    participation born canonical — with a matching CONFIRMED affiliation assertion
+    (no orphan affiliation_id=None). Re-running normalization reuses the bridge
+    (idempotent, no duplicate bridges or assertions); and an existing
+    roster-announced bridge is reused without clobbering its roster_status.
     """
     _write_fixture(tmp_path)
     await audit_summer_league_raw(
@@ -484,7 +489,21 @@ async def test_normalize_player_game_logs_wires_participation_bridge(
     # Two written logs (the third row is skipped on team mismatch) → two bridges.
     assert len(participations) == 2
     assert all(p.roster_status == AffiliationStatus.CONFIRMED for p in participations)
-    assert all(p.affiliation_id is None for p in participations)
+    # Born canonical: each box-score bridge carries a real affiliation assertion,
+    # not an orphan affiliation_id=None waiting on a reconcile pass.
+    assert all(p.affiliation_id is not None for p in participations)
+    affiliations = (
+        (await db_session.execute(select(PlayerAffiliation))).scalars().all()
+    )
+    # Idempotent: the two assertions are not re-created on the second run.
+    assert len(affiliations) == 2
+    assert all(
+        a.status == AffiliationStatus.CONFIRMED
+        and a.affiliation_type == AffiliationType.SUMMER_LEAGUE_ROSTER
+        and a.source == "nba_summer_league_box_score"
+        for a in affiliations
+    )
+    assert {p.affiliation_id for p in participations} == {a.id for a in affiliations}
 
     by_source = {p.source_player_id: p for p in participations}
     resolved_log = (

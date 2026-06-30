@@ -12,7 +12,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.nba_teams import NbaTeam as _NbaTeam  # noqa: F401
-from app.schemas.player_affiliation import AffiliationStatus
+from app.schemas.player_affiliation import (
+    AffiliationStatus,
+    AffiliationType,
+    PlayerAffiliation,
+)
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueDataQuality,
@@ -373,6 +377,8 @@ async def normalize_player_game_logs(
     await db.flush()
     games_by_source_id = await _games_by_source_id(db, competition.id)
     teams_by_source_id = await _teams_by_source_id(db, competition.id)
+    participations = await _participations_by_key(db, competition.id)
+    recorded_at = _utc_now_naive()
 
     upserted_logs = 0
     skipped_logs = 0
@@ -408,6 +414,8 @@ async def normalize_player_game_logs(
             team.id,
             source_player,
             box_row,
+            participations=participations,
+            recorded_at=recorded_at,
         )
         upserted_logs += 1
 
@@ -1044,6 +1052,24 @@ async def _teams_by_source_id(
     return {team.nba_stats_team_id: team for team in result.scalars().all()}
 
 
+async def _participations_by_key(
+    db: AsyncSession, competition_id: int
+) -> dict[tuple[int, int], SummerLeagueParticipation]:
+    """Map ``(team_entry_id, source_player_id)`` -> participation for a competition.
+
+    Preloaded once per ingest so the box-row loop does an in-memory lookup instead
+    of a SELECT per row (mirrors ``_games_by_source_id`` / ``_teams_by_source_id``).
+    Ordered ascending by ``stint_no`` so the latest stint wins on collision (today
+    there is exactly one participation per grain).
+    """
+    result = await db.execute(
+        select(SummerLeagueParticipation)
+        .where(SummerLeagueParticipation.competition_id == competition_id)  # type: ignore[arg-type]
+        .order_by(SummerLeagueParticipation.stint_no.asc())  # type: ignore[attr-defined]
+    )
+    return {(p.team_entry_id, p.source_player_id): p for p in result.scalars().all()}
+
+
 async def _upsert_team_game_log(
     db: AsyncSession,
     competition_id: int,
@@ -1130,19 +1156,24 @@ async def _ensure_participation(
     competition_id: int,
     team_entry_id: int,
     source_player: SummerLeagueSourcePlayer,
+    *,
+    cache: dict[tuple[int, int], SummerLeagueParticipation],
+    recorded_at: datetime,
 ) -> SummerLeagueParticipation:
     """Return the stable participation bridge for a (competition, team, player).
 
     Player game logs reference this bridge rather than the raw (player, edition)
-    pair, decoupling the stat layer from roster identity (journey-graph §7b). If
-    roster ingest already announced this player the existing bridge is reused;
-    otherwise the player was discovered straight from a box score — a late add
-    with no pre-event roster entry — and a CONFIRMED participation is created.
+    pair, decoupling the stat layer from roster identity (journey-graph §7b). The
+    bridge is looked up in ``cache`` (preloaded by ``_participations_by_key``), so
+    the box-row loop issues no per-row SELECT.
 
-    The append-only affiliation stream is intentionally left to the roster /
-    reconcile layer: a box-score-discovered bridge carries ``affiliation_id`` =
-    ``None`` until reconciliation (Workstream B2) writes the corroborating
-    assertion. This keeps the normalizer a pure stat-bridge writer.
+    If roster ingest already announced this player the existing bridge is reused.
+    Otherwise the player was discovered straight from a box score — a late add
+    with no pre-event roster entry — and the bridge is born canonical: a
+    ``CONFIRMED`` ``PlayerAffiliation`` assertion (the box score *is* the
+    corroborating evidence) is written alongside the participation so the
+    append-only affiliation stream is complete at birth, with no orphan
+    ``affiliation_id = None`` rows left for a later reconcile pass to heal.
 
     Args:
         db: Async database session.
@@ -1150,41 +1181,52 @@ async def _ensure_participation(
         team_entry_id: PK of the team entry the player appeared for.
         source_player: The resolved (or stub) source-player row; ``id`` must be
             populated.
+        cache: Preloaded ``(team_entry_id, source_player_id)`` -> participation
+            map; a newly-created bridge is added so later rows in the same run
+            reuse it.
+        recorded_at: Timestamp stamped on a newly-written affiliation assertion.
 
     Returns:
         The reused or newly-created ``SummerLeagueParticipation`` row, flushed so
         its ``id`` is available for stamping onto the game log.
     """
     source_player_id: int = source_player.id  # type: ignore[assignment]
-    result = await db.execute(
-        select(SummerLeagueParticipation)
-        .where(
-            SummerLeagueParticipation.competition_id == competition_id,  # type: ignore[arg-type]
-            SummerLeagueParticipation.team_entry_id == team_entry_id,  # type: ignore[arg-type]
-            SummerLeagueParticipation.source_player_id == source_player_id,  # type: ignore[arg-type]
-        )
-        .order_by(SummerLeagueParticipation.stint_no.desc())  # type: ignore[attr-defined]
-    )
-    participation = result.scalars().first()
-    if participation is None:
-        participation = SummerLeagueParticipation(
-            competition_id=competition_id,
-            team_entry_id=team_entry_id,
-            source_player_id=source_player_id,
-            player_id=source_player.canonical_player_id,
-            affiliation_id=None,
-            stint_no=1,
-            roster_status=AffiliationStatus.CONFIRMED,
-        )
-        db.add(participation)
-        await db.flush()
+    key = (team_entry_id, source_player_id)
+    participation = cache.get(key)
+    if participation is not None:
+        # Keep the resolved canonical id in sync as resolution backfills it,
+        # mirroring the game-log player_id behavior. The roster_status and the
+        # announced/confirmed promotion are owned by the roster + reconcile layer
+        # and left untouched here.
+        if participation.player_id != source_player.canonical_player_id:
+            participation.player_id = source_player.canonical_player_id
+            participation.updated_at = _utc_now_naive()
         return participation
-    # Keep the resolved canonical id in sync as resolution backfills it, mirroring
-    # the game-log player_id behavior. Roster status / assertions are owned by the
-    # roster + reconcile layer and left untouched here.
-    if participation.player_id != source_player.canonical_player_id:
-        participation.player_id = source_player.canonical_player_id
-        participation.updated_at = _utc_now_naive()
+
+    affiliation = PlayerAffiliation(
+        player_id=source_player.canonical_player_id,
+        nba_team_id=None,
+        affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
+        status=AffiliationStatus.CONFIRMED,
+        recorded_at=recorded_at,
+        source="nba_summer_league_box_score",
+        source_ref=source_player.nba_stats_person_id,
+    )
+    db.add(affiliation)
+    await db.flush()  # populate affiliation.id
+
+    participation = SummerLeagueParticipation(
+        competition_id=competition_id,
+        team_entry_id=team_entry_id,
+        source_player_id=source_player_id,
+        player_id=source_player.canonical_player_id,
+        affiliation_id=affiliation.id,
+        stint_no=1,
+        roster_status=AffiliationStatus.CONFIRMED,
+    )
+    db.add(participation)
+    await db.flush()
+    cache[key] = participation
     return participation
 
 
@@ -1195,6 +1237,9 @@ async def _upsert_player_game_log(
     team_entry_id: int,
     source_player: SummerLeagueSourcePlayer,
     box_row: ParsedPlayerBoxRow,
+    *,
+    participations: dict[tuple[int, int], SummerLeagueParticipation],
+    recorded_at: datetime,
 ) -> SummerLeaguePlayerGameLog:
     result = await db.execute(
         select(SummerLeaguePlayerGameLog).where(
@@ -1222,7 +1267,12 @@ async def _upsert_player_game_log(
     row.source_player_id = source_player.id
     row.player_id = source_player.canonical_player_id
     participation = await _ensure_participation(
-        db, competition_id, team_entry_id, source_player
+        db,
+        competition_id,
+        team_entry_id,
+        source_player,
+        cache=participations,
+        recorded_at=recorded_at,
     )
     row.participation_id = participation.id
     row.raw_player_name = box_row.raw_player_name
