@@ -239,6 +239,9 @@ docs/outreach_templates.md
 # X thread drafts (skill output, not for committing)
 scripts/x_threads/drafts/
 
+# Infographic drafts (make-infographic skill output, not for committing)
+scripts/infographics/drafts/
+
 # Local agent / MCP state
 .claude/scheduled_tasks.lock
 .claude/worktrees/
