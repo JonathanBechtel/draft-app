@@ -383,10 +383,38 @@ async def normalize_player_game_logs(
 
     upserted_logs = 0
     skipped_logs = 0
-    # Track player-games written from the per-game boxscores so the season-log
-    # fallback below only fills genuinely-missing rows (and never downgrades a
-    # richer per-game line to the traditional-only season line).
+    # Player-games (source game / person / team ids) the season-log fallback must
+    # not touch: the ones written this run from per-game boxscores, plus any
+    # already persisted for this competition. Seeding with existing rows means the
+    # fallback only inserts genuinely-missing player-games and never downgrades an
+    # existing (possibly richer, per-game-sourced) line to the traditional-only
+    # season line — even if the per-game snapshots are absent on this run.
     covered: set[tuple[str, str, str]] = set()
+    existing_keys = await db.execute(
+        select(  # type: ignore[call-overload]
+            SummerLeagueGame.nba_stats_game_id,
+            SummerLeagueSourcePlayer.nba_stats_person_id,
+            SummerLeagueTeamEntry.nba_stats_team_id,
+        )
+        .select_from(SummerLeaguePlayerGameLog)
+        .join(
+            SummerLeagueGame,
+            SummerLeagueGame.id == SummerLeaguePlayerGameLog.game_id,  # type: ignore[arg-type]
+        )
+        .join(
+            SummerLeagueSourcePlayer,
+            SummerLeagueSourcePlayer.id  # type: ignore[arg-type]
+            == SummerLeaguePlayerGameLog.source_player_id,
+        )
+        .join(
+            SummerLeagueTeamEntry,
+            SummerLeagueTeamEntry.id  # type: ignore[arg-type]
+            == SummerLeaguePlayerGameLog.team_entry_id,
+        )
+        .where(SummerLeaguePlayerGameLog.competition_id == competition_id)  # type: ignore[arg-type]
+    )
+    for game_key, person_key, team_key in existing_keys.all():
+        covered.add((game_key, person_key, team_key))
 
     async def _process_box_row(box_row: ParsedPlayerBoxRow) -> None:
         nonlocal upserted_logs, skipped_logs
