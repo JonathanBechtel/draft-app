@@ -20,12 +20,19 @@ Synchronous Usage:
     # Dry run to preview and estimate costs
     python scripts/generate_player_images.py --all --dry-run
 
+    # Generate for the Summer League rostered cohort, missing images only
+    python scripts/generate_player_images.py --summer-league --summer-league-year 2025 --missing-only
+
 Batch Usage (50% cost reduction, async processing within 24 hours):
     # Submit batch job for 2025 draft class
     python scripts/generate_player_images.py --season 2024-25 --batch submit
 
     # Submit batch for players missing images only
     python scripts/generate_player_images.py --season 2024-25 --missing-only --batch submit
+
+    # Submit batch for the Summer League rostered cohort, missing images only
+    python scripts/generate_player_images.py --summer-league --summer-league-year 2025 \
+        --missing-only --batch submit
 
     # Check batch job status
     python scripts/generate_player_images.py --batch status --job-id batches/abc123
@@ -65,6 +72,7 @@ from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.seasons import Season
 from app.services.image_generation import image_generation_service
+from app.services.summer_league.cohort import summer_league_cohort
 from app.utils.db_async import SessionLocal
 
 logging.basicConfig(
@@ -193,6 +201,52 @@ async def get_players_for_season(
     return list(result.scalars().all())
 
 
+async def get_summer_league_cohort_players(
+    db: AsyncSession,
+    *,
+    year: Optional[int] = None,
+    league_id: Optional[str] = None,
+    venue_slug: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+) -> list[PlayerMaster]:
+    """Fetch resolved players in the Summer League rostered cohort (T0 selector).
+
+    Delegates scope resolution to `summer_league_cohort`
+    (`app/services/summer_league/cohort.py`); only source players resolved to
+    a canonical `player_id` are eligible for image generation.
+
+    Args:
+        db: Database session.
+        year: Optional competition year filter.
+        league_id: Optional NBA.com `LeagueID` filter.
+        venue_slug: Optional venue slug filter.
+        limit: Maximum number of players.
+        offset: Number of players to skip.
+
+    Returns:
+        List of PlayerMaster records in the cohort, ordered by display name.
+    """
+    cohort_result = await summer_league_cohort(
+        db, year=year, league_id=league_id, venue_slug=venue_slug
+    )
+    if not cohort_result.player_ids:
+        return []
+
+    stmt = (
+        select(PlayerMaster)
+        .where(PlayerMaster.id.in_(cohort_result.player_ids))  # type: ignore[union-attr]
+        .order_by(PlayerMaster.display_name, PlayerMaster.id)
+    )
+    if offset:
+        stmt = stmt.offset(offset)
+    if limit:
+        stmt = stmt.limit(limit)
+
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def get_players(
     db: AsyncSession,
     player_id: Optional[int] = None,
@@ -200,6 +254,10 @@ async def get_players(
     cohort: Optional[CohortType] = None,
     draft_year: Optional[int] = None,
     season: Optional[str] = None,
+    summer_league: bool = False,
+    summer_league_year: Optional[int] = None,
+    summer_league_league_id: Optional[str] = None,
+    summer_league_venue_slug: Optional[str] = None,
     limit: Optional[int] = None,
     offset: Optional[int] = None,
 ) -> list[PlayerMaster]:
@@ -212,12 +270,28 @@ async def get_players(
         cohort: Filter by cohort type
         draft_year: Filter by draft year
         season: Filter by season code (uses current_draft metric snapshots)
+        summer_league: If True, target the Summer League rostered cohort (T0
+            selector) instead of the standard cohort/draft-year filters.
+        summer_league_year: Optional competition year to scope the SL cohort.
+        summer_league_league_id: Optional NBA.com `LeagueID` to scope the SL
+            cohort.
+        summer_league_venue_slug: Optional venue slug to scope the SL cohort.
         limit: Maximum number of players
         offset: Number of players to skip
 
     Returns:
         List of PlayerMaster records
     """
+    if summer_league:
+        return await get_summer_league_cohort_players(
+            db,
+            year=summer_league_year,
+            league_id=summer_league_league_id,
+            venue_slug=summer_league_venue_slug,
+            limit=limit,
+            offset=offset,
+        )
+
     if season:
         return await get_players_for_season(
             db, season_code=season, limit=limit, offset=offset
@@ -357,12 +431,13 @@ async def batch_submit(args: argparse.Namespace) -> None:
             args.cohort,
             args.draft_year,
             args.season,
+            args.summer_league,
             args.all,
         ]
     ):
         logger.error(
             "Must specify player selection: --player-id, --player-slug, "
-            "--cohort, --draft-year, --season, or --all"
+            "--cohort, --draft-year, --season, --summer-league, or --all"
         )
         sys.exit(1)
 
@@ -377,7 +452,7 @@ async def batch_submit(args: argparse.Namespace) -> None:
 
     # Generate run key if not provided
     run_key = args.run_key or generate_run_key(
-        cohort.value,
+        "summer_league" if args.summer_league else cohort.value,
         args.style,
         draft_year=args.draft_year,
         season=args.season,
@@ -398,6 +473,10 @@ async def batch_submit(args: argparse.Namespace) -> None:
             cohort=cohort if not args.draft_year else None,
             draft_year=draft_year,
             season=args.season,
+            summer_league=args.summer_league,
+            summer_league_year=args.summer_league_year,
+            summer_league_league_id=args.summer_league_league_id,
+            summer_league_venue_slug=args.summer_league_venue_slug,
             limit=args.limit,
             offset=args.offset,
         )
@@ -698,11 +777,13 @@ async def main(args: argparse.Namespace) -> None:
             args.cohort,
             args.draft_year,
             args.season,
+            args.summer_league,
             args.all,
         ]
     ):
         logger.error(
-            "Must specify --player-id, --player-slug, --cohort, --draft-year, --season, or --all"
+            "Must specify --player-id, --player-slug, --cohort, --draft-year, "
+            "--season, --summer-league, or --all"
         )
         sys.exit(1)
 
@@ -717,7 +798,7 @@ async def main(args: argparse.Namespace) -> None:
 
     # Generate run key if not provided
     run_key = args.run_key or generate_run_key(
-        cohort.value,
+        "summer_league" if args.summer_league else cohort.value,
         args.style,
         draft_year=args.draft_year,
         season=args.season,
@@ -738,6 +819,10 @@ async def main(args: argparse.Namespace) -> None:
             cohort=cohort if not args.draft_year else None,
             draft_year=draft_year,
             season=args.season,
+            summer_league=args.summer_league,
+            summer_league_year=args.summer_league_year,
+            summer_league_league_id=args.summer_league_league_id,
+            summer_league_venue_slug=args.summer_league_venue_slug,
             limit=args.limit,
             offset=args.offset,
         )
@@ -886,6 +971,30 @@ def parse_args() -> argparse.Namespace:
         "--season",
         type=str,
         help="Filter by season code (e.g., 2024-25) using current_draft metric snapshots",
+    )
+    selection.add_argument(
+        "--summer-league",
+        action="store_true",
+        help=(
+            "Target the Summer League rostered cohort "
+            "(app/services/summer_league/cohort.py); scope with "
+            "--summer-league-year/--summer-league-league-id/--summer-league-venue-slug"
+        ),
+    )
+    selection.add_argument(
+        "--summer-league-year",
+        type=int,
+        help="Scope --summer-league to a competition year (e.g., 2025)",
+    )
+    selection.add_argument(
+        "--summer-league-league-id",
+        type=str,
+        help="Scope --summer-league to an NBA.com LeagueID",
+    )
+    selection.add_argument(
+        "--summer-league-venue-slug",
+        type=str,
+        help="Scope --summer-league to a venue slug (e.g., las_vegas)",
     )
     selection.add_argument(
         "--all",

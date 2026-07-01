@@ -24,6 +24,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
+from app.services.summer_league.roster_reconcile import reconcile_competition
 
 GAME_ENDPOINTS = (
     "boxscoretraditionalv2",
@@ -650,6 +651,55 @@ async def validate_referential_integrity(
     return findings
 
 
+async def validate_roster_reconcile(
+    db: AsyncSession,
+    *,
+    slice_: SummerLeagueSlice,
+) -> list[SummerLeagueQAFinding]:
+    """Surface T1 announced-vs-played reconcile counts as accepted warnings.
+
+    These counts are informational, not blocking: an announced player who
+    never appears in a box score (DNP/cut) and a box-score player with no
+    roster-sourced announcement (late-add) are both expected in a live event,
+    per the accepted-warning taxonomy in the backbone runbook.
+    """
+    competition = await _load_competition(db, slice_)
+    if competition is None or competition.id is None:
+        return []
+
+    reconcile_report = await reconcile_competition(db, competition.id)
+    findings: list[SummerLeagueQAFinding] = []
+    if reconcile_report.announced_not_played:
+        findings.append(
+            _finding(
+                SummerLeagueQASeverity.WARNING,
+                "RECONCILE_ANNOUNCED_NOT_PLAYED",
+                "Announced roster participants recorded no box-score appearance.",
+                competition_id=competition.id,
+                count=len(reconcile_report.announced_not_played),
+                source_player_ids=[
+                    entry.source_player_id
+                    for entry in reconcile_report.announced_not_played
+                ],
+            )
+        )
+    if reconcile_report.played_not_announced:
+        findings.append(
+            _finding(
+                SummerLeagueQASeverity.WARNING,
+                "RECONCILE_PLAYED_NOT_ANNOUNCED",
+                "Box-score appearances recorded with no roster-sourced announcement.",
+                competition_id=competition.id,
+                count=len(reconcile_report.played_not_announced),
+                source_player_ids=[
+                    entry.source_player_id
+                    for entry in reconcile_report.played_not_announced
+                ],
+            )
+        )
+    return findings
+
+
 async def capture_summer_league_snapshot(
     db: AsyncSession,
     *,
@@ -713,6 +763,7 @@ async def run_summer_league_backbone_qa(
         report.extend(await validate_normalization_parity(db, slice_=slice_))
         report.extend(await validate_player_resolution(db, slice_=slice_))
         report.extend(await validate_referential_integrity(db, slice_=slice_))
+        report.extend(await validate_roster_reconcile(db, slice_=slice_))
     report.extend(await validate_historical_data_quality(db, slices=slices))
     return report
 

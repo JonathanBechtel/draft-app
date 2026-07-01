@@ -279,6 +279,46 @@ async def _load_active_participations(
     return {row.source_player_id: row for row in result.scalars().all()}
 
 
+async def _fetch_affiliation(
+    db: AsyncSession, affiliation_id: Optional[int]
+) -> Optional[PlayerAffiliation]:
+    """Return the ``PlayerAffiliation`` with ``affiliation_id``, or ``None``.
+
+    ``None`` is returned when ``affiliation_id`` is ``None`` or no matching row
+    exists (which may be a row created earlier in this session or a prior commit).
+    """
+    if affiliation_id is None:
+        return None
+    result = await db.execute(
+        select(PlayerAffiliation).where(
+            PlayerAffiliation.id == affiliation_id  # type: ignore[arg-type]
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def _supersede_affiliation(
+    db: AsyncSession,
+    prior: Optional[PlayerAffiliation],
+    new_affiliation: PlayerAffiliation,
+    recorded_at: datetime,
+) -> None:
+    """Append the superseding assertion and stamp the prior row (append-only).
+
+    Adds and flushes ``new_affiliation`` (populating its ``id``), then stamps
+    ``prior``'s ``superseded_at``/``updated_at`` timestamps — identity fields on
+    the prior row are never mutated, preserving the append-only contract shared
+    by reactivation, cut, and box-score healing. Callers are responsible for
+    building ``new_affiliation`` (including ``supersedes_id``) and for any
+    participation-bridge updates afterward.
+    """
+    db.add(new_affiliation)
+    await db.flush()  # populate new_affiliation.id
+    if prior is not None:
+        prior.superseded_at = recorded_at
+        prior.updated_at = _utc_now()
+
+
 async def _announce_player(
     db: AsyncSession,
     competition_id: int,
@@ -328,14 +368,7 @@ async def _announce_player(
         if existing.roster_status == AffiliationStatus.CUT:
             # Reactivation: supersede the CUT assertion with a fresh ANNOUNCED one.
             prior_id: Optional[int] = existing.affiliation_id
-            prior_affiliation: Optional[PlayerAffiliation] = None
-            if prior_id is not None:
-                prior_result = await db.execute(
-                    select(PlayerAffiliation).where(
-                        PlayerAffiliation.id == prior_id  # type: ignore[arg-type]
-                    )
-                )
-                prior_affiliation = prior_result.scalar_one_or_none()
+            prior_affiliation = await _fetch_affiliation(db, prior_id)
 
             new_affiliation = PlayerAffiliation(
                 player_id=prior_affiliation.player_id if prior_affiliation else None,
@@ -351,13 +384,9 @@ async def _announce_player(
                     f"{entry.league_id}/{entry.team_id}/{entry.nba_stats_person_id}"
                 ),
             )
-            db.add(new_affiliation)
-            await db.flush()  # populate new_affiliation.id
-
-            # Stamp the prior CUT row as superseded (timestamp only — identity untouched).
-            if prior_affiliation is not None:
-                prior_affiliation.superseded_at = recorded_at
-                prior_affiliation.updated_at = _utc_now()
+            await _supersede_affiliation(
+                db, prior_affiliation, new_affiliation, recorded_at
+            )
 
             # Update the stable bridge (bridge is not an assertion; mutation is OK).
             existing.affiliation_id = new_affiliation.id
@@ -396,6 +425,62 @@ async def _announce_player(
     return participation
 
 
+async def _heal_box_score_first_affiliation(
+    db: AsyncSession,
+    participation: SummerLeagueParticipation,
+    entry: RosterEntry,
+    recorded_at: datetime,
+) -> None:
+    """Append an ANNOUNCED assertion for a participation discovered via a box score.
+
+    A player who appears in a box score before ever being named on a roster
+    pull is born with a ``CONFIRMED`` ``nba_summer_league_box_score`` assertion
+    (see ``normalization._ensure_participation``). Once a later roster snapshot
+    lists that same player, the announced-roster assertion history is
+    incomplete unless this is recorded too. Mirrors the CUT-reactivation
+    supersede pattern in ``_announce_player``: a new ANNOUNCED
+    ``nba_summer_league_roster`` assertion is appended with ``supersedes_id``
+    pointing at the box-score row, and the box-score row is stamped
+    ``superseded_at`` — retained, never deleted.
+
+    Does not touch ``participation.roster_status``: box-score corroboration
+    (``CONFIRMED``) is stronger evidence than a bare roster announcement, so
+    the roster-status promotion semantics are left untouched (owned
+    elsewhere). A no-op if the participation's current affiliation is not
+    box-score-sourced, which also makes this idempotent across re-loads (the
+    healed affiliation's source is ``nba_summer_league_roster``, so a
+    subsequent call finds nothing to heal).
+
+    Args:
+        db: Async database session.
+        participation: The active participation row to check/heal.
+        entry: Parsed roster entry supplying source_ref fields.
+        recorded_at: Timestamp to stamp on the new assertion.
+    """
+    prior_id: Optional[int] = participation.affiliation_id
+    prior_affiliation = await _fetch_affiliation(db, prior_id)
+    if prior_affiliation is None:
+        return
+    if prior_affiliation.source != "nba_summer_league_box_score":
+        return
+
+    new_affiliation = PlayerAffiliation(
+        player_id=prior_affiliation.player_id,
+        nba_team_id=prior_affiliation.nba_team_id,
+        affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
+        status=AffiliationStatus.ANNOUNCED,
+        recorded_at=recorded_at,
+        supersedes_id=prior_id,
+        source="nba_summer_league_roster",
+        source_ref=(f"{entry.league_id}/{entry.team_id}/{entry.nba_stats_person_id}"),
+    )
+    await _supersede_affiliation(db, prior_affiliation, new_affiliation, recorded_at)
+
+    # Update the stable bridge to point at the latest assertion in the chain.
+    participation.affiliation_id = new_affiliation.id
+    participation.updated_at = _utc_now()
+
+
 async def _cut_player(
     db: AsyncSession,
     participation: SummerLeagueParticipation,
@@ -414,14 +499,7 @@ async def _cut_player(
     prior_id: Optional[int] = participation.affiliation_id
 
     # Fetch the prior assertion (may be from this session or a prior commit).
-    prior_affiliation: Optional[PlayerAffiliation] = None
-    if prior_id is not None:
-        prior_result = await db.execute(
-            select(PlayerAffiliation).where(
-                PlayerAffiliation.id == prior_id  # type: ignore[arg-type]
-            )
-        )
-        prior_affiliation = prior_result.scalar_one_or_none()
+    prior_affiliation = await _fetch_affiliation(db, prior_id)
 
     # Insert the superseding CUT assertion (append-only — never overwrite).
     cut_affiliation = PlayerAffiliation(
@@ -434,13 +512,7 @@ async def _cut_player(
         source="nba_summer_league_roster",
         source_ref=prior_affiliation.source_ref if prior_affiliation else None,
     )
-    db.add(cut_affiliation)
-    await db.flush()  # populate cut_affiliation.id
-
-    # Stamp the prior row as superseded (timestamp only — identity untouched).
-    if prior_affiliation is not None:
-        prior_affiliation.superseded_at = recorded_at
-        prior_affiliation.updated_at = _utc_now()
+    await _supersede_affiliation(db, prior_affiliation, cut_affiliation, recorded_at)
 
     # Update the stable bridge (participation is NOT an assertion, mutation is OK).
     participation.affiliation_id = cut_affiliation.id
@@ -575,6 +647,9 @@ async def load_roster_snapshot(
 
         # 4e. Handle unchanged: update source-player metadata; refresh denormalized
         # convenience fields on the bridge if jersey/position changed (no new assertion).
+        # Also heal box-score-first participations (discovered from a game before
+        # being announced) by appending a superseding ANNOUNCED assertion so the
+        # announced-roster history is complete.
         for person_id in unchanged_ids:
             entry = incoming_by_person_id[person_id]
             await _upsert_roster_source_player(db, entry, competition.year)
@@ -586,6 +661,9 @@ async def load_roster_snapshot(
                 participation.jersey_number = entry.jersey
                 participation.roster_position = entry.position
                 participation.updated_at = _utc_now()
+            await _heal_box_score_first_affiliation(
+                db, participation, entry, recorded_at
+            )
             team_diff.unchanged += 1
 
         # 4f. Handle cuts: new CUT assertion superseding the prior.

@@ -627,6 +627,13 @@ async def test_validators_handle_missing_slice_rows(
         )
         == []
     )
+    assert (
+        await service.validate_roster_reconcile(
+            object(),  # type: ignore[arg-type]
+            slice_=qa_slice,
+        )
+        == []
+    )
 
 
 @pytest.mark.asyncio
@@ -684,6 +691,7 @@ async def test_snapshot_and_qa_runner_delegate_to_count_and_validator_helpers(
     monkeypatch.setattr(
         service, "validate_referential_integrity", empty_slice_validator
     )
+    monkeypatch.setattr(service, "validate_roster_reconcile", empty_slice_validator)
     monkeypatch.setattr(
         service, "validate_historical_data_quality", empty_slices_validator
     )

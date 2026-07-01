@@ -40,6 +40,9 @@ from app.schemas.summer_league import (
 )
 from app.services.summer_league.roster_ingest import (
     CompetitionKey,
+    _upsert_roster_competition,
+    _upsert_roster_source_player,
+    _upsert_roster_team_entry,
     load_roster_snapshot,
 )
 from app.services.summer_league.roster_parse import RosterEntry
@@ -88,9 +91,7 @@ def _entry(person_id: str, team_id: str = TEAM_A) -> RosterEntry:
 
 async def _aff_count(db: AsyncSession) -> int:
     """Return total PlayerAffiliation row count."""
-    result = await db.execute(
-        select(func.count()).select_from(PlayerAffiliation)
-    )
+    result = await db.execute(select(func.count()).select_from(PlayerAffiliation))
     return int(result.scalar() or 0)
 
 
@@ -108,6 +109,66 @@ async def _sp_count(db: AsyncSession) -> int:
         select(func.count()).select_from(SummerLeagueSourcePlayer)
     )
     return int(result.scalar() or 0)
+
+
+async def _seed_box_score_first_participation(
+    db: AsyncSession,
+    person_id: str,
+    team_id: str,
+    recorded_at: datetime,
+) -> SummerLeagueParticipation:
+    """Hand-seed a box-score-first participation, mirroring the normalization path.
+
+    Reproduces ``normalization._ensure_participation``'s "born canonical" branch:
+    a ``CONFIRMED`` ``player_affiliations`` row sourced from
+    ``nba_summer_league_box_score`` plus a ``SummerLeagueParticipation`` bridge
+    row pointing at it, with no prior ``ANNOUNCED`` roster assertion. Assumes the
+    competition/team rows already exist (e.g. from a prior ``load_roster_snapshot``
+    call for another player on the same team).
+
+    Args:
+        db: Async database session.
+        person_id: NBA Stats person ID for the box-score-discovered player.
+        team_id: NBA Stats team ID the player appeared for.
+        recorded_at: Timestamp to stamp on the seeded CONFIRMED assertion.
+
+    Returns:
+        The seeded ``SummerLeagueParticipation`` row (flushed, with a PK).
+    """
+    competition_row = await _upsert_roster_competition(db, COMPETITION)
+    await db.flush()
+    competition_id: int = competition_row.id  # type: ignore[assignment]
+    team_row = await _upsert_roster_team_entry(db, competition_id, team_id)
+    await db.flush()
+    source_player = await _upsert_roster_source_player(
+        db, _entry(person_id, team_id), COMPETITION.year
+    )
+    await db.flush()
+
+    box_score_affiliation = PlayerAffiliation(
+        player_id=None,
+        nba_team_id=None,
+        affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
+        status=AffiliationStatus.CONFIRMED,
+        recorded_at=recorded_at,
+        source="nba_summer_league_box_score",
+        source_ref=source_player.nba_stats_person_id,
+    )
+    db.add(box_score_affiliation)
+    await db.flush()
+
+    participation = SummerLeagueParticipation(
+        competition_id=competition_id,
+        team_entry_id=team_row.id,
+        source_player_id=source_player.id,
+        player_id=None,
+        affiliation_id=box_score_affiliation.id,
+        stint_no=1,
+        roster_status=AffiliationStatus.CONFIRMED,
+    )
+    db.add(participation)
+    await db.flush()
+    return participation
 
 
 # ---------------------------------------------------------------------------
@@ -135,9 +196,7 @@ async def test_first_load(db_session: AsyncSession) -> None:
     assert await _aff_count(db_session) == 2
     assert await _part_count(db_session) == 2
 
-    aff_rows = (
-        await db_session.execute(select(PlayerAffiliation))
-    ).scalars().all()
+    aff_rows = (await db_session.execute(select(PlayerAffiliation))).scalars().all()
     for aff in aff_rows:
         assert aff.status == AffiliationStatus.ANNOUNCED
         assert aff.affiliation_type == AffiliationType.SUMMER_LEAGUE_ROSTER
@@ -203,12 +262,16 @@ async def test_late_add(db_session: AsyncSession) -> None:
 
     # The newly created assertion is for P3, stamped at T1.
     new_affs = (
-        await db_session.execute(
-            select(PlayerAffiliation).where(
-                PlayerAffiliation.recorded_at == T1,  # type: ignore[arg-type]
+        (
+            await db_session.execute(
+                select(PlayerAffiliation).where(
+                    PlayerAffiliation.recorded_at == T1,  # type: ignore[arg-type]
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(new_affs) == 1
     assert new_affs[0].status == AffiliationStatus.ANNOUNCED
     assert new_affs[0].supersedes_id is None
@@ -250,9 +313,7 @@ async def test_drop_supersedes_not_deletes(db_session: AsyncSession) -> None:
     # Participation rows are never deleted (still 2).
     assert await _part_count(db_session) == 2
 
-    all_affs = (
-        await db_session.execute(select(PlayerAffiliation))
-    ).scalars().all()
+    all_affs = (await db_session.execute(select(PlayerAffiliation))).scalars().all()
     announced = [a for a in all_affs if a.status == AffiliationStatus.ANNOUNCED]
     cut_affs = [a for a in all_affs if a.status == AffiliationStatus.CUT]
 
@@ -269,13 +330,17 @@ async def test_drop_supersedes_not_deletes(db_session: AsyncSession) -> None:
 
     # The participation for P2 must now be CUT.
     cut_parts = (
-        await db_session.execute(
-            select(SummerLeagueParticipation).where(
-                SummerLeagueParticipation.roster_status  # type: ignore[arg-type]
-                == AffiliationStatus.CUT
+        (
+            await db_session.execute(
+                select(SummerLeagueParticipation).where(
+                    SummerLeagueParticipation.roster_status  # type: ignore[arg-type]
+                    == AffiliationStatus.CUT
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(cut_parts) == 1
 
     assert report.added == 0
@@ -321,19 +386,23 @@ async def test_history_reconstruction(db_session: AsyncSession) -> None:
         (``"{league_id}/{team_id}/{person_id}"``), which the CUT row also carries.
         """
         rows = (
-            await db_session.execute(
-                select(PlayerAffiliation).where(
-                    PlayerAffiliation.affiliation_type  # type: ignore[arg-type]
-                    == AffiliationType.SUMMER_LEAGUE_ROSTER,
-                    PlayerAffiliation.status != AffiliationStatus.CUT,  # type: ignore[arg-type]
-                    PlayerAffiliation.recorded_at <= at,  # type: ignore[arg-type]
-                    or_(
-                        PlayerAffiliation.superseded_at.is_(None),  # type: ignore[union-attr]
-                        PlayerAffiliation.superseded_at > at,  # type: ignore[arg-type,operator]
-                    ),
+            (
+                await db_session.execute(
+                    select(PlayerAffiliation).where(
+                        PlayerAffiliation.affiliation_type  # type: ignore[arg-type]
+                        == AffiliationType.SUMMER_LEAGUE_ROSTER,
+                        PlayerAffiliation.status != AffiliationStatus.CUT,  # type: ignore[arg-type]
+                        PlayerAffiliation.recorded_at <= at,  # type: ignore[arg-type]
+                        or_(
+                            PlayerAffiliation.superseded_at.is_(None),  # type: ignore[union-attr]
+                            PlayerAffiliation.superseded_at > at,  # type: ignore[arg-type,operator]
+                        ),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return {(aff.source_ref or "").rsplit("/", 1)[-1] for aff in rows}
 
     # P1 and P2 were both announced at T0; P2 not yet superseded at T0.
@@ -372,9 +441,7 @@ async def test_diff_report(db_session: AsyncSession) -> None:
 
     # Second load: drop P1 from Team A, add P4 to Team A; Team B unchanged.
     v2 = [_entry("P2", TEAM_A), _entry("P4", TEAM_A), _entry("P3", TEAM_B)]
-    report2 = await load_roster_snapshot(
-        db_session, COMPETITION, v2, recorded_at=T1
-    )
+    report2 = await load_roster_snapshot(db_session, COMPETITION, v2, recorded_at=T1)
     await db_session.commit()
 
     assert report2.per_team[TEAM_A].added == 1
@@ -426,8 +493,8 @@ async def test_empty_team_cuts_all_players(db_session: AsyncSession) -> None:
 
     # All participation rows are now CUT.
     parts = (
-        await db_session.execute(select(SummerLeagueParticipation))
-    ).scalars().all()
+        (await db_session.execute(select(SummerLeagueParticipation))).scalars().all()
+    )
     assert all(p.roster_status == AffiliationStatus.CUT for p in parts)
 
     assert report.added == 0
@@ -466,16 +533,20 @@ async def test_readd_after_cut_reactivates(db_session: AsyncSession) -> None:
     # Three assertions: ANNOUNCED → CUT → ANNOUNCED.
     assert await _aff_count(db_session) == 3
 
-    part = (
-        await db_session.execute(select(SummerLeagueParticipation))
-    ).scalar_one()
+    part = (await db_session.execute(select(SummerLeagueParticipation))).scalar_one()
     assert part.roster_status == AffiliationStatus.ANNOUNCED
 
     all_affs = (
-        await db_session.execute(
-            select(PlayerAffiliation).order_by(PlayerAffiliation.id)
+        (
+            await db_session.execute(
+                select(PlayerAffiliation).order_by(
+                    PlayerAffiliation.id  # type: ignore[arg-type]
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     aff_t0, aff_cut, aff_t2 = all_affs
 
     assert aff_t0.status == AffiliationStatus.ANNOUNCED
@@ -534,7 +605,142 @@ async def test_unchanged_refreshes_metadata(db_session: AsyncSession) -> None:
     assert await _aff_count(db_session) == 1
     assert await _part_count(db_session) == 1
 
-    part = (
-        await db_session.execute(select(SummerLeagueParticipation))
-    ).scalar_one()
+    part = (await db_session.execute(select(SummerLeagueParticipation))).scalar_one()
     assert part.jersey_number == "10"
+
+
+@pytest.mark.asyncio
+async def test_heal_box_score_first_gains_announced_assertion(
+    db_session: AsyncSession,
+) -> None:
+    """A box-score-first participation gains an ANNOUNCED assertion on later load.
+
+    Scenario: P2 is discovered box-score-first (CONFIRMED, ``nba_summer_league_box_score``
+    source, no prior ANNOUNCED row) alongside a normally-announced P1. A roster
+    snapshot listing both P1 and P2 is then loaded.
+
+    Asserts:
+    - The box-score assertion is retained (not deleted) with ``superseded_at`` set.
+    - A new ANNOUNCED ``nba_summer_league_roster`` assertion is appended, chained
+      via ``supersedes_id`` to the box-score row.
+    - ``roster_status`` stays ``CONFIRMED`` (heal does not touch the promotion
+      semantics owned elsewhere); the bridge's ``affiliation_id`` moves to the
+      new (latest) assertion.
+    - Both players are classified ``unchanged`` (P2 already had an active,
+      non-CUT participation before this load).
+    """
+    # Seed the competition/team via a normal announced player (P1).
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T0)
+    await db_session.commit()
+
+    # Hand-seed P2 as box-score-first.
+    seeded = await _seed_box_score_first_participation(db_session, "P2", TEAM_A, T0)
+    box_score_aff_id = seeded.affiliation_id
+    await db_session.commit()
+
+    report = await load_roster_snapshot(
+        db_session, COMPETITION, [_entry("P1"), _entry("P2")], recorded_at=T1
+    )
+    await db_session.commit()
+
+    # 1 (P1 ANNOUNCED) + 1 (P2 box_score, now superseded) + 1 (P2 healed ANNOUNCED) = 3.
+    assert await _aff_count(db_session) == 3
+    assert await _part_count(db_session) == 2
+
+    all_affs = (await db_session.execute(select(PlayerAffiliation))).scalars().all()
+
+    box_aff = next(a for a in all_affs if a.id == box_score_aff_id)
+    assert box_aff.source == "nba_summer_league_box_score"
+    assert box_aff.status == AffiliationStatus.CONFIRMED
+    assert box_aff.superseded_at == T1
+
+    healed = next(a for a in all_affs if a.supersedes_id == box_score_aff_id)
+    assert healed.status == AffiliationStatus.ANNOUNCED
+    assert healed.source == "nba_summer_league_roster"
+    assert healed.superseded_at is None
+
+    part = (
+        await db_session.execute(
+            select(SummerLeagueParticipation).where(
+                SummerLeagueParticipation.source_player_id  # type: ignore[arg-type]
+                == seeded.source_player_id
+            )
+        )
+    ).scalar_one()
+    assert part.roster_status == AffiliationStatus.CONFIRMED
+    assert part.affiliation_id == healed.id
+
+    assert report.added == 0
+    assert report.unchanged == 2
+    assert report.cut == 0
+
+
+@pytest.mark.asyncio
+async def test_heal_is_idempotent_across_reloads(db_session: AsyncSession) -> None:
+    """Re-loading the same snapshot after a heal creates no duplicate assertion.
+
+    Sequence: seed a box-score-first participation, load a snapshot that heals
+    it, then reload the identical snapshot again.
+
+    Asserts:
+    - Affiliation and participation row counts are unchanged after the second load.
+    - Exactly one ANNOUNCED assertion supersedes the box-score row (no duplicate).
+    """
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T0)
+    await db_session.commit()
+
+    seeded = await _seed_box_score_first_participation(db_session, "P2", TEAM_A, T0)
+    box_score_aff_id = seeded.affiliation_id
+    await db_session.commit()
+
+    entries = [_entry("P1"), _entry("P2")]
+
+    await load_roster_snapshot(db_session, COMPETITION, entries, recorded_at=T1)
+    await db_session.commit()
+
+    aff_count_after_heal = await _aff_count(db_session)
+    part_count_after_heal = await _part_count(db_session)
+
+    # Reload the identical snapshot.
+    T2 = T1 + timedelta(days=1)
+    report = await load_roster_snapshot(
+        db_session, COMPETITION, entries, recorded_at=T2
+    )
+    await db_session.commit()
+
+    assert await _aff_count(db_session) == aff_count_after_heal
+    assert await _part_count(db_session) == part_count_after_heal
+
+    all_affs = (await db_session.execute(select(PlayerAffiliation))).scalars().all()
+    healed_affs = [a for a in all_affs if a.supersedes_id == box_score_aff_id]
+    assert len(healed_affs) == 1
+
+    assert report.added == 0
+    assert report.unchanged == 2
+    assert report.cut == 0
+
+
+@pytest.mark.asyncio
+async def test_heal_does_not_affect_normal_announced_players(
+    db_session: AsyncSession,
+) -> None:
+    """Normal announced-only players are unaffected by the box-score heal branch.
+
+    Scenario: P1 is announced normally (no box-score-first participation exists
+    for anyone) and its snapshot is reloaded unchanged.
+
+    Asserts:
+    - No extra affiliation rows are written by the heal branch.
+    - The sole affiliation for P1 remains the original ANNOUNCED row, unsuperseded.
+    """
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T0)
+    await db_session.commit()
+
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T1)
+    await db_session.commit()
+
+    assert await _aff_count(db_session) == 1
+    aff = (await db_session.execute(select(PlayerAffiliation))).scalar_one()
+    assert aff.status == AffiliationStatus.ANNOUNCED
+    assert aff.source == "nba_summer_league_roster"
+    assert aff.superseded_at is None

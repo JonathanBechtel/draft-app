@@ -267,6 +267,86 @@ def test_partial_failure_continues(tmp_path: Path) -> None:
     assert warriors.error is None
 
 
+def test_player_count_dedupes_person_appearing_on_two_team_subpages(
+    tmp_path: Path,
+) -> None:
+    """A person listed under two team subpages is only counted once.
+
+    Regression for a fetcher bug where the reported ``players=N`` summary
+    summed each team's raw roster length (e.g. 67), double-counting a
+    person who legitimately appears on more than one team's roster page
+    (mid-event trade), while the deduplicated set actually written to the
+    snapshot was smaller (e.g. 53). ``RosterRunResult.player_count`` must
+    equal the number of unique ``nba_stats_person_id`` values present in
+    the written snapshot, not the sum of per-team roster lengths.
+    """
+    landing_html = _load_fixture("landing_las_vegas.html")
+    lakers_html = _load_fixture("team_lakers_populated.html")
+
+    # Celtics roster re-lists Bronny James (id 1641782, already on Lakers)
+    # plus one new player — simulating a mid-event trade/cross-listing.
+    celtics_html = (
+        '<html><body><script id="__NEXT_DATA__" type="application/json">'
+        '{"props":{"pageProps":{"roster":['
+        '{"PLAYER_ID":"1641782","PLAYER":"Bronny James","NUM":"9",'
+        '"POSITION":"G","HEIGHT":"6-2","WEIGHT":"190",'
+        '"BIRTH_DATE":"2004-10-05T00:00:00","SCHOOL":"USC",'
+        '"HOW_ACQUIRED":"Trade","LeagueID":"15","TeamID":"1610612738"},'
+        '{"PLAYER_ID":"1630000","PLAYER":"New Guy","NUM":"5",'
+        '"POSITION":"F","HEIGHT":"6-8","WEIGHT":"220",'
+        '"BIRTH_DATE":"2003-01-01T00:00:00","SCHOOL":"Duke",'
+        '"HOW_ACQUIRED":"Free Agent","LeagueID":"15","TeamID":"1610612738"}'
+        ']}},"page":"x","query":{}}</script></body></html>'
+    )
+    warriors_html = _load_fixture("team_celtics_empty.html")  # empty roster
+
+    def fake_fetch(url: str) -> str:
+        if "/team/1610612747/" in url:  # Lakers
+            return lakers_html
+        if "/team/1610612738/" in url:  # Celtics
+            return celtics_html
+        if "/team/1610612744/" in url:  # Warriors
+            return warriors_html
+        return landing_html
+
+    fetcher = fetch_summer_league_rosters.RosterFetcher(
+        delay_seconds=0.0,
+        sleep=lambda _: None,
+        fetch_fn=fake_fetch,
+    )
+
+    result = fetcher.fetch_run(
+        year=2026,
+        league_id="15",
+        out_dir=tmp_path,
+        dry_run=False,
+        verbose=False,
+    )
+
+    # Raw per-team lengths sum to 4 (2 Lakers + 2 Celtics + 0 Warriors), but
+    # Bronny James is the same person on both Lakers and Celtics rosters.
+    raw_total = sum(t.player_count for t in result.team_results)
+    assert raw_total == 4
+
+    # The reported count dedupes to 3 unique people.
+    assert result.player_count == 3
+
+    # The written snapshot's "player_count" field must match, and must equal
+    # the number of unique nba_stats_person_id values across all team rosters
+    # actually persisted.
+    assert result.snapshot_path is not None
+    snapshot = json.loads(Path(result.snapshot_path).read_text())
+    assert snapshot["player_count"] == 3
+
+    unique_ids_in_snapshot = {
+        player["nba_stats_person_id"]
+        for team in snapshot["teams"]
+        for player in team["players"]
+    }
+    assert len(unique_ids_in_snapshot) == 3
+    assert snapshot["player_count"] == len(unique_ids_in_snapshot)
+
+
 def test_partial_failure_error_count(tmp_path: Path) -> None:
     """error_count reflects only failed teams, not empty rosters."""
     landing_html = _load_fixture("landing_las_vegas.html")
