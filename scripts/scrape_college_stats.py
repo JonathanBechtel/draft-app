@@ -27,8 +27,16 @@ import logging
 import sys
 from pathlib import Path
 
-from app.services.college_stats_service import run_college_stats_sweep
-from app.utils.db_async import SessionLocal, dispose_engine
+# Ensure the co-located repo (this script's own checkout) wins over any
+# editable/site-package install of ``app`` — otherwise a stale install can
+# shadow newer code (e.g. run_college_stats_sweep's sl_cohort kwarg) and raise
+# a confusing TypeError. Mirrors the bootstrap in bbref_bio_scraper.py.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from app.services.college_stats_service import run_college_stats_sweep  # noqa: E402
+from app.utils.db_async import SessionLocal, dispose_engine  # noqa: E402
 
 
 def _build_parser() -> argparse.ArgumentParser:
