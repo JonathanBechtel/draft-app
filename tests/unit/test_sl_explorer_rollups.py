@@ -14,11 +14,14 @@ here rather than real ORM rows — the functions only call ``getattr``).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Optional
 
 import pytest
 
+from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league_explorer_service import (
+    _compute_player_values,
     rollup_additive,
     rollup_rate_composite,
     rollup_recombinable,
@@ -289,24 +292,84 @@ def test_recombinable_ftr() -> None:
 
 
 def test_recombinable_pts_per100() -> None:
-    """pts_per100 = 100 * PTS / (sum(pace*minutes)/40)."""
-    # pace=80 poss/40min, 40 min → 80 poss; pts=20 → 25 pts/100 poss
-    rows = [_box(pts=20, minutes=40.0, pace=80.0)]
+    """pts_per100 = 100 * PTS / (sum(pace*minutes)/48).
+
+    ``pace`` is possessions per 48 minutes (NBA's normalization base, kept even
+    for 40-minute Summer League games), so possessions divide by MINUTES_PER_GAME.
+    """
+    # pace=96 poss/48min, 48 min → 96 poss; pts=24 → 25 pts/100 poss
+    rows = [_box(pts=24, minutes=48.0, pace=96.0)]
     result = rollup_recombinable(rows, "pts_per100")
-    # poss = 80*40/40 = 80; pts_per100 = 20*100/80 = 25.0
+    # poss = 96*48/48 = 96; pts_per100 = 24*100/96 = 25.0
     assert result == pytest.approx(25.0, abs=1e-6)
 
 
 def test_recombinable_pts_per100_pools_combined() -> None:
-    """pts_per100 over two pools sums pts and possession estimates."""
+    """pts_per100 over two pools sums pts and per-48 possession estimates."""
     rows = [
-        _box(pts=20, minutes=40.0, pace=80.0),   # 80 poss
-        _box(pts=15, minutes=30.0, pace=100.0),  # 75 poss
+        _box(pts=20, minutes=40.0, pace=80.0),
+        _box(pts=15, minutes=30.0, pace=100.0),
     ]
-    # Total pts=35, total poss = (80*40 + 100*30)/40 = (3200+3000)/40 = 155
+    # Total pts=35, total poss = (80*40 + 100*30)/48 = (3200+3000)/48 ≈ 129.17
     result = rollup_recombinable(rows, "pts_per100")
-    expected = 100.0 * 35 / 155
+    expected = 100.0 * 35 / ((80 * 40 + 100 * 30) / MINUTES_PER_GAME)
     assert result == pytest.approx(expected, abs=1e-6)
+
+
+def test_all_services_share_possession_base() -> None:
+    """Possessions divide by one shared per-48 base, so the per-100 math can't drift.
+
+    The explorer, leaders, and player-page services must all reference the single
+    ``summer_league.constants.MINUTES_PER_GAME`` — the guard that keeps the
+    pooled Pts/100 column and every per-100 mode in agreement.
+    """
+    from app.services import summer_league_explorer_service as exp
+    from app.services import summer_league_leaders_service as led
+    from app.services import summer_league_stats_service as sts
+
+    assert MINUTES_PER_GAME == 48.0
+    assert exp._MINUTES_PER_GAME is MINUTES_PER_GAME
+    assert led._MINUTES_PER_GAME is MINUTES_PER_GAME
+    assert sts._MINUTES_PER_GAME is MINUTES_PER_GAME
+
+
+def _agg_row(*, pts: int, sec: float, pace_sec: float, gp: int = 1) -> SimpleNamespace:
+    """Aggregated player row shaped for :func:`_compute_player_values`.
+
+    ``sec`` is seconds played; ``pace_sec`` is the pace-weighted seconds
+    (``SUM(pace * minutes_seconds)`` in SQL). Every counting field the mode
+    scaler reads must exist, so default the box components to zero.
+    """
+    fields: dict[str, float] = {
+        c: 0.0
+        for c in (
+            "pts", "reb", "ast", "stl", "blk", "tov", "oreb", "dreb", "pf",
+            "fgm", "fga", "fg3m", "fg3a", "ftm", "fta",
+        )
+    }
+    fields.update(pts=pts, gp=gp, sec=sec, pace_sec=pace_sec, plus_minus=0.0)
+    return SimpleNamespace(**fields)
+
+
+def test_pts_per100_reconciles_recombinable_and_mode_path() -> None:
+    """The pooled Pts/100 column and the per-100 *mode* PTS cell must agree.
+
+    Both recover possessions from the same per-48 pace base (MINUTES_PER_GAME);
+    if either path drifts (e.g. back to a /40 divisor) this equality breaks. A
+    /40-vs-/48 mismatch would differ by ~20%, far beyond the rounding tolerance.
+    """
+    pts, pace, minutes = 20, 95.0, 120.0
+    recombinable = rollup_recombinable([_box(pts=pts, minutes=minutes, pace=pace)], "pts_per100")
+
+    # Mode-scaling path: seconds = minutes*60; pace_sec = pace * minutes_seconds.
+    agg = _agg_row(pts=pts, sec=minutes * 60.0, pace_sec=pace * minutes * 60.0)
+    mode_pts = _compute_player_values(agg, "per_100")["pts"]
+
+    assert recombinable is not None and mode_pts is not None
+    # mode_pts is rounded to 1 decimal; 0.05 absorbs rounding but not a base mismatch.
+    assert recombinable == pytest.approx(mode_pts, abs=0.05)
+    expected = 100.0 * pts / (pace * minutes / MINUTES_PER_GAME)
+    assert recombinable == pytest.approx(expected, abs=1e-6)
 
 
 def test_recombinable_zero_denominator_returns_none() -> None:

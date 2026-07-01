@@ -27,6 +27,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_shotchart_service import (
     get_player_shot_dots,
@@ -73,7 +74,7 @@ _SUM_STATS = _RATE_STATS + (
     "pf",
 )
 
-_MINUTES_PER_GAME = 48.0
+_MINUTES_PER_GAME = MINUTES_PER_GAME
 _RECENT_GAME_LIMIT = 5
 
 

@@ -61,6 +61,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
+from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_games_service import _venue_label
 from app.utils.country import canonical_country, country_variants
@@ -74,7 +75,7 @@ PAGE_SIZE = 50
 MODES = ("per_game", "per_36", "per_100", "totals")
 DEFAULT_MODE = "per_game"
 
-_MINUTES_PER_GAME = 48.0
+_MINUTES_PER_GAME = MINUTES_PER_GAME
 
 
 def _max_plausible_draft_class() -> int:
@@ -878,14 +879,15 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
         # Free-throw rate: FTA per FGA (measures ability to draw fouls).
         return 100.0 * fta / fga if fga else None
     if key == "pts_per100":
-        # Pool possessions as pace (poss/40 min) × minutes / 40.  Summing pace×minutes
-        # across competitions gives a weighted possession estimate, exact to the
-        # accuracy of the underlying pace measurement.
+        # ``pace`` is possessions per 48 minutes (NBA's normalization base, kept even
+        # for 40-minute Summer League games — see summer_league.constants). Summing
+        # pace×minutes across competitions and dividing by MINUTES_PER_GAME gives a
+        # minute-weighted possession estimate consistent with the per-100 mode paths.
         pace_min_sum = sum(
             float(getattr(r, "pace", None) or 0) * float(getattr(r, "minutes", 0) or 0)
             for r in rows
         )
-        poss = pace_min_sum / 40.0
+        poss = pace_min_sum / MINUTES_PER_GAME
         return 100.0 * pts / poss if poss else None
     # Unknown key — callers should only pass recombinable keys from the catalog.
     return None
