@@ -9,6 +9,11 @@
 .slg-metric-filter-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.3rem; }
 .slg-metric-filter-col { min-width: 6rem; }
 .slg-metric-filter-val { width: 5rem; }
+/* Stat filters span the full width of the query-builder grid so their
+   select/select/value rows have room; without this the row overflows its
+   ~8.5rem auto-fit column and the value input lands under the actions cell,
+   intercepting clicks so it can't be focused/typed into. */
+.slg-filter--full { grid-column: 1 / -1; }
 .slg-add-filter-btn { font-size: 0.8rem; background: none; border: 1px solid var(--accent, #4aa8ff); border-radius: 3px; padding: 0.2rem 0.5rem; cursor: pointer; color: var(--accent, #4aa8ff); }
 /* Column-group toggle */
 .slg-col-group-toggle { display: flex; align-items: center; gap: 0.4rem; margin: 0.6rem 0 0.3rem; }
