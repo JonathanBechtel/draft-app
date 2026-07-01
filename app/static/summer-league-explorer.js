@@ -44,6 +44,15 @@
     });
   }
 
+  // Reflect the checked mode radio in the segmented toggle's active styling
+  // (the buttons persist across AJAX swaps, so is-active must be re-synced).
+  function syncModeButtons() {
+    document.querySelectorAll(".slg-mode-btn").forEach(function (lbl) {
+      var input = lbl.querySelector('input[type="radio"]');
+      lbl.classList.toggle("is-active", !!(input && input.checked));
+    });
+  }
+
   function withPartial(url) {
     return url + (url.indexOf("?") === -1 ? "?" : "&") + "partial=1";
   }
@@ -63,8 +72,15 @@
     var params = new URLSearchParams(qi === -1 ? "" : url.slice(qi + 1));
     Array.prototype.forEach.call(form.elements, function (el) {
       if (!el.name || el.type === "submit" || el.type === "button") return;
+      // Radios (mode segmented toggle) select by matching value, not by
+      // overwriting .value — assigning .value to every radio would corrupt them.
+      if (el.type === "radio") {
+        el.checked = params.get(el.name) === el.value;
+        return;
+      }
       el.value = params.has(el.name) ? params.get(el.name) : "";
     });
+    syncModeButtons();
     // Reveal metric filter rows that have data in the URL.
     for (var i = 0; i < 3; i++) {
       var row = document.getElementById("metric-filter-row-" + i);
@@ -124,6 +140,21 @@
     load(form.action + "?" + clean.toString(), true);
   });
 
+  // Mode segmented toggle: switching the view mode re-runs the query immediately
+  // (the checked radio is part of the form, so the submit handler picks it up).
+  var modeToggle = document.querySelector(".slg-mode-toggle");
+  if (modeToggle) {
+    modeToggle.addEventListener("change", function (e) {
+      if (!e.target || e.target.name !== "mode") return;
+      syncModeButtons();
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event("submit", { cancelable: true }));
+      }
+    });
+  }
+
   // Sort headers and pager links live inside the swapped results fragment, so
   // delegate from the persistent ancestor.
   main.addEventListener("click", function (e) {
@@ -178,6 +209,7 @@
   // Apply initial column visibility (all visible by default; respects any
   // server-rendered active state should the server ever pre-collapse groups).
   applyColGroups();
+  syncModeButtons();
 
   // ── Drill-down (expand career row to per-competition breakdown) ────────────
   // Build the drilldown URL from the current window URL (which reflects the
