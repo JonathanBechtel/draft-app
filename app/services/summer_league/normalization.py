@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -534,6 +535,16 @@ async def normalize_shot_events(
         raw_run_id=competition.raw_run_id,
     )
 
+    # Box/season-log lines per game, used to crosswalk legacy shotchartdetail
+    # person-ids onto canonical box person-ids (issue #467). Season log covers
+    # pre-2017 years (empty per-game box); per-game box covers modern years.
+    box_rows_by_game: dict[str, list[ParsedPlayerBoxRow]] = {}
+    for box_row in (
+        *parse_player_gamelog_box_rows(season_dir / "leaguegamelog_player.json"),
+        *parse_player_box_rows(season_dir, game_ids=limited_game_ids),
+    ):
+        box_rows_by_game.setdefault(box_row.game_id, []).append(box_row)
+
     total_upserted = 0
     games_processed = 0
     games_with_shots = 0
@@ -551,6 +562,16 @@ async def normalize_shot_events(
             continue
 
         shot_rows = parse_shot_rows(shot_path)
+
+        game_box_rows = box_rows_by_game.get(nba_game_id, [])
+        crosswalk = build_shot_player_crosswalk(shot_rows, game_box_rows)
+        if crosswalk:
+            box_names = {
+                row.nba_stats_person_id: row.raw_player_name for row in game_box_rows
+            }
+            shot_rows = [
+                _remap_shot_row(shot, crosswalk, box_names) for shot in shot_rows
+            ]
 
         raw_file = raw_files_by_game.get(nba_game_id)
         if raw_file is not None:
@@ -878,6 +899,99 @@ def parse_shot_rows(path: Path) -> list[ParsedShotEvent]:
         if parsed is not None:
             rows.append(parsed)
     return rows
+
+
+def build_shot_player_crosswalk(
+    shot_rows: list[ParsedShotEvent],
+    box_rows: list[ParsedPlayerBoxRow],
+) -> dict[str, str]:
+    """Map legacy shotchartdetail person-ids to canonical box person-ids for a game.
+
+    Pre-2017 ``shotchartdetail`` returns a legacy 5-digit ``PLAYER_ID`` namespace
+    for undrafted players (with ``PLAYER_NAME`` null) that does not match the
+    canonical NBA person-ids carried by the box/season logs. Because a shot's
+    person-id drives which ``SummerLeagueSourcePlayer`` it upserts against, those
+    shots never inherit the box player's canonical id and per-player charts render
+    empty (issue #467).
+
+    We fingerprint every player by their ``(FGA, FGM, 3PA, 3PM)`` line — derivable
+    from both the shot rows and the box rows — and map a legacy shot id to a box
+    id only when that fingerprint is a *bijectively unique* match within the team
+    (exactly one legacy shot player and exactly one box player share it). Ambiguous
+    or unmatched ids are omitted so the shot stays unresolved rather than guessing.
+
+    Args:
+        shot_rows: Parsed shot events for a single game.
+        box_rows: Parsed box/season-log lines for the same game (canonical ids).
+
+    Returns:
+        Mapping of legacy shot ``nba_stats_person_id`` to canonical box
+        ``nba_stats_person_id``. Empty when nothing matches uniquely.
+    """
+    box_person_ids = {row.nba_stats_person_id for row in box_rows}
+
+    box_by_sig: dict[tuple[str, tuple[int, int, int, int]], list[str]] = {}
+    for row in box_rows:
+        box_sig = (row.fga or 0, row.fgm or 0, row.fg3a or 0, row.fg3m or 0)
+        box_by_sig.setdefault((row.nba_stats_team_id, box_sig), []).append(
+            row.nba_stats_person_id
+        )
+
+    shot_agg: dict[tuple[str, str], list[int]] = {}
+    for shot in shot_rows:
+        key = (shot.nba_stats_team_id, shot.nba_stats_person_id)
+        agg = shot_agg.setdefault(key, [0, 0, 0, 0])
+        is_three = bool(shot.shot_type and "3PT" in shot.shot_type)
+        agg[0] += 1
+        if shot.made:
+            agg[1] += 1
+        if is_three:
+            agg[2] += 1
+            if shot.made:
+                agg[3] += 1
+
+    def _sig_key(team_id: str, agg: list[int]) -> tuple[str, tuple[int, int, int, int]]:
+        return team_id, (agg[0], agg[1], agg[2], agg[3])
+
+    # Count shot-side signature occurrences so a collision (two players with the
+    # same line on one team) is treated as ambiguous and skipped.
+    shot_sig_counts: Counter[tuple[str, tuple[int, int, int, int]]] = Counter(
+        _sig_key(team_id, agg)
+        for (team_id, person_id), agg in shot_agg.items()
+        if person_id not in box_person_ids
+    )
+
+    crosswalk: dict[str, str] = {}
+    for (team_id, person_id), agg in shot_agg.items():
+        if person_id in box_person_ids:
+            continue  # already a canonical id — no remap needed
+        sig = _sig_key(team_id, agg)
+        if shot_sig_counts[sig] != 1:
+            continue  # ambiguous on the shot side
+        candidates = box_by_sig.get(sig, [])
+        if len(candidates) == 1:
+            crosswalk[person_id] = candidates[0]
+    return crosswalk
+
+
+def _remap_shot_row(
+    shot: ParsedShotEvent,
+    crosswalk: dict[str, str],
+    box_names: dict[str, str],
+) -> ParsedShotEvent:
+    """Rewrite a shot's legacy person-id to its canonical id via the crosswalk.
+
+    Also adopts the canonical box player's name (the legacy shot row has none),
+    which helps the shared resolver match the reused source player.
+    """
+    canonical_id = crosswalk.get(shot.nba_stats_person_id)
+    if canonical_id is None:
+        return shot
+    return replace(
+        shot,
+        nba_stats_person_id=canonical_id,
+        raw_player_name=box_names.get(canonical_id) or shot.raw_player_name,
+    )
 
 
 def parse_pbp_rows(path: Path) -> list[ParsedPBPEvent]:
