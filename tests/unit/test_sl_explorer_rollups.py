@@ -333,6 +333,27 @@ def test_all_services_share_possession_base() -> None:
     assert sts._MINUTES_PER_GAME is MINUTES_PER_GAME
 
 
+def test_recombinable_pts_per100_extrapolates_partial_pace() -> None:
+    """A competition missing pace has its possessions extrapolated from covered ones.
+
+    Covered comp: 30 min at pace 100 → 62.5 poss. Uncovered comp: 30 min, 90 pts.
+    Extrapolating to all 60 min → 125 poss; 120 pts / 125 poss = 96.0 per-100.
+    (Subset-only would give 48.0; the old full/partial-denominator bug gave 192.0.)
+    """
+    rows = [
+        _box(pts=30, minutes=30.0, pace=100.0),
+        _box(pts=90, minutes=30.0, pace=None),
+    ]
+    result = rollup_recombinable(rows, "pts_per100")
+    assert result == pytest.approx(100.0 * 120 / 125, abs=1e-6)
+
+
+def test_recombinable_pts_per100_all_missing_pace_returns_none() -> None:
+    """With no pace-covered minutes, possessions are unknown → None (not a guess)."""
+    rows = [_box(pts=30, minutes=30.0, pace=None), _box(pts=10, minutes=10.0, pace=None)]
+    assert rollup_recombinable(rows, "pts_per100") is None
+
+
 def _agg_row(*, pts: int, sec: float, pace_sec: float, gp: int = 1) -> SimpleNamespace:
     """Aggregated player row shaped for :func:`_compute_player_values`.
 

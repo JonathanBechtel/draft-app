@@ -853,11 +853,14 @@ async def test_per_100_mode_career_pools_pace_and_flags_partial(
                   venue_slug="las_vegas", gp=2, minutes=30.0, pts=30, pace=100.0)
     await _season(db_session, player=full, comp_id=c2, year=2025,
                   venue_slug="salt_lake_city", gp=2, minutes=30.0, pts=30, pace=100.0)
-    # Partial: one paced competition, one without pace.
+    # Partial: one paced competition (30 min, pace 100 → 62.5 poss), one without
+    # pace but heavier scoring (30 min, 90 pts). Extrapolating possessions to all
+    # 60 min gives 125 poss → 120 pts / 125 poss = 96.0 per-100. (A naive
+    # subset-only calc would give 48.0; the old full/partial bug gave 192.0.)
     await _season(db_session, player=partial, comp_id=c1, year=2024,
                   venue_slug="las_vegas", gp=2, minutes=30.0, pts=30, pace=100.0)
     await _season(db_session, player=partial, comp_id=c2, year=2025,
-                  venue_slug="salt_lake_city", gp=2, minutes=30.0, pts=30, pace=None)
+                  venue_slug="salt_lake_city", gp=2, minutes=30.0, pts=90, pace=None)
     # No pace anywhere → per-100 unavailable.
     await _season(db_session, player=nopace, comp_id=c1, year=2024,
                   venue_slug="las_vegas", gp=2, minutes=30.0, pts=30, pace=None)
@@ -875,7 +878,7 @@ async def test_per_100_mode_career_pools_pace_and_flags_partial(
     # Full coverage: 60 pts / 125 poss = 48.0, exact.
     assert by_name["Full Cover"].values["pts"] == pytest.approx(48.0, abs=0.05)
     assert by_name["Full Cover"].per100_approx is False
-    # Partial: 60 pts pooled over the paced competition's 62.5 poss = 96.0, flagged.
+    # Partial: 120 pts over pace extrapolated to full minutes (125 poss) = 96.0, flagged.
     assert by_name["Partial Cover"].values["pts"] == pytest.approx(96.0, abs=0.05)
     assert by_name["Partial Cover"].per100_approx is True
     # No pace: possessions unknown → None, nothing to flag.
