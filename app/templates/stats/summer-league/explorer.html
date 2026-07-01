@@ -15,6 +15,16 @@
    intercepting clicks so it can't be focused/typed into. */
 .slg-filter--full { grid-column: 1 / -1; }
 .slg-add-filter-btn { font-size: 0.8rem; background: none; border: 1px solid var(--accent, #4aa8ff); border-radius: 3px; padding: 0.2rem 0.5rem; cursor: pointer; color: var(--accent, #4aa8ff); }
+/* Mode segmented toggle (Per game / Per 36 / Per 100 / Totals) */
+.slg-filter--mode { grid-column: 1 / -1; }
+.slg-mode-toggle { display: inline-flex; flex-wrap: wrap; width: fit-content; border: 1px solid var(--color-slate-300, #cbd5e1); border-radius: 6px; overflow: hidden; }
+.slg-mode-btn { font-family: var(--font-mono, monospace); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.45rem 1rem; cursor: pointer; color: var(--color-slate-700, #334155); background: #fff; border-right: 1px solid var(--color-slate-300, #cbd5e1); user-select: none; transition: background 0.15s, color 0.15s; }
+.slg-mode-btn:last-child { border-right: none; }
+.slg-mode-btn:hover:not(.is-active) { background: var(--color-slate-100, #f1f5f9); }
+.slg-mode-btn.is-active { background: var(--color-slate-900, #0f172a); color: #fff; }
+/* Visually-hidden radio; the label is the button. Keep it focusable for a11y. */
+.slg-mode-btn input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; pointer-events: none; }
+.slg-mode-btn:focus-within { outline: 2px solid var(--color-accent-emerald, #10b981); outline-offset: 1px; }
 /* Column-group toggle */
 .slg-col-group-toggle { display: flex; align-items: center; gap: 0.4rem; margin: 0.6rem 0 0.3rem; }
 .slg-col-group-label { font-size: 0.8rem; opacity: 0.6; }
@@ -156,14 +166,15 @@
         {% endfor %}
       </select>
     </div>
-    <div class="slg-filter grain-hide-per-game">
-      <label for="ex-mode">Mode</label>
-      <select id="ex-mode" name="mode">
-        <option value="per_game" {{ 'selected' if q.mode == 'per_game' else '' }}>Per game</option>
-        <option value="per_36" {{ 'selected' if q.mode == 'per_36' else '' }}>Per 36</option>
-        <option value="per_100" {{ 'selected' if q.mode == 'per_100' else '' }}>Per 100</option>
-        <option value="totals" {{ 'selected' if q.mode == 'totals' else '' }}>Totals</option>
-      </select>
+    <div class="slg-filter slg-filter--mode grain-hide-per-game">
+      <label id="ex-mode-label">Mode</label>
+      <div class="slg-mode-toggle" role="radiogroup" aria-labelledby="ex-mode-label">
+        {% for val, lbl in [('per_game', 'Per game'), ('per_36', 'Per 36'), ('per_100', 'Per 100'), ('totals', 'Totals')] %}
+        <label class="slg-mode-btn{{ ' is-active' if q.mode == val else '' }}">
+          <input type="radio" name="mode" value="{{ val }}" {{ 'checked' if q.mode == val else '' }}>{{ lbl }}
+        </label>
+        {% endfor %}
+      </div>
     </div>
     <div class="slg-filter grain-hide-per-game">
       <label for="ex-min-gp">Min GP</label>

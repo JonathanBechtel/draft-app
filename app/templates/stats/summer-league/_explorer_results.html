@@ -50,6 +50,17 @@
   </div>
   {% endif %}
 
+  {# Career grain + per_100 mode: pace-coverage note for the pooled per-100 rates. #}
+  {% if result.query.grain == 'career' and result.query.mode == 'per_100' %}
+  <div class="slg-explorer-banner slg-explorer-banner--info" role="alert">
+    <span class="slg-explorer-banner__icon">&#9432;</span>
+    <span class="slg-explorer-banner__text">Per-100 rates use possessions estimated from pace (possessions per 48 minutes).
+    Competitions without pace data (generally pre-2017) are excluded from the possession estimate, so
+    players whose career mixes covered and uncovered competitions are marked
+    <abbr title="Per-100 approximate — partial pace coverage">&approx;</abbr> and are approximate.</span>
+  </div>
+  {% endif %}
+
   {# Per_competition grain: single-comp warning OR multi-comp N-of-M banner. #}
   {% if result.query.grain == 'per_competition' %}
     {%- set is_single_comp = result.query.year_min == result.query.year_max and result.query.year_min and result.query.venue -%}
@@ -104,6 +115,9 @@
           <tr>
             <th scope="row" class="slg-explorer__label">
               {% if row.href %}<a href="{{ row.href }}">{{ row.label }}</a>{% else %}<span class="slg-bx-name--stub">{{ row.label }}</span>{% endif %}
+              {%- if row.per100_approx -%}
+              <sup class="slg-pooled-mark" title="Per-100 approximate — some competitions in this player's career have no pace data (generally pre-2017)">&approx;</sup>
+              {%- endif -%}
               {%- if result.query.grain == 'career' and result.subject == 'players' and row.href -%}
               {%- set player_slug = row.href.split('/')[-1] -%}
               <button class="slg-expand-btn" data-player-slug="{{ player_slug }}" aria-expanded="false" type="button" title="Expand per-competition breakdown">&#9654;</button>
