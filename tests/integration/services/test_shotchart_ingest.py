@@ -77,6 +77,7 @@ def _shot_row(
     player_name: str,
     team_id: int = 1610612753,
     shot_made_flag: int = 1,
+    shot_type: str = "3PT Field Goal",
 ) -> list[object]:
     return [
         "Shot Chart Detail",
@@ -91,7 +92,7 @@ def _shot_row(
         30,
         "Made Shot" if shot_made_flag else "Missed Shot",
         "Jump Shot",
-        "3PT Field Goal",
+        shot_type,
         "Above the Break 3",
         "Left Side Center(LC)",
         "24+ ft.",
@@ -382,6 +383,180 @@ async def test_normalize_shot_events_resolved_player_sets_player_id(
     ).scalar_one()
 
     assert shot.player_id == player.id
+
+
+def _write_season_log_player(game_dir: Path, headers: list[str], rows: list[list[object]]) -> None:
+    """Overwrite the season leaguegamelog_player.json with real player lines."""
+    run_dir = game_dir.parent.parent  # .../<year>/<league>
+    run_dir.joinpath("leaguegamelog_player.json").write_text(
+        json.dumps({"resultSets": [_result_set("LeagueGameLog", headers, rows)]})
+    )
+
+
+SEASON_LOG_HEADERS = [
+    "GAME_ID",
+    "TEAM_ID",
+    "PLAYER_ID",
+    "PLAYER_NAME",
+    "MIN",
+    "PTS",
+    "FGM",
+    "FGA",
+    "FG3M",
+    "FG3A",
+]
+
+
+@pytest.mark.asyncio
+async def test_normalize_shot_events_legacy_id_crosswalks_to_canonical(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A legacy shot-id remaps to the canonical box player via signature match (#467).
+
+    The season log carries canonical player 203503 with a (FGA=2, FGM=1, 3PA=1,
+    3PM=1) line; the shot chart carries legacy id 51845 with the same fingerprint
+    (one made 3PT + one missed 2PT). The crosswalk rewrites the shot onto the
+    canonical source player, so the shot inherits its resolved player_id and no
+    stray legacy source player is created.
+    """
+    game_dir = _write_season_skeleton(tmp_path)
+    _write_season_log_player(
+        game_dir,
+        SEASON_LOG_HEADERS,
+        [["1522400001", 1610612753, 203503, "Tony Snell", "20:00", 8, 1, 2, 1, 1]],
+    )
+    game_dir.joinpath("shotchartdetail.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "Shot_Chart_Detail",
+                        SHOT_HEADERS,
+                        [
+                            _shot_row(
+                                event_id=101,
+                                player_id=51845,
+                                player_name="",
+                                shot_made_flag=1,
+                                shot_type="3PT Field Goal",
+                            ),
+                            _shot_row(
+                                event_id=102,
+                                player_id=51845,
+                                player_name="",
+                                shot_made_flag=0,
+                                shot_type="2PT Field Goal",
+                            ),
+                        ],
+                    )
+                ]
+            }
+        )
+    )
+    await _setup_competition(db_session, tmp_path)
+
+    # Canonical player resolved from the box side.
+    player = PlayerMaster(display_name="Tony Snell", slug="tony-snell")
+    db_session.add(player)
+    await db_session.flush()
+    assert player.id is not None
+    db_session.add(
+        SummerLeagueSourcePlayer(
+            nba_stats_person_id="203503",
+            raw_player_name="Tony Snell",
+            normalized_name=_normalized_name_key("Tony Snell"),
+            first_seen_year=2024,
+            last_seen_year=2024,
+            canonical_player_id=player.id,
+            resolution_status=SummerLeagueResolutionStatus.EXTERNAL_ID,
+            resolution_confidence=1.0,
+            resolved_by="test",
+        )
+    )
+    await db_session.flush()
+
+    await normalize_shot_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
+
+    shots = (await db_session.execute(select(SummerLeagueShotEvent))).scalars().all()
+    canonical_source = (
+        await db_session.execute(
+            select(SummerLeagueSourcePlayer).where(
+                SummerLeagueSourcePlayer.nba_stats_person_id == "203503"  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    legacy_source = (
+        await db_session.execute(
+            select(SummerLeagueSourcePlayer).where(
+                SummerLeagueSourcePlayer.nba_stats_person_id == "51845"  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one_or_none()
+
+    assert len(shots) == 2
+    assert {s.nba_stats_person_id for s in shots} == {"203503"}
+    assert all(s.source_player_id == canonical_source.id for s in shots)
+    assert all(s.player_id == player.id for s in shots)
+    # The legacy id never mints its own source player.
+    assert legacy_source is None
+
+
+@pytest.mark.asyncio
+async def test_normalize_shot_events_unmatched_legacy_id_stays_unresolved(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A legacy shot-id with no unique box fingerprint keeps its own (null) source.
+
+    Two box players on one team share the (2,1,1,1) line, so the match is
+    ambiguous; the crosswalk declines to guess and the legacy source player is
+    created with player_id NULL rather than being mis-linked.
+    """
+    game_dir = _write_season_skeleton(tmp_path)
+    _write_season_log_player(
+        game_dir,
+        SEASON_LOG_HEADERS,
+        [
+            ["1522400001", 1610612753, 203503, "Tony Snell", "20:00", 8, 1, 2, 1, 1],
+            ["1522400001", 1610612753, 203999, "Other Guy", "18:00", 8, 1, 2, 1, 1],
+        ],
+    )
+    game_dir.joinpath("shotchartdetail.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "Shot_Chart_Detail",
+                        SHOT_HEADERS,
+                        [
+                            _shot_row(
+                                event_id=201,
+                                player_id=51845,
+                                player_name="",
+                                shot_made_flag=1,
+                                shot_type="3PT Field Goal",
+                            ),
+                            _shot_row(
+                                event_id=202,
+                                player_id=51845,
+                                player_name="",
+                                shot_made_flag=0,
+                                shot_type="2PT Field Goal",
+                            ),
+                        ],
+                    )
+                ]
+            }
+        )
+    )
+    await _setup_competition(db_session, tmp_path)
+    await normalize_shot_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
+
+    shots = (await db_session.execute(select(SummerLeagueShotEvent))).scalars().all()
+    assert len(shots) == 2
+    assert {s.nba_stats_person_id for s in shots} == {"51845"}
+    assert all(s.player_id is None for s in shots)
 
 
 @pytest.mark.asyncio
