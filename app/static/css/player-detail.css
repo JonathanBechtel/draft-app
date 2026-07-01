@@ -2396,3 +2396,17 @@
   text-align: left;
   color: var(--color-slate-600);
 }
+
+/* ── Readability scale-up (~15%) — player-page SL section (#summerLeagueSection)
+      and the player game-log pages (.slg-logs). Scoped so the /stats/summer-league
+      site chrome is unaffected. ─────────────────────────────────────────────── */
+#summerLeagueSection .sl-stats-table,
+.slg-logs .sl-stats-table { font-size: 0.86rem; }
+#summerLeagueSection .sl-stats-table thead th,
+.slg-logs .sl-stats-table thead th { font-size: 0.65rem; }
+#summerLeagueSection .stats-section-label,
+.slg-logs .stats-section-label { font-size: 0.72rem; }
+#summerLeagueSection .sl-career-meta,
+.slg-logs .sl-career-meta { font-size: 0.72rem; }
+#summerLeagueSection .sl-gamelog-btn,
+.slg-logs .sl-gamelog-btn { font-size: 0.8rem; }

@@ -3,7 +3,8 @@
    adds the page layout, filter controls, badges, and box-score components. */
 
 .slg-page {
-  padding: 2rem 0 4rem;
+  /* Top padding clears the fixed navbar (site convention: ~7rem, cf. .mt-28). */
+  padding: 7rem 0 4rem;
 }
 
 /* ----------------------------------------------------------------- Header */
@@ -224,6 +225,19 @@
 }
 .slg-empty--block { display: block; }
 .slg-empty a { color: var(--color-accent-emerald); }
+.slg-empty__title {
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  color: var(--color-slate-800);
+  margin: 0 0 0.4rem;
+}
+.slg-empty__body {
+  max-width: 34rem;
+  margin: 0 auto 0.6rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.slg-empty__body strong { color: var(--color-slate-700); }
 
 /* ------------------------------------------------------------- Pagination */
 .slg-pager {
@@ -934,3 +948,25 @@
   background: #fff;
 }
 .slg-pager-btn:hover { background: var(--color-slate-50, #f8fafc); }
+
+/* ── Game-detail page: wider container + breathing room between sections ──── */
+.container.slg-game {
+  max-width: 1440px;
+  width: 94%;
+}
+/* The stacked panels (box scores → score margin → shot chart) need air. */
+.slg-game .sl-game-flow-section,
+.slg-game .sl-shotchart-section {
+  margin-top: 2rem;
+}
+/* Shot-chart body would otherwise sit flush to the board edges — inset it to
+   match the padded box-score / score-margin panels above it. */
+.sl-shotchart-section .slg-shotchart-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem 1rem 0.25rem;
+}
+.sl-shotchart-section .sl-shotchart-wrap {
+  padding: 0.5rem 1rem 1rem;
+}

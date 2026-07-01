@@ -19,6 +19,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
     SummerLeagueResolutionStatus,
+    SummerLeagueShotEvent,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
 )
@@ -203,6 +204,65 @@ async def test_external_id_resolution_wins_and_backfills_logs(
     assert source_player.canonical_player_id == external_player.id
     assert await _log_player_id(db_session, person_id="1641001") == external_player.id
     assert await _external_id_count(db_session, person_id="1641001") == 1
+
+
+@pytest.mark.asyncio
+async def test_resolution_backfills_shot_events(
+    db_session: AsyncSession,
+) -> None:
+    """Resolving a source player links its existing shot events.
+
+    Shot events are normalized before resolution, so their ``player_id`` starts
+    NULL; per-player shot charts stay empty until resolution backfills them
+    (mirroring the game-log backfill).
+    """
+    competition, team, game = await _seed_game_context(db_session)
+    player = PlayerMaster(display_name="Shot Chart Player")
+    db_session.add(player)
+    await db_session.flush()
+    assert player.id is not None
+    db_session.add(
+        PlayerExternalId(
+            player_id=player.id, system=NBA_STATS_SYSTEM, external_id="1642222"
+        )
+    )
+    source_player = await _source_with_log(
+        db_session,
+        raw_name="Shot Chart Player",
+        person_id="1642222",
+        competition=competition,
+        team=team,
+        game=game,
+    )
+    # Two unlinked shot events (player_id NULL) for this source player.
+    for i in range(2):
+        db_session.add(
+            SummerLeagueShotEvent(
+                game_id=game.id,  # type: ignore[arg-type]
+                competition_id=competition.id,  # type: ignore[arg-type]
+                team_entry_id=team.id,  # type: ignore[arg-type]
+                source_player_id=source_player.id,
+                player_id=None,
+                nba_stats_person_id="1642222",
+                nba_stats_game_id=game.nba_stats_game_id,
+                nba_stats_game_event_id=i + 1,
+                loc_x=10 + i,
+                loc_y=20 + i,
+                made=(i == 0),
+            )
+        )
+    await db_session.flush()
+
+    result = await resolve_source_player(db_session, source_player)
+
+    assert result.player_id == player.id
+    assert result.shots_backfilled == 2
+    linked = await db_session.scalar(
+        select(func.count())
+        .select_from(SummerLeagueShotEvent)
+        .where(SummerLeagueShotEvent.player_id == player.id)  # type: ignore[arg-type]
+    )
+    assert linked == 2
 
 
 @pytest.mark.asyncio

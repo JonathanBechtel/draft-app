@@ -11,7 +11,7 @@
 {% macro lurl(mode=none, sort=none, dir=none, page=1) %}
 {%- set parts = ['mode=' ~ (mode or result.mode)] -%}
 {%- if result.year is not none %}{% set _ = parts.append('year=' ~ result.year) %}{% endif -%}
-{%- if result.is_advanced and result.venue %}{% set _ = parts.append('venue=' ~ result.venue) %}{% endif -%}
+{%- if result.venue %}{% set _ = parts.append('venue=' ~ result.venue) %}{% endif -%}
 {%- set _ = parts.append('sort=' ~ (sort or result.sort)) -%}
 {%- set _ = parts.append('dir=' ~ (dir or result.direction)) -%}
 {%- set _ = parts.append('min_gp=' ~ result.min_games) -%}
@@ -48,17 +48,21 @@
     <label class="slg-field">
       <span class="slg-field__label">Season</span>
       <select name="year" class="slg-select" data-autosubmit>
-        {# Advanced mode is per-competition, so it has no all-time option. #}
-        {% if not result.is_advanced %}<option value="">All-time</option>{% endif %}
+        {# "All-time" blends across seasons for every mode (advanced blends its
+           adv-eligible pools rather than resolving one competition). #}
+        <option value=""{% if not result.year %} selected{% endif %}>All-time</option>
         {% for y in result.years %}
         <option value="{{ y }}"{% if result.year == y %} selected{% endif %}>{{ y }}</option>
         {% endfor %}
       </select>
     </label>
-    {% if result.is_advanced %}
+    {% if result.venues %}
     <label class="slg-field">
       <span class="slg-field__label">Venue</span>
       <select name="venue" class="slg-select" data-autosubmit>
+        {# "All venues" blends a season's venues (or everything, with All-time).
+           Pick a specific venue + season for a single pool-calibrated board. #}
+        <option value=""{% if not result.venue %} selected{% endif %}>All venues</option>
         {% for slug, label in result.venues %}
         <option value="{{ slug }}"{% if result.venue == slug %} selected{% endif %}>{{ label }}</option>
         {% endfor %}
@@ -79,12 +83,27 @@
   <div class="slg-resultmeta">
     <span class="slg-count">{{ result.total }} qualified player{{ '' if result.total == 1 else 's' }}</span>
     <span class="slg-pageof">
-      {% if result.is_advanced %}{{ result.year }} {{ result.venue_label }}{% else %}{{ result.year or 'All-time' }}{% endif %} &middot; {{ result.min_games }}+ GP &middot; {{ result.min_minutes }}+ MIN
+      {{ result.year or 'All-time' }} &middot; {{ result.venue_label or 'All venues' }} &middot; {{ result.min_games }}+ GP &middot; {{ result.min_minutes }}+ MIN
       {% if result.total_pages > 1 %}&middot; page {{ result.page }}/{{ result.total_pages }}{% endif %}
     </span>
   </div>
 
-  {# Leaderboard #}
+  {# Leaderboard — or a soft landing when the current filters match no players. #}
+  {% if not result.rows %}
+  <div class="stats-scoreboard slg-board">
+    <div class="scanlines"></div>
+    <div class="slg-empty slg-empty--block">
+      <p class="slg-empty__title">No players match these filters</p>
+      <p class="slg-empty__body">
+        No Summer League players qualify for
+        <strong>{{ result.year or 'all-time' }} &middot; {{ result.venue_label or 'all venues' }}</strong>
+        at {{ result.min_games }}+ GP and {{ result.min_minutes }}+ MIN.
+        Try another season or venue, or lower the minimums.
+      </p>
+      <p><a href="/stats/summer-league/leaders?mode={{ result.mode }}">Reset filters</a></p>
+    </div>
+  </div>
+  {% else %}
   <div class="stats-scoreboard slg-board">
     <div class="scanlines"></div>
     <div class="slg-tablewrap">
@@ -121,13 +140,12 @@
             <td class="{% if col.placeholder %}slg-col-ph{% elif col.key == result.sort %}slg-strong{% endif %}">{{ v if v is not none else '—' }}</td>
             {% endfor %}
           </tr>
-          {% else %}
-          <tr><td colspan="{{ result.columns | length + 3 }}" class="slg-empty">No players meet the filters.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
+  {% endif %}
 
   {% if result.total_pages > 1 %}
   <nav class="slg-pager" aria-label="Pagination">

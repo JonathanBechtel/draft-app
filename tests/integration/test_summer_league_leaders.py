@@ -182,6 +182,90 @@ async def test_leaders_modes_ranking_and_filter(
     assert adv.rows == []
 
 
+async def _seed_two_venues(db: AsyncSession) -> None:
+    """Seed one player at Las Vegas and another at Salt Lake City, same year."""
+    lv = SummerLeagueCompetition(
+        year=2025, league_id="15", venue_slug="las_vegas", display_name="2025 LV"
+    )
+    slc = SummerLeagueCompetition(
+        year=2025, league_id="16", venue_slug="salt_lake_city", display_name="2025 SLC"
+    )
+    db.add_all([lv, slc])
+    await db.flush()
+    assert lv.id is not None and slc.id is not None
+    lv_team = SummerLeagueTeamEntry(
+        competition_id=lv.id,
+        nba_stats_team_id="lv1",
+        raw_team_name="Vegas",
+        raw_team_abbreviation="LV",
+        team_slug="lv",
+    )
+    slc_team = SummerLeagueTeamEntry(
+        competition_id=slc.id,
+        nba_stats_team_id="slc1",
+        raw_team_name="Salt",
+        raw_team_abbreviation="SLC",
+        team_slug="slc",
+    )
+    db.add_all([lv_team, slc_team])
+    await db.flush()
+    vegas = make_player("Vegas", "Baller", school="UNLV")
+    salt = make_player("Salt", "Laker", school="Utah")
+    db.add_all([vegas, salt])
+    await db.flush()
+    await _seed_player(db, comp=lv, team=lv_team, player=vegas, n_games=3, pts=25)
+    await _seed_player(db, comp=slc, team=slc_team, player=salt, n_games=3, pts=20)
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_leaders_venue_filter_scopes_counting_mode(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """A venue filter scopes counting modes to one competition; unset blends all."""
+    await _seed_two_venues(db_session)
+
+    # No venue: both players appear (blended across venues).
+    both = await get_leaders(db_session, mode="per_game", sort="pts")
+    assert {r.name for r in both.rows} == {"Vegas Baller", "Salt Laker"}
+    # The picker lists both seeded venues, marquee-first (Las Vegas before SLC).
+    assert both.venues == [
+        ("las_vegas", "Las Vegas"),
+        ("salt_lake_city", "Salt Lake City"),
+    ]
+    assert both.venue is None
+
+    # Scoped to Las Vegas: only the LV player, and the resolved state reflects it.
+    lv = await get_leaders(db_session, mode="per_game", sort="pts", venue="las_vegas")
+    assert [r.name for r in lv.rows] == ["Vegas Baller"]
+    assert lv.venue == "las_vegas"
+    assert lv.venue_label == "Las Vegas"
+
+    # A bogus venue slug is ignored (treated as "All venues").
+    bogus = await get_leaders(db_session, mode="per_game", venue="atlantis")
+    assert bogus.venue is None
+    assert len(bogus.rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_leaders_empty_state_soft_landing(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """When filters exclude everyone, the page renders a soft-landing message."""
+    await _seed_two_venues(db_session)
+    # Minimums no one can meet → zero rows.
+    resp = await app_client.get(
+        "/stats/summer-league/leaders?mode=per_game&min_gp=99&min_min=9999"
+    )
+    assert resp.status_code == 200
+    assert "No players match these filters" in resp.text
+    assert "Reset filters" in resp.text
+    # The friendly copy should echo the active filter context.
+    assert "99+ GP" in resp.text
+
+
 @pytest.mark.asyncio
 async def test_leaders_route_renders_each_mode(
     app_client: AsyncClient,
@@ -244,8 +328,8 @@ async def test_advanced_leaders_from_metrics_table(
     app_client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
-    """Advanced mode ranks a competition's players from the materialized table,
-    defaulting to the latest competition, scoping by venue, and gating rows."""
+    """Advanced mode reads the materialized table: a specific season+venue ranks
+    one pool-calibrated competition; leaving either open blends the pools."""
     lv25 = await _comp(db_session, year=2025, venue="las_vegas", league_id="15")
     slc24 = await _comp(db_session, year=2024, venue="salt_lake_city", league_id="16")
 
@@ -262,22 +346,82 @@ async def test_advanced_leaders_from_metrics_table(
     await _season(db_session, comp=slc24, first="Salt", last="Laker", per=18.0)
     await db_session.commit()
 
-    # Defaults to the latest competition (2025 Las Vegas), ranked by PER desc,
-    # excluding the sub-floor and non-eligible players.
+    # Default (no season/venue) is the all-time, all-venue blend across pools,
+    # ranked by PER desc, excluding the sub-floor and non-eligible players.
     adv = await get_leaders(db_session, mode="advanced")
-    assert adv.year == 2025 and adv.venue == "las_vegas"
-    assert [r.name for r in adv.rows] == ["Vegas Ace", "Vegas Role"]
+    assert adv.year is None and adv.venue is None
+    assert [r.name for r in adv.rows] == ["Vegas Ace", "Vegas Role", "Salt Laker"]
     assert adv.rows[0].values["per"] == 30.0
     assert {v[0] for v in adv.venues} == {"las_vegas", "salt_lake_city"}
 
-    # Venue scoping resolves a different competition.
+    # A specific season + venue ranks that single competition only.
     slc = await get_leaders(
         db_session, mode="advanced", year=2024, venue="salt_lake_city"
     )
     assert slc.year == 2024 and slc.venue == "salt_lake_city"
     assert [r.name for r in slc.rows] == ["Salt Laker"]
 
-    # Sorting by a different metric re-ranks within the competition.
+    # Sorting by a different metric re-ranks the board.
     by_ws = await get_leaders(db_session, mode="advanced", sort="ws")
     assert by_ws.sort == "ws"
     assert by_ws.rows[0].name == "Vegas Ace"
+
+
+@pytest.mark.asyncio
+async def test_advanced_all_blend_math(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """The blended Advanced view sums accumulations and minute-weights rates."""
+    lv25 = await _comp(db_session, year=2025, venue="las_vegas", league_id="15")
+    slc25 = await _comp(db_session, year=2025, venue="salt_lake_city", league_id="16")
+
+    # One player with two adv-eligible pools in 2025 (Vegas + Salt Lake), each
+    # carrying shot volume so the pooled shooting percentages are exercised.
+    star = make_player("Two", "Pooler")
+    db_session.add(star)
+    await db_session.flush()
+    pools = (
+        # comp, minutes, per, ws, pts, fga, fgm, fg3m, fta
+        (lv25, 100.0, 30.0, 2.0, 140, 100, 50, 20, 20),
+        (slc25, 100.0, 20.0, 1.0, 110, 100, 40, 10, 10),
+    )
+    for comp, minutes, per, ws, pts, fga, fgm, fg3m, fta in pools:
+        db_session.add(
+            SummerLeaguePlayerSeason(
+                competition_id=comp.id,
+                player_id=star.id,
+                year=comp.year,
+                venue_slug=comp.venue_slug,
+                gp=3,
+                minutes=minutes,
+                adv_eligible=True,
+                per=per,
+                ws=ws,
+                pts=pts,
+                fga=fga,
+                fgm=fgm,
+                fg3m=fg3m,
+                fta=fta,
+            )
+        )
+    await db_session.flush()
+    await db_session.commit()
+
+    # 2025 across all venues blends the two pools into one line.
+    blended = await get_leaders(db_session, mode="advanced", year=2025)
+    assert blended.year == 2025 and blended.venue is None
+    assert blended.venue_label == "All venues"
+    assert [r.name for r in blended.rows] == ["Two Pooler"]
+    row = blended.rows[0]
+    assert row.gp == 6  # games summed
+    assert row.values["min"] == 200.0  # minutes summed
+    assert row.values["ws"] == 3.0  # accumulations summed
+    # PER is minute-weighted: (30·100 + 20·100) / 200 = 25.0
+    assert row.values["per"] == 25.0
+    # WS/40 recomputed from summed shares: 3.0 / 200 · 40 = 0.6
+    assert row.values["ws40"] == 0.6
+    # TS% pools raw volume: 100·250 / (2·(200 + 0.44·30)) = 58.6
+    assert row.values["ts_pct"] == 58.6
+    # eFG% pools raw volume: 100·(90 + 0.5·30) / 200 = 52.5
+    assert row.values["efg_pct"] == 52.5

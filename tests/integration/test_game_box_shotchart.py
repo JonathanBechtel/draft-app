@@ -3,10 +3,10 @@
 Exercises GET /stats/summer-league/{year}/games/{game_id} with and without
 shot-event data, verifying:
 
-  1. Game with shot events → shot chart section + zone table rendered;
-     window.SL_SHOTCHART injected.
-  2. Team-scoped query param (team_entry_id=X) → context scoped to that team.
-  3. Player-scoped query param (player_id=Y) → context scoped to that player.
+  1. Game with shot events → shot chart section rendered and every scope
+     preloaded into window.SL_SHOTCHART_SCOPES (client-side switching).
+  2. get_game_shotchart_scopes groups shots into game / team / player scopes.
+  3. get_game_shotchart_context still scopes a single payload (retained helper).
   4. Game without shot events → graceful "no shot data" empty state.
 """
 
@@ -28,6 +28,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league_games_service import get_game_shotchart_context
+from app.services.summer_league_shotchart_service import get_game_shotchart_scopes
 from tests.integration.conftest import make_player
 
 _SEQ: dict[str, int] = {"n": 0}
@@ -55,7 +56,9 @@ async def _make_comp(db: AsyncSession, *, year: int = 2025) -> SummerLeagueCompe
     return comp
 
 
-async def _make_team(db: AsyncSession, *, comp_id: int, name: str = "Team") -> SummerLeagueTeamEntry:
+async def _make_team(
+    db: AsyncSession, *, comp_id: int, name: str = "Team"
+) -> SummerLeagueTeamEntry:
     team = SummerLeagueTeamEntry(
         competition_id=comp_id,
         nba_stats_team_id=_uid(),
@@ -68,7 +71,9 @@ async def _make_team(db: AsyncSession, *, comp_id: int, name: str = "Team") -> S
     return team
 
 
-async def _make_source_player(db: AsyncSession, *, player: PlayerMaster) -> SummerLeagueSourcePlayer:
+async def _make_source_player(
+    db: AsyncSession, *, player: PlayerMaster
+) -> SummerLeagueSourcePlayer:
     sp = SummerLeagueSourcePlayer(
         nba_stats_person_id=_uid(),
         raw_player_name=player.display_name or "Player",
@@ -163,7 +168,13 @@ def _make_shot_event(
 
 async def _seed_game_with_shots(
     db: AsyncSession,
-) -> tuple[PlayerMaster, PlayerMaster, SummerLeagueGame, SummerLeagueTeamEntry, SummerLeagueTeamEntry]:
+) -> tuple[
+    PlayerMaster,
+    PlayerMaster,
+    SummerLeagueGame,
+    SummerLeagueTeamEntry,
+    SummerLeagueTeamEntry,
+]:
     """Seed two players on opposing teams with 25 shot events each (above MIN_FGA_FOR_CHART=20)."""
     comp = await _make_comp(db)
     assert comp.id is not None
@@ -248,69 +259,54 @@ async def test_game_box_shotchart_whole_game_scope(
     assert "Shot Chart" in html
     assert 'id="sl-shotchart-root"' in html
 
-    # window.SL_SHOTCHART injected.
-    assert "window.SL_SHOTCHART" in html
-
-    # Zone table rendered for whole-game scope.
-    assert "sl-shotchart-zone-table" in html
+    # Every scope preloaded for client-side switching.
+    assert "window.SL_SHOTCHART_SCOPES" in html
+    # Zone labels ship inside the preloaded scope payload.
     assert "Restricted Area" in html
     assert "Above the Break 3" in html
 
-    # JS loaded.
+    # Both the shared renderer and the game controller load.
     assert "summer-league-shotchart.js" in html
+    assert "summer-league-game-shotchart.js" in html
 
-    # Selector shows team buttons.
+    # Selector shows team buttons + per-team player sub-selectors.
     assert "Whole Game" in html
     assert "HOM" in html or "Home Squad" in html
     assert "AWA" in html or "Away Squad" in html
-
-
-@pytest.mark.asyncio
-async def test_game_box_shotchart_team_scope(
-    app_client: AsyncClient,
-    db_session: AsyncSession,
-) -> None:
-    """Team-scoped query param filters chart to that team's shots only."""
-    home_player, away_player, game, home, away = await _seed_game_with_shots(db_session)
-    await db_session.commit()
-
-    assert game.id is not None and home.id is not None and away.id is not None
-
-    # Scope to home team — should see Restricted Area only (home shots)
-    resp = await app_client.get(
-        f"/stats/summer-league/2025/games/{game.id}?team_entry_id={home.id}"
-    )
-    assert resp.status_code == 200
-    html = resp.text
-
-    assert "window.SL_SHOTCHART" in html
-    # Home team shots: Restricted Area present
-    assert "Restricted Area" in html
-    # Player sub-selector should appear since team_entry_id is set
     assert "slg-shotchart-player-selector" in html
+    assert "Home Shooter" in html and "Away Gunner" in html
 
 
 @pytest.mark.asyncio
-async def test_game_box_shotchart_player_scope(
-    app_client: AsyncClient,
+async def test_game_shotchart_scopes_service(
     db_session: AsyncSession,
 ) -> None:
-    """Player + team query params scope chart to that player's shots only."""
+    """get_game_shotchart_scopes groups a game's shots into game/team/player."""
     home_player, away_player, game, home, away = await _seed_game_with_shots(db_session)
     await db_session.commit()
 
-    assert game.id is not None and home.id is not None
-    assert home_player.id is not None
+    assert game.id is not None
+    result = await get_game_shotchart_scopes(db_session, game_id=game.id)
+    assert result is not None
+    scopes = result["scopes"]
 
-    resp = await app_client.get(
-        f"/stats/summer-league/2025/games/{game.id}"
-        f"?team_entry_id={home.id}&player_id={home_player.id}"
-    )
-    assert resp.status_code == 200
-    html = resp.text
+    # Whole game holds all 50 shots across both zones.
+    assert scopes["game"]["total_fga"] == 50
+    game_zones = {z["shot_zone_basic"] for z in scopes["game"]["zones"]}
+    assert {"Restricted Area", "Above the Break 3"} <= game_zones
 
-    assert "window.SL_SHOTCHART" in html
-    assert "Restricted Area" in html
+    # Team scope is only that team's 25 shots, one zone.
+    home_scope = scopes[f"team:{home.id}"]
+    assert home_scope["total_fga"] == 25
+    assert {z["shot_zone_basic"] for z in home_scope["zones"]} == {"Restricted Area"}
+    assert len(home_scope["dots"]) == 25
+
+    # Player scope resolves to that player's shots.
+    player_scope = scopes[f"player:{away_player.id}"]
+    assert player_scope["total_fga"] == 25
+    assert {z["shot_zone_basic"] for z in player_scope["zones"]} == {
+        "Above the Break 3"
+    }
 
 
 @pytest.mark.asyncio
@@ -332,7 +328,9 @@ async def test_game_box_shotchart_service_team_scope(
     assert "Above the Break 3" in zone_names
 
     # Home-scoped: only Restricted Area.
-    home_ctx = await get_game_shotchart_context(db_session, game.id, team_entry_id=home.id)
+    home_ctx = await get_game_shotchart_context(
+        db_session, game.id, team_entry_id=home.id
+    )
     assert home_ctx is not None
     assert home_ctx["total_fga"] == 25
     home_zones = {z["shot_zone_basic"] for z in home_ctx["zones"]}
@@ -372,6 +370,6 @@ async def test_game_box_shotchart_empty_state_no_shot_data(
 
     # Shot chart section present but no chart injected.
     assert "sl-shotchart-section" in html
-    assert "window.SL_SHOTCHART" not in html
+    assert "window.SL_SHOTCHART_SCOPES" not in html
     assert "No shot-chart data available" in html
     assert "summer-league-shotchart.js" not in html

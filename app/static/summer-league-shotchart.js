@@ -152,13 +152,39 @@
     ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
   }
 
-  function buildDots(svg, dots) {
+  var DOT_R = 8;         // heat-mode toggle dots
+  var DOT_R_LARGE = 10;  // dots-only (per-player) view — legible standalone
+
+  function buildDots(svg, dots, radius) {
+    var r = radius || DOT_R;
     var g = svgEl("g", { class: "sl-shotchart__dots" });
     dots.forEach(function (d) {
       if (d.loc_y > 405 || d.loc_y < -55) return;
-      g.appendChild(svgEl("circle", { cx: sx(d.loc_x), cy: sy(d.loc_y), r: 4, class: "sl-shotchart__dot " + (d.made ? "sl-shotchart__dot--made" : "sl-shotchart__dot--miss") }));
+      g.appendChild(svgEl("circle", { cx: sx(d.loc_x), cy: sy(d.loc_y), r: r, class: "sl-shotchart__dot " + (d.made ? "sl-shotchart__dot--made" : "sl-shotchart__dot--miss") }));
     });
     svg.appendChild(g);
+  }
+
+  /* Zone breakdown table (client-rendered for the game page, which swaps scopes
+   * without a round-trip). Matches the server-rendered table on other pages. */
+  function renderZoneTable(container, zones) {
+    if (!container) return;
+    if (!zones || !zones.length) { container.innerHTML = ""; return; }
+    function pct(v) { return v == null ? "—" : (v * 100).toFixed(1) + "%"; }
+    var body = zones.map(function (z) {
+      return "<tr><th scope='row'>" + z.shot_zone_basic + "</th>" +
+        "<td>" + z.fga + "</td><td>" + z.fgm + "</td>" +
+        "<td>" + pct(z.fg_pct) + "</td><td>" + pct(z.freq_pct) + "</td>" +
+        "<td>" + pct(z.pool_fg_pct) + "</td></tr>";
+    }).join("");
+    container.innerHTML =
+      "<table class='sl-stats-table'><thead><tr>" +
+      "<th scope='col'>Zone</th><th scope='col' title='Field goals attempted'>FGA</th>" +
+      "<th scope='col' title='Field goals made'>FGM</th>" +
+      "<th scope='col' title='Field goal percentage'>FG%</th>" +
+      "<th scope='col' title='Frequency — share of total FGA'>Freq%</th>" +
+      "<th scope='col' title='Pool average FG% for this zone'>Pool%</th>" +
+      "</tr></thead><tbody>" + body + "</tbody></table>";
   }
 
   /* ── Legend / table / placeholder ───────────────────────────────────────── */
@@ -183,7 +209,11 @@
   }
 
   /* ── Render ─────────────────────────────────────────────────────────────── */
-  function render(root, data) {
+  /* opts.dotsOnly → plot raw makes/misses only, no heat (used for a single
+   * player, where a smoothed density map over a handful of shots is noise). */
+  function render(root, data, opts) {
+    opts = opts || {};
+    var dotsOnly = !!opts.dotsOnly;
     root.innerHTML = "";
     root.className = "sl-shotchart";
     var zoneMap = {};
@@ -195,13 +225,25 @@
     header.className = "sl-shotchart__header";
     header.innerHTML = "<h3 class='sl-shotchart__title'>Shot Chart</h3>" +
       "<span class='sl-shotchart__badge'>" + (data.total_fga || 0) + " FGA</span>" +
-      (data.suppressed ? "<span class='sl-shotchart__badge sl-shotchart__badge--warn'>Small sample</span>" : "");
+      (data.suppressed && !dotsOnly ? "<span class='sl-shotchart__badge sl-shotchart__badge--warn'>Small sample</span>" : "");
     root.appendChild(header);
 
-    if (data.suppressed || !hasDots) {
-      // Zone table is rendered server-side by each page template; the component
-      // only owns the court + heat, so here we just show the placeholder.
-      root.appendChild(buildPlaceholder(data.total_fga));
+    // Dots-only needs ≥1 plotted shot; heat mode also needs a large-enough sample.
+    var canDraw = hasDots && (dotsOnly || !data.suppressed);
+    if (!canDraw) {
+      root.appendChild(buildPlaceholder(dotsOnly && !hasDots ? 0 : data.total_fga));
+      return;
+    }
+
+    var wrap = document.createElement("div");
+    wrap.className = "sl-shotchart__court-wrap";
+    var svg = buildCourtSVG();
+
+    if (dotsOnly) {
+      root.classList.add("sl-shotchart--dots"); // reveal dots, hide (absent) heat
+      buildDots(svg, data.dots, DOT_R_LARGE);
+      wrap.appendChild(svg);
+      root.appendChild(wrap);
       return;
     }
 
@@ -211,14 +253,11 @@
     toggle.textContent = "Show shots";
     header.appendChild(toggle);
 
-    var wrap = document.createElement("div");
-    wrap.className = "sl-shotchart__court-wrap";
     var canvas = document.createElement("canvas");
     canvas.className = "sl-shotchart__heat";
     canvas.width = VB_W * 2; canvas.height = CROP_H * 2; // hi-dpi backing store
     wrap.appendChild(canvas);
-    var svg = buildCourtSVG();
-    buildDots(svg, data.dots);
+    buildDots(svg, data.dots, DOT_R);
     wrap.appendChild(svg);
     root.appendChild(wrap);
     root.appendChild(buildLegend(hasPool));
@@ -232,9 +271,15 @@
     });
   }
 
+  // Public API for pages that drive the chart themselves (e.g. the game page,
+  // which swaps scopes client-side). Classic global — no ES modules.
+  window.SLShotChart = { render: render, renderZoneTable: renderZoneTable };
+
   function init() {
     var root = document.getElementById("sl-shotchart-root");
     if (!root) return;
+    // The game page owns its own controller (multiple scopes); skip auto-init.
+    if (window.SL_SHOTCHART_SCOPES) return;
     var data = window.SL_SHOTCHART;
     if (!data) { root.textContent = "Shot chart data unavailable."; return; }
     render(root, data);

@@ -450,3 +450,151 @@ async def get_competition_leaders(
         competitions=competitions,
         rows=rows,
     )
+
+
+# --------------------------------------------------------------------------- #
+# Blended ("All") advanced leaders
+# --------------------------------------------------------------------------- #
+# When the caller leaves the season and/or venue open, a player's adv-eligible
+# pools are rolled into a single line. Cumulative shares sum; rate composites are
+# minute-weighted; the shooting percentages pool from raw volume; WS/40 is
+# recomputed from the summed shares; GmSc (a per-game score) is game-weighted.
+# Blending pool-recalibrated composites across differently-calibrated pools is an
+# approximation the "All" scope accepts by design.
+_ADV_BLEND_SUM_COLS: tuple[str, ...] = ("ows", "dws", "ws", "vorp")
+_ADV_BLEND_RATE_COLS: tuple[str, ...] = (
+    "per",
+    "usg_pct",
+    "ortg",
+    "drtg",
+    "orb_pct",
+    "drb_pct",
+    "trb_pct",
+    "ast_pct",
+    "stl_pct",
+    "blk_pct",
+    "tov_pct",
+    "obpm",
+    "dbpm",
+    "bpm",
+)
+
+
+def _blend_leader_values(
+    seasons: list[SummerLeaguePlayerSeason],
+) -> dict[str, Optional[float]]:
+    """Blend a player's adv-eligible pools into one leaderboard line.
+
+    Args:
+        seasons: One player's adv-eligible ``SummerLeaguePlayerSeason`` rows
+            within the requested scope (a season, a venue, or everything).
+
+    Returns:
+        Display values keyed by advanced leader column, per the grain rules
+        described above.
+    """
+    minutes = sum(s.minutes for s in seasons)
+    out: dict[str, Optional[float]] = {"min": _round1(minutes)}
+
+    # Cumulative shares add up across pools.
+    for col in _ADV_BLEND_SUM_COLS:
+        vals = [getattr(s, col) for s in seasons if getattr(s, col) is not None]
+        out[col] = _round1(sum(vals)) if vals else None
+
+    # Rate composites are minute-weighted.
+    for col in _ADV_BLEND_RATE_COLS:
+        out[col] = _round1(
+            _weighted_mean([(getattr(s, col), s.minutes) for s in seasons])
+        )
+
+    # Shooting percentages pool from raw volume (stored on a 0-100 scale).
+    pts = sum(s.pts for s in seasons)
+    fga = sum(s.fga for s in seasons)
+    fta = sum(s.fta for s in seasons)
+    fgm = sum(s.fgm for s in seasons)
+    fg3m = sum((s.fg3m or 0) for s in seasons)
+    tsa = 2.0 * (fga + 0.44 * fta)
+    out["ts_pct"] = _round1(100.0 * pts / tsa) if tsa > 0 else None
+    out["efg_pct"] = _round1(100.0 * (fgm + 0.5 * fg3m) / fga) if fga > 0 else None
+
+    # WS/40 recomputed from summed shares so it stays internally consistent.
+    ws_total = out["ws"]
+    out["ws40"] = (
+        round(ws_total / minutes * 40.0, 2)
+        if (ws_total is not None and minutes)
+        else None
+    )
+
+    # GmSc is a per-game score; blend it game-weighted.
+    out["gmsc"] = _round1(_weighted_mean([(s.gmsc, float(s.gp)) for s in seasons]))
+    return out
+
+
+async def get_blended_leaders(
+    db: AsyncSession,
+    *,
+    year: Optional[int] = None,
+    venue_slug: Optional[str] = None,
+    min_games: int = 0,
+    min_minutes: int = 0,
+) -> CompetitionLeaders:
+    """Blend adv-eligible pools across competitions into one line per player.
+
+    Scope is set by which of ``year`` / ``venue_slug`` are provided: neither is
+    the all-time, all-venue career blend; one narrows to that season or venue.
+    Players are grouped across their qualifying pools and gated on the blended
+    totals (``min_games`` and ``max(min_minutes, DISPLAY_MIN_MINUTES)``).
+
+    Returns:
+        A :class:`CompetitionLeaders` whose ``rows`` are unsorted; the caller
+        sorts and paginates. ``venue_label`` reads "All venues" when unscoped.
+    """
+    conds: list[object] = [
+        SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
+    ]
+    if year is not None:
+        conds.append(SummerLeaguePlayerSeason.year == year)  # type: ignore[arg-type]
+    if venue_slug is not None:
+        conds.append(
+            SummerLeaguePlayerSeason.venue_slug == venue_slug  # type: ignore[arg-type]
+        )
+
+    stmt = (
+        select(
+            SummerLeaguePlayerSeason,
+            PlayerMaster.slug,
+            PlayerMaster.display_name,
+        )  # type: ignore[call-overload]
+        .join(PlayerMaster, PlayerMaster.id == SummerLeaguePlayerSeason.player_id)
+        .where(*conds)
+    )
+
+    grouped: dict[int, list[SummerLeaguePlayerSeason]] = {}
+    meta: dict[int, tuple[Optional[str], str]] = {}
+    for season, slug, name in (await db.execute(stmt)).all():
+        grouped.setdefault(season.player_id, []).append(season)
+        meta[season.player_id] = (slug, name or "Player")
+
+    floor = max(float(min_minutes), DISPLAY_MIN_MINUTES)
+    rows: list[CompetitionLeaderRow] = []
+    for pid, seasons in grouped.items():
+        gp = sum(s.gp for s in seasons)
+        minutes = sum(s.minutes for s in seasons)
+        if gp < min_games or minutes < floor:
+            continue
+        slug, name = meta[pid]
+        rows.append(
+            CompetitionLeaderRow(
+                slug=slug, name=name, gp=gp, values=_blend_leader_values(seasons)
+            )
+        )
+
+    return CompetitionLeaders(
+        year=year,
+        venue_slug=venue_slug,
+        venue_label=VENUE_LABELS.get(venue_slug, venue_slug)
+        if venue_slug
+        else "All venues",
+        competitions=await list_adv_competitions(db),
+        rows=rows,
+    )

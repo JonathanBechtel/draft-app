@@ -492,9 +492,7 @@ async def test_normalize_player_game_logs_wires_participation_bridge(
     # Born canonical: each box-score bridge carries a real affiliation assertion,
     # not an orphan affiliation_id=None waiting on a reconcile pass.
     assert all(p.affiliation_id is not None for p in participations)
-    affiliations = (
-        (await db_session.execute(select(PlayerAffiliation))).scalars().all()
-    )
+    affiliations = (await db_session.execute(select(PlayerAffiliation))).scalars().all()
     # Idempotent: the two assertions are not re-created on the second run.
     assert len(affiliations) == 2
     assert all(
@@ -570,3 +568,198 @@ async def test_normalize_player_game_logs_wires_participation_bridge(
         )
     ).scalar_one()
     assert backfilled.player_id == late_player.id
+
+
+def _write_season_log_fallback_fixture(
+    raw_root: Path, *, include_per_game: bool
+) -> None:
+    """Fixture whose season LeagueGameLog carries a full box line (pre-2017 shape).
+
+    Pre-2017 Summer League has no per-game boxscore data, so player logs are
+    rebuilt from the season log. ``include_per_game`` optionally also writes a
+    per-game boxscore for the same player-game (with a distinct PTS so tests can
+    tell which source populated the row).
+    """
+    run_dir = raw_root / "2013" / "15"
+    game_dir = run_dir / "games" / "1521300001"
+    game_dir.mkdir(parents=True)
+    run_dir.joinpath("manifest.json").write_text(
+        json.dumps(
+            {
+                "year": 2013,
+                "league_id": "15",
+                "venue": "las_vegas",
+                "team_gamelog_rows": 2,
+                "player_gamelog_rows": 1,
+                "game_ids": ["1521300001"],
+                "game_count": 1,
+                "errors": [],
+            }
+        )
+    )
+    run_dir.joinpath("leaguegamelog_team.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "LeagueGameLog",
+                        [
+                            "TEAM_ID",
+                            "TEAM_ABBREVIATION",
+                            "TEAM_NAME",
+                            "GAME_ID",
+                            "GAME_DATE",
+                            "MATCHUP",
+                            "PTS",
+                        ],
+                        [
+                            [
+                                1610612741,
+                                "CHI",
+                                "Chicago",
+                                "1521300001",
+                                "2013-07-13",
+                                "CHI vs. MEM",
+                                90,
+                            ],
+                            [
+                                1610612763,
+                                "MEM",
+                                "Memphis",
+                                "1521300001",
+                                "2013-07-13",
+                                "MEM @ CHI",
+                                85,
+                            ],
+                        ],
+                    )
+                ]
+            }
+        )
+    )
+    # Season log carries GAME_ID + a full traditional line; PTS=20.
+    run_dir.joinpath("leaguegamelog_player.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "LeagueGameLog",
+                        [
+                            "PLAYER_ID",
+                            "PLAYER_NAME",
+                            "TEAM_ID",
+                            "GAME_ID",
+                            "MIN",
+                            "FGM",
+                            "FGA",
+                            "PTS",
+                        ],
+                        [
+                            [
+                                203503,
+                                "Tony Snell",
+                                1610612741,
+                                "1521300001",
+                                34,
+                                6,
+                                13,
+                                20,
+                            ]
+                        ],
+                    )
+                ]
+            }
+        )
+    )
+    if include_per_game:
+        # Same player-game via per-game boxscore, but PTS=99 to detect the source.
+        game_dir.joinpath("boxscoretraditionalv2.json").write_text(
+            json.dumps(
+                {
+                    "resultSets": [
+                        _result_set(
+                            "PlayerStats",
+                            [
+                                "GAME_ID",
+                                "TEAM_ID",
+                                "PLAYER_ID",
+                                "PLAYER_NAME",
+                                "MIN",
+                                "FGM",
+                                "FGA",
+                                "PTS",
+                            ],
+                            [
+                                [
+                                    "1521300001",
+                                    1610612741,
+                                    203503,
+                                    "Tony Snell",
+                                    "34:00",
+                                    6,
+                                    13,
+                                    99,
+                                ]
+                            ],
+                        )
+                    ]
+                }
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_season_log_fallback_fills_missing_player_games(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """With no per-game boxscore, player logs are rebuilt from the season log."""
+    _write_season_log_fallback_fixture(tmp_path, include_per_game=False)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2013, league_id="15"
+    )
+    await normalize_competition_games(
+        db_session, year=2013, league_id="15", raw_root=tmp_path
+    )
+    await normalize_player_game_logs(
+        db_session, year=2013, league_id="15", raw_root=tmp_path
+    )
+
+    log = (await db_session.execute(select(SummerLeaguePlayerGameLog))).scalar_one()
+    assert log.pts == 20  # sourced from the season log
+    assert log.minutes_seconds == 34 * 60
+
+
+@pytest.mark.asyncio
+async def test_season_log_fallback_does_not_downgrade_existing_rows(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """The fallback never overwrites an existing per-game row, even when the
+    per-game snapshot is absent on a later run (guards against data downgrade)."""
+    _write_season_log_fallback_fixture(tmp_path, include_per_game=True)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2013, league_id="15"
+    )
+    await normalize_competition_games(
+        db_session, year=2013, league_id="15", raw_root=tmp_path
+    )
+    # First pass: the per-game boxscore (PTS=99) sources the row.
+    await normalize_player_game_logs(
+        db_session, year=2013, league_id="15", raw_root=tmp_path
+    )
+    log = (await db_session.execute(select(SummerLeaguePlayerGameLog))).scalar_one()
+    assert log.pts == 99
+
+    # Delete the per-game boxscore, re-normalize: the season log (PTS=20) must not
+    # overwrite the existing per-game-sourced row.
+    tmp_path.joinpath(
+        "2013", "15", "games", "1521300001", "boxscoretraditionalv2.json"
+    ).unlink()
+    await normalize_player_game_logs(
+        db_session, year=2013, league_id="15", raw_root=tmp_path
+    )
+
+    logs = (await db_session.execute(select(SummerLeaguePlayerGameLog))).scalars().all()
+    assert len(logs) == 1  # no duplicate
+    assert logs[0].pts == 99  # preserved, not downgraded to the season-log line

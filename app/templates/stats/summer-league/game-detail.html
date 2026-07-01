@@ -5,7 +5,7 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
-{% if sl_shotchart %}<link rel="stylesheet" href="{{ url_for('static', path='summer-league-shotchart.css') }}">{% endif %}
+{% if sl_shotchart_scopes %}<link rel="stylesheet" href="{{ url_for('static', path='summer-league-shotchart.css') }}">{% endif %}
 {% if sl_game_flow %}<link rel="stylesheet" href="{{ url_for('static', path='css/game-flow-chart.css') }}">{% endif %}
 {% endblock %}
 
@@ -164,72 +164,39 @@
         <div class="stats-title">Shot Chart</div>
       </div>
 
-      {# Team / player selector #}
+      {% if sl_shotchart_scopes %}
+      {# Team / player selector — driven client-side (no reload, no scroll jump). #}
       <div class="slg-shotchart-selector">
-        <div class="season-selector slg-mode-selector">
-          <a class="season-btn slg-shotchart-btn{% if selected_team_entry_id is none and selected_player_id is none %} active{% endif %}"
-             href="?">Whole Game</a>
-          <a class="season-btn slg-shotchart-btn{% if selected_team_entry_id == box.away.team_entry_id and selected_player_id is none %} active{% endif %}"
-             href="?team_entry_id={{ box.away.team_entry_id }}">{{ box.away.abbr or box.away.name }}</a>
-          <a class="season-btn slg-shotchart-btn{% if selected_team_entry_id == box.home.team_entry_id and selected_player_id is none %} active{% endif %}"
-             href="?team_entry_id={{ box.home.team_entry_id }}">{{ box.home.abbr or box.home.name }}</a>
+        <div class="season-selector slg-mode-selector slg-shotchart-teamrow">
+          <button type="button" class="season-btn slg-shotchart-btn active" data-scope-key="game">Whole Game</button>
+          <button type="button" class="season-btn slg-shotchart-btn" data-scope-key="team:{{ box.away.team_entry_id }}">{{ box.away.abbr or box.away.name }}</button>
+          <button type="button" class="season-btn slg-shotchart-btn" data-scope-key="team:{{ box.home.team_entry_id }}">{{ box.home.abbr or box.home.name }}</button>
         </div>
-        {# Per-player sub-selector — shown when a team is chosen #}
-        {% if selected_team_entry_id is not none %}
-        {% set team_lines = box.away.lines if selected_team_entry_id == box.away.team_entry_id else box.home.lines %}
-        <div class="season-selector slg-mode-selector slg-shotchart-player-selector">
-          <a class="season-btn slg-shotchart-btn{% if selected_player_id is none %} active{% endif %}"
-             href="?team_entry_id={{ selected_team_entry_id }}">All Players</a>
-          {% for line in team_lines %}
+        {# Both teams' player sub-selectors render up front (hidden); the
+           controller reveals the active team's list. #}
+        {% for team in [box.away, box.home] %}
+        <div class="season-selector slg-mode-selector slg-shotchart-player-selector"
+             data-team-key="team:{{ team.team_entry_id }}" style="display:none;">
+          <button type="button" class="season-btn slg-shotchart-btn" data-scope-key="team:{{ team.team_entry_id }}">All Players</button>
+          {% for line in team.lines %}
           {% if line.player_id is not none %}
-          <a class="season-btn slg-shotchart-btn{% if selected_player_id == line.player_id %} active{% endif %}"
-             href="?team_entry_id={{ selected_team_entry_id }}&player_id={{ line.player_id }}">{{ line.name }}</a>
+          <button type="button" class="season-btn slg-shotchart-btn" data-scope-key="player:{{ line.player_id }}">{{ line.name }}</button>
           {% endif %}
           {% endfor %}
         </div>
-        {% endif %}
+        {% endfor %}
       </div>
 
-      {% if sl_shotchart %}
-      <div id="sl-shotchart-root"></div>
-
-      {# Zone table #}
-      {% if sl_shotchart.zones %}
-      <div class="sl-table-wrap sl-shotchart-zone-table">
-        <table class="sl-stats-table">
-          <thead>
-            <tr>
-              <th scope="col">Zone</th>
-              <th scope="col" title="Field goals attempted">FGA</th>
-              <th scope="col" title="Field goals made">FGM</th>
-              <th scope="col" title="Field goal percentage">FG%</th>
-              <th scope="col" title="Frequency — share of total FGA">Freq%</th>
-              <th scope="col" title="Pool average FG% for this zone">Pool%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for z in sl_shotchart.zones %}
-            <tr>
-              <th scope="row">{{ z.shot_zone_basic }}</th>
-              <td>{{ z.fga }}</td>
-              <td>{{ z.fgm }}</td>
-              <td>{% if z.fg_pct is not none %}{{ '%.1f' % (z.fg_pct * 100) }}%{% else %}—{% endif %}</td>
-              <td>{{ '%.1f' % (z.freq_pct * 100) }}%</td>
-              <td>{% if z.pool_fg_pct is not none %}{{ '%.1f' % (z.pool_fg_pct * 100) }}%{% else %}—{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      {# Court (left) + zone table (right); both filled by the controller. #}
+      <div class="sl-shotchart-wrap sl-game-shotchart">
+        <div id="sl-shotchart-root"></div>
+        <div class="sl-table-wrap sl-shotchart-zone-table" id="sl-shotchart-zone-table"></div>
+        <div class="sl-career-meta sl-shotchart-note" id="sl-shotchart-note" style="display:none;"></div>
       </div>
-      {% endif %}
-
-      {% if sl_shotchart.suppressed %}
-      <div class="sl-career-meta sl-shotchart-note">Small sample ({{ sl_shotchart.total_fga }} FGA) — zone table only; heat chart requires &ge;20 FGA.</div>
-      {% endif %}
 
       {% else %}
       {# Graceful empty state #}
-      <p class="slg-empty slg-empty--block">No shot-chart data available for this scope.</p>
+      <p class="slg-empty slg-empty--block">No shot-chart data available for this game.</p>
       {% endif %}
     </div>
   </section>
@@ -245,10 +212,11 @@
 </script>
 <script src="{{ url_for('static', path='js/game-flow-chart.js') }}"></script>
 {% endif %}
-{% if sl_shotchart %}
+{% if sl_shotchart_scopes %}
 <script>
-  window.SL_SHOTCHART = {{ sl_shotchart | tojson | safe }};
+  window.SL_SHOTCHART_SCOPES = {{ sl_shotchart_scopes | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='summer-league-shotchart.js') }}"></script>
+<script src="{{ url_for('static', path='summer-league-game-shotchart.js') }}"></script>
 {% endif %}
 {% endblock %}
