@@ -24,6 +24,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerResolutionReview,
     SummerLeagueReviewStatus,
     SummerLeagueResolutionStatus,
+    SummerLeagueShotEvent,
     SummerLeagueSourcePlayer,
 )
 from app.services.player_mention_service import parse_player_name
@@ -88,6 +89,7 @@ class SummerLeagueResolutionResult:
     stub_created: bool = False
     logs_backfilled: int = 0
     participations_backfilled: int = 0
+    shots_backfilled: int = 0
 
     @property
     def resolved(self) -> bool:
@@ -112,6 +114,7 @@ class SummerLeagueResolutionReport:
     stubs_created: int
     player_game_logs_backfilled: int
     participation_rows_backfilled: int
+    shot_events_backfilled: int = 0
     results: list[SummerLeagueResolutionResult] = field(default_factory=list)
 
 
@@ -249,6 +252,7 @@ def _result_from_confirmed_link(
     external_id_created: bool,
     logs_backfilled: int,
     participations_backfilled: int = 0,
+    shots_backfilled: int = 0,
     stub_created: bool = False,
 ) -> SummerLeagueResolutionResult:
     """Build a standard result for a confirmed resolution."""
@@ -264,6 +268,7 @@ def _result_from_confirmed_link(
         stub_created=stub_created,
         logs_backfilled=logs_backfilled,
         participations_backfilled=participations_backfilled,
+        shots_backfilled=shots_backfilled,
     )
 
 
@@ -406,6 +411,29 @@ async def _backfill_player_game_logs(
     return int(rowcount) if rowcount is not None else 0
 
 
+async def _backfill_shot_events(
+    db: AsyncSession,
+    *,
+    source_player_id: int | None,
+    player_id: int,
+) -> int:
+    """Set the denormalized canonical player ID on existing shot events.
+
+    Shot events are normalized before a source player is resolved, so their
+    ``player_id`` is left ``NULL`` until resolution. Mirroring
+    :func:`_backfill_player_game_logs` keeps per-player shot charts populated.
+    """
+    if source_player_id is None:
+        return 0
+    result = await db.execute(
+        update(SummerLeagueShotEvent)
+        .where(SummerLeagueShotEvent.source_player_id == source_player_id)  # type: ignore[arg-type]
+        .values(player_id=player_id)
+    )
+    rowcount = cast(CursorResult[Any], result).rowcount
+    return int(rowcount) if rowcount is not None else 0
+
+
 async def _backfill_participation_and_affiliation(
     db: AsyncSession,
     *,
@@ -522,6 +550,11 @@ async def _confirm_resolution(
         source_player_id=source_player.id,
         player_id=player_id,
     )
+    shots_backfilled = await _backfill_shot_events(
+        db,
+        source_player_id=source_player.id,
+        player_id=player_id,
+    )
     return _result_from_confirmed_link(
         source_player,
         player_id=player_id,
@@ -531,6 +564,7 @@ async def _confirm_resolution(
         stub_created=stub_created,
         logs_backfilled=logs_backfilled,
         participations_backfilled=participations_backfilled,
+        shots_backfilled=shots_backfilled,
     )
 
 
@@ -859,6 +893,7 @@ def _build_report(
         participation_rows_backfilled=sum(
             result.participations_backfilled for result in results
         ),
+        shot_events_backfilled=sum(result.shots_backfilled for result in results),
         results=results,
     )
 
