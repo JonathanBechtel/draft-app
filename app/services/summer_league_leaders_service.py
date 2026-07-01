@@ -28,6 +28,7 @@ from app.schemas.summer_league import (
 from app.services.summer_league_metrics_service import (
     ADV_LEADER_COLUMNS,
     VENUE_LABELS,
+    get_blended_leaders,
     get_competition_leaders,
 )
 
@@ -216,6 +217,28 @@ async def get_leaders_years(db: AsyncSession) -> list[int]:
     return [int(y) for (y,) in rows.all()]
 
 
+# Venue display order mirrors the marquee-first ordering of VENUE_LABELS.
+_VENUE_ORDER_KEYS = list(VENUE_LABELS.keys())
+
+
+async def get_leaders_venues(db: AsyncSession) -> list[tuple[str, str]]:
+    """Return ``(venue_slug, label)`` for venues present in competitions.
+
+    Ordered marquee-first (Las Vegas → Salt Lake City → California Classic →
+    Orlando) so the counting-mode venue picker reads consistently with the rest
+    of the Summer League surfaces.
+    """
+    rows = await db.execute(
+        select(SummerLeagueCompetition.venue_slug).distinct()  # type: ignore[call-overload]
+    )
+    slugs = {v for (v,) in rows.all()}
+    ordered = sorted(
+        slugs,
+        key=lambda s: _VENUE_ORDER_KEYS.index(s) if s in _VENUE_ORDER_KEYS else 99,
+    )
+    return [(s, VENUE_LABELS.get(s, s)) for s in ordered]
+
+
 async def get_leaders(
     db: AsyncSession,
     *,
@@ -267,7 +290,14 @@ async def get_leaders(
     if sort not in columns_keys:
         sort = "pts"
 
-    rows = await _aggregate(db, year=year, min_games=min_games, min_minutes=min_minutes)
+    # Venue is optional for the counting modes ("All venues" when unset); ignore
+    # a slug that doesn't correspond to a real competition.
+    venues = await get_leaders_venues(db)
+    venue = venue if venue in {v[0] for v in venues} else None
+
+    rows = await _aggregate(
+        db, year=year, venue=venue, min_games=min_games, min_minutes=min_minutes
+    )
     computed = [_compute_row(r, mode) for r in rows]
 
     reverse = direction == "desc"
@@ -305,6 +335,9 @@ async def get_leaders(
         page=page,
         page_size=page_size,
         total_pages=total_pages,
+        venue=venue,
+        venue_label=VENUE_LABELS.get(venue) if venue else None,
+        venues=venues,
     )
 
 
@@ -320,15 +353,29 @@ async def _advanced_leaders(
     page: int,
     page_size: int,
 ) -> LeadersResult:
-    """Rank one competition's players by SL-calibrated advanced metrics.
+    """Rank players by SL-calibrated advanced metrics for one scope.
 
     Reads the materialized ``summer_league_player_seasons`` table via the metrics
-    service. The pool is recalibrated per competition, so this resolves to a
-    single (year, venue) and ranks within it.
+    service. With both a season and a venue chosen this ranks within that single
+    (pool-recalibrated) competition; leaving either open blends a player's
+    adv-eligible pools into one line — up to the all-time, all-venue career board.
     """
-    comp = await get_competition_leaders(
-        db, year=year, venue_slug=venue, min_games=min_games, min_minutes=min_minutes
-    )
+    if year is not None and venue is not None:
+        comp = await get_competition_leaders(
+            db,
+            year=year,
+            venue_slug=venue,
+            min_games=min_games,
+            min_minutes=min_minutes,
+        )
+    else:
+        comp = await get_blended_leaders(
+            db,
+            year=year,
+            venue_slug=venue,
+            min_games=min_games,
+            min_minutes=min_minutes,
+        )
     if sort not in _ADVANCED_COLUMNS:
         sort = _ADVANCED_DEFAULT_SORT
     reverse = direction == "desc"
@@ -386,7 +433,12 @@ async def _advanced_leaders(
 
 
 async def _aggregate(
-    db: AsyncSession, *, year: Optional[int], min_games: int, min_minutes: int
+    db: AsyncSession,
+    *,
+    year: Optional[int],
+    venue: Optional[str],
+    min_games: int,
+    min_minutes: int,
 ) -> list[Any]:
     """Aggregate per-player box totals for the counting display modes."""
     pgl = SummerLeaguePlayerGameLog
@@ -399,6 +451,8 @@ async def _aggregate(
     ]
     if year is not None:
         conds.append(comp.year == year)  # type: ignore[arg-type]
+    if venue:
+        conds.append(comp.venue_slug == venue)  # type: ignore[arg-type]
 
     stmt = (
         select(
