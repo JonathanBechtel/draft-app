@@ -150,3 +150,61 @@
   .sl-shotchart__table { font-size: 0.65rem; }
   .sl-shotchart__legend { font-size: 0.58rem; gap: 0.6rem; }
 }
+
+/* ── Career shot-chart layout (player-detail): court left, data right ────── */
+.sl-shotchart-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 430px) minmax(0, 1fr);
+  column-gap: 1.5rem;
+  row-gap: 0.85rem;
+  align-items: start;
+}
+/* Section header (Shot Chart + export) spans the full width */
+.sl-shotchart-wrap > .stats-section-label { grid-column: 1 / -1; }
+/* Court on the left; zone table fills the space beside it, centered to it */
+.sl-shotchart-wrap > #sl-shotchart-root { grid-column: 1; }
+.sl-shotchart-wrap > .sl-shotchart-zone-table { grid-column: 2; align-self: center; }
+/* Small-sample note + shot-diet strip span the full width beneath both */
+.sl-shotchart-wrap > .sl-shotchart-note,
+.sl-shotchart-wrap > .sl-shot-diet { grid-column: 1 / -1; }
+
+/* Larger zone-breakdown type (shot-chart tables only, all SL surfaces) */
+.sl-shotchart-zone-table .sl-stats-table { font-size: 0.92rem; }
+.sl-shotchart-zone-table .sl-stats-table thead th { font-size: 0.66rem; padding: 0.375rem 0.4rem; }
+.sl-shotchart-zone-table .sl-stats-table td,
+.sl-shotchart-zone-table .sl-stats-table tbody th { padding: 0.45rem 0.4rem; }
+
+@media (max-width: 760px) {
+  .sl-shotchart-wrap { grid-template-columns: minmax(0, 1fr); }
+  .sl-shotchart-wrap > #sl-shotchart-root,
+  .sl-shotchart-wrap > .sl-shotchart-zone-table { grid-column: 1; align-self: start; }
+}
+
+/* ── Shot-diet strip (shared: player-detail career + player season page) ── */
+.sl-shot-diet { margin-top: 0.5rem; }
+.sl-shot-diet__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 2rem;
+}
+.sl-shot-diet__item { display: inline-flex; align-items: baseline; gap: 0.5rem; }
+.sl-shot-diet__label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-slate-500);
+}
+.sl-shot-diet__val {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.25rem;
+  color: var(--color-slate-800);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .sl-shot-diet__row { justify-content: flex-start; gap: 0.5rem 1.5rem; }
+  .sl-shot-diet__val { font-size: 1.1rem; }
+}
