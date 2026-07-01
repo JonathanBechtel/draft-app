@@ -13,6 +13,7 @@ from datetime import date
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.schemas.player_college_stats import PlayerCollegeStats
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
@@ -337,3 +338,81 @@ async def test_without_sl_cohort_flag_behaves_as_full_sweep(
 
     assert result.players_attempted == 1
     assert result.no_source == []
+
+
+async def test_only_missing_does_not_report_enriched_players_as_no_source(
+    db_session: AsyncSession,
+) -> None:
+    """--only-missing must not misclassify already-enriched players as no-source.
+
+    An eligible cohort player (school + BBRef id) who already has
+    ``sports_reference`` stats is filtered out of the *target* set by
+    ``only_missing``, but is enriched — not no-source. Only the genuinely
+    ineligible player (no school) belongs in ``result.no_source``. Regression
+    guard: computing no-source from the only_missing-filtered target set would
+    wrongly list the enriched player as "no school + BBRef id on record".
+    """
+    enriched = make_player("Cohort", "Enriched", school="Duke")
+    international = make_player("Cohort", "Intl", school=None)
+    db_session.add_all([enriched, international])
+    await db_session.flush()
+    assert enriched.id is not None
+    assert international.id is not None
+
+    db_session.add(
+        PlayerExternalId(
+            player_id=enriched.id,
+            system="bbr",
+            external_id="enrico01",
+            source_url="https://www.basketball-reference.com/players/e/enrico01.html",
+        )
+    )
+    # Existing sports_reference stats -> excluded by --only-missing.
+    db_session.add(
+        PlayerCollegeStats(
+            player_id=enriched.id, season="2024-25", source="sports_reference"
+        )
+    )
+    await db_session.flush()
+
+    comp, team = await _seed_competition(
+        db_session, year=2025, league_id="13", venue_slug="california_classic"
+    )
+    assert comp.id is not None
+    assert team.id is not None
+
+    await _participate(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team.id,
+        name="Cohort Enriched",
+        person_id="cme-1",
+        canonical_player_id=enriched.id,
+    )
+    await _participate(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team.id,
+        name="Cohort Intl",
+        person_id="cme-2",
+        canonical_player_id=international.id,
+    )
+    await db_session.commit()
+
+    session_factory = _session_factory_for(db_session)
+
+    result = await run_college_stats_sweep(
+        session_factory,
+        dry_run=True,
+        only_missing=True,
+        sl_cohort=True,
+        sl_year=2025,
+        sl_league_id="13",
+    )
+
+    # Enriched player is filtered from the target set by --only-missing...
+    assert result.players_attempted == 0
+    # ...but must NOT be reported as no-source; only the international is.
+    no_source_text = "\n".join(result.no_source)
+    assert "Cohort Intl" in no_source_text
+    assert "Cohort Enriched" not in no_source_text

@@ -501,7 +501,15 @@ async def run_college_stats_sweep(
         )
 
         if sl_cohort and cohort_player_ids is not None:
-            no_source_ids = cohort_player_ids - {p[0] for p in players}
+            # Compute no-source from eligibility *ignoring* only_missing: a
+            # cohort player with a school + BBRef id who was merely filtered
+            # out by --only-missing (already has sports_reference stats) is
+            # enriched, not no-source. Subtracting the only_missing-filtered
+            # ``players`` here would misreport those as "no school + BBRef id".
+            eligible = await _find_eligible_players(
+                db, cohort_player_ids=cohort_player_ids
+            )
+            no_source_ids = cohort_player_ids - {p[0] for p in eligible}
             no_source_players = await _find_no_source_players(db, no_source_ids)
             result.no_source = [
                 f"{name or 'Unknown'} (player_id={pid}): no school + BBRef id on record"

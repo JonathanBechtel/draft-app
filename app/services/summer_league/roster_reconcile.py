@@ -139,9 +139,13 @@ async def reconcile_competition(
             participation.source_player_id, participation
         )
 
-    # 2. Played: distinct source players appearing in a box score for this
-    # competition. Joined on (competition_id, source_player_id) deliberately —
-    # participation_id is NULL on pre-B1 rows and must not gate this query.
+    # 2. Played: distinct source players who actually *appeared* in a box score
+    # for this competition. Joined on (competition_id, source_player_id)
+    # deliberately — participation_id is NULL on pre-B1 rows and must not gate
+    # this query. ``minutes_seconds > 0`` filters out DNP/inactive box rows
+    # (NBA Stats emits a row with a COMMENT and null MIN for these): a DNP is a
+    # non-appearance, so an announced DNP player must stay in
+    # ``announced_not_played`` rather than being silently counted as played.
     played_result = await db.execute(
         select(  # type: ignore[call-overload]
             SummerLeaguePlayerGameLog.source_player_id,
@@ -149,7 +153,8 @@ async def reconcile_competition(
             SummerLeaguePlayerGameLog.player_id,
             SummerLeaguePlayerGameLog.id,
         ).where(
-            SummerLeaguePlayerGameLog.competition_id == competition_id  # type: ignore[arg-type]
+            SummerLeaguePlayerGameLog.competition_id == competition_id,  # type: ignore[arg-type]
+            SummerLeaguePlayerGameLog.minutes_seconds > 0,  # type: ignore[operator]
         )
     )
     played_rows = played_result.all()

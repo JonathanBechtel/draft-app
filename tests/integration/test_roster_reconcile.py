@@ -155,8 +155,14 @@ async def _game_log(
     *,
     participation_id: Optional[int],
     player_id: Optional[int] = None,
+    minutes_seconds: Optional[int] = 1200,
 ) -> SummerLeaguePlayerGameLog:
-    """Create a box-score player-game-log row."""
+    """Create a box-score player-game-log row.
+
+    ``minutes_seconds`` defaults to a real appearance (20:00). Pass ``None`` or
+    ``0`` to simulate a DNP/inactive box row, which reconcile must not count as
+    "played".
+    """
     log = SummerLeaguePlayerGameLog(
         competition_id=competition_id,
         game_id=game_id,
@@ -166,6 +172,7 @@ async def _game_log(
         participation_id=participation_id,
         nba_stats_person_id=source_player.nba_stats_person_id,
         raw_player_name=source_player.raw_player_name,
+        minutes_seconds=minutes_seconds,
     )
     db.add(log)
     await db.flush()
@@ -227,6 +234,67 @@ async def test_classifies_announced_played_and_late_add(
     assert [e.source_player_id for e in report.played_not_announced] == [sp3.id]
     assert report.played_not_announced[0].name == "Player Three"
     assert report.played_not_announced[0].team_name == "Cleveland Cavaliers"
+
+
+@pytest.mark.asyncio
+async def test_dnp_box_row_does_not_count_as_played(
+    db_session: AsyncSession,
+) -> None:
+    """A DNP/inactive box row (null minutes) is not counted as an appearance.
+
+    NBA Stats emits a box-score row (COMMENT, null MIN) for announced-but-DNP
+    and inactive players. Reconcile must treat a non-appearance as *not played*:
+    - P1: announced, only a DNP game log -> stays in announced_not_played.
+    - P2: unannounced, only a DNP game log -> does NOT surface as a late-add.
+    - P3: announced AND has a real appearance -> excluded from both lists.
+    """
+    competition_id = await _make_competition(db_session)
+    team_entry_id = await _make_team_entry(db_session, competition_id)
+    game_id = await _make_game(db_session, competition_id, "0012600009")
+
+    sp1 = await _make_source_player(db_session, "P1", "Player One")
+    sp2 = await _make_source_player(db_session, "P2", "Player Two")
+    sp3 = await _make_source_player(db_session, "P3", "Player Three")
+
+    await _announce(db_session, competition_id, team_entry_id, sp1)
+    await _game_log(
+        db_session,
+        competition_id,
+        game_id,
+        team_entry_id,
+        sp1,
+        participation_id=None,
+        minutes_seconds=None,  # DNP
+    )
+    await _game_log(
+        db_session,
+        competition_id,
+        game_id,
+        team_entry_id,
+        sp2,
+        participation_id=None,
+        minutes_seconds=None,  # DNP
+    )
+    part3 = await _announce(db_session, competition_id, team_entry_id, sp3)
+    await _game_log(
+        db_session,
+        competition_id,
+        game_id,
+        team_entry_id,
+        sp3,
+        participation_id=part3.id,
+    )
+    await db_session.commit()
+
+    report = await reconcile_competition(db_session, competition_id)
+
+    assert report.total_announced == 2  # P1, P3
+    assert report.total_played == 1  # only P3 actually appeared
+    assert report.announced_and_played == 1  # P3
+    # P1 is announced and DNP -> flagged as never played.
+    assert [e.source_player_id for e in report.announced_not_played] == [sp1.id]
+    # P2 only has a DNP row -> not a genuine late-add appearance.
+    assert report.played_not_announced == []
 
 
 @pytest.mark.asyncio
