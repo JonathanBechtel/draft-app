@@ -60,12 +60,19 @@ for lid in "${LEAGUES[@]}"; do
   # ingest the freshly-written (timestamped) CSV. bbref pages are cached, so
   # repeated runs only fetch newly-added players.
   echo "L$lid: C3 bio scrape + ingest"
-  run scripts/bbref_bio_scraper.py --summer-league-year 2026 --summer-league-league-id "$lid" 2>&1 | grep -iE "wrote|scraped|manual.review|error" | tail -2
-  bio_csv=$(ls -t scraper/output/bbio_*.csv 2>/dev/null | head -1)
-  if [[ -n "$bio_csv" ]]; then
+  # Capture the scraper's output + exit status so we ingest exactly the CSV
+  # THIS scrape emitted (it prints "... -> <path>.csv"). Globbing the output
+  # dir instead would re-ingest a stale/other-league CSV whenever this scrape
+  # fails or writes nothing — and the filename is date-stamped, so both leagues
+  # share it within a day.
+  bio_out=$(run scripts/bbref_bio_scraper.py --summer-league-year 2026 --summer-league-league-id "$lid" 2>&1)
+  bio_status=$?
+  echo "$bio_out" | grep -iE "wrote|scraped|manual.review|error" | tail -2
+  bio_csv=$(echo "$bio_out" | sed -nE 's/.*-> (.*\.csv).*/\1/p' | tail -1)
+  if [[ $bio_status -eq 0 && -n "$bio_csv" && -f "$bio_csv" ]]; then
     run scripts/ingest_player_bios.py --file "$bio_csv" 2>&1 | grep -iE "updated|ingest|matched|error" | tail -2
   else
-    echo "  (no bbref bio CSV produced — nothing to ingest)"
+    echo "  (bio scrape wrote no CSV for L$lid — skipping ingest)"
   fi
 
   # C4 — college stats: cohort players with school + bbref id; --only-missing
