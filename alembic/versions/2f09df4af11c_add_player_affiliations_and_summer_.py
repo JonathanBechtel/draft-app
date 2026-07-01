@@ -57,61 +57,74 @@ def upgrade() -> None:
     affiliation_type_enum.create(bind, checkfirst=True)
     affiliation_status_enum.create(bind, checkfirst=True)
 
+    # The stage/prod apps run SQLModel.metadata.create_all() at startup, which
+    # reflects the live models and can create these tables before Alembic runs.
+    # Guard the table creates (op.create_table has no IF NOT EXISTS) and make the
+    # indexes idempotent so this migration re-runs cleanly against a DB where the
+    # tables already exist — mirroring the enum checkfirst / column IF NOT EXISTS
+    # guards already used below.
+    existing_tables = set(sa.inspect(bind).get_table_names())
+
     # 2. Create player_affiliations (append-only, bitemporal hub table).
-    op.create_table(
-        "player_affiliations",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("player_id", sa.Integer(), nullable=True),
-        sa.Column("nba_team_id", sa.Integer(), nullable=True),
-        sa.Column(
-            "affiliation_type",
-            affiliation_type_enum,
-            nullable=False,
-        ),
-        sa.Column(
-            "status",
-            affiliation_status_enum,
-            nullable=False,
-            server_default="ANNOUNCED",
-        ),
-        sa.Column("effective_start", sa.Date(), nullable=True),
-        sa.Column("effective_end", sa.Date(), nullable=True),
-        sa.Column("recorded_at", sa.DateTime(), nullable=False),
-        sa.Column("supersedes_id", sa.Integer(), nullable=True),
-        sa.Column("superseded_at", sa.DateTime(), nullable=True),
-        sa.Column("retracted_at", sa.DateTime(), nullable=True),
-        sa.Column("source", sa.String(), nullable=False),
-        sa.Column("source_ref", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(["nba_team_id"], ["nba_teams.id"]),
-        sa.ForeignKeyConstraint(["player_id"], ["players_master.id"]),
-        sa.ForeignKeyConstraint(["supersedes_id"], ["player_affiliations.id"]),
-        sa.PrimaryKeyConstraint("id"),
-    )
+    if "player_affiliations" not in existing_tables:
+        op.create_table(
+            "player_affiliations",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("player_id", sa.Integer(), nullable=True),
+            sa.Column("nba_team_id", sa.Integer(), nullable=True),
+            sa.Column(
+                "affiliation_type",
+                affiliation_type_enum,
+                nullable=False,
+            ),
+            sa.Column(
+                "status",
+                affiliation_status_enum,
+                nullable=False,
+                server_default="ANNOUNCED",
+            ),
+            sa.Column("effective_start", sa.Date(), nullable=True),
+            sa.Column("effective_end", sa.Date(), nullable=True),
+            sa.Column("recorded_at", sa.DateTime(), nullable=False),
+            sa.Column("supersedes_id", sa.Integer(), nullable=True),
+            sa.Column("superseded_at", sa.DateTime(), nullable=True),
+            sa.Column("retracted_at", sa.DateTime(), nullable=True),
+            sa.Column("source", sa.String(), nullable=False),
+            sa.Column("source_ref", sa.Text(), nullable=True),
+            sa.Column("created_at", sa.DateTime(), nullable=False),
+            sa.Column("updated_at", sa.DateTime(), nullable=False),
+            sa.ForeignKeyConstraint(["nba_team_id"], ["nba_teams.id"]),
+            sa.ForeignKeyConstraint(["player_id"], ["players_master.id"]),
+            sa.ForeignKeyConstraint(["supersedes_id"], ["player_affiliations.id"]),
+            sa.PrimaryKeyConstraint("id"),
+        )
     op.create_index(
         "ix_player_affiliations_player_id",
         "player_affiliations",
         ["player_id"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_player_affiliations_nba_team_id",
         "player_affiliations",
         ["nba_team_id"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_player_affiliations_status",
         "player_affiliations",
         ["status"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_player_affiliations_supersedes_id",
         "player_affiliations",
         ["supersedes_id"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_player_affiliations_active",
@@ -119,74 +132,80 @@ def upgrade() -> None:
         ["player_id", "nba_team_id"],
         unique=False,
         postgresql_where=sa.text("superseded_at IS NULL AND retracted_at IS NULL"),
+        if_not_exists=True,
     )
 
     # 3. Create summer_league_participation (stable stat bridge; FK → player_affiliations).
-    op.create_table(
-        "summer_league_participation",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("competition_id", sa.Integer(), nullable=False),
-        sa.Column("team_entry_id", sa.Integer(), nullable=False),
-        sa.Column("source_player_id", sa.Integer(), nullable=False),
-        sa.Column("player_id", sa.Integer(), nullable=True),
-        sa.Column("affiliation_id", sa.Integer(), nullable=True),
-        sa.Column("stint_no", sa.Integer(), nullable=False, server_default="1"),
-        sa.Column(
-            "roster_status",
-            affiliation_status_enum,
-            nullable=False,
-            server_default="ANNOUNCED",
-        ),
-        sa.Column("jersey_number", sa.String(), nullable=True),
-        sa.Column("roster_position", sa.String(), nullable=True),
-        sa.Column("first_game_date", sa.Date(), nullable=True),
-        sa.Column("last_game_date", sa.Date(), nullable=True),
-        sa.Column("games_played", sa.Integer(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(["affiliation_id"], ["player_affiliations.id"]),
-        sa.ForeignKeyConstraint(
-            ["competition_id"], ["summer_league_competitions.id"]
-        ),
-        sa.ForeignKeyConstraint(["player_id"], ["players_master.id"]),
-        sa.ForeignKeyConstraint(
-            ["source_player_id"], ["summer_league_source_players.id"]
-        ),
-        sa.ForeignKeyConstraint(
-            ["team_entry_id"], ["summer_league_team_entries.id"]
-        ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "competition_id",
-            "team_entry_id",
-            "source_player_id",
-            "stint_no",
-            name="uq_summer_league_participation_comp_team_source_stint",
-        ),
-    )
+    if "summer_league_participation" not in existing_tables:
+        op.create_table(
+            "summer_league_participation",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("competition_id", sa.Integer(), nullable=False),
+            sa.Column("team_entry_id", sa.Integer(), nullable=False),
+            sa.Column("source_player_id", sa.Integer(), nullable=False),
+            sa.Column("player_id", sa.Integer(), nullable=True),
+            sa.Column("affiliation_id", sa.Integer(), nullable=True),
+            sa.Column("stint_no", sa.Integer(), nullable=False, server_default="1"),
+            sa.Column(
+                "roster_status",
+                affiliation_status_enum,
+                nullable=False,
+                server_default="ANNOUNCED",
+            ),
+            sa.Column("jersey_number", sa.String(), nullable=True),
+            sa.Column("roster_position", sa.String(), nullable=True),
+            sa.Column("first_game_date", sa.Date(), nullable=True),
+            sa.Column("last_game_date", sa.Date(), nullable=True),
+            sa.Column("games_played", sa.Integer(), nullable=True),
+            sa.Column("created_at", sa.DateTime(), nullable=False),
+            sa.Column("updated_at", sa.DateTime(), nullable=False),
+            sa.ForeignKeyConstraint(["affiliation_id"], ["player_affiliations.id"]),
+            sa.ForeignKeyConstraint(
+                ["competition_id"], ["summer_league_competitions.id"]
+            ),
+            sa.ForeignKeyConstraint(["player_id"], ["players_master.id"]),
+            sa.ForeignKeyConstraint(
+                ["source_player_id"], ["summer_league_source_players.id"]
+            ),
+            sa.ForeignKeyConstraint(
+                ["team_entry_id"], ["summer_league_team_entries.id"]
+            ),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint(
+                "competition_id",
+                "team_entry_id",
+                "source_player_id",
+                "stint_no",
+                name="uq_summer_league_participation_comp_team_source_stint",
+            ),
+        )
     op.create_index(
         "ix_summer_league_participation_player_id",
         "summer_league_participation",
         ["player_id"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_summer_league_participation_competition_team",
         "summer_league_participation",
         ["competition_id", "team_entry_id"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_summer_league_participation_source_player_id",
         "summer_league_participation",
         ["source_player_id"],
         unique=False,
+        if_not_exists=True,
     )
     op.create_index(
         "ix_summer_league_participation_affiliation_id",
         "summer_league_participation",
         ["affiliation_id"],
         unique=False,
+        if_not_exists=True,
     )
 
     # 4. Add participation_id to summer_league_player_game_logs (additive, nullable).
