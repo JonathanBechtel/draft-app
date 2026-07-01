@@ -20,7 +20,7 @@ This module performs no writes — it is purely a read-side diagnostic.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +36,29 @@ from app.schemas.summer_league import (
 
 # Affiliation source stamped by the roster loader (app/services/summer_league/roster_ingest.py).
 ROSTER_SOURCE = "nba_summer_league_roster"
+
+_T = TypeVar("_T")
+
+
+async def _fetch_by_id(
+    db: AsyncSession, model: type[_T], ids: set[int]
+) -> dict[int, _T]:
+    """Batch-fetch ``model`` rows whose primary key is in ``ids``, keyed by id.
+
+    Returns an empty dict without issuing a query when ``ids`` is empty. Rows
+    with a ``None`` primary key are skipped defensively.
+    """
+    if not ids:
+        return {}
+    result = await db.execute(
+        select(model).where(model.id.in_(ids))  # type: ignore[attr-defined]
+    )
+    by_id: dict[int, _T] = {}
+    for row in result.scalars().all():
+        row_id = row.id  # type: ignore[attr-defined]
+        if row_id is not None:
+            by_id[row_id] = row
+    return by_id
 
 
 @dataclass
@@ -152,31 +175,17 @@ async def reconcile_competition(
     # (raw name fallback), canonical players (preferred display name), and
     # team entries (raw team name).
     all_source_player_ids = announced_ids | played_ids
-    source_players_by_id: dict[int, SummerLeagueSourcePlayer] = {}
-    if all_source_player_ids:
-        sp_result = await db.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.id.in_(all_source_player_ids)  # type: ignore[union-attr]
-            )
-        )
-        for source_player in sp_result.scalars().all():
-            if source_player.id is not None:
-                source_players_by_id[source_player.id] = source_player
+    source_players_by_id = await _fetch_by_id(
+        db, SummerLeagueSourcePlayer, all_source_player_ids
+    )
 
     all_team_entry_ids = {
         participation.team_entry_id
         for participation in announced_by_source_player_id.values()
     } | {team_entry_id for team_entry_id, _ in played_by_source_player_id.values()}
-    team_entries_by_id: dict[int, SummerLeagueTeamEntry] = {}
-    if all_team_entry_ids:
-        team_result = await db.execute(
-            select(SummerLeagueTeamEntry).where(
-                SummerLeagueTeamEntry.id.in_(all_team_entry_ids)  # type: ignore[union-attr]
-            )
-        )
-        for team_entry in team_result.scalars().all():
-            if team_entry.id is not None:
-                team_entries_by_id[team_entry.id] = team_entry
+    team_entries_by_id = await _fetch_by_id(
+        db, SummerLeagueTeamEntry, all_team_entry_ids
+    )
 
     all_player_ids = {
         participation.player_id
@@ -187,16 +196,7 @@ async def reconcile_competition(
         for _, player_id in played_by_source_player_id.values()
         if player_id is not None
     }
-    players_by_id: dict[int, PlayerMaster] = {}
-    if all_player_ids:
-        player_result = await db.execute(
-            select(PlayerMaster).where(
-                PlayerMaster.id.in_(all_player_ids)  # type: ignore[union-attr]
-            )
-        )
-        for player in player_result.scalars().all():
-            if player.id is not None:
-                players_by_id[player.id] = player
+    players_by_id = await _fetch_by_id(db, PlayerMaster, all_player_ids)
 
     def _name(player_id: Optional[int], source_player_id: int) -> str:
         if player_id is not None:
