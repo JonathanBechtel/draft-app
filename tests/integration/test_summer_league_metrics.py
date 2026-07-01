@@ -187,6 +187,11 @@ async def test_rebuild_materializes_metrics_and_gates_pools(
     assert len(thin) == 6
     assert all(not s.adv_eligible for s in thin)
     assert all(s.gmsc is not None for s in thin)       # box-derived still computed
+    # pace / pts_per100 are raw possession measures, populated even for thin pools
+    # so per-100 works outside adv_eligible pools (issue #473).
+    assert all(s.pace is not None for s in thin)
+    assert all(s.pts_per100 is not None for s in thin)
+    # League-relative / pool-calibrated composites remain blanked.
     assert all(s.per is None and s.ortg is None for s in thin)
     assert all(s.ws82 is None and s.vorp82 is None for s in thin)
 

@@ -14,8 +14,9 @@ The pipeline turns raw box logs into a full advanced-stat basket per
   each pool averages 0.0), rather than borrowing NBA-fit constants.
 
 Pools with thin or incomplete box data are flagged ``adv_eligible=False``; for
-those, only box and shooting stats are trustworthy and the league-relative
-composites are left ``None``.
+those, box/shooting stats plus the raw possession rates (``pace``, ``pts_per100``)
+are populated, while the league-relative / pool-calibrated composites (PER, ORtg,
+WS, BPM, usage/rebound %, …) are left ``None``.
 
 This module is pure computation plus a persistence orchestrator; it is invoked
 offline by ``scripts/rebuild_sl_metrics.py``, not on the request path.
@@ -481,7 +482,21 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     m["fg3ar"] = round(_d(b.fg3a, b.fga), 3)
     m["ftr"] = round(_d(b.fta, b.fga), 3)
 
-    # League-relative metrics only when the pool is eligible.
+    # Possession-based rates (pace, pts/100) are raw box-derived measures — not
+    # league-relative / pool-calibrated composites — so populate them for every
+    # pool, including sub-threshold ones, so per-100 works outside adv_eligible
+    # pools (issue #473). They depend only on box totals, not league context.
+    tm_mp5 = _d(tm.mp, 5.0)
+    tm_poss = tm.poss(opp)
+    opp_poss = opp.poss(tm)
+    tm_pace = 48.0 * _d(tm_poss + opp_poss, 2.0 * tm_mp5)
+    player_poss = tm_poss * _d(b.mp, tm_mp5)
+    m["pace"] = round(tm_pace, 1)
+    m["pts_per100"] = round(100.0 * _d(b.pts, player_poss), 1)
+    ps.player_poss = player_poss
+    ps.pct_min = _d(b.mp, tm_mp5)
+
+    # League-relative / pool-calibrated metrics only when the pool is eligible.
     if not ctx.adv_eligible:
         for k in (
             "tov_pct",
@@ -492,8 +507,6 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
             "trb_pct",
             "stl_pct",
             "blk_pct",
-            "pace",
-            "pts_per100",
             "per",
             "ortg",
             "drtg",
@@ -508,7 +521,6 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
         ps.aper = None
         return
 
-    tm_mp5 = _d(tm.mp, 5.0)
     m["tov_pct"] = round(100.0 * _d(b.tov, b.fga + 0.44 * b.fta + b.tov), 1)
     m["usg_pct"] = round(
         100.0
@@ -522,17 +534,11 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     m["orb_pct"] = round(100.0 * _d(b.oreb * tm_mp5, b.mp * (tm.oreb + opp.dreb)), 1)
     m["drb_pct"] = round(100.0 * _d(b.dreb * tm_mp5, b.mp * (tm.dreb + opp.oreb)), 1)
     m["trb_pct"] = round(100.0 * _d(b.reb * tm_mp5, b.mp * (tm.reb + opp.reb)), 1)
-    tm_poss = tm.poss(opp)
-    opp_poss = opp.poss(tm)
     m["stl_pct"] = round(100.0 * _d(b.stl * tm_mp5, b.mp * opp_poss), 1)
     m["blk_pct"] = round(100.0 * _d(b.blk * tm_mp5, b.mp * (opp.fga - opp.fg3a)), 1)
 
-    tm_pace = 48.0 * _d(tm_poss + opp_poss, 2.0 * tm_mp5)
-    player_poss = tm_poss * _d(b.mp, tm_mp5)
-    m["pace"] = round(tm_pace, 1)
-    m["pts_per100"] = round(100.0 * _d(b.pts, player_poss), 1)
-    ps.player_poss = player_poss
-    ps.pct_min = _d(b.mp, tm_mp5)
+    uper = compute_uper(b, tm, ctx)
+    ps.aper = _d(ctx.pace, tm_pace) * uper
 
     uper = compute_uper(b, tm, ctx)
     ps.aper = _d(ctx.pace, tm_pace) * uper
