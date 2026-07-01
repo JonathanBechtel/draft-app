@@ -21,6 +21,11 @@ LOG_DIR="$REPO/logs"
 LOG="$LOG_DIR/poll_2026_satellite_rosters.log"
 
 mkdir -p "$LOG_DIR"
+# Rotate the log if it exceeds ~5 MB (keep one prior copy) so a forever-running
+# 4-hourly schedule doesn't grow it unbounded.
+if [[ -f "$LOG" && $(wc -c <"$LOG") -gt 5000000 ]]; then
+  mv -f "$LOG" "$LOG.1"
+fi
 exec >>"$LOG" 2>&1
 echo "===== poll run $(date '+%Y-%m-%d %H:%M:%S %z') ====="
 
@@ -43,9 +48,18 @@ for lid in "${LEAGUES[@]}"; do
   # refreshed (the fetcher is idempotent), so the loader keeps reading stale
   # empty data and loads 0 players. The loader itself is idempotent (upsert +
   # roster diff), so re-fetching every run is safe.
-  summary=$(run scripts/fetch_summer_league_rosters.py --year 2026 --league-id "$lid" --force 2>&1 | grep -E "teams=|players=" | tail -1)
-  echo "$summary"
-  players=$(echo "$summary" | sed -nE 's/.*players=([0-9]+).*/\1/p')
+  # Capture the fetch output + exit status separately so a crashed fetch
+  # (network/auth/HTML-schema change) is surfaced loudly instead of being
+  # mistaken for "roster not published yet" (both yield an empty player count).
+  fetch_out=$(run scripts/fetch_summer_league_rosters.py --year 2026 --league-id "$lid" --force 2>&1)
+  fetch_status=$?
+  echo "$fetch_out" | grep -E "teams=|players=" | tail -1
+  if [[ $fetch_status -ne 0 ]]; then
+    echo "L$lid: FETCH FAILED (exit $fetch_status) — skipping enrich; error follows:"
+    echo "$fetch_out" | grep -iE "error|traceback|exception|urlopen|http" | tail -3
+    continue
+  fi
+  players=$(echo "$fetch_out" | sed -nE 's/.*players=([0-9]+).*/\1/p' | tail -1)
   if [[ -z "$players" || "$players" == "0" ]]; then
     echo "L$lid: not published yet"
     continue
