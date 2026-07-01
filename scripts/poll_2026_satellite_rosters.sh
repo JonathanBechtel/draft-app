@@ -38,7 +38,12 @@ run() { scripts/with-db-env.sh conda run -n draftguru python "$@"; }
 
 for lid in "${LEAGUES[@]}"; do
   echo "--- LeagueID $lid ---"
-  summary=$(run scripts/fetch_summer_league_rosters.py --year 2026 --league-id "$lid" 2>&1 | grep -E "teams=|players=" | tail -1)
+  # --force: always overwrite the on-disk snapshot with a fresh fetch. Without
+  # it, an empty snapshot written before rosters were published is never
+  # refreshed (the fetcher is idempotent), so the loader keeps reading stale
+  # empty data and loads 0 players. The loader itself is idempotent (upsert +
+  # roster diff), so re-fetching every run is safe.
+  summary=$(run scripts/fetch_summer_league_rosters.py --year 2026 --league-id "$lid" --force 2>&1 | grep -E "teams=|players=" | tail -1)
   echo "$summary"
   players=$(echo "$summary" | sed -nE 's/.*players=([0-9]+).*/\1/p')
   if [[ -z "$players" || "$players" == "0" ]]; then
@@ -50,6 +55,23 @@ for lid in "${LEAGUES[@]}"; do
   run scripts/resolve_summer_league_players.py --year 2026 --league-id "$lid" --create-stubs 2>&1 | grep -E "resolved=|total=" | tail -1
   run scripts/seed_nba_stats_external_ids.py 2>&1 | grep -E "Seeded:" | tail -1
   run scripts/backfill_nba_headshots.py --no-validate 2>&1 | grep -E "Set:" | tail -1
+
+  # C3 — bio: scrape bbref bios for the cohort's bbref-having players, then
+  # ingest the freshly-written (timestamped) CSV. bbref pages are cached, so
+  # repeated runs only fetch newly-added players.
+  echo "L$lid: C3 bio scrape + ingest"
+  run scripts/bbref_bio_scraper.py --summer-league-year 2026 --summer-league-league-id "$lid" 2>&1 | grep -iE "wrote|scraped|manual.review|error" | tail -2
+  bio_csv=$(ls -t scraper/output/bbio_*.csv 2>/dev/null | head -1)
+  if [[ -n "$bio_csv" ]]; then
+    run scripts/ingest_player_bios.py --file "$bio_csv" 2>&1 | grep -iE "updated|ingest|matched|error" | tail -2
+  else
+    echo "  (no bbref bio CSV produced — nothing to ingest)"
+  fi
+
+  # C4 — college stats: cohort players with school + bbref id; --only-missing
+  # skips players already enriched, so this is light on repeat runs.
+  echo "L$lid: C4 college stats (only-missing)"
+  run scripts/scrape_college_stats.py --sl-cohort --sl-year 2026 --sl-league-id "$lid" --only-missing 2>&1 | grep -iE "attempted|no.source|no source|failed|error" | tail -2
 done
 
 echo "===== poll run complete $(date '+%H:%M:%S') ====="
