@@ -15,6 +15,10 @@ Examples:
 
     # Cron-style: only players missing sports_reference stats
     python scripts/scrape_college_stats.py --only-missing
+
+    # Target just the Summer League rostered cohort (a given year/venue)
+    python scripts/scrape_college_stats.py --sl-cohort --sl-year 2025
+    python scripts/scrape_college_stats.py --sl-cohort --sl-league-id 13 --only-missing
 """
 
 import argparse
@@ -59,6 +63,34 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Only process players without existing sports_reference stats",
     )
     parser.add_argument(
+        "--sl-cohort",
+        action="store_true",
+        help=(
+            "Restrict the target set to the Summer League rostered cohort "
+            "(app.services.summer_league.cohort) instead of all players. "
+            "Cohort players missing a school + BBRef id (e.g. non-NCAA/"
+            "international) are reported as no-source, not failed."
+        ),
+    )
+    parser.add_argument(
+        "--sl-year",
+        type=int,
+        default=None,
+        help="Restrict the SL cohort to a competition year (requires --sl-cohort)",
+    )
+    parser.add_argument(
+        "--sl-league-id",
+        type=str,
+        default=None,
+        help="Restrict the SL cohort to an NBA.com LeagueID (requires --sl-cohort)",
+    )
+    parser.add_argument(
+        "--sl-venue-slug",
+        type=str,
+        default=None,
+        help="Restrict the SL cohort to a venue slug (requires --sl-cohort)",
+    )
+    parser.add_argument(
         "--throttle",
         type=float,
         default=3.0,
@@ -89,6 +121,10 @@ async def _main(args: argparse.Namespace) -> int:
             throttle=args.throttle,
             cache_dir=Path(args.cache_dir),
             only_missing=args.only_missing,
+            sl_cohort=args.sl_cohort,
+            sl_year=args.sl_year,
+            sl_league_id=args.sl_league_id,
+            sl_venue_slug=args.sl_venue_slug,
         )
 
         print(
@@ -96,13 +132,19 @@ async def _main(args: argparse.Namespace) -> int:
             f"{result.players_scraped} scraped, "
             f"{result.players_skipped} skipped, "
             f"{result.players_failed} failed, "
-            f"{result.seasons_upserted} seasons upserted"
+            f"{result.seasons_upserted} seasons upserted, "
+            f"{len(result.no_source)} no-source"
         )
 
         if result.errors:
             print(f"\nErrors ({len(result.errors)}):")
             for err in result.errors:
                 print(f"  - {err}")
+
+        if result.no_source:
+            print(f"\nNo source ({len(result.no_source)}):")
+            for entry in result.no_source:
+                print(f"  - {entry}")
 
         return 1 if result.players_failed > 0 else 0
 

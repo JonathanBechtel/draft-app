@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.schemas.player_college_stats import PlayerCollegeStats
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
+from app.services.summer_league.cohort import summer_league_cohort
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class SweepResult:
     players_failed: int = 0
     seasons_upserted: int = 0
     errors: list[str] = field(default_factory=list)
+    no_source: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -349,6 +351,7 @@ async def _find_eligible_players(
     *,
     player_id: Optional[int] = None,
     only_missing: bool = False,
+    cohort_player_ids: Optional[set[int]] = None,
 ) -> list[tuple[int, str, str]]:
     """Find players with a school and BBRef external ID.
 
@@ -357,6 +360,8 @@ async def _find_eligible_players(
         player_id: If set, restrict to this single player.
         only_missing: If True, exclude players who already have
             ``source='sports_reference'`` college stats rows.
+        cohort_player_ids: If set, restrict results to this set of
+            ``player_id``s (e.g. the Summer League rostered cohort).
 
     Returns:
         List of (player_id, display_name, bbr_slug) tuples.
@@ -378,6 +383,9 @@ async def _find_eligible_players(
     if player_id is not None:
         stmt = stmt.where(PlayerMaster.id == player_id)  # type: ignore[arg-type]
 
+    if cohort_player_ids is not None:
+        stmt = stmt.where(PlayerMaster.id.in_(cohort_player_ids))  # type: ignore[union-attr]
+
     if only_missing:
         # Exclude players who already have sports_reference stats
         existing_subq = (
@@ -398,6 +406,35 @@ async def _find_eligible_players(
     return [(row[0], row[1] or "", row[2]) for row in result.all()]
 
 
+async def _find_no_source_players(
+    db: AsyncSession, player_ids: set[int]
+) -> list[tuple[int, str]]:
+    """Look up display names for cohort players lacking a college-stats source.
+
+    Used to report Summer League cohort players who don't qualify for the
+    ``school`` + BBRef-id eligibility check (e.g. internationals with no
+    NCAA career, or NCAA players without a resolved BBRef page) — flagged
+    as "no source", not treated as a failure.
+
+    Args:
+        db: Active database session.
+        player_ids: Cohort ``player_id``s that were excluded as ineligible.
+
+    Returns:
+        List of (player_id, display_name) tuples, ordered by player_id.
+    """
+    if not player_ids:
+        return []
+
+    stmt = (
+        select(PlayerMaster.id, PlayerMaster.display_name)  # type: ignore[call-overload]
+        .where(PlayerMaster.id.in_(player_ids))  # type: ignore[union-attr]
+        .order_by(PlayerMaster.id)  # type: ignore[arg-type]
+    )
+    result = await db.execute(stmt)
+    return [(row[0], row[1] or "") for row in result.all()]
+
+
 # ---------------------------------------------------------------------------
 # Sweep entry point
 # ---------------------------------------------------------------------------
@@ -413,6 +450,10 @@ async def run_college_stats_sweep(
     throttle: float = _DEFAULT_THROTTLE,
     cache_dir: Path = _DEFAULT_CACHE_DIR,
     only_missing: bool = False,
+    sl_cohort: bool = False,
+    sl_year: Optional[int] = None,
+    sl_league_id: Optional[str] = None,
+    sl_venue_slug: Optional[str] = None,
 ) -> SweepResult:
     """Scrape BBRef college stats for eligible players and upsert to DB.
 
@@ -426,6 +467,17 @@ async def run_college_stats_sweep(
         cache_dir: Directory for cached HTML files.
         only_missing: Only process players without existing
             ``source='sports_reference'`` stats.
+        sl_cohort: If True, restrict the target set to the Summer League
+            rostered cohort (``app.services.summer_league.cohort``) instead
+            of scanning all players. Cohort players without a ``school`` +
+            BBRef id (e.g. non-NCAA/international players) are reported in
+            ``SweepResult.no_source`` rather than attempted or failed.
+        sl_year: Optional competition-year filter, applied only when
+            ``sl_cohort`` is True.
+        sl_league_id: Optional NBA.com ``LeagueID`` filter, applied only when
+            ``sl_cohort`` is True.
+        sl_venue_slug: Optional venue-slug filter, applied only when
+            ``sl_cohort`` is True.
 
     Returns:
         Summary of the sweep run.
@@ -434,15 +486,37 @@ async def run_college_stats_sweep(
 
     # Find eligible players
     async with session_factory() as db:
+        cohort_player_ids: Optional[set[int]] = None
+        if sl_cohort:
+            cohort = await summer_league_cohort(
+                db, year=sl_year, league_id=sl_league_id, venue_slug=sl_venue_slug
+            )
+            cohort_player_ids = cohort.player_ids
+
         players = await _find_eligible_players(
-            db, player_id=player_id, only_missing=only_missing
+            db,
+            player_id=player_id,
+            only_missing=only_missing,
+            cohort_player_ids=cohort_player_ids,
         )
+
+        if sl_cohort and cohort_player_ids is not None:
+            no_source_ids = cohort_player_ids - {p[0] for p in players}
+            no_source_players = await _find_no_source_players(db, no_source_ids)
+            result.no_source = [
+                f"{name or 'Unknown'} (player_id={pid}): no school + BBRef id on record"
+                for pid, name in no_source_players
+            ]
 
     if limit is not None:
         players = players[:limit]
 
     if not players:
         logger.info("No eligible players found for college stats scraping")
+        if result.no_source:
+            logger.info(
+                "%d cohort player(s) reported as no-source", len(result.no_source)
+            )
         return result
 
     logger.info("Found %d eligible players for college stats", len(players))
@@ -510,12 +584,13 @@ async def run_college_stats_sweep(
 
     logger.info(
         "College stats sweep complete: %d attempted, %d scraped, "
-        "%d skipped, %d failed, %d seasons upserted",
+        "%d skipped, %d failed, %d seasons upserted, %d no-source",
         result.players_attempted,
         result.players_scraped,
         result.players_skipped,
         result.players_failed,
         result.seasons_upserted,
+        len(result.no_source),
     )
 
     return result
