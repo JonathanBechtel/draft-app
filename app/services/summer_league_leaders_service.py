@@ -21,6 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
+from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeaguePlayerGameLog,
@@ -35,7 +36,8 @@ from app.services.summer_league_metrics_service import (
 DEFAULT_MIN_GAMES = 2
 DEFAULT_MIN_MINUTES = 60
 PAGE_SIZE = 25
-_MINUTES_PER_GAME = 48.0
+
+_MINUTES_PER_GAME = MINUTES_PER_GAME
 
 MODES = ("totals", "per_game", "per_36", "per_100", "advanced")
 MODE_LABELS = {
