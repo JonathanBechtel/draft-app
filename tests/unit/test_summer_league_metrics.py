@@ -270,14 +270,18 @@ def test_compute_metrics_blanks_composites_when_pool_ineligible() -> None:
         year=2025,
         venue="las_vegas",
         box=_box(mp=100, pts=20, fgm=8, fga=15, fta=4, ftm=3, fg3m=2, fg3a=5, gp=4),
-        team=Box(),
-        opp=Box(),
+        team=_box(mp=1000, pts=400, fgm=150, fga=320, fta=90, oreb=40, tov=60),
+        opp=_box(mp=1000, pts=390, fgm=148, fga=318, fta=88, oreb=38, tov=62),
     )
     compute_metrics(ps, ctx, ws_ppw_coeff=0.43)
     # Shooting/box still computed.
     assert ps.metrics["gmsc"] is not None
     assert ps.metrics["ts_pct"] is not None
-    # League-relative composites blanked.
+    # pace / pts_per100 are raw possession measures — populated even when the pool
+    # is ineligible, so per-100 works outside adv_eligible pools (issue #473).
+    assert ps.metrics["pace"] is not None and ps.metrics["pace"] > 0
+    assert ps.metrics["pts_per100"] is not None and ps.metrics["pts_per100"] > 0
+    # League-relative / pool-calibrated composites blanked.
     assert ps.metrics["per"] is None
     assert ps.metrics["ortg"] is None
     assert ps.metrics["ws"] is None
