@@ -1126,6 +1126,10 @@ class ExplorerRow:
     label: str
     href: Optional[str]
     values: dict[str, Any]
+    # True when this row's per_100 rates are approximate: the career pool mixes
+    # pace-covered and pace-missing (pre-2017) competitions, so possessions are
+    # only partially known. Career grain + per_100 mode only.
+    per100_approx: bool = False
 
 
 @dataclass
@@ -1557,9 +1561,9 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
 
     Uses season-table column aggregates (``SUM(gp)``, ``SUM(minutes)``) instead of
     the game-log aggregates (``COUNT(*)``, ``SUM(minutes_seconds)``) used by the
-    old implementation.  The ``per_100`` mode is unsupported at career grain (no
-    pace-weighted denominator at season level) and sorts on a NULL expression,
-    which places all rows equally at the bottom — matching the None display value.
+    old implementation.  ``per_100`` mode divides by the pace-weighted denominator
+    ``SUM(pace × minutes) × 60`` (pace is possessions/48); players with no pace in
+    scope sort last (NULL), matching the None display value.
     """
     _pct_exprs: dict[str, str] = {
         "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
@@ -1578,7 +1582,7 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
             _GMSC_SQL_AGG,
             "SUM(gp)",
             "SUM(minutes) * 60",
-            "0",
+            "SUM(pace * minutes) * 60",
             mode,
         )
     if sort_col == "min":
@@ -1589,12 +1593,12 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
             else "SUM(minutes) * 1.0 / NULLIF(SUM(gp), 0)"
         )
     if sort_col in _COUNTING or sort_col == "plus_minus":
-        # sec equivalent = SUM(minutes) * 60; pace_sec = 0 (per_100 → NULL).
+        # sec equivalent = SUM(minutes) * 60; pace_sec = SUM(pace × minutes) × 60.
         return _scaled_sort_expr(
             f"SUM({sort_col})",
             "SUM(gp)",
             "SUM(minutes) * 60",
-            "0",
+            "SUM(pace * minutes) * 60",
             mode,
         )
     # gp, ws, vorp, per, ortg, drtg, bpm: sort on the labeled SELECT aggregate.
@@ -1619,10 +1623,14 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     Box-stat values are lossless versus the prior game-log-sum implementation
     because the season table stores exact box totals accumulated from those logs.
 
+    ``per_100`` mode pools possessions from the pace-available competitions
+    (``pace`` is possessions/48, NULL pre-2017). When a player's career spans
+    both pace-covered and pace-missing competitions the per-100 rates are
+    approximate — flagged per row via ``ExplorerRow.per100_approx`` — because the
+    numerator sums all points while the denominator can only count known pace.
+
     Limitations versus the old game-log query:
 
-    * ``per_100`` mode is not supported at career grain (season rows carry no
-      pace-weighted denominator); counting-stat cells display ``None`` in that mode.
     * Round-type filtering is not available at career grain — season rows aggregate
       an entire competition rather than individual rounds.  The ``round_type``
       filter param is silently ignored here; use ``grain=per_game`` to filter by
@@ -1675,8 +1683,14 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             func.sum(ps.gp).label("gp"),  # type: ignore[attr-defined]
             # _compute_player_values expects seconds; minutes * 60 converts.
             (func.sum(ps.minutes) * 60).label("sec"),  # type: ignore[attr-defined]
-            # pace_sec = 0: per_100 mode unsupported at career grain (no weighted pace).
-            literal(0).label("pace_sec"),
+            # pace_sec = SUM(pace × minutes × 60): NULL-pace competitions drop out of
+            # the sum (pace is possessions/48), so per_100 pools over the pace-available
+            # competitions — matching rollup_recombinable's pts_per100. pace_min tracks
+            # the pace-covered minutes so partial coverage can be flagged approximate.
+            func.sum(ps.pace * ps.minutes * 60).label("pace_sec"),  # type: ignore[attr-defined,operator]
+            func.sum(  # type: ignore[attr-defined]
+                case((ps.pace.isnot(None), ps.minutes), else_=literal(0))  # type: ignore[union-attr]
+            ).label("pace_min"),
             func.sum(ps.pts).label("pts"),  # type: ignore[attr-defined]
             func.sum(ps.reb).label("reb"),  # type: ignore[attr-defined]
             func.sum(ps.ast).label("ast"),  # type: ignore[attr-defined]
@@ -1755,6 +1769,20 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     def _r1(v: Any) -> Optional[float]:
         return round(float(v), 1) if v is not None else None
 
+    def _per100_approx(r: Any) -> bool:
+        """True when per_100 rates pool over only part of the career's minutes.
+
+        Approximate iff some minutes have pace and some do not: the numerator
+        sums all points while the denominator can only count pace-covered
+        possessions. All-covered → exact; none-covered → cells are None (not
+        flagged, since there is nothing to approximate).
+        """
+        if q.mode != "per_100":
+            return False
+        total_min = float(r.sec or 0) / 60.0
+        pace_min = float(getattr(r, "pace_min", 0) or 0)
+        return 0.0 < pace_min < total_min
+
     rows = [
         ExplorerRow(
             label=r.display_name or "Player",
@@ -1771,6 +1799,7 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                 "drtg": _r1(r.drtg),
                 "bpm": _r1(r.bpm),
             },
+            per100_approx=_per100_approx(r),
         )
         for r in raw
     ]
