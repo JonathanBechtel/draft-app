@@ -37,7 +37,7 @@ reference figure misleading).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -397,6 +397,94 @@ async def get_game_shot_dots(
     return [
         ShotDot(loc_x=row[0], loc_y=row[1], made=bool(row[2])) for row in result.all()
     ]
+
+
+def _scope_payload(shots: list[Any]) -> dict:
+    """Build one ``window.SL_SHOTCHART`` payload from raw shot tuples.
+
+    Args:
+        shots: ``(team_entry_id, player_id, shot_zone_basic, loc_x, loc_y, made)``
+            rows for the scope.  Zone counts include every shot with a valid
+            (non-excluded, non-null) ``shot_zone_basic``; dots include only shots
+            with coordinates. Game scope has no pool baseline (``pool_fg_pct`` is
+            ``None`` on every zone).
+
+    Returns:
+        A JSON-serialisable dict: ``total_fga``, ``suppressed``, ``zones``, ``dots``.
+    """
+    agg: dict[str, list[int]] = {}  # zone -> [fgm, fga]
+    dots: list[dict] = []
+    for _team, _pid, zone, loc_x, loc_y, made in shots:
+        if zone and zone not in _EXCLUDED_ZONES:
+            cell = agg.setdefault(zone, [0, 0])
+            cell[1] += 1
+            if made:
+                cell[0] += 1
+        if loc_x is not None and loc_y is not None:
+            dots.append({"loc_x": loc_x, "loc_y": loc_y, "made": bool(made)})
+    total_fga, zones = _build_zone_rows(
+        [(zone, fgm, fga) for zone, (fgm, fga) in agg.items()], {}
+    )
+    return {
+        "total_fga": total_fga,
+        "suppressed": total_fga < MIN_FGA_FOR_CHART,
+        "zones": [
+            {
+                "shot_zone_basic": z.shot_zone_basic,
+                "fga": z.fga,
+                "fgm": z.fgm,
+                "fg_pct": z.fg_pct,
+                "freq_pct": z.freq_pct,
+                "pool_fg_pct": z.pool_fg_pct,
+            }
+            for z in zones
+        ],
+        "dots": dots,
+    }
+
+
+async def get_game_shotchart_scopes(
+    session: AsyncSession,
+    game_id: int,
+) -> Optional[dict]:
+    """Preload every shot-chart scope for a game so the client can switch in JS.
+
+    Fetches all of the game's shots in a single query, then groups them into
+    payloads keyed for the client: ``"game"`` (whole game), ``"team:{id}"`` for
+    each team, and ``"player:{id}"`` for each resolved player. Each payload
+    matches the ``window.SL_SHOTCHART`` contract, so the browser can swap scopes
+    without another round-trip (and without losing scroll position).
+
+    Args:
+        session: Async DB session.
+        game_id: ``SummerLeagueGame.id``.
+
+    Returns:
+        ``{"scopes": {key: payload, ...}}`` or ``None`` when the game has no shots.
+    """
+    rows = (
+        await session.execute(
+            select(  # type: ignore[call-overload]
+                SummerLeagueShotEvent.team_entry_id,
+                SummerLeagueShotEvent.player_id,
+                SummerLeagueShotEvent.shot_zone_basic,
+                SummerLeagueShotEvent.loc_x,
+                SummerLeagueShotEvent.loc_y,
+                SummerLeagueShotEvent.made,
+            )
+            .where(SummerLeagueShotEvent.game_id == game_id)  # type: ignore[arg-type]
+            .order_by(SummerLeagueShotEvent.id)
+        )
+    ).all()
+    if not rows:
+        return None
+
+    scopes: dict[str, dict] = {"game": _scope_payload(list(rows))}
+    for team_id in {r[0] for r in rows if r[0] is not None}:
+        scopes[f"team:{team_id}"] = _scope_payload([r for r in rows if r[0] == team_id])
+    for pid in {r[1] for r in rows if r[1] is not None}:
+        scopes[f"player:{pid}"] = _scope_payload([r for r in rows if r[1] == pid])
+    return {"scopes": scopes}
 
 
 async def get_game_shot_zones(

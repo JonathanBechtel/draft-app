@@ -20,12 +20,12 @@ from app.services.summer_league_games_service import (
     GamesPage,
     get_game_box_score,
     get_game_flow_series,
-    get_game_shotchart_context,
     get_games_facets,
     get_player_game_logs,
     resolve_player_ref,
     search_games,
 )
+from app.services.summer_league_shotchart_service import get_game_shotchart_scopes
 from app.services.summer_league_stats_service import (
     get_competition_id_for_player_year,
     get_player_shotchart_context,
@@ -305,8 +305,6 @@ async def summer_league_game_box_score(
     request: Request,
     year: int,
     game_id: int,
-    team_entry_id: Optional[int] = Query(default=None),
-    player_id: Optional[int] = Query(default=None),
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
     """Full box score for one Summer League game."""
@@ -314,9 +312,10 @@ async def summer_league_game_box_score(
     if box is None:
         raise HTTPException(status_code=404, detail="Summer League game not found")
 
-    sl_shotchart = await get_game_shotchart_context(
-        db, game_id=game_id, team_entry_id=team_entry_id, player_id=player_id
-    )
+    # All shot-chart scopes (whole game / each team / each player) are preloaded
+    # so the browser switches between them client-side — no round-trip, no scroll
+    # jump. ``None`` when the game has no shot events (template shows an empty state).
+    sl_shotchart_scopes = await get_game_shotchart_scopes(db, game_id=game_id)
 
     sl_game_flow = await get_game_flow_series(db, game_id=game_id)
 
@@ -325,10 +324,8 @@ async def summer_league_game_box_score(
         {
             "request": request,
             "box": box,
-            "sl_shotchart": sl_shotchart,
+            "sl_shotchart_scopes": sl_shotchart_scopes,
             "sl_game_flow": sl_game_flow,
-            "selected_team_entry_id": team_entry_id,
-            "selected_player_id": player_id,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },
