@@ -30,6 +30,9 @@ from app.services.canonical_resolution_service import (  # noqa: E402
     load_school_mapping,
     resolve_affiliation,
 )
+from app.services.summer_league.bio_enrichment_targets import (  # noqa: E402
+    select_bio_enrichment_targets,
+)
 from app.models.position_taxonomy import derive_position_tags, get_parents_for_fine  # noqa: E402
 from app.utils.country import canonical_country  # noqa: E402
 from app.utils.db_async import SessionLocal  # noqa: E402
@@ -354,6 +357,9 @@ async def ingest(
     overwrite_master: bool,
     fix_ambiguities_path: Optional[Path],
     create_missing: bool,
+    summer_league_year: Optional[int] = None,
+    summer_league_league_id: Optional[str] = None,
+    summer_league_venue_slug: Optional[str] = None,
 ) -> None:
     # Read CSV
     rows: List[BioRow] = []
@@ -402,10 +408,32 @@ async def ingest(
     if fix_ambiguities_path and fix_ambiguities_path.exists():
         fixed_map = json.loads(fix_ambiguities_path.read_text(encoding="utf-8"))
 
+    cohort_scoped = (
+        summer_league_year is not None
+        or summer_league_league_id is not None
+        or summer_league_venue_slug is not None
+    )
+
     async with SessionLocal() as db:
         ext_map, alias_map, last_idx, pm_by_id = await _load_lookup(db)
         unmatched: List[str] = []
         ambiguous: List[str] = []
+        manual_review: List[int] = []
+
+        if cohort_scoped:
+            targets = await select_bio_enrichment_targets(
+                db,
+                year=summer_league_year,
+                league_id=summer_league_league_id,
+                venue_slug=summer_league_venue_slug,
+            )
+            manual_review = sorted(targets.manual_review_player_ids)
+            rows = [r for r in rows if r.slug in targets.slugs]
+            if verbose:
+                print(
+                    f"[info] SL-cohort scope: {len(targets.slugs)} bbref-having"
+                    f" target slug(s), {len(manual_review)} flagged for manual review"
+                )
 
         for r in rows:
             player_id: Optional[int] = None
@@ -518,6 +546,10 @@ async def ingest(
             (csv_path.parent / "bbio_ambiguous.json").write_text(
                 json.dumps(ambiguous, indent=2), encoding="utf-8"
             )
+        if manual_review:
+            (csv_path.parent / "bbio_manual_review.json").write_text(
+                json.dumps(manual_review, indent=2), encoding="utf-8"
+            )
 
 
 def main() -> None:
@@ -549,6 +581,28 @@ def main() -> None:
         default=None,
         help="Path to JSON mapping of slug -> player_id for manual resolutions",
     )
+    parser.add_argument(
+        "--summer-league-year",
+        type=int,
+        default=None,
+        help=(
+            "Restrict ingestion to the Summer League rostered cohort for this"
+            " competition year (players without a bbref id are written to"
+            " bbio_manual_review.json instead of being ingested)"
+        ),
+    )
+    parser.add_argument(
+        "--summer-league-league-id",
+        type=str,
+        default=None,
+        help="Restrict ingestion to the Summer League cohort for this NBA.com LeagueID",
+    )
+    parser.add_argument(
+        "--summer-league-venue-slug",
+        type=str,
+        default=None,
+        help="Restrict ingestion to the Summer League cohort for this venue slug",
+    )
     args = parser.parse_args()
 
     asyncio.run(
@@ -562,6 +616,9 @@ def main() -> None:
             if args.fix_ambiguities
             else None,
             create_missing=args.create_missing,
+            summer_league_year=args.summer_league_year,
+            summer_league_league_id=args.summer_league_league_id,
+            summer_league_venue_slug=args.summer_league_venue_slug,
         )
     )
 
