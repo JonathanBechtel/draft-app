@@ -169,6 +169,12 @@ pattern:
   Boxscore rows are the product source for player game logs.
 - `RAW_FILE_ROW_COUNT_MISSING` on generated `manifest.json` files. Manifests do
   not contain NBA Stats result-set row counts by design.
+- `RECONCILE_ANNOUNCED_NOT_PLAYED` and `RECONCILE_PLAYED_NOT_ANNOUNCED` —
+  informational per-competition counts from the announced-vs-played reconcile
+  service (`app/services/summer_league/roster_reconcile.py`). A roster player
+  who never suits up (DNP/cut) or a box-score player never on the announced
+  roster (late-add) are both expected in a live event and never flip the
+  harness's blocking exit on their own.
 
 Core raw files, corrupt parseable endpoints, orphaned normalized rows, duplicate
 stable IDs, and unresolved inconsistent canonical links remain blocking errors.
