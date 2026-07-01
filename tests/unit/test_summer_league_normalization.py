@@ -24,6 +24,7 @@ from app.services.summer_league.normalization import (
     _team_box_row_from_gamelog,
     normalize_competition_games,
     parse_minutes_to_int,
+    parse_player_gamelog_box_rows,
     parse_team_box_rows,
     parse_team_gamelog,
     team_slug,
@@ -48,6 +49,104 @@ def test_team_slug_uses_source_name_or_abbreviation() -> None:
     """Team slugs are deterministic from source names."""
     assert team_slug("Los Angeles Lakers", "LAL") == "los-angeles-lakers"
     assert team_slug("", "NYK") == "nyk"
+
+
+def test_parse_player_gamelog_box_rows_builds_traditional_line(
+    tmp_path: Path,
+) -> None:
+    """Season LeagueGameLog yields full traditional box rows (pre-2017 fallback).
+
+    Older Summer League years have no per-game boxscore data, so player game logs
+    are rebuilt from the season log. MIN is whole minutes (→ seconds), advanced
+    fields stay ``None``, and identity IDs are stringified.
+    """
+    path = tmp_path / "leaguegamelog_player.json"
+    path.write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "LeagueGameLog",
+                        [
+                            "PLAYER_ID",
+                            "PLAYER_NAME",
+                            "TEAM_ID",
+                            "GAME_ID",
+                            "MIN",
+                            "FGM",
+                            "FGA",
+                            "FG3M",
+                            "FTM",
+                            "FTA",
+                            "REB",
+                            "AST",
+                            "TOV",
+                            "PTS",
+                            "PLUS_MINUS",
+                        ],
+                        [
+                            [
+                                203503,
+                                "Tony Snell",
+                                1610612741,
+                                "1521300053",
+                                34,
+                                6,
+                                13,
+                                5,
+                                3,
+                                3,
+                                7,
+                                3,
+                                2,
+                                20,
+                                7,
+                            ]
+                        ],
+                    )
+                ]
+            }
+        )
+    )
+
+    rows = parse_player_gamelog_box_rows(path)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.game_id == "1521300053"
+    assert row.nba_stats_person_id == "203503"
+    assert row.nba_stats_team_id == "1610612741"
+    assert row.raw_player_name == "Tony Snell"
+    assert row.minutes_seconds == 34 * 60  # whole minutes → seconds
+    assert row.pts == 20
+    assert row.fgm == 6 and row.fga == 13 and row.fg3m == 5
+    assert row.plus_minus == 7
+    # Advanced/scoring fields are absent from the season log.
+    assert row.usg_pct is None and row.off_rating is None
+
+
+def test_parse_player_gamelog_box_rows_skips_rows_missing_identity(
+    tmp_path: Path,
+) -> None:
+    """Rows lacking GAME_ID / PLAYER_ID / TEAM_ID are dropped (unplottable)."""
+    path = tmp_path / "leaguegamelog_player.json"
+    path.write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "LeagueGameLog",
+                        ["PLAYER_ID", "TEAM_ID", "GAME_ID", "PTS"],
+                        [
+                            [203503, 1610612741, None, 20],  # no game id
+                            [None, 1610612741, "1521300053", 5],  # no player id
+                        ],
+                    )
+                ]
+            }
+        )
+    )
+    assert parse_player_gamelog_box_rows(path) == []
 
 
 def test_parse_team_gamelog_extracts_source_team_and_game_fields(
@@ -324,7 +423,9 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
     monkeypatch.setattr(service, "_upsert_competition", fake_upsert_competition)
     monkeypatch.setattr(service, "_limited_game_ids", lambda **_kwargs: None)
     monkeypatch.setattr(service, "parse_team_gamelog", lambda _path: team_rows)
-    monkeypatch.setattr(service, "parse_team_box_rows", lambda *_args, **_kwargs: box_rows)
+    monkeypatch.setattr(
+        service, "parse_team_box_rows", lambda *_args, **_kwargs: box_rows
+    )
     monkeypatch.setattr(service, "_upsert_team_entry", fake_upsert_team_entry)
     monkeypatch.setattr(service, "_upsert_game", fake_upsert_game)
     monkeypatch.setattr(service, "_upsert_team_game_log", fake_upsert_team_game_log)

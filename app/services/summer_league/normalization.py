@@ -375,14 +375,21 @@ async def normalize_player_game_logs(
             source_player_ids.add(gamelog_row.nba_stats_person_id)
 
     await db.flush()
-    games_by_source_id = await _games_by_source_id(db, competition.id)
-    teams_by_source_id = await _teams_by_source_id(db, competition.id)
-    participations = await _participations_by_key(db, competition.id)
+    competition_id = competition.id
+    games_by_source_id = await _games_by_source_id(db, competition_id)
+    teams_by_source_id = await _teams_by_source_id(db, competition_id)
+    participations = await _participations_by_key(db, competition_id)
     recorded_at = _utc_now_naive()
 
     upserted_logs = 0
     skipped_logs = 0
-    for box_row in parse_player_box_rows(season_dir, game_ids=limited_game_ids):
+    # Track player-games written from the per-game boxscores so the season-log
+    # fallback below only fills genuinely-missing rows (and never downgrades a
+    # richer per-game line to the traditional-only season line).
+    covered: set[tuple[str, str, str]] = set()
+
+    async def _process_box_row(box_row: ParsedPlayerBoxRow) -> None:
+        nonlocal upserted_logs, skipped_logs
         source_player = await _upsert_source_player(
             db,
             ParsedPlayerGamelogRow(
@@ -405,11 +412,11 @@ async def normalize_player_game_logs(
             or source_player.id is None
         ):
             skipped_logs += 1
-            continue
+            return
 
         await _upsert_player_game_log(
             db,
-            competition.id,
+            competition_id,
             game.id,
             team.id,
             source_player,
@@ -417,7 +424,30 @@ async def normalize_player_game_logs(
             participations=participations,
             recorded_at=recorded_at,
         )
+        covered.add(
+            (box_row.game_id, box_row.nba_stats_person_id, box_row.nba_stats_team_id)
+        )
         upserted_logs += 1
+
+    for box_row in parse_player_box_rows(season_dir, game_ids=limited_game_ids):
+        await _process_box_row(box_row)
+
+    # Season-log fallback: pre-2017 years have no per-game boxscore data at
+    # stats.nba.com, but the season LeagueGameLog carries a full traditional line.
+    # Fill any player-game the per-game pass didn't already cover. (Skipped for
+    # limited-game runs, which target specific per-game files.)
+    if limited_game_ids is None:
+        for box_row in parse_player_gamelog_box_rows(
+            season_dir / "leaguegamelog_player.json"
+        ):
+            key = (
+                box_row.game_id,
+                box_row.nba_stats_person_id,
+                box_row.nba_stats_team_id,
+            )
+            if key in covered:
+                continue
+            await _process_box_row(box_row)
 
     await db.flush()
     return SummerLeaguePlayerLogReport(
@@ -700,6 +730,65 @@ def parse_player_gamelog(path: Path) -> list[ParsedPlayerGamelogRow]:
         parsed = _parse_player_gamelog_row(row_map)
         if parsed is not None:
             rows.append(parsed)
+    return rows
+
+
+def parse_player_gamelog_box_rows(path: Path) -> list[ParsedPlayerBoxRow]:
+    """Parse full player box lines from the season LeagueGameLog snapshot.
+
+    Older Summer League years (pre-2017) have no per-game ``boxscoretraditionalv2``
+    data at stats.nba.com, but the season-level LeagueGameLog carries a complete
+    traditional line per player-game (MIN/PTS/FG/reb/etc.). This lets the
+    normalizer build player game logs for those years. Advanced and scoring
+    fields only come from the per-game endpoints, so they stay ``None`` here.
+
+    Args:
+        path: Path to ``leaguegamelog_player.json``.
+
+    Returns:
+        Parsed traditional box rows; empty when the file is missing or has no rows.
+    """
+    payload = _read_payload(path)
+    result_sets = extract_result_sets(payload)
+    if not result_sets:
+        return []
+    result_set = result_sets[0]
+    rows: list[ParsedPlayerBoxRow] = []
+    for row in result_set.rows:
+        row_map = _row_map(result_set.headers, row)
+        game_id = _str_or_none(row_map.get("GAME_ID"))
+        person_id = _str_or_none(row_map.get("PLAYER_ID"))
+        team_id = _str_or_none(row_map.get("TEAM_ID"))
+        if not game_id or not person_id or not team_id:
+            continue
+        rows.append(
+            ParsedPlayerBoxRow(
+                game_id=game_id,
+                nba_stats_person_id=person_id,
+                raw_player_name=_str_or_none(row_map.get("PLAYER_NAME")) or "",
+                nba_stats_team_id=team_id,
+                minutes_seconds=parse_minutes_to_seconds(row_map.get("MIN")),
+                pts=_int_or_none(row_map.get("PTS")),
+                fgm=_int_or_none(row_map.get("FGM")),
+                fga=_int_or_none(row_map.get("FGA")),
+                fg_pct=_float_or_none(row_map.get("FG_PCT")),
+                fg3m=_int_or_none(row_map.get("FG3M")),
+                fg3a=_int_or_none(row_map.get("FG3A")),
+                fg3_pct=_float_or_none(row_map.get("FG3_PCT")),
+                ftm=_int_or_none(row_map.get("FTM")),
+                fta=_int_or_none(row_map.get("FTA")),
+                ft_pct=_float_or_none(row_map.get("FT_PCT")),
+                oreb=_int_or_none(row_map.get("OREB")),
+                dreb=_int_or_none(row_map.get("DREB")),
+                reb=_int_or_none(row_map.get("REB")),
+                ast=_int_or_none(row_map.get("AST")),
+                stl=_int_or_none(row_map.get("STL")),
+                blk=_int_or_none(row_map.get("BLK")),
+                tov=_int_or_none(row_map.get("TOV")),
+                pf=_int_or_none(row_map.get("PF")),
+                plus_minus=_int_or_none(row_map.get("PLUS_MINUS")),
+            )
+        )
     return rows
 
 
