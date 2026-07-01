@@ -263,6 +263,7 @@ def test_compute_metrics_blanks_composites_when_pool_ineligible() -> None:
         team_games=0,
         adv_eligible=False,
     )
+    ctx.pace = 100.0  # real pool (has possession data) but below the adv threshold
     ps = PlayerSeason(
         player_id=1,
         competition_id=1,
@@ -286,3 +287,29 @@ def test_compute_metrics_blanks_composites_when_pool_ineligible() -> None:
     assert ps.metrics["ortg"] is None
     assert ps.metrics["ws"] is None
     assert ps.metrics["ws82"] is None
+
+
+def test_compute_metrics_skips_pace_when_pool_has_no_possession_data() -> None:
+    """Pace/pts_per100 stay None for pools with a degenerate league pace.
+
+    Pools reconstructed from season logs without team box data (mainly 2012-2016)
+    have a near-zero league pace (ctx.pace ~0). Computing per-player pace off that
+    yields explosive per-100, so possession rates must be left NULL for the whole
+    pool — gated on the pool-level ctx.pace, not a per-row check.
+    """
+    ctx = LeagueContext(
+        competition_id=1, year=2016, venue="las_vegas", lg=Box(),
+        poss=0.0, team_games=0, adv_eligible=False,
+    )
+    ctx.pace = 2.0  # skeletal pool: league pace far below any real basketball value
+    ps = PlayerSeason(
+        player_id=1, competition_id=1, primary_team_entry_id=1,
+        year=2016, venue="las_vegas",
+        box=_box(mp=100, pts=28, fgm=12, fga=24, fta=4, ftm=2, fg3m=2, fg3a=6, gp=3),
+        team=_box(mp=1000, pts=400, fgm=150, fga=320, fta=90, oreb=40, tov=60),
+        opp=_box(mp=1000, pts=390, fgm=148, fga=318, fta=88, oreb=38, tov=62),
+    )
+    compute_metrics(ps, ctx, ws_ppw_coeff=0.43)
+    assert ps.metrics["gmsc"] is not None      # box/shooting still fine
+    assert ps.metrics["pace"] is None          # possession rates suppressed
+    assert ps.metrics["pts_per100"] is None

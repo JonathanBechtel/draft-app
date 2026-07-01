@@ -52,6 +52,11 @@ from app.schemas.summer_league_metrics import (
 # Qualification / gating thresholds.
 QUALIFY_MIN_MINUTES = 40.0  # minutes for a season to feed fits / leaders
 MIN_COMPLETE_TEAM_MP = 150.0  # sane regulation team minutes (~200 for 40-min)
+# Pool-level pace floor below which the possession estimate is not real. Genuine
+# Summer League pools run ~85-115; pools reconstructed from season logs without
+# team box data (mainly 2012-2016) compute ~0-4. Anything under this floor has no
+# trustworthy possessions, so player pace/pts_per100 are left NULL for that pool.
+MIN_POOL_PACE = 40.0
 ADV_MIN_PLAYERS = 10  # qualified players for a trustworthy pool
 ADV_MIN_COMPLETE_FRAC = 0.80  # fraction of complete-box games for a pool
 VORP_REPLACEMENT = -2.0  # pts/100 below average (scale convention)
@@ -491,10 +496,21 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     opp_poss = opp.poss(tm)
     tm_pace = 48.0 * _d(tm_poss + opp_poss, 2.0 * tm_mp5)
     player_poss = tm_poss * _d(b.mp, tm_mp5)
-    m["pace"] = round(tm_pace, 1)
-    m["pts_per100"] = round(100.0 * _d(b.pts, player_poss), 1)
     ps.player_poss = player_poss
     ps.pct_min = _d(b.mp, tm_mp5)
+    # Only emit possession rates when the *pool* has real possession data. Pools
+    # reconstructed from season logs without team box (mainly 2012-2016) carry
+    # skeletal team rows, so their league pace computes ~0 and per-player pace/
+    # per-100 are degenerate (explosive per-100). Gate on the pool-level league
+    # pace — robust across the pool, unlike a per-row check — so a genuine pool
+    # (incl. pre-2017 years that do have box data, e.g. 2007-2010) emits and a
+    # skeletal one leaves NULL (per-100 renders blank, as it did before #473).
+    if ctx.pace >= MIN_POOL_PACE and tm_poss > 0:
+        m["pace"] = round(tm_pace, 1)
+        m["pts_per100"] = round(100.0 * _d(b.pts, player_poss), 1)
+    else:
+        m["pace"] = None
+        m["pts_per100"] = None
 
     # League-relative / pool-calibrated metrics only when the pool is eligible.
     if not ctx.adv_eligible:
