@@ -77,6 +77,26 @@ def test_resolve_year_blank_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
     assert runner._resolve_year() == runner.DEFAULT_YEAR
 
 
+@pytest.mark.parametrize("value", ["26", "20260", "abc"])
+def test_resolve_year_invalid_raises(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """Non-four-digit or non-numeric SL_INGEST_YEAR raises ValueError.
+
+    This must fail up front so a misconfigured schedule exits non-zero
+    rather than silently ingesting nothing for every venue.
+    """
+    monkeypatch.setenv("SL_INGEST_YEAR", value)
+    with pytest.raises(ValueError):
+        runner._resolve_year()
+
+
+def test_resolve_year_valid_four_digit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A valid four-digit season year is accepted."""
+    monkeypatch.setenv("SL_INGEST_YEAR", "2025")
+    assert runner._resolve_year() == 2025
+
+
 # ---------------------------------------------------------------------------
 # _resolve_league_ids
 # ---------------------------------------------------------------------------
@@ -243,3 +263,171 @@ async def test_run_venue_with_games_backbone_raises(
 
     assert (had_games, failed) == (True, True)
     assert calls == ["backbone"]  # failed before shot/pbp
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+
+class _FakeClient:
+    """Fake NBAStatsClient recording close()."""
+
+    def __init__(self, **_kwargs: object) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _patch_main(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    venue_results: dict[str, tuple[bool, bool]],
+    rebuild_raises: bool = False,
+) -> dict[str, object]:
+    """Wire up main() so it touches no real DB, network, or engine.
+
+    Args:
+        monkeypatch: Pytest monkeypatch fixture.
+        venue_results: Map of league_id -> (had_games, failed) that the fake
+            ``_run_venue`` should return per venue.
+        rebuild_raises: When True, the fake metrics rebuild raises.
+
+    Returns:
+        A mutable ``events`` dict recording observable side effects: the
+        venues processed, whether the rebuild ran, and whether the engine
+        was disposed.
+    """
+    events: dict[str, object] = {
+        "venues": [],
+        "rebuild_called": False,
+        "disposed": False,
+    }
+
+    async def _fake_run_venue(
+        _db: object, _ingestor: object, *, year: int, league_id: str
+    ) -> tuple[bool, bool]:
+        assert isinstance(events["venues"], list)
+        events["venues"].append(league_id)
+        return venue_results[league_id]
+
+    async def _fake_rebuild(_db: object) -> dict[str, int]:
+        events["rebuild_called"] = True
+        if rebuild_raises:
+            raise RuntimeError("rebuild boom")
+        return {"seasons": 1, "contexts": 1, "adv_pools": 1}
+
+    async def _fake_dispose() -> None:
+        events["disposed"] = True
+
+    monkeypatch.setattr(runner, "_run_venue", _fake_run_venue)
+    monkeypatch.setattr(runner, "rebuild_sl_metrics", _fake_rebuild)
+    monkeypatch.setattr(runner, "dispose_engine", _fake_dispose)
+    monkeypatch.setattr(runner, "NBAStatsClient", _FakeClient)
+    monkeypatch.setattr(runner, "SessionLocal", lambda: _FakeSessionLocal())
+    return events
+
+
+class _FakeSessionLocal:
+    """Async context manager standing in for ``SessionLocal()``."""
+
+    async def __aenter__(self) -> _FakeSession:
+        return _FakeSession()
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_main_all_no_games_skips_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every venue no-games -> exit 0, metrics rebuild not called."""
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "13,16,15")
+    events = _patch_main(
+        monkeypatch,
+        venue_results={
+            "13": (False, False),
+            "16": (False, False),
+            "15": (False, False),
+        },
+    )
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["venues"] == ["13", "16", "15"]
+    assert events["rebuild_called"] is False
+    assert events["disposed"] is True
+
+
+@pytest.mark.asyncio
+async def test_main_with_games_runs_rebuild_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """At least one venue with games -> rebuild runs once, exit 0."""
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "13,15")
+    events = _patch_main(
+        monkeypatch,
+        venue_results={"13": (False, False), "15": (True, False)},
+    )
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["rebuild_called"] is True
+    assert events["disposed"] is True
+
+
+@pytest.mark.asyncio
+async def test_main_venue_failure_returns_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A venue reporting failed=True -> exit 1, but all venues attempted."""
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "13,15")
+    events = _patch_main(
+        monkeypatch,
+        venue_results={"13": (True, True), "15": (True, False)},
+    )
+
+    result = await runner.main()
+
+    assert result == 1
+    assert events["venues"] == ["13", "15"]  # failure did not abort the rest
+    assert events["disposed"] is True
+
+
+@pytest.mark.asyncio
+async def test_main_rebuild_failure_returns_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Metrics rebuild raising -> exit 1, engine still disposed."""
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "15")
+    events = _patch_main(
+        monkeypatch,
+        venue_results={"15": (True, False)},
+        rebuild_raises=True,
+    )
+
+    result = await runner.main()
+
+    assert result == 1
+    assert events["rebuild_called"] is True
+    assert events["disposed"] is True
+
+
+@pytest.mark.asyncio
+async def test_main_bad_year_returns_one_without_processing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid SL_INGEST_YEAR -> exit 1, no venue processed, engine disposed."""
+    monkeypatch.setenv("SL_INGEST_YEAR", "26")
+    events = _patch_main(monkeypatch, venue_results={})
+
+    result = await runner.main()
+
+    assert result == 1
+    assert events["venues"] == []
+    assert events["rebuild_called"] is False
+    assert events["disposed"] is True

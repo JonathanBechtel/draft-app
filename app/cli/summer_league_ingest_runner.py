@@ -89,11 +89,31 @@ FETCH_RETRY_DELAY_SECONDS = 2.0
 
 
 def _resolve_year() -> int:
-    """Resolve the Summer League year, defaulting to the current season."""
+    """Resolve the Summer League year, defaulting to the current season.
+
+    Raises:
+        ValueError: If ``SL_INGEST_YEAR`` is set but is not a plausible
+            four-digit season year. Failing here (rather than deep inside a
+            per-venue fetch, where ``normalize_season`` would raise and get
+            swallowed as "no games") makes a misconfigured schedule fail
+            loudly with a non-zero exit code instead of silently ingesting
+            nothing for every venue.
+    """
     raw = os.getenv("SL_INGEST_YEAR")
     if not raw or not raw.strip():
         return DEFAULT_YEAR
-    return int(raw.strip())
+    stripped = raw.strip()
+    try:
+        year = int(stripped)
+    except ValueError as exc:
+        raise ValueError(
+            f"SL_INGEST_YEAR must be a four-digit year, got {stripped!r}"
+        ) from exc
+    if not 1900 <= year <= 2100:
+        raise ValueError(
+            f"SL_INGEST_YEAR must be a four-digit year in [1900, 2100], got {year}"
+        )
+    return year
 
 
 def _resolve_league_ids() -> list[str]:
@@ -234,36 +254,37 @@ async def main() -> int:
         1 for a genuine failure).
     """
     start_time = datetime.now(timezone.utc)
+    client: NBAStatsClient | None = None
 
     try:
-        year = _resolve_year()
-        league_ids = _resolve_league_ids()
-    except ValueError as exc:
-        logger.error("Invalid Summer League ingest configuration: %s", exc)
-        return 1
+        try:
+            year = _resolve_year()
+            league_ids = _resolve_league_ids()
+        except ValueError as exc:
+            logger.error("Invalid Summer League ingest configuration: %s", exc)
+            return 1
 
-    logger.info(
-        "Starting Summer League ingestion: year=%s league_ids=%s",
-        year,
-        ",".join(league_ids),
-    )
+        logger.info(
+            "Starting Summer League ingestion: year=%s league_ids=%s",
+            year,
+            ",".join(league_ids),
+        )
 
-    failed = False
-    any_games = False
+        failed = False
+        any_games = False
 
-    client = NBAStatsClient(
-        timeout=FETCH_TIMEOUT_SECONDS,
-        max_retries=FETCH_RETRIES,
-        retry_delay_seconds=FETCH_RETRY_DELAY_SECONDS,
-    )
-    store = SummerLeagueRawStore(RAW_ROOT)
-    ingestor = SummerLeagueRawIngestor(
-        client=client,
-        store=store,
-        progress=lambda message: logger.info(message),
-    )
+        client = NBAStatsClient(
+            timeout=FETCH_TIMEOUT_SECONDS,
+            max_retries=FETCH_RETRIES,
+            retry_delay_seconds=FETCH_RETRY_DELAY_SECONDS,
+        )
+        store = SummerLeagueRawStore(RAW_ROOT)
+        ingestor = SummerLeagueRawIngestor(
+            client=client,
+            store=store,
+            progress=lambda message: logger.info(message),
+        )
 
-    try:
         async with SessionLocal() as db:
             for league_id in league_ids:
                 had_games, venue_failed = await _run_venue(
@@ -289,7 +310,8 @@ async def main() -> int:
             else:
                 logger.info("No venue had games this run; skipping metrics rebuild")
     finally:
-        client.close()
+        if client is not None:
+            client.close()
         await dispose_engine()
 
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
