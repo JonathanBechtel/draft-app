@@ -1890,7 +1890,8 @@ async def _query_players_per_competition(
     single_comp = _is_single_competition(q)
 
     # Alias minutes*60 as sec so _compute_player_values works unchanged.
-    # pace_sec is 0 — season rows have no weighted pace; per_100 mode yields None.
+    # pace_sec = pace * minutes * 60 (pace is possessions/48): each row is one
+    # competition, so per_100 is exact where pace is present and NULL otherwise.
     conds: list[Any] = [
         ps.gp >= q.min_games,  # type: ignore[operator]
         ps.minutes >= q.min_minutes,  # minutes stored as minutes, not seconds
@@ -1946,7 +1947,7 @@ async def _query_players_per_competition(
         ps.venue_slug,
         ps.gp.label("gp"),  # type: ignore[attr-defined]
         (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
-        literal(0).label("pace_sec"),
+        (ps.pace * ps.minutes * 60).label("pace_sec"),  # type: ignore[attr-defined,operator]
         ps.pts.label("pts"),  # type: ignore[attr-defined]
         ps.reb.label("reb"),  # type: ignore[attr-defined]
         ps.ast.label("ast"),  # type: ignore[attr-defined]
@@ -2000,8 +2001,8 @@ async def _query_players_per_competition(
     # the sort references raw column labels (no aggregation).  Counting stats sort
     # on the displayed per-mode rate — matching _compute_player_values — so the
     # column stays visually monotonic; percentages use NULLIF-guarded ratios.
-    # ``minutes`` is stored in minutes; sec = minutes * 60, pace_sec is 0 (no
-    # weighted pace at season grain), so per_100 yields NULL and sorts last.
+    # ``minutes`` is stored in minutes; sec = minutes * 60, pace_sec = pace *
+    # minutes * 60 (pace is possessions/48); rows without pace sort last in per_100.
     _pc_pct_exprs: dict[str, str] = {
         "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
         "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
@@ -2012,11 +2013,15 @@ async def _query_players_per_competition(
     if q.sort in _pc_pct_exprs:
         sort_expr: str = _pc_pct_exprs[q.sort]
     elif q.sort == "gmsc":
-        sort_expr = _scaled_sort_expr(_GMSC_SQL_RAW, "gp", "minutes * 60", "0", q.mode)
+        sort_expr = _scaled_sort_expr(
+            _GMSC_SQL_RAW, "gp", "minutes * 60", "pace * minutes * 60", q.mode
+        )
     elif q.sort == "min":
         sort_expr = "minutes" if q.mode == "totals" else "minutes / NULLIF(gp, 0)"
     elif q.sort in _COUNTING or q.sort == "plus_minus":
-        sort_expr = _scaled_sort_expr(q.sort, "gp", "minutes * 60", "0", q.mode)
+        sort_expr = _scaled_sort_expr(
+            q.sort, "gp", "minutes * 60", "pace * minutes * 60", q.mode
+        )
     else:
         # gp and the advanced composites (per/ortg/bpm/…) sort on the raw label.
         sort_expr = q.sort

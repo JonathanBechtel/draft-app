@@ -708,6 +708,7 @@ async def _season(
     vorp: float | None = None,
     per: float | None = None,
     bpm: float | None = None,
+    pace: float | None = None,
     adv_eligible: bool = False,
 ) -> None:
     """Add one SummerLeaguePlayerSeason row for a (player, competition)."""
@@ -741,6 +742,7 @@ async def _season(
             vorp=vorp,
             per=per,
             bpm=bpm,
+            pace=pace,
             adv_eligible=adv_eligible,
         )
     )
@@ -787,6 +789,45 @@ async def test_grain_per_competition_one_row_per_event(
     labels = {r.label for r in result.rows}
     assert any("2024" in lbl for lbl in labels)
     assert any("2025" in lbl for lbl in labels)
+
+
+@pytest.mark.asyncio
+async def test_per_100_mode_per_competition_uses_pace(
+    db_session: AsyncSession,
+) -> None:
+    """per_100 at per_competition grain derives possessions from the row's pace.
+
+    pace is possessions per 48 minutes, so possessions = pace * minutes / 48 and
+    the per-100 PTS cell = pts * 100 / possessions. A row without pace yields None
+    (not 0, and not a /40 fallback), since possessions are unknown.
+    """
+    scorer = make_player("Pace", "Setter")
+    noface = make_player("Nopace", "Row")
+    db_session.add_all([scorer, noface])
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    # 60 pts over 60 min at pace 100 (poss/48) → poss = 100*60/48 = 125 → 48.0 pts/100.
+    await _season(
+        db_session, player=scorer, comp_id=c, year=2024, venue_slug="las_vegas",
+        gp=2, minutes=60.0, pts=60, pace=100.0,
+    )
+    await _season(
+        db_session, player=noface, comp_id=c, year=2024, venue_slug="las_vegas",
+        gp=2, minutes=60.0, pts=60, pace=None,
+    )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="per_competition", mode="per_100",
+            min_games=1, min_minutes=1,
+        ),
+    )
+    by_name = {r.label.split(" · ")[0]: r for r in result.rows}
+    assert by_name["Pace Setter"].values["pts"] == pytest.approx(48.0, abs=0.05)
+    assert by_name["Nopace Row"].values["pts"] is None
 
 
 @pytest.mark.asyncio
