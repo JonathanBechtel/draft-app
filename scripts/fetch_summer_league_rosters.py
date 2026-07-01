@@ -122,8 +122,21 @@ class RosterRunResult:
 
     @property
     def player_count(self) -> int:
-        """Total players across all team rosters."""
-        return sum(t.player_count for t in self.team_results)
+        """Count of unique players across all team rosters.
+
+        A person can legitimately appear under more than one team subpage
+        (e.g. a mid-event trade re-lists them on the new team's roster
+        page), so summing each team's raw ``player_count`` over-counts.
+        This tallies distinct ``nba_stats_person_id`` values instead,
+        matching the unique set actually persisted downstream.
+        """
+        unique_person_ids = {
+            player.get("nba_stats_person_id")
+            for t in self.team_results
+            for player in t.players
+            if player.get("nba_stats_person_id")
+        }
+        return len(unique_person_ids)
 
     @property
     def error_count(self) -> int:
