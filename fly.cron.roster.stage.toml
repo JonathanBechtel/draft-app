@@ -1,0 +1,51 @@
+# fly.cron.roster.stage.toml - Configuration for the staging Summer League roster cron machine
+#
+# This defines a scheduled machine that runs the Summer League roster
+# fetch + enrichment pipeline hourly (fetch -> load -> resolve -> external
+# ids -> headshots -> bio -> college stats), porting the brittle sprite
+# launchd job (scripts/poll_2026_satellite_rosters.sh) onto Fly. It shares
+# the same Docker image as the main app but runs a different command.
+#
+# NOTE: Fly.io scheduled machines only support: hourly, daily, weekly, monthly
+#       (not custom cron expressions like "*/30 * * * *")
+#
+# Rosters can change at any point close to an event, so this runs hourly
+# (not daily) in staging too -- roster freshness matters more than cost here.
+#
+# Deployment:
+#   1. First, deploy the main app to build the image:
+#      flyctl deploy --config fly.toml --app draft-app
+#
+#   2. Create the scheduled machine (one-time setup):
+#      IMAGE=$(flyctl machine list --app draft-app --json | grep '"image":' | head -1 | sed 's/.*"image": "\([^"]*\)".*/\1/')
+#      flyctl machine run $IMAGE \
+#        --app draft-app \
+#        --schedule hourly \
+#        --name summer-league-roster-cron \
+#        --region ewr \
+#        --memory 1024 \
+#        --cpus 1 \
+#        --entrypoint "/app/.venv/bin/python" \
+#        -- -m app.cli.summer_league_roster_runner
+#
+#   3. To update the machine after code changes (handled by GitHub Actions):
+#      flyctl machine update <machine-id> --app draft-app --yes
+#
+# Monitoring:
+#   - View logs: flyctl logs --app draft-app --instance <machine-id>
+#   - List machines: flyctl machine list --app draft-app
+#   - Check status: flyctl machine status <machine-id> --app draft-app
+
+app = 'draft-app'
+primary_region = 'ewr'
+
+[build]
+
+# Override the default command to run the Summer League roster cron script
+[processes]
+  cron = "/app/.venv/bin/python -m app.cli.summer_league_roster_runner"
+
+[[vm]]
+  memory = '1024mb'
+  cpu_kind = 'shared'
+  cpus = 1
