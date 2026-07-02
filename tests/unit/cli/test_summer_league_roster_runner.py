@@ -323,6 +323,37 @@ async def test_run_venue_not_published(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_venue_partial_team_fetch_failure_skips_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A partial team-fetch failure (error_count>0) skips the load entirely.
+
+    Loading a partial snapshot would let the loader's empty-team cut wrongly
+    CUT the roster of a team whose page transiently failed. So any team error
+    skips the venue's load this run (retry next run) -- no DB writes, and it is
+    not a run failure.
+    """
+    calls: list[str] = []
+    _patch_enrichment_steps(monkeypatch, calls)
+    team = _FakeTeamResult(players=[_player_dict("1"), _player_dict("2")])
+    fetcher = _FakeFetcher(
+        _FakeRosterRunResult(
+            team_count=30, player_count=2, error_count=1, team_results=[team]
+        )
+    )
+
+    published, failed = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        fetcher,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert (published, failed) == (False, False)
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_run_venue_success_runs_full_pipeline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

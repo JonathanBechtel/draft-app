@@ -274,6 +274,23 @@ async def _run_venue(
         logger.info("L%s: no roster published yet", league_id)
         return False, False
 
+    # Skip the load entirely if ANY team page failed to fetch this run. The
+    # loader cuts rosters for teams absent from the snapshot (empty-team cut);
+    # a team whose page transiently failed contributes zero players and is
+    # indistinguishable from a genuinely-removed team, so loading a partial
+    # snapshot would wrongly CUT that team's whole roster. Skip and retry next
+    # run, when all team pages fetch cleanly. Not a run failure — nothing was
+    # written, and the next hourly run recovers.
+    if result.error_count > 0:
+        logger.warning(
+            "L%s: %d of %d team page(s) failed to fetch; skipping load this run "
+            "to avoid cutting rosters for transiently-absent teams (retry next run)",
+            league_id,
+            result.error_count,
+            result.team_count,
+        )
+        return False, False
+
     logger.info(
         "L%s: %d players published across %d teams (%d team errors)",
         league_id,
