@@ -113,11 +113,13 @@
         <option value="2" {{ 'selected' if q.draft_round == 2 else '' }}>2nd round</option>
       </select>
     </div>
+    {# draft_pick is the within-round pick (not overall); e.g. lottery =
+       round 1 + pick 1–14. Label and caps reflect that. #}
     <div class="slg-filter">
-      <label>Pick range</label>
-      <input type="number" name="draft_pick_min" value="{{ q.draft_pick_min or '' }}" min="1" max="60" placeholder="Min">
+      <label title="Pick number within the round — combine with Draft round (e.g. 1st round, pick 1–14 = lottery)">Pick in round</label>
+      <input type="number" name="draft_pick_min" value="{{ q.draft_pick_min or '' }}" min="1" max="30" placeholder="Min">
       <span>–</span>
-      <input type="number" name="draft_pick_max" value="{{ q.draft_pick_max or '' }}" min="1" max="60" placeholder="Max">
+      <input type="number" name="draft_pick_max" value="{{ q.draft_pick_max or '' }}" min="1" max="30" placeholder="Max">
     </div>
     <div class="slg-filter">
       <label for="ex-undrafted">Undrafted only</label>
@@ -129,14 +131,24 @@
       <span>–</span>
       <input type="number" name="age_max" id="ex-age-max" value="{{ q.age_max or '' }}" min="16" max="40" placeholder="Max">
     </div>
-    {# Position data is absent for the SL player pool, so the facet is empty.
-       Hide the control entirely rather than render a dead "Any"-only dropdown. #}
-    {% if result.facets.positions %}
+    {# Position facet is sourced from player_status → positions; slot options
+       (PG…C) match hybrid codes inclusively, group options match the parents
+       hierarchy. Hidden when the pool carries no position data at all. #}
+    {% if result.facets.positions or result.facets.position_groups %}
     <div class="slg-filter">
       <label for="ex-position">Position</label>
       <select id="ex-position" name="position">
         <option value="">Any</option>
-        {% for pos in result.facets.positions %}<option value="{{ pos }}" {{ 'selected' if q.position == pos else '' }}>{{ pos }}</option>{% endfor %}
+        {% if result.facets.positions %}
+        <optgroup label="Position">
+          {% for val, lbl in result.facets.positions %}<option value="{{ val }}" {{ 'selected' if q.position == val else '' }}>{{ lbl }}</option>{% endfor %}
+        </optgroup>
+        {% endif %}
+        {% if result.facets.position_groups %}
+        <optgroup label="Position group">
+          {% for val, lbl in result.facets.position_groups %}<option value="{{ val }}" {{ 'selected' if q.position == val else '' }}>{{ lbl }}</option>{% endfor %}
+        </optgroup>
+        {% endif %}
       </select>
     </div>
     {% endif %}

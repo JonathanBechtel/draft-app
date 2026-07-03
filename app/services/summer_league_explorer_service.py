@@ -49,7 +49,14 @@ from sqlalchemy import case, func, literal, nulls_last, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from app.models.position_taxonomy import (
+    FINE_SCOPE_PRESET,
+    PARENT_SCOPE_PRESET,
+    get_parents_for_fine,
+)
+from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
+from app.schemas.positions import Position
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
@@ -76,6 +83,53 @@ MODES = ("per_game", "per_36", "per_100", "totals")
 DEFAULT_MODE = "per_game"
 
 _MINUTES_PER_GAME = MINUTES_PER_GAME
+
+# Position filter vocabulary, sourced from the canonical taxonomy
+# (app/models/position_taxonomy.py) — the same module that derives
+# ``positions.code``/``parents`` at ingest time, so filter and data can't
+# drift. Canonical position data lives in ``player_status.position_id`` →
+# ``positions`` (PlayerMaster.position is unpopulated for the SL pool).
+# Codes are lowercase fine tokens, possibly hybrid ("pg", "pg_sg", "pf_c"):
+# slot filters match any component of a hybrid code; bucket filters match
+# the parent hierarchy.
+_POSITION_SLOTS = tuple(t for t in FINE_SCOPE_PRESET if "-" not in t)
+_POSITION_BUCKETS = tuple(PARENT_SCOPE_PRESET)
+_POSITION_BUCKET_LABELS = {
+    "guard": "Guards",
+    "wing": "Wings",
+    "forward": "Forwards",
+    "big": "Bigs",
+}
+_POSITION_FILTER_VALUES = frozenset(_POSITION_SLOTS) | frozenset(_POSITION_BUCKETS)
+
+
+def _position_scope_cond(position: str) -> Any:
+    """WHERE condition on the ``positions`` table for a slot or bucket value.
+
+    Buckets ("guard", "big", …) match via JSONB containment on
+    ``positions.parents``; slots ("pg", "c", …) match any component of the
+    (possibly hybrid) ``positions.code``, so ``pg`` includes ``pg_sg``.
+    """
+    if position in _POSITION_BUCKETS:
+        return Position.parents.contains([position])  # type: ignore[union-attr]
+    # "_" is the fine-token delimiter written by derive_position_tags.
+    return literal(position) == func.any_(func.string_to_array(Position.code, "_"))
+
+
+def _apply_position_filter(stmt: Any, q: ExplorerQuery) -> Any:
+    """Add the position filter to a player statement (no-op when unset).
+
+    Joins ``player_status`` → ``positions`` off PlayerMaster; one status row
+    per player, so the join has no row fanout. Joined only when the filter
+    is active.
+    """
+    if q.position is None:
+        return stmt
+    return (
+        stmt.join(PlayerStatus, PlayerStatus.player_id == PlayerMaster.id)  # type: ignore[arg-type]
+        .join(Position, Position.id == PlayerStatus.position_id)  # type: ignore[arg-type]
+        .where(_position_scope_cond(q.position))
+    )
 
 
 def _max_plausible_draft_class() -> int:
@@ -1149,7 +1203,10 @@ class ExplorerFacets:
     years: list[int] = field(default_factory=list)
     venues: list[tuple[str, str]] = field(default_factory=list)
     draft_classes: list[int] = field(default_factory=list)
-    positions: list[str] = field(default_factory=list)
+    # (value, label) pairs: slot positions ("pg" → "PG") and broader groups
+    # ("guard" → "Guards"), rendered as separate optgroups in one dropdown.
+    positions: list[tuple[str, str]] = field(default_factory=list)
+    position_groups: list[tuple[str, str]] = field(default_factory=list)
     countries: list[str] = field(default_factory=list)
     teams: list[str] = field(default_factory=list)
     round_types: list[str] = field(default_factory=list)
@@ -1222,7 +1279,11 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         direction = "desc"
 
     venue = params.get("venue") or None
-    position = params.get("position") or None
+    # Position values come from a fixed vocabulary (slots + buckets); anything
+    # else (stale bookmarks, hand-typed params) degrades to no filter.
+    position: Optional[str] = (params.get("position") or "").lower() or None
+    if position is not None and position not in _POSITION_FILTER_VALUES:
+        position = None
     # Canonicalize so a raw ?country=US URL resolves to the same value the
     # dropdown emits ("United States") and matches every stored encoding.
     country = canonical_country(params.get("country"))
@@ -1320,16 +1381,36 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
             )
         ).all()
     ]
-    positions = [
-        str(p)
-        for (p,) in (
+    # Position facet: position codes referenced by players in the SL pool.
+    # Semi-join (IN subqueries) rather than join+DISTINCT so the planner never
+    # fans out over the per-player-per-competition season rows; positions.id
+    # is the PK, so the result is already unique. Hybrid codes are split into
+    # their slot components ("_" is the fine-token delimiter written by
+    # derive_position_tags); parent buckets come from the same taxonomy.
+    pos_codes = [
+        str(code)
+        for (code,) in (
             await db.execute(
-                select(PlayerMaster.position)  # type: ignore[call-overload]
-                .where(PlayerMaster.position.isnot(None))  # type: ignore[union-attr]
-                .distinct()
-                .order_by(PlayerMaster.position)  # type: ignore[union-attr]
+                select(Position.code).where(  # type: ignore[call-overload]
+                    Position.id.in_(  # type: ignore[union-attr]
+                        select(PlayerStatus.position_id).where(  # type: ignore[call-overload]
+                            PlayerStatus.player_id.in_(  # type: ignore[attr-defined]
+                                select(SummerLeaguePlayerSeason.player_id)  # type: ignore[call-overload]
+                            )
+                        )
+                    )
+                )
             )
         ).all()
+    ]
+    slot_set: set[str] = set()
+    bucket_set: set[str] = set()
+    for code in pos_codes:
+        slot_set.update(code.split("_"))
+        bucket_set.update(get_parents_for_fine(code))
+    positions = [(s, s.upper()) for s in _POSITION_SLOTS if s in slot_set]
+    position_groups = [
+        (b, _POSITION_BUCKET_LABELS[b]) for b in _POSITION_BUCKETS if b in bucket_set
     ]
     # Raw birth_country mixes ISO-2 codes, full names, and aliases across
     # ingestion sources.  Normalize each to a canonical display name, then
@@ -1373,6 +1454,7 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
         venues=[(v, _venue_label(v)) for v in venue_slugs],
         draft_classes=draft_classes,
         positions=positions,
+        position_groups=position_groups,
         countries=countries,
         teams=teams,
         round_types=round_types,
@@ -1676,8 +1758,6 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             conds.append(pm.draft_pick >= q.draft_pick_min)  # type: ignore[operator, arg-type]
         if q.draft_pick_max is not None:
             conds.append(pm.draft_pick <= q.draft_pick_max)  # type: ignore[operator, arg-type]
-    if q.position is not None:
-        conds.append(pm.position == q.position)  # type: ignore[arg-type]
     if q.country is not None:
         # q.country is a canonical name; match every raw encoding (code/alias)
         # that normalizes to it so filtering is independent of stored form.
@@ -1774,6 +1854,7 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         stmt = stmt.join(te, ps.primary_team_entry_id == te.id).where(  # type: ignore[arg-type]
             te.team_slug == q.team_slug
         )
+    stmt = _apply_position_filter(stmt, q)
     # round_type is not supported at career grain — season rows aggregate a full
     # competition, not individual round games.  Silently ignored here.
 
@@ -1971,8 +2052,6 @@ async def _query_players_per_competition(
             conds.append(pm.draft_pick >= q.draft_pick_min)  # type: ignore[operator, arg-type]
         if q.draft_pick_max is not None:
             conds.append(pm.draft_pick <= q.draft_pick_max)  # type: ignore[operator, arg-type]
-    if q.position is not None:
-        conds.append(pm.position == q.position)  # type: ignore[arg-type]
     if q.country is not None:
         # q.country is a canonical name; match every raw encoding (code/alias)
         # that normalizes to it so filtering is independent of stored form.
@@ -2049,6 +2128,7 @@ async def _query_players_per_competition(
             te,
             ps.primary_team_entry_id == te.id,  # type: ignore[arg-type]
         ).where(te.team_slug == q.team_slug)  # type: ignore[arg-type]
+    stmt = _apply_position_filter(stmt, q)
     if q.player_slug is not None:
         stmt = stmt.where(pm.slug == q.player_slug)  # type: ignore[arg-type]
 
@@ -2178,8 +2258,6 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
             conds.append(pm.draft_pick >= q.draft_pick_min)  # type: ignore[operator, arg-type]
         if q.draft_pick_max is not None:
             conds.append(pm.draft_pick <= q.draft_pick_max)  # type: ignore[operator, arg-type]
-    if q.position is not None:
-        conds.append(pm.position == q.position)  # type: ignore[arg-type]
     if q.country is not None:
         # q.country is a canonical name; match every raw encoding (code/alias)
         # that normalizes to it so filtering is independent of stored form.
@@ -2245,6 +2323,7 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
         stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
             te.team_slug == q.team_slug
         )
+    stmt = _apply_position_filter(stmt, q)
 
     # Count via wrapping subquery, then sort + slice.
     total = await _count_subquery(db, stmt)
