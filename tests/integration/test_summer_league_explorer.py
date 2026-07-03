@@ -143,15 +143,31 @@ async def _seed(db: AsyncSession) -> None:
     t1 = await _team(db, comp_id=c1)
     await _log(db, comp_id=c1, team=t1, player=scorer, pts=30, games=2)
     # Season row: total of 2 × 30 pts = 60 pts, 2 × 30 min = 60 min.
-    await _season(db, player=scorer, comp_id=c1, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=60)
+    await _season(
+        db,
+        player=scorer,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=60,
+    )
 
     c2 = await _comp(db, year=2025, venue_slug="salt_lake_city", league_id="16")
     t2 = await _team(db, comp_id=c2)
     await _log(db, comp_id=c2, team=t2, player=role, pts=10, games=2)
     # Season row: total of 2 × 10 pts = 20 pts, 2 × 30 min = 60 min.
-    await _season(db, player=role, comp_id=c2, year=2025, venue_slug="salt_lake_city",
-                  gp=2, minutes=60.0, pts=20)
+    await _season(
+        db,
+        player=role,
+        comp_id=c2,
+        year=2025,
+        venue_slug="salt_lake_city",
+        gp=2,
+        minutes=60.0,
+        pts=20,
+    )
     await db.commit()
 
 
@@ -564,8 +580,16 @@ async def test_csv_export_returns_full_result_set(
     for i, p in enumerate(players):
         await _log(db_session, comp_id=cid, team=team, player=p, pts=30 - i, games=2)
         # Season rows for career grain (ticket #405 source switch).
-        await _season(db_session, player=p, comp_id=cid, year=2024,
-                      venue_slug="las_vegas", gp=2, minutes=60.0, pts=(30 - i) * 2)
+        await _season(
+            db_session,
+            player=p,
+            comp_id=cid,
+            year=2024,
+            venue_slug="las_vegas",
+            gp=2,
+            minutes=60.0,
+            pts=(30 - i) * 2,
+        )
     await db_session.commit()
 
     # HTML page is paginated to PAGE_SIZE rows.
@@ -619,12 +643,36 @@ async def _seed_with_positions(db: AsyncSession) -> None:
     await _log(db, comp_id=c, team=t, player=forward, pts=15, games=2)
     await _log(db, comp_id=c, team=t, player=undrafted, pts=10, games=2)
     # Season rows required for career grain (ticket #405 source switch).
-    await _season(db, player=guard, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=40)
-    await _season(db, player=forward, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=30)
-    await _season(db, player=undrafted, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=20)
+    await _season(
+        db,
+        player=guard,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=40,
+    )
+    await _season(
+        db,
+        player=forward,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=30,
+    )
+    await _season(
+        db,
+        player=undrafted,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=20,
+    )
     await db.commit()
 
 
@@ -809,20 +857,37 @@ async def test_per_100_mode_per_competition_uses_pace(
     c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
     # 60 pts over 60 min at pace 100 (poss/48) → poss = 100*60/48 = 125 → 48.0 pts/100.
     await _season(
-        db_session, player=scorer, comp_id=c, year=2024, venue_slug="las_vegas",
-        gp=2, minutes=60.0, pts=60, pace=100.0,
+        db_session,
+        player=scorer,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=60,
+        pace=100.0,
     )
     await _season(
-        db_session, player=noface, comp_id=c, year=2024, venue_slug="las_vegas",
-        gp=2, minutes=60.0, pts=60, pace=None,
+        db_session,
+        player=noface,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=60,
+        pace=None,
     )
     await db_session.commit()
 
     result = await run_explorer_query(
         db_session,
         ExplorerQuery(
-            subject="players", grain="per_competition", mode="per_100",
-            min_games=1, min_minutes=1,
+            subject="players",
+            grain="per_competition",
+            mode="per_100",
+            min_games=1,
+            min_minutes=1,
         ),
     )
     by_name = {r.label.split(" · ")[0]: r for r in result.rows}
@@ -849,28 +914,76 @@ async def test_per_100_mode_career_pools_pace_and_flags_partial(
     c2 = await _comp(db_session, year=2025, venue_slug="salt_lake_city", league_id="16")
 
     # 30 pts / 30 min at pace 100 → poss = 100*30/48 = 62.5 per competition.
-    await _season(db_session, player=full, comp_id=c1, year=2024,
-                  venue_slug="las_vegas", gp=2, minutes=30.0, pts=30, pace=100.0)
-    await _season(db_session, player=full, comp_id=c2, year=2025,
-                  venue_slug="salt_lake_city", gp=2, minutes=30.0, pts=30, pace=100.0)
+    await _season(
+        db_session,
+        player=full,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=30.0,
+        pts=30,
+        pace=100.0,
+    )
+    await _season(
+        db_session,
+        player=full,
+        comp_id=c2,
+        year=2025,
+        venue_slug="salt_lake_city",
+        gp=2,
+        minutes=30.0,
+        pts=30,
+        pace=100.0,
+    )
     # Partial: one paced competition (30 min, pace 100 → 62.5 poss), one without
     # pace but heavier scoring (30 min, 90 pts). Extrapolating possessions to all
     # 60 min gives 125 poss → 120 pts / 125 poss = 96.0 per-100. (A naive
     # subset-only calc would give 48.0; the old full/partial bug gave 192.0.)
-    await _season(db_session, player=partial, comp_id=c1, year=2024,
-                  venue_slug="las_vegas", gp=2, minutes=30.0, pts=30, pace=100.0)
-    await _season(db_session, player=partial, comp_id=c2, year=2025,
-                  venue_slug="salt_lake_city", gp=2, minutes=30.0, pts=90, pace=None)
+    await _season(
+        db_session,
+        player=partial,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=30.0,
+        pts=30,
+        pace=100.0,
+    )
+    await _season(
+        db_session,
+        player=partial,
+        comp_id=c2,
+        year=2025,
+        venue_slug="salt_lake_city",
+        gp=2,
+        minutes=30.0,
+        pts=90,
+        pace=None,
+    )
     # No pace anywhere → per-100 unavailable.
-    await _season(db_session, player=nopace, comp_id=c1, year=2024,
-                  venue_slug="las_vegas", gp=2, minutes=30.0, pts=30, pace=None)
+    await _season(
+        db_session,
+        player=nopace,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=30.0,
+        pts=30,
+        pace=None,
+    )
     await db_session.commit()
 
     result = await run_explorer_query(
         db_session,
         ExplorerQuery(
-            subject="players", grain="career", mode="per_100",
-            min_games=1, min_minutes=1,
+            subject="players",
+            grain="career",
+            mode="per_100",
+            min_games=1,
+            min_minutes=1,
         ),
     )
     by_name = {r.label: r for r in result.rows}
@@ -1022,10 +1135,26 @@ async def _seed_with_picks(db: AsyncSession) -> None:
     await _log(db, comp_id=c, team=t, player=early, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=late, pts=15, games=2)
     # Season rows required for career grain (ticket #405 source switch).
-    await _season(db, player=early, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=40)
-    await _season(db, player=late, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=30)
+    await _season(
+        db,
+        player=early,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=40,
+    )
+    await _season(
+        db,
+        player=late,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=30,
+    )
     await db.commit()
 
 
@@ -1062,10 +1191,26 @@ async def _seed_with_countries(db: AsyncSession) -> None:
     await _log(db, comp_id=c, team=t, player=us_player, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=fr_player, pts=15, games=2)
     # Season rows required for career grain (ticket #405 source switch).
-    await _season(db, player=us_player, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=40)
-    await _season(db, player=fr_player, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=30)
+    await _season(
+        db,
+        player=us_player,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=40,
+    )
+    await _season(
+        db,
+        player=fr_player,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=30,
+    )
     await db.commit()
 
 
@@ -1109,10 +1254,28 @@ async def _seed_with_two_teams(
     await _log(db, comp_id=c, team=team_b, player=player_b, pts=15, games=2)
     # Season rows with primary_team_entry_id so team filter works at career grain.
     assert team_a.id is not None and team_b.id is not None
-    await _season(db, player=player_a, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=40, primary_team_entry_id=team_a.id)
-    await _season(db, player=player_b, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=30, primary_team_entry_id=team_b.id)
+    await _season(
+        db,
+        player=player_a,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=40,
+        primary_team_entry_id=team_a.id,
+    )
+    await _season(
+        db,
+        player=player_b,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=30,
+        primary_team_entry_id=team_b.id,
+    )
     await db.commit()
     return team_a, team_b
 
@@ -1170,10 +1333,26 @@ async def _seed_round_types(db: AsyncSession) -> None:
         round_label="Championship",
     )
     # Season rows: career grain aggregates the full competition, no round distinction.
-    await _season(db, player=qualifier, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=20)
-    await _season(db, player=champion, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=40)
+    await _season(
+        db,
+        player=qualifier,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=20,
+    )
+    await _season(
+        db,
+        player=champion,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=40,
+    )
     await db.commit()
 
 
@@ -1193,7 +1372,9 @@ async def test_round_type_filter_players(db_session: AsyncSession) -> None:
         db_session,
         ExplorerQuery(subject="players", round_type="Qualifying", min_games=1),
     )
-    assert result.total == 2  # both players visible; round_type has no effect at career grain
+    assert (
+        result.total == 2
+    )  # both players visible; round_type has no effect at career grain
     labels = {r.label for r in result.rows}
     assert "Qual Player" in labels
     assert "Champ Player" in labels
@@ -1707,8 +1888,16 @@ async def _seed_many_players(db: AsyncSession, n: int) -> None:
         # Two game logs per player (to meet default min_games=2).
         await _log(db, comp_id=c, team=t, player=p, pts=i, games=2)
         # Season row: total pts = i * 2 games, 2 × 30 min = 60 min.
-        await _season(db, player=p, comp_id=c, year=2024, venue_slug="las_vegas",
-                      gp=2, minutes=60.0, pts=i * 2)
+        await _season(
+            db,
+            player=p,
+            comp_id=c,
+            year=2024,
+            venue_slug="las_vegas",
+            gp=2,
+            minutes=60.0,
+            pts=i * 2,
+        )
     await db.commit()
 
 
@@ -2270,10 +2459,26 @@ async def _seed_age_filter(
     await _log(db, comp_id=c, team=t, player=young, pts=20, games=2)
     await _log(db, comp_id=c, team=t, player=old, pts=15, games=2)
     # Season rows: career grain reads these (ticket #405 source switch).
-    await _season(db, player=young, comp_id=c, year=2023, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=40)
-    await _season(db, player=old, comp_id=c, year=2023, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=30)
+    await _season(
+        db,
+        player=young,
+        comp_id=c,
+        year=2023,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=40,
+    )
+    await _season(
+        db,
+        player=old,
+        comp_id=c,
+        year=2023,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=30,
+    )
     await db.commit()
     return young, old
 
@@ -2370,10 +2575,26 @@ async def test_age_filter_career_anchors_to_earliest_competition(
     )
     await _log(db_session, comp_id=c_late, team=t_late, player=player, pts=18, games=2)
     # Season rows for both competitions (career grain reads ps.year for age).
-    await _season(db_session, player=player, comp_id=c_early, year=2023,
-                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=40)
-    await _season(db_session, player=player, comp_id=c_late, year=2025,
-                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=36)
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c_early,
+        year=2023,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=40,
+    )
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c_late,
+        year=2025,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=36,
+    )
     await db_session.commit()
 
     result = await run_explorer_query(
@@ -2431,10 +2652,26 @@ async def test_age_filter_career_no_birthdate_excluded(
     await _log(db_session, comp_id=c, team=t, player=no_birth, pts=10, games=2)
     await _log(db_session, comp_id=c, team=t, player=has_birth, pts=20, games=2)
     # Season rows required for career grain (ticket #405 source switch).
-    await _season(db_session, player=no_birth, comp_id=c, year=2023,
-                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=20)
-    await _season(db_session, player=has_birth, comp_id=c, year=2023,
-                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=40)
+    await _season(
+        db_session,
+        player=no_birth,
+        comp_id=c,
+        year=2023,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=20,
+    )
+    await _season(
+        db_session,
+        player=has_birth,
+        comp_id=c,
+        year=2023,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=40,
+    )
     await db_session.commit()
 
     result = await run_explorer_query(
@@ -2573,12 +2810,36 @@ async def test_age_filter_composes_with_venue_filter(
     await _log(db_session, comp_id=c_lv, team=t_lv, player=old, pts=15, games=2)
     await _log(db_session, comp_id=c_slc, team=t_slc, player=old, pts=15, games=2)
     # Season rows for career grain (ticket #405 source switch).
-    await _season(db_session, player=young, comp_id=c_lv, year=2023,
-                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=40)
-    await _season(db_session, player=old, comp_id=c_lv, year=2023,
-                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=30)
-    await _season(db_session, player=old, comp_id=c_slc, year=2023,
-                  venue_slug="salt_lake_city", gp=2, minutes=60.0, pts=30)
+    await _season(
+        db_session,
+        player=young,
+        comp_id=c_lv,
+        year=2023,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=40,
+    )
+    await _season(
+        db_session,
+        player=old,
+        comp_id=c_lv,
+        year=2023,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=30,
+    )
+    await _season(
+        db_session,
+        player=old,
+        comp_id=c_slc,
+        year=2023,
+        venue_slug="salt_lake_city",
+        gp=2,
+        minutes=60.0,
+        pts=30,
+    )
     await db_session.commit()
 
     result = await run_explorer_query(
@@ -2833,8 +3094,16 @@ async def _seed_mixed_countries(db: AsyncSession) -> None:
     for pl in (p_code, p_alias, p_name, aussie):
         await _log(db, comp_id=c, team=t, player=pl, pts=20, games=2)
         # Season rows required for career grain (ticket #405 source switch).
-        await _season(db, player=pl, comp_id=c, year=2024, venue_slug="las_vegas",
-                      gp=2, minutes=60.0, pts=40)
+        await _season(
+            db,
+            player=pl,
+            comp_id=c,
+            year=2024,
+            venue_slug="las_vegas",
+            gp=2,
+            minutes=60.0,
+            pts=40,
+        )
     await db.commit()
 
 
@@ -2905,10 +3174,26 @@ async def _seed_uneven_gp(db: AsyncSession) -> None:
     await _log(db, comp_id=c, team=t, player=high_rate, pts=30, games=2)
     await _log(db, comp_id=c, team=t, player=grinder, pts=25, games=5)
     # Season rows: gp/minutes/pts match the game-log sums exactly.
-    await _season(db, player=high_rate, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=2, minutes=60.0, pts=60)
-    await _season(db, player=grinder, comp_id=c, year=2024, venue_slug="las_vegas",
-                  gp=5, minutes=150.0, pts=125)
+    await _season(
+        db,
+        player=high_rate,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=60,
+    )
+    await _season(
+        db,
+        player=grinder,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=5,
+        minutes=150.0,
+        pts=125,
+    )
     await db.commit()
 
 
@@ -2956,12 +3241,24 @@ async def test_per_competition_per_game_sort_is_monotonic(
     await db_session.flush()
     c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
     await _season(
-        db_session, player=high_rate, comp_id=c, year=2024, venue_slug="las_vegas",
-        gp=2, minutes=60.0, pts=60,
+        db_session,
+        player=high_rate,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=60,
     )
     await _season(
-        db_session, player=grinder, comp_id=c, year=2024, venue_slug="las_vegas",
-        gp=5, minutes=150.0, pts=125,
+        db_session,
+        player=grinder,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=5,
+        minutes=150.0,
+        pts=125,
     )
     await db_session.commit()
 
@@ -3063,12 +3360,12 @@ async def test_career_box_parity_after_source_switch(
             year=2024,
             venue_slug="las_vegas",
             gp=3,
-            minutes=95.0,    # ≠ 90 (3 × 30 min log sum)
-            pts=20,          # ≠ 15 (log sum)
-            reb=11,          # ≠ 9
-            ast=7,           # ≠ 6
-            fgm=8,           # ≠ 6
-            fga=18,          # ≠ 15
+            minutes=95.0,  # ≠ 90 (3 × 30 min log sum)
+            pts=20,  # ≠ 15 (log sum)
+            reb=11,  # ≠ 9
+            ast=7,  # ≠ 6
+            fgm=8,  # ≠ 6
+            fga=18,  # ≠ 15
             fg3m=0,
             fg3a=0,
             ftm=0,
@@ -3093,7 +3390,7 @@ async def test_career_box_parity_after_source_switch(
     row = result.rows[0]
     # Career grain must return the SEASON-table totals, not the game-log sums.
     assert row.values["gp"] == 3
-    assert row.values["pts"] == 20   # season value, not the log sum (15)
+    assert row.values["pts"] == 20  # season value, not the log sum (15)
     assert row.values["reb"] == 11
     assert row.values["ast"] == 7
     assert row.values["fgm"] == 8
@@ -3128,13 +3425,33 @@ async def test_career_additive_sum(
     c2 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
 
     # Competition 1: WS=0.8, VORP=0.3
-    await _season(db_session, player=player, comp_id=c1, year=2023,
-                  venue_slug="las_vegas", gp=3, minutes=90.0, pts=45,
-                  ws=0.8, vorp=0.3, adv_eligible=True)
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c1,
+        year=2023,
+        venue_slug="las_vegas",
+        gp=3,
+        minutes=90.0,
+        pts=45,
+        ws=0.8,
+        vorp=0.3,
+        adv_eligible=True,
+    )
     # Competition 2: WS=1.2, VORP=0.5
-    await _season(db_session, player=player, comp_id=c2, year=2024,
-                  venue_slug="las_vegas", gp=4, minutes=120.0, pts=60,
-                  ws=1.2, vorp=0.5, adv_eligible=True)
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c2,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=4,
+        minutes=120.0,
+        pts=60,
+        ws=1.2,
+        vorp=0.5,
+        adv_eligible=True,
+    )
     await db_session.commit()
 
     result = await run_explorer_query(
@@ -3147,7 +3464,7 @@ async def test_career_additive_sum(
     assert row.values["ws"] == pytest.approx(2.0, abs=0.05)
     assert row.values["vorp"] == pytest.approx(0.8, abs=0.05)
     # GP and PTS should also be summed additive totals.
-    assert row.values["gp"] == 7   # 3 + 4
+    assert row.values["gp"] == 7  # 3 + 4
     assert row.values["pts"] == 105  # 45 + 60
 
 
@@ -3176,12 +3493,26 @@ async def test_career_rate_composite_minute_weighted_across_distinct_pools(
     c2 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
 
     await _season_with_composites(
-        db_session, player=player, comp_id=c1, year=2023, venue_slug="las_vegas",
-        gp=3, minutes=100.0, per=20.0, adv_eligible=True,
+        db_session,
+        player=player,
+        comp_id=c1,
+        year=2023,
+        venue_slug="las_vegas",
+        gp=3,
+        minutes=100.0,
+        per=20.0,
+        adv_eligible=True,
     )
     await _season_with_composites(
-        db_session, player=player, comp_id=c2, year=2024, venue_slug="las_vegas",
-        gp=3, minutes=200.0, per=10.0, adv_eligible=True,
+        db_session,
+        player=player,
+        comp_id=c2,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=3,
+        minutes=200.0,
+        per=10.0,
+        adv_eligible=True,
     )
     await db_session.commit()
 
@@ -3234,8 +3565,16 @@ async def test_per_game_still_reads_game_logs(
     player_b = make_player("SeasonOnly", "Player")
     db_session.add(player_b)
     await db_session.flush()
-    await _season(db_session, player=player_b, comp_id=c, year=2024,
-                  venue_slug="las_vegas", gp=2, minutes=60.0, pts=30)
+    await _season(
+        db_session,
+        player=player_b,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=30,
+    )
 
     await db_session.commit()
 
@@ -3269,11 +3608,19 @@ async def test_advanced_columns_present_and_sortable_all_grains(
     await db_session.flush()
 
     c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
-    await _metric_context(db_session, comp_id=c, year=2024, venue_slug="las_vegas",
-                          adv_eligible=True)
+    await _metric_context(
+        db_session, comp_id=c, year=2024, venue_slug="las_vegas", adv_eligible=True
+    )
     await _season_with_composites(
-        db_session, player=player, comp_id=c, year=2024, venue_slug="las_vegas",
-        per=20.0, bpm=2.5, ws=1.0, vorp=0.5,
+        db_session,
+        player=player,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        per=20.0,
+        bpm=2.5,
+        ws=1.0,
+        vorp=0.5,
     )
     t = await _team(db_session, comp_id=c)
     await _log(db_session, comp_id=c, team=t, player=player, pts=20, games=3)
@@ -3287,7 +3634,9 @@ async def test_advanced_columns_present_and_sortable_all_grains(
         ExplorerQuery(subject="players", grain="career", min_games=1, min_minutes=1),
     )
     career_col_keys = {c.key for c in career.columns}
-    assert adv_keys <= career_col_keys, f"missing at career: {adv_keys - career_col_keys}"
+    assert adv_keys <= career_col_keys, (
+        f"missing at career: {adv_keys - career_col_keys}"
+    )
     # Row values populated for advanced keys.
     assert career.rows[0].values.get("ws") is not None
     assert career.rows[0].values.get("per") is not None
@@ -3307,7 +3656,9 @@ async def test_advanced_columns_present_and_sortable_all_grains(
         ),
     )
     pc_col_keys = {c.key for c in pc_multi.columns}
-    assert adv_keys <= pc_col_keys, f"missing at per_competition: {adv_keys - pc_col_keys}"
+    assert adv_keys <= pc_col_keys, (
+        f"missing at per_competition: {adv_keys - pc_col_keys}"
+    )
 
     # Per_game grain: advanced composite columns NOT in result.columns.
     pg = await run_explorer_query(
@@ -3338,11 +3689,19 @@ async def test_pooled_avg_marker_and_eligibility_banner(
     await db_session.flush()
 
     c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
-    await _metric_context(db_session, comp_id=c, year=2024, venue_slug="las_vegas",
-                          adv_eligible=True)
+    await _metric_context(
+        db_session, comp_id=c, year=2024, venue_slug="las_vegas", adv_eligible=True
+    )
     await _season_with_composites(
-        db_session, player=player, comp_id=c, year=2024, venue_slug="las_vegas",
-        per=18.0, bpm=1.5, ws=0.9, vorp=0.4,
+        db_session,
+        player=player,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        per=18.0,
+        bpm=1.5,
+        ws=0.9,
+        vorp=0.4,
     )
     await db_session.commit()
 
@@ -3407,7 +3766,9 @@ async def test_invalid_sort_coerces(db_session: AsyncSession) -> None:
     assert q_bogus.sort == "pts", f"expected 'pts', got {q_bogus.sort!r}"
 
     q_per_pg = parse_query({"sort": "per", "grain": "per_game"})
-    assert q_per_pg.sort == "pts", f"expected 'pts' for per at per_game, got {q_per_pg.sort!r}"
+    assert q_per_pg.sort == "pts", (
+        f"expected 'pts' for per at per_game, got {q_per_pg.sort!r}"
+    )
 
     q_per_career = parse_query({"sort": "per", "grain": "career"})
     assert q_per_career.sort == "per", (
@@ -3534,20 +3895,32 @@ async def test_advanced_url_roundtrip(db_session: AsyncSession) -> None:
     The same params produce the same result as running ExplorerQuery directly.
     """
     # parse_metric_filters unit checks.
-    filters = parse_metric_filters({
-        "fcol0": "pts", "fop0": "gte", "fval0": "20",
-        "fcol1": "per", "fop1": "lte", "fval1": "15.5",
-        "fcol2": "efg_pct", "fop2": "gte", "fval2": "50",
-    })
+    filters = parse_metric_filters(
+        {
+            "fcol0": "pts",
+            "fop0": "gte",
+            "fval0": "20",
+            "fcol1": "per",
+            "fop1": "lte",
+            "fval1": "15.5",
+            "fcol2": "efg_pct",
+            "fop2": "gte",
+            "fval2": "50",
+        }
+    )
     assert len(filters) == 3
     assert filters[0] == MetricFilter(col="pts", op=">=", value=20.0)
     assert filters[1] == MetricFilter(col="per", op="<=", value=15.5)
     assert filters[2] == MetricFilter(col="efg_pct", op=">=", value=50.0)
 
     # Round-trip: URL params → parse_query → same filters.
-    q = parse_query({
-        "fcol0": "pts", "fop0": "gte", "fval0": "40",
-    })
+    q = parse_query(
+        {
+            "fcol0": "pts",
+            "fop0": "gte",
+            "fval0": "40",
+        }
+    )
     assert len(q.metric_filters) == 1
     assert q.metric_filters[0] == MetricFilter(col="pts", op=">=", value=40.0)
 
@@ -3558,10 +3931,16 @@ async def test_advanced_url_roundtrip(db_session: AsyncSession) -> None:
     assert result.rows[0].label == "Big Scorer"
 
     # Both valid filters: pts >= 5 (both qualify) and gp >= 2 (both qualify).
-    q2 = parse_query({
-        "fcol0": "pts", "fop0": "gte", "fval0": "5",
-        "fcol1": "gp", "fop1": "gte", "fval1": "2",
-    })
+    q2 = parse_query(
+        {
+            "fcol0": "pts",
+            "fop0": "gte",
+            "fval0": "5",
+            "fcol1": "gp",
+            "fop1": "gte",
+            "fval1": "2",
+        }
+    )
     result2 = await run_explorer_query(db_session, q2)
     assert result2.total == 2  # both players qualify
 
