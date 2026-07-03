@@ -13,7 +13,9 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
+from app.schemas.positions import Position
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
@@ -621,26 +623,45 @@ async def test_explorer_not_shadowed_by_year_route(app_client: AsyncClient) -> N
 
 
 async def _seed_with_positions(db: AsyncSession) -> None:
-    """Three players: one G (drafted), one F (drafted), one undrafted with no position."""
+    """Seed a PG, a PG/SG combo, a PF/C big, and an undrafted no-position player.
+
+    Position lives in player_status → positions (PlayerMaster.position is
+    unpopulated for the SL pool).
+    """
+    pos_pg = Position(code="pg", parents=["guard"])
+    pos_pg_sg = Position(code="pg_sg", parents=["guard"])
+    pos_pf_c = Position(code="pf_c", parents=["big", "forward"])
+    db.add_all([pos_pg, pos_pg_sg, pos_pf_c])
+    await db.flush()
+
     guard = make_player("Guard", "One")
-    guard.position = "G"
     guard.draft_year, guard.draft_round = 2024, 1
 
-    forward = make_player("Forward", "Two")
-    forward.position = "F"
-    forward.draft_year, forward.draft_round = 2024, 2
+    combo = make_player("Combo", "Two")
+    combo.draft_year, combo.draft_round = 2024, 2
 
-    undrafted = make_player("Undrafted", "Three")
-    undrafted.position = None
+    big = make_player("Big", "Three")
+    big.draft_year, big.draft_round = 2024, 2
+
+    undrafted = make_player("Undrafted", "Four")
     undrafted.draft_year = None
 
-    db.add_all([guard, forward, undrafted])
+    db.add_all([guard, combo, big, undrafted])
+    await db.flush()
+    db.add_all(
+        [
+            PlayerStatus(player_id=guard.id, position_id=pos_pg.id),
+            PlayerStatus(player_id=combo.id, position_id=pos_pg_sg.id),
+            PlayerStatus(player_id=big.id, position_id=pos_pf_c.id),
+        ]
+    )
     await db.flush()
 
     c = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
     t = await _team(db, comp_id=c)
     await _log(db, comp_id=c, team=t, player=guard, pts=20, games=2)
-    await _log(db, comp_id=c, team=t, player=forward, pts=15, games=2)
+    await _log(db, comp_id=c, team=t, player=combo, pts=15, games=2)
+    await _log(db, comp_id=c, team=t, player=big, pts=12, games=2)
     await _log(db, comp_id=c, team=t, player=undrafted, pts=10, games=2)
     # Season rows required for career grain (ticket #405 source switch).
     await _season(
@@ -655,13 +676,23 @@ async def _seed_with_positions(db: AsyncSession) -> None:
     )
     await _season(
         db,
-        player=forward,
+        player=combo,
         comp_id=c,
         year=2024,
         venue_slug="las_vegas",
         gp=2,
         minutes=60.0,
         pts=30,
+    )
+    await _season(
+        db,
+        player=big,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=24,
     )
     await _season(
         db,
@@ -677,16 +708,52 @@ async def _seed_with_positions(db: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_position_filter_returns_only_matching_position(
-    db_session: AsyncSession,
+@pytest.mark.parametrize("grain", ["career", "per_competition", "per_game"])
+async def test_position_slot_filter_includes_hybrids(
+    db_session: AsyncSession, grain: str
 ) -> None:
-    """?position=G returns only players at that position; others are excluded."""
+    """?position=pg matches pure PGs and PG hybrids (pg_sg) at every grain."""
     await _seed_with_positions(db_session)
     result = await run_explorer_query(
-        db_session, ExplorerQuery(subject="players", position="G")
+        db_session, ExplorerQuery(subject="players", grain=grain, position="pg")
+    )
+    # per_competition/per_game labels append " · <venue/date>" after the name.
+    names = {r.label.split(" · ")[0] for r in result.rows}
+    assert names == {"Guard One", "Combo Two"}
+
+
+@pytest.mark.asyncio
+async def test_position_slot_filter_excludes_other_slots(
+    db_session: AsyncSession,
+) -> None:
+    """?position=sg matches only the combo guard, not the pure PG or the big."""
+    await _seed_with_positions(db_session)
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", position="sg")
     )
     assert result.total == 1
-    assert result.rows[0].label == "Guard One"
+    assert result.rows[0].label == "Combo Two"
+
+
+@pytest.mark.asyncio
+async def test_position_bucket_filter_matches_parents(
+    db_session: AsyncSession,
+) -> None:
+    """?position=big matches via the positions.parents hierarchy."""
+    await _seed_with_positions(db_session)
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", position="big")
+    )
+    assert result.total == 1
+    assert result.rows[0].label == "Big Three"
+
+
+def test_parse_query_position_normalizes_and_validates() -> None:
+    """Position params lowercase to the vocabulary; unknown values degrade off."""
+    assert parse_query({"position": "PG"}).position == "pg"
+    assert parse_query({"position": "guard"}).position == "guard"
+    assert parse_query({"position": "G"}).position is None
+    assert parse_query({}).position is None
 
 
 @pytest.mark.asyncio
@@ -699,20 +766,31 @@ async def test_undrafted_filter_returns_only_undrafted(
         db_session, ExplorerQuery(subject="players", undrafted=True)
     )
     assert result.total == 1
-    assert result.rows[0].label == "Undrafted Three"
+    assert result.rows[0].label == "Undrafted Four"
 
 
 @pytest.mark.asyncio
-async def test_positions_facet_lists_distinct_values(
+async def test_positions_facet_lists_slots_and_groups(
     db_session: AsyncSession,
 ) -> None:
-    """Positions facet enumerates distinct non-null position values from PlayerMaster."""
+    """Facet splits hybrid codes into slots and collects parent groups.
+
+    Restricted to players present in the SL pool; absent slots are omitted.
+    """
     await _seed_with_positions(db_session)
     result = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
-    assert "F" in result.facets.positions
-    assert "G" in result.facets.positions
-    # None is excluded from the facet
-    assert None not in result.facets.positions  # type: ignore[operator]
+    # pg + pg_sg + pf_c → slots pg, sg, pf, c (canonical order; sf absent).
+    assert result.facets.positions == [
+        ("pg", "PG"),
+        ("sg", "SG"),
+        ("pf", "PF"),
+        ("c", "C"),
+    ]
+    assert result.facets.position_groups == [
+        ("guard", "Guards"),
+        ("forward", "Forwards"),
+        ("big", "Bigs"),
+    ]
 
 
 @pytest.mark.asyncio
