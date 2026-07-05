@@ -361,6 +361,70 @@ def game_score_from_row(row: Any) -> float:
     return game_score_line(**{f: getattr(row, f, 0) for f in _GAME_SCORE_BOX_FIELDS})
 
 
+# --------------------------------------------------------------------------- #
+# Line-grain advanced rates
+# --------------------------------------------------------------------------- #
+# Single-line twins of the season formulas in :func:`compute_metrics`, for read
+# surfaces that need a rate from one box line (a single game). They match the
+# season math exactly but return ``None`` on an empty denominator — a single
+# game with no qualifying attempts renders an em-dash, whereas the materialized
+# season columns store 0.0 via ``_d``.
+
+
+def ftr_line(*, fga: Any, fta: Any) -> Optional[float]:
+    """Free-throw rate (FTA / FGA) for one box line, ``None``-coalescing to 0.
+
+    Returns:
+        The 0–1 fraction rounded to 3 decimals (the scale ``compute_metrics``
+        stores), or ``None`` when the line has no field-goal attempts.
+    """
+    fga_f = float(fga or 0)
+    if fga_f <= 0:
+        return None
+    return round(float(fta or 0) / fga_f, 3)
+
+
+def tov_pct_line(*, fga: Any, fta: Any, tov: Any) -> Optional[float]:
+    """Turnover % — 100 · TOV / (FGA + 0.44 · FTA + TOV) — for one box line.
+
+    Returns:
+        The 0–100 percentage rounded to 1 decimal, or ``None`` when the line
+        has no true-shooting attempts or turnovers to divide by.
+    """
+    den = float(fga or 0) + 0.44 * float(fta or 0) + float(tov or 0)
+    if den <= 0:
+        return None
+    return round(100.0 * float(tov or 0) / den, 1)
+
+
+def ast_pct_line(
+    *,
+    ast: Any,
+    fgm: Any,
+    mp: Any,
+    tm_mp: Any,
+    tm_fgm: Any,
+) -> Optional[float]:
+    """Assist % — share of teammate field goals a player assisted while on floor.
+
+    Bbref's estimate: ``100 · AST / ((MP / (Tm MP / 5)) · Tm FGM − FGM)``, the
+    same formula :func:`compute_metrics` applies at season grain. ``tm_mp`` is
+    the team's total player-minutes (≈ 240 for one regulation game).
+
+    Returns:
+        The 0–100 percentage rounded to 1 decimal, or ``None`` when team
+        context is missing or the teammate-FG denominator is not positive
+        (e.g. the player scored every on-floor team basket).
+    """
+    tm_mp5 = float(tm_mp or 0) / 5.0
+    if tm_mp5 <= 0:
+        return None
+    den = (float(mp or 0) / tm_mp5) * float(tm_fgm or 0) - float(fgm or 0)
+    if den <= 0:
+        return None
+    return round(100.0 * float(ast or 0) / den, 1)
+
+
 def compute_uper(b: Box, tm: Box, ctx: LeagueContext) -> float:
     """Bbref unadjusted PER from a player's box + team totals + league context."""
     if b.mp <= 0:
