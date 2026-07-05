@@ -275,7 +275,17 @@ async def test_player_page_renders_advanced_table(
         db_session, year=2024, venue_slug="las_vegas", league_id="15"
     )
     await _seed_minimal_game_log(db_session, comp=comp, player=player)
-    await _season(db_session, comp=comp, player=player, per=24.7, ws=2.3, vorp=1.1)
+    await _season(
+        db_session,
+        comp=comp,
+        player=player,
+        per=24.7,
+        ws=2.3,
+        vorp=1.1,
+        ftr=0.42,
+        ast_pct=25.3,
+        tov_pct=11.2,
+    )
     await db_session.commit()
 
     assert player.slug is not None
@@ -284,6 +294,12 @@ async def test_player_page_renders_advanced_table(
     html = resp.text
     assert "Advanced Metrics" in html
     assert "24.7" in html  # PER value rendered
+    # BBRef-parity rate columns render with their stored values.
+    for header in (">FTr<", ">AST%<", ">TOV%<"):
+        assert header in html
+    assert "0.420" in html  # FTr as a 3-decimal fraction
+    assert "25.3" in html
+    assert "11.2" in html
 
 
 @pytest.mark.asyncio

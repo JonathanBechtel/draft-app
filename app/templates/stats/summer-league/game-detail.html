@@ -12,6 +12,7 @@
 {% macro n(v) %}{{ v if v is not none else '—' }}{% endmacro %}
 {% macro mins(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
 {% macro pct(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
+{% macro f3(v) %}{{ '%.3f' % v if v is not none else '—' }}{% endmacro %}
 
 {# A player name cell, linked to the player page when resolved. #}
 {% macro player_cell(line) %}
@@ -78,7 +79,12 @@
         <tr>
           <th scope="col" class="slg-bx-namecol">Player</th>
           <th scope="col">MIN</th><th scope="col">PTS</th>
-          <th scope="col">TS%</th><th scope="col">eFG%</th><th scope="col">USG%</th>
+          <th scope="col" title="Hollinger Game Score — single-number summary of this game's box-score production">GmSc</th>
+          <th scope="col" title="True Shooting %">TS%</th><th scope="col" title="Effective Field Goal %">eFG%</th>
+          <th scope="col" title="Usage %">USG%</th>
+          <th scope="col" title="Free-throw rate (FTA per FGA)">FTr</th>
+          <th scope="col" title="Assist % — share of teammate field goals assisted while on the floor">AST%</th>
+          <th scope="col" title="Turnover % — turnovers per 100 plays">TOV%</th>
           <th scope="col">+/−</th>
         </tr>
       </thead>
@@ -87,7 +93,9 @@
         <tr>
           {{ player_cell(line) }}
           <td>{{ mins(line.minutes) }}</td><td class="slg-strong">{{ n(line.pts) }}</td>
+          <td>{{ n(line.gmsc) }}</td>
           <td>{{ pct(line.ts_pct) }}</td><td>{{ pct(line.efg_pct) }}</td><td>{{ pct(line.usg_pct) }}</td>
+          <td>{{ f3(line.ftr) }}</td><td>{{ pct(line.ast_pct) }}</td><td>{{ pct(line.tov_pct) }}</td>
           <td>{{ n(line.plus_minus) }}</td>
         </tr>
         {% endif %}{% endfor %}

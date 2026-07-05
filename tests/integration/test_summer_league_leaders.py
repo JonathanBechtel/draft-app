@@ -343,7 +343,9 @@ async def test_advanced_leaders_from_metrics_table(
     await _season(
         db_session, comp=lv25, first="Thin", last="Pool", adv_eligible=False, per=88.0
     )
-    await _season(db_session, comp=slc24, first="Salt", last="Laker", per=18.0)
+    await _season(
+        db_session, comp=slc24, first="Salt", last="Laker", per=18.0, ftr=0.45
+    )
     await db_session.commit()
 
     # Default (no season/venue) is the all-time, all-venue blend across pools,
@@ -360,6 +362,10 @@ async def test_advanced_leaders_from_metrics_table(
     )
     assert slc.year == 2024 and slc.venue == "salt_lake_city"
     assert [r.name for r in slc.rows] == ["Salt Laker"]
+    # Attempt-rate columns are on the advanced board and read the stored value.
+    assert {c.key: c.label for c in slc.columns}["fg3ar"] == "3PAr"
+    assert {c.key: c.label for c in slc.columns}["ftr"] == "FTr"
+    assert slc.rows[0].values["ftr"] == 0.45
 
     # Sorting by a different metric re-ranks the board.
     by_ws = await get_leaders(db_session, mode="advanced", sort="ws")
@@ -382,11 +388,11 @@ async def test_advanced_all_blend_math(
     db_session.add(star)
     await db_session.flush()
     pools = (
-        # comp, minutes, per, ws, pts, fga, fgm, fg3m, fta
-        (lv25, 100.0, 30.0, 2.0, 140, 100, 50, 20, 20),
-        (slc25, 100.0, 20.0, 1.0, 110, 100, 40, 10, 10),
+        # comp, minutes, per, ws, pts, fga, fgm, fg3m, fg3a, fta
+        (lv25, 100.0, 30.0, 2.0, 140, 100, 50, 20, 40, 20),
+        (slc25, 100.0, 20.0, 1.0, 110, 100, 40, 10, 20, 10),
     )
-    for comp, minutes, per, ws, pts, fga, fgm, fg3m, fta in pools:
+    for comp, minutes, per, ws, pts, fga, fgm, fg3m, fg3a, fta in pools:
         db_session.add(
             SummerLeaguePlayerSeason(
                 competition_id=comp.id,
@@ -402,6 +408,7 @@ async def test_advanced_all_blend_math(
                 fga=fga,
                 fgm=fgm,
                 fg3m=fg3m,
+                fg3a=fg3a,
                 fta=fta,
             )
         )
@@ -425,3 +432,6 @@ async def test_advanced_all_blend_math(
     assert row.values["ts_pct"] == 58.6
     # eFG% pools raw volume: 100·(90 + 0.5·30) / 200 = 52.5
     assert row.values["efg_pct"] == 52.5
+    # Attempt rates pool raw volume as 0-1 fractions: 3PAr 60/200, FTr 30/200.
+    assert row.values["fg3ar"] == 0.3
+    assert row.values["ftr"] == 0.15

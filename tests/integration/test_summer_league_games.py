@@ -26,6 +26,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
+    SummerLeagueTeamGameLog,
 )
 from app.services.summer_league_games_service import (
     get_game_box_score,
@@ -120,6 +121,8 @@ async def _seed_game(
             raw_player_name=home_player.display_name or "Player",
             minutes_seconds=1800,
             pts=20,
+            oreb=3,
+            dreb=5,
             reb=8,
             ast=5,
             stl=1,
@@ -258,6 +261,18 @@ async def test_game_box_score_renders_and_missing_404(
             minutes_seconds=None,
         )
     )
+    # Home team game log: gives the box lines team context for AST%.
+    db_session.add(
+        SummerLeagueTeamGameLog(
+            competition_id=game.competition_id,
+            game_id=game.id,
+            team_entry_id=game.home_team_entry_id,
+            minutes=240,
+            pts=100,
+            fgm=40,
+            fga=85,
+        )
+    )
     await db_session.commit()
     assert game.id is not None
 
@@ -271,10 +286,28 @@ async def test_game_box_score_renders_and_missing_404(
     assert box.home.lines[-1].dnp is True
     assert box.home.lines[0].dnp is False
 
+    # Single-game advanced line: GmSc weights the full box (incl. OREB/DREB),
+    # FTr/TOV% come from the player's own line, AST% from the team log context.
+    starter = box.home.lines[0]
+    # 20 +0.4*8 -0.7*15 -0.4*(2-2) +0.7*3 +0.3*5 +1 +0.7*5 +0.7*1 -0.4*2 -2
+    assert starter.gmsc == pytest.approx(18.7)
+    assert starter.ftr == pytest.approx(round(2 / 15, 3))
+    assert starter.tov_pct == pytest.approx(round(100 * 2 / (15 + 0.44 * 2 + 2), 1))
+    # AST% = 100*5 / ((30/48)*40 - 8) = 500/17 ≈ 29.4
+    assert starter.ast_pct == pytest.approx(29.4)
+    # DNP line carries no advanced values.
+    assert box.home.lines[-1].gmsc is None
+
     resp = await app_client.get(f"/stats/summer-league/2025/games/{game.id}")
     assert resp.status_code == 200
     assert "Box Scorer" in resp.text
     assert "Advanced" in resp.text
+    # New advanced columns render with their values.
+    for header in (">GmSc<", ">FTr<", ">AST%<", ">TOV%<"):
+        assert header in resp.text
+    assert "18.7" in resp.text
+    assert "0.133" in resp.text
+    assert "29.4" in resp.text
 
     missing = await app_client.get("/stats/summer-league/2025/games/99999999")
     assert missing.status_code == 404

@@ -14,11 +14,14 @@ from app.services.summer_league.metrics import (
     PlayerSeason,
     _d,
     apply_sl_bpm,
+    ast_pct_line,
     compute_metrics,
     fit_pythagorean,
+    ftr_line,
     game_score,
     game_score_from_row,
     game_score_line,
+    tov_pct_line,
 )
 
 
@@ -287,6 +290,117 @@ def test_compute_metrics_blanks_composites_when_pool_ineligible() -> None:
     assert ps.metrics["ortg"] is None
     assert ps.metrics["ws"] is None
     assert ps.metrics["ws82"] is None
+
+
+def test_line_rate_helpers_guard_empty_denominators() -> None:
+    """The line-grain rate helpers return None instead of dividing by zero.
+
+    A 0-FGA line has no free-throw rate, a line with no plays has no turnover
+    rate, and AST% needs team context plus at least one teammate field goal.
+    """
+    assert ftr_line(fga=0, fta=2) is None
+    assert ftr_line(fga=None, fta=None) is None
+    assert tov_pct_line(fga=0, fta=0, tov=0) is None
+    assert ast_pct_line(ast=3, fgm=5, mp=20, tm_mp=0, tm_fgm=30) is None
+    # Played all 48 and made every team basket: teammate-FG denominator <= 0.
+    assert ast_pct_line(ast=2, fgm=30, mp=48, tm_mp=240, tm_fgm=30) is None
+
+
+def test_line_rate_helpers_match_bbref_formulas() -> None:
+    """Known box lines produce the hand-computed BBRef rates."""
+    # FTr = FTA / FGA.
+    assert ftr_line(fga=15, fta=6) == 0.4
+    # TOV% = 100 * TOV / (FGA + 0.44*FTA + TOV) = 100*3/(15+0.44*6+3) ≈ 14.5.
+    assert tov_pct_line(fga=15, fta=6, tov=3) == round(
+        100.0 * 3 / (15 + 0.44 * 6 + 3), 1
+    )
+    # AST% = 100 * AST / ((MP/(TmMP/5)) * TmFGM - FGM); 30 of 240 team minutes.
+    expected = 100.0 * 5 / ((30.0 / 48.0) * 40 - 6)
+    assert ast_pct_line(ast=5, fgm=6, mp=30, tm_mp=240, tm_fgm=40) == round(
+        expected, 1
+    )
+
+
+def test_line_rate_helpers_match_season_compute() -> None:
+    """Season-grain compute_metrics and the line helpers agree on one pool.
+
+    Guards against the two formula homes drifting: feeding the same box totals
+    through ``compute_metrics`` (an adv-eligible pool) and through the line
+    helpers must produce identical FTr / TOV% / AST% values.
+    """
+    lg = _box(
+        mp=2000,
+        pts=800,
+        fgm=300,
+        fga=640,
+        fg3m=60,
+        fg3a=180,
+        ftm=140,
+        fta=180,
+        oreb=80,
+        dreb=240,
+        reb=320,
+        ast=180,
+        stl=60,
+        blk=30,
+        tov=120,
+        pf=160,
+    )
+    ctx = LeagueContext(
+        competition_id=1,
+        year=2025,
+        venue="las_vegas",
+        lg=lg,
+        poss=1600.0,
+        team_games=20,
+        adv_eligible=True,
+    )
+    ctx.finalize()
+    team = _box(
+        mp=1000,
+        pts=400,
+        fgm=150,
+        fga=320,
+        fta=90,
+        ftm=70,
+        oreb=40,
+        dreb=120,
+        reb=160,
+        ast=90,
+        tov=60,
+    )
+    opp = _box(
+        mp=1000,
+        pts=390,
+        fgm=148,
+        fga=318,
+        fta=88,
+        ftm=66,
+        oreb=38,
+        dreb=118,
+        reb=156,
+        ast=88,
+        tov=62,
+    )
+    ps = PlayerSeason(
+        player_id=1,
+        competition_id=1,
+        primary_team_entry_id=1,
+        year=2025,
+        venue="las_vegas",
+        box=_box(
+            mp=100, pts=60, fgm=22, fga=45, fta=12, ftm=10, ast=15, tov=8, gp=4
+        ),
+        team=team,
+        opp=opp,
+    )
+    compute_metrics(ps, ctx, ws_ppw_coeff=0.43)
+    b = ps.box
+    assert ps.metrics["ftr"] == ftr_line(fga=b.fga, fta=b.fta)
+    assert ps.metrics["tov_pct"] == tov_pct_line(fga=b.fga, fta=b.fta, tov=b.tov)
+    assert ps.metrics["ast_pct"] == ast_pct_line(
+        ast=b.ast, fgm=b.fgm, mp=b.mp, tm_mp=team.mp, tm_fgm=team.fgm
+    )
 
 
 def test_compute_metrics_skips_pace_when_pool_has_no_possession_data() -> None:
