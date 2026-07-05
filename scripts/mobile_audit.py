@@ -190,7 +190,34 @@ def _slug(route: str) -> str:
     return route.strip("/").replace("/", "-") or "home"
 
 
-def run_sweep(base: str, routes: list[str], width: int, out_dir: Path) -> int:
+def _capture_segments(
+    page: Page, out_dir: Path, slug: str, max_segments: int
+) -> dict[str, Any]:
+    """Capture viewport-sized screenshots while scrolling down the page.
+
+    Full-page PNGs of long mobile pages downscale to unreadable ribbons;
+    these segments are what a phone user actually sees per screenful, so
+    they stay legible when reviewed. Returns capture metadata including
+    whether the page was longer than the segment budget.
+    """
+    viewport = page.viewport_size or MOBILE_VIEWPORT
+    vh = viewport["height"]
+    page_height: int = page.evaluate("document.scrollingElement.scrollHeight")
+    wanted = max(1, -(-page_height // vh))  # ceil
+    total = min(max_segments, wanted)
+    for i in range(total):
+        page.evaluate(f"window.scrollTo(0, {i * vh})")
+        page.wait_for_timeout(150)
+        page.screenshot(
+            path=str(out_dir / f"{slug}.seg{i + 1:02d}.png"), full_page=False
+        )
+    page.evaluate("window.scrollTo(0, 0)")
+    return {"captured": total, "needed": wanted, "truncated": wanted > total}
+
+
+def run_sweep(
+    base: str, routes: list[str], width: int, out_dir: Path, segments: int
+) -> int:
     """Audit each route and write screenshots plus report.md / report.json.
 
     Returns the number of routes with at least one blocking finding
@@ -226,14 +253,21 @@ def run_sweep(base: str, routes: list[str], width: int, out_dir: Path) -> int:
                 )
                 entry["checks"] = page.evaluate(CHECK_JS)
                 entry["consoleErrors"] = list(dict.fromkeys(console_errors))[:5]
+                if segments:
+                    entry["segments"] = _capture_segments(
+                        page, out_dir, _slug(route), segments
+                    )
             except Exception as exc:  # noqa: BLE001 - report per-route, keep sweeping
                 entry["error"] = str(exc)[:200]
             results.append(entry)
             checks = entry.get("checks") or {}
+            seg = entry.get("segments") or {}
             print(
                 f"{route}: status={entry.get('status')} "
                 f"pageOverflow={checks.get('pageOverflowPx')} "
-                f"unreachable={len(checks.get('unreachable', []))}"
+                f"unreachable={len(checks.get('unreachable', []))} "
+                f"segments={seg.get('captured', 0)}"
+                + ("(truncated)" if seg.get("truncated") else "")
             )
 
         browser.close()
@@ -267,6 +301,17 @@ def _render_report(base: str, width: int, results: list[dict[str, Any]]) -> str:
         c = r.get("checks") or {}
         ov = c.get("pageOverflowPx", 0)
         lines.append(f"- Page horizontal overflow: {'none' if ov <= 2 else f'{ov}px'}")
+        seg = r.get("segments") or {}
+        if seg:
+            slug = _slug(r["route"])
+            note = (
+                f" — TRUNCATED, page needs {seg['needed']} (raise --segments to see the rest)"
+                if seg["truncated"]
+                else ""
+            )
+            lines.append(
+                f"- Visual pass: READ `{slug}.seg01.png` … `{slug}.seg{seg['captured']:02d}.png`{note}"
+            )
         if c.get("unreachable"):
             lines.append(
                 "- **Unreachable content** (pokes past viewport, no scrollable ancestor):"
@@ -323,6 +368,12 @@ def main() -> int:
     sweep.add_argument("--routes", nargs="*", default=DEFAULT_ROUTES)
     sweep.add_argument("--width", type=int, default=MOBILE_VIEWPORT["width"])
     sweep.add_argument("--out", default="tests/visual/screenshots/mobile-audit")
+    sweep.add_argument(
+        "--segments",
+        type=int,
+        default=6,
+        help="viewport-sized screenshots per route for visual review (0 disables)",
+    )
 
     trace = sub.add_parser("trace", help="trace an element's ancestor box chain")
     trace.add_argument("--base", default="http://localhost:8000")
@@ -332,7 +383,12 @@ def main() -> int:
 
     args = parser.parse_args()
     if args.cmd == "sweep":
-        return min(run_sweep(args.base, args.routes, args.width, Path(args.out)), 125)
+        return min(
+            run_sweep(
+                args.base, args.routes, args.width, Path(args.out), args.segments
+            ),
+            125,
+        )
     run_trace(args.base, args.route, args.selector, args.width)
     return 0
 
