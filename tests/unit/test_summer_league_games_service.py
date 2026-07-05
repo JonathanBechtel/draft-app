@@ -113,3 +113,66 @@ def test_box_line_played_row_carries_stats() -> None:
     assert line.fg3 == "2-5"
     assert line.ts_pct == pytest.approx(61.0)
     assert line.usg_pct == pytest.approx(24.0)
+
+
+def _played_row(**overrides: object) -> SimpleNamespace:
+    """A realistic played box row; keyword overrides tweak individual stats."""
+    base: dict[str, object] = dict(
+        player_id=1,
+        slug="stub-guy",
+        raw_player_name="Stub Guy",
+        starter_position=None,
+        minutes_seconds=1500,  # 25.0 minutes
+        pts=18,
+        oreb=2,
+        dreb=4,
+        reb=6,
+        ast=4,
+        stl=2,
+        blk=1,
+        tov=3,
+        pf=2,
+        fgm=7,
+        fga=12,
+        fg3m=2,
+        fg3a=5,
+        ftm=2,
+        fta=2,
+        plus_minus=11,
+        ts_pct=0.61,
+        efg_pct=0.58,
+        usg_pct=0.24,
+    )
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+def test_box_line_computes_single_game_advanced_rates() -> None:
+    """A played row gets GmSc, FTr, TOV%, and (with team context) AST%.
+
+    GmSc uses the full Hollinger weighting including OREB/DREB; AST% uses the
+    BBRef single-game estimate against the team's minutes and FGM.
+    """
+    line = _box_line(_played_row(), team_minutes_fgm=(240.0, 40))
+    # 18 +0.4*7 -0.7*12 -0.4*(2-2) +0.7*2 +0.3*4 +2 +0.7*4 +0.7*1 -0.4*2 -3
+    assert line.gmsc == pytest.approx(16.7)
+    assert line.ftr == pytest.approx(round(2 / 12, 3))
+    assert line.tov_pct == pytest.approx(round(100 * 3 / (12 + 0.44 * 2 + 3), 1))
+    # AST% = 100*4 / ((25/48)*40 - 7) ≈ 29.0
+    assert line.ast_pct == pytest.approx(round(100 * 4 / ((25 / 48) * 40 - 7), 1))
+
+
+def test_box_line_advanced_rates_guard_missing_context() -> None:
+    """AST% is None without team context; DNP rows get no advanced line."""
+    no_team = _box_line(_played_row())
+    assert no_team.gmsc is not None
+    assert no_team.ast_pct is None
+
+    dnp = _box_line(
+        _played_row(minutes_seconds=0), team_minutes_fgm=(240.0, 40)
+    )
+    assert dnp.dnp is True
+    assert dnp.gmsc is None
+    assert dnp.ftr is None
+    assert dnp.ast_pct is None
+    assert dnp.tov_pct is None

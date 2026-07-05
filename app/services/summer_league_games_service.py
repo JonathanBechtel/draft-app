@@ -28,7 +28,12 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.services.summer_league.metrics import game_score_from_row
+from app.services.summer_league.metrics import (
+    ast_pct_line,
+    ftr_line,
+    game_score_from_row,
+    tov_pct_line,
+)
 from app.services.summer_league_shotchart_service import (
     get_game_shot_dots,
     get_game_shot_zones,
@@ -150,6 +155,11 @@ class BoxLine:
     ts_pct: Optional[float]
     efg_pct: Optional[float]
     usg_pct: Optional[float]
+    # Single-game advanced line (defaults keep the team-totals row valid).
+    gmsc: Optional[float] = None
+    ftr: Optional[float] = None
+    ast_pct: Optional[float] = None
+    tov_pct: Optional[float] = None
 
 
 @dataclass
@@ -399,11 +409,37 @@ async def get_games_facets(db: AsyncSession) -> GamesFacets:
 # --------------------------------------------------------------------------- #
 
 
-def _box_line(r: object) -> BoxLine:
-    """Build a :class:`BoxLine` from a joined player-game-log row."""
+def _box_line(
+    r: object, team_minutes_fgm: Optional[tuple[float, int]] = None
+) -> BoxLine:
+    """Build a :class:`BoxLine` from a joined player-game-log row.
+
+    Args:
+        r: Joined player-game-log row (must expose ``oreb``/``dreb`` for Game
+            Score — ``game_score_from_row`` coalesces missing fields to 0).
+        team_minutes_fgm: The player's team ``(total minutes, FGM)`` for this
+            game, when the team game log exists; enables AST%.
+    """
     minutes_seconds = getattr(r, "minutes_seconds", None)
     pts = getattr(r, "pts", None)
     dnp = (minutes_seconds or 0) <= 0
+    gmsc = ftr = ast_pct = tov_pct = None
+    if not dnp:
+        gmsc = round(game_score_from_row(r), 1)
+        ftr = ftr_line(fga=getattr(r, "fga", None), fta=getattr(r, "fta", None))
+        tov_pct = tov_pct_line(
+            fga=getattr(r, "fga", None),
+            fta=getattr(r, "fta", None),
+            tov=getattr(r, "tov", None),
+        )
+        if team_minutes_fgm is not None:
+            ast_pct = ast_pct_line(
+                ast=getattr(r, "ast", None),
+                fgm=getattr(r, "fgm", None),
+                mp=_minutes(minutes_seconds),
+                tm_mp=team_minutes_fgm[0],
+                tm_fgm=team_minutes_fgm[1],
+            )
     return BoxLine(
         player_id=getattr(r, "player_id", None),
         slug=getattr(r, "slug", None),
@@ -425,6 +461,10 @@ def _box_line(r: object) -> BoxLine:
         ts_pct=_pct(getattr(r, "ts_pct", None)),
         efg_pct=_pct(getattr(r, "efg_pct", None)),
         usg_pct=_pct(getattr(r, "usg_pct", None)),
+        gmsc=gmsc,
+        ftr=ftr,
+        ast_pct=ast_pct,
+        tov_pct=tov_pct,
     )
 
 
@@ -485,6 +525,36 @@ async def get_game_box_score(db: AsyncSession, game_id: int) -> Optional[GameBox
         is_home=False,
     )
 
+    # Team totals load first so player lines can compute AST% (it needs the
+    # team's minutes and FGM as context).
+    tgl = SummerLeagueTeamGameLog
+    totals_stmt = select(  # type: ignore[call-overload, misc]
+        tgl.team_entry_id,
+        tgl.minutes,
+        tgl.pts,
+        tgl.reb,
+        tgl.ast,
+        tgl.stl,
+        tgl.blk,
+        tgl.tov,
+        tgl.pf,
+        tgl.fgm,
+        tgl.fga,
+        tgl.fg3m,
+        tgl.fg3a,
+        tgl.ftm,
+        tgl.fta,
+        tgl.plus_minus,
+        tgl.ts_pct,
+        tgl.efg_pct,
+    ).where(tgl.game_id == game_id)  # type: ignore[call-overload, arg-type]
+    total_rows = (await db.execute(totals_stmt)).all()
+    team_minutes_fgm: dict[int, tuple[float, int]] = {
+        r.team_entry_id: (float(r.minutes), r.fgm)
+        for r in total_rows
+        if r.minutes and r.fgm is not None
+    }
+
     pgl = SummerLeaguePlayerGameLog
     lines_stmt = (
         select(
@@ -495,6 +565,8 @@ async def get_game_box_score(db: AsyncSession, game_id: int) -> Optional[GameBox
             pgl.starter_position,
             pgl.minutes_seconds,
             pgl.pts,
+            pgl.oreb,
+            pgl.dreb,
             pgl.reb,
             pgl.ast,
             pgl.stl,
@@ -523,34 +595,13 @@ async def get_game_box_score(db: AsyncSession, game_id: int) -> Optional[GameBox
         )
     )
     for r in (await db.execute(lines_stmt)).all():
-        line = _box_line(r)
+        line = _box_line(r, team_minutes_fgm.get(r.team_entry_id))
         if r.team_entry_id == home_box.team_entry_id:
             home_box.lines.append(line)
         elif r.team_entry_id == away_box.team_entry_id:
             away_box.lines.append(line)
 
-    tgl = SummerLeagueTeamGameLog
-    totals_stmt = select(  # type: ignore[call-overload, misc]
-        tgl.team_entry_id,
-        tgl.minutes,
-        tgl.pts,
-        tgl.reb,
-        tgl.ast,
-        tgl.stl,
-        tgl.blk,
-        tgl.tov,
-        tgl.pf,
-        tgl.fgm,
-        tgl.fga,
-        tgl.fg3m,
-        tgl.fg3a,
-        tgl.ftm,
-        tgl.fta,
-        tgl.plus_minus,
-        tgl.ts_pct,
-        tgl.efg_pct,
-    ).where(tgl.game_id == game_id)  # type: ignore[call-overload, arg-type]
-    for r in (await db.execute(totals_stmt)).all():
+    for r in total_rows:
         totals = BoxLine(
             player_id=None,
             slug=None,
