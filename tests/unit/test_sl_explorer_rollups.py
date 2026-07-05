@@ -278,17 +278,17 @@ def test_recombinable_ft_pct() -> None:
 
 
 def test_recombinable_fg3ar() -> None:
-    """3PAr = FG3A / FGA * 100 (3-point attempt rate)."""
+    """3PAr = FG3A / FGA as a 0-1 fraction (BBRef scale, matches stored column)."""
     rows = [_box(fga=10, fg3a=4), _box(fga=8, fg3a=2)]
     result = rollup_recombinable(rows, "fg3ar")
-    assert result == pytest.approx(100.0 * 6 / 18, abs=1e-6)
+    assert result == pytest.approx(6 / 18, abs=1e-6)
 
 
 def test_recombinable_ftr() -> None:
-    """FTr = FTA / FGA * 100 (free-throw rate)."""
+    """FTr = FTA / FGA as a 0-1 fraction (BBRef scale, matches stored column)."""
     rows = [_box(fga=10, fta=5), _box(fga=8, fta=4)]
     result = rollup_recombinable(rows, "ftr")
-    assert result == pytest.approx(100.0 * 9 / 18, abs=1e-6)
+    assert result == pytest.approx(9 / 18, abs=1e-6)
 
 
 def test_recombinable_pts_per100() -> None:

@@ -199,8 +199,8 @@ def test_player_stat_columns_count() -> None:
 
 
 def test_player_advanced_columns_count() -> None:
-    """The advanced column list must contain the same 7 columns as before."""
-    assert len(_PLAYER_ADVANCED_COLUMNS) == 7
+    """The advanced list is the 7 legacy columns plus the BBRef rate basket (5)."""
+    assert len(_PLAYER_ADVANCED_COLUMNS) == 12
 
 
 def test_player_stat_columns_preserves_display_order() -> None:
@@ -218,8 +218,11 @@ def test_player_stat_columns_preserves_display_order() -> None:
 
 
 def test_player_advanced_columns_preserves_display_order() -> None:
-    """Key order in _PLAYER_ADVANCED_COLUMNS must match the legacy display order."""
-    expected_keys = ["ts_pct", "per", "ortg", "drtg", "bpm", "ws", "vorp"]
+    """Advanced order: efficiency + rate basket first (BBRef-style), composites after."""
+    expected_keys = [
+        "ts_pct", "fg3ar", "ftr", "usg_pct", "ast_pct", "tov_pct",
+        "per", "ortg", "drtg", "bpm", "ws", "vorp",
+    ]
     actual_keys = [c.key for c in _PLAYER_ADVANCED_COLUMNS]
     assert actual_keys == expected_keys
 
@@ -278,8 +281,11 @@ def test_explorer_column_two_arg_compat() -> None:
 # --------------------------------------------------------------------------- #
 
 # Columns the per_game builder intentionally cannot filter (not on game logs,
-# or not meaningful per single game): advanced composites + GP.
-_PER_GAME_UNSUPPORTED = {"gp", "per", "ortg", "drtg", "bpm", "ws", "vorp"}
+# or not meaningful per single game): advanced composites/rates + GP.
+_PER_GAME_UNSUPPORTED = {
+    "gp", "per", "ortg", "drtg", "bpm", "ws", "vorp",
+    "fg3ar", "ftr", "usg_pct", "ast_pct", "tov_pct",
+}
 
 
 @pytest.mark.parametrize("col", sorted(_FILTERABLE_KEYS | {"min"}))
