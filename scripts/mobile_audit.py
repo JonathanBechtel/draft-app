@@ -10,9 +10,11 @@ defects that page-level screenshots alone tend to miss:
 - **Document-level horizontal overflow** (page scrolls sideways).
 - **Scroll containers**: every ``overflow-x`` wrapper wider than its viewport,
   with proof that ``scrollLeft`` can actually reach the end.
-- **Small tap targets** (interactive elements under 40x40 CSS px).
+- **Small tap targets** (interactive elements under 40 CSS px in either
+  dimension).
 - **Tiny text** (computed font-size below 11px).
-- **Console errors**.
+- **Console errors** (also blocking: broken client-side JS can leave a
+  widget inert while every layout metric passes).
 
 Each route also gets a full-page PNG for visual review.
 
@@ -98,13 +100,14 @@ CHECK_JS = """
     });
   }
 
-  // Interactive elements with a hit area under 40x40 CSS px.
+  // Interactive elements under 40 CSS px in either dimension (a wide-but-
+  // short 120x32 chip is still a hard target; judge by the smaller side).
   const smallAgg = {};
   for (const el of document.querySelectorAll('a, button, input, select, [role="button"], [onclick]')) {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
     if (!r.width || !r.height || s.visibility === 'hidden' || s.display === 'none') continue;
-    if (r.width < 40 && r.height < 40) {
+    if (r.width < 40 || r.height < 40) {
       const k = label(el);
       if (!smallAgg[k]) {
         smallAgg[k] = {
@@ -281,6 +284,10 @@ def run_sweep(
 def _is_blocking(entry: dict[str, Any]) -> bool:
     """Return True when a route has a finding that breaks mobile usability."""
     if entry.get("error") or (entry.get("status") or 0) >= 400:
+        return True
+    # Console/page errors block too: broken client-side JS can leave a widget
+    # inert (stuck in its empty state) while every layout metric passes.
+    if entry.get("consoleErrors"):
         return True
     checks = entry.get("checks") or {}
     if checks.get("pageOverflowPx", 0) > 2 or checks.get("unreachable"):

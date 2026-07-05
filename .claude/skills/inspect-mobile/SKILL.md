@@ -47,7 +47,9 @@ conda run -n draftguru python scripts/mobile_audit.py trace \
   --base http://localhost:8003 --route /players/<slug> --selector '#summerLeagueSection'
 ```
 
-Exit code = number of routes with blocking findings, so the sweep can gate CI
+Exit code = number of routes with blocking findings (errors/non-200s,
+console/page errors, unreachable content, page overflow, dead scrollers —
+not tap targets or tiny text), so the sweep can gate CI
 or a verification loop (visual-only defects still need your eyes — the exit
 code only covers the DOM checks).
 
@@ -62,8 +64,11 @@ code only covers the DOM checks).
 - **Dead scrollers** — every `overflow-x` container wider than its window is
   actually scrolled to the end in-page (`scrollLeft` probe), proving the user
   can reach the last column, not just that the CSS says `auto`.
-- **Page-level horizontal overflow**, **small tap targets** (<40px),
-  **tiny text** (<11px), and **console errors** — triage-level context.
+- **Console errors / page errors** — blocking. Broken client-side JS can
+  leave a widget inert (stuck in its empty state) while every layout metric
+  passes; this is the programmatic side of the inert-JS lesson above.
+- **Page-level horizontal overflow**, **small tap targets** (<40px in either
+  dimension), and **tiny text** (<11px) — triage-level context.
   Tap-target/tiny-text findings on data tables are often the retro-mono
   aesthetic, not bugs; use judgment before "fixing" them.
 
