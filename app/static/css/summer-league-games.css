@@ -967,6 +967,18 @@
   gap: 0.6rem;
   padding: 1rem 1rem 0.25rem;
 }
+/* Scope rows (mode / team / player chips) can hold more buttons than fit the
+   viewport on mobile — let them scroll sideways instead of clipping. */
+.sl-shotchart-section .slg-mode-selector {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding-bottom: 0.25rem;
+}
+.sl-shotchart-section .slg-mode-selector .season-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 .sl-shotchart-section .sl-shotchart-wrap {
   padding: 0.5rem 1rem 1rem;
 }
