@@ -95,6 +95,8 @@ COLUMN_LABELS: dict[str, str] = {
     "ft_pct": "FT%",
     "efg_pct": "eFG%",
     "ts_pct": "TS%",
+    "fg3ar": "3PAr",
+    "ftr": "FTr",
     "per": "PER",
     "usg_pct": "USG%",
     "ast_pct": "AST%",

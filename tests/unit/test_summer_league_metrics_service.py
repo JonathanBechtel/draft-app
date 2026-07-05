@@ -28,6 +28,7 @@ def _season(
     pts: int = 0,
     fga: int = 0,
     fta: int = 0,
+    tov: int = 0,
     bpm: Optional[float] = None,
     ws: Optional[float] = None,
     vorp: Optional[float] = None,
@@ -45,11 +46,14 @@ def _season(
         pts=pts,
         fga=fga,
         fta=fta,
+        tov=tov,
         ts_pct=ts,
         efg_pct=None,
         gmsc=None,
+        ftr=None,
         usg_pct=None,
         ast_pct=None,
+        tov_pct=None,
         trb_pct=None,
         per=per,
         ortg=None,
@@ -141,6 +145,19 @@ def test_career_sums_additive_shares() -> None:
     assert career.ws40 == 0.3
 
 
+def test_career_pools_attempt_and_turnover_rates_from_volume() -> None:
+    """Career FTr/TOV% recompute from summed box totals, not averaged rates."""
+    seasons = [
+        _season(minutes=100.0, pts=120, fga=100, fta=20, tov=10),
+        _season(minutes=300.0, pts=300, fga=200, fta=70, tov=20),
+    ]
+    career = _career(seasons)
+    # FTr = 90 / 300 = 0.3 (a fraction, like the stored per-pool column).
+    assert career.ftr == 0.3
+    # TOV% = 100 * 30 / (300 + 0.44*90 + 30) = 3000/369.6 = 8.1
+    assert career.tov_pct == 8.1
+
+
 def test_career_none_composites_stay_none() -> None:
     """A career with no composite inputs reports ``None``, not 0.0."""
     career = _career([_season(minutes=120.0), _season(minutes=80.0)])
@@ -152,4 +169,6 @@ def test_career_none_composites_stay_none() -> None:
     assert career.bpm_avg is None
     assert career.ws82_avg is None
     assert career.vorp82_avg is None
+    assert career.ftr is None  # no attempts / plays to pool
+    assert career.tov_pct is None
     assert career.minutes == 200.0

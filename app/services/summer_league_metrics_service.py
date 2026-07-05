@@ -78,18 +78,22 @@ class PlayerMetricSeason:
     venue_abbr: str
     gp: int
     minutes: float
-    # Raw shooting totals, kept so career TS% can pool possessions (TS% is
-    # weighted by shooting volume, not minutes).
+    # Raw box totals, kept so career TS% / FTr / TOV% can pool volume (these
+    # rates are weighted by shooting/play volume, not minutes).
     pts: int
     fga: int
     fta: int
+    tov: int
     # Shooting / efficiency.
     ts_pct: Optional[float]
     efg_pct: Optional[float]
     gmsc: Optional[float]
+    # Attempt rate (0-1 fraction, unlike the 0-100 percentage columns).
+    ftr: Optional[float]
     # Rate.
     usg_pct: Optional[float]
     ast_pct: Optional[float]
+    tov_pct: Optional[float]
     trb_pct: Optional[float]
     # Composites (league-relative, valid only within this pool).
     per: Optional[float]
@@ -129,6 +133,10 @@ class PlayerMetricCareer:
     bpm_avg: Optional[float]
     ws82_avg: Optional[float]
     vorp82_avg: Optional[float]
+    # Volume-pooled rates recomputed from summed box totals (exact, not
+    # averaged). AST% has no career form here — it needs per-pool team context.
+    ftr: Optional[float] = None
+    tov_pct: Optional[float] = None
 
 
 @dataclass
@@ -179,6 +187,11 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
     ws_total = sum(ws_vals) if ws_vals else None
     # Recompute WS/40 from the summed shares so it stays internally consistent.
     ws40 = (ws_total / minutes * 40.0) if (ws_total is not None and minutes) else None
+    # FTr / TOV% pool exactly from summed box volume (like career TS%).
+    fga = sum(s.fga for s in seasons)
+    fta = sum(s.fta for s in seasons)
+    tov = sum(s.tov for s in seasons)
+    tov_den = fga + 0.44 * fta + tov
     return PlayerMetricCareer(
         adv_pools=len(seasons),
         gp=sum(s.gp for s in seasons),
@@ -191,11 +204,17 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
         bpm_avg=_round1(_weighted_mean([(s.bpm, s.minutes) for s in seasons])),
         ws82_avg=_round1(_weighted_mean([(s.ws82, s.minutes) for s in seasons])),
         vorp82_avg=_round1(_weighted_mean([(s.vorp82, s.minutes) for s in seasons])),
+        ftr=_round3(fta / fga) if fga > 0 else None,
+        tov_pct=_round1(100.0 * tov / tov_den) if tov_den > 0 else None,
     )
 
 
 def _round1(value: Optional[float]) -> Optional[float]:
     return round(value, 1) if value is not None else None
+
+
+def _round3(value: Optional[float]) -> Optional[float]:
+    return round(value, 3) if value is not None else None
 
 
 def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
@@ -210,13 +229,16 @@ def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
         pts=row.pts,
         fga=row.fga,
         fta=row.fta,
+        tov=row.tov,
         # Shooting / rate columns are already stored as percentages (e.g. 60.6),
         # not 0-1 fractions, so they only need rounding — not a ×100 rescale.
         ts_pct=_round1(row.ts_pct),
         efg_pct=_round1(row.efg_pct),
         gmsc=_round1(row.gmsc),
+        ftr=_round3(row.ftr),
         usg_pct=_round1(row.usg_pct),
         ast_pct=_round1(row.ast_pct),
+        tov_pct=_round1(row.tov_pct),
         trb_pct=_round1(row.trb_pct),
         per=_round1(row.per),
         ortg=_round1(row.ortg),
@@ -275,6 +297,8 @@ ADV_LEADER_COLUMNS: tuple[str, ...] = (
     "per",
     "ts_pct",
     "efg_pct",
+    "fg3ar",
+    "ftr",
     "usg_pct",
     "ortg",
     "drtg",
@@ -331,6 +355,10 @@ def _leader_values(s: SummerLeaguePlayerSeason) -> dict[str, Optional[float]]:
         "per": _round1(s.per),
         "ts_pct": _round1(s.ts_pct),
         "efg_pct": _round1(s.efg_pct),
+        # Attempt rates are stored as 0-1 fractions at 3 dp (unlike the 0-100
+        # percentage columns), matching BBRef's 3PAr / FTr presentation.
+        "fg3ar": _round3(s.fg3ar),
+        "ftr": _round3(s.ftr),
         "usg_pct": _round1(s.usg_pct),
         "ortg": _round1(s.ortg),
         "drtg": _round1(s.drtg),
@@ -507,15 +535,19 @@ def _blend_leader_values(
             _weighted_mean([(getattr(s, col), s.minutes) for s in seasons])
         )
 
-    # Shooting percentages pool from raw volume (stored on a 0-100 scale).
+    # Shooting percentages and attempt rates pool from raw volume (percentages
+    # on a 0-100 scale; 3PAr/FTr as 0-1 fractions, matching the stored columns).
     pts = sum(s.pts for s in seasons)
     fga = sum(s.fga for s in seasons)
     fta = sum(s.fta for s in seasons)
     fgm = sum(s.fgm for s in seasons)
     fg3m = sum((s.fg3m or 0) for s in seasons)
+    fg3a = sum((s.fg3a or 0) for s in seasons)
     tsa = 2.0 * (fga + 0.44 * fta)
     out["ts_pct"] = _round1(100.0 * pts / tsa) if tsa > 0 else None
     out["efg_pct"] = _round1(100.0 * (fgm + 0.5 * fg3m) / fga) if fga > 0 else None
+    out["fg3ar"] = _round3(fg3a / fga) if fga > 0 else None
+    out["ftr"] = _round3(fta / fga) if fga > 0 else None
 
     # WS/40 recomputed from summed shares so it stays internally consistent.
     ws_total = out["ws"]

@@ -262,6 +262,7 @@
   {% endmacro %}
 
   {% macro sl_n(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
+  {% macro sl_f3(v) %}{{ '%.3f' % v if v is not none else '—' }}{% endmacro %}
 
   {% macro sl_row(s, m, is_career, slug='') %}
   <tr{% if is_career %} class="sl-stats-table__career"{% endif %}>
@@ -407,7 +408,10 @@
                   <th scope="col">MIN</th>
                   <th scope="col" title="Player Efficiency Rating (pool mean 15.0)">PER</th>
                   <th scope="col" title="True Shooting %">TS%</th>
+                  <th scope="col" title="Free-throw rate (FTA per FGA)">FTr</th>
                   <th scope="col" title="Usage %">USG%</th>
+                  <th scope="col" title="Assist % — share of teammate field goals assisted while on the floor">AST%</th>
+                  <th scope="col" title="Turnover % — turnovers per 100 plays">TOV%</th>
                   <th scope="col" title="Offensive Rating (pts/100 poss)">ORtg</th>
                   <th scope="col" title="Defensive Rating (pts allowed/100 poss)">DRtg</th>
                   <th scope="col" title="Box Plus/Minus (pool mean 0.0)">BPM</th>
@@ -426,7 +430,10 @@
                   <td>{{ sl_n(s.minutes) }}</td>
                   <td class="sl-col-rate">{{ sl_n(s.per) }}</td>
                   <td>{{ sl_n(s.ts_pct) }}</td>
+                  <td>{{ sl_f3(s.ftr) }}</td>
                   <td>{{ sl_n(s.usg_pct) }}</td>
+                  <td>{{ sl_n(s.ast_pct) }}</td>
+                  <td>{{ sl_n(s.tov_pct) }}</td>
                   <td>{{ sl_n(s.ortg) }}</td>
                   <td>{{ sl_n(s.drtg) }}</td>
                   <td class="sl-col-rate">{{ sl_n(s.bpm) }}</td>
@@ -438,8 +445,9 @@
                 {% endfor %}
                 {% if sl_metrics.seasons | length > 1 %}
                 {# Career: cumulative WS/VORP are summed; PER/BPM and the /82
-                   projections are minute-weighted; ratings/usage left blank since
-                   they can't be pooled across differently-calibrated competitions. #}
+                   projections are minute-weighted; FTr/TOV% pool from summed box
+                   volume; ratings/usage/AST% left blank since they can't be
+                   pooled across differently-calibrated competitions. #}
                 <tr class="sl-stats-table__career">
                   <th scope="row">Career*</th>
                   <td class="sl-col-lg">—</td>
@@ -447,7 +455,10 @@
                   <td>{{ sl_n(sl_metrics.career.minutes) }}</td>
                   <td class="sl-col-rate">{{ sl_n(sl_metrics.career.per_avg) }}</td>
                   <td>{{ sl_n(sl_metrics.career.ts_avg) }}</td>
+                  <td>{{ sl_f3(sl_metrics.career.ftr) }}</td>
                   <td>—</td>
+                  <td>—</td>
+                  <td>{{ sl_n(sl_metrics.career.tov_pct) }}</td>
                   <td>—</td>
                   <td>—</td>
                   <td class="sl-col-rate">{{ sl_n(sl_metrics.career.bpm_avg) }}</td>
@@ -462,7 +473,7 @@
           </div>
           {% if sl_metrics.seasons | length > 1 %}
           <div class="sl-career-meta">
-            * Career WS and VORP are cumulative totals across qualified competitions; PER, BPM, and the /82 projections are minute-weighted averages, and TS% pools shot totals. Ratings and usage aren't pooled across competitions.
+            * Career WS and VORP are cumulative totals across qualified competitions; PER, BPM, and the /82 projections are minute-weighted averages, and TS%, FTr, and TOV% pool the underlying totals. Ratings, usage, and AST% aren't pooled across competitions.
           </div>
           {% endif %}
         </div>
