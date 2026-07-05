@@ -190,6 +190,18 @@ visual:
 visual.headed:
 	PLAYWRIGHT_HEADLESS=0 pytest tests/visual -v --headed $(if $(TEST),-k $(TEST),)
 
+# Mobile usability audit: screenshots + overflow/tap-target/scroll checks at a
+# phone viewport (see the inspect-mobile skill). Requires a running server.
+# Usage:
+#   make mobile-audit                                  # default routes vs localhost:8000
+#   make mobile-audit BASE=http://localhost:8003       # different server
+#   make mobile-audit ROUTES="/ /players/foo" WIDTH=320
+BASE ?= http://localhost:8000
+WIDTH ?= 390
+ROUTES ?=
+mobile-audit:
+	python scripts/mobile_audit.py sweep --base $(BASE) --width $(WIDTH) $(if $(ROUTES),--routes $(ROUTES),)
+
 # Install Playwright browsers (required once after installing playwright)
 playwright.install:
 	python -m playwright install chromium
