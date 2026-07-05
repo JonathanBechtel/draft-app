@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DraftGuru — Summer League Scout's Desk (Three-State Home Module Mockup)</title>
+
+  <!-- Google Fonts: Russo One (headings) and Azeret Mono (monospace) -->
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Azeret+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================================
+       CSS CUSTOM PROPERTIES — mirrors mockups/draftguru_homepage.html
+       ========================================================================= */
+    :root {
+      --font-heading: 'Russo One', system-ui, sans-serif;
+      --font-mono: 'Azeret Mono', ui-monospace, monospace;
+      --font-body: system-ui, -apple-system, sans-serif;
+
+      --color-primary: #4A7FB8;
+      --color-secondary: #E8B4A8;
+      --color-accent-emerald: #10b981;
+      --color-accent-rose: #f43f5e;
+      --color-accent-indigo: #6366f1;
+      --color-accent-cyan: #06b6d4;
+      --color-accent-amber: #f59e0b;
+      --color-accent-fuchsia: #d946ef;
+
+      --color-white: #ffffff;
+      --color-slate-50: #f8fafc;
+      --color-slate-100: #f1f5f9;
+      --color-slate-200: #e2e8f0;
+      --color-slate-300: #cbd5e1;
+      --color-slate-500: #64748b;
+      --color-slate-600: #475569;
+      --color-slate-700: #334155;
+      --color-slate-800: #1e293b;
+      --color-slate-900: #0f172a;
+
+      --max-width: 1152px;
+      --border-radius: 0.75rem;
+      --transition-speed: 0.2s;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--color-slate-900);
+      background: linear-gradient(to bottom, var(--color-white), var(--color-slate-50));
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    .heading-font { font-family: var(--font-heading); letter-spacing: 0.02em; }
+    .mono-font { font-family: var(--font-mono); }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+
+    .container {
+      max-width: var(--max-width);
+      width: 92%;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    .section-divider {
+      height: 1px;
+      background: linear-gradient(to right, transparent, rgba(148,163,184,0.3) 20%, rgba(148,163,184,0.3) 80%, transparent);
+      margin: 2.5rem 0;
+    }
+
+    /* ============================================================================
+       MOCKUP CHROME — annotation banner + design-note callouts (mockup-only)
+       ========================================================================= */
+    .mockup-banner {
+      background: var(--color-slate-800);
+      color: var(--color-slate-100);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .mockup-banner strong { color: var(--color-accent-cyan); }
+    .flag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-family: var(--font-mono);
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.1rem 0.45rem;
+      border-radius: 999px;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    .flag--sample { background: var(--color-slate-100); color: var(--color-slate-600); border: 1px solid var(--color-slate-300); }
+    .flag--tbd { background: #fffbeb; color: #b45309; border: 1px dashed var(--color-accent-amber); font-weight: 600; }
+    .design-note {
+      background: #eef2ff;
+      border: 1px dashed var(--color-accent-indigo);
+      border-radius: 0.5rem;
+      padding: 0.6rem 0.9rem;
+      font-size: 0.78rem;
+      color: var(--color-slate-700);
+      margin: 0.9rem 0 0;
+    }
+    .design-note strong { color: var(--color-accent-indigo); font-family: var(--font-mono); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    /* State band separator: labels which of the three daily states follows */
+    .state-band {
+      display: flex; align-items: center; gap: 0.9rem;
+      margin: 3rem 0 1.4rem;
+    }
+    .state-band__chip {
+      font-family: var(--font-heading);
+      font-size: 0.95rem;
+      color: white;
+      padding: 0.35rem 1rem;
+      border-radius: 0.4rem;
+      white-space: nowrap;
+    }
+    .state-band__desc { font-family: var(--font-mono); font-size: 0.72rem; color: var(--color-slate-500); }
+    .state-band__line { flex: 1; height: 2px; border-radius: 2px; opacity: 0.35; }
+    .state-band--morning .state-band__chip, .state-band--morning .state-band__line { background: var(--color-accent-amber); }
+    .state-band--live .state-band__chip, .state-band--live .state-band__line { background: var(--color-accent-cyan); }
+    .state-band--ledger .state-band__chip, .state-band--ledger .state-band__line { background: var(--color-accent-indigo); }
+    .state-band--spine .state-band__chip, .state-band--spine .state-band__line { background: var(--color-slate-700); }
+
+    /* ============================================================================
+       DESK WIRE TICKER — scoreboard + storyline tallies (no market framing).
+       Appears during game windows (states 2–3); hidden in the morning state.
+       ========================================================================= */
+    .ticker-container {
+      background: var(--color-slate-900);
+      border-bottom: 2px solid var(--color-accent-cyan);
+      overflow: hidden;
+    }
+    .ticker-header {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.4rem 1.5rem 0;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .ticker-header .live-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--color-accent-cyan);
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .ticker-header span { color: var(--color-accent-cyan); }
+    .ticker-header .freshness { color: var(--color-slate-500); margin-left: auto; text-transform: none; letter-spacing: 0; }
+    .ticker-wrapper { overflow: hidden; padding: 0.45rem 0 0.6rem; }
+    .ticker-content {
+      display: inline-flex;
+      gap: 2.5rem;
+      white-space: nowrap;
+      animation: tickerScroll 45s linear infinite;
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      padding-left: 100%;
+    }
+    @keyframes tickerScroll {
+      from { transform: translateX(0); }
+      to { transform: translateX(-100%); }
+    }
+    .ticker-item { color: var(--color-slate-300); }
+    .ticker-item .score { color: white; font-weight: 600; }
+    .ticker-item .tag { color: var(--color-accent-cyan); font-weight: 600; }
+    .ticker-item .ctx { color: var(--color-slate-500); }
+
+    /* ============================================================================
+       NAVBAR (simplified stand-in)
+       ========================================================================= */
+    .navbar {
+      background: var(--color-primary);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+      padding: 0.9rem 0;
+    }
+    .navbar .container { display: flex; align-items: center; justify-content: space-between; }
+    .navbar__brand { font-family: var(--font-heading); color: white; font-size: 1.25rem; text-decoration: none; }
+    .navbar__links { display: flex; gap: 1.25rem; font-family: var(--font-mono); font-size: 0.8rem; }
+    @media (max-width: 640px) { .navbar__links { display: none; } } /* stand-in nav only; real navbar has its own mobile treatment */
+    .navbar__links span { color: rgba(255,255,255,0.85); }
+    .navbar__links span.active { color: white; border-bottom: 2px solid white; }
+
+    /* ============================================================================
+       DESK HEADER
+       ========================================================================= */
+    .desk-header { padding-top: 2.25rem; }
+    .desk-header__kicker {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--color-accent-cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+    }
+    .desk-header h1 { font-family: var(--font-heading); font-size: 2rem; margin: 0.25rem 0 0.2rem; }
+    .desk-header__sub { color: var(--color-slate-500); font-size: 0.9rem; max-width: 48rem; }
+    .desk-header__meta { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.9rem; font-family: var(--font-mono); font-size: 0.7rem; }
+    .meta-chip {
+      background: var(--color-white);
+      border: 1px solid var(--color-slate-200);
+      border-radius: 999px;
+      padding: 0.2rem 0.7rem;
+      color: var(--color-slate-600);
+    }
+    .meta-chip--fresh { border-color: var(--color-accent-cyan); color: #0e7490; background: #ecfeff; }
+
+    /* ============================================================================
+       CARDS (shared)
+       ========================================================================= */
+    .card {
+      background: var(--color-white);
+      border-radius: var(--border-radius);
+      box-shadow: 0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04);
+      position: relative;
+      overflow: hidden;
+    }
+    .card-ring-cyan { box-shadow: 0 0 0 2px rgba(6,182,212,0.35), 0 4px 10px rgba(15,23,42,0.06); }
+    .card-ring-amber { box-shadow: 0 0 0 2px rgba(245,158,11,0.4), 0 4px 10px rgba(15,23,42,0.06); }
+    .card-ring-indigo { box-shadow: 0 0 0 2px rgba(99,102,241,0.3), 0 4px 10px rgba(15,23,42,0.06); }
+    .card-ring-emerald { box-shadow: 0 0 0 2px rgba(16,185,129,0.3), 0 4px 10px rgba(15,23,42,0.06); }
+    .scanlines {
+      position: absolute; inset: 0; pointer-events: none;
+      background: repeating-linear-gradient(to bottom, transparent 0 3px, rgba(15,23,42,0.015) 3px 4px);
+    }
+    /* Wide stat tables must scroll inside their card on narrow viewports
+       (cards clip via overflow:hidden, so each table gets its own scroll container) */
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .section-title {
+      font-family: var(--font-mono);
+      font-size: 1rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border-left: 4px solid var(--color-accent-cyan);
+      padding-left: 0.6rem;
+      margin-bottom: 0.3rem;
+    }
+    .section-sub { font-size: 0.82rem; color: var(--color-slate-500); margin-bottom: 1rem; padding-left: 0.65rem; }
+
+    .freshness-stamp {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      font-family: var(--font-mono); font-size: 0.65rem;
+      color: #0e7490; background: #ecfeff;
+      border: 1px solid var(--color-accent-cyan);
+      border-radius: 999px; padding: 0.15rem 0.65rem;
+    }
+
+    /* Storyline badges (replaces market framing: relative importance, scouting terms) */
+    .story-badge {
+      font-family: var(--font-mono); font-size: 0.58rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      padding: 0.1rem 0.5rem; border-radius: 0.25rem;
+      display: inline-block; margin-right: 0.3rem;
+    }
+    .story-badge--debut { background: #fdf4ff; color: #a21caf; border: 1px solid #f0abfc; }
+    .story-badge--duel { background: #fff1f2; color: #be123c; border: 1px solid #fda4af; }
+    .story-badge--stakes { background: #ecfdf5; color: #047857; border: 1px solid #6ee7b7; }
+    .story-badge--streak { background: #ecfeff; color: #0e7490; border: 1px solid #67e8f9; }
+    .story-badge--contract { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
+    .story-badge--secondlook { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+
+    /* ============================================================================
+       STATE 1 — MORNING CARD
+       ========================================================================= */
+    .marquee-card { padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
+    .marquee-card__label {
+      font-family: var(--font-mono); font-size: 0.62rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.12em; color: #b45309;
+      margin-bottom: 0.4rem;
+    }
+    .marquee-card__matchup { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+    .marquee-card__team { font-family: var(--font-heading); font-size: 1.45rem; }
+    .marquee-card__vs { font-family: var(--font-mono); font-size: 0.8rem; color: var(--color-slate-400); }
+    .marquee-card__time { margin-left: auto; font-family: var(--font-mono); font-size: 0.8rem; color: var(--color-slate-600); white-space: nowrap; }
+    .marquee-card__why { font-size: 0.85rem; color: var(--color-slate-700); margin-bottom: 0.8rem; }
+    .marquee-card__why strong { color: var(--color-slate-900); }
+    .expectation-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 760px) { .expectation-row { grid-template-columns: 1fr; } }
+    .expectation {
+      background: var(--color-slate-50); border: 1px solid var(--color-slate-200);
+      border-radius: 0.5rem; padding: 0.6rem 0.8rem;
+    }
+    .expectation__who { font-weight: 600; font-size: 0.82rem; margin-bottom: 0.15rem; }
+    .expectation__who .pick { font-family: var(--font-mono); font-size: 0.62rem; color: var(--color-slate-500); }
+    .expectation__ctx { font-family: var(--font-mono); font-size: 0.66rem; color: var(--color-slate-600); }
+
+    .slate-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(255px, 1fr)); gap: 1rem; }
+    .game-card { padding: 0.9rem 1rem 1rem; }
+    .game-card__top {
+      display: flex; justify-content: space-between; align-items: center; gap: 0.5rem;
+      font-family: var(--font-mono); font-size: 0.62rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      margin-bottom: 0.45rem;
+    }
+    .game-card__title { font-family: var(--font-heading); font-size: 1rem; margin-bottom: 0.35rem; }
+    .game-card__time { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-slate-600); white-space: nowrap; }
+    .watch-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.45rem 0 0.55rem; }
+    .watch-chip {
+      font-family: var(--font-mono); font-size: 0.62rem;
+      background: #eef2ff; color: #4338ca;
+      border: 1px solid #c7d2fe;
+      padding: 0.08rem 0.5rem; border-radius: 999px;
+      white-space: nowrap;
+    }
+    .game-card__insight {
+      font-size: 0.75rem; color: var(--color-slate-600);
+      border-top: 1px dashed var(--color-slate-200);
+      padding-top: 0.5rem;
+    }
+    .game-card__insight strong { color: var(--color-slate-800); }
+
+    /* ============================================================================
+       STATE 2 — LIVE DESK (hourly tick)
+       ========================================================================= */
+    .tick-header {
+      display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .duel-card { padding: 1.1rem 1.3rem; margin-bottom: 1rem; }
+    .duel-card__label {
+      font-family: var(--font-mono); font-size: 0.62rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.12em; color: #0e7490; margin-bottom: 0.6rem;
+      display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+    }
+    .duel-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.9rem; align-items: stretch; }
+    @media (max-width: 700px) { .duel-grid { grid-template-columns: 1fr; } .duel-grid__mid { display: none; } }
+    .duel-side { background: var(--color-slate-50); border: 1px solid var(--color-slate-200); border-radius: 0.55rem; padding: 0.7rem 0.85rem; }
+    .duel-side__name { font-family: var(--font-heading); font-size: 1rem; }
+    .duel-side__meta { font-family: var(--font-mono); font-size: 0.62rem; color: var(--color-slate-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .duel-side__line { display: flex; gap: 0.7rem; font-family: var(--font-mono); margin-bottom: 0.5rem; }
+    .duel-side__stat { text-align: center; }
+    .duel-side__val { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .duel-side__lbl { font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-slate-500); }
+    .duel-grid__mid { display: flex; align-items: center; font-family: var(--font-heading); color: var(--color-slate-300); font-size: 1.1rem; }
+    .pctl-chip {
+      font-family: var(--font-mono); font-size: 0.63rem;
+      padding: 0.14rem 0.55rem; border-radius: 999px;
+      white-space: nowrap; display: inline-block; margin: 0 0.25rem 0.25rem 0;
+    }
+    .pctl-chip--hot { background: #ecfdf5; color: #047857; border: 1px solid #6ee7b7; }
+    .pctl-chip--warm { background: #ecfeff; color: #0e7490; border: 1px solid #67e8f9; }
+    .pctl-chip--cold { background: #fff1f2; color: #be123c; border: 1px solid #fda4af; }
+    .duel-card__read { font-size: 0.78rem; color: var(--color-slate-700); border-top: 1px dashed var(--color-slate-200); padding-top: 0.55rem; margin-top: 0.4rem; }
+    .duel-card__read strong { color: var(--color-slate-900); }
+
+    .live-board { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .live-board th {
+      font-family: var(--font-mono); font-size: 0.6rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      text-align: left; padding: 0.45rem 0.6rem;
+      border-bottom: 2px solid var(--color-slate-200);
+    }
+    .live-board td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--color-slate-100); vertical-align: top; }
+    .live-board .score { font-family: var(--font-mono); font-weight: 600; white-space: nowrap; }
+    .live-board .read { font-size: 0.72rem; color: var(--color-slate-600); }
+    .live-board .read strong { color: var(--color-slate-800); }
+    .status-pill { font-family: var(--font-mono); font-size: 0.6rem; padding: 0.1rem 0.55rem; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+    .status-pill--live { background: #ecfeff; color: #0e7490; border: 1px solid var(--color-accent-cyan); }
+    .status-pill--final { background: var(--color-slate-100); color: var(--color-slate-600); border: 1px solid var(--color-slate-200); }
+    .status-pill--upcoming { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
+
+    .tick-notes { list-style: none; }
+    .tick-notes li { display: flex; gap: 0.7rem; padding: 0.55rem 0; border-bottom: 1px dashed var(--color-slate-200); font-size: 0.8rem; color: var(--color-slate-700); }
+    .tick-notes li:last-child { border-bottom: none; }
+    .tick-notes strong { color: var(--color-slate-900); }
+
+    /* ============================================================================
+       STATE 3 — LEDGER (morning after)
+       ========================================================================= */
+    .ledger-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.5rem; align-items: start; }
+    .ledger-grid > div { min-width: 0; } /* let columns shrink below table min-content so .table-scroll can take over */
+    @media (max-width: 860px) { .ledger-grid { grid-template-columns: 1fr; } }
+    .perf-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .perf-table th {
+      font-family: var(--font-mono); font-size: 0.6rem;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--color-slate-500);
+      text-align: left; padding: 0.45rem 0.6rem;
+      border-bottom: 2px solid var(--color-slate-200);
+    }
+    .perf-table td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--color-slate-100); vertical-align: middle; }
+    .perf-table tr:hover td { background: var(--color-slate-50); }
+    .perf-table .player { font-weight: 600; }
+    .perf-table .sub { font-family: var(--font-mono); color: var(--color-slate-500); font-size: 0.66rem; }
+    .perf-table .line { font-family: var(--font-mono); font-size: 0.72rem; white-space: nowrap; }
+    .perf-table .gmsc { font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .status-tag {
+      font-family: var(--font-mono); font-size: 0.56rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 0.06rem 0.4rem; border-radius: 0.25rem; white-space: nowrap; display: inline-block;
+    }
+    .status-tag--pick { background: var(--color-slate-900); color: white; }
+    .status-tag--second { background: #eef2ff; color: #4338ca; }
+    .status-tag--undrafted { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
+    .status-tag--twoway { background: #ecfdf5; color: #047857; }
+    .status-tag--soph { background: var(--color-slate-100); color: var(--color-slate-600); }
+
+    .echo-card { padding: 1rem 1.1rem; margin-bottom: 1rem; }
+    .echo-card__title {
+      font-family: var(--font-mono); font-size: 0.68rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.1em; color: var(--color-slate-600);
+      padding-bottom: 0.5rem; margin-bottom: 0.3rem; border-bottom: 2px solid var(--color-slate-200);
+    }
+    .echo-list { list-style: none; }
+    .echo-list li { padding: 0.55rem 0; border-bottom: 1px dashed var(--color-slate-200); font-size: 0.8rem; color: var(--color-slate-700); }
+    .echo-list li:last-child { border-bottom: none; }
+    .echo-list strong { color: var(--color-slate-900); }
+    .echo-list .src { display: block; font-family: var(--font-mono); font-size: 0.6rem; color: var(--color-slate-400); margin-top: 0.15rem; }
+
+    /* ============================================================================
+       PERSISTENT SPINE — CLASS TRACKER + CONTRACT WATCH
+       ========================================================================= */
+    .toggle-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+    .toggle-chip {
+      font-family: var(--font-mono); font-size: 0.68rem;
+      padding: 0.25rem 0.8rem; border-radius: 999px;
+      border: 1px solid var(--color-slate-300); color: var(--color-slate-600); background: white;
+    }
+    .toggle-chip.active { background: var(--color-slate-900); color: white; border-color: var(--color-slate-900); }
+    .tracker-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    .tracker-table th {
+      font-family: var(--font-mono); font-size: 0.58rem;
+      text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--color-slate-500);
+      text-align: right; padding: 0.45rem 0.5rem;
+      border-bottom: 2px solid var(--color-slate-200);
+      white-space: nowrap;
+    }
+    .tracker-table th:first-child { text-align: left; }
+    .tracker-table td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--color-slate-100); text-align: right; font-family: var(--font-mono); font-size: 0.72rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .tracker-table td:first-child { text-align: left; font-family: var(--font-body); }
+    .tracker-table tr:hover td { background: var(--color-slate-50); }
+    .tracker-table .player { font-weight: 600; font-size: 0.8rem; }
+    .tracker-table .sub { font-family: var(--font-mono); color: var(--color-slate-500); font-size: 0.64rem; }
+    .grade-chip {
+      font-family: var(--font-mono); font-size: 0.62rem; font-weight: 600;
+      padding: 0.08rem 0.5rem; border-radius: 999px; display: inline-block;
+    }
+    .grade-chip--hot { background: #ecfdf5; color: #047857; }
+    .grade-chip--warm { background: #ecfeff; color: #0e7490; }
+    .grade-chip--mid { background: var(--color-slate-100); color: var(--color-slate-600); }
+    .grade-chip--cold { background: #fff1f2; color: #be123c; }
+
+    .contract-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
+    .contract-card { padding: 0.9rem 1rem; }
+    .contract-card__head { display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.2rem; flex-wrap: wrap; }
+    .contract-card__name { font-family: var(--font-heading); font-size: 0.95rem; }
+    .contract-card__team { font-family: var(--font-mono); font-size: 0.62rem; color: var(--color-slate-500); text-transform: uppercase; }
+    .contract-card__line { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-slate-700); margin: 0.35rem 0; }
+    .contract-card__signal {
+      font-size: 0.74rem; color: var(--color-slate-600);
+      border-top: 1px dashed var(--color-slate-200); padding-top: 0.45rem; margin-top: 0.45rem;
+    }
+    .contract-card__signal strong { color: var(--color-slate-800); }
+
+    /* Off-window strip */
+    .collapsed-strip { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding: 0.8rem 1.1rem; }
+    .collapsed-strip__title { font-family: var(--font-heading); font-size: 0.95rem; }
+    .collapsed-strip__stat { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-slate-600); }
+    .collapsed-strip__cta {
+      margin-left: auto;
+      font-family: var(--font-mono); font-size: 0.7rem; font-weight: 600;
+      color: #0e7490; background: #ecfeff;
+      border: 1px solid var(--color-accent-cyan);
+      padding: 0.3rem 0.8rem; border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    footer {
+      margin-top: 3rem;
+      background: var(--color-secondary);
+      padding: 1.25rem 0;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--color-slate-800);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ======================= MOCKUP-ONLY ANNOTATION BANNER ======================= -->
+  <div class="mockup-banner">
+    <span><strong>MOCKUP v2</strong> — “Scout’s Desk” three-state home module · one module, three renders through the day · all stat lines illustrative</span>
+    <span class="flag flag--sample">Sample data</span>
+    <span class="flag flag--tbd">⚠ Methodology TBD</span>
+  </div>
+
+  <!-- ======================= NAVBAR (stand-in) ======================= -->
+  <nav class="navbar">
+    <div class="container">
+      <a class="navbar__brand" href="#">DRAFTGURU</a>
+      <div class="navbar__links">
+        <span class="active">Home</span><span>Consensus</span><span>Stats</span><span>Players</span><span>News</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ======================= DESK WIRE TICKER ======================= -->
+  <!-- Front-and-center during game windows (states 2–3): scoreboard + accumulated
+       storyline tallies flowing continuously. Hidden in the morning state. -->
+  <div class="ticker-container">
+    <div class="ticker-header">
+      <span class="live-dot"></span>
+      <span>Desk Wire · Scores + Storylines</span>
+      <span class="freshness">as of the 9:45 PM ET tick</span>
+    </div>
+    <div class="ticker-wrapper">
+      <div class="ticker-content">
+        <span class="ticker-item"><span class="score">SAS 94 · BKN 88 F</span> <span class="ctx">Brown Jr. 8 AST / 2 TOV</span></span>
+        <span class="ticker-item"><span class="tag">DUEL</span> <span class="score">WAS 78 · UTA 83 Q4</span> <span class="ctx">Dybantsa 22 · Peterson 15</span></span>
+        <span class="ticker-item"><span class="tag">STREAK</span> Ament: 3 straight 15+ GmSc</span>
+        <span class="ticker-item"><span class="tag">AUDITION</span> Luis Jr. 11 PTS on 7 shots at half</span>
+        <span class="ticker-item"><span class="score">PHX 41 · LAL 44 Q2</span></span>
+        <span class="ticker-item"><span class="tag">TRACKER</span> Dybantsa event GmSc 20.7 · best #1-pick start since 2017</span>
+        <span class="ticker-item"><span class="tag">2ND LOOK</span> Bailey +5.3 GmSc vs his '25 summer</span>
+        <span class="ticker-item"><span class="ctx">ROCKETS–KINGS 9:30 · Wilson debut</span></span>
+      </div>
+    </div>
+  </div>
+
+  <main class="container">
+
+    <!-- ======================= DESK HEADER (shared across states) ======================= -->
+    <header class="desk-header">
+      <div class="desk-header__kicker">Summer League · Las Vegas · Day 4 of 10</div>
+      <h1>SUMMER LEAGUE SCOUT'S DESK</h1>
+      <p class="desk-header__sub">
+        The first look at every prospect in an NBA uniform — every stat line scored against draft-slot
+        cohorts and nine seasons of Summer League history. Refreshed hourly, all day.
+      </p>
+      <div class="desk-header__meta">
+        <span class="meta-chip meta-chip--fresh">⟳ Hourly refresh · existing Fly cron path</span>
+        <span class="meta-chip">6 games today</span>
+        <span class="meta-chip">14 first-rounders scheduled</span>
+        <span class="meta-chip">Baselines: 2017–25 SL · 2,001 adv-eligible seasons</span>
+      </div>
+      <div class="design-note">
+        <strong>How to read this mockup:</strong> the module renders ONE of three states depending on time of day —
+        Morning Card (before first tip) → Live Desk (between hourly ticks while games run) → Ledger (after the last
+        final, through next morning). The Class Tracker + Contract Watch spine at the bottom is pinned beneath all
+        three. The dark Desk Wire strip above only appears during game windows — scores + accumulated storyline
+        tallies in plain scouting language (no market framing anywhere). V1 ships all of this on the hourly crons;
+        a faster tick is a later drop-in that changes freshness stamps, not layout.
+      </div>
+    </header>
+
+    <!-- ============================================================================
+         STATE 1 · MORNING CARD
+         ========================================================================= -->
+    <div class="state-band state-band--morning">
+      <span class="state-band__chip">STATE 1 · MORNING CARD</span>
+      <span class="state-band__desc">before first tip — “what should I pay attention to today?”</span>
+      <span class="state-band__line"></span>
+    </div>
+
+    <section>
+      <h2 class="section-title" style="border-left-color: var(--color-accent-amber);">Today's Storylines</h2>
+      <p class="section-sub">Every game ranked by computed storyline weight — the marquee floats to the top. <span class="flag flag--sample">Sample data</span></p>
+
+      <!-- Marquee game -->
+      <div class="card card-ring-amber marquee-card">
+        <div class="scanlines"></div>
+        <div class="marquee-card__label">★ Tonight's Marquee</div>
+        <div class="marquee-card__matchup">
+          <span class="marquee-card__team">WIZARDS</span>
+          <span class="marquee-card__vs">vs</span>
+          <span class="marquee-card__team">JAZZ</span>
+          <span class="marquee-card__time">8:00 PM ET · Thomas &amp; Mack</span>
+        </div>
+        <p class="marquee-card__why">
+          <span class="story-badge story-badge--debut">Debut</span>
+          <span class="story-badge story-badge--duel">Duel</span>
+          <strong>Peterson's first game in an NBA uniform</strong> — and it comes against Dybantsa.
+          The #1 and #2 picks share a floor for the first time since the McDonald's game.
+        </p>
+        <div class="expectation-row">
+          <div class="expectation">
+            <div class="expectation__who">Darryn Peterson <span class="pick">· #2 pick · debut</span></div>
+            <div class="expectation__ctx">Comp cohort avg in SL debuts: 11.2 GmSc · #2 picks since 2017: 13.6</div>
+          </div>
+          <div class="expectation">
+            <div class="expectation__who">A.J. Dybantsa <span class="pick">· #1 pick · game 4</span></div>
+            <div class="expectation__ctx">Carrying 19.4 GmSc avg — 2nd-best start by a #1 pick since 2017</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rest of slate -->
+      <div class="slate-grid">
+        <div class="card game-card">
+          <div class="scanlines"></div>
+          <div class="game-card__top">
+            <span><span class="story-badge story-badge--stakes">Stakes</span></span>
+            <span class="game-card__time">7:00 PM ET</span>
+          </div>
+          <div class="game-card__title">SPURS vs NETS</div>
+          <div class="watch-chips"><span class="watch-chip">#9 Cenac</span><span class="watch-chip">#4 Brown Jr.</span></div>
+          <div class="game-card__insight">Both 3–0 — winner likely clinches a Vegas semifinal spot.</div>
+        </div>
+
+        <div class="card game-card">
+          <div class="scanlines"></div>
+          <div class="game-card__top">
+            <span><span class="story-badge story-badge--streak">Streak</span></span>
+            <span class="game-card__time">7:30 PM ET</span>
+          </div>
+          <div class="game-card__title">RAPTORS vs HEAT</div>
+          <div class="watch-chips"><span class="watch-chip">#8 Ament</span><span class="watch-chip">#12 Peat</span></div>
+          <div class="game-card__insight"><strong>Ament</strong> carries back-to-back 15+ GmSc games in; only 12 rookies have opened Vegas with three straight.</div>
+        </div>
+
+        <div class="card game-card">
+          <div class="scanlines"></div>
+          <div class="game-card__top">
+            <span><span class="story-badge story-badge--contract">Contract watch</span></span>
+            <span class="game-card__time">9:00 PM ET</span>
+          </div>
+          <div class="game-card__title">SUNS vs LAKERS</div>
+          <div class="watch-chips"><span class="watch-chip">R.J. Luis Jr. · undrafted</span><span class="watch-chip">#31 Yessoufou</span></div>
+          <div class="game-card__insight"><strong>Luis Jr.</strong> is the top undrafted performer in Vegas (96th pctl) — every game now is an audition.</div>
+        </div>
+
+        <div class="card game-card">
+          <div class="scanlines"></div>
+          <div class="game-card__top">
+            <span><span class="story-badge story-badge--debut">Debut</span><span class="story-badge story-badge--secondlook">2nd look</span></span>
+            <span class="game-card__time">10:30 PM ET</span>
+          </div>
+          <div class="game-card__title">ROCKETS vs KINGS</div>
+          <div class="watch-chips"><span class="watch-chip">#17 Wilson · debut</span><span class="watch-chip">A. Bailey · yr 2</span></div>
+          <div class="game-card__insight"><strong>Wilson's</strong> first run after missing the opener — and <strong>Bailey's</strong> second summer is running +5.3 GmSc ahead of his first.</div>
+        </div>
+      </div>
+
+      <div class="design-note">
+        <strong>Storyline engine:</strong> a fixed rule library, no editorial — <em>Debut</em> (no prior SL log),
+        <em>Duel</em> (two top-N picks share a game), <em>Stakes</em> (tournament math), <em>Streak</em> (active
+        multi-game run vs cohort), <em>Contract watch</em> (undrafted/second-round overperformer scheduled),
+        <em>2nd look</em> (returning year-2/3 player tracking meaningfully above or below his previous summer).
+        Weights rank the slate; ties broken by consensus rank of the headliner.
+        <span class="flag flag--tbd">⚠ storyline weights TBD</span>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         STATE 2 · LIVE DESK
+         ========================================================================= -->
+    <div class="state-band state-band--live">
+      <span class="state-band__chip">STATE 2 · LIVE DESK</span>
+      <span class="state-band__desc">games underway — “what's the scoop, as of the last tick?”</span>
+      <span class="state-band__line"></span>
+    </div>
+
+    <section>
+      <div class="tick-header">
+        <h2 class="section-title" style="border-left-color: var(--color-accent-cyan); margin-bottom: 0;">The 9:45 PM Tick</h2>
+        <span class="freshness-stamp">⟳ as of 9:45 PM ET · next tick ~10:45 PM ET</span>
+      </div>
+      <p class="section-sub">Honest about cadence: not play-by-play — a scouting read of everything that's happened since the last tick. <span class="flag flag--sample">Sample data</span></p>
+
+      <!-- Key matchup running tally -->
+      <div class="card card-ring-cyan duel-card">
+        <div class="scanlines"></div>
+        <div class="duel-card__label">Key Matchup · Running Tally <span class="story-badge story-badge--duel">Duel</span></div>
+        <div class="duel-grid">
+          <div class="duel-side">
+            <div class="duel-side__name">A.J. Dybantsa</div>
+            <div class="duel-side__meta">Jazz · #1 pick · thru 3 quarters</div>
+            <div class="duel-side__line">
+              <span class="duel-side__stat"><span class="duel-side__val">22</span><br><span class="duel-side__lbl">PTS</span></span>
+              <span class="duel-side__stat"><span class="duel-side__val">7</span><br><span class="duel-side__lbl">REB</span></span>
+              <span class="duel-side__stat"><span class="duel-side__val">3</span><br><span class="duel-side__lbl">AST</span></span>
+              <span class="duel-side__stat"><span class="duel-side__val">.664</span><br><span class="duel-side__lbl">TS%</span></span>
+              <span class="duel-side__stat"><span class="duel-side__val">19.8</span><br><span class="duel-side__lbl">GMSC</span></span>
+            </div>
+            <span class="pctl-chip pctl-chip--hot">93rd pctl vs top-5 cohort</span>
+          </div>
+          <div class="duel-grid__mid">VS</div>
+          <div class="duel-side">
+            <div class="duel-side__name">Darryn Peterson</div>
+            <div class="duel-side__meta">Wizards · #2 pick · SL debut</div>
+            <div class="duel-side__line">
+              <span class="duel-side__stat"><span class="duel-side__val">15</span><br><span class="duel-side__lbl">PTS</span></span>
+              <span class="duel-side__stat"><span class="duel-side__val">2</span><br><span class="duel-side__lbl">REB</span></span>
+              <span class="duel-side__stat"><span class="duel-side__val">5</span><br><span class="duel-side__lbl">AST</span></span>
+              <span class="duel-side__stat"><span class="duel-side__val">.542</span><br><span class="duel-side__lbl">TS%</span></span>
+              <span class="duel-side__stat"><span class="duel-side__val">12.1</span><br><span class="duel-side__lbl">GMSC</span></span>
+            </div>
+            <span class="pctl-chip pctl-chip--warm">tracking above his 11.2 debut bar</span>
+          </div>
+        </div>
+        <div class="duel-card__read">
+          <strong>The read so far:</strong> Dybantsa is winning the scoring duel, but Peterson's debut is already
+          above his comp cohort's bar — and his 5 assists lead all rookies tonight.
+        </div>
+      </div>
+
+      <!-- All games at last tick -->
+      <div class="card" style="padding: 0.4rem 0.4rem 0.2rem; margin-bottom: 1rem;">
+        <div class="scanlines"></div>
+        <div class="table-scroll"><table class="live-board">
+          <thead><tr><th>Game</th><th>Status</th><th>Score</th><th>Scouting read at this tick</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>SPURS – NETS</td>
+              <td><span class="status-pill status-pill--final">Final</span></td>
+              <td class="score">94–88</td>
+              <td class="read"><strong>Brown Jr. 8 AST / 2 TOV</strong> — 88th pctl assist rate for lottery guards; Nets clinch a semifinal spot.</td>
+            </tr>
+            <tr>
+              <td>RAPTORS – HEAT</td>
+              <td><span class="status-pill status-pill--final">Final</span></td>
+              <td class="score">81–77</td>
+              <td class="read"><strong>Ament makes it three straight 15+ GmSc</strong> — joins an 8-rookie club since 2017. Peat: 4 more TOs.</td>
+            </tr>
+            <tr>
+              <td>WIZARDS – JAZZ</td>
+              <td><span class="status-pill status-pill--live">In progress</span></td>
+              <td class="score">78–83 · Q4</td>
+              <td class="read">Duel above. Both above cohort bars through three quarters.</td>
+            </tr>
+            <tr>
+              <td>SUNS – LAKERS</td>
+              <td><span class="status-pill status-pill--live">In progress</span></td>
+              <td class="score">41–44 · Q2</td>
+              <td class="read"><strong>Luis Jr. 11 PTS on 7 shots</strong> at the half — the audition continues.</td>
+            </tr>
+            <tr>
+              <td>ROCKETS – KINGS</td>
+              <td><span class="status-pill status-pill--upcoming">10:30 PM ET</span></td>
+              <td class="score">—</td>
+              <td class="read">Wilson's debut — cohort bar 8.9 GmSc for wings drafted 15–20.</td>
+            </tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <!-- Since-last-tick notes -->
+      <div class="card wire-card" style="padding: 1rem 1.1rem;">
+        <div class="scanlines"></div>
+        <div class="echo-card__title">Since the 8:45 PM ET tick</div>
+        <ul class="tick-notes">
+          <li><strong>Dybantsa</strong> crossed 20 PTS on 65+ TS% for the third time this event — 9th top-5 pick with three such Vegas games since 2017.</li>
+          <li><strong>Peterson's</strong> 5 assists are the most by a #2 pick in an SL debut since 2019.</li>
+          <li><strong>Peat's</strong> event TOV% climbed to 29.1 — now last among lottery bigs (cohort median 16.9).</li>
+          <li><strong>Luis Jr.</strong> holding a 96th-pctl GmSc among undrafted players through 3.5 games.</li>
+        </ul>
+      </div>
+
+      <div class="design-note">
+        <strong>Why hourly is enough to be interesting:</strong> the unit of value isn't the play, it's the
+        <em>revised read</em> — each tick recomputes every active prospect's line against cohort baselines and
+        re-ranks the storylines. ESPN wins seconds; nobody else does “what does this quarter mean for his stock
+        of evidence.” If a faster feed lands later, only the stamp cadence changes.
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         STATE 3 · LEDGER
+         ========================================================================= -->
+    <div class="state-band state-band--ledger">
+      <span class="state-band__chip">STATE 3 · THE LEDGER</span>
+      <span class="state-band__desc">after the last final — “how should I update my priors?”</span>
+      <span class="state-band__line"></span>
+    </div>
+
+    <section>
+      <div class="ledger-grid">
+        <div>
+          <h2 class="section-title" style="border-left-color: var(--color-accent-indigo);">Last Night's Top Performers</h2>
+          <p class="section-sub">All players — rookies, sophomores, and the guys playing for contracts. <span class="flag flag--sample">Sample data</span></p>
+          <div class="card" style="padding: 0.4rem 0.4rem 0.2rem;">
+            <div class="scanlines"></div>
+            <div class="table-scroll"><table class="perf-table">
+              <thead><tr><th>Player</th><th>Line</th><th>GmSc</th><th>Context</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><span class="player">A.J. Dybantsa</span> <span class="status-tag status-tag--pick">Pick 1</span><br><span class="sub">Jazz · vs WAS</span></td>
+                  <td class="line">27-9-4 · .671 TS</td>
+                  <td class="gmsc">24.6</td>
+                  <td class="read"><span class="pctl-chip pctl-chip--hot">96th pctl · top-5 cohort</span></td>
+                </tr>
+                <tr>
+                  <td><span class="player">R.J. Luis Jr.</span> <span class="status-tag status-tag--undrafted">Undrafted</span><br><span class="sub">Lakers · vs PHX</span></td>
+                  <td class="line">24-6-3 · .638 TS</td>
+                  <td class="gmsc">19.7</td>
+                  <td class="read"><span class="pctl-chip pctl-chip--hot">98th pctl · undrafted cohort</span></td>
+                </tr>
+                <tr>
+                  <td><span class="player">Darryn Peterson</span> <span class="status-tag status-tag--pick">Pick 2</span><br><span class="sub">Wizards · vs UTA · debut</span></td>
+                  <td class="line">21-3-7 · .560 TS</td>
+                  <td class="gmsc">16.8</td>
+                  <td class="read"><span class="pctl-chip pctl-chip--warm">beat his 11.2 debut bar</span></td>
+                </tr>
+                <tr>
+                  <td><span class="player">Nate Ament</span> <span class="status-tag status-tag--pick">Pick 8</span><br><span class="sub">Raptors · vs MIA</span></td>
+                  <td class="line">18-11-2 · .612 TS</td>
+                  <td class="gmsc">16.2</td>
+                  <td class="read"><span class="pctl-chip pctl-chip--warm">3rd straight 15+ GmSc</span></td>
+                </tr>
+                <tr>
+                  <td><span class="player">Kobe Sanders</span> <span class="status-tag status-tag--twoway">Two-way</span><br><span class="sub">Kings · vs HOU</span></td>
+                  <td class="line">19-4-6 · .590 TS</td>
+                  <td class="gmsc">15.4</td>
+                  <td class="read"><span class="pctl-chip pctl-chip--warm">best game of his event</span></td>
+                </tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+
+        <div>
+          <h2 class="section-title" style="border-left-color: var(--color-accent-indigo);">How That Changes the Picture</h2>
+          <p class="section-sub">Cohort echoes — sentences only nine years of SL history can write. <span class="flag flag--sample">Sample data</span></p>
+          <div class="card card-ring-indigo echo-card">
+            <div class="scanlines"></div>
+            <div class="echo-card__title">Priors, Updated</div>
+            <ul class="echo-list">
+              <li><strong>Dybantsa through 4 games:</strong> 20.7 GmSc avg — now the best start by a #1 pick in the sample, ahead of 2025 Flagg (18.9).<span class="src">cohort: #1 picks, Vegas, 2017–25</span></li>
+              <li><strong>Peterson's debut</strong> lands 79th pctl among top-5 picks' first SL games — the pull-up question got its first real evidence: 4-of-7 from deep off the dribble.<span class="src">cohort: top-5 SL debuts · shot data 2019+</span></li>
+              <li><strong>Luis Jr.</strong> is now one of 6 undrafted players since 2017 to hold a 95th-pctl GmSc through four games — 5 of the previous 6 signed NBA deals within a year.<span class="src">cohort: undrafted, ≥80 event minutes</span></li>
+              <li><strong>Peat's</strong> turnover rate is the 3rd-worst by a lottery big in the sample — but the two ahead of him both cut it in half by their second SL.<span class="src">cohort: lottery bigs, TOV% ≥25</span></li>
+            </ul>
+          </div>
+          <div class="design-note">
+            <strong>Ledger = the analytical voice.</strong> Every echo is a computed comparison (player-event vs
+            cohort distribution), rendered from templates. This panel is the shareable one — each echo doubles as a
+            share-card candidate.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================================
+         PERSISTENT SPINE · CLASS TRACKER + CONTRACT WATCH
+         ========================================================================= -->
+    <div class="state-band state-band--spine">
+      <span class="state-band__chip">PINNED · ALL STATES</span>
+      <span class="state-band__desc">the running tally — always current, always on screen</span>
+      <span class="state-band__line"></span>
+    </div>
+
+    <section>
+      <h2 class="section-title" style="border-left-color: var(--color-slate-700);">Class Tracker · Vegas to Date</h2>
+      <p class="section-sub">The draft class as a standings board. <span class="flag flag--sample">Sample data</span></p>
+
+      <div class="toggle-row">
+        <span class="toggle-chip active">Lottery</span>
+        <span class="toggle-chip">Round 1</span>
+        <span class="toggle-chip">Full class</span>
+        <span class="toggle-chip">Sophomores</span>
+      </div>
+
+      <div class="card card-ring-emerald" style="padding: 0.4rem 0.4rem 0.2rem;">
+        <div class="scanlines"></div>
+        <div class="table-scroll"><table class="tracker-table">
+          <thead>
+            <tr><th>Player</th><th>GP</th><th>MPG</th><th>PTS</th><th>REB</th><th>AST</th><th>TS%</th><th>GmSc</th><th>vs slot cohort</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="player">A.J. Dybantsa</span><br><span class="sub">#1 · UTA · F</span></td>
+              <td>4</td><td>27.3</td><td>23.5</td><td>7.8</td><td>3.5</td><td>.648</td><td>20.7</td>
+              <td><span class="grade-chip grade-chip--hot">96th pctl</span></td>
+            </tr>
+            <tr>
+              <td><span class="player">Darryn Peterson</span><br><span class="sub">#2 · WAS · G</span></td>
+              <td>1</td><td>29.0</td><td>21.0</td><td>3.0</td><td>7.0</td><td>.560</td><td>16.8</td>
+              <td><span class="grade-chip grade-chip--warm">79th pctl</span></td>
+            </tr>
+            <tr>
+              <td><span class="player">Cameron Boozer</span><br><span class="sub">#3 · CHA · F</span></td>
+              <td>3</td><td>25.1</td><td>16.7</td><td>9.3</td><td>2.7</td><td>.681</td><td>14.9</td>
+              <td><span class="grade-chip grade-chip--warm">81st pctl</span></td>
+            </tr>
+            <tr>
+              <td><span class="player">Mikel Brown Jr.</span><br><span class="sub">#4 · BKN · G</span></td>
+              <td>4</td><td>26.8</td><td>13.2</td><td>3.1</td><td>7.8</td><td>.588</td><td>13.6</td>
+              <td><span class="grade-chip grade-chip--warm">74th pctl</span></td>
+            </tr>
+            <tr>
+              <td><span class="player">Nate Ament</span><br><span class="sub">#8 · TOR · F</span></td>
+              <td>3</td><td>24.9</td><td>15.3</td><td>9.7</td><td>1.7</td><td>.607</td><td>15.8</td>
+              <td><span class="grade-chip grade-chip--hot">90th pctl</span></td>
+            </tr>
+            <tr>
+              <td><span class="player">Koa Peat</span><br><span class="sub">#12 · MIA · F/C</span></td>
+              <td>4</td><td>22.4</td><td>9.8</td><td>6.9</td><td>1.1</td><td>.512</td><td>6.1</td>
+              <td><span class="grade-chip grade-chip--cold">22nd pctl</span></td>
+            </tr>
+            <tr>
+              <td><span class="player">Caleb Wilson</span><br><span class="sub">#17 · HOU · F</span></td>
+              <td>0</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+              <td><span class="grade-chip grade-chip--mid">debuts tonight</span></td>
+            </tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="design-note">
+        <strong>The spine of the whole feature.</strong> "vs slot cohort" = percentile of the player's event GmSc
+        within historical SL performances of players drafted in a similar slot (window rule: ±3 picks for lottery,
+        round-based buckets after). Sortable on every column; each row deep-links to the player's SL page. Sophomore
+        toggle covers the "second look" crowd (Flagg, Harper, Bailey year-2s).
+        <span class="flag flag--tbd">⚠ slot-window rule TBD</span>
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <section>
+      <h2 class="section-title" style="border-left-color: var(--color-accent-amber);">Contract Watch</h2>
+      <p class="section-sub">Undrafted and second-round players punching above their weight — the guys playing themselves onto rosters. <span class="flag flag--sample">Sample data</span></p>
+
+      <div class="contract-grid">
+        <div class="card card-ring-amber contract-card">
+          <div class="scanlines"></div>
+          <div class="contract-card__head">
+            <span class="contract-card__name">R.J. Luis Jr.</span>
+            <span class="status-tag status-tag--undrafted">Undrafted '26</span>
+          </div>
+          <div class="contract-card__team">Lakers · G/F · Exhibit 10</div>
+          <div class="contract-card__line">4 GP · 18.9 PTS · .631 TS · 15.2 GmSc</div>
+          <div class="contract-card__signal"><strong>98th pctl among undrafted players.</strong> 5 of the last 6 to sustain this signed NBA deals within a year.</div>
+        </div>
+
+        <div class="card contract-card">
+          <div class="scanlines"></div>
+          <div class="contract-card__head">
+            <span class="contract-card__name">Tounde Yessoufou</span>
+            <span class="status-tag status-tag--second">Pick 31</span>
+          </div>
+          <div class="contract-card__team">Suns · W · Two-way</div>
+          <div class="contract-card__line">4 GP · 13.1 PTS · .544 TS · 9.8 GmSc</div>
+          <div class="contract-card__signal"><strong>Shot's coming around</strong> — 6-of-11 from three over his last two after a 2-of-14 start.</div>
+        </div>
+
+        <div class="card contract-card">
+          <div class="scanlines"></div>
+          <div class="contract-card__head">
+            <span class="contract-card__name">Kobe Sanders</span>
+            <span class="status-tag status-tag--twoway">Two-way</span>
+          </div>
+          <div class="contract-card__team">Kings · G · year 2</div>
+          <div class="contract-card__line">3 GP · 14.7 PTS · 5.7 AST · 12.9 GmSc</div>
+          <div class="contract-card__signal"><strong>82nd pctl among two-way guards</strong> — trending toward a standard-deal conversion case.</div>
+        </div>
+
+        <div class="card contract-card">
+          <div class="scanlines"></div>
+          <div class="contract-card__head">
+            <span class="contract-card__name">Jamir Watkins</span>
+            <span class="status-tag status-tag--undrafted">Unsigned FA</span>
+          </div>
+          <div class="contract-card__team">Rockets · W · tryout</div>
+          <div class="contract-card__line">3 GP · 11.2 PTS · 2.1 STL · 10.4 GmSc</div>
+          <div class="contract-card__signal"><strong>Leads all unsigned players in steals</strong> — defense is the classic path from this board to a roster.</div>
+        </div>
+      </div>
+
+      <div class="design-note">
+        <strong>Selection rule (computable, no editorial):</strong> population = undrafted, second-round, two-way, and
+        unsigned players; qualify at ≥40 event minutes; rank by GmSc percentile within their status cohort
+        (undrafted vs undrafted history, two-ways vs two-ways). The historical kicker — “5 of the last 6 signed
+        deals” — comes from joining past SL overperformers against subsequent contract records we already track via
+        player status. This board is the feature's second daily habit: nobody else maintains it with data.
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <section>
+      <h2 class="section-title" style="border-left-color: var(--color-accent-indigo);">The Second Summer</h2>
+      <p class="section-sub">Returning year-2 and year-3 NBA players, measured against their own previous Summer League. <span class="flag flag--sample">Sample data</span></p>
+
+      <div class="card card-ring-indigo" style="padding: 0.4rem 0.4rem 0.2rem;">
+        <div class="scanlines"></div>
+        <div class="table-scroll"><table class="tracker-table">
+          <thead>
+            <tr><th>Player</th><th>'25 SL</th><th>'26 SL</th><th>Δ GmSc</th><th>Δ TS%</th><th>vs typical yr-2 jump</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="player">Ace Bailey</span><br><span class="sub">'25 #5 · UTA · yr 2</span></td>
+              <td>8.9 GmSc · .512 TS</td>
+              <td>14.2 GmSc · .601 TS</td>
+              <td>+5.3</td>
+              <td>+.089</td>
+              <td><span class="grade-chip grade-chip--hot">well above (+2.1 typical)</span></td>
+            </tr>
+            <tr>
+              <td><span class="player">Carter Bryant</span><br><span class="sub">'25 #14 · SAS · yr 2</span></td>
+              <td>7.1 GmSc · .543 TS</td>
+              <td>10.0 GmSc · .577 TS</td>
+              <td>+2.9</td>
+              <td>+.034</td>
+              <td><span class="grade-chip grade-chip--warm">above</span></td>
+            </tr>
+            <tr>
+              <td><span class="player">Jeremiah Fears</span><br><span class="sub">'25 #7 · NOP · yr 2</span></td>
+              <td>11.4 GmSc · .488 TS</td>
+              <td>11.0 GmSc · .530 TS</td>
+              <td>−0.4</td>
+              <td>+.042</td>
+              <td><span class="grade-chip grade-chip--mid">flat — efficiency up, volume down</span></td>
+            </tr>
+            <tr>
+              <td><span class="player">Nolan Traoré</span><br><span class="sub">'25 #19 · BKN · yr 2</span></td>
+              <td>6.2 GmSc · .501 TS</td>
+              <td>4.8 GmSc · .467 TS</td>
+              <td>−1.4</td>
+              <td>−.034</td>
+              <td><span class="grade-chip grade-chip--cold">below — a real yellow flag</span></td>
+            </tr>
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="design-note">
+        <strong>Why this board earns its place:</strong> "why is he even here?" and "shouldn't he be dominating?"
+        are the two default takes on returners — this answers both with data. The self-comparison (his '26 vs his
+        '25) is a straight join on data we already hold, and the "typical yr-2 jump" baseline is computable from
+        every returner pair in the sample. Feeds the <em>2nd look</em> storyline badge and the Sophomores tracker
+        toggle. A year-2 player who <em>doesn't</em> clear the typical jump is itself a storyline — arguably the
+        sharper one.
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ======================= PRE-EVENT STATE (P2, OPTIONAL) ======================= -->
+    <section>
+      <h2 class="section-title" style="border-left-color: var(--color-slate-500);">Pre-Event State · Roster Wire <span class="flag flag--sample" style="margin-left:0.4rem;">Optional · P2</span></h2>
+      <p class="section-sub">The week before first tip (Jul 5–9): the Desk header + a filtered feed of roster adds worth knowing about. <span class="flag flag--sample">Sample data</span></p>
+
+      <div class="card" style="padding: 1rem 1.1rem;">
+        <div class="scanlines"></div>
+        <div class="echo-card__title">Roster Wire · 41 adds in the last 48h · showing the 4 that matter</div>
+        <ul class="tick-notes">
+          <li><strong>Kobe Sanders</strong> (two-way, 31 NBA games) added to the Kings roster — conversion-case watch.</li>
+          <li><strong>R.J. Luis Jr.</strong> (undrafted '26, Exhibit 10) lands with the Lakers — 94th-pctl scorer in the Big East last year.</li>
+          <li><strong>Ace Bailey</strong> confirmed for Utah's roster — the headline second-summer storyline.</li>
+          <li><strong>Dink Pate</strong> (G League, 2 pro seasons at 20) joins the Rockets — oldest-young-guy file.</li>
+        </ul>
+      </div>
+
+      <div class="design-note">
+        <strong>Deliberately small.</strong> Roster churn is mostly marginal names; the wire only surfaces adds that
+        clear a relevance rule (drafted, two-way/NBA games played, prior SL overperformance, or top-N pre-draft
+        consensus). Data already flows from the roster poll cron shipped in the 2026 full-roster project — this is a
+        rendering, not a pipeline. Not mission-critical; ships only if the three main states land early.
+      </div>
+    </section>
+
+    <div class="section-divider"></div>
+
+    <!-- ======================= OFF-WINDOW STATE ======================= -->
+    <section>
+      <h2 class="section-title" style="border-left-color: var(--color-slate-500);">Off-Window State</h2>
+      <p class="section-sub">Outside July, the Desk collapses to one strip above the news hero.</p>
+      <div class="card collapsed-strip">
+        <div class="scanlines"></div>
+        <span class="collapsed-strip__title">SUMMER LEAGUE DESK</span>
+        <span class="collapsed-strip__stat">Vegas wrapped · Dybantsa's 20.7 GmSc led all rookies</span>
+        <span class="collapsed-strip__stat">2,887 player-seasons archived</span>
+        <span class="collapsed-strip__cta">Open the SL Archive →</span>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    DRAFTGURU · MOCKUP v2 — Summer League Scout's Desk · three states, one spine · all computed, no editorial
+  </footer>
+
+</body>
+</html>
