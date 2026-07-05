@@ -187,6 +187,7 @@
     .navbar .container { display: flex; align-items: center; justify-content: space-between; }
     .navbar__brand { font-family: var(--font-heading); color: white; font-size: 1.25rem; text-decoration: none; }
     .navbar__links { display: flex; gap: 1.25rem; font-family: var(--font-mono); font-size: 0.8rem; }
+    @media (max-width: 640px) { .navbar__links { display: none; } } /* stand-in nav only; real navbar has its own mobile treatment */
     .navbar__links span { color: rgba(255,255,255,0.85); }
     .navbar__links span.active { color: white; border-bottom: 2px solid white; }
 
@@ -231,6 +232,9 @@
       position: absolute; inset: 0; pointer-events: none;
       background: repeating-linear-gradient(to bottom, transparent 0 3px, rgba(15,23,42,0.015) 3px 4px);
     }
+    /* Wide stat tables must scroll inside their card on narrow viewports
+       (cards clip via overflow:hidden, so each table gets its own scroll container) */
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .section-title {
       font-family: var(--font-mono);
       font-size: 1rem;
@@ -376,6 +380,7 @@
        STATE 3 — LEDGER (morning after)
        ========================================================================= */
     .ledger-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.5rem; align-items: start; }
+    .ledger-grid > div { min-width: 0; } /* let columns shrink below table min-content so .table-scroll can take over */
     @media (max-width: 860px) { .ledger-grid { grid-template-columns: 1fr; } }
     .perf-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
     .perf-table th {
@@ -510,7 +515,7 @@
     <div class="ticker-header">
       <span class="live-dot"></span>
       <span>Desk Wire · Scores + Storylines</span>
-      <span class="freshness">as of the 9 PM tick</span>
+      <span class="freshness">as of the 9:45 PM ET tick</span>
     </div>
     <div class="ticker-wrapper">
       <div class="ticker-content">
@@ -573,7 +578,7 @@
           <span class="marquee-card__team">WIZARDS</span>
           <span class="marquee-card__vs">vs</span>
           <span class="marquee-card__team">JAZZ</span>
-          <span class="marquee-card__time">10:00 PM ET · Thomas &amp; Mack</span>
+          <span class="marquee-card__time">8:00 PM ET · Thomas &amp; Mack</span>
         </div>
         <p class="marquee-card__why">
           <span class="story-badge story-badge--debut">Debut</span>
@@ -632,7 +637,7 @@
           <div class="scanlines"></div>
           <div class="game-card__top">
             <span><span class="story-badge story-badge--debut">Debut</span><span class="story-badge story-badge--secondlook">2nd look</span></span>
-            <span class="game-card__time">9:30 PM ET</span>
+            <span class="game-card__time">10:30 PM ET</span>
           </div>
           <div class="game-card__title">ROCKETS vs KINGS</div>
           <div class="watch-chips"><span class="watch-chip">#17 Wilson · debut</span><span class="watch-chip">A. Bailey · yr 2</span></div>
@@ -661,8 +666,8 @@
 
     <section>
       <div class="tick-header">
-        <h2 class="section-title" style="border-left-color: var(--color-accent-cyan); margin-bottom: 0;">The 9 PM Tick</h2>
-        <span class="freshness-stamp">⟳ as of 9:02 PM PT · next tick ~10:00 PM</span>
+        <h2 class="section-title" style="border-left-color: var(--color-accent-cyan); margin-bottom: 0;">The 9:45 PM Tick</h2>
+        <span class="freshness-stamp">⟳ as of 9:45 PM ET · next tick ~10:45 PM ET</span>
       </div>
       <p class="section-sub">Honest about cadence: not play-by-play — a scouting read of everything that's happened since the last tick. <span class="flag flag--sample">Sample data</span></p>
 
@@ -706,7 +711,7 @@
       <!-- All games at last tick -->
       <div class="card" style="padding: 0.4rem 0.4rem 0.2rem; margin-bottom: 1rem;">
         <div class="scanlines"></div>
-        <table class="live-board">
+        <div class="table-scroll"><table class="live-board">
           <thead><tr><th>Game</th><th>Status</th><th>Score</th><th>Scouting read at this tick</th></tr></thead>
           <tbody>
             <tr>
@@ -735,18 +740,18 @@
             </tr>
             <tr>
               <td>ROCKETS – KINGS</td>
-              <td><span class="status-pill status-pill--upcoming">9:30 PM</span></td>
+              <td><span class="status-pill status-pill--upcoming">10:30 PM ET</span></td>
               <td class="score">—</td>
               <td class="read">Wilson's debut — cohort bar 8.9 GmSc for wings drafted 15–20.</td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <!-- Since-last-tick notes -->
       <div class="card wire-card" style="padding: 1rem 1.1rem;">
         <div class="scanlines"></div>
-        <div class="echo-card__title">Since the 8 PM tick</div>
+        <div class="echo-card__title">Since the 8:45 PM ET tick</div>
         <ul class="tick-notes">
           <li><strong>Dybantsa</strong> crossed 20 PTS on 65+ TS% for the third time this event — 9th top-5 pick with three such Vegas games since 2017.</li>
           <li><strong>Peterson's</strong> 5 assists are the most by a #2 pick in an SL debut since 2019.</li>
@@ -779,7 +784,7 @@
           <p class="section-sub">All players — rookies, sophomores, and the guys playing for contracts. <span class="flag flag--sample">Sample data</span></p>
           <div class="card" style="padding: 0.4rem 0.4rem 0.2rem;">
             <div class="scanlines"></div>
-            <table class="perf-table">
+            <div class="table-scroll"><table class="perf-table">
               <thead><tr><th>Player</th><th>Line</th><th>GmSc</th><th>Context</th></tr></thead>
               <tbody>
                 <tr>
@@ -813,7 +818,7 @@
                   <td class="read"><span class="pctl-chip pctl-chip--warm">best game of his event</span></td>
                 </tr>
               </tbody>
-            </table>
+            </table></div>
           </div>
         </div>
 
@@ -861,7 +866,7 @@
 
       <div class="card card-ring-emerald" style="padding: 0.4rem 0.4rem 0.2rem;">
         <div class="scanlines"></div>
-        <table class="tracker-table">
+        <div class="table-scroll"><table class="tracker-table">
           <thead>
             <tr><th>Player</th><th>GP</th><th>MPG</th><th>PTS</th><th>REB</th><th>AST</th><th>TS%</th><th>GmSc</th><th>vs slot cohort</th></tr>
           </thead>
@@ -902,7 +907,7 @@
               <td><span class="grade-chip grade-chip--mid">debuts tonight</span></td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <div class="design-note">
@@ -983,7 +988,7 @@
 
       <div class="card card-ring-indigo" style="padding: 0.4rem 0.4rem 0.2rem;">
         <div class="scanlines"></div>
-        <table class="tracker-table">
+        <div class="table-scroll"><table class="tracker-table">
           <thead>
             <tr><th>Player</th><th>'25 SL</th><th>'26 SL</th><th>Δ GmSc</th><th>Δ TS%</th><th>vs typical yr-2 jump</th></tr>
           </thead>
@@ -1021,7 +1026,7 @@
               <td><span class="grade-chip grade-chip--cold">below — a real yellow flag</span></td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <div class="design-note">
