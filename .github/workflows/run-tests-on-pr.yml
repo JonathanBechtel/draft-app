@@ -104,7 +104,9 @@ jobs:
         # -n 4 fans tests across the runner's 4 vCPUs; each xdist worker is its
         # own pytest session, so the integration fixtures give every worker an
         # isolated schema (see tests/integration/conftest.py test_schema).
-        run: pytest -q --ignore=tests/visual -n 4 --cov=app --cov-report=xml --cov-report=term
+        run: |
+          nproc && free -h | head -2
+          pytest -q --ignore=tests/visual -n 4 --dist worksteal --cov=app --cov-report=xml --cov-report=term
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -217,7 +219,9 @@ jobs:
         # -n 4 fans tests across the runner's 4 vCPUs; each xdist worker is its
         # own pytest session, so the integration fixtures give every worker an
         # isolated schema (see tests/integration/conftest.py test_schema).
-        run: pytest -q --ignore=tests/visual -n 4 --cov=app --cov-report=xml --cov-report=term
+        run: |
+          nproc && free -h | head -2
+          pytest -q --ignore=tests/visual -n 4 --dist worksteal --cov=app --cov-report=xml --cov-report=term
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

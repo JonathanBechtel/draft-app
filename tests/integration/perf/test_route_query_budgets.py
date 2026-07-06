@@ -44,6 +44,15 @@ async def test_route_within_query_budget(
     )
     budget = ROUTE_BUDGETS[route_template]
 
+    # Budgets measure a route's steady-state query count. Render once untracked
+    # first so one-time process-level cache fills (e.g. the school-logo map)
+    # don't count — otherwise the measured number depends on which tests
+    # happened to run earlier in this worker process.
+    warmup = await app_client.get(url)
+    assert warmup.status_code == 200, (
+        f"{url} returned {warmup.status_code} on the warm-up render."
+    )
+
     with count_queries(async_engine) as captured:
         response = await app_client.get(url)
 
