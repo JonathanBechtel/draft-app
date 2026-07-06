@@ -210,22 +210,24 @@
 
   /* ── Render ─────────────────────────────────────────────────────────────── */
   /* opts.dotsOnly → plot raw makes/misses only, no heat (used for a single
-   * player, where a smoothed density map over a handful of shots is noise). */
+   * player, where a smoothed density map over a handful of shots is noise).
+   * A suppressed sample (total FGA below the heat floor) degrades to the same
+   * dots-only view instead of hiding the chart — matching the game page. */
   function render(root, data, opts) {
     opts = opts || {};
-    var dotsOnly = !!opts.dotsOnly;
+    var hasDots = data.dots && data.dots.length > 0;
+    var dotsOnly = !!opts.dotsOnly || (data.suppressed && hasDots);
     root.innerHTML = "";
     root.className = "sl-shotchart";
     var zoneMap = {};
     (data.zones || []).forEach(function (z) { zoneMap[z.shot_zone_basic] = z; });
-    var hasDots = data.dots && data.dots.length > 0;
     var hasPool = (data.zones || []).some(function (z) { return z.pool_fg_pct != null; });
 
     var header = document.createElement("div");
     header.className = "sl-shotchart__header";
     header.innerHTML = "<h3 class='sl-shotchart__title'>Shot Chart</h3>" +
       "<span class='sl-shotchart__badge'>" + (data.total_fga || 0) + " FGA</span>" +
-      (data.suppressed && !dotsOnly ? "<span class='sl-shotchart__badge sl-shotchart__badge--warn'>Small sample</span>" : "");
+      (data.suppressed ? "<span class='sl-shotchart__badge sl-shotchart__badge--warn'>Small sample</span>" : "");
     root.appendChild(header);
 
     // Dots-only needs ≥1 plotted shot; heat mode also needs a large-enough sample.
