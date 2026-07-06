@@ -25,6 +25,7 @@ from app.services.summer_league_games_service import (
     resolve_player_ref,
     search_games,
 )
+from app.services.summer_league_metrics_service import get_player_metric_seasons
 from app.services.summer_league_shotchart_service import get_game_shotchart_scopes
 from app.services.summer_league_stats_service import (
     get_competition_id_for_player_year,
@@ -385,6 +386,13 @@ async def player_summer_league_season(
     year_seasons = [s for s in all_seasons if s.year == year]
     total_games = sum(len(s.rows) for s in year_seasons)
 
+    # Advanced season line(s) for this year — one per adv-eligible competition
+    # (same full BBRef column set as the player-detail advanced table).
+    adv_profile = await get_player_metric_seasons(db, ref.id)
+    sl_adv_seasons = [
+        s for s in (adv_profile.seasons if adv_profile else []) if s.year == year
+    ]
+
     # Shot chart: scoped to the clicked competition (venue) or the marquee one.
     sl_shotchart: dict | None = None
     comp_id = await get_competition_id_for_player_year(
@@ -407,6 +415,7 @@ async def player_summer_league_season(
             "year": year,
             "seasons": year_seasons,
             "total_games": total_games,
+            "sl_adv_seasons": sl_adv_seasons,
             "sl_shotchart": sl_shotchart,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,

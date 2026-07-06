@@ -60,10 +60,11 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/players/{slug}": 26,
     "/players/{slug}/summer-league": 2,
     # Per-season page: resolve_player_ref (1) + get_player_game_logs (1) +
+    # get_player_metric_seasons for the advanced table (1, indexed player_id) +
     # get_competition_id_for_player_year query on summer_league_player_seasons (1).
     # Shot-chart queries only fire when a SummerLeaguePlayerSeason row exists;
-    # the perf dataset seeds game logs but no season rows, so the budget is 3.
-    "/players/{slug}/summer-league/{year}": 3,
+    # the perf dataset seeds game logs but no season rows, so the budget is 4.
+    "/players/{slug}/summer-league/{year}": 4,
     "/consensus": 43,
     # Hub: combine-year coverage + SL-year coverage, one indexed read each.
     "/stats/": 2,
