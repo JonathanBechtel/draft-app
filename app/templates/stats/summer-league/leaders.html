@@ -7,15 +7,18 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
 {% endblock %}
 
-{# Build a leaders URL, overriding mode/sort/dir/page; year + min filters from result. #}
+{# Build a leaders URL, overriding mode/sort/dir/page; year + min filters from
+   result. Adaptive (auto) gates are omitted so navigation stays adaptive. #}
 {% macro lurl(mode=none, sort=none, dir=none, page=1) %}
 {%- set parts = ['mode=' ~ (mode or result.mode)] -%}
 {%- if result.year is not none %}{% set _ = parts.append('year=' ~ result.year) %}{% endif -%}
 {%- if result.venue %}{% set _ = parts.append('venue=' ~ result.venue) %}{% endif -%}
 {%- set _ = parts.append('sort=' ~ (sort or result.sort)) -%}
 {%- set _ = parts.append('dir=' ~ (dir or result.direction)) -%}
+{%- if not result.auto_gates -%}
 {%- set _ = parts.append('min_gp=' ~ result.min_games) -%}
 {%- set _ = parts.append('min_min=' ~ result.min_minutes) -%}
+{%- endif -%}
 {%- if page > 1 %}{% set _ = parts.append('page=' ~ page) %}{% endif -%}
 /stats/summer-league/leaders?{{ parts | join('&') }}
 {%- endmacro %}
@@ -69,13 +72,14 @@
       </select>
     </label>
     {% endif %}
+    {# Blank inputs = adaptive gates; the placeholder shows what was applied. #}
     <label class="slg-field">
       <span class="slg-field__label">Min GP</span>
-      <input type="number" name="min_gp" min="0" value="{{ result.min_games }}" class="slg-select slg-num" data-autosubmit>
+      <input type="number" name="min_gp" min="0" value="{{ '' if result.auto_gates else result.min_games }}" placeholder="{{ result.min_games }}" class="slg-select slg-num" data-autosubmit>
     </label>
     <label class="slg-field">
       <span class="slg-field__label">Min MIN</span>
-      <input type="number" name="min_min" min="0" value="{{ result.min_minutes }}" class="slg-select slg-num" data-autosubmit>
+      <input type="number" name="min_min" min="0" value="{{ '' if result.auto_gates else result.min_minutes }}" placeholder="{{ result.min_minutes }}" class="slg-select slg-num" data-autosubmit>
     </label>
     <a class="slg-clear" href="/stats/summer-league/leaders?mode={{ result.mode }}">Reset</a>
   </form>
@@ -88,11 +92,36 @@
     </span>
   </div>
 
+  {% if result.gates_relaxed %}
+  <p class="slg-gatenote">
+    Early-competition view — the standard {{ result.standard_min_games }}+ GP &middot;
+    {{ result.standard_min_minutes }}+ MIN cut matches nobody here yet, so the board
+    shows everyone at {{ result.min_games }}+ GP &middot; {{ result.min_minutes }}+ MIN.
+    Set Min GP / Min MIN to tighten.
+  </p>
+  {% endif %}
+  {% if result.uncalibrated %}
+  <p class="slg-gatenote">
+    This pool isn&rsquo;t calibrated yet — league-relative composites (PER, ratings,
+    WS, BPM, VORP) unlock once enough games are in the books. Box-derived rates
+    (GmSc, TS%, eFG%, 3PAr, FTr) are live now.
+  </p>
+  {% endif %}
+
   {# Leaderboard — or a soft landing when the current filters match no players. #}
   {% if not result.rows %}
   <div class="stats-scoreboard slg-board">
     <div class="scanlines"></div>
     <div class="slg-empty slg-empty--block">
+      {% if result.auto_gates %}
+      {# Adaptive gates already relaxed to the floor, so empty means no data. #}
+      <p class="slg-empty__title">No game data yet</p>
+      <p class="slg-empty__body">
+        No Summer League box scores are in for
+        <strong>{{ result.year or 'all-time' }} &middot; {{ result.venue_label or 'all venues' }}</strong>.
+        Leaders appear as soon as games tip off — try another season or venue meanwhile.
+      </p>
+      {% else %}
       <p class="slg-empty__title">No players match these filters</p>
       <p class="slg-empty__body">
         No Summer League players qualify for
@@ -100,6 +129,7 @@
         at {{ result.min_games }}+ GP and {{ result.min_minutes }}+ MIN.
         Try another season or venue, or lower the minimums.
       </p>
+      {% endif %}
       <p><a href="/stats/summer-league/leaders?mode={{ result.mode }}">Reset filters</a></p>
     </div>
   </div>

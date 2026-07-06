@@ -398,6 +398,15 @@ class CompetitionLeaders:
     request when it defaulted). ``competitions`` lists every adv-eligible
     ``(year, venue_slug)`` newest-first for the selector. Empty ``rows`` with a
     ``None`` competition means no adv-eligible pool exists at all.
+
+    ``calibrated`` is ``False`` when the rows come from a pool that has not yet
+    earned ``adv_eligible`` (e.g. a competition mid-event): the box-derived
+    rates (MIN, GmSc, TS%, eFG%, 3PAr, FTr) are populated but the
+    pool-calibrated composites are ``None``.
+
+    ``min_games``/``min_minutes`` are the qualification gate actually enforced
+    on ``rows`` — the first ladder rung that matched anyone, with the
+    :data:`DISPLAY_MIN_MINUTES` floor folded in where it applies.
     """
 
     year: Optional[int]
@@ -405,6 +414,51 @@ class CompetitionLeaders:
     venue_label: Optional[str]
     competitions: list[tuple[int, str]]
     rows: list[CompetitionLeaderRow]
+    calibrated: bool = True
+    min_games: int = 0
+    min_minutes: int = 0
+
+
+# Default qualification "ladder": a single fully-open rung. Callers pass a
+# multi-rung ladder to relax thresholds until the board populates.
+OPEN_GATES: tuple[tuple[int, int], ...] = ((0, 0),)
+
+
+def _first_populated_rung(
+    gates: tuple[tuple[int, int], ...],
+    floor: float,
+    seasons_by_key: dict[int, tuple[int, float]],
+) -> tuple[set[int], int, int]:
+    """Walk ``gates`` rung by rung over pre-fetched qualification totals.
+
+    Args:
+        gates: ``(min_games, min_minutes)`` rungs, strictest first.
+        floor: Minutes floor folded into every rung (0 when none applies).
+        seasons_by_key: ``{key: (gp, minutes)}`` for each candidate row.
+
+    Returns:
+        ``(qualifying keys, applied min_games, applied effective min_minutes)``
+        for the first rung that matches anyone; the last rung's (empty) result
+        when none does. Rungs that collapse to an already-tried effective gate
+        are skipped.
+    """
+    qualified: set[int] = set()
+    applied = (gates[0][0], int(max(gates[0][1], floor)))
+    tried: set[tuple[int, int]] = set()
+    for g, m in gates:
+        effective = (g, int(max(m, floor)))
+        if effective in tried:
+            continue
+        tried.add(effective)
+        applied = effective
+        qualified = {
+            k
+            for k, (gp, minutes) in seasons_by_key.items()
+            if gp >= effective[0] and minutes >= effective[1]
+        }
+        if qualified:
+            break
+    return qualified, applied[0], applied[1]
 
 
 def _leader_values(s: SummerLeaguePlayerSeason) -> dict[str, Optional[float]]:
@@ -490,20 +544,58 @@ async def get_competition_leaders(
     *,
     year: Optional[int] = None,
     venue_slug: Optional[str] = None,
-    min_games: int = 0,
-    min_minutes: int = 0,
+    gates: tuple[tuple[int, int], ...] = OPEN_GATES,
 ) -> CompetitionLeaders:
     """Fetch one competition's advanced leaderboard rows (unsorted).
 
     Resolves ``(year, venue_slug)`` to an adv-eligible competition (defaulting to
-    the latest when unspecified or unavailable), then returns its players above
-    the ``min_games`` / ``min_minutes`` thresholds. The caller sorts/paginates.
+    the latest when unspecified or unavailable), fetches that pool's rows once,
+    then applies ``gates`` rung by rung in Python until anyone qualifies (a
+    single competition's pool is small). The caller sorts/paginates.
+
+    An exactly-requested ``(year, venue)`` that has materialized rows but is not
+    (yet) adv-eligible — a competition mid-event, typically — is honored rather
+    than silently redirected to another pool: its rows are returned with
+    ``calibrated=False`` and without the adv-eligibility / display-minutes
+    floors, so the box-derived rate columns still populate. The resolved
+    competition is always included in ``competitions`` so pickers stay correct.
     """
     competitions = await list_adv_competitions(db)
     resolved = _resolve_competition(competitions, year, venue_slug)
+
+    calibrated = True
+    if (
+        year is not None
+        and venue_slug is not None
+        and resolved != (year, venue_slug)
+        and await _competition_has_rows(db, year, venue_slug)
+    ):
+        resolved = (year, venue_slug)
+        calibrated = False
+
     if resolved is None:
-        return CompetitionLeaders(None, None, None, competitions, [])
+        return CompetitionLeaders(
+            None,
+            None,
+            None,
+            competitions,
+            [],
+            min_games=gates[0][0],
+            min_minutes=gates[0][1],
+        )
     r_year, r_venue = resolved
+    if resolved not in competitions:
+        competitions = sorted(
+            [*competitions, resolved],
+            key=lambda k: (-k[0], _VENUE_ORDER.get(k[1], 99)),
+        )
+
+    conds: list[object] = [
+        SummerLeaguePlayerSeason.year == r_year,  # type: ignore[arg-type]
+        SummerLeaguePlayerSeason.venue_slug == r_venue,  # type: ignore[arg-type]
+    ]
+    if calibrated:
+        conds.append(SummerLeaguePlayerSeason.adv_eligible.is_(True))  # type: ignore[attr-defined]
 
     stmt = (
         select(
@@ -512,14 +604,14 @@ async def get_competition_leaders(
             PlayerMaster.display_name,
         )  # type: ignore[call-overload]
         .join(PlayerMaster, PlayerMaster.id == SummerLeaguePlayerSeason.player_id)
-        .where(
-            SummerLeaguePlayerSeason.year == r_year,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.venue_slug == r_venue,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
-            SummerLeaguePlayerSeason.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.gp >= min_games,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.minutes >= min_minutes,  # type: ignore[arg-type]
-        )
+        .where(*conds)
+    )
+    fetched = (await db.execute(stmt)).all()
+
+    floor = DISPLAY_MIN_MINUTES if calibrated else 0.0
+    totals = {i: (s.gp, s.minutes) for i, (s, _slug, _name) in enumerate(fetched)}
+    qualified, applied_games, applied_minutes = _first_populated_rung(
+        gates, floor, totals
     )
     rows = [
         CompetitionLeaderRow(
@@ -528,7 +620,8 @@ async def get_competition_leaders(
             gp=season.gp,
             values=_leader_values(season),
         )
-        for season, slug, name in (await db.execute(stmt)).all()
+        for i, (season, slug, name) in enumerate(fetched)
+        if i in qualified
     ]
     return CompetitionLeaders(
         year=r_year,
@@ -536,7 +629,23 @@ async def get_competition_leaders(
         venue_label=VENUE_LABELS.get(r_venue, r_venue),
         competitions=competitions,
         rows=rows,
+        calibrated=calibrated,
+        min_games=applied_games,
+        min_minutes=applied_minutes,
     )
+
+
+async def _competition_has_rows(db: AsyncSession, year: int, venue_slug: str) -> bool:
+    """True when any materialized season row exists for ``(year, venue_slug)``."""
+    stmt = (
+        select(SummerLeaguePlayerSeason.id)  # type: ignore[call-overload]
+        .where(
+            SummerLeaguePlayerSeason.year == year,  # type: ignore[arg-type]
+            SummerLeaguePlayerSeason.venue_slug == venue_slug,  # type: ignore[arg-type]
+        )
+        .limit(1)
+    )
+    return (await db.execute(stmt)).first() is not None
 
 
 # --------------------------------------------------------------------------- #
@@ -626,15 +735,16 @@ async def get_blended_leaders(
     *,
     year: Optional[int] = None,
     venue_slug: Optional[str] = None,
-    min_games: int = 0,
-    min_minutes: int = 0,
+    gates: tuple[tuple[int, int], ...] = OPEN_GATES,
 ) -> CompetitionLeaders:
     """Blend adv-eligible pools across competitions into one line per player.
 
     Scope is set by which of ``year`` / ``venue_slug`` are provided: neither is
     the all-time, all-venue career blend; one narrows to that season or venue.
-    Players are grouped across their qualifying pools and gated on the blended
-    totals (``min_games`` and ``max(min_minutes, DISPLAY_MIN_MINUTES)``).
+    Players are grouped across their qualifying pools; ``gates`` is applied to
+    the blended totals rung by rung (each rung's minutes floor raised to
+    :data:`DISPLAY_MIN_MINUTES`) until anyone qualifies — the scope's rows are
+    fetched once and re-filtered in Python.
 
     Returns:
         A :class:`CompetitionLeaders` whose ``rows`` are unsorted; the caller
@@ -666,19 +776,23 @@ async def get_blended_leaders(
         grouped.setdefault(season.player_id, []).append(season)
         meta[season.player_id] = (slug, name or "Player")
 
-    floor = max(float(min_minutes), DISPLAY_MIN_MINUTES)
-    rows: list[CompetitionLeaderRow] = []
-    for pid, seasons in grouped.items():
-        gp = sum(s.gp for s in seasons)
-        minutes = sum(s.minutes for s in seasons)
-        if gp < min_games or minutes < floor:
-            continue
-        slug, name = meta[pid]
-        rows.append(
-            CompetitionLeaderRow(
-                slug=slug, name=name, gp=gp, values=_blend_leader_values(seasons)
-            )
+    totals = {
+        pid: (sum(s.gp for s in seasons), sum(s.minutes for s in seasons))
+        for pid, seasons in grouped.items()
+    }
+    qualified, applied_games, applied_minutes = _first_populated_rung(
+        gates, DISPLAY_MIN_MINUTES, totals
+    )
+    rows = [
+        CompetitionLeaderRow(
+            slug=meta[pid][0],
+            name=meta[pid][1],
+            gp=totals[pid][0],
+            values=_blend_leader_values(grouped[pid]),
         )
+        for pid in grouped  # insertion order keeps output deterministic
+        if pid in qualified
+    ]
 
     return CompetitionLeaders(
         year=year,
@@ -688,4 +802,6 @@ async def get_blended_leaders(
         else "All venues",
         competitions=await list_adv_competitions(db),
         rows=rows,
+        min_games=applied_games,
+        min_minutes=applied_minutes,
     )

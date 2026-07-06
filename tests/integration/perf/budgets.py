@@ -67,7 +67,10 @@ ROUTE_BUDGETS: dict[str, int] = {
     "/consensus": 43,
     # Hub: combine-year coverage + SL-year coverage, one indexed read each.
     "/stats/": 2,
-    "/stats/summer-league": 8,
+    # +2 over the base 8: the landing renders two leader boards (all-time +
+    # latest season) whose adaptive gate falls back to 1+ GP when the standard
+    # cut matches nobody — one extra aggregate each, worst case (thin/early data).
+    "/stats/summer-league": 10,
     "/stats/summer-league/games": 5,
     # Box score: header query (1) + player lines (1) + team totals (1) +
     # shot-zone aggregation (1) + game-flow PBP events (1) = 5 indexed reads.
@@ -75,11 +78,16 @@ ROUTE_BUDGETS: dict[str, int] = {
     # follow-up query is skipped (budget would be 6 on a game with both shots
     # and PBP). The PBP query always fires; it returns empty → no chart rendered.
     "/stats/summer-league/{year}/games/{game_id}": 5,
-    # Both counting (aggregate + years) and advanced (competition list +
-    # per-competition rows) modes fire 2 indexed queries.
-    "/stats/summer-league/leaders": 3,
-    "/stats/summer-league/{year}": 7,
-    "/stats/summer-league/{year}/{venue}": 7,
+    # Counting modes fire venues + years + the aggregate; unpinned thresholds
+    # walk the adaptive gate ladder (2+GP/60+MIN → 1/20 → 1/0) in the
+    # aggregate's HAVING clause, re-running it once per empty rung — worst
+    # case 5 on a thin/early scope. Advanced mode fetches its scope once and
+    # walks the ladder in Python (competition list + has-rows probe + rows ≤ 3).
+    "/stats/summer-league/leaders": 5,
+    # +1 each: the season/venue mini leader boards retry once at 1+ GP when the
+    # standard gate matches nobody (early-competition fallback).
+    "/stats/summer-league/{year}": 8,
+    "/stats/summer-league/{year}/{venue}": 8,
     # Header + schedule + stats roster + announced roster (A4 pre-event preview,
     # one indexed read on summer_league_participation by team_entry_id) = 4.
     "/stats/summer-league/{year}/{venue}/{team}": 4,

@@ -125,6 +125,16 @@ async def summer_league_games_index(
     )
 
 
+def _parse_gate(raw: str | None) -> int | None:
+    """Parse a Min GP / Min MIN query value; blank or invalid means adaptive."""
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return None
+
+
 @router.get("/stats/summer-league/leaders", response_class=HTMLResponse)
 async def summer_league_leaders(
     request: Request,
@@ -133,12 +143,17 @@ async def summer_league_leaders(
     venue: str | None = Query(default=None),
     sort: str | None = Query(default=None),
     dir: str = Query(default="desc"),
-    min_gp: int = Query(default=2, ge=0),
-    min_min: int = Query(default=60, ge=0),
+    min_gp: str | None = Query(default=None),
+    min_min: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     db: AsyncSession = Depends(get_session),
 ) -> HTMLResponse:
-    """Comprehensive, sortable Summer League leaderboard across display modes."""
+    """Comprehensive, sortable Summer League leaderboard across display modes.
+
+    ``min_gp`` / ``min_min`` left blank apply the adaptive gate ladder (standard
+    thresholds, relaxed rung by rung until the board populates); explicit values
+    are honored exactly.
+    """
     result = await get_leaders(
         db,
         mode=mode,
@@ -146,8 +161,8 @@ async def summer_league_leaders(
         venue=venue,
         sort=sort,
         direction=dir,
-        min_games=min_gp,
-        min_minutes=min_min,
+        min_games=_parse_gate(min_gp),
+        min_minutes=_parse_gate(min_min),
         page=page,
     )
     return request.app.state.templates.TemplateResponse(

@@ -40,8 +40,9 @@ async def _seed_player(
     pts: int,
     reb: int = 4,
     ast: int = 4,
+    seconds: int = 1800,
 ) -> None:
-    """Seed ``n_games`` identical played logs for one player."""
+    """Seed ``n_games`` identical played logs (``seconds`` each) for one player."""
     _N["i"] += 1
     sp = SummerLeagueSourcePlayer(
         nba_stats_person_id=f"p-{_N['i']}",
@@ -74,7 +75,7 @@ async def _seed_player(
                 player_id=player.id,
                 nba_stats_person_id=sp.nba_stats_person_id,
                 raw_player_name=player.display_name or "Player",
-                minutes_seconds=1800,
+                minutes_seconds=seconds,
                 pace=100.0,
                 pts=pts,
                 reb=reb,
@@ -435,3 +436,212 @@ async def test_advanced_all_blend_math(
     # Attempt rates pool raw volume as 0-1 fractions: 3PAr 60/200, FTr 30/200.
     assert row.values["fg3ar"] == 0.3
     assert row.values["ftr"] == 0.15
+
+
+async def _seed_young_competition(db: AsyncSession) -> None:
+    """Seed a mid-event venue: every player has exactly one played game.
+
+    Nobody meets the standard 2+ GP / 60+ MIN gate; one player clears 20
+    minutes, one doesn't.
+    """
+    comp = SummerLeagueCompetition(
+        year=2026, league_id="16", venue_slug="salt_lake_city", display_name="2026 SLC"
+    )
+    db.add(comp)
+    await db.flush()
+    assert comp.id is not None
+    team = SummerLeagueTeamEntry(
+        competition_id=comp.id,
+        nba_stats_team_id="slc-t1",
+        raw_team_name="Salt",
+        raw_team_abbreviation="SLC",
+        team_slug="slc",
+    )
+    db.add(team)
+    await db.flush()
+    starter = make_player("Day", "One")
+    benchie = make_player("Short", "Stint")
+    db.add_all([starter, benchie])
+    await db.flush()
+
+    # 25 minutes / 10 minutes — one game each.
+    await _seed_player(
+        db, comp=comp, team=team, player=starter, n_games=1, pts=22, seconds=1500
+    )
+    await _seed_player(
+        db, comp=comp, team=team, player=benchie, n_games=1, pts=5, seconds=600
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_auto_gates_relax_for_young_competition(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Unpinned thresholds walk the gate ladder so a mid-event board populates.
+
+    With every player at 1 GP the standard 2+ GP / 60+ MIN rung matches nobody;
+    the (1, 20) rung catches the 25-minute player. Explicit thresholds are
+    still honored exactly.
+    """
+    await _seed_young_competition(db_session)
+
+    auto = await get_leaders(db_session, mode="per_game", sort="pts")
+    assert [r.name for r in auto.rows] == ["Day One"]
+    assert auto.auto_gates is True
+    assert auto.gates_relaxed is True
+    assert (auto.min_games, auto.min_minutes) == (1, 20)
+
+    # The floor rung (1, 0) applies when even 20 minutes is too strict.
+    floor = await get_leaders(
+        db_session, mode="per_game", sort="pts", min_games=1, min_minutes=0
+    )
+    assert {r.name for r in floor.rows} == {"Day One", "Short Stint"}
+    assert floor.auto_gates is False
+    assert floor.gates_relaxed is False
+
+    # Explicit standard gates are honored even when they match nobody.
+    pinned = await get_leaders(
+        db_session, mode="per_game", sort="pts", min_games=2, min_minutes=60
+    )
+    assert pinned.rows == []
+    assert pinned.auto_gates is False
+    assert (pinned.min_games, pinned.min_minutes) == (2, 60)
+
+
+@pytest.mark.asyncio
+async def test_leaders_route_auto_gates_ui(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """The route defaults to adaptive gates and renders the relaxed-gate note.
+
+    Explicit query gates keep the strict empty state.
+    """
+    await _seed_young_competition(db_session)
+
+    resp = await app_client.get("/stats/summer-league/leaders?mode=per_game")
+    assert resp.status_code == 200
+    assert "Day One" in resp.text
+    assert "Early-competition view" in resp.text
+
+    # Pinned gates that match nobody keep the honest filter empty state.
+    strict = await app_client.get(
+        "/stats/summer-league/leaders?mode=per_game&min_gp=2&min_min=60"
+    )
+    assert strict.status_code == 200
+    assert "No players match these filters" in strict.text
+
+    # Unparseable gate values fall back to adaptive rather than erroring.
+    junk = await app_client.get(
+        "/stats/summer-league/leaders?mode=per_game&min_gp=abc&min_min="
+    )
+    assert junk.status_code == 200
+    assert "Day One" in junk.text
+
+
+@pytest.mark.asyncio
+async def test_leaders_route_no_data_empty_state(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """A venue with a competition but no played games gets the pre-tipoff copy."""
+    comp = SummerLeagueCompetition(
+        year=2026, league_id="15", venue_slug="las_vegas", display_name="2026 LV"
+    )
+    db_session.add(comp)
+    await db_session.commit()
+
+    resp = await app_client.get(
+        "/stats/summer-league/leaders?mode=per_game&year=2026&venue=las_vegas"
+    )
+    assert resp.status_code == 200
+    assert "No game data yet" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_advanced_uncalibrated_competition_is_honored(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """An exactly-requested pool that isn't adv-eligible yet is honored.
+
+    It shows its own rows (box-derived rates, GmSc default sort) instead of
+    redirecting to another competition.
+    """
+    cc = await _comp(db_session, year=2026, venue="california_classic", league_id="13")
+    slc = await _comp(db_session, year=2026, venue="salt_lake_city", league_id="16")
+
+    # Calibrated pool: normal advanced board.
+    await _season(db_session, comp=cc, first="Cali", last="Classic", per=22.0, ws=1.5)
+    # Mid-event pool: below the display floor, composites unset, GmSc live.
+    await _season(
+        db_session,
+        comp=slc,
+        first="Salt",
+        last="Sprinter",
+        adv_eligible=False,
+        minutes=30.0,
+        gp=1,
+        gmsc=14.5,
+        ts_pct=61.0,
+    )
+    await _season(
+        db_session,
+        comp=slc,
+        first="Salt",
+        last="Stroller",
+        adv_eligible=False,
+        minutes=25.0,
+        gp=1,
+        gmsc=6.0,
+    )
+    await db_session.commit()
+
+    adv = await get_leaders(
+        db_session, mode="advanced", year=2026, venue="salt_lake_city"
+    )
+    # The requested competition is honored, not redirected to California Classic.
+    assert adv.year == 2026 and adv.venue == "salt_lake_city"
+    assert adv.uncalibrated is True
+    assert adv.sort == "gmsc"
+    assert [r.name for r in adv.rows] == ["Salt Sprinter", "Salt Stroller"]
+    assert adv.rows[0].values["gmsc"] == 14.5
+    assert adv.rows[0].values["ts_pct"] == 61.0
+    assert adv.rows[0].values["per"] is None  # composite gated until calibration
+    # The venue picker includes the uncalibrated selection so controls read right.
+    assert ("salt_lake_city", "Salt Lake City") in adv.venues
+
+    # The calibrated pool is untouched by the new path.
+    cal = await get_leaders(
+        db_session, mode="advanced", year=2026, venue="california_classic"
+    )
+    assert cal.uncalibrated is False
+    assert cal.sort == "per"
+    assert [r.name for r in cal.rows] == ["Cali Classic"]
+
+    # Route render includes the calibration note.
+    resp = await app_client.get(
+        "/stats/summer-league/leaders?mode=advanced&year=2026&venue=salt_lake_city"
+    )
+    assert resp.status_code == 200
+    assert "calibrated yet" in resp.text
+    assert "Salt Sprinter" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_venue_mini_leaders_relax_to_one_game(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Venue-page mini leaderboards fall back to 1+ GP mid-event.
+
+    Instead of rendering "No qualified players".
+    """
+    from app.services.summer_league_season_service import get_venue_leaders
+
+    await _seed_young_competition(db_session)
+    leaders = await get_venue_leaders(db_session, 2026, "salt_lake_city")
+    names = [r.name for r in leaders.pts]
+    assert "Day One" in names and "Short Stint" in names
