@@ -1,123 +1,145 @@
 ---
 name: inspect-mobile
-description: Audit and debug mobile usability — sweep pages at a phone viewport, visually review screenful-by-screenful screenshots, detect unreachable/clipped content and broken horizontal scrolling, then trace any offender to its root cause. Use when the user reports mobile layout issues, before shipping mobile-facing UI, or as the mobile leg of visual verification.
-allowed-tools: Bash, Read, Edit
+description: Verify DraftGuru's mobile experience the way a human user would — drive the core user journeys with Playwright (tap, swipe, search, drill down), look at what the user actually sees, and judge it against expectations stated first. DOM probes and the audit script are tripwires, never the verdict. Use when the user reports mobile issues, before shipping mobile-facing UI, or as the mobile leg of verification.
+allowed-tools: Bash, Read, Edit, Agent
 ---
 
-# Inspect Mobile Usability
+# Inspect Mobile — verify the experience, not the code
 
-`scripts/mobile_audit.py` renders pages in a real headless Chromium with full
-mobile emulation (390x844, DPR 2, touch, iPhone UA) against a live dev server.
-It produces two complementary things, and **both are required**:
+## Why this skill exists
 
-1. **Viewport segment screenshots** (`<route>.seg01.png` …) — exactly what a
-   phone user sees, one screenful per swipe. These are legible when Read;
-   the single full-page PNG of a long page is not (it downscales to an
-   unreadable ribbon — use it only as a map).
-2. **DOM-measurement report** (`report.md`) — unreachable content, dead
-   scrollers, overflow, tap targets, tiny text, console errors.
+There is a recurring wedge between "the code ran, every test and check passed"
+and "I opened the app and it works the way I expect." Mobile is the surface
+most prone to it. This repo has shipped JS that passed unit, integration, and
+QA checks while doing nothing at runtime; and the bug that motivated this
+skill — shot-chart player chips unreachable past the screen edge — was
+invisible to a clean page-load sweep, because it only exists after a tap.
 
-The DOM checks find what screenshots can't show (content hidden past the
-viewport edge); the screenshots find what DOM checks can't see (overlap,
-squished/garbled layout, missing paint, inert JS that leaves a widget stuck
-in its empty state). This codebase has shipped JS that passed every unit,
-integration, and QA check while doing nothing at runtime — only looking at
-rendered pixels caught it. Never report a page as "clean" from the report
-alone.
+So the rule: **the verdict comes from using the app like a person and looking
+at what a person would see.** Scripts, DOM probes, exit codes — everything
+else in this skill is instrumentation that narrows where to look. Instruments
+never close an issue; a driven, rendered, *looked-at* page does.
 
-## TL;DR
+## The behavior contract — what must work, as a user experiences it
 
-```bash
-# 1. sweep (server must be running; pick a free port — 8000 is often taken)
-make mobile-audit BASE=http://localhost:8003
-# or directly, with specific routes / a player page / a game page:
-conda run -n draftguru python scripts/mobile_audit.py sweep \
-  --base http://localhost:8003 --routes / /players/<slug> /stats/summer-league/<yr>/games/<id>
+These are the core behaviors to verify across the major surfaces (home,
+consensus, player page, SL hub / explorer / leaders / games / game detail,
+draft recap). Each one is verified by **doing it** in a mobile browser,
+**screenshotting** what the user sees at each step, and **judging** against
+expectations written down before looking.
 
-# 2. VISUAL PASS (mandatory): Read the seg*.png files for every route you are
-#    auditing and look at them like a user — is anything cut off, overlapping,
-#    empty when it should have data, or obviously broken? The report flags
-#    where to look ("Visual pass: READ ...seg01–segNN"), and says when the
-#    page was longer than the segment budget (raise --segments for the rest).
+1. **Arrive and orient.** The page loads readable at phone width — headline,
+   nav, first panel. The hamburger menu opens and its links navigate.
+2. **Find things.** Navbar search → suggestion → player page. Every major
+   surface is reachable from the nav.
+3. **Read everything the page offers.** Every panel shows its real data. Wide
+   tables swipe to their **last** column. Nothing is clipped with no way to
+   reach it.
+4. **Every control changes what's on screen.** Rate-mode toggles, filters,
+   tabs, expanders, scope chips: a tap visibly changes the page. A tap that
+   does nothing is a bug even when nothing throws — silent inertness is the
+   canonical wedge failure.
+5. **Drill down and come back.** List → detail journeys end-to-end:
+   consensus board → player; games index → game → shot chart → team scope →
+   player scope; explorer → filter → drilldown → back.
+6. **Survive the edges.** 320px width; sparse-data entities (a player with no
+   SL games); long names; empty states. The happy-path exemplar passing says
+   nothing about the branch a real user hits — pick at least one ugly case.
 
-# 3. read tests/visual/screenshots/mobile-audit/report.md for the DOM findings
+The contract is the durable artifact. The Playwright drivers you write to
+exercise it are disposable — write them fresh per session against today's
+page rather than maintaining a brittle journey framework that encodes
+yesterday's DOM.
 
-# 4. trace any offender to find where its width goes
-conda run -n draftguru python scripts/mobile_audit.py trace \
-  --base http://localhost:8003 --route /players/<slug> --selector '#summerLeagueSection'
+## Method
+
+1. **Instrument sweep first** — `make mobile-audit BASE=http://localhost:8003`
+   (dev server required; 8000 is usually taken). This is the tripwire:
+   geometry defects, console errors, screenshots. Exit code counts blocking
+   findings, but **exit 0 closes nothing** — it only means the tripwires
+   didn't fire on initial page states.
+2. **Drive the journeys.** For each contract behavior touching the changed
+   surface, write a short Playwright driver (see recipe below) that does what
+   a user does — tap, type, swipe — and screenshots after each step.
+3. **State expectations, then look.** Before reading any screenshot, write
+   down what should be visible in it ("per-100 columns now show possessions-
+   scaled values", "all 11 player chips reachable"). Then read the screenshot
+   and check each claim. "Looks fine" without prior claims is how empty
+   panels and wrong data sail through.
+4. **Fresh-eyes verdict.** You wrote the fix; you don't grade it. Spawn a
+   read-only subagent (general-purpose) with the screenshot paths and the
+   claim list, instructed to try to **refute** each claim and to flag anything
+   a first-time user would find broken, unreadable, or unreachable. Ship only
+   what survives.
+5. **Trace to the root.** For any offender:
+   `python scripts/mobile_audit.py trace --route <r> --selector '<sel>'`
+   prints the ancestor box chain (width/padding/margin/max-width/overflow) —
+   width loss is usually visible in one line of it.
+6. **Re-verify by re-driving the journey** at 390px and 320px — not by the
+   numbers going green. Layout fixes are often global (container sizing), so
+   re-sweep all routes for regressions too.
+
+## Playwright is the tool of record
+
+Use Playwright's Python sync API (already in the conda env, used by
+`tests/visual/` and `scripts/mobile_audit.py`). Standard mobile context:
+
+```python
+ctx = browser.new_context(
+    viewport={"width": 390, "height": 844},  # 320 for smallest phones
+    device_scale_factor=2, is_mobile=True, has_touch=True,
+    user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ...",
+)
 ```
 
-Exit code = number of routes with blocking findings (errors/non-200s,
-console/page errors, unreachable content, page overflow, dead scrollers —
-not tap targets or tiny text), so the sweep can gate CI
-or a verification loop (visual-only defects still need your eyes — the exit
-code only covers the DOM checks).
+Rules that keep the driving honest:
 
-## What the DOM sweep checks (and why these specific checks)
+- **Interact through hit-testing, never through JS.** `locator.tap()` /
+  `locator.click()` go through the same target-finding a finger does and fail
+  on covered or off-screen elements. `page.evaluate()` state mutation (setting
+  `scrollLeft`, calling handlers directly) bypasses hit-testing and will pass
+  bugs a finger hits — invisible overlays, missing `pointer-events`, elements
+  past the viewport edge. Use `evaluate` to *measure*, never to *act*.
+- **Screenshot what a user sees**: viewport-sized shots (`full_page=False`)
+  after each action; element shots for a specific panel. Full-page PNGs of
+  long pages are unreadably tall — use them only as maps.
+- **Wait like a user waits.** `networkidle` plus a beat is the floor; charts
+  and lazy panels can paint later. If a screenshot shows a skeleton/spinner,
+  wait and re-shoot before judging.
+- **iOS-flavored suspicion → real WebKit.** `p.webkit.launch()` runs actual
+  WebKit; Chromium-with-iPhone-UA misses Safari-specific breakage (viewport
+  units, sticky hover, safe-area insets).
+- Launch your own headless browser (as the audit script does) — the shared
+  Playwright MCP browser profile is often locked by another session.
+- `conda run` does not forward heredoc stdin — write drivers to a file (the
+  session scratchpad) and run the file.
 
-- **Unreachable content** — elements extending past the right viewport edge
-  with **no `overflow-x: auto` ancestor**. This is the highest-signal check:
-  document-level `scrollWidth` is usually clean because *something* clips, yet
-  a `nowrap` flex row (chip selectors, button rows) still hides its tail
-  beyond the edge with no way to reach it. Page-level overflow checks alone
-  miss every one of these.
-- **Dead scrollers** — every `overflow-x` container wider than its window is
-  actually scrolled to the end in-page (`scrollLeft` probe), proving the user
-  can reach the last column, not just that the CSS says `auto`.
-- **Console errors / page errors** — blocking. Broken client-side JS can
-  leave a widget inert (stuck in its empty state) while every layout metric
-  passes; this is the programmatic side of the inert-JS lesson above.
-- **Page-level horizontal overflow**, **small tap targets** (<40px in either
-  dimension), and **tiny text** (<11px) — triage-level context.
-  Tap-target/tiny-text findings on data tables are often the retro-mono
-  aesthetic, not bugs; use judgment before "fixing" them.
+## Instruments reference
 
-## Interaction states need driving, not just loading
+- `make mobile-audit BASE=... [ROUTES="/a /b"] [WIDTH=320]` → sweep. Blocking
+  findings: unreachable content (pokes past the viewport edge with no
+  scrollable ancestor — the highest-signal check), dead scrollers, page
+  overflow, console/page errors, non-200s. Triage-level: tap targets <40px in
+  either dimension, text <11px (on data tables these are often the retro-mono
+  aesthetic — judge before "fixing"). Writes `report.md`, `report.json`,
+  full-page PNGs, and viewport segments (`--segments`, default 6; the report
+  says when a page needed more — read them for every route you're auditing).
+- `python scripts/mobile_audit.py trace --route <r> --selector '<sel>'` →
+  ancestor box chain for root-causing width loss.
 
-Some mobile bugs only exist in a state you have to click into — e.g. the SL
-game shot chart's player-chip row only renders after selecting a team. The
-sweep captures the initial state only. For stateful UI, write a short
-throwaway Playwright script (mobile context like `_new_page` in
-`scripts/mobile_audit.py`): navigate → click into the state → screenshot the
-element → run the same geometry probes. Then look at the screenshot.
+## Repo-specific fix patterns
 
-## Debugging workflow
-
-1. **Sweep, then do the visual pass on the segments** (step 2 above) before
-   anything else. Note visual defects even when the DOM report is clean.
-2. **Read `report.md`** for offenders the screenshots can't show; offenders
-   are named by selector.
-3. **Trace the box chain** for anything too narrow or overflowing:
-   `trace --selector '<sel>'` prints each ancestor's width, padding, margin,
-   max/min-width, and overflow. Width loss is almost always visible in one
-   line of this output (e.g. a `width: 80%` container plus nested padding).
-4. **Fix at the root.** Known patterns in this codebase:
-   - Sections starved of width → check `.container` sizing in the mobile
-     media query in `app/static/main.css` before touching per-page CSS.
-   - Chip/button rows clipped → the row needs `overflow-x: auto` and its
-     children `flex: 0 0 auto` (see `.slg-mode-selector` in
-     `app/static/css/summer-league-games.css`).
-   - A flex child poking out → it has `flex-shrink: 0` or an intrinsic
-     min-content width; give it `min-width: 0` + ellipsis, or let it wrap.
-   - Fixed-size images overflowing tiny phones → `max-width: 100%`.
-5. **Re-sweep after fixing, and re-do the visual pass** — confirm the fix by
-   *looking at* the fixed section rendered at mobile width, not just by the
-   DOM numbers going green. Diff `report.md` against the previous run: layout
-   fixes are often global (container sizing), so verify *all* routes, not
-   just the one you fixed. Also re-check at `--width 320` (smallest phones);
-   a layout can be clean at 390 and broken at 320.
-6. Wide tables are *supposed* to scroll on mobile (repo convention:
-   `.sl-table-wrap` etc.). Don't flag a table for being wider than the
-   viewport — flag it only if its scroller can't reach the end or has no
-   scroller at all.
-
-## Gotchas
-
-- `conda run` does not forward heredoc stdin — write throwaway Playwright
-  scripts to a file and run the file.
+- Sections starved of width → check `.container` sizing in the ≤768px media
+  query in `app/static/main.css` before touching per-page CSS.
+- Chip/button rows clipped → the row needs `overflow-x: auto` and children
+  `flex: 0 0 auto` (see `.slg-mode-selector` in
+  `app/static/css/summer-league-games.css`).
+- A flex child poking out → `flex-shrink: 0` or intrinsic min-content width;
+  give it `min-width: 0` + ellipsis, or let it wrap.
+- Fixed-size images overflowing tiny phones → `max-width: 100%`.
+- Wide stat tables are *supposed* to scroll (`.sl-table-wrap` convention) —
+  flag only a scroller that can't reach its end, or content with no scroller.
+- Decorative pixel-corner pseudo-elements add ~4px to `scrollWidth`; ignore
+  sub-5px overflow on cards.
 - Element screenshots of tall sections can include the fixed navbar band
-  mid-image (the page scrolls during capture); it's an artifact, not a bug.
-- The shared Playwright MCP browser profile may be locked by another session;
-  this script launches its own headless Chromium, so it never contends.
-- Decorative pixel-corner pseudo-elements (`::after` with negative offsets)
-  add ~4px to a container's `scrollWidth`; ignore sub-5px overflow on cards.
+  mid-image (capture scrolls the page); artifact, not a bug.
