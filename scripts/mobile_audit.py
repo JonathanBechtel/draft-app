@@ -9,7 +9,9 @@ defects that page-level screenshots alone tend to miss:
   document-level overflow while a nowrap flex row still clips its children.
 - **Document-level horizontal overflow** (page scrolls sideways).
 - **Scroll containers**: every ``overflow-x`` wrapper wider than its viewport,
-  with proof that ``scrollLeft`` can actually reach the end.
+  with proof that ``scrollLeft`` can actually reach the end AND that a finger
+  would land on it (``elementFromPoint`` hit-test — catches invisible
+  overlays that JS scrolling sails through).
 - **Small tap targets** (interactive elements under 40 CSS px in either
   dimension).
 - **Tiny text** (computed font-size below 11px).
@@ -84,7 +86,11 @@ CHECK_JS = """
     }
   }
 
-  // Scroll containers: verify each can actually scroll to its end.
+  // Scroll containers: verify each can actually scroll to its end, AND that
+  // a finger would land on it. scrollLeft assignment bypasses hit-testing,
+  // so it happily "scrolls" a table buried under an invisible overlay (e.g.
+  // a scanlines div missing pointer-events: none) that a real touch cannot
+  // get past. elementFromPoint at the scroller's center is the honest check.
   const scrollers = [];
   for (const el of document.querySelectorAll('body *')) {
     const s = getComputedStyle(el);
@@ -94,11 +100,23 @@ CHECK_JS = """
     el.scrollLeft = 1e6;
     const reached = el.scrollLeft;
     el.scrollLeft = before;
+
+    el.scrollIntoView({block: 'center', behavior: 'instant'});
+    const rr = el.getBoundingClientRect();
+    const cx = Math.min(Math.max(rr.left + rr.width / 2, 1), window.innerWidth - 1);
+    const cy = Math.min(Math.max(rr.top + rr.height / 2, 1), window.innerHeight - 1);
+    const hit = document.elementFromPoint(cx, cy);
+    // Covered = the topmost element at the center is unrelated to the
+    // scroller (a descendant is the normal case; an ancestor is benign).
+    const covered = !!hit && hit !== el && !el.contains(hit) && !hit.contains(el);
+
     scrollers.push({
       sel: label(el), clientW: el.clientWidth, scrollW: el.scrollWidth,
       canReachEnd: reached >= el.scrollWidth - el.clientWidth - 1,
+      covered, coveredBy: covered ? label(hit) : null,
     });
   }
+  window.scrollTo(0, 0);
 
   // Interactive elements under 40 CSS px in either dimension (a wide-but-
   // short 120x32 chip is still a hard target; judge by the smaller side).
@@ -292,7 +310,9 @@ def _is_blocking(entry: dict[str, Any]) -> bool:
     checks = entry.get("checks") or {}
     if checks.get("pageOverflowPx", 0) > 2 or checks.get("unreachable"):
         return True
-    return any(not s["canReachEnd"] for s in checks.get("scrollers", []))
+    return any(
+        not s["canReachEnd"] or s.get("covered") for s in checks.get("scrollers", [])
+    )
 
 
 def _render_report(base: str, width: int, results: list[dict[str, Any]]) -> str:
@@ -332,6 +352,14 @@ def _render_report(base: str, width: int, results: list[dict[str, Any]]) -> str:
             lines.append("- **Scroll containers that cannot reach their end:**")
             lines.extend(
                 f"  - `{s['sel']}` {s['clientW']} of {s['scrollW']}px" for s in dead
+            )
+        buried = [s for s in c.get("scrollers", []) if s.get("covered")]
+        if buried:
+            lines.append(
+                "- **Scroll containers a finger cannot reach** (covered by another element):"
+            )
+            lines.extend(
+                f"  - `{s['sel']}` covered by `{s['coveredBy']}`" for s in buried
             )
         if c.get("smallTapTargets"):
             lines.append("- Small tap targets (<40x40):")

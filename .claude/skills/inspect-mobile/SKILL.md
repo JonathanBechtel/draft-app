@@ -66,11 +66,12 @@ yesterday's DOM.
    scaled values", "all 11 player chips reachable"). Then read the screenshot
    and check each claim. "Looks fine" without prior claims is how empty
    panels and wrong data sail through.
-4. **Fresh-eyes verdict.** You wrote the fix; you don't grade it. Spawn a
-   read-only subagent (general-purpose) with the screenshot paths and the
-   claim list, instructed to try to **refute** each claim and to flag anything
-   a first-time user would find broken, unreadable, or unreachable. Ship only
-   what survives.
+4. **Fresh-eyes verdict.** You wrote the fix; you don't grade it. Spawn the
+   **`mobile-qa`** agent (defined in `.claude/agents/mobile-qa.md`) with the
+   screenshot paths and the numbered claim list; it tries to **refute** each
+   claim and sweeps the frames for anything a first-time user would find
+   broken, unreadable, empty, or inert, returning a SHIP/FIX verdict per
+   claim. Ship only what survives; re-run it after each fix.
 5. **Trace to the root.** For any offender:
    `python scripts/mobile_audit.py trace --route <r> --selector '<sel>'`
    prints the ancestor box chain (width/padding/margin/max-width/overflow) —
