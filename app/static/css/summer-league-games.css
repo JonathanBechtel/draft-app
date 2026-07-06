@@ -158,6 +158,16 @@
   color: var(--color-slate-500);
 }
 
+/* Advisory line under the result meta: adaptive-gate / uncalibrated-pool notes. */
+.slg-gatenote {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-slate-500);
+  border-left: 3px solid var(--color-amber-400, #fbbf24);
+  padding-left: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+
 /* ------------------------------------------------------------------ Board */
 .slg-board {
   /* Contain the absolutely-positioned .scanlines overlay (inset:0) to this card.

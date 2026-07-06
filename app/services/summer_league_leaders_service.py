@@ -29,6 +29,7 @@ from app.schemas.summer_league import (
 from app.services.summer_league_metrics_service import (
     ADV_LEADER_COLUMNS,
     VENUE_LABELS,
+    CompetitionLeaders,
     get_blended_leaders,
     get_competition_leaders,
 )
@@ -36,6 +37,17 @@ from app.services.summer_league_metrics_service import (
 DEFAULT_MIN_GAMES = 2
 DEFAULT_MIN_MINUTES = 60
 PAGE_SIZE = 25
+
+# When the caller doesn't pin explicit thresholds, qualification adapts to the
+# data: try the standard gate first, then relax rung by rung until the board
+# populates. Keeps early-competition boards (day 1-2 of a venue) from rendering
+# empty while leaving mature scopes on the standard gate. Users can always
+# tighten via the Min GP / Min MIN filters.
+GATE_LADDER: tuple[tuple[int, int], ...] = (
+    (DEFAULT_MIN_GAMES, DEFAULT_MIN_MINUTES),
+    (1, 20),
+    (1, 0),
+)
 
 _MINUTES_PER_GAME = MINUTES_PER_GAME
 
@@ -201,6 +213,14 @@ class LeadersResult:
     venue: Optional[str] = None
     venue_label: Optional[str] = None
     venues: list[tuple[str, str]] = field(default_factory=list)
+    # Gate provenance: ``auto_gates`` means the caller didn't pin thresholds
+    # (links/forms should stay adaptive); ``gates_relaxed`` means the standard
+    # gate matched nobody and a lower rung populated the board.
+    auto_gates: bool = False
+    gates_relaxed: bool = False
+    # Advanced mode only: the resolved pool hasn't earned adv-eligibility yet,
+    # so only box-derived rate columns carry values.
+    uncalibrated: bool = False
 
 
 def _safe_div(num: float, den: float) -> Optional[float]:
@@ -251,8 +271,8 @@ async def get_leaders(
     venue: Optional[str] = None,
     sort: Optional[str] = None,
     direction: str = "desc",
-    min_games: int = DEFAULT_MIN_GAMES,
-    min_minutes: int = DEFAULT_MIN_MINUTES,
+    min_games: Optional[int] = None,
+    min_minutes: Optional[int] = None,
     page: int = 1,
     page_size: int = PAGE_SIZE,
 ) -> LeadersResult:
@@ -266,8 +286,10 @@ async def get_leaders(
             competition (counting modes aggregate across venues).
         sort: Column key to rank by (defaults to the mode's headline stat).
         direction: ``"desc"`` (default) or ``"asc"``.
-        min_games: Minimum games played to qualify.
-        min_minutes: Minimum total minutes to qualify.
+        min_games: Minimum games played to qualify; ``None`` (with
+            ``min_minutes`` also ``None``) applies :data:`GATE_LADDER`
+            adaptively so a scope with any data never renders empty.
+        min_minutes: Minimum total minutes to qualify; ``None`` as above.
         page: 1-based page number.
         page_size: Rows per page.
 
@@ -277,18 +299,35 @@ async def get_leaders(
     mode = mode if mode in MODES else "per_game"
     page = max(1, page)
     direction = "asc" if direction == "asc" else "desc"
+
+    auto_gates = min_games is None and min_minutes is None
+    gates: tuple[tuple[int, int], ...]
+    if auto_gates:
+        gates = GATE_LADDER
+    else:
+        gates = (
+            (
+                DEFAULT_MIN_GAMES if min_games is None else min_games,
+                DEFAULT_MIN_MINUTES if min_minutes is None else min_minutes,
+            ),
+        )
+
     if mode == "advanced":
-        return await _advanced_leaders(
+        result = await _advanced_leaders(
             db,
             year=year,
             venue=venue,
             sort=sort,
             direction=direction,
-            min_games=min_games,
-            min_minutes=min_minutes,
+            gates=gates,
             page=page,
             page_size=page_size,
         )
+        result.auto_gates = auto_gates
+        result.gates_relaxed = bool(result.rows) and (
+            (result.min_games, result.min_minutes) != gates[0]
+        )
+        return result
 
     columns_keys = MODE_COLUMNS[mode]
     if sort not in columns_keys:
@@ -299,9 +338,18 @@ async def get_leaders(
     venues = await get_leaders_venues(db)
     venue = venue if venue in {v[0] for v in venues} else None
 
-    rows = await _aggregate(
-        db, year=year, venue=venue, min_games=min_games, min_minutes=min_minutes
-    )
+    rows: list[Any] = []
+    applied_games, applied_minutes = gates[0]
+    for applied_games, applied_minutes in gates:
+        rows = await _aggregate(
+            db,
+            year=year,
+            venue=venue,
+            min_games=applied_games,
+            min_minutes=applied_minutes,
+        )
+        if rows:
+            break
     computed = [_compute_row(r, mode) for r in rows]
 
     reverse = direction == "desc"
@@ -330,8 +378,8 @@ async def get_leaders(
         year=year,
         sort=sort,
         direction=direction,
-        min_games=min_games,
-        min_minutes=min_minutes,
+        min_games=applied_games,
+        min_minutes=applied_minutes,
         years=await get_leaders_years(db),
         columns=columns,
         rows=page_rows,
@@ -342,6 +390,8 @@ async def get_leaders(
         venue=venue,
         venue_label=VENUE_LABELS.get(venue) if venue else None,
         venues=venues,
+        auto_gates=auto_gates,
+        gates_relaxed=bool(rows) and (applied_games, applied_minutes) != gates[0],
     )
 
 
@@ -352,8 +402,7 @@ async def _advanced_leaders(
     venue: Optional[str],
     sort: Optional[str],
     direction: str,
-    min_games: int,
-    min_minutes: int,
+    gates: tuple[tuple[int, int], ...],
     page: int,
     page_size: int,
 ) -> LeadersResult:
@@ -363,25 +412,36 @@ async def _advanced_leaders(
     service. With both a season and a venue chosen this ranks within that single
     (pool-recalibrated) competition; leaving either open blends a player's
     adv-eligible pools into one line — up to the all-time, all-venue career board.
+
+    ``gates`` is tried rung by rung until the board populates (a single rung
+    when the caller pinned explicit thresholds). A resolved pool that isn't
+    adv-eligible yet ranks by GmSc, since the calibrated composites are unset.
     """
-    if year is not None and venue is not None:
-        comp = await get_competition_leaders(
-            db,
-            year=year,
-            venue_slug=venue,
-            min_games=min_games,
-            min_minutes=min_minutes,
-        )
-    else:
-        comp = await get_blended_leaders(
-            db,
-            year=year,
-            venue_slug=venue,
-            min_games=min_games,
-            min_minutes=min_minutes,
-        )
+    comp: Optional[CompetitionLeaders] = None
+    min_games, min_minutes = gates[0]
+    for min_games, min_minutes in gates:
+        if year is not None and venue is not None:
+            comp = await get_competition_leaders(
+                db,
+                year=year,
+                venue_slug=venue,
+                min_games=min_games,
+                min_minutes=min_minutes,
+            )
+        else:
+            comp = await get_blended_leaders(
+                db,
+                year=year,
+                venue_slug=venue,
+                min_games=min_games,
+                min_minutes=min_minutes,
+            )
+        if comp.rows:
+            break
+    assert comp is not None  # gates always has at least one rung
     if sort not in _ADVANCED_COLUMNS:
-        sort = _ADVANCED_DEFAULT_SORT
+        # Uncalibrated pools carry no PER; GmSc is the box-derived headline.
+        sort = _ADVANCED_DEFAULT_SORT if comp.calibrated else "gmsc"
     reverse = direction == "desc"
 
     rows = [
@@ -415,6 +475,14 @@ async def _advanced_leaders(
         if v not in seen:
             seen.add(v)
             venues.append((v, VENUE_LABELS.get(v, v)))
+    # An uncalibrated resolved pool isn't in the adv-eligible pickers; include
+    # it so the current selection still reads correctly in the controls.
+    if comp.venue_slug and comp.venue_slug not in seen:
+        venues.append(
+            (comp.venue_slug, VENUE_LABELS.get(comp.venue_slug, comp.venue_slug))
+        )
+    if comp.year is not None and comp.year not in adv_years:
+        adv_years = sorted({comp.year, *adv_years}, reverse=True)
     return LeadersResult(
         mode="advanced",
         year=comp.year,
@@ -433,6 +501,7 @@ async def _advanced_leaders(
         venue=comp.venue_slug,
         venue_label=comp.venue_label,
         venues=venues,
+        uncalibrated=not comp.calibrated,
     )
 
 

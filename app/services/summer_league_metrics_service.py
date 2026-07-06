@@ -23,7 +23,7 @@ em-dashes — non-eligible pools still appear in the raw box-score table elsewhe
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -339,6 +339,11 @@ class CompetitionLeaders:
     request when it defaulted). ``competitions`` lists every adv-eligible
     ``(year, venue_slug)`` newest-first for the selector. Empty ``rows`` with a
     ``None`` competition means no adv-eligible pool exists at all.
+
+    ``calibrated`` is ``False`` when the rows come from a pool that has not yet
+    earned ``adv_eligible`` (e.g. a competition mid-event): the box-derived
+    rates (MIN, GmSc, TS%, eFG%, 3PAr, FTr) are populated but the
+    pool-calibrated composites are ``None``.
     """
 
     year: Optional[int]
@@ -346,6 +351,7 @@ class CompetitionLeaders:
     venue_label: Optional[str]
     competitions: list[tuple[int, str]]
     rows: list[CompetitionLeaderRow]
+    calibrated: bool = True
 
 
 def _leader_values(s: SummerLeaguePlayerSeason) -> dict[str, Optional[float]]:
@@ -439,12 +445,43 @@ async def get_competition_leaders(
     Resolves ``(year, venue_slug)`` to an adv-eligible competition (defaulting to
     the latest when unspecified or unavailable), then returns its players above
     the ``min_games`` / ``min_minutes`` thresholds. The caller sorts/paginates.
+
+    An exactly-requested ``(year, venue)`` that has materialized rows but is not
+    (yet) adv-eligible — a competition mid-event, typically — is honored rather
+    than silently redirected to another pool: its rows are returned with
+    ``calibrated=False`` and without the adv-eligibility / display-minutes
+    floors, so the box-derived rate columns still populate.
     """
     competitions = await list_adv_competitions(db)
     resolved = _resolve_competition(competitions, year, venue_slug)
+
+    calibrated = True
+    if (
+        year is not None
+        and venue_slug is not None
+        and resolved != (year, venue_slug)
+        and await _competition_has_rows(db, year, venue_slug)
+    ):
+        resolved = (year, venue_slug)
+        calibrated = False
+
     if resolved is None:
         return CompetitionLeaders(None, None, None, competitions, [])
     r_year, r_venue = resolved
+
+    conds: list[Any] = [
+        SummerLeaguePlayerSeason.year == r_year,  # type: ignore[arg-type]
+        SummerLeaguePlayerSeason.venue_slug == r_venue,  # type: ignore[arg-type]
+        SummerLeaguePlayerSeason.gp >= min_games,  # type: ignore[arg-type]
+        SummerLeaguePlayerSeason.minutes >= min_minutes,  # type: ignore[arg-type]
+    ]
+    if calibrated:
+        conds.extend(
+            (
+                SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
+                SummerLeaguePlayerSeason.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
+            )
+        )
 
     stmt = (
         select(
@@ -453,14 +490,7 @@ async def get_competition_leaders(
             PlayerMaster.display_name,
         )  # type: ignore[call-overload]
         .join(PlayerMaster, PlayerMaster.id == SummerLeaguePlayerSeason.player_id)
-        .where(
-            SummerLeaguePlayerSeason.year == r_year,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.venue_slug == r_venue,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
-            SummerLeaguePlayerSeason.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.gp >= min_games,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.minutes >= min_minutes,  # type: ignore[arg-type]
-        )
+        .where(*conds)
     )
     rows = [
         CompetitionLeaderRow(
@@ -477,7 +507,21 @@ async def get_competition_leaders(
         venue_label=VENUE_LABELS.get(r_venue, r_venue),
         competitions=competitions,
         rows=rows,
+        calibrated=calibrated,
     )
+
+
+async def _competition_has_rows(db: AsyncSession, year: int, venue_slug: str) -> bool:
+    """True when any materialized season row exists for ``(year, venue_slug)``."""
+    stmt = (
+        select(SummerLeaguePlayerSeason.id)  # type: ignore[call-overload]
+        .where(
+            SummerLeaguePlayerSeason.year == year,  # type: ignore[arg-type]
+            SummerLeaguePlayerSeason.venue_slug == venue_slug,  # type: ignore[arg-type]
+        )
+        .limit(1)
+    )
+    return (await db.execute(stmt)).first() is not None
 
 
 # --------------------------------------------------------------------------- #

@@ -238,6 +238,29 @@ def _rank_leaders(
     return [row for _, row in ranked[:limit]]
 
 
+async def _fetch_with_fallback(
+    db: AsyncSession,
+    *,
+    year: Optional[int],
+    min_games: int,
+    venue_slug: Optional[str] = None,
+) -> list[Any]:
+    """Fetch leader aggregates, relaxing to 1+ GP when the gate matches nobody.
+
+    Early in a competition (day 1-2 of a venue) no player has reached the
+    standard games gate yet; an empty display-only leaderboard reads as broken,
+    so show whoever has taken the floor instead.
+    """
+    rows = await _fetch_leader_aggregates(
+        db, year=year, venue_slug=venue_slug, min_games=min_games
+    )
+    if not rows and min_games > 1:
+        rows = await _fetch_leader_aggregates(
+            db, year=year, venue_slug=venue_slug, min_games=1
+        )
+    return rows
+
+
 async def get_season_leaders(
     db: AsyncSession,
     year: int,
@@ -246,7 +269,7 @@ async def get_season_leaders(
     min_games: int = DEFAULT_MIN_GAMES,
 ) -> SeasonLeaders:
     """Return per-game PTS/REB/AST leaders for one season."""
-    rows = await _fetch_leader_aggregates(db, year=year, min_games=min_games)
+    rows = await _fetch_with_fallback(db, year=year, min_games=min_games)
     return SeasonLeaders(
         pts=_rank_leaders(rows, "pts", per_game=True, limit=limit),
         reb=_rank_leaders(rows, "reb", per_game=True, limit=limit),
@@ -261,7 +284,7 @@ async def get_alltime_leaders(
     min_games: int = DEFAULT_ALLTIME_MIN_GAMES,
 ) -> SeasonLeaders:
     """Return career (all-season) PTS/REB/AST total leaders."""
-    rows = await _fetch_leader_aggregates(db, year=None, min_games=min_games)
+    rows = await _fetch_with_fallback(db, year=None, min_games=min_games)
     return SeasonLeaders(
         pts=_rank_leaders(rows, "pts", per_game=False, limit=limit),
         reb=_rank_leaders(rows, "reb", per_game=False, limit=limit),
@@ -278,7 +301,7 @@ async def get_venue_leaders(
     min_games: int = DEFAULT_MIN_GAMES,
 ) -> SeasonLeaders:
     """Return per-game PTS/REB/AST leaders scoped to one venue in one season."""
-    rows = await _fetch_leader_aggregates(
+    rows = await _fetch_with_fallback(
         db, year=year, venue_slug=venue_slug, min_games=min_games
     )
     return SeasonLeaders(
