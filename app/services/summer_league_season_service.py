@@ -288,9 +288,10 @@ async def get_alltime_leaders(
     min_games: int = DEFAULT_ALLTIME_MIN_GAMES,
 ) -> SeasonLeaders:
     """Return career (all-season) PTS/REB/AST total leaders."""
-    rows = await _fetch_with_fallback(
-        db, year=None, min_games=min_games, min_rows=limit
-    )
+    # The career board's 5-game floor is the point (totals reward longevity),
+    # so unlike the season/venue boards it does NOT backfill a thin top-5 with
+    # low-sample players — it only falls back when the floor matches nobody.
+    rows = await _fetch_with_fallback(db, year=None, min_games=min_games, min_rows=1)
     return SeasonLeaders(
         pts=_rank_leaders(rows, "pts", per_game=False, limit=limit),
         reb=_rank_leaders(rows, "reb", per_game=False, limit=limit),
