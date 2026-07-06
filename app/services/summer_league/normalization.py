@@ -42,6 +42,19 @@ from app.services.summer_league.nba_stats_client import (
 )
 
 
+# stats.nba.com occasionally corrupts boxscoretraditionalv2 minutes for a
+# single game (observed on SL game 1322600006: every starter's MIN came back
+# ~+97:00 — e.g. '129:53' for a 32:53 stint — with team MIN inflated to
+# '705:00' to match, while all other columns stayed correct).
+# boxscoreadvancedv2 carried the true minutes for the same game, so the merge
+# step falls back to the advanced box whenever the traditional value is
+# implausible. Ceilings sit far above any legitimate Summer League value
+# (players top out well under an hour even with overtimes; a team's five
+# positions under 300 total minutes).
+MAX_PLAUSIBLE_PLAYER_SECONDS = 70 * 60
+MAX_PLAUSIBLE_TEAM_MINUTES = 350
+
+
 @dataclass(frozen=True)
 class ParsedTeamGamelogRow:
     """Parsed source team gamelog row."""
@@ -1618,6 +1631,8 @@ def _parse_team_box_row(
         nba_stats_team_id=base.nba_stats_team_id,
         raw_team_name=base.raw_team_name,
         raw_team_abbreviation=base.raw_team_abbreviation,
+        # Kept as the fallback source when the traditional MIN is corrupt.
+        minutes=parse_minutes_to_int(row_map.get("MIN")),
         off_rating=_float_or_none(row_map.get("OFF_RATING")),
         def_rating=_float_or_none(row_map.get("DEF_RATING")),
         net_rating=_float_or_none(row_map.get("NET_RATING")),
@@ -1633,20 +1648,28 @@ def _merge_team_box_rows(
     traditional: ParsedTeamBoxRow,
     advanced: ParsedTeamBoxRow | None,
 ) -> ParsedTeamBoxRow:
-    if advanced is None:
-        return traditional
     values = traditional.__dict__.copy()
-    for field_name in (
-        "off_rating",
-        "def_rating",
-        "net_rating",
-        "ast_pct",
-        "reb_pct",
-        "efg_pct",
-        "ts_pct",
-        "pace",
-    ):
-        values[field_name] = getattr(advanced, field_name)
+    if advanced is not None:
+        for field_name in (
+            "off_rating",
+            "def_rating",
+            "net_rating",
+            "ast_pct",
+            "reb_pct",
+            "efg_pct",
+            "ts_pct",
+            "pace",
+        ):
+            values[field_name] = getattr(advanced, field_name)
+    # Corrupt-source guard: an implausible traditional MIN falls back to the
+    # advanced box's value, or to NULL when that is missing/equally corrupt.
+    if values["minutes"] is not None and values["minutes"] > MAX_PLAUSIBLE_TEAM_MINUTES:
+        adv_minutes = advanced.minutes if advanced is not None else None
+        values["minutes"] = (
+            adv_minutes
+            if adv_minutes is not None and adv_minutes <= MAX_PLAUSIBLE_TEAM_MINUTES
+            else None
+        )
     return ParsedTeamBoxRow(**values)
 
 
@@ -1737,6 +1760,8 @@ def _parse_player_box_row(
             nba_stats_person_id=base.nba_stats_person_id,
             raw_player_name=base.raw_player_name,
             nba_stats_team_id=base.nba_stats_team_id,
+            # Kept as the fallback source when the traditional MIN is corrupt.
+            minutes_seconds=parse_minutes_to_seconds(row_map.get("MIN")),
             off_rating=_float_or_none(row_map.get("OFF_RATING")),
             def_rating=_float_or_none(row_map.get("DEF_RATING")),
             net_rating=_float_or_none(row_map.get("NET_RATING")),
@@ -1789,6 +1814,18 @@ def _merge_player_box_rows(
             "pie",
         ):
             values[field_name] = getattr(advanced, field_name)
+    # Corrupt-source guard: an implausible traditional MIN falls back to the
+    # advanced box's value, or to NULL when that is missing/equally corrupt.
+    if (
+        values["minutes_seconds"] is not None
+        and values["minutes_seconds"] > MAX_PLAUSIBLE_PLAYER_SECONDS
+    ):
+        adv_seconds = advanced.minutes_seconds if advanced is not None else None
+        values["minutes_seconds"] = (
+            adv_seconds
+            if adv_seconds is not None and adv_seconds <= MAX_PLAUSIBLE_PLAYER_SECONDS
+            else None
+        )
     if scoring is not None:
         for field_name in (
             "pct_fga_2pt",
