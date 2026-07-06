@@ -68,6 +68,14 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      - name: Cache mypy incremental state
+        uses: actions/cache@v4
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-py312-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            mypy-${{ runner.os }}-py312-
+
       - name: Type check (mypy)
         run: mypy app --ignore-missing-imports
 
@@ -93,7 +101,10 @@ jobs:
         run: alembic upgrade heads
 
       - name: Run tests
-        run: pytest -q --ignore=tests/visual --cov=app --cov-report=xml --cov-report=term
+        # -n 4 fans tests across the runner's 4 vCPUs; each xdist worker is its
+        # own pytest session, so the integration fixtures give every worker an
+        # isolated schema (see tests/integration/conftest.py test_schema).
+        run: pytest -q --ignore=tests/visual -n 4 --cov=app --cov-report=xml --cov-report=term
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -164,6 +175,14 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      - name: Cache mypy incremental state
+        uses: actions/cache@v4
+        with:
+          path: .mypy_cache
+          key: mypy-${{ runner.os }}-py312-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            mypy-${{ runner.os }}-py312-
+
       - name: Type check (mypy)
         run: mypy app --ignore-missing-imports
 
@@ -195,7 +214,10 @@ jobs:
         run: alembic upgrade heads
 
       - name: Run tests
-        run: pytest -q --ignore=tests/visual --cov=app --cov-report=xml --cov-report=term
+        # -n 4 fans tests across the runner's 4 vCPUs; each xdist worker is its
+        # own pytest session, so the integration fixtures give every worker an
+        # isolated schema (see tests/integration/conftest.py test_schema).
+        run: pytest -q --ignore=tests/visual -n 4 --cov=app --cov-report=xml --cov-report=term
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

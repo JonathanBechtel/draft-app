@@ -157,7 +157,11 @@ async def async_engine(
     # the types and operators they provide are available.  The extension DDL
     # must be committed and the pool disposed before create_all runs so that
     # asyncpg opens a fresh connection with an up-to-date type codec cache.
+    # The advisory lock serializes this block across pytest-xdist workers —
+    # concurrent CREATE EXTENSION IF NOT EXISTS calls race on pg_extension's
+    # unique index and one worker would die on a duplicate-key error.
     async with engine.begin() as conn:
+        await conn.execute(text("SELECT pg_advisory_xact_lock(772026)"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     await engine.dispose()
