@@ -11,6 +11,9 @@
 {% macro n(v) %}{{ v if v is not none else '—' }}{% endmacro %}
 {% macro mins(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
 {% macro pct(v) %}{% if v is not none %}{{ '%.1f' % (v * 100) }}%{% else %}—{% endif %}{% endmacro %}
+{% macro adv_n(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
+{% macro adv_f2(v) %}{{ '%.2f' % v if v is not none else '—' }}{% endmacro %}
+{% macro adv_f3(v) %}{{ '%.3f' % v if v is not none else '—' }}{% endmacro %}
 
 {% block content %}
 <main class="container slg-page slg-logs">
@@ -75,6 +78,92 @@
   </section>
   {% endfor %}
 
+  {# Advanced metrics for this year — one row per adv-eligible competition,
+     the same full BBRef column set as the player-detail advanced table.
+     Wide by design; the tablewrap provides the horizontal scroll. #}
+  {% if sl_adv_seasons %}
+  <section class="slg-season">
+    <div class="slg-season__head">
+      <h2 class="slg-season__title">Advanced Metrics</h2>
+      <span class="slg-season__gp">{{ year }}</span>
+    </div>
+    <div class="stats-scoreboard slg-board">
+      <div class="scanlines"></div>
+      <div class="slg-tablewrap">
+        <table class="sl-stats-table slg-logs-table">
+          <thead>
+            <tr>
+              <th scope="col">Lg</th>
+              <th scope="col">GP</th>
+              <th scope="col">MIN</th>
+              <th scope="col" title="Player Efficiency Rating (pool mean 15.0)">PER</th>
+              <th scope="col" title="True Shooting %">TS%</th>
+              <th scope="col" title="3-point attempt rate (3PA per FGA)">3PAr</th>
+              <th scope="col" title="Free-throw rate (FTA per FGA)">FTr</th>
+              <th scope="col" title="Share of made field goals that were assisted (play-by-play era only)">AST'd%</th>
+              <th scope="col" title="Offensive rebound % of those available while on the floor">ORB%</th>
+              <th scope="col" title="Defensive rebound % of those available while on the floor">DRB%</th>
+              <th scope="col" title="Total rebound % of those available while on the floor">TRB%</th>
+              <th scope="col" title="Assist % — share of teammate field goals assisted while on the floor">AST%</th>
+              <th scope="col" title="Steal % — opponent possessions ended by a steal while on the floor">STL%</th>
+              <th scope="col" title="Block % — opponent 2-point attempts blocked while on the floor">BLK%</th>
+              <th scope="col" title="Turnover % — turnovers per 100 plays">TOV%</th>
+              <th scope="col" title="Usage %">USG%</th>
+              <th scope="col" title="Offensive Rating (pts/100 poss)">ORtg</th>
+              <th scope="col" title="Defensive Rating (pts allowed/100 poss)">DRtg</th>
+              <th scope="col" title="Offensive Box Plus/Minus (pool mean 0.0)">OBPM</th>
+              <th scope="col" title="Defensive Box Plus/Minus (pool mean 0.0)">DBPM</th>
+              <th scope="col" title="Box Plus/Minus (pool mean 0.0)">BPM</th>
+              <th scope="col" title="Offensive Win Shares accrued in this competition">OWS</th>
+              <th scope="col" title="Defensive Win Shares accrued in this competition">DWS</th>
+              <th scope="col" title="Win Shares accrued in this competition">WS</th>
+              <th scope="col" title="Win Shares per 40 minutes">WS/40</th>
+              <th scope="col" title="Win Shares projected to a full 82-game season at this rate">WS/82</th>
+              <th scope="col" title="Value Over Replacement Player accrued in this competition">VORP</th>
+              <th scope="col" title="VORP projected to a full 82-game season at this rate">VORP/82</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in sl_adv_seasons %}
+            <tr>
+              <th scope="row">{{ s.venue_abbr }}</th>
+              <td>{{ s.gp }}</td>
+              <td>{{ adv_n(s.minutes) }}</td>
+              <td>{{ adv_n(s.per) }}</td>
+              <td>{{ adv_n(s.ts_pct) }}</td>
+              <td>{{ adv_f3(s.fg3ar) }}</td>
+              <td>{{ adv_f3(s.ftr) }}</td>
+              <td>{{ adv_n(s.astd_pct) }}</td>
+              <td>{{ adv_n(s.orb_pct) }}</td>
+              <td>{{ adv_n(s.drb_pct) }}</td>
+              <td>{{ adv_n(s.trb_pct) }}</td>
+              <td>{{ adv_n(s.ast_pct) }}</td>
+              <td>{{ adv_n(s.stl_pct) }}</td>
+              <td>{{ adv_n(s.blk_pct) }}</td>
+              <td>{{ adv_n(s.tov_pct) }}</td>
+              <td>{{ adv_n(s.usg_pct) }}</td>
+              <td>{{ adv_n(s.ortg) }}</td>
+              <td>{{ adv_n(s.drtg) }}</td>
+              <td>{{ adv_n(s.obpm) }}</td>
+              <td>{{ adv_n(s.dbpm) }}</td>
+              <td>{{ adv_n(s.bpm) }}</td>
+              <td>{{ adv_n(s.ows) }}</td>
+              <td>{{ adv_n(s.dws) }}</td>
+              <td>{{ adv_n(s.ws) }}</td>
+              <td>{{ adv_f2(s.ws40) }}</td>
+              <td>{{ adv_n(s.ws82) }}</td>
+              <td>{{ adv_n(s.vorp) }}</td>
+              <td>{{ adv_n(s.vorp82) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="sl-career-meta sl-shotchart-note">Advanced metrics are recalibrated to the Summer League itself, separately per competition (PER to a 15.0 mean, BPM to 0.0). Shown only for competitions whose pool qualifies.</div>
+    </div>
+  </section>
+  {% endif %}
+
   {# Shot chart section #}
   {% if sl_shotchart %}
   <section class="slg-season sl-shotchart-section">
@@ -117,7 +206,7 @@
       {% endif %}
 
       {% if sl_shotchart.suppressed %}
-      <div class="sl-career-meta sl-shotchart-note">Small sample ({{ sl_shotchart.total_fga }} FGA) — zone table only; heat chart requires &ge;20 FGA.</div>
+      <div class="sl-career-meta sl-shotchart-note">Small sample ({{ sl_shotchart.total_fga }} FGA) — showing individual shots; the heat map requires &ge;20 FGA.</div>
       {% endif %}
 
       {# Shot-diet row #}

@@ -493,3 +493,59 @@ async def test_competition_resolver_honors_venue(db_session: AsyncSession) -> No
         )
         == slc.id
     )
+
+
+@pytest.mark.asyncio
+async def test_season_page_shows_advanced_metrics_for_eligible_year(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """The per-season page renders the full advanced table for an adv-eligible year.
+
+    The seeded season row gets composites + adv_eligible=True; the page must show
+    the Advanced Metrics section with the BBRef header set and stored values.
+    """
+    player, comp = await _seed_rich_player(db_session, year=2023)
+    row = (
+        await db_session.execute(
+            select(SummerLeaguePlayerSeason).where(
+                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    row.adv_eligible = True
+    row.minutes = 90.0
+    row.per = 21.4
+    row.ts_pct = 58.3
+    row.ftr = 0.417
+    row.tov_pct = 12.6
+    row.ows = 0.6
+    row.ws40 = 0.31
+    db_session.add(row)
+    await db_session.commit()
+
+    assert player.slug is not None
+    resp = await app_client.get(f"/players/{player.slug}/summer-league/2023")
+    assert resp.status_code == 200
+    html = resp.text
+    assert "Advanced Metrics" in html
+    for header in (">PER<", ">3PAr<", ">FTr<", ">AST'd%<", ">TOV%<", ">OWS<", ">WS/40<"):
+        assert header in html, f"missing header {header}"
+    assert "21.4" in html
+    assert "0.417" in html  # FTr as 3-decimal fraction
+    assert "0.31" in html  # WS/40 at 2 decimals
+
+
+@pytest.mark.asyncio
+async def test_season_page_omits_advanced_without_eligible_row(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """No adv-eligible season row for the year → no Advanced Metrics section."""
+    player, _ = await _seed_rich_player(db_session, year=2023)  # adv_eligible=False
+    await db_session.commit()
+
+    assert player.slug is not None
+    resp = await app_client.get(f"/players/{player.slug}/summer-league/2023")
+    assert resp.status_code == 200
+    assert "Advanced Metrics" not in resp.text
