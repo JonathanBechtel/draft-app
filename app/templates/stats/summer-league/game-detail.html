@@ -81,10 +81,18 @@
           <th scope="col">MIN</th><th scope="col">PTS</th>
           <th scope="col" title="Hollinger Game Score — single-number summary of this game's box-score production">GmSc</th>
           <th scope="col" title="True Shooting %">TS%</th><th scope="col" title="Effective Field Goal %">eFG%</th>
-          <th scope="col" title="Usage %">USG%</th>
+          <th scope="col" title="3-point attempt rate (3PA per FGA)">3PAr</th>
           <th scope="col" title="Free-throw rate (FTA per FGA)">FTr</th>
+          <th scope="col" title="Offensive rebound % of those available while on the floor">ORB%</th>
+          <th scope="col" title="Defensive rebound % of those available while on the floor">DRB%</th>
+          <th scope="col" title="Total rebound % of those available while on the floor">TRB%</th>
           <th scope="col" title="Assist % — share of teammate field goals assisted while on the floor">AST%</th>
+          <th scope="col" title="Steal % — opponent possessions ended by a steal while on the floor">STL%</th>
+          <th scope="col" title="Block % — opponent 2-point attempts blocked while on the floor">BLK%</th>
           <th scope="col" title="Turnover % — turnovers per 100 plays">TOV%</th>
+          <th scope="col" title="Usage %">USG%</th>
+          <th scope="col" title="Offensive Rating — points produced per 100 possessions (Dean Oliver)">ORtg</th>
+          <th scope="col" title="Defensive Rating — points allowed per 100 possessions (Dean Oliver)">DRtg</th>
           <th scope="col">+/−</th>
         </tr>
       </thead>
@@ -94,8 +102,12 @@
           {{ player_cell(line) }}
           <td>{{ mins(line.minutes) }}</td><td class="slg-strong">{{ n(line.pts) }}</td>
           <td>{{ n(line.gmsc) }}</td>
-          <td>{{ pct(line.ts_pct) }}</td><td>{{ pct(line.efg_pct) }}</td><td>{{ pct(line.usg_pct) }}</td>
-          <td>{{ f3(line.ftr) }}</td><td>{{ pct(line.ast_pct) }}</td><td>{{ pct(line.tov_pct) }}</td>
+          <td>{{ pct(line.ts_pct) }}</td><td>{{ pct(line.efg_pct) }}</td>
+          <td>{{ f3(line.fg3ar) }}</td><td>{{ f3(line.ftr) }}</td>
+          <td>{{ pct(line.orb_pct) }}</td><td>{{ pct(line.drb_pct) }}</td><td>{{ pct(line.trb_pct) }}</td>
+          <td>{{ pct(line.ast_pct) }}</td><td>{{ pct(line.stl_pct) }}</td><td>{{ pct(line.blk_pct) }}</td>
+          <td>{{ pct(line.tov_pct) }}</td><td>{{ pct(line.usg_pct) }}</td>
+          <td>{{ pct(line.ortg) }}</td><td>{{ pct(line.drtg) }}</td>
           <td>{{ n(line.plus_minus) }}</td>
         </tr>
         {% endif %}{% endfor %}
