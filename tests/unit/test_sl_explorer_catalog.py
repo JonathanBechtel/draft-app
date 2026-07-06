@@ -288,10 +288,12 @@ def test_explorer_column_two_arg_compat() -> None:
 
 # Columns the per_game builder intentionally cannot filter (not on game logs,
 # or not meaningful per single game): advanced composites/rates + GP.
+# Box-derived rates (3PAr, FTr, TOV%) filter fine on a single game log; the
+# rest need composites or team/PBP context that game logs don't carry.
 _PER_GAME_UNSUPPORTED = {
     "gp", "per", "ortg", "drtg", "net_rtg", "obpm", "dbpm", "bpm",
     "ws", "ows", "dws", "ws40", "ws82", "vorp", "vorp82",
-    "fg3ar", "ftr", "astd_pct", "usg_pct", "ast_pct", "tov_pct",
+    "astd_pct", "usg_pct", "ast_pct",
     "orb_pct", "drb_pct", "trb_pct", "stl_pct", "blk_pct",
 }
 

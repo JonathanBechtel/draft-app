@@ -1222,7 +1222,18 @@ def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
     if col == "ts_pct":
         denom = 2.0 * (pgl.fga + 0.44 * pgl.fta)
         return _op(100.0 * pgl.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
-    # Advanced composites not stored on game logs — silently skip.
+    # Box-derived rates work per game from the row's own line (thresholds on
+    # the same scale the other grains use: 0-1 fractions for attempt rates,
+    # 0-100 for TOV%).
+    if col == "fg3ar":
+        return _op(pgl.fg3a * 1.0 / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
+    if col == "ftr":
+        return _op(pgl.fta * 1.0 / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
+    if col == "tov_pct":
+        plays = pgl.fga + 0.44 * pgl.fta + pgl.tov
+        return _op(100.0 * pgl.tov / func.nullif(plays, 0))  # type: ignore[attr-defined]
+    # Advanced composites and team/PBP-context rates (USG%, AST%, AST'd%,
+    # rebound/steal/block %s) are not derivable per game log — silently skip.
     return None
 
 
