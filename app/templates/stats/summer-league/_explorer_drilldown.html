@@ -4,6 +4,7 @@
    Each row is one competition's season totals (exact within its pool — no
    "avg" marker needed since values are not pooled across competitions). #}
 {%- macro n1(v) -%}{{ '%.1f' % v if v is not none else '—' }}{%- endmacro -%}
+{%- macro n2(v) -%}{{ '%.2f' % v if v is not none else '—' }}{%- endmacro -%}
 {%- macro n3(v) -%}{{ '%.3f' % v if v is not none else '—' }}{%- endmacro -%}
 {% for row in result.rows %}
 <tr class="slg-drilldown-row" data-drilldown="{{ player_slug }}">
@@ -16,6 +17,8 @@
       {{ row.values.get(col.key) }}
     {%- elif col.fmt == 'f3' -%}
       {{ n3(row.values.get(col.key)) }}
+    {%- elif col.fmt == 'f2' -%}
+      {{ n2(row.values.get(col.key)) }}
     {%- else -%}
       {{ n1(row.values.get(col.key)) }}
     {%- endif -%}

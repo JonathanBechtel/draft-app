@@ -434,3 +434,17 @@ def test_recombinable_single_pool_matches_direct_formula() -> None:
     assert rollup_recombinable(rows, "fg_pct") == pytest.approx(fg_direct, abs=1e-6)
     assert rollup_recombinable(rows, "fg3_pct") == pytest.approx(fg3_direct, abs=1e-6)
     assert rollup_recombinable(rows, "ft_pct") == pytest.approx(ft_direct, abs=1e-6)
+
+
+def test_recombinable_astd_pct_pools_pbp_counts() -> None:
+    """AST'd% = 100 · Σast_fgm / Σ(ast_fgm + unast_fgm); None with no PBP counts."""
+    from types import SimpleNamespace
+
+    rows = [
+        SimpleNamespace(ast_fgm=6, unast_fgm=4),
+        SimpleNamespace(ast_fgm=2, unast_fgm=8),
+    ]
+    assert rollup_recombinable(rows, "astd_pct") == pytest.approx(40.0)
+    # Pre-PBP rows carry None counts → no denominator → None, not 0.
+    no_pbp = [SimpleNamespace(ast_fgm=None, unast_fgm=None)]
+    assert rollup_recombinable(no_pbp, "astd_pct") is None

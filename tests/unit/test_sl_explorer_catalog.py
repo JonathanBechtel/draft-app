@@ -122,7 +122,7 @@ def test_recombinable_columns_classified_correctly(key: str) -> None:
     assert col.bucket == "recombinable", f"{key!r}: expected recombinable, got {col.bucket!r}"
 
 
-@pytest.mark.parametrize("key", ["ws", "ows", "dws", "vorp", "gmsc", "ws82", "vorp82"])
+@pytest.mark.parametrize("key", ["ws", "ows", "dws", "vorp", "gmsc"])
 def test_additive_columns_classified_correctly(key: str) -> None:
     """Additive metrics must be classified as 'additive' in the catalog."""
     col = _CATALOG_BY_KEY[key]
@@ -137,6 +137,9 @@ def test_additive_columns_classified_correctly(key: str) -> None:
         "usg_pct", "ast_pct", "orb_pct", "drb_pct", "trb_pct",
         "stl_pct", "blk_pct", "tov_pct",
         "pace", "ws40",
+        # Per-season projections pool minute-weighted — summing would
+        # multi-count a multi-pool career.
+        "ws82", "vorp82",
     ],
 )
 def test_rate_composite_columns_classified_correctly(key: str) -> None:
@@ -199,8 +202,8 @@ def test_player_stat_columns_count() -> None:
 
 
 def test_player_advanced_columns_count() -> None:
-    """The advanced list is the 7 legacy columns plus the BBRef rate basket (5)."""
-    assert len(_PLAYER_ADVANCED_COLUMNS) == 12
+    """The full advanced suite: efficiency, rates, composites, shares, projections."""
+    assert len(_PLAYER_ADVANCED_COLUMNS) == 26
 
 
 def test_player_stat_columns_preserves_display_order() -> None:
@@ -220,8 +223,11 @@ def test_player_stat_columns_preserves_display_order() -> None:
 def test_player_advanced_columns_preserves_display_order() -> None:
     """Advanced order: efficiency + rate basket first (BBRef-style), composites after."""
     expected_keys = [
-        "ts_pct", "fg3ar", "ftr", "usg_pct", "ast_pct", "tov_pct",
-        "per", "ortg", "drtg", "bpm", "ws", "vorp",
+        "ts_pct", "fg3ar", "ftr", "astd_pct",
+        "orb_pct", "drb_pct", "trb_pct", "ast_pct", "stl_pct", "blk_pct",
+        "tov_pct", "usg_pct",
+        "per", "ortg", "drtg", "net_rtg", "obpm", "dbpm", "bpm",
+        "ows", "dws", "ws", "ws40", "ws82", "vorp", "vorp82",
     ]
     actual_keys = [c.key for c in _PLAYER_ADVANCED_COLUMNS]
     assert actual_keys == expected_keys
@@ -283,8 +289,10 @@ def test_explorer_column_two_arg_compat() -> None:
 # Columns the per_game builder intentionally cannot filter (not on game logs,
 # or not meaningful per single game): advanced composites/rates + GP.
 _PER_GAME_UNSUPPORTED = {
-    "gp", "per", "ortg", "drtg", "bpm", "ws", "vorp",
-    "fg3ar", "ftr", "usg_pct", "ast_pct", "tov_pct",
+    "gp", "per", "ortg", "drtg", "net_rtg", "obpm", "dbpm", "bpm",
+    "ws", "ows", "dws", "ws40", "ws82", "vorp", "vorp82",
+    "fg3ar", "ftr", "astd_pct", "usg_pct", "ast_pct", "tov_pct",
+    "orb_pct", "drb_pct", "trb_pct", "stl_pct", "blk_pct",
 }
 
 
