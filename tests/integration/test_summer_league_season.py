@@ -197,8 +197,9 @@ async def test_season_hub_renders_with_venues_and_leaders(
     assert overview.total_games == 3  # 2 + 1
 
     leaders = await get_season_leaders(db_session, 2025, min_games=2)
-    # Only the 2-game player qualifies; the single-game player is filtered out.
-    assert [r.name for r in leaders.pts] == ["Hub Star"]
+    # A single standard qualifier is short of a full top-5 board, so the
+    # fallback backfills with the 1-game player (both average 20.0 PPG).
+    assert {r.name for r in leaders.pts} == {"Hub Star", "One Gamer"}
     assert leaders.pts[0].value == pytest.approx(20.0)
 
     resp = await app_client.get("/stats/summer-league/2025")
