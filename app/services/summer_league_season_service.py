@@ -244,17 +244,19 @@ async def _fetch_with_fallback(
     year: Optional[int],
     min_games: int,
     venue_slug: Optional[str] = None,
+    min_rows: int = DEFAULT_LEADER_LIMIT,
 ) -> list[Any]:
-    """Fetch leader aggregates, relaxing to 1+ GP when the gate matches nobody.
+    """Fetch leader aggregates, relaxing to 1+ GP when the boards run short.
 
-    Early in a competition (day 1-2 of a venue) no player has reached the
-    standard games gate yet; an empty display-only leaderboard reads as broken,
-    so show whoever has taken the floor instead.
+    "Short" means fewer than ``min_rows`` qualifiers (a full top-N list). Early
+    in a competition (day 1-2 of a venue) few players have reached the standard
+    games gate yet; an empty or near-empty display-only leaderboard reads as
+    broken, so show whoever has taken the floor instead.
     """
     rows = await _fetch_leader_aggregates(
         db, year=year, venue_slug=venue_slug, min_games=min_games
     )
-    if not rows and min_games > 1:
+    if len(rows) < min_rows and min_games > 1:
         rows = await _fetch_leader_aggregates(
             db, year=year, venue_slug=venue_slug, min_games=1
         )
@@ -269,7 +271,9 @@ async def get_season_leaders(
     min_games: int = DEFAULT_MIN_GAMES,
 ) -> SeasonLeaders:
     """Return per-game PTS/REB/AST leaders for one season."""
-    rows = await _fetch_with_fallback(db, year=year, min_games=min_games)
+    rows = await _fetch_with_fallback(
+        db, year=year, min_games=min_games, min_rows=limit
+    )
     return SeasonLeaders(
         pts=_rank_leaders(rows, "pts", per_game=True, limit=limit),
         reb=_rank_leaders(rows, "reb", per_game=True, limit=limit),
@@ -284,7 +288,9 @@ async def get_alltime_leaders(
     min_games: int = DEFAULT_ALLTIME_MIN_GAMES,
 ) -> SeasonLeaders:
     """Return career (all-season) PTS/REB/AST total leaders."""
-    rows = await _fetch_with_fallback(db, year=None, min_games=min_games)
+    rows = await _fetch_with_fallback(
+        db, year=None, min_games=min_games, min_rows=limit
+    )
     return SeasonLeaders(
         pts=_rank_leaders(rows, "pts", per_game=False, limit=limit),
         reb=_rank_leaders(rows, "reb", per_game=False, limit=limit),
@@ -302,7 +308,7 @@ async def get_venue_leaders(
 ) -> SeasonLeaders:
     """Return per-game PTS/REB/AST leaders scoped to one venue in one season."""
     rows = await _fetch_with_fallback(
-        db, year=year, venue_slug=venue_slug, min_games=min_games
+        db, year=year, venue_slug=venue_slug, min_games=min_games, min_rows=limit
     )
     return SeasonLeaders(
         pts=_rank_leaders(rows, "pts", per_game=True, limit=limit),

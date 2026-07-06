@@ -39,14 +39,20 @@ PAGE_SIZE = 25
 
 # When the caller doesn't pin explicit thresholds, qualification adapts to the
 # data: try the standard gate first, then relax rung by rung until the board
-# populates. Keeps early-competition boards (day 1-2 of a venue) from rendering
-# empty while leaving mature scopes on the standard gate. Users can always
-# tighten via the Min GP / Min MIN filters.
+# reads as a real leaderboard. Keeps early-competition boards (day 1-2 of a
+# venue) and small venues from rendering empty or three-rows-thin while leaving
+# mature scopes on the standard gate. Users can always tighten via the
+# Min GP / Min MIN filters.
 GATE_LADDER: tuple[tuple[int, int], ...] = (
     (DEFAULT_MIN_GAMES, DEFAULT_MIN_MINUTES),
     (1, 20),
     (1, 0),
 )
+
+# A rung "populates" the board once it shows at least this many players; fewer
+# and the ladder keeps relaxing (stopping at the floor rung regardless). A
+# board smaller than this reads as broken/unsatisfying rather than exclusive.
+TARGET_BOARD_ROWS = 10
 
 _MINUTES_PER_GAME = MINUTES_PER_GAME
 
@@ -337,7 +343,8 @@ async def get_leaders(
     venue = venue if venue in {v[0] for v in venues} else None
 
     # Gates live in the aggregate's HAVING clause (scopes can span thousands of
-    # players, so rows are never fetched ungated); each empty rung re-runs it.
+    # players, so rows are never fetched ungated); each under-target rung
+    # re-runs it.
     for applied_games, applied_minutes in gates:
         rows = await _aggregate(
             db,
@@ -346,7 +353,7 @@ async def get_leaders(
             min_games=applied_games,
             min_minutes=applied_minutes,
         )
-        if rows:
+        if len(rows) >= TARGET_BOARD_ROWS:
             break
     computed = [_compute_row(r, mode) for r in rows]
 
@@ -419,10 +426,20 @@ async def _advanced_leaders(
     """
     if year is not None and venue is not None:
         comp = await get_competition_leaders(
-            db, year=year, venue_slug=venue, gates=gates
+            db,
+            year=year,
+            venue_slug=venue,
+            gates=gates,
+            min_rows=TARGET_BOARD_ROWS,
         )
     else:
-        comp = await get_blended_leaders(db, year=year, venue_slug=venue, gates=gates)
+        comp = await get_blended_leaders(
+            db,
+            year=year,
+            venue_slug=venue,
+            gates=gates,
+            min_rows=TARGET_BOARD_ROWS,
+        )
     # Auto gates report the enforced rung (incl. the fetcher's minutes floor);
     # pinned gates echo the request so the filter inputs stay as typed.
     min_games, min_minutes = (

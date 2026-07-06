@@ -428,6 +428,7 @@ def _first_populated_rung(
     gates: tuple[tuple[int, int], ...],
     floor: float,
     seasons_by_key: dict[int, tuple[int, float]],
+    min_rows: int = 1,
 ) -> tuple[set[int], int, int]:
     """Walk ``gates`` rung by rung over pre-fetched qualification totals.
 
@@ -435,12 +436,14 @@ def _first_populated_rung(
         gates: ``(min_games, min_minutes)`` rungs, strictest first.
         floor: Minutes floor folded into every rung (0 when none applies).
         seasons_by_key: ``{key: (gp, minutes)}`` for each candidate row.
+        min_rows: A rung only "populates" the board once it matches at least
+            this many players; below that the walk keeps relaxing.
 
     Returns:
         ``(qualifying keys, applied min_games, applied effective min_minutes)``
-        for the first rung that matches anyone; the last rung's (empty) result
-        when none does. Rungs that collapse to an already-tried effective gate
-        are skipped.
+        for the first rung that matches ``min_rows`` players; the last rung's
+        result when none does. Rungs that collapse to an already-tried
+        effective gate are skipped.
     """
     qualified: set[int] = set()
     applied = (gates[0][0], int(max(gates[0][1], floor)))
@@ -456,7 +459,7 @@ def _first_populated_rung(
             for k, (gp, minutes) in seasons_by_key.items()
             if gp >= effective[0] and minutes >= effective[1]
         }
-        if qualified:
+        if len(qualified) >= min_rows:
             break
     return qualified, applied[0], applied[1]
 
@@ -545,6 +548,7 @@ async def get_competition_leaders(
     year: Optional[int] = None,
     venue_slug: Optional[str] = None,
     gates: tuple[tuple[int, int], ...] = OPEN_GATES,
+    min_rows: int = 1,
 ) -> CompetitionLeaders:
     """Fetch one competition's advanced leaderboard rows (unsorted).
 
@@ -611,7 +615,7 @@ async def get_competition_leaders(
     floor = DISPLAY_MIN_MINUTES if calibrated else 0.0
     totals = {i: (s.gp, s.minutes) for i, (s, _slug, _name) in enumerate(fetched)}
     qualified, applied_games, applied_minutes = _first_populated_rung(
-        gates, floor, totals
+        gates, floor, totals, min_rows=min_rows
     )
     rows = [
         CompetitionLeaderRow(
@@ -736,6 +740,7 @@ async def get_blended_leaders(
     year: Optional[int] = None,
     venue_slug: Optional[str] = None,
     gates: tuple[tuple[int, int], ...] = OPEN_GATES,
+    min_rows: int = 1,
 ) -> CompetitionLeaders:
     """Blend adv-eligible pools across competitions into one line per player.
 
@@ -781,7 +786,7 @@ async def get_blended_leaders(
         for pid, seasons in grouped.items()
     }
     qualified, applied_games, applied_minutes = _first_populated_rung(
-        gates, DISPLAY_MIN_MINUTES, totals
+        gates, DISPLAY_MIN_MINUTES, totals, min_rows=min_rows
     )
     rows = [
         CompetitionLeaderRow(

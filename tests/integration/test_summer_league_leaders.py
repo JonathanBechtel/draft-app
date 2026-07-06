@@ -136,9 +136,12 @@ async def test_leaders_modes_ranking_and_filter(
     """Per-game and totals modes rank correctly; min-sample filters the 1-gamer."""
     await _seed(db_session)
 
-    # Per game by PTS: star (30) first, role (12) second; the 1-game player is
-    # excluded by the default 2-GP minimum.
-    pg = await get_leaders(db_session, mode="per_game", sort="pts")
+    # Per game by PTS with the standard gates pinned: star (30) first, role
+    # (12) second; the 1-game player is excluded by the 2-GP minimum. (Adaptive
+    # gates would relax here — only two players clear the standard cut.)
+    pg = await get_leaders(
+        db_session, mode="per_game", sort="pts", min_games=2, min_minutes=60
+    )
     assert [r.name for r in pg.rows] == ["Star Scorer", "Role Player"]
     assert pg.rows[0].values["pts"] == pytest.approx(30.0)
     assert pg.rows[0].rank == 1
@@ -481,17 +484,18 @@ async def test_auto_gates_relax_for_young_competition(
 ) -> None:
     """Unpinned thresholds walk the gate ladder so a mid-event board populates.
 
-    With every player at 1 GP the standard 2+ GP / 60+ MIN rung matches nobody;
-    the (1, 20) rung catches the 25-minute player. Explicit thresholds are
-    still honored exactly.
+    With every player at 1 GP the standard 2+ GP / 60+ MIN rung matches nobody,
+    and no rung reaches :data:`TARGET_BOARD_ROWS`, so the ladder lands on the
+    floor rung and shows everyone with minutes. Explicit thresholds are still
+    honored exactly.
     """
     await _seed_young_competition(db_session)
 
     auto = await get_leaders(db_session, mode="per_game", sort="pts")
-    assert [r.name for r in auto.rows] == ["Day One"]
+    assert [r.name for r in auto.rows] == ["Day One", "Short Stint"]
     assert auto.auto_gates is True
     assert auto.gates_relaxed is True
-    assert (auto.min_games, auto.min_minutes) == (1, 20)
+    assert (auto.min_games, auto.min_minutes) == (1, 0)
 
     # The floor rung (1, 0) applies when even 20 minutes is too strict.
     floor = await get_leaders(
@@ -524,7 +528,7 @@ async def test_leaders_route_auto_gates_ui(
     resp = await app_client.get("/stats/summer-league/leaders?mode=per_game")
     assert resp.status_code == 200
     assert "Day One" in resp.text
-    assert "Early-competition view" in resp.text
+    assert "Small-sample view" in resp.text
 
     # Pinned gates that match nobody keep the honest filter empty state.
     strict = await app_client.get(
@@ -645,3 +649,70 @@ async def test_venue_mini_leaders_relax_to_one_game(
     leaders = await get_venue_leaders(db_session, 2026, "salt_lake_city")
     names = [r.name for r in leaders.pts]
     assert "Day One" in names and "Short Stint" in names
+
+
+@pytest.mark.asyncio
+async def test_auto_gates_relax_thin_board_to_target_rows(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """A board with a handful of standard qualifiers still relaxes to a rung
+    that reaches the target row count; explicit gates keep the thin board.
+    """
+    comp = SummerLeagueCompetition(
+        year=2026, league_id="13", venue_slug="california_classic", display_name="CC"
+    )
+    db_session.add(comp)
+    await db_session.flush()
+    assert comp.id is not None
+    team = SummerLeagueTeamEntry(
+        competition_id=comp.id,
+        nba_stats_team_id="cc-t1",
+        raw_team_name="Cali",
+        raw_team_abbreviation="CC",
+        team_slug="cc",
+    )
+    db_session.add(team)
+    await db_session.flush()
+
+    # Three heavy-minute regulars clear the standard 2+ GP / 60+ MIN cut...
+    for i in range(3):
+        p = make_player("Regular", f"Starter{i}")
+        db_session.add(p)
+        await db_session.flush()
+        await _seed_player(
+            db_session, comp=comp, team=team, player=p, n_games=2, pts=20 - i
+        )
+    # ...and nine one-gamers with 25 minutes each do not.
+    for i in range(9):
+        p = make_player("One", f"Nighter{i}")
+        db_session.add(p)
+        await db_session.flush()
+        await _seed_player(
+            db_session,
+            comp=comp,
+            team=team,
+            player=p,
+            n_games=1,
+            pts=10,
+            seconds=1500,
+        )
+    await db_session.commit()
+
+    # Three standard qualifiers is under the target board size, so the ladder
+    # relaxes to (1, 20) which reaches all twelve players.
+    auto = await get_leaders(db_session, mode="per_game", sort="pts")
+    assert auto.total == 12
+    assert auto.gates_relaxed is True
+    assert (auto.min_games, auto.min_minutes) == (1, 20)
+
+    # Pinned standard gates keep the honest three-row board.
+    pinned = await get_leaders(
+        db_session, mode="per_game", sort="pts", min_games=2, min_minutes=60
+    )
+    assert auto.auto_gates and not pinned.auto_gates
+    assert [r.name for r in pinned.rows] == [
+        "Regular Starter0",
+        "Regular Starter1",
+        "Regular Starter2",
+    ]
