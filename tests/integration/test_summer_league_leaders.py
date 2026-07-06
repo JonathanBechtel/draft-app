@@ -40,8 +40,9 @@ async def _seed_player(
     pts: int,
     reb: int = 4,
     ast: int = 4,
+    seconds: int = 1800,
 ) -> None:
-    """Seed ``n_games`` identical played logs for one player."""
+    """Seed ``n_games`` identical played logs (``seconds`` each) for one player."""
     _N["i"] += 1
     sp = SummerLeagueSourcePlayer(
         nba_stats_person_id=f"p-{_N['i']}",
@@ -74,7 +75,7 @@ async def _seed_player(
                 player_id=player.id,
                 nba_stats_person_id=sp.nba_stats_person_id,
                 raw_player_name=player.display_name or "Player",
-                minutes_seconds=1800,
+                minutes_seconds=seconds,
                 pace=100.0,
                 pts=pts,
                 reb=reb,
@@ -463,49 +464,13 @@ async def _seed_young_competition(db: AsyncSession) -> None:
     db.add_all([starter, benchie])
     await db.flush()
 
-    async def one_game(player: PlayerMaster, seconds: int, pts: int) -> None:
-        _N["i"] += 1
-        sp = SummerLeagueSourcePlayer(
-            nba_stats_person_id=f"p-{_N['i']}",
-            raw_player_name=player.display_name or "Player",
-            normalized_name=(player.display_name or "player").lower(),
-            canonical_player_id=player.id,
-        )
-        db.add(sp)
-        await db.flush()
-        _N["i"] += 1
-        assert comp.id is not None and team.id is not None
-        game = SummerLeagueGame(
-            competition_id=comp.id,
-            nba_stats_game_id=f"g-{_N['i']}",
-            game_date=date(2026, 7, 4),
-            home_team_entry_id=team.id,
-            away_team_entry_id=team.id,
-            home_score=90,
-            away_score=80,
-        )
-        db.add(game)
-        await db.flush()
-        db.add(
-            SummerLeaguePlayerGameLog(
-                competition_id=comp.id,
-                game_id=game.id,
-                team_entry_id=team.id,
-                source_player_id=sp.id,
-                player_id=player.id,
-                nba_stats_person_id=sp.nba_stats_person_id,
-                raw_player_name=player.display_name or "Player",
-                minutes_seconds=seconds,
-                pts=pts,
-                reb=4,
-                ast=3,
-                fgm=pts // 3,
-                fga=pts // 2,
-            )
-        )
-
-    await one_game(starter, seconds=1500, pts=22)  # 25 minutes
-    await one_game(benchie, seconds=600, pts=5)  # 10 minutes
+    # 25 minutes / 10 minutes — one game each.
+    await _seed_player(
+        db, comp=comp, team=team, player=starter, n_games=1, pts=22, seconds=1500
+    )
+    await _seed_player(
+        db, comp=comp, team=team, player=benchie, n_games=1, pts=5, seconds=600
+    )
     await db.commit()
 
 
@@ -529,7 +494,9 @@ async def test_auto_gates_relax_for_young_competition(
     assert (auto.min_games, auto.min_minutes) == (1, 20)
 
     # The floor rung (1, 0) applies when even 20 minutes is too strict.
-    floor = await get_leaders(db_session, mode="per_game", sort="pts", min_games=1, min_minutes=0)
+    floor = await get_leaders(
+        db_session, mode="per_game", sort="pts", min_games=1, min_minutes=0
+    )
     assert {r.name for r in floor.rows} == {"Day One", "Short Stint"}
     assert floor.auto_gates is False
     assert floor.gates_relaxed is False
@@ -548,8 +515,10 @@ async def test_leaders_route_auto_gates_ui(
     app_client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
-    """The route defaults to adaptive gates and renders the relaxed-gate note;
-    explicit query gates keep the strict empty state."""
+    """The route defaults to adaptive gates and renders the relaxed-gate note.
+
+    Explicit query gates keep the strict empty state.
+    """
     await _seed_young_competition(db_session)
 
     resp = await app_client.get("/stats/summer-league/leaders?mode=per_game")
@@ -596,9 +565,11 @@ async def test_advanced_uncalibrated_competition_is_honored(
     app_client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
-    """An exactly-requested pool that isn't adv-eligible yet shows its own rows
-    (box-derived rates, GmSc default sort) instead of redirecting to another
-    competition."""
+    """An exactly-requested pool that isn't adv-eligible yet is honored.
+
+    It shows its own rows (box-derived rates, GmSc default sort) instead of
+    redirecting to another competition.
+    """
     cc = await _comp(db_session, year=2026, venue="california_classic", league_id="13")
     slc = await _comp(db_session, year=2026, venue="salt_lake_city", league_id="16")
 
@@ -664,8 +635,10 @@ async def test_venue_mini_leaders_relax_to_one_game(
     app_client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
-    """Venue-page mini leaderboards fall back to 1+ GP mid-event instead of
-    rendering "No qualified players"."""
+    """Venue-page mini leaderboards fall back to 1+ GP mid-event.
+
+    Instead of rendering "No qualified players".
+    """
     from app.services.summer_league_season_service import get_venue_leaders
 
     await _seed_young_competition(db_session)
