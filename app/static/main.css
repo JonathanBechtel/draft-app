@@ -901,6 +901,13 @@ body {
    Mobile-first breakpoints for shared components
    ========================================================================= */
 @media (max-width: 768px) {
+  /* On phones the 80% container + 1.5rem padding leaves too little content
+     width (264px at 390px viewport); use the full width instead. */
+  .container {
+    width: 100%;
+    padding: 0 1rem;
+  }
+
   .h2h-controls-row {
     flex-direction: column;
     align-items: stretch;
@@ -936,6 +943,7 @@ body {
   .h2h-player-photo img {
     width: 120px;
     height: 120px;
+    max-width: 100%;
   }
 
   .h2h-photo-name {
