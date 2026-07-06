@@ -285,6 +285,12 @@ async def test_player_page_renders_advanced_table(
         ftr=0.42,
         ast_pct=25.3,
         tov_pct=11.2,
+        orb_pct=9.4,
+        stl_pct=2.6,
+        ows=1.8,
+        obpm=3.9,
+        ast_fgm=7,
+        unast_fgm=3,
     )
     await db_session.commit()
 
@@ -294,12 +300,19 @@ async def test_player_page_renders_advanced_table(
     html = resp.text
     assert "Advanced Metrics" in html
     assert "24.7" in html  # PER value rendered
-    # BBRef-parity rate columns render with their stored values.
-    for header in (">FTr<", ">AST%<", ">TOV%<"):
+    # Full BBRef-parity advanced header set renders with stored values.
+    for header in (
+        ">3PAr<", ">FTr<", ">AST'd%<", ">ORB%<", ">DRB%<", ">TRB%<",
+        ">AST%<", ">STL%<", ">BLK%<", ">TOV%<", ">USG%<",
+        ">OBPM<", ">DBPM<", ">OWS<", ">DWS<", ">WS/40<",
+    ):
         assert header in html
     assert "0.420" in html  # FTr as a 3-decimal fraction
     assert "25.3" in html
     assert "11.2" in html
+    assert "9.4" in html  # ORB%
+    assert "70.0" in html  # AST'd% = 100*7/10
+    assert "3.9" in html  # OBPM
 
 
 @pytest.mark.asyncio

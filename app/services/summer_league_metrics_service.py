@@ -78,31 +78,46 @@ class PlayerMetricSeason:
     venue_abbr: str
     gp: int
     minutes: float
-    # Raw box totals, kept so career TS% / FTr / TOV% can pool volume (these
-    # rates are weighted by shooting/play volume, not minutes).
+    # Raw box totals, kept so career TS% / 3PAr / FTr / TOV% can pool volume
+    # (these rates are weighted by shooting/play volume, not minutes).
     pts: int
     fga: int
+    fg3a: int
     fta: int
     tov: int
     # Shooting / efficiency.
     ts_pct: Optional[float]
     efg_pct: Optional[float]
     gmsc: Optional[float]
-    # Attempt rate (0-1 fraction, unlike the 0-100 percentage columns).
+    # Attempt rates (0-1 fractions, unlike the 0-100 percentage columns).
+    fg3ar: Optional[float]
     ftr: Optional[float]
+    # PBP assisted-FG counts (None outside the PBP era) and the derived
+    # assisted share of made FGs (0-100).
+    ast_fgm: Optional[int]
+    unast_fgm: Optional[int]
+    astd_pct: Optional[float]
     # Rate.
     usg_pct: Optional[float]
     ast_pct: Optional[float]
     tov_pct: Optional[float]
+    orb_pct: Optional[float]
+    drb_pct: Optional[float]
     trb_pct: Optional[float]
+    stl_pct: Optional[float]
+    blk_pct: Optional[float]
     # Composites (league-relative, valid only within this pool).
     per: Optional[float]
     ortg: Optional[float]
     drtg: Optional[float]
     net_rtg: Optional[float]
+    obpm: Optional[float]
+    dbpm: Optional[float]
     # Value metrics come in two flavours: a cumulative stat (accrued over the
     # games played) and an 82-game projection (the per-season pace).
     ws: Optional[float]  # cumulative
+    ows: Optional[float]
+    dws: Optional[float]
     ws40: Optional[float]
     ws82: Optional[float]  # projected to 82 games
     bpm: Optional[float]
@@ -134,9 +149,18 @@ class PlayerMetricCareer:
     ws82_avg: Optional[float]
     vorp82_avg: Optional[float]
     # Volume-pooled rates recomputed from summed box totals (exact, not
-    # averaged). AST% has no career form here — it needs per-pool team context.
+    # averaged). AST% and the rebound/steal/block rates have no career form
+    # here — they need per-pool team/opponent context.
     ftr: Optional[float] = None
     tov_pct: Optional[float] = None
+    fg3ar: Optional[float] = None
+    # Assisted share of made FGs pools exactly from summed PBP counts.
+    astd_pct: Optional[float] = None
+    # Win Shares components sum like WS; BPM splits minute-weight like BPM.
+    ows: Optional[float] = None
+    dws: Optional[float] = None
+    obpm_avg: Optional[float] = None
+    dbpm_avg: Optional[float] = None
 
 
 @dataclass
@@ -187,11 +211,14 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
     ws_total = sum(ws_vals) if ws_vals else None
     # Recompute WS/40 from the summed shares so it stays internally consistent.
     ws40 = (ws_total / minutes * 40.0) if (ws_total is not None and minutes) else None
-    # FTr / TOV% pool exactly from summed box volume (like career TS%).
+    # FTr / 3PAr / TOV% pool exactly from summed box volume (like career TS%).
     fga = sum(s.fga for s in seasons)
+    fg3a = sum(s.fg3a for s in seasons)
     fta = sum(s.fta for s in seasons)
     tov = sum(s.tov for s in seasons)
     tov_den = fga + 0.44 * fta + tov
+    ows_vals = [s.ows for s in seasons if s.ows is not None]
+    dws_vals = [s.dws for s in seasons if s.dws is not None]
     return PlayerMetricCareer(
         adv_pools=len(seasons),
         gp=sum(s.gp for s in seasons),
@@ -206,6 +233,15 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
         vorp82_avg=_round1(_weighted_mean([(s.vorp82, s.minutes) for s in seasons])),
         ftr=_round3(fta / fga) if fga > 0 else None,
         tov_pct=_round1(100.0 * tov / tov_den) if tov_den > 0 else None,
+        fg3ar=_round3(fg3a / fga) if fga > 0 else None,
+        astd_pct=_assisted_share(
+            sum((s.ast_fgm or 0) for s in seasons),
+            sum((s.unast_fgm or 0) for s in seasons),
+        ),
+        ows=round(sum(ows_vals), 1) if ows_vals else None,
+        dws=round(sum(dws_vals), 1) if dws_vals else None,
+        obpm_avg=_round1(_weighted_mean([(s.obpm, s.minutes) for s in seasons])),
+        dbpm_avg=_round1(_weighted_mean([(s.dbpm, s.minutes) for s in seasons])),
     )
 
 
@@ -215,6 +251,16 @@ def _round1(value: Optional[float]) -> Optional[float]:
 
 def _round3(value: Optional[float]) -> Optional[float]:
     return round(value, 3) if value is not None else None
+
+
+def _assisted_share(
+    ast_fgm: Optional[int], unast_fgm: Optional[int]
+) -> Optional[float]:
+    """Assisted share of made FGs (0-100) from PBP counts; None without PBP data."""
+    made = (ast_fgm or 0) + (unast_fgm or 0)
+    if made <= 0:
+        return None
+    return round(100.0 * (ast_fgm or 0) / made, 1)
 
 
 def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
@@ -228,6 +274,7 @@ def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
         minutes=row.minutes,
         pts=row.pts,
         fga=row.fga,
+        fg3a=row.fg3a,
         fta=row.fta,
         tov=row.tov,
         # Shooting / rate columns are already stored as percentages (e.g. 60.6),
@@ -235,16 +282,28 @@ def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
         ts_pct=_round1(row.ts_pct),
         efg_pct=_round1(row.efg_pct),
         gmsc=_round1(row.gmsc),
+        fg3ar=_round3(row.fg3ar),
         ftr=_round3(row.ftr),
+        ast_fgm=row.ast_fgm,
+        unast_fgm=row.unast_fgm,
+        astd_pct=_assisted_share(row.ast_fgm, row.unast_fgm),
         usg_pct=_round1(row.usg_pct),
         ast_pct=_round1(row.ast_pct),
         tov_pct=_round1(row.tov_pct),
+        orb_pct=_round1(row.orb_pct),
+        drb_pct=_round1(row.drb_pct),
         trb_pct=_round1(row.trb_pct),
+        stl_pct=_round1(row.stl_pct),
+        blk_pct=_round1(row.blk_pct),
         per=_round1(row.per),
         ortg=_round1(row.ortg),
         drtg=_round1(row.drtg),
         net_rtg=_round1(row.net_rtg),
+        obpm=_round1(row.obpm),
+        dbpm=_round1(row.dbpm),
         ws=_round1(row.ws),
+        ows=_round1(row.ows),
+        dws=_round1(row.dws),
         ws40=round(row.ws40, 2) if row.ws40 is not None else None,
         ws82=_round1(row.ws82),
         bpm=_round1(row.bpm),
