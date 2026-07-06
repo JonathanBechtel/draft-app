@@ -261,7 +261,9 @@ async def test_game_box_score_renders_and_missing_404(
             minutes_seconds=None,
         )
     )
-    # Home team game log: gives the box lines team context for AST%.
+    # Both team game logs: the home box gives AST% its team context; the away
+    # box completes the opponent context for rebound/steal/block %s + ORtg/DRtg.
+    assert game.away_team_entry_id is not None
     db_session.add(
         SummerLeagueTeamGameLog(
             competition_id=game.competition_id,
@@ -271,6 +273,41 @@ async def test_game_box_score_renders_and_missing_404(
             pts=100,
             fgm=40,
             fga=85,
+            fg3m=10,
+            fg3a=30,
+            ftm=10,
+            fta=15,
+            oreb=12,
+            dreb=28,
+            reb=40,
+            ast=22,
+            stl=8,
+            blk=4,
+            tov=14,
+            pf=18,
+        )
+    )
+    db_session.add(
+        SummerLeagueTeamGameLog(
+            competition_id=game.competition_id,
+            game_id=game.id,
+            team_entry_id=game.away_team_entry_id,
+            minutes=240,
+            pts=90,
+            fgm=36,
+            fga=80,
+            fg3m=8,
+            fg3a=25,
+            ftm=10,
+            fta=14,
+            oreb=10,
+            dreb=30,
+            reb=40,
+            ast=20,
+            stl=6,
+            blk=3,
+            tov=16,
+            pf=20,
         )
     )
     await db_session.commit()
@@ -287,14 +324,21 @@ async def test_game_box_score_renders_and_missing_404(
     assert box.home.lines[0].dnp is False
 
     # Single-game advanced line: GmSc weights the full box (incl. OREB/DREB),
-    # FTr/TOV% come from the player's own line, AST% from the team log context.
+    # FTr/TOV% come from the player's own line, AST% from the team log context,
+    # the rebound/steal/block rates + ORtg/DRtg from both team boxes.
     starter = box.home.lines[0]
     # 20 +0.4*8 -0.7*15 -0.4*(2-2) +0.7*3 +0.3*5 +1 +0.7*5 +0.7*1 -0.4*2 -2
     assert starter.gmsc == pytest.approx(18.7)
+    assert starter.fg3ar == pytest.approx(round(5 / 15, 3))
     assert starter.ftr == pytest.approx(round(2 / 15, 3))
     assert starter.tov_pct == pytest.approx(round(100 * 2 / (15 + 0.44 * 2 + 2), 1))
     # AST% = 100*5 / ((30/48)*40 - 8) = 500/17 ≈ 29.4
     assert starter.ast_pct == pytest.approx(29.4)
+    # ORB% = 100 * (3 * 48) / (30 * (12 + 30)) ≈ 11.4 against team+opp boards.
+    assert starter.orb_pct == pytest.approx(round(100 * 3 * 48 / (30 * 42), 1))
+    assert starter.trb_pct == pytest.approx(round(100 * 8 * 48 / (30 * 80), 1))
+    assert starter.ortg is not None and 50 < starter.ortg < 200
+    assert starter.drtg is not None and 50 < starter.drtg < 200
     # DNP line carries no advanced values.
     assert box.home.lines[-1].gmsc is None
 
@@ -302,8 +346,11 @@ async def test_game_box_score_renders_and_missing_404(
     assert resp.status_code == 200
     assert "Box Scorer" in resp.text
     assert "Advanced" in resp.text
-    # New advanced columns render with their values.
-    for header in (">GmSc<", ">FTr<", ">AST%<", ">TOV%<"):
+    # The full BBRef single-game advanced header set renders.
+    for header in (
+        ">GmSc<", ">3PAr<", ">FTr<", ">ORB%<", ">DRB%<", ">TRB%<",
+        ">AST%<", ">STL%<", ">BLK%<", ">TOV%<", ">USG%<", ">ORtg<", ">DRtg<",
+    ):
         assert header in resp.text
     assert "18.7" in resp.text
     assert "0.133" in resp.text

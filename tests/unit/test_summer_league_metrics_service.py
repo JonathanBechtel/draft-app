@@ -8,6 +8,8 @@ toward zero.
 
 from __future__ import annotations
 
+import pytest
+
 from typing import Optional
 
 from app.services.summer_league_metrics_service import (
@@ -45,21 +47,34 @@ def _season(
         minutes=minutes,
         pts=pts,
         fga=fga,
+        fg3a=0,
         fta=fta,
         tov=tov,
         ts_pct=ts,
         efg_pct=None,
         gmsc=None,
+        fg3ar=None,
         ftr=None,
+        ast_fgm=None,
+        unast_fgm=None,
+        astd_pct=None,
         usg_pct=None,
         ast_pct=None,
         tov_pct=None,
+        orb_pct=None,
+        drb_pct=None,
         trb_pct=None,
+        stl_pct=None,
+        blk_pct=None,
         per=per,
         ortg=None,
         drtg=None,
         net_rtg=None,
+        obpm=None,
+        dbpm=None,
         ws=ws,
+        ows=None,
+        dws=None,
         ws40=None,
         ws82=ws82,
         bpm=bpm,
@@ -143,6 +158,22 @@ def test_career_sums_additive_shares() -> None:
     assert career.vorp82_avg == 9.0
     # WS/40 recomputed from summed shares: 3.0 / 400 * 40 = 0.3
     assert career.ws40 == 0.3
+
+
+def test_career_sums_ws_components_and_weights_bpm_splits() -> None:
+    """OWS/DWS sum like WS; OBPM/DBPM minute-weight like BPM; 3PAr pools volume."""
+    s1 = _season(minutes=100.0, fga=100)
+    s1.ows, s1.dws, s1.obpm, s1.dbpm, s1.fg3a = 0.7, 0.3, 2.0, 1.0, 30
+    s2 = _season(minutes=300.0, fga=200)
+    s2.ows, s2.dws, s2.obpm, s2.dbpm, s2.fg3a = 1.5, 0.5, 4.0, -1.0, 90
+    career = _career([s1, s2])
+    assert career.ows == pytest.approx(2.2)
+    assert career.dws == pytest.approx(0.8)
+    # (2*100 + 4*300)/400 = 3.5 ; (1*100 + -1*300)/400 = -0.5
+    assert career.obpm_avg == pytest.approx(3.5)
+    assert career.dbpm_avg == pytest.approx(-0.5)
+    # 3PAr pools attempts: 120 / 300 = 0.4
+    assert career.fg3ar == pytest.approx(0.4)
 
 
 def test_career_pools_attempt_and_turnover_rates_from_volume() -> None:

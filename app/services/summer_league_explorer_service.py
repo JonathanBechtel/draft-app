@@ -438,8 +438,125 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         fmt="pct",
         shown=True,
     ),
-    # PER / ORtg / DRtg / BPM / WS / VORP are pool-calibrated composites that must
-    # NOT be mixed across multiple competition pools (rate_composite or additive).
+    # Attempt rates (3PAr, FTr) are box-derived like TS% — recombinable, exact at
+    # any grain. Stored/displayed as 0-1 fractions at 3 decimals (BBRef-style),
+    # matching the Leaders board and player-page advanced table.
+    ExplorerColumn(
+        "fg3ar",
+        "3PAr",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=True,
+        fmt="f3",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ftr",
+        "FTr",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=True,
+        fmt="f3",
+        shown=True,
+    ),
+    # Assisted share of made FGs, from PBP-derived counts (ast_fgm/unast_fgm).
+    # Recombinable — counts sum exactly across pools; NULL outside the PBP era.
+    ExplorerColumn(
+        "astd_pct",
+        "AST'd%",
+        _GROUP_ADVANCED,
+        _BUCKET_RECOMBINABLE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    # Rebound / defensive participation rates (stored 0-100): exact within one
+    # pool; pooled minute-weighted (approximate, "avg"-marked) at career grain.
+    ExplorerColumn(
+        "orb_pct",
+        "ORB%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "drb_pct",
+        "DRB%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "trb_pct",
+        "TRB%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "ast_pct",
+        "AST%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "stl_pct",
+        "STL%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "blk_pct",
+        "BLK%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "tov_pct",
+        "TOV%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "usg_pct",
+        "USG%",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="pct",
+        shown=True,
+    ),
+    # Pool-calibrated composites: minute-weighted (approximate, "avg"-marked)
+    # across pools at career grain; exact within one competition.
     ExplorerColumn(
         "per",
         "PER",
@@ -471,10 +588,61 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         shown=True,
     ),
     ExplorerColumn(
+        "net_rtg",
+        "NRtg",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "obpm",
+        "OBPM",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "dbpm",
+        "DBPM",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
         "bpm",
         "BPM",
         _GROUP_ADVANCED,
         _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    # Cumulative shares (and their components) sum exactly across pools.
+    ExplorerColumn(
+        "ows",
+        "OWS",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
+    ExplorerColumn(
+        "dws",
+        "DWS",
+        _GROUP_ADVANCED,
+        _BUCKET_ADDITIVE,
         sortable=True,
         filterable=True,
         fmt="f1",
@@ -490,6 +658,32 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         fmt="f1",
         shown=True,
     ),
+    # ws40: WS per 40 minutes. rate_composite — and the minute-weighted mean of
+    # 40·WS/min IS 40·ΣWS/Σmin, so the career aggregate is exact, not approximate.
+    ExplorerColumn(
+        "ws40",
+        "WS/40",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f2",
+        shown=True,
+    ),
+    # ws82 / vorp82 are per-season *rates* (projections), not accumulations:
+    # summing them would triple-count a three-pool career, so they pool
+    # minute-weighted like the other rate composites (matching the player-page
+    # career row and the Leaders blend).
+    ExplorerColumn(
+        "ws82",
+        "WS/82",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
+    ),
     ExplorerColumn(
         "vorp",
         "VORP",
@@ -500,36 +694,34 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         fmt="f1",
         shown=True,
     ),
-    # ── Advanced (catalog-classified; not yet shown in Explorer UI) ────────
-    # These columns are present in summer_league_player_seasons and classified here
-    # so that ticket #405 can drive roll-ups from the catalog without new constants.
-    #
-    # Recombinable: recompute from summed box components, exact at any grain.
     ExplorerColumn(
-        "fg3ar",
-        "3PAr",
+        "vorp82",
+        "VORP/82",
         _GROUP_ADVANCED,
-        _BUCKET_RECOMBINABLE,
-        sortable=False,
-        filterable=False,
-        fmt="pct",
-        shown=False,
+        _BUCKET_RATE_COMPOSITE,
+        sortable=True,
+        filterable=True,
+        fmt="f1",
+        shown=True,
     ),
-    ExplorerColumn(
-        "ftr",
-        "FTr",
-        _GROUP_ADVANCED,
-        _BUCKET_RECOMBINABLE,
-        sortable=False,
-        filterable=False,
-        fmt="pct",
-        shown=False,
-    ),
+    # ── Advanced (catalog-classified; deliberately not shown) ──────────────
+    # pts_per100 duplicates the Per-100 display mode as a column, and pace is a
+    # pool/team attribute rather than a player skill — both stay catalog-only.
     ExplorerColumn(
         "pts_per100",
         "Pts/100",
         _GROUP_ADVANCED,
         _BUCKET_RECOMBINABLE,
+        sortable=False,
+        filterable=False,
+        fmt="f1",
+        shown=False,
+    ),
+    ExplorerColumn(
+        "pace",
+        "Pace",
+        _GROUP_ADVANCED,
+        _BUCKET_RATE_COMPOSITE,
         sortable=False,
         filterable=False,
         fmt="f1",
@@ -548,185 +740,6 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         filterable=False,
         fmt="f1",
         shown=True,
-    ),
-    # OWS / DWS are Win Shares components — cumulative shares, additive like WS.
-    ExplorerColumn(
-        "ows",
-        "OWS",
-        _GROUP_ADVANCED,
-        _BUCKET_ADDITIVE,
-        sortable=False,
-        filterable=False,
-        fmt="f1",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "dws",
-        "DWS",
-        _GROUP_ADVANCED,
-        _BUCKET_ADDITIVE,
-        sortable=False,
-        filterable=False,
-        fmt="f1",
-        shown=False,
-    ),
-    # ws82 / vorp82 are season projections; treated as additive-style (summing
-    # projections across pools is a reasonable estimate of career pace).
-    ExplorerColumn(
-        "ws82",
-        "WS/82",
-        _GROUP_ADVANCED,
-        _BUCKET_ADDITIVE,
-        sortable=False,
-        filterable=False,
-        fmt="f1",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "vorp82",
-        "VORP/82",
-        _GROUP_ADVANCED,
-        _BUCKET_ADDITIVE,
-        sortable=False,
-        filterable=False,
-        fmt="f1",
-        shown=False,
-    ),
-    # Rate composites: minute-weighted average across pools (approximate).
-    # net_rtg / obpm / dbpm expand the single-competition composite basket.
-    ExplorerColumn(
-        "net_rtg",
-        "NRtg",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="f1",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "obpm",
-        "OBPM",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="f1",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "dbpm",
-        "DBPM",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="f1",
-        shown=False,
-    ),
-    # ws40: WS per 40 minutes — a rate derived from cumulative WS / minutes; treated
-    # as rate_composite because WS itself is league-calibrated, so cross-pool
-    # averaging is more meaningful than summing.
-    ExplorerColumn(
-        "ws40",
-        "WS/40",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="f2",
-        shown=False,
-    ),
-    # Usage / participation rates (stored as percentages, e.g. 25.6 not 0.256).
-    ExplorerColumn(
-        "usg_pct",
-        "USG%",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="pct",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "ast_pct",
-        "AST%",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="pct",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "orb_pct",
-        "ORB%",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="pct",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "drb_pct",
-        "DRB%",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="pct",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "trb_pct",
-        "TRB%",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="pct",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "stl_pct",
-        "STL%",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="pct",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "blk_pct",
-        "BLK%",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="pct",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "tov_pct",
-        "TOV%",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="pct",
-        shown=False,
-    ),
-    ExplorerColumn(
-        "pace",
-        "Pace",
-        _GROUP_ADVANCED,
-        _BUCKET_RATE_COMPOSITE,
-        sortable=False,
-        filterable=False,
-        fmt="f1",
-        shown=False,
     ),
 ]
 
@@ -927,11 +940,18 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
     if key == "ft_pct":
         return 100.0 * ftm / fta if fta else None
     if key == "fg3ar":
-        # 3-point attempt rate: proportion of field-goal attempts that are 3-pointers.
-        return 100.0 * fg3a / fga if fga else None
+        # 3-point attempt rate: share of field-goal attempts that are 3-pointers.
+        # 0-1 fraction (BBRef scale), matching the stored season column.
+        return fg3a / fga if fga else None
     if key == "ftr":
-        # Free-throw rate: FTA per FGA (measures ability to draw fouls).
-        return 100.0 * fta / fga if fga else None
+        # Free-throw rate: FTA per FGA (ability to draw fouls). 0-1 fraction.
+        return fta / fga if fga else None
+    if key == "astd_pct":
+        # Assisted share of made FGs from PBP counts; None outside the PBP era.
+        ast_fgm = _sum_attr(rows, "ast_fgm")
+        unast_fgm = _sum_attr(rows, "unast_fgm")
+        made = ast_fgm + unast_fgm
+        return 100.0 * ast_fgm / made if made else None
     if key == "pts_per100":
         # ``pace`` is possessions per 48 minutes (NBA's normalization base, kept even
         # for 40-minute Summer League games — see summer_league.constants). Sum
@@ -1034,14 +1054,33 @@ def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
 
     col = f.col
     # Rate composites: minute-weighted average (mirrors _rate_composite_agg).
-    if col in ("per", "ortg", "drtg", "bpm"):
+    if col in (
+        "per",
+        "ortg",
+        "drtg",
+        "net_rtg",
+        "obpm",
+        "dbpm",
+        "bpm",
+        "usg_pct",
+        "ast_pct",
+        "tov_pct",
+        "orb_pct",
+        "drb_pct",
+        "trb_pct",
+        "stl_pct",
+        "blk_pct",
+        "ws40",
+        "ws82",
+        "vorp82",
+    ):
         attr = getattr(ps, col)
         eligible_min = func.sum(  # type: ignore[attr-defined]
             case((attr.isnot(None), ps.minutes), else_=literal(0))  # type: ignore[attr-defined]
         )
         return _op(func.sum(attr * ps.minutes) / func.nullif(eligible_min, 0))  # type: ignore[attr-defined]
     # Additive advanced (exact sum).
-    if col in ("ws", "vorp"):
+    if col in ("ws", "ows", "dws", "vorp"):
         return _op(func.sum(getattr(ps, col)))  # type: ignore[attr-defined]
     # Box counting stats — filter on career totals.
     if col in ("pts", "reb", "ast", "stl", "blk", "tov", "gp"):
@@ -1065,6 +1104,20 @@ def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
     if col == "ts_pct":
         denom = 2.0 * (func.sum(ps.fga) + 0.44 * func.sum(ps.fta))  # type: ignore[attr-defined]
         return _op(100.0 * func.sum(ps.pts) / func.nullif(denom, 0))  # type: ignore[attr-defined]
+    # Attempt rates — 0-1 fraction ratios from summed box (thresholds on the
+    # displayed fraction scale, e.g. fval=0.4 means FTr ≥ .400).
+    if col == "fg3ar":
+        return _op(
+            func.sum(ps.fg3a) * 1.0 / func.nullif(func.sum(ps.fga), 0)  # type: ignore[attr-defined]
+        )
+    if col == "ftr":
+        return _op(
+            func.sum(ps.fta) * 1.0 / func.nullif(func.sum(ps.fga), 0)  # type: ignore[attr-defined]
+        )
+    # Assisted share of made FGs (0-100 scale) from summed PBP counts.
+    if col == "astd_pct":
+        made = func.sum(ps.ast_fgm) + func.sum(ps.unast_fgm)  # type: ignore[attr-defined]
+        return _op(100.0 * func.sum(ps.ast_fgm) / func.nullif(made, 0))  # type: ignore[attr-defined]
     return None
 
 
@@ -1080,7 +1133,30 @@ def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
 
     col = f.col
     # Stored composite values: filter directly on the season column.
-    if col in ("per", "ortg", "drtg", "bpm", "ws", "vorp"):
+    if col in (
+        "per",
+        "ortg",
+        "drtg",
+        "net_rtg",
+        "obpm",
+        "dbpm",
+        "bpm",
+        "ws",
+        "ows",
+        "dws",
+        "ws40",
+        "ws82",
+        "vorp",
+        "vorp82",
+        "usg_pct",
+        "ast_pct",
+        "tov_pct",
+        "orb_pct",
+        "drb_pct",
+        "trb_pct",
+        "stl_pct",
+        "blk_pct",
+    ):
         return _op(getattr(ps, col))
     # Box counting season totals.
     if col in ("pts", "reb", "ast", "stl", "blk", "tov", "gp"):
@@ -1100,6 +1176,15 @@ def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
     if col == "ts_pct":
         denom = 2.0 * (ps.fga + 0.44 * ps.fta)
         return _op(100.0 * ps.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
+    # Attempt rates — 0-1 fraction ratios from the row's box components.
+    if col == "fg3ar":
+        return _op(ps.fg3a * 1.0 / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
+    if col == "ftr":
+        return _op(ps.fta * 1.0 / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
+    # Assisted share of made FGs (0-100 scale) from the row's PBP counts.
+    if col == "astd_pct":
+        made = ps.ast_fgm + ps.unast_fgm
+        return _op(100.0 * ps.ast_fgm / func.nullif(made, 0))  # type: ignore[attr-defined]
     return None
 
 
@@ -1137,7 +1222,18 @@ def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
     if col == "ts_pct":
         denom = 2.0 * (pgl.fga + 0.44 * pgl.fta)
         return _op(100.0 * pgl.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
-    # Advanced composites not stored on game logs — silently skip.
+    # Box-derived rates work per game from the row's own line (thresholds on
+    # the same scale the other grains use: 0-1 fractions for attempt rates,
+    # 0-100 for TOV%).
+    if col == "fg3ar":
+        return _op(pgl.fg3a * 1.0 / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
+    if col == "ftr":
+        return _op(pgl.fta * 1.0 / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
+    if col == "tov_pct":
+        plays = pgl.fga + 0.44 * pgl.fta + pgl.tov
+        return _op(100.0 * pgl.tov / func.nullif(plays, 0))  # type: ignore[attr-defined]
+    # Advanced composites and team/PBP-context rates (USG%, AST%, AST'd%,
+    # rebound/steal/block %s) are not derivable per game log — silently skip.
     return None
 
 
@@ -1526,8 +1622,23 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
         "fg3_pct": _pct(_safe_div(float(r.fg3m or 0), float(r.fg3a or 0))),
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
         "ts_pct": _pct(_safe_div(float(r.pts or 0), 2.0 * (fga + 0.44 * fta))),
+        # Attempt rates: 0-1 fractions at 3 decimals (recombinable — exact from
+        # the summed box at any grain, like the shooting percentages above).
+        "fg3ar": (round(float(r.fg3a or 0) / fga, 3) if fga else None),
+        "ftr": (round(fta / fga, 3) if fga else None),
+        "astd_pct": _astd_pct(r),
         "gmsc": scaled(gmsc_total),
     }
+
+
+def _astd_pct(r: Any) -> Optional[float]:
+    """Assisted share of made FGs from PBP counts; ``None`` outside the PBP era."""
+    ast_fgm = getattr(r, "ast_fgm", None)
+    unast_fgm = getattr(r, "unast_fgm", None)
+    made = float(ast_fgm or 0) + float(unast_fgm or 0)
+    if made <= 0:
+        return None
+    return round(100.0 * float(ast_fgm or 0) / made, 1)
 
 
 def _scaled_sort_expr(num: str, gp: str, sec: str, pace_sec: str, mode: str) -> str:
@@ -1671,6 +1782,11 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
         "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
         "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
         "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
+        # Attempt rates recombine from summed box (same ratio the cell displays).
+        "fg3ar": "SUM(fg3a) * 1.0 / NULLIF(SUM(fga), 0)",
+        "ftr": "SUM(fta) * 1.0 / NULLIF(SUM(fga), 0)",
+        # Assisted share of made FGs from summed PBP counts.
+        "astd_pct": "SUM(ast_fgm) * 1.0 / NULLIF(SUM(ast_fgm) + SUM(unast_fgm), 0)",
     }
     if sort_col in _pct_exprs:
         return _pct_exprs[sort_col]
@@ -1701,7 +1817,8 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
             _CAREER_PACE_SEC_SQL,
             mode,
         )
-    # gp, ws, vorp, per, ortg, drtg, bpm: sort on the labeled SELECT aggregate.
+    # gp, ws, vorp and the rate composites (per, ortg, drtg, bpm, usg_pct,
+    # ast_pct, tov_pct): sort on the labeled SELECT aggregate.
     return sort_col
 
 
@@ -1817,14 +1934,34 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             func.sum(ps.dreb).label("dreb"),  # type: ignore[attr-defined]
             func.sum(ps.pf).label("pf"),  # type: ignore[attr-defined]
             func.sum(ps.plus_minus).label("plus_minus"),  # type: ignore[attr-defined]
+            # PBP assisted-FG counts (SQL SUM skips NULLs; all-NULL → NULL).
+            func.sum(ps.ast_fgm).label("ast_fgm"),  # type: ignore[attr-defined]
+            func.sum(ps.unast_fgm).label("unast_fgm"),  # type: ignore[attr-defined]
             # Additive advanced (exact sum across competitions):
             func.sum(ps.ws).label("ws"),  # type: ignore[attr-defined]
+            func.sum(ps.ows).label("ows"),  # type: ignore[attr-defined]
+            func.sum(ps.dws).label("dws"),  # type: ignore[attr-defined]
             func.sum(ps.vorp).label("vorp"),  # type: ignore[attr-defined]
             # Rate-composite advanced (minute-weighted average across competitions):
             _rate_composite_agg(ps.per).label("per"),  # type: ignore[attr-defined]
             _rate_composite_agg(ps.ortg).label("ortg"),  # type: ignore[attr-defined]
             _rate_composite_agg(ps.drtg).label("drtg"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.net_rtg).label("net_rtg"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.obpm).label("obpm"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.dbpm).label("dbpm"),  # type: ignore[attr-defined]
             _rate_composite_agg(ps.bpm).label("bpm"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.usg_pct).label("usg_pct"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.ast_pct).label("ast_pct"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.tov_pct).label("tov_pct"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.orb_pct).label("orb_pct"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.drb_pct).label("drb_pct"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.trb_pct).label("trb_pct"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.stl_pct).label("stl_pct"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.blk_pct).label("blk_pct"),  # type: ignore[attr-defined]
+            # WS/40's minute-weighted mean equals 40·ΣWS/Σmin — exact, not approx.
+            _rate_composite_agg(ps.ws40).label("ws40"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.ws82).label("ws82"),  # type: ignore[attr-defined]
+            _rate_composite_agg(ps.vorp82).label("vorp82"),  # type: ignore[attr-defined]
         )  # type: ignore[call-overload, misc]
         .select_from(ps)
         .join(pm, pm.id == ps.player_id)  # type: ignore[arg-type]
@@ -1902,12 +2039,29 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                 # Advanced roll-up values (ticket #405).
                 # Additive: exact sum across all competitions in scope.
                 "ws": _r1(r.ws),
+                "ows": _r1(r.ows),
+                "dws": _r1(r.dws),
                 "vorp": _r1(r.vorp),
                 # Rate composite: minute-weighted average (approximate; labelled "#406").
                 "per": _r1(r.per),
                 "ortg": _r1(r.ortg),
                 "drtg": _r1(r.drtg),
+                "net_rtg": _r1(r.net_rtg),
+                "obpm": _r1(r.obpm),
+                "dbpm": _r1(r.dbpm),
                 "bpm": _r1(r.bpm),
+                "usg_pct": _r1(r.usg_pct),
+                "ast_pct": _r1(r.ast_pct),
+                "tov_pct": _r1(r.tov_pct),
+                "orb_pct": _r1(r.orb_pct),
+                "drb_pct": _r1(r.drb_pct),
+                "trb_pct": _r1(r.trb_pct),
+                "stl_pct": _r1(r.stl_pct),
+                "blk_pct": _r1(r.blk_pct),
+                # WS/40 lives in the hundredths — keep 2 decimals.
+                "ws40": round(float(r.ws40), 2) if r.ws40 is not None else None,
+                "ws82": _r1(r.ws82),
+                "vorp82": _r1(r.vorp82),
             },
             per100_approx=_per100_approx(r),
         )
@@ -2101,6 +2255,8 @@ async def _query_players_per_competition(
         ps.dreb.label("dreb"),  # type: ignore[attr-defined]
         ps.pf.label("pf"),  # type: ignore[attr-defined]
         ps.plus_minus.label("plus_minus"),  # type: ignore[attr-defined]
+        ps.ast_fgm.label("ast_fgm"),  # type: ignore[attr-defined, union-attr]
+        ps.unast_fgm.label("unast_fgm"),  # type: ignore[attr-defined, union-attr]
     ]
 
     # Always SELECT composite columns so they are available at all per_competition
@@ -2110,9 +2266,25 @@ async def _query_players_per_competition(
         ps.per.label("per"),  # type: ignore[attr-defined, union-attr]
         ps.ortg.label("ortg"),  # type: ignore[attr-defined, union-attr]
         ps.drtg.label("drtg"),  # type: ignore[attr-defined, union-attr]
+        ps.net_rtg.label("net_rtg"),  # type: ignore[attr-defined, union-attr]
+        ps.obpm.label("obpm"),  # type: ignore[attr-defined, union-attr]
+        ps.dbpm.label("dbpm"),  # type: ignore[attr-defined, union-attr]
         ps.bpm.label("bpm"),  # type: ignore[attr-defined, union-attr]
         ps.ws.label("ws"),  # type: ignore[attr-defined, union-attr]
+        ps.ows.label("ows"),  # type: ignore[attr-defined, union-attr]
+        ps.dws.label("dws"),  # type: ignore[attr-defined, union-attr]
+        ps.ws40.label("ws40"),  # type: ignore[attr-defined, union-attr]
+        ps.ws82.label("ws82"),  # type: ignore[attr-defined, union-attr]
         ps.vorp.label("vorp"),  # type: ignore[attr-defined, union-attr]
+        ps.vorp82.label("vorp82"),  # type: ignore[attr-defined, union-attr]
+        ps.usg_pct.label("usg_pct"),  # type: ignore[attr-defined, union-attr]
+        ps.ast_pct.label("ast_pct"),  # type: ignore[attr-defined, union-attr]
+        ps.tov_pct.label("tov_pct"),  # type: ignore[attr-defined, union-attr]
+        ps.orb_pct.label("orb_pct"),  # type: ignore[attr-defined, union-attr]
+        ps.drb_pct.label("drb_pct"),  # type: ignore[attr-defined, union-attr]
+        ps.trb_pct.label("trb_pct"),  # type: ignore[attr-defined, union-attr]
+        ps.stl_pct.label("stl_pct"),  # type: ignore[attr-defined, union-attr]
+        ps.blk_pct.label("blk_pct"),  # type: ignore[attr-defined, union-attr]
     ]
 
     stmt = (
@@ -2147,6 +2319,11 @@ async def _query_players_per_competition(
         "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
         "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
         "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
+        # Attempt rates recombine from the row's box (matches the displayed ratio).
+        "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",
+        "ftr": "fta * 1.0 / NULLIF(fga, 0)",
+        # Assisted share of made FGs from the row's PBP counts.
+        "astd_pct": "ast_fgm * 1.0 / NULLIF(ast_fgm + unast_fgm, 0)",
     }
     if q.sort in _pc_pct_exprs:
         sort_expr: str = _pc_pct_exprs[q.sort]
@@ -2187,16 +2364,34 @@ async def _query_players_per_competition(
     else:
         columns = list(_PLAYER_STAT_COLUMNS) + list(_PLAYER_ADVANCED_COLUMNS)
 
+    _ADV_ROW_KEYS = (
+        "per",
+        "ortg",
+        "drtg",
+        "net_rtg",
+        "obpm",
+        "dbpm",
+        "bpm",
+        "ws",
+        "ows",
+        "dws",
+        "ws40",
+        "ws82",
+        "vorp",
+        "vorp82",
+        "usg_pct",
+        "ast_pct",
+        "tov_pct",
+        "orb_pct",
+        "drb_pct",
+        "trb_pct",
+        "stl_pct",
+        "blk_pct",
+    )
+
     def _adv_values(r: Any) -> dict[str, Any]:
         """Extract composite values from a result row (always present in SELECT now)."""
-        return {
-            "per": getattr(r, "per", None),
-            "ortg": getattr(r, "ortg", None),
-            "drtg": getattr(r, "drtg", None),
-            "bpm": getattr(r, "bpm", None),
-            "ws": getattr(r, "ws", None),
-            "vorp": getattr(r, "vorp", None),
-        }
+        return {k: getattr(r, k, None) for k in _ADV_ROW_KEYS}
 
     rows = [
         ExplorerRow(

@@ -29,10 +29,9 @@ from app.schemas.summer_league import (
     SummerLeagueTeamGameLog,
 )
 from app.services.summer_league.metrics import (
-    ast_pct_line,
-    ftr_line,
+    Box,
+    game_advanced_line,
     game_score_from_row,
-    tov_pct_line,
 )
 from app.services.summer_league_shotchart_service import (
     get_game_shot_dots,
@@ -157,9 +156,17 @@ class BoxLine:
     usg_pct: Optional[float]
     # Single-game advanced line (defaults keep the team-totals row valid).
     gmsc: Optional[float] = None
+    fg3ar: Optional[float] = None
     ftr: Optional[float] = None
+    orb_pct: Optional[float] = None
+    drb_pct: Optional[float] = None
+    trb_pct: Optional[float] = None
     ast_pct: Optional[float] = None
+    stl_pct: Optional[float] = None
+    blk_pct: Optional[float] = None
     tov_pct: Optional[float] = None
+    ortg: Optional[float] = None
+    drtg: Optional[float] = None
 
 
 @dataclass
@@ -409,37 +416,59 @@ async def get_games_facets(db: AsyncSession) -> GamesFacets:
 # --------------------------------------------------------------------------- #
 
 
+def _row_box(r: object) -> Box:
+    """Build a metrics :class:`Box` from a game-log row (minutes in minutes)."""
+
+    def _f(attr: str) -> float:
+        return float(getattr(r, attr, 0) or 0)
+
+    minutes_seconds = getattr(r, "minutes_seconds", None)
+    minutes = getattr(r, "minutes", None)
+    mp = float(minutes) if minutes is not None else float(minutes_seconds or 0) / 60.0
+    return Box(
+        mp=mp,
+        fgm=_f("fgm"),
+        fga=_f("fga"),
+        fg3m=_f("fg3m"),
+        fg3a=_f("fg3a"),
+        ftm=_f("ftm"),
+        fta=_f("fta"),
+        oreb=_f("oreb"),
+        dreb=_f("dreb"),
+        reb=_f("reb"),
+        ast=_f("ast"),
+        stl=_f("stl"),
+        blk=_f("blk"),
+        tov=_f("tov"),
+        pf=_f("pf"),
+        pts=_f("pts"),
+        gp=1,
+    )
+
+
 def _box_line(
-    r: object, team_minutes_fgm: Optional[tuple[float, int]] = None
+    r: object, context: Optional[tuple[Optional[Box], Optional[Box]]] = None
 ) -> BoxLine:
     """Build a :class:`BoxLine` from a joined player-game-log row.
 
     Args:
         r: Joined player-game-log row (must expose ``oreb``/``dreb`` for Game
             Score — ``game_score_from_row`` coalesces missing fields to 0).
-        team_minutes_fgm: The player's team ``(total minutes, FGM)`` for this
-            game, when the team game log exists; enables AST%.
+        context: ``(team box, opponent box)`` built from the team game logs;
+            either side may be ``None`` when its log is missing. The team box
+            enables AST%; both together enable the opponent-relative rates
+            (rebound/steal/block percentages, ORtg/DRtg). Without any context
+            only the player-only rates (3PAr, FTr, TOV%) compute.
     """
     minutes_seconds = getattr(r, "minutes_seconds", None)
     pts = getattr(r, "pts", None)
     dnp = (minutes_seconds or 0) <= 0
-    gmsc = ftr = ast_pct = tov_pct = None
+    gmsc = None
+    adv: dict[str, Optional[float]] = {}
     if not dnp:
         gmsc = round(game_score_from_row(r), 1)
-        ftr = ftr_line(fga=getattr(r, "fga", None), fta=getattr(r, "fta", None))
-        tov_pct = tov_pct_line(
-            fga=getattr(r, "fga", None),
-            fta=getattr(r, "fta", None),
-            tov=getattr(r, "tov", None),
-        )
-        if team_minutes_fgm is not None:
-            ast_pct = ast_pct_line(
-                ast=getattr(r, "ast", None),
-                fgm=getattr(r, "fgm", None),
-                mp=_minutes(minutes_seconds),
-                tm_mp=team_minutes_fgm[0],
-                tm_fgm=team_minutes_fgm[1],
-            )
+        tm_box, opp_box = context if context is not None else (None, None)
+        adv = game_advanced_line(_row_box(r), tm_box, opp_box)
     return BoxLine(
         player_id=getattr(r, "player_id", None),
         slug=getattr(r, "slug", None),
@@ -462,9 +491,17 @@ def _box_line(
         efg_pct=_pct(getattr(r, "efg_pct", None)),
         usg_pct=_pct(getattr(r, "usg_pct", None)),
         gmsc=gmsc,
-        ftr=ftr,
-        ast_pct=ast_pct,
-        tov_pct=tov_pct,
+        fg3ar=adv.get("fg3ar"),
+        ftr=adv.get("ftr"),
+        orb_pct=adv.get("orb_pct"),
+        drb_pct=adv.get("drb_pct"),
+        trb_pct=adv.get("trb_pct"),
+        ast_pct=adv.get("ast_pct"),
+        stl_pct=adv.get("stl_pct"),
+        blk_pct=adv.get("blk_pct"),
+        tov_pct=adv.get("tov_pct"),
+        ortg=adv.get("ortg"),
+        drtg=adv.get("drtg"),
     )
 
 
@@ -544,16 +581,26 @@ async def get_game_box_score(db: AsyncSession, game_id: int) -> Optional[GameBox
         tgl.fg3a,
         tgl.ftm,
         tgl.fta,
+        tgl.oreb,
+        tgl.dreb,
         tgl.plus_minus,
         tgl.ts_pct,
         tgl.efg_pct,
     ).where(tgl.game_id == game_id)  # type: ignore[call-overload, arg-type]
     total_rows = (await db.execute(totals_stmt)).all()
-    team_minutes_fgm: dict[int, tuple[float, int]] = {
-        r.team_entry_id: (float(r.minutes), r.fgm)
-        for r in total_rows
-        if r.minutes and r.fgm is not None
+    # Metrics boxes per team side: player lines pair their own team's box with
+    # the opponent's for the team/opponent-relative advanced rates.
+    team_boxes: dict[int, Box] = {
+        r.team_entry_id: _row_box(r) for r in total_rows if r.minutes
     }
+
+    def _line_context(team_entry_id: int) -> tuple[Optional[Box], Optional[Box]]:
+        opp_id = (
+            header.away_team_entry_id
+            if team_entry_id == header.home_team_entry_id
+            else header.home_team_entry_id
+        )
+        return team_boxes.get(team_entry_id), team_boxes.get(opp_id)
 
     pgl = SummerLeaguePlayerGameLog
     lines_stmt = (
@@ -595,7 +642,7 @@ async def get_game_box_score(db: AsyncSession, game_id: int) -> Optional[GameBox
         )
     )
     for r in (await db.execute(lines_stmt)).all():
-        line = _box_line(r, team_minutes_fgm.get(r.team_entry_id))
+        line = _box_line(r, _line_context(r.team_entry_id))
         if r.team_entry_id == home_box.team_entry_id:
             home_box.lines.append(line)
         elif r.team_entry_id == away_box.team_entry_id:

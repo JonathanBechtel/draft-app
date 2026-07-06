@@ -397,6 +397,73 @@ def tov_pct_line(*, fga: Any, fta: Any, tov: Any) -> Optional[float]:
     return round(100.0 * float(tov or 0) / den, 1)
 
 
+def game_advanced_line(
+    b: Box, tm: Optional[Box] = None, opp: Optional[Box] = None
+) -> dict[str, Optional[float]]:
+    """Full BBRef-style single-game advanced line from player/team/opponent boxes.
+
+    Mirrors the season-grain formulas in :func:`compute_metrics` for one game:
+    attempt rates from the player's own line; rebound/steal/block/assist rates
+    against the team + opponent context; ORtg/DRtg via the Dean Oliver
+    individual-rating formulas (:func:`compute_ortg` / :func:`compute_drtg`).
+    Each metric is ``None`` when its denominator is empty (e.g. a 0-FGA line has
+    no ORtg) rather than 0, so single-game cells render as em-dashes.
+
+    Args:
+        b:   The player's single-game box (minutes in minutes).
+        tm:  The player's team full-game box, when its team log exists.
+             Without it only the player-only rates compute.
+        opp: The opposing team's full-game box, when its log exists. The
+             opponent-relative rates (rebound/steal/block %s, ORtg/DRtg) need
+             both team boxes.
+
+    Returns:
+        Dict keyed ``fg3ar``/``ftr`` (0-1 fractions, 3 dp), the participation
+        percentages (0-100, 1 dp), and ``ortg``/``drtg`` (points per 100
+        possessions, 1 dp).
+    """
+    out: dict[str, Optional[float]] = {
+        "fg3ar": round(b.fg3a / b.fga, 3) if b.fga > 0 else None,
+        "ftr": ftr_line(fga=b.fga, fta=b.fta),
+        "tov_pct": tov_pct_line(fga=b.fga, fta=b.fta, tov=b.tov),
+        "ast_pct": (
+            ast_pct_line(ast=b.ast, fgm=b.fgm, mp=b.mp, tm_mp=tm.mp, tm_fgm=tm.fgm)
+            if tm is not None
+            else None
+        ),
+        "orb_pct": None,
+        "drb_pct": None,
+        "trb_pct": None,
+        "stl_pct": None,
+        "blk_pct": None,
+        "ortg": None,
+        "drtg": None,
+    }
+    if tm is None or opp is None:
+        return out
+
+    def _rate(num: float, den: float) -> Optional[float]:
+        return round(100.0 * num / den, 1) if den > 0 else None
+
+    tm_mp5 = tm.mp / 5.0
+    if tm_mp5 > 0 and b.mp > 0:
+        out["orb_pct"] = _rate(b.oreb * tm_mp5, b.mp * (tm.oreb + opp.dreb))
+        out["drb_pct"] = _rate(b.dreb * tm_mp5, b.mp * (tm.dreb + opp.oreb))
+        out["trb_pct"] = _rate(b.reb * tm_mp5, b.mp * (tm.reb + opp.reb))
+        out["stl_pct"] = _rate(b.stl * tm_mp5, b.mp * opp.poss(tm))
+        out["blk_pct"] = _rate(b.blk * tm_mp5, b.mp * (opp.fga - opp.fg3a))
+
+    ortg, tot_poss, _pprod = compute_ortg(b, tm, opp)
+    out["ortg"] = round(ortg, 1) if tot_poss > 0 else None
+    tm_poss = tm.poss(opp)
+    out["drtg"] = (
+        round(compute_drtg(b, tm, opp, tm_poss), 1)
+        if (tm_poss > 0 and b.mp > 0)
+        else None
+    )
+    return out
+
+
 def ast_pct_line(
     *,
     ast: Any,

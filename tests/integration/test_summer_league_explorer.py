@@ -829,12 +829,18 @@ async def _season(
     gp: int = 2,
     minutes: float = 60.0,
     pts: int = 20,
+    fga: int | None = None,
+    fg3a: int = 0,
+    fta: int = 0,
     primary_team_entry_id: int | None = None,
     ws: float | None = None,
     vorp: float | None = None,
     per: float | None = None,
     bpm: float | None = None,
     pace: float | None = None,
+    usg_pct: float | None = None,
+    ast_pct: float | None = None,
+    tov_pct: float | None = None,
     adv_eligible: bool = False,
 ) -> None:
     """Add one SummerLeaguePlayerSeason row for a (player, competition)."""
@@ -851,11 +857,11 @@ async def _season(
             reb=5,
             ast=3,
             fgm=pts // 2,
-            fga=pts,
+            fga=fga if fga is not None else pts,
             fg3m=0,
-            fg3a=0,
+            fg3a=fg3a,
             ftm=0,
-            fta=0,
+            fta=fta,
             oreb=1,
             dreb=4,
             blk=1,
@@ -869,6 +875,9 @@ async def _season(
             per=per,
             bpm=bpm,
             pace=pace,
+            usg_pct=usg_pct,
+            ast_pct=ast_pct,
+            tov_pct=tov_pct,
             adv_eligible=adv_eligible,
         )
     )
@@ -4164,3 +4173,305 @@ async def test_pool_drilldown_respects_team_scope(
     assert "2025" not in body, (
         "team B's 2025 competition must NOT appear when scoped to team A"
     )
+
+
+# --------------------------------------------------------------------------- #
+# BBRef rate basket: 3PAr / FTr / USG% / AST% / TOV% as first-class columns
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_rate_basket(db: AsyncSession) -> PlayerMaster:
+    """One player, two competitions with shot volume and stored rate metrics.
+
+    Vegas 2024: 100 FGA / 40 FG3A / 20 FTA over 100 min, USG 20, AST% 10, TOV% 8.
+    SLC 2025: 50 FGA / 10 FG3A / 25 FTA over 50 min, USG 30, AST% 20, TOV% 14.
+    """
+    player = make_player("Rate", "Basket")
+    db.add(player)
+    await db.flush()
+    c1 = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db, year=2025, venue_slug="salt_lake_city", league_id="16")
+    await _season(
+        db,
+        player=player,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=4,
+        minutes=100.0,
+        pts=80,
+        fga=100,
+        fg3a=40,
+        fta=20,
+        usg_pct=20.0,
+        ast_pct=10.0,
+        tov_pct=8.0,
+        adv_eligible=True,
+    )
+    await _season(
+        db,
+        player=player,
+        comp_id=c2,
+        year=2025,
+        venue_slug="salt_lake_city",
+        gp=2,
+        minutes=50.0,
+        pts=40,
+        fga=50,
+        fg3a=10,
+        fta=25,
+        usg_pct=30.0,
+        ast_pct=20.0,
+        tov_pct=14.0,
+        adv_eligible=True,
+    )
+    await db.commit()
+    return player
+
+
+@pytest.mark.asyncio
+async def test_rate_basket_career_pools_and_marks(db_session: AsyncSession) -> None:
+    """Career grain: attempt rates recombine exactly; usage rates pool minute-weighted.
+
+    FTr/3PAr recompute from the summed box (exact — no "avg" marker); USG%/AST%/
+    TOV% are minute-weighted pooled averages flagged via pooled_composite_keys.
+    """
+    await _seed_rate_basket(db_session)
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", grain="career")
+    )
+    assert result.total == 1
+    row = result.rows[0]
+    # Attempt rates: 0-1 fractions from summed volume (exact at career grain).
+    assert row.values["ftr"] == pytest.approx(round(45 / 150, 3))
+    assert row.values["fg3ar"] == pytest.approx(round(50 / 150, 3))
+    # Usage rates: minute-weighted — (20*100 + 30*50) / 150 etc.
+    assert row.values["usg_pct"] == pytest.approx(round((20 * 100 + 30 * 50) / 150, 1))
+    assert row.values["ast_pct"] == pytest.approx(round((10 * 100 + 20 * 50) / 150, 1))
+    assert row.values["tov_pct"] == pytest.approx(round((8 * 100 + 14 * 50) / 150, 1))
+    # Rate composites carry the "avg" marker at career grain; attempt rates do not.
+    assert {"usg_pct", "ast_pct", "tov_pct"} <= set(result.pooled_composite_keys)
+    assert "ftr" not in result.pooled_composite_keys
+    # All five are result columns at career grain.
+    col_keys = {c.key for c in result.columns}
+    assert {"fg3ar", "ftr", "usg_pct", "ast_pct", "tov_pct"} <= col_keys
+
+
+@pytest.mark.asyncio
+async def test_rate_basket_per_competition_reads_stored_and_sorts(
+    db_session: AsyncSession,
+) -> None:
+    """per_competition rows read stored usage rates and sort on the FTr ratio.
+
+    The SLC line (FTr .500) outranks Vegas (.200) under ftr desc; USG% comes
+    straight from the stored season column.
+    """
+    await _seed_rate_basket(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            sort="ftr",
+            direction="desc",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result.total == 2
+    assert "2025" in result.rows[0].label  # SLC .500 first
+    assert result.rows[0].values["ftr"] == pytest.approx(0.5)
+    assert result.rows[1].values["ftr"] == pytest.approx(0.2)
+    assert result.rows[0].values["usg_pct"] == pytest.approx(30.0)
+    assert result.rows[0].values["ast_pct"] == pytest.approx(20.0)
+    assert result.rows[1].values["tov_pct"] == pytest.approx(8.0)
+
+
+@pytest.mark.asyncio
+async def test_rate_basket_career_sort_and_filters(db_session: AsyncSession) -> None:
+    """Career grain sorts on the pooled FTr ratio and filters on the new keys.
+
+    A second low-FTr player sorts below under ftr desc and is excluded by an
+    ftr >= 0.25 threshold (fractions filter on the displayed 0-1 scale); a
+    tov_pct <= 10.5 cap keeps the pooled-10.0 player and excludes the 16.0 one.
+    """
+    await _seed_rate_basket(db_session)
+    bricks = make_player("No", "Whistle")
+    db_session.add(bricks)
+    await db_session.flush()
+    c3 = await _comp(db_session, year=2023, venue_slug="las_vegas", league_id="15")
+    await _season(
+        db_session,
+        player=bricks,
+        comp_id=c3,
+        year=2023,
+        venue_slug="las_vegas",
+        gp=4,
+        minutes=100.0,
+        pts=80,
+        fga=100,
+        fta=5,
+        tov_pct=16.0,
+    )
+    await db_session.commit()
+
+    by_ftr = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", sort="ftr", direction="desc"),
+    )
+    assert [r.label for r in by_ftr.rows] == ["Rate Basket", "No Whistle"]
+
+    ftr_floor = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="career",
+            metric_filters=[MetricFilter(col="ftr", op=">=", value=0.25)],
+        ),
+    )
+    assert [r.label for r in ftr_floor.rows] == ["Rate Basket"]
+
+    tov_cap = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="career",
+            metric_filters=[MetricFilter(col="tov_pct", op="<=", value=10.5)],
+        ),
+    )
+    assert [r.label for r in tov_cap.rows] == ["Rate Basket"]
+
+
+@pytest.mark.asyncio
+async def test_rate_basket_renders_headers_and_f3(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """The explorer page shows the new headers and formats attempt rates at 3 dp."""
+    await _seed_rate_basket(db_session)
+    resp = await app_client.get("/stats/summer-league/explorer?grain=career")
+    assert resp.status_code == 200
+    body = resp.text
+    for label in ("3PAr", "FTr", "USG%", "AST%", "TOV%"):
+        assert label in body, f"missing header {label}"
+    assert "0.300" in body  # career FTr (45/150) rendered via the f3 format
+
+
+@pytest.mark.asyncio
+async def test_full_advanced_suite_career_rollups(db_session: AsyncSession) -> None:
+    """The full advanced suite rolls up at career grain per its catalog bucket.
+
+    OWS/DWS sum exactly; the /82 projections are minute-weighted (NOT summed —
+    a two-pool career must not double-count); rebound rates pool minute-weighted
+    and carry the pooled marker.
+    """
+    player = make_player("Suite", "Complete")
+    db_session.add(player)
+    await db_session.flush()
+    c1 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2025, venue_slug="salt_lake_city", league_id="16")
+    await _season(
+        db_session, player=player, comp_id=c1, year=2024, venue_slug="las_vegas",
+        gp=3, minutes=100.0, pts=30, ws=1.0, vorp=0.4, adv_eligible=True,
+    )
+    await _season(
+        db_session, player=player, comp_id=c2, year=2025,
+        venue_slug="salt_lake_city",
+        gp=3, minutes=50.0, pts=30, ws=0.5, vorp=0.2, adv_eligible=True,
+    )
+    # Set the columns the helper does not expose directly.
+    from sqlalchemy import update as sa_update
+    await db_session.execute(
+        sa_update(SummerLeaguePlayerSeason)
+        .where(SummerLeaguePlayerSeason.year == 2024)  # type: ignore[arg-type]
+        .values(ows=0.7, dws=0.3, ws82=8.0, vorp82=4.0, orb_pct=10.0, ws40=0.4)
+    )
+    await db_session.execute(
+        sa_update(SummerLeaguePlayerSeason)
+        .where(SummerLeaguePlayerSeason.year == 2025)  # type: ignore[arg-type]
+        .values(ows=0.4, dws=0.1, ws82=14.0, vorp82=7.0, orb_pct=16.0, ws40=0.4)
+    )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", grain="career")
+    )
+    row = result.rows[0]
+    col_keys = {c.key for c in result.columns}
+    assert {
+        "orb_pct", "drb_pct", "trb_pct", "stl_pct", "blk_pct",
+        "net_rtg", "obpm", "dbpm", "ows", "dws", "ws40", "ws82", "vorp82",
+    } <= col_keys
+    # Additive shares sum exactly.
+    assert row.values["ows"] == pytest.approx(1.1)
+    assert row.values["dws"] == pytest.approx(0.4)
+    # Projections minute-weight: (8*100 + 14*50) / 150 = 10.0 — NOT 22 (a sum).
+    assert row.values["ws82"] == pytest.approx(10.0)
+    assert row.values["vorp82"] == pytest.approx(5.0)
+    # Rebound rate minute-weights and is flagged as a pooled composite.
+    assert row.values["orb_pct"] == pytest.approx(12.0)
+    assert "orb_pct" in result.pooled_composite_keys
+    assert "ws82" in result.pooled_composite_keys
+    assert "ows" not in result.pooled_composite_keys  # exact sum, no marker
+
+
+@pytest.mark.asyncio
+async def test_assisted_share_pools_counts_across_grains(
+    db_session: AsyncSession,
+) -> None:
+    """AST'd% derives from summed PBP counts at career grain and per row at
+    per_competition; a player with no PBP counts shows None (not 0)."""
+    player = make_player("Self", "Creator")
+    db_session.add(player)
+    await db_session.flush()
+    c1 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    c2 = await _comp(db_session, year=2025, venue_slug="salt_lake_city", league_id="16")
+    await _season(
+        db_session, player=player, comp_id=c1, year=2024,
+        venue_slug="las_vegas", gp=3, minutes=90.0, pts=30,
+    )
+    await _season(
+        db_session, player=player, comp_id=c2, year=2025,
+        venue_slug="salt_lake_city", gp=3, minutes=90.0, pts=30,
+    )
+    from sqlalchemy import update as sa_update
+    await db_session.execute(
+        sa_update(SummerLeaguePlayerSeason)
+        .where(SummerLeaguePlayerSeason.year == 2024)  # type: ignore[arg-type]
+        .values(ast_fgm=6, unast_fgm=4)
+    )
+    await db_session.execute(
+        sa_update(SummerLeaguePlayerSeason)
+        .where(SummerLeaguePlayerSeason.year == 2025)  # type: ignore[arg-type]
+        .values(ast_fgm=2, unast_fgm=8)
+    )
+    pre_pbp = make_player("Pre", "Pbp")
+    db_session.add(pre_pbp)
+    await db_session.flush()
+    c3 = await _comp(db_session, year=2016, venue_slug="las_vegas", league_id="15")
+    await _season(
+        db_session, player=pre_pbp, comp_id=c3, year=2016,
+        venue_slug="las_vegas", gp=3, minutes=90.0, pts=30,
+    )
+    await db_session.commit()
+
+    career = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="career", sort="astd_pct", direction="desc"),
+    )
+    by_label = {r.label: r for r in career.rows}
+    # Pooled: 100 * (6+2) / (6+2+4+8) = 40.0
+    assert by_label["Self Creator"].values["astd_pct"] == pytest.approx(40.0)
+    assert by_label["Pre Pbp"].values["astd_pct"] is None
+
+    pc = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players", grain="per_competition",
+            sort="astd_pct", direction="desc", min_games=1, min_minutes=1,
+        ),
+    )
+    vals = [r.values["astd_pct"] for r in pc.rows]
+    # Per-row: 60.0 (2024) sorts before 20.0 (2025); the no-PBP row sorts last (None).
+    assert vals[0] == pytest.approx(60.0)
+    assert vals[1] == pytest.approx(20.0)
+    assert vals[2] is None

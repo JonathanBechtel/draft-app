@@ -278,17 +278,17 @@ def test_recombinable_ft_pct() -> None:
 
 
 def test_recombinable_fg3ar() -> None:
-    """3PAr = FG3A / FGA * 100 (3-point attempt rate)."""
+    """3PAr = FG3A / FGA as a 0-1 fraction (BBRef scale, matches stored column)."""
     rows = [_box(fga=10, fg3a=4), _box(fga=8, fg3a=2)]
     result = rollup_recombinable(rows, "fg3ar")
-    assert result == pytest.approx(100.0 * 6 / 18, abs=1e-6)
+    assert result == pytest.approx(6 / 18, abs=1e-6)
 
 
 def test_recombinable_ftr() -> None:
-    """FTr = FTA / FGA * 100 (free-throw rate)."""
+    """FTr = FTA / FGA as a 0-1 fraction (BBRef scale, matches stored column)."""
     rows = [_box(fga=10, fta=5), _box(fga=8, fta=4)]
     result = rollup_recombinable(rows, "ftr")
-    assert result == pytest.approx(100.0 * 9 / 18, abs=1e-6)
+    assert result == pytest.approx(9 / 18, abs=1e-6)
 
 
 def test_recombinable_pts_per100() -> None:
@@ -434,3 +434,17 @@ def test_recombinable_single_pool_matches_direct_formula() -> None:
     assert rollup_recombinable(rows, "fg_pct") == pytest.approx(fg_direct, abs=1e-6)
     assert rollup_recombinable(rows, "fg3_pct") == pytest.approx(fg3_direct, abs=1e-6)
     assert rollup_recombinable(rows, "ft_pct") == pytest.approx(ft_direct, abs=1e-6)
+
+
+def test_recombinable_astd_pct_pools_pbp_counts() -> None:
+    """AST'd% = 100 · Σast_fgm / Σ(ast_fgm + unast_fgm); None with no PBP counts."""
+    from types import SimpleNamespace
+
+    rows = [
+        SimpleNamespace(ast_fgm=6, unast_fgm=4),
+        SimpleNamespace(ast_fgm=2, unast_fgm=8),
+    ]
+    assert rollup_recombinable(rows, "astd_pct") == pytest.approx(40.0)
+    # Pre-PBP rows carry None counts → no denominator → None, not 0.
+    no_pbp = [SimpleNamespace(ast_fgm=None, unast_fgm=None)]
+    assert rollup_recombinable(no_pbp, "astd_pct") is None

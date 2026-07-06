@@ -2,6 +2,8 @@
    Rendered standalone for ?partial=1 (JS swap) and included by explorer.html. #}
 
 {%- macro n1(v) -%}{{ '%.1f' % v if v is not none else '—' }}{%- endmacro -%}
+{%- macro n2(v) -%}{{ '%.2f' % v if v is not none else '—' }}{%- endmacro -%}
+{%- macro n3(v) -%}{{ '%.3f' % v if v is not none else '—' }}{%- endmacro -%}
 
 {# Serialize the current query to a querystring, overriding sort/dir/page. #}
 {%- macro explorer_qs(q, sort=none, direction=none, page=none) -%}
@@ -128,8 +130,12 @@
             <td class="{{ 'slg-strong' if col.key == result.query.sort else '' }}" data-col-group="{{ col.group }}">
               {%- if col.key in ('gp', 'w', 'l', 'total', 'margin') -%}
                 {{ v }}
+              {%- elif col.fmt == 'f3' -%}
+                {{ n3(v) }}
               {%- elif col.key in result.pooled_composite_keys and v is not none -%}
-                {{ n1(v) }}<sup class="slg-pooled-mark" title="Pooled average across competitions — approximate">avg</sup>
+                {{ n2(v) if col.fmt == 'f2' else n1(v) }}<sup class="slg-pooled-mark" title="Pooled average across competitions — approximate">avg</sup>
+              {%- elif col.fmt == 'f2' -%}
+                {{ n2(v) }}
               {%- else -%}
                 {{ n1(v) }}
               {%- endif -%}

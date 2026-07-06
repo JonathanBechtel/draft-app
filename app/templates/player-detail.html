@@ -262,6 +262,7 @@
   {% endmacro %}
 
   {% macro sl_n(v) %}{{ '%.1f' % v if v is not none else '—' }}{% endmacro %}
+  {% macro sl_f2(v) %}{{ '%.2f' % v if v is not none else '—' }}{% endmacro %}
   {% macro sl_f3(v) %}{{ '%.3f' % v if v is not none else '—' }}{% endmacro %}
 
   {% macro sl_row(s, m, is_career, slug='') %}
@@ -408,14 +409,26 @@
                   <th scope="col">MIN</th>
                   <th scope="col" title="Player Efficiency Rating (pool mean 15.0)">PER</th>
                   <th scope="col" title="True Shooting %">TS%</th>
+                  <th scope="col" title="3-point attempt rate (3PA per FGA)">3PAr</th>
                   <th scope="col" title="Free-throw rate (FTA per FGA)">FTr</th>
-                  <th scope="col" title="Usage %">USG%</th>
+                  <th scope="col" title="Share of made field goals that were assisted (play-by-play era only)">AST'd%</th>
+                  <th scope="col" title="Offensive rebound % of those available while on the floor">ORB%</th>
+                  <th scope="col" title="Defensive rebound % of those available while on the floor">DRB%</th>
+                  <th scope="col" title="Total rebound % of those available while on the floor">TRB%</th>
                   <th scope="col" title="Assist % — share of teammate field goals assisted while on the floor">AST%</th>
+                  <th scope="col" title="Steal % — opponent possessions ended by a steal while on the floor">STL%</th>
+                  <th scope="col" title="Block % — opponent 2-point attempts blocked while on the floor">BLK%</th>
                   <th scope="col" title="Turnover % — turnovers per 100 plays">TOV%</th>
+                  <th scope="col" title="Usage %">USG%</th>
                   <th scope="col" title="Offensive Rating (pts/100 poss)">ORtg</th>
                   <th scope="col" title="Defensive Rating (pts allowed/100 poss)">DRtg</th>
+                  <th scope="col" title="Offensive Box Plus/Minus (pool mean 0.0)">OBPM</th>
+                  <th scope="col" title="Defensive Box Plus/Minus (pool mean 0.0)">DBPM</th>
                   <th scope="col" title="Box Plus/Minus (pool mean 0.0)">BPM</th>
+                  <th scope="col" title="Offensive Win Shares accrued in this competition">OWS</th>
+                  <th scope="col" title="Defensive Win Shares accrued in this competition">DWS</th>
                   <th scope="col" title="Win Shares accrued in this competition">WS</th>
+                  <th scope="col" title="Win Shares per 40 minutes">WS/40</th>
                   <th scope="col" title="Win Shares projected to a full 82-game season at this rate">WS/82</th>
                   <th scope="col" title="Value Over Replacement Player accrued in this competition">VORP</th>
                   <th scope="col" title="VORP projected to a full 82-game season at this rate">VORP/82</th>
@@ -430,24 +443,38 @@
                   <td>{{ sl_n(s.minutes) }}</td>
                   <td class="sl-col-rate">{{ sl_n(s.per) }}</td>
                   <td>{{ sl_n(s.ts_pct) }}</td>
+                  <td>{{ sl_f3(s.fg3ar) }}</td>
                   <td>{{ sl_f3(s.ftr) }}</td>
-                  <td>{{ sl_n(s.usg_pct) }}</td>
+                  <td>{{ sl_n(s.astd_pct) }}</td>
+                  <td>{{ sl_n(s.orb_pct) }}</td>
+                  <td>{{ sl_n(s.drb_pct) }}</td>
+                  <td>{{ sl_n(s.trb_pct) }}</td>
                   <td>{{ sl_n(s.ast_pct) }}</td>
+                  <td>{{ sl_n(s.stl_pct) }}</td>
+                  <td>{{ sl_n(s.blk_pct) }}</td>
                   <td>{{ sl_n(s.tov_pct) }}</td>
+                  <td>{{ sl_n(s.usg_pct) }}</td>
                   <td>{{ sl_n(s.ortg) }}</td>
                   <td>{{ sl_n(s.drtg) }}</td>
+                  <td class="sl-col-rate">{{ sl_n(s.obpm) }}</td>
+                  <td class="sl-col-rate">{{ sl_n(s.dbpm) }}</td>
                   <td class="sl-col-rate">{{ sl_n(s.bpm) }}</td>
+                  <td class="sl-col-rate">{{ sl_n(s.ows) }}</td>
+                  <td class="sl-col-rate">{{ sl_n(s.dws) }}</td>
                   <td class="sl-col-rate">{{ sl_n(s.ws) }}</td>
+                  <td class="sl-col-rate">{{ sl_f2(s.ws40) }}</td>
                   <td class="sl-col-rate">{{ sl_n(s.ws82) }}</td>
                   <td class="sl-col-rate">{{ sl_n(s.vorp) }}</td>
                   <td class="sl-col-rate">{{ sl_n(s.vorp82) }}</td>
                 </tr>
                 {% endfor %}
                 {% if sl_metrics.seasons | length > 1 %}
-                {# Career: cumulative WS/VORP are summed; PER/BPM and the /82
-                   projections are minute-weighted; FTr/TOV% pool from summed box
-                   volume; ratings/usage/AST% left blank since they can't be
-                   pooled across differently-calibrated competitions. #}
+                {# Career: cumulative WS/OWS/DWS/VORP are summed (WS/40 recomputed
+                   from the sums); PER/BPM/OBPM/DBPM and the /82 projections are
+                   minute-weighted; TS%/3PAr/FTr/TOV% pool from summed box volume;
+                   ratings, usage, AST%, and the rebound/steal/block rates are left
+                   blank since they can't be pooled across differently-calibrated
+                   competitions. #}
                 <tr class="sl-stats-table__career">
                   <th scope="row">Career*</th>
                   <td class="sl-col-lg">—</td>
@@ -455,14 +482,26 @@
                   <td>{{ sl_n(sl_metrics.career.minutes) }}</td>
                   <td class="sl-col-rate">{{ sl_n(sl_metrics.career.per_avg) }}</td>
                   <td>{{ sl_n(sl_metrics.career.ts_avg) }}</td>
+                  <td>{{ sl_f3(sl_metrics.career.fg3ar) }}</td>
                   <td>{{ sl_f3(sl_metrics.career.ftr) }}</td>
+                  <td>{{ sl_n(sl_metrics.career.astd_pct) }}</td>
+                  <td>—</td>
+                  <td>—</td>
+                  <td>—</td>
+                  <td>—</td>
                   <td>—</td>
                   <td>—</td>
                   <td>{{ sl_n(sl_metrics.career.tov_pct) }}</td>
                   <td>—</td>
                   <td>—</td>
+                  <td>—</td>
+                  <td class="sl-col-rate">{{ sl_n(sl_metrics.career.obpm_avg) }}</td>
+                  <td class="sl-col-rate">{{ sl_n(sl_metrics.career.dbpm_avg) }}</td>
                   <td class="sl-col-rate">{{ sl_n(sl_metrics.career.bpm_avg) }}</td>
+                  <td class="sl-col-rate">{{ sl_n(sl_metrics.career.ows) }}</td>
+                  <td class="sl-col-rate">{{ sl_n(sl_metrics.career.dws) }}</td>
                   <td class="sl-col-rate">{{ sl_n(sl_metrics.career.ws) }}</td>
+                  <td class="sl-col-rate">{{ sl_f2(sl_metrics.career.ws40) }}</td>
                   <td class="sl-col-rate">{{ sl_n(sl_metrics.career.ws82_avg) }}</td>
                   <td class="sl-col-rate">{{ sl_n(sl_metrics.career.vorp) }}</td>
                   <td class="sl-col-rate">{{ sl_n(sl_metrics.career.vorp82_avg) }}</td>
@@ -473,7 +512,7 @@
           </div>
           {% if sl_metrics.seasons | length > 1 %}
           <div class="sl-career-meta">
-            * Career WS and VORP are cumulative totals across qualified competitions; PER, BPM, and the /82 projections are minute-weighted averages, and TS%, FTr, and TOV% pool the underlying totals. Ratings, usage, and AST% aren't pooled across competitions.
+            * Career WS (and OWS/DWS) and VORP are cumulative totals across qualified competitions, with WS/40 recomputed from those sums; PER, BPM (and OBPM/DBPM), and the /82 projections are minute-weighted averages, and TS%, 3PAr, FTr, AST'd%, and TOV% pool the underlying totals. Ratings, usage, AST%, and the rebound/steal/block rates aren't pooled across competitions.
           </div>
           {% endif %}
         </div>
