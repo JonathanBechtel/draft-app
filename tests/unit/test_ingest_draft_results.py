@@ -7,7 +7,11 @@ tokens, multi-word names, stray header lines) without a DB.
 
 from __future__ import annotations
 
-from scripts.ingest_draft_results import parse_lines
+from scripts.ingest_draft_results import (
+    _DEFAULT_DRAFT_YEAR,
+    _resolve_draft_year,
+    parse_lines,
+)
 
 
 def test_parses_basic_pick_name_team_lines() -> None:
@@ -63,3 +67,23 @@ def test_tab_separated_lines_parse() -> None:
     assert picks[0].overall_pick == 1
     assert picks[0].player_name == "AJ Dybantsa"
     assert picks[0].team_abbr == "WAS"
+
+
+def test_resolve_draft_year_prefers_explicit_flag() -> None:
+    """An explicit --draft-year always wins, even against a year-named file."""
+    assert _resolve_draft_year(2025, "scripts/data/draft_results_2027.txt") == 2025
+
+
+def test_resolve_draft_year_infers_from_file_name() -> None:
+    """With no flag, the year comes from a draft_results_<YYYY>.txt file name.
+
+    This is what lets the deploy loop and future years ingest with no flag.
+    """
+    assert _resolve_draft_year(None, "scripts/data/draft_results_2027.txt") == 2027
+    assert _resolve_draft_year(None, "/abs/path/draft_results_2030.txt") == 2030
+
+
+def test_resolve_draft_year_falls_back_to_default() -> None:
+    """Stdin input (no file) or an unrecognized name falls back to the default."""
+    assert _resolve_draft_year(None, None) == _DEFAULT_DRAFT_YEAR
+    assert _resolve_draft_year(None, "picks.txt") == _DEFAULT_DRAFT_YEAR

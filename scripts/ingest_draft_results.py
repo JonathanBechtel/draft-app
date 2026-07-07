@@ -64,6 +64,28 @@ load_dotenv()
 
 _TEAM_TOKEN = re.compile(r"^[A-Z]{2,4}$")
 _LINE = re.compile(r"^\s*#?\s*(\d+)[.):\s]\s*(.+?)\s*$")
+# Year embedded in a canonical data file name, e.g. draft_results_2026.txt.
+_FILE_YEAR = re.compile(r"draft_results_(\d{4})")
+
+# Fallback draft year for stdin input with no --draft-year and no year-bearing
+# file name (the draft-night paste path). File-based runs infer their year.
+_DEFAULT_DRAFT_YEAR = 2026
+
+
+def _resolve_draft_year(explicit: Optional[int], file_path: Optional[str]) -> int:
+    """Resolve the draft year from the flag, then the file name, then the default.
+
+    Precedence: an explicit ``--draft-year`` wins; otherwise a ``--file`` named
+    ``draft_results_<YYYY>.txt`` supplies the year (so the deploy loop and any
+    future year's file work with no flag); otherwise fall back to the default.
+    """
+    if explicit is not None:
+        return explicit
+    if file_path:
+        m = _FILE_YEAR.search(os.path.basename(file_path))
+        if m:
+            return int(m.group(1))
+    return _DEFAULT_DRAFT_YEAR
 
 
 @dataclass(slots=True)
@@ -257,7 +279,16 @@ def main() -> None:
         "--file",
         help="Path to a file of pick lines; reads stdin when omitted.",
     )
-    parser.add_argument("--draft-year", type=int, default=2026)
+    parser.add_argument(
+        "--draft-year",
+        type=int,
+        default=None,
+        help=(
+            "Draft year. When omitted, inferred from a --file named "
+            "draft_results_<YYYY>.txt (so the deploy loop and future years work "
+            "with no flag); falls back to 2026 for stdin input."
+        ),
+    )
     parser.add_argument(
         "--source",
         default="manual",
@@ -276,10 +307,13 @@ def main() -> None:
     else:
         text = sys.stdin.read()
 
+    draft_year = _resolve_draft_year(args.draft_year, args.file)
+    print(f"Draft year: {draft_year}")
+
     asyncio.run(
         ingest(
             text,
-            draft_year=args.draft_year,
+            draft_year=draft_year,
             source=args.source,
             dry_run=args.dry_run,
         )

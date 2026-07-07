@@ -362,6 +362,33 @@
   display: none;
 }
 
+/* --- Round-2 section divider ---------------------------------------------- */
+/* A full-width band that splits the board into round 1 (picks 1-30) and round
+   2 (31-60) so the mock reads as a complete two-round draft. Server-rendered
+   before the first round-2 row; consensus.js hides/repositions it under sort
+   and filter (see updateRoundDivider). */
+.cb-round-divider__cell {
+  padding: 0.55rem 0.9rem;
+  background: var(--color-slate-100);
+  border-top: 2px solid var(--color-accent-amber);
+  border-bottom: 1px solid var(--color-slate-200);
+}
+
+.cb-round-divider__label {
+  font-family: var(--font-heading);
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-slate-900);
+}
+
+.cb-round-divider__meta {
+  margin-left: 0.6rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--color-slate-500);
+}
+
 /* --------------------------------------------------------------------------
    Per-analyst source breakdown — expand toggle + inline detail panel.
    A ▸ toggle in the leading column reveals a sibling row that lists where
