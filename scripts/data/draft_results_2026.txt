@@ -1,6 +1,7 @@
-# 2026 NBA Draft — Round 1 actual results (canonical source).
+# 2026 NBA Draft — actual results (canonical source), Rounds 1 & 2.
 # Format: <overall_pick>\t<player name>\t<team abbr>. Team = selecting
-# team at the slot (trades not reflected in the chip). Load with:
+# team at the slot (trades not reflected in the chip); the team column is
+# optional and left blank when the selecting team is unknown. Load with:
 #   scripts/ingest_draft_results.py --file scripts/data/draft_results_2026.txt
 1	AJ Dybantsa	WAS
 2	Darryn Peterson	UTA
@@ -32,3 +33,35 @@
 28	Joshua Jefferson	MIN
 29	Alex Karaban	CLE
 30	Koa Peat	DAL
+# --- Round 2 (picks 31-60). Team chips omitted: the draft-night source
+# preserved trade provenance, not the pre-trade selecting team per slot. ---
+31	Bruce Thornton
+32	Richie Saunders
+33	Isaiah Evans
+34	Meleek Thomas
+35	Trevon Brazile
+36	Baba Miller
+37	Ryan Conwell
+38	Braden Smith
+39	Jack Kayil
+40	Dillon Mitchell
+41	Otega Oweh
+42	Ja'Kobi Gillespie
+43	Tyler Bilodeau
+44	Maliq Brown
+45	Emanuel Sharp
+46	Felix Okpara
+47	Tyler Nickel
+48	Tobi Lawal
+49	Bryce Hopkins
+50	Jaden Bradley
+51	Izaiyah Nelson
+52	Henri Veesaar
+53	Ugonna Onyenso
+54	Lajae Jones
+55	Nick Martinelli
+56	Vsevolod Ishchenko
+57	Narcisse Ngoy
+58	Jaron Pierre Jr.
+59	Trey Kaufman-Renn
+60	Malique Lewis
