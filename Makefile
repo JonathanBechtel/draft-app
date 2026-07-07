@@ -1,7 +1,7 @@
 HOST ?= 0.0.0.0
 PORT ?= 8000
 
-.PHONY: dev run mig.revision mig.up mig.down mig.history mig.current scrape ingest metrics bio.scrape bio.ingest
+.PHONY: dev run mig.revision mig.up mig.down mig.history mig.current scrape ingest metrics bio.scrape bio.ingest draft-ingest
 .PHONY: news-seed nba-seed nba-logos
 .PHONY: college-mapping college-seed-data college-seed college-backfill college-logos
 
@@ -34,6 +34,21 @@ scrape:
 #   make ingest SOURCE=anthro    # only one source
 ingest:
 	$(PYTHON) scripts/ingest_combine.py --out-dir $(OUT) $(if $(YEAR),--season $(YEAR),) --source $(SOURCE)
+
+# Ingest actual draft-night results into draft_results (idempotent upsert by
+# year+pick). Reads the canonical scripts/data/draft_results_<year>.txt file;
+# the draft year is inferred from the file name. Picks resolve against this
+# environment's player DB — unmatched names are reported, not fatal. This is the
+# same script the deploy workflows run; see docs/draft_results_runbook.md.
+# Usage:
+#   make draft-ingest                  # ingest scripts/data/draft_results_2026.txt
+#   make draft-ingest DRAFT_YEAR=2027  # ingest scripts/data/draft_results_2027.txt
+#   make draft-ingest DRY=1            # parse + resolve, then roll back (preview)
+DRAFT_YEAR ?= 2026
+draft-ingest:
+	$(PYTHON) scripts/ingest_draft_results.py \
+		--file scripts/data/draft_results_$(DRAFT_YEAR).txt \
+		$(if $(DRY),--dry-run,)
 
 # Seed curated RSS news sources into the database
 news-seed:
