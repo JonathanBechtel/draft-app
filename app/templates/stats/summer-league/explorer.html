@@ -152,6 +152,19 @@
       </select>
     </div>
     {% endif %}
+    {# Nth summer-league appearance. Appearances are counted by distinct year
+       (both venues in one summer count once); options isolate that appearance so
+       you can ask e.g. "who produced most in their 2nd summer league?" #}
+    <div class="slg-filter">
+      <label for="ex-appearance" title="Isolate a player's Nth summer league. Appearances are counted by distinct year — both venues in one summer count once.">SL appearance</label>
+      <select id="ex-appearance" name="appearance">
+        <option value="">Any</option>
+        <option value="1" {{ 'selected' if q.appearance == 1 else '' }}>1st (rookie SL)</option>
+        <option value="2" {{ 'selected' if q.appearance == 2 else '' }}>2nd</option>
+        <option value="3" {{ 'selected' if q.appearance == 3 else '' }}>3rd</option>
+        <option value="4" {{ 'selected' if q.appearance == 4 else '' }}>4th+</option>
+      </select>
+    </div>
     <div class="slg-filter">
       <label for="grain-select">Grain</label>
       <select id="grain-select" name="grain">

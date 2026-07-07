@@ -4370,16 +4370,34 @@ async def test_full_advanced_suite_career_rollups(db_session: AsyncSession) -> N
     c1 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
     c2 = await _comp(db_session, year=2025, venue_slug="salt_lake_city", league_id="16")
     await _season(
-        db_session, player=player, comp_id=c1, year=2024, venue_slug="las_vegas",
-        gp=3, minutes=100.0, pts=30, ws=1.0, vorp=0.4, adv_eligible=True,
+        db_session,
+        player=player,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=3,
+        minutes=100.0,
+        pts=30,
+        ws=1.0,
+        vorp=0.4,
+        adv_eligible=True,
     )
     await _season(
-        db_session, player=player, comp_id=c2, year=2025,
+        db_session,
+        player=player,
+        comp_id=c2,
+        year=2025,
         venue_slug="salt_lake_city",
-        gp=3, minutes=50.0, pts=30, ws=0.5, vorp=0.2, adv_eligible=True,
+        gp=3,
+        minutes=50.0,
+        pts=30,
+        ws=0.5,
+        vorp=0.2,
+        adv_eligible=True,
     )
     # Set the columns the helper does not expose directly.
     from sqlalchemy import update as sa_update
+
     await db_session.execute(
         sa_update(SummerLeaguePlayerSeason)
         .where(SummerLeaguePlayerSeason.year == 2024)  # type: ignore[arg-type]
@@ -4398,8 +4416,19 @@ async def test_full_advanced_suite_career_rollups(db_session: AsyncSession) -> N
     row = result.rows[0]
     col_keys = {c.key for c in result.columns}
     assert {
-        "orb_pct", "drb_pct", "trb_pct", "stl_pct", "blk_pct",
-        "net_rtg", "obpm", "dbpm", "ows", "dws", "ws40", "ws82", "vorp82",
+        "orb_pct",
+        "drb_pct",
+        "trb_pct",
+        "stl_pct",
+        "blk_pct",
+        "net_rtg",
+        "obpm",
+        "dbpm",
+        "ows",
+        "dws",
+        "ws40",
+        "ws82",
+        "vorp82",
     } <= col_keys
     # Additive shares sum exactly.
     assert row.values["ows"] == pytest.approx(1.1)
@@ -4419,21 +4448,35 @@ async def test_assisted_share_pools_counts_across_grains(
     db_session: AsyncSession,
 ) -> None:
     """AST'd% derives from summed PBP counts at career grain and per row at
-    per_competition; a player with no PBP counts shows None (not 0)."""
+    per_competition; a player with no PBP counts shows None (not 0).
+    """
     player = make_player("Self", "Creator")
     db_session.add(player)
     await db_session.flush()
     c1 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
     c2 = await _comp(db_session, year=2025, venue_slug="salt_lake_city", league_id="16")
     await _season(
-        db_session, player=player, comp_id=c1, year=2024,
-        venue_slug="las_vegas", gp=3, minutes=90.0, pts=30,
+        db_session,
+        player=player,
+        comp_id=c1,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=3,
+        minutes=90.0,
+        pts=30,
     )
     await _season(
-        db_session, player=player, comp_id=c2, year=2025,
-        venue_slug="salt_lake_city", gp=3, minutes=90.0, pts=30,
+        db_session,
+        player=player,
+        comp_id=c2,
+        year=2025,
+        venue_slug="salt_lake_city",
+        gp=3,
+        minutes=90.0,
+        pts=30,
     )
     from sqlalchemy import update as sa_update
+
     await db_session.execute(
         sa_update(SummerLeaguePlayerSeason)
         .where(SummerLeaguePlayerSeason.year == 2024)  # type: ignore[arg-type]
@@ -4449,14 +4492,22 @@ async def test_assisted_share_pools_counts_across_grains(
     await db_session.flush()
     c3 = await _comp(db_session, year=2016, venue_slug="las_vegas", league_id="15")
     await _season(
-        db_session, player=pre_pbp, comp_id=c3, year=2016,
-        venue_slug="las_vegas", gp=3, minutes=90.0, pts=30,
+        db_session,
+        player=pre_pbp,
+        comp_id=c3,
+        year=2016,
+        venue_slug="las_vegas",
+        gp=3,
+        minutes=90.0,
+        pts=30,
     )
     await db_session.commit()
 
     career = await run_explorer_query(
         db_session,
-        ExplorerQuery(subject="players", grain="career", sort="astd_pct", direction="desc"),
+        ExplorerQuery(
+            subject="players", grain="career", sort="astd_pct", direction="desc"
+        ),
     )
     by_label = {r.label: r for r in career.rows}
     # Pooled: 100 * (6+2) / (6+2+4+8) = 40.0
@@ -4466,8 +4517,12 @@ async def test_assisted_share_pools_counts_across_grains(
     pc = await run_explorer_query(
         db_session,
         ExplorerQuery(
-            subject="players", grain="per_competition",
-            sort="astd_pct", direction="desc", min_games=1, min_minutes=1,
+            subject="players",
+            grain="per_competition",
+            sort="astd_pct",
+            direction="desc",
+            min_games=1,
+            min_minutes=1,
         ),
     )
     vals = [r.values["astd_pct"] for r in pc.rows]
@@ -4475,3 +4530,237 @@ async def test_assisted_share_pools_counts_across_grains(
     assert vals[0] == pytest.approx(60.0)
     assert vals[1] == pytest.approx(20.0)
     assert vals[2] is None
+
+
+# --------------------------------------------------------------------------- #
+# Nth summer-league appearance filter
+#
+# An "appearance" is one distinct calendar year the player played (both venues in
+# one summer count once), dense-ranked ascending over the player's FULL history.
+# The filter isolates a chosen appearance (1st/2nd/3rd, or the open-ended 4th+).
+# --------------------------------------------------------------------------- #
+
+
+async def _seed_appearance_career(db: AsyncSession) -> PlayerMaster:
+    """One player across three summers: 2023 SLC, 2024 Vegas, 2025 Vegas.
+
+    Distinct-year appearances → 1st = 2023, 2nd = 2024, 3rd = 2025. Season PTS
+    ramp 10 → 20 → 30 so the isolated appearance is identifiable by its points.
+    """
+    player = make_player("Vet", "Guard")
+    db.add(player)
+    await db.flush()
+    c23 = await _comp(db, year=2023, venue_slug="salt_lake_city", league_id="16")
+    c24 = await _comp(db, year=2024, venue_slug="las_vegas", league_id="15")
+    c25 = await _comp(db, year=2025, venue_slug="las_vegas", league_id="15")
+    await _season(
+        db, player=player, comp_id=c23, year=2023, venue_slug="salt_lake_city", pts=10
+    )
+    await _season(
+        db, player=player, comp_id=c24, year=2024, venue_slug="las_vegas", pts=20
+    )
+    await _season(
+        db, player=player, comp_id=c25, year=2025, venue_slug="las_vegas", pts=30
+    )
+    await db.commit()
+    return player
+
+
+def test_parse_query_appearance_validation() -> None:
+    """Appearance parses to an int in 1..4; out-of-range/garbage degrade to None."""
+    assert parse_query({"appearance": "1"}).appearance == 1
+    assert parse_query({"appearance": "4"}).appearance == 4
+    assert parse_query({"appearance": "0"}).appearance is None
+    assert parse_query({"appearance": "9"}).appearance is None
+    assert parse_query({"appearance": "abc"}).appearance is None
+    assert parse_query({}).appearance is None
+
+
+@pytest.mark.asyncio
+async def test_appearance_career_isolates_nth_year(db_session: AsyncSession) -> None:
+    """Career grain + appearance=N collapses each player to just their Nth summer."""
+    await _seed_appearance_career(db_session)
+    first = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", appearance=1, mode="totals")
+    )
+    assert first.total == 1
+    assert first.rows[0].values["pts"] == 10  # 2023, the debut summer
+
+    second = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", appearance=2, mode="totals")
+    )
+    assert second.total == 1
+    assert second.rows[0].values["pts"] == 20  # 2024
+
+
+@pytest.mark.asyncio
+async def test_appearance_top_bucket_is_open_ended(db_session: AsyncSession) -> None:
+    """The 4th+ bucket (appearance=4) excludes a player with only three summers."""
+    await _seed_appearance_career(db_session)
+    result = await run_explorer_query(
+        db_session, ExplorerQuery(subject="players", appearance=4, mode="totals")
+    )
+    assert result.total == 0
+
+
+@pytest.mark.asyncio
+async def test_appearance_per_competition_row(db_session: AsyncSession) -> None:
+    """Per-competition grain + appearance=3 yields the single 3rd-summer row."""
+    await _seed_appearance_career(db_session)
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            appearance=3,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert result.total == 1
+    assert "2025" in result.rows[0].label
+
+
+@pytest.mark.asyncio
+async def test_appearance_rank_uses_full_history_not_scope(
+    db_session: AsyncSession,
+) -> None:
+    """Appearance number is a career fact — a year filter narrows, never renumbers.
+
+    The debut (2023) is the 1st appearance even when the year scope starts at 2024;
+    so appearance=1 + year_min=2024 matches nothing (the debut is out of scope),
+    while appearance=2 + year_min=2024 still resolves to the in-scope 2024 summer.
+    """
+    await _seed_appearance_career(db_session)
+    debut_out_of_scope = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", appearance=1, year_min=2024, mode="totals"),
+    )
+    assert debut_out_of_scope.total == 0
+
+    second_in_scope = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", appearance=2, year_min=2024, mode="totals"),
+    )
+    assert second_in_scope.total == 1
+    assert second_in_scope.rows[0].values["pts"] == 20
+
+
+@pytest.mark.asyncio
+async def test_appearance_same_year_two_venues_share_number(
+    db_session: AsyncSession,
+) -> None:
+    """Two venues in one summer count as one appearance (dense rank over years).
+
+    A player at Vegas + SLC in 2024 then Vegas 2025: both 2024 events are the 1st
+    appearance, and 2025 is the 2nd (not the 3rd).
+    """
+    player = make_player("Split", "Summer")
+    db_session.add(player)
+    await db_session.flush()
+    c24v = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    c24s = await _comp(
+        db_session, year=2024, venue_slug="salt_lake_city", league_id="13"
+    )
+    c25 = await _comp(db_session, year=2025, venue_slug="las_vegas", league_id="15")
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c24v,
+        year=2024,
+        venue_slug="las_vegas",
+        pts=20,
+    )
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c24s,
+        year=2024,
+        venue_slug="salt_lake_city",
+        pts=20,
+    )
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c25,
+        year=2025,
+        venue_slug="las_vegas",
+        pts=30,
+    )
+    await db_session.commit()
+
+    both_venues = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            appearance=1,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert both_venues.total == 2  # both 2024 events are the 1st appearance
+
+    second = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            appearance=2,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    assert second.total == 1  # 2025 is the 2nd distinct year, not the 3rd
+    assert "2025" in second.rows[0].label
+
+
+@pytest.mark.asyncio
+async def test_appearance_per_game_filters_by_nth_year(
+    db_session: AsyncSession,
+) -> None:
+    """Per-game grain restricts game logs to the player's Nth-appearance year."""
+    player = make_player("Gamelog", "Vet")
+    db_session.add(player)
+    await db_session.flush()
+    c24 = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+    t24 = await _team(db_session, comp_id=c24)
+    await _log(db_session, comp_id=c24, team=t24, player=player, pts=20, games=2)
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c24,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=40,
+    )
+    c25 = await _comp(db_session, year=2025, venue_slug="las_vegas", league_id="15")
+    t25 = await _team(db_session, comp_id=c25)
+    await _log(db_session, comp_id=c25, team=t25, player=player, pts=30, games=2)
+    await _season(
+        db_session,
+        player=player,
+        comp_id=c25,
+        year=2025,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=60,
+    )
+    await db_session.commit()
+
+    first = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", appearance=1),
+    )
+    assert first.total == 2  # two 2024 game logs
+    assert all(r.values["pts"] == 20 for r in first.rows)
+
+    second = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", appearance=2),
+    )
+    assert second.total == 2  # two 2025 game logs
+    assert all(r.values["pts"] == 30 for r in second.rows)

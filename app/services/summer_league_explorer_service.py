@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Callable, Optional
 
-from sqlalchemy import case, func, literal, nulls_last, or_, select, text
+from sqlalchemy import and_, case, func, literal, nulls_last, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -81,6 +81,16 @@ DEFAULT_MIN_MINUTES = 60
 PAGE_SIZE = 50
 MODES = ("per_game", "per_36", "per_100", "totals")
 DEFAULT_MODE = "per_game"
+
+# "Nth summer-league appearance" filter (players subject). A player's *appearances*
+# are their DISTINCT calendar years in the SL pool, dense-ranked ascending — both
+# venues of a single summer share one number (an appearance is a summer, not a
+# venue). Options 1..3 isolate that exact appearance; ``APPEARANCE_TOP`` (4) is the
+# open-ended "4th or later" bucket, since the multi-return tail is sparse. The rank
+# is derived on the fly (no stored column) and always computed over the player's
+# full history, so "2nd" means the same season regardless of any year/venue scope.
+APPEARANCE_MIN = 1
+APPEARANCE_TOP = 4
 
 _MINUTES_PER_GAME = MINUTES_PER_GAME
 
@@ -130,6 +140,58 @@ def _apply_position_filter(stmt: Any, q: ExplorerQuery) -> Any:
         .join(Position, Position.id == PlayerStatus.position_id)  # type: ignore[arg-type]
         .where(_position_scope_cond(q.position))
     )
+
+
+def _appearance_rank_subq() -> Any:
+    """Subquery mapping ``(player_id, year)`` → the player's SL appearance number.
+
+    A summer-league *appearance* is one distinct calendar year in which the player
+    played: two venues in the same summer count once, so the ordinal is a
+    ``DENSE_RANK`` over the player's DISTINCT years (ties on year share a number).
+    The rank is computed over the player's FULL history in
+    ``summer_league_player_seasons`` — deliberately independent of the active
+    filters — so "2nd appearance" always resolves to the same season no matter what
+    year/venue scope is layered on top.
+    """
+    ps = SummerLeaguePlayerSeason
+    distinct_years = (
+        select(ps.player_id, ps.year)  # type: ignore[call-overload]
+        .distinct()
+        .subquery("_sl_appearance_years")
+    )
+    appearance_num = func.dense_rank().over(
+        partition_by=distinct_years.c.player_id,
+        order_by=distinct_years.c.year,
+    )
+    return select(
+        distinct_years.c.player_id.label("player_id"),
+        distinct_years.c.year.label("year"),
+        appearance_num.label("appearance_num"),
+    ).subquery("_sl_appearance_rank")
+
+
+def _apply_appearance_filter(
+    stmt: Any, q: ExplorerQuery, player_id_col: Any, year_col: Any
+) -> Any:
+    """Restrict a player statement to rows that are the player's Nth SL appearance.
+
+    No-op when the filter is unset. ``APPEARANCE_TOP`` (4) is the open-ended "4th or
+    later" bucket; 1–3 isolate that exact appearance. The appearance-rank map is
+    joined on ``(player_id, year)`` — one map row per distinct player-year, so the
+    join adds no fanout (each input row matches exactly one rank). It is an INNER
+    join, so a row whose year has no season row would drop; that should not happen
+    because the season table is derived from the same game logs.
+    """
+    if q.appearance is None:
+        return stmt
+    ar = _appearance_rank_subq()
+    stmt = stmt.join(
+        ar,
+        and_(ar.c.player_id == player_id_col, ar.c.year == year_col),  # type: ignore[arg-type]
+    )
+    if q.appearance >= APPEARANCE_TOP:
+        return stmt.where(ar.c.appearance_num >= APPEARANCE_TOP)
+    return stmt.where(ar.c.appearance_num == q.appearance)
 
 
 def _max_plausible_draft_class() -> int:
@@ -1256,6 +1318,9 @@ class ExplorerQuery:
     draft_pick_min: Optional[int] = None
     draft_pick_max: Optional[int] = None
     position: Optional[str] = None
+    # Nth summer-league appearance to isolate (1..3 = exact; APPEARANCE_TOP = 4th+).
+    # None means no filter. See APPEARANCE_TOP / _apply_appearance_filter.
+    appearance: Optional[int] = None
     country: Optional[str] = None
     team_slug: Optional[str] = None
     round_type: Optional[str] = None
@@ -1380,6 +1445,12 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     position: Optional[str] = (params.get("position") or "").lower() or None
     if position is not None and position not in _POSITION_FILTER_VALUES:
         position = None
+    # Nth summer-league appearance to isolate. Valid values are 1..APPEARANCE_TOP
+    # (4 = "4th+"); anything outside that range (blank, 0, negatives, stray large
+    # values) degrades to no filter.
+    appearance = _to_int(params.get("appearance"))
+    if appearance is not None and not (APPEARANCE_MIN <= appearance <= APPEARANCE_TOP):
+        appearance = None
     # Canonicalize so a raw ?country=US URL resolves to the same value the
     # dropdown emits ("United States") and matches every stored encoding.
     country = canonical_country(params.get("country"))
@@ -1420,6 +1491,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         draft_pick_min=_to_int(params.get("draft_pick_min")),
         draft_pick_max=_to_int(params.get("draft_pick_max")),
         position=position,
+        appearance=appearance,
         country=country,
         team_slug=team_slug,
         round_type=round_type,
@@ -1992,6 +2064,10 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
             te.team_slug == q.team_slug
         )
     stmt = _apply_position_filter(stmt, q)
+    # Nth-appearance filter: keep only the season rows whose year is the player's
+    # Nth distinct SL year, then the GROUP BY aggregates that year (both venues if
+    # any) into one career row per qualifying player.
+    stmt = _apply_appearance_filter(stmt, q, ps.player_id, ps.year)
     # round_type is not supported at career grain — season rows aggregate a full
     # competition, not individual round games.  Silently ignored here.
 
@@ -2301,6 +2377,9 @@ async def _query_players_per_competition(
             ps.primary_team_entry_id == te.id,  # type: ignore[arg-type]
         ).where(te.team_slug == q.team_slug)  # type: ignore[arg-type]
     stmt = _apply_position_filter(stmt, q)
+    # Keep only each player's Nth-appearance competition(s); one map row per
+    # player-year, so a same-year two-venue return surfaces both competition rows.
+    stmt = _apply_appearance_filter(stmt, q, ps.player_id, ps.year)
     if q.player_slug is not None:
         stmt = stmt.where(pm.slug == q.player_slug)  # type: ignore[arg-type]
 
@@ -2519,6 +2598,9 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
             te.team_slug == q.team_slug
         )
     stmt = _apply_position_filter(stmt, q)
+    # Keep only game logs from each player's Nth-appearance year (rank derived from
+    # the season table; the competition year is the join key here).
+    stmt = _apply_appearance_filter(stmt, q, pgl.player_id, comp.year)
 
     # Count via wrapping subquery, then sort + slice.
     total = await _count_subquery(db, stmt)
@@ -2948,6 +3030,9 @@ async def get_player_drilldown_rows(
         # career row — without it, a player on multiple SL teams would show
         # competitions that did not contribute to the displayed total.
         team_slug=scope_q.team_slug,
+        # Carry the appearance scope too, so an expanded row shows only the
+        # competition(s) that fed the (appearance-filtered) parent career total.
+        appearance=scope_q.appearance,
         min_games=1,  # no GP floor — show all competitions for this player
         min_minutes=1,  # no MIN floor
         mode=scope_q.mode,
