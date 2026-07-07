@@ -47,7 +47,7 @@
     <span class="slg-explorer-banner__text">{{ result.adv_eligible_n }} of {{ result.adv_eligible_m }} competition{{ 's' if result.adv_eligible_m != 1 else '' }} in this scope qualify for advanced composites.
     {% if result.adv_eligible_n > 0 %}
     Rate metrics (PER, ORtg, DRtg, BPM) are pooled averages across competitions and are approximate
-    (marked <abbr title="Pooled average — approximate">avg</abbr>).
+    (marked <abbr class="slg-pooled-mark--star" title="Pooled average — approximate">&#9733;</abbr>).
     {% endif %}</span>
   </div>
   {% endif %}
@@ -133,7 +133,7 @@
               {%- elif col.fmt == 'f3' -%}
                 {{ n3(v) }}
               {%- elif col.key in result.pooled_composite_keys and v is not none -%}
-                {{ n2(v) if col.fmt == 'f2' else n1(v) }}<sup class="slg-pooled-mark" title="Pooled average across competitions — approximate">avg</sup>
+                {{ n2(v) if col.fmt == 'f2' else n1(v) }}<sup class="slg-pooled-mark slg-pooled-mark--star" title="Pooled average across competitions — approximate" aria-label="pooled average">&#9733;</sup>
               {%- elif col.fmt == 'f2' -%}
                 {{ n2(v) }}
               {%- else -%}

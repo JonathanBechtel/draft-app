@@ -921,6 +921,16 @@
 .slg-explorer-table tbody tr:hover th.slg-explorer__label {
   background: #ecfdf5;
 }
+/* Pooled-average marker: a small muted star reads cleaner than the "avg"
+   superscript in the dense advanced grid. */
+.slg-pooled-mark--star {
+  color: var(--color-slate-400, #94a3b8);
+  font-size: 0.7em;
+  margin-left: 1px;
+  cursor: help;
+  text-decoration: none;
+}
+
 /* Subtle tint on the active sort column so the eye tracks it down the table. */
 .slg-explorer-table tbody td.slg-strong {
   background: rgba(16, 185, 129, 0.05);
