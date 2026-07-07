@@ -74,19 +74,30 @@
         </tr>
       </thead>
       <tbody id="cbBody">
-        {# Round-2 section break: rendered server-side before the first row past
-           pick 30 so the board reads as two rounds even with JS off. consensus.js
-           repositions/hides it on sort + filter (only meaningful in rank order). #}
-        {% set rd_ns = namespace(r2_marked=false) %}
+        {# Section breaks: rendered server-side (so the board reads as rounds even
+           with JS off) before the first row of round 2 (rank > 30) and the first
+           row past the 60-pick draft (rank > 60) — the latter keeps fringe board
+           entries from reading as second-round picks. consensus.js hides/repositions
+           them on sort + filter via data-after-rank (only meaningful in rank order). #}
+        {% set rd_ns = namespace(r2_marked=false, beyond_marked=false) %}
         {% for row in consensus_rows %}
-        {% if not rd_ns.r2_marked and row.consensus_rank and row.consensus_rank > 30 %}
-        <tr id="cbRoundDivider" class="cb-round-divider" aria-hidden="true">
+        {% if row.consensus_rank and not rd_ns.r2_marked and row.consensus_rank > 30 %}
+        <tr class="cb-round-divider" data-after-rank="30" aria-hidden="true">
           <td class="cb-round-divider__cell" colspan="100">
             <span class="cb-round-divider__label">Round 2</span>
             <span class="cb-round-divider__meta">Picks 31–60</span>
           </td>
         </tr>
         {% set rd_ns.r2_marked = true %}
+        {% endif %}
+        {% if row.consensus_rank and not rd_ns.beyond_marked and row.consensus_rank > 60 %}
+        <tr class="cb-round-divider" data-after-rank="60" aria-hidden="true">
+          <td class="cb-round-divider__cell" colspan="100">
+            <span class="cb-round-divider__label">Beyond Pick 60</span>
+            <span class="cb-round-divider__meta">Undrafted range</span>
+          </td>
+        </tr>
+        {% set rd_ns.beyond_marked = true %}
         {% endif %}
         {# Per-row scale: fold consensus_rank into [high_rank, low_rank] so the
            marker never renders outside the track — mirrors the PR #267 guard. #}
