@@ -40,8 +40,13 @@ document.addEventListener("DOMContentLoaded", function () {
   const searchInput = document.getElementById("cbSearch");
   const posFilter = document.getElementById("cbPosFilter");
   const emptyMsg = document.getElementById("cbEmpty");
+  const roundDivider = document.getElementById("cbRoundDivider");
 
   if (!table || !tbody) return;
+
+  // First overall pick of round 2 — the boundary the divider marks. Mirrors the
+  // ingest script's `round = 1 if pick <= 30 else 2` so the two stay in step.
+  const ROUND_2_START = 31;
 
   // -------------------------------------------------------------------------
   // State
@@ -121,6 +126,11 @@ document.addEventListener("DOMContentLoaded", function () {
     if (emptyMsg) {
       emptyMsg.hidden = visibleCount > 0;
     }
+
+    // Keep the round-2 divider in step with the current filter/sort. applyFilter
+    // runs after every applySort and on every search/position change, so this is
+    // the one place that always reflects the final visible order.
+    updateRoundDivider();
   }
 
   // -------------------------------------------------------------------------
@@ -159,6 +169,39 @@ document.addEventListener("DOMContentLoaded", function () {
       if (p.detail) frag.appendChild(p.detail);
     });
     tbody.appendChild(frag);
+  }
+
+  // -------------------------------------------------------------------------
+  // Round-2 divider: only meaningful in the natural draft order (rank asc, no
+  // filter). Sorting by another column or filtering scatters rounds, so hide
+  // it then. Otherwise pin it just above the first visible round-2 row — the
+  // sort above re-appends every .cb-row past the (non-.cb-row) divider, so it
+  // must be re-seated here on each pass.
+  function updateRoundDivider() {
+    if (!roundDivider) return;
+    const naturalOrder =
+      currentSort.col === "consensus_rank" && currentSort.dir === "asc";
+    const noFilter = currentSearch === "" && currentPos === "";
+    if (!naturalOrder || !noFilter) {
+      roundDivider.classList.add("cb-row--hidden");
+      return;
+    }
+    const rows = Array.from(tbody.querySelectorAll(".cb-row"));
+    let firstR2 = null;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (r.classList.contains("cb-row--hidden")) continue;
+      if (parseInt(r.dataset.rank, 10) >= ROUND_2_START) {
+        firstR2 = r;
+        break;
+      }
+    }
+    if (firstR2) {
+      tbody.insertBefore(roundDivider, firstR2);
+      roundDivider.classList.remove("cb-row--hidden");
+    } else {
+      roundDivider.classList.add("cb-row--hidden");
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -231,7 +274,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // -------------------------------------------------------------------------
   // Initial aria-sort state already set in the HTML (ascending on rank).
+  // The divider is server-rendered in place; confirm its state on load.
   // -------------------------------------------------------------------------
+  updateRoundDivider();
 })();
 
 /* ==========================================================================
