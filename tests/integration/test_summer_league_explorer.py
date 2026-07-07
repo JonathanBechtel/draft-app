@@ -4764,3 +4764,25 @@ async def test_appearance_per_game_filters_by_nth_year(
     )
     assert second.total == 2  # two 2025 game logs
     assert all(r.values["pts"] == 30 for r in second.rows)
+
+
+@pytest.mark.asyncio
+async def test_appearance_preserved_in_result_links(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """Sort/pager/CSV links carry the active appearance filter.
+
+    Regression: the ``explorer_qs`` macro serializes the query for the in-results
+    links (sort headers, pager, CSV download) by enumerating params; ``appearance``
+    must be among them, or re-sorting/paging/exporting would silently drop the
+    filter and show every appearance. Only the macro emits the ``&appearance=2``
+    form (the form control emits ``value="2" … selected``), so its presence in the
+    rendered partial proves the links round-trip the filter.
+    """
+    await _seed_appearance_career(db_session)
+    resp = await app_client.get(
+        "/stats/summer-league/explorer"
+        "?grain=per_competition&min_gp=1&min_min=1&appearance=2&partial=1"
+    )
+    assert resp.status_code == 200
+    assert "&appearance=2" in resp.text
