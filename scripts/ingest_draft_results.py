@@ -53,6 +53,7 @@ from sqlalchemy.ext.asyncio import (
 
 from app.schemas.draft_results import DraftResult
 from app.schemas.nba_teams import NbaTeam
+from app.services.draft_position_sync_service import sync_draft_positions
 from app.services.player_mention_service import (
     build_player_name_lookup,
     find_existing_player,
@@ -216,15 +217,23 @@ async def ingest(text: str, *, draft_year: int, source: str, dry_run: bool) -> N
             inserted += int(was_new)
             updated += int(not was_new)
 
+        synced = 0
         if dry_run:
             await session.rollback()
         else:
+            # Flush the upserts so the resolved player_ids are visible to the
+            # sync's UPDATE ... FROM, then propagate round/pick onto the players
+            # before committing the whole ingest as one transaction.
+            await session.flush()
+            synced = await sync_draft_positions(session, draft_year=draft_year)
             await session.commit()
 
     await engine.dispose()
 
     verb = "Would ingest" if dry_run else "Ingested"
     print(f"{verb} {len(parsed)} picks ({inserted} new, {updated} updated).")
+    if not dry_run:
+        print(f"Synced draft position onto {synced} players_master rows.")
     if unresolved_players:
         print("\nUNRESOLVED players (no match — fix name or add player):")
         for pick, name in unresolved_players:
