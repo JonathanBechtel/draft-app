@@ -32,19 +32,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.services.player_mention_service import _normalized_name_key
+from app.utils.db_async import _prepare_asyncpg_connection
 
 load_dotenv()
 
 # Summers with no NBA Summer League — context only (a rookie's first SL is
 # normally the summer of their draft year; 2020 draftees debuted in the 2021 SL).
 CANCELLED_SL_YEARS = {2011: "lockout", 2020: "COVID"}
-
-
-def _clean_url(raw: str) -> str:
-    for prefix in ("postgresql+asyncpg://", "postgresql://", "postgres://"):
-        if raw.startswith(prefix):
-            return raw.replace(prefix, "postgresql+asyncpg://", 1)
-    return raw
 
 
 async def main() -> None:
@@ -63,7 +57,12 @@ async def main() -> None:
         print(f"ERROR: {args.url_env} not set", file=sys.stderr)
         sys.exit(1)
 
-    engine = create_async_engine(_clean_url(raw_url), pool_pre_ping=True)
+    # Repo helper strips libpq-only query args (sslmode, channel_binding) that
+    # asyncpg rejects and normalizes the scheme.
+    normalized_url, connect_args = _prepare_asyncpg_connection(raw_url)
+    engine = create_async_engine(
+        normalized_url, connect_args=connect_args, pool_pre_ping=True
+    )
     async with engine.connect() as conn:
         picks = (
             await conn.execute(

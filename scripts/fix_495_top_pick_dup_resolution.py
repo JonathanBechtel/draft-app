@@ -46,6 +46,7 @@ from app.services.summer_league.player_resolution import (
     _find_external_id_player,
     record_resolution_review_decision,
 )
+from app.utils.db_async import _prepare_asyncpg_connection
 
 load_dotenv()
 
@@ -140,13 +141,15 @@ async def main() -> None:
     ap.add_argument("--url-env", default="DATABASE_URL")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
-    url = os.environ[args.url_env].replace("postgresql://", "postgresql+asyncpg://", 1)
-    branch = url.split("@")[-1].split(".")[0]
+    # Use the app helper so libpq-only query args (sslmode, channel_binding) on
+    # repo-standard Neon URLs are stripped/mapped for asyncpg.
+    normalized_url, connect_args = _prepare_asyncpg_connection(os.environ[args.url_env])
+    branch = normalized_url.split("@")[-1].split(".")[0]
     print(
         f"\n=== fix #495 [{'APPLY' if args.apply else 'DRY-RUN'}] {args.url_env} ({branch}) ===\n"
     )
 
-    engine = create_async_engine(url)
+    engine = create_async_engine(normalized_url, connect_args=connect_args)
     Session = async_sessionmaker(engine, expire_on_commit=False)
 
     async with Session() as db:
@@ -218,6 +221,18 @@ async def main() -> None:
                     db, sp.nba_stats_person_id
                 )
                 if existing_ext is not None and existing_ext != keep_id:
+                    # The external id must belong to a dup we're about to merge,
+                    # so the merge sweeps player_external_ids onto the survivor.
+                    # Otherwise we'd leave a stale external-id owner and a later
+                    # resolver run (which trusts the external id first) would flip
+                    # the source back to it.
+                    if existing_ext not in {d[1] for d in discard_ids}:
+                        raise SystemExit(
+                            f"  ! sp={sp_id}: NBA external id owned by player "
+                            f"{existing_ext}, which is not among the merged dups "
+                            f"{[d[1] for d in discard_ids]} — refusing to leave a "
+                            f"stale external-id owner"
+                        )
                     # Already resolved to a dup (external id points elsewhere).
                     # Reassign SL rows via the same helpers _confirm_resolution
                     # uses, minus external-id creation; the dup merge below sweeps
