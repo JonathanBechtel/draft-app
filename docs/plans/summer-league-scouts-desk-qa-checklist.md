@@ -1,150 +1,222 @@
-# Summer League Scout's Desk — QA Checklist
+# Summer League Desk — QA Checklist
 
-**Sources:**
+**Sources (source of truth):**
+- Behavior spec: `docs/plans/summer-league-scouts-desk-behavior-spec.md`
+- Event Desk framework: `docs/plans/event-desk-framework.md` (SL = event-instance #1)
+- Annotated mockup (layout): `mockups/draftguru_sl_scout_desk.html` (review-only controls;
+  production renders one state)
 - Product pitch: `docs/plans/summer-league-scouts-desk-pitch.md`
-- Annotated mockup (source of truth for layout + selection rules): `mockups/draftguru_sl_scout_desk.html`
 
 **Sibling artifact:** test plan at `summer-league-scouts-desk-test-plan.md`
 
-This checklist defines product-level behaviors QA should verify before considering the
-Scout's Desk complete. The Desk is a home-page (`/`) module, public, no login. It is
-**time-aware**: which state renders depends on the SL calendar and the day's game
-schedule, so QA must exercise each state explicitly (via seeded schedule data or a
-test-only state override), not just "whatever state today happens to be."
+Defines the product-level behaviors QA verifies before the Summer League Desk is "done."
+The Desk is a home-page (`/`) module — public, no login. It is **state-driven**: which
+state renders depends on the SL calendar + the day's live game status, so QA must exercise
+each state explicitly (seeded schedule/status + a mocked clock or test-only override), not
+"whatever state today happens to be."
 
-## State Machine (the feature's core contract)
+> **Regenerated Jul 8** against the 3-state design + Event Desk framework. Supersedes
+> the prior checklist. Removed from scope (do not test): the Desk Wire **ticker**, the
+> **Stakes** storyline, **Second Summer**, **Roster Wire**, **Contract Watch** section, the
+> "Priors, Updated" **echo panel**, and any **two-way / contract-outcome** copy.
 
-- The module renders the **Morning Card** state before the day's first scheduled tip.
-  - Verify: seed a day with games all in the future; load `/`.
-  - Expected: storyline slate + marquee visible; no Desk Wire ticker; no live board; freshness shows last completed ingest, not a fake "live" claim.
-  - Evidence: screenshot + absence of ticker element in DOM.
+---
 
-- The module renders the **Live Desk** state while any game today is in progress or between games on a game day after first tip.
-  - Verify: seed one final, one in-progress, one upcoming game for today; load `/`.
-  - Expected: Desk Wire ticker present; tick header shows the last ingest time ("as of …") and expected next tick; all three game statuses render in the live board with a scouting read each.
-  - Evidence: screenshot; stamp text matches the seeded ingest timestamp exactly.
+## A. Event lifecycle & state machine (the core contract)
 
-- The module renders the **Ledger** state after the day's last final, through the next morning.
-  - Verify: seed all of today's games final; load `/`.
-  - Expected: top performers table + "Priors, Updated" echoes for last night; morning slate for the *next* day appears once the schedule rolls over.
-  - Evidence: screenshot.
+- **Outer lifecycle — the window turns the home takeover on/off.** In-window → the Desk owns
+  the home hero; out-of-window → collapses to a single archive strip and the standard home
+  page returns.
+  - Verify: dates in Dormant / Warm-up / Active / Wind-down / Archived (seed schedule + config).
+  - Expected: takeover only in Warm-up/Active/Wind-down; archive strip otherwise; the
+    Explorer/Leaders/game/player **stat pages render identically regardless of window** (never gated).
+  - Evidence: screenshot per phase + DOM check that stat routes are unchanged off-window.
 
-- Outside an SL window the module collapses to the single archive strip.
-  - Verify: set date outside the configured event window; load `/`.
-  - Expected: one strip above the news hero (title, one summary stat, archive CTA); none of the full Desk sections render; the rest of the home page is unchanged from pre-feature behavior.
-  - Evidence: screenshot + DOM check.
+- **Inner state = game-status driven.** Live whenever ≥1 today game is `in_progress`; **Live
+  always wins**.
+  - Verify: seed {one in_progress + one final + one upcoming}; then {all final}; then {all upcoming}.
+  - Expected: Live / Ledger / Morning respectively.
+  - Evidence: rendered state per seed.
 
-- A mid-event **off day** (window active, no games scheduled today) renders sensibly.
-  - Verify: seed an in-window date with zero games.
-  - Expected: no empty "Tonight's Storylines" skeleton — the module shows the Ledger/tracker view with a "next games <date>" note; no 500, no blank panels.
-  - Evidence: screenshot.
+- **Ledger → Morning is schedule-relative, not clock-arbitrary.** Ledger persists overnight;
+  Morning becomes default at `max(today_first_tip − 6h, 09:00 ET)`.
+  - Verify: all games final last night; today's first tip 8:00 PM ET; check rendered state at
+    03:00 ET (Ledger), 08:00 ET (Ledger — before floor & lead), 14:00 ET (Morning — 6h before tip).
+  - Expected: transitions exactly at the computed boundary; no hand-off the instant the last game ends.
+  - Evidence: rendered state at each mocked clock.
 
-- All state boundaries are computed in the **event's timezone** (PT for Vegas), displayed consistently (ET or user-local — pick one and stick to it), and are not broken by the server running UTC.
-  - Verify: seed a 7:00 PM PT game; check state at 01:30 UTC (= 6:30 PM PT, pre-tip) and 03:30 UTC (in-progress window).
-  - Expected: Morning Card at the first check, Live Desk at the second.
-  - Evidence: rendered state at each mocked clock time.
+- **Off-day (in-window, no games today) → the Ledger persists all day** (no first tip → no flip).
+  - Verify: in-window date, zero games scheduled.
+  - Expected: last completed day's Ledger stays; no empty Morning skeleton; no 500/blank panels.
 
-## Core User Behaviors — Morning Card
+- **The module renders exactly ONE state; there is NO user-facing state switcher** (states
+  are internal accounting). The schedule-relative flip changes *which single state* shows.
+  - Verify: seed each state; load `/`.
+  - Expected: the temporally-correct single state renders; no preview controls / no Morning-Live-Ledger
+    switcher anywhere in the DOM.
 
-- A user can see today's slate ranked by storyline weight, with the marquee game visually distinct.
-  - Verify: seed a day where one game has a Debut+Duel pairing and others have single storylines.
-  - Expected: the Debut+Duel game gets the marquee treatment; remaining games ordered by storyline weight; each card carries its badge(s) (Debut / Duel / Stakes / Streak / Contract watch / 2nd look).
-  - Evidence: DOM order matches expected ranking; screenshot.
+- **Timezone correctness** — boundaries computed in the event TZ, server runs UTC.
+  - Verify: seed a game at a known local time; probe state at UTC instants either side of tip.
+  - Expected: correct state at each; no UTC-off-by-hours bug.
 
-- Storyline badges are assigned by the deterministic rules only.
-  - Verify: for each rule — Debut (no prior SL log), Duel (two top-N picks in one game), Stakes (tournament math), Streak (active multi-game run), Contract watch (qualifying overperformer scheduled), 2nd look (returner tracking above/below prior SL) — seed one positive and one near-miss case.
-  - Expected: badge appears for the positive case, absent for the near-miss; no badge type ever appears without its rule firing.
-  - Evidence: rendered badges vs seeded fixtures.
+- **Overlap precedence (framework, single-owner-by-priority)** — with only SL registered, SL
+  always owns the takeover.
+  - Verify: SL active; confirm it owns `/`. (Multi-event precedence is out of V1 scope.)
 
-- Marquee expectation rows show pre-game context computed from real sources.
-  - Verify: marquee headliner with KNN comps and prior cohort data.
-  - Expected: "comp cohort avg in SL debuts: X GmSc" matches a hand computation from the comps' actual SL debut logs; a player with no comps/cohort data gets a graceful omission, not a blank or NaN.
-  - Evidence: hand calculation; screenshot of the no-data fallback.
+---
 
-- Every player name/chip on the slate deep-links to that player's SL page; games link to the game page.
-  - Verify: click through each chip/card.
-  - Expected: 200s, correct targets; unresolved players (no canonical id) render as plain text, never a broken link.
-  - Evidence: link audit.
+## B. Morning Card
 
-## Core User Behaviors — Live Desk + Desk Wire
+- Slate is **every game today minus the hero** (`games_today − 1`), ranked by storyline weight;
+  the marquee is visually distinct.
+  - Verify: seed a day with one Debut+Duel game and others with single/zero triggers.
+  - Expected: Debut+Duel game becomes the hero; remaining cards ordered by descending weight;
+    each carries its badge(s) from the **five** triggers (Debut / Duel / Streak / Status heat / 2nd look).
+  - Evidence: DOM order matches weight order; screenshot.
 
-- The Desk Wire ticker flows scores and storyline tallies during game windows only.
-  - Verify: load `/` in Live Desk state and Morning state.
-  - Expected: present and animating in the former, absent in the latter; content matches the latest tick data; no market/stock vocabulary anywhere (no ▲/▼ deltas, no "stock").
-  - Evidence: screenshots both states; text audit of ticker items.
+- **No competitive framing anywhere** — no "clinches / semifinal / win-and-advance / Stakes"
+  copy; scores appear only as context.
+  - Evidence: grep the rendered DOM for banned terms → none.
 
-- The key-matchup running tally shows both players' current lines with cohort chips and a computed read.
-  - Verify: seed a Duel game in progress with partial box lines.
-  - Expected: both sides' lines match the seeded box data; percentile chips match hand-computed cohort percentiles; the "read" sentence is one of the template outputs, populated with correct numbers.
-  - Evidence: hand calculation vs chips; screenshot.
+- Hero **degrades to a single subject** when the top game has no natural pairing (a lone Debut).
+  - Verify: seed a day where the top game is a single-prospect Debut.
+  - Expected: single-subject hero (no empty "VS" slot).
 
-- The live board lists every game today with status, score, and one scouting read.
-  - Verify: seed finals, in-progress, and upcoming games.
-  - Expected: statuses/scores correct; each read references a real seeded fact (right player, right number); upcoming games show expectation context instead of a score.
-  - Evidence: row-by-row check against fixtures.
+- **Relevance tail** — a game with zero tracked-prospect triggers still appears, at the bottom;
+  on a large slate (10–11 games) the no-signal tail collapses behind "show all N games."
 
-- Freshness is honest under cron failure/staleness.
-  - Verify: simulate the ingest tick being >90 min old during a game window.
-  - Expected: the stamp still shows the true last-tick time (and ideally a visible "data may lag" note); the module never displays a fabricated "as of" time or silently renders stale lines as current.
-  - Evidence: stamp text vs actual last ingest timestamp.
+---
 
-## Core User Behaviors — Ledger
+## C. Live Desk
 
-- Top performers of the night includes all statuses, not just first-rounders.
-  - Verify: seed a night where an undrafted player has the #2 GmSc.
-  - Expected: he appears, ranked correctly, with the right status tag (Pick N / Undrafted / Two-way / Sophomore); ordering is by the stated metric.
-  - Evidence: table vs fixture ordering.
+- **Live hero** = highest-weighted **in-progress** game; re-selected each tick (if the marquee
+  ended, a live game takes over). Shows both subjects' running lines + live score.
+  - Verify: seed the marquee final and another game in progress.
+  - Expected: hero is the in-progress game, not the finished marquee.
 
-- "Priors, Updated" echoes are computed comparisons with visible cohort sourcing.
-  - Verify: each echo's claim (e.g., "best start by a #1 pick in the sample") against a direct DB query over the historical baselines.
-  - Expected: exact agreement; each echo shows its cohort definition line; an echo never renders when its threshold didn't fire.
-  - Evidence: SQL cross-check per echo template.
+- **Tick board** — one row per game with status, live score, a **Top Performer column
+  (headshot + live GmSc)**, and a one-line read.
+  - Verify: seed final/in-progress/upcoming games with box lines.
+  - Expected: Top Performer = the **highest-GmSc tracked player in that game so far**;
+    **em-dash before tip**; upcoming rows show tip time, no performer.
+  - Evidence: screenshot; the named top performer is actually the max-GmSc player in that game's fixture.
 
-## Pinned Spine — Class Tracker / Contract Watch / Second Summer
+- **Freshness stamp** = last successful tick (ET) + next-tick ETA; never a fake "live/seconds" claim.
 
-- The Class Tracker shows event-to-date lines for the selected population with a cohort-percentile grade per row.
-  - Verify: toggle Lottery / Round 1 / Full class / Sophomores; sort a column; pick 2 players and hand-verify GP/MPG/PTS/TS%/GmSc from game logs, and the percentile from the slot-cohort baseline.
-  - Expected: populations filter correctly; aggregates exact; percentile matches the spec'd slot-window rule; a 0-GP player shows a "debuts <date>" style placeholder, not zeros or a percentile.
-  - Evidence: hand computations; screenshots per toggle.
+---
 
-- Contract Watch surfaces only players passing the selection rule, graded within their status cohort.
-  - Verify: seed players around each boundary — status ∈ {undrafted, second-round, two-way, unsigned}, ≥40 event minutes, percentile ranking.
-  - Expected: a first-rounder never appears regardless of performance; a 35-minute player is excluded; ordering follows status-cohort percentile; historical kicker lines ("N of the last M signed deals") match a query over past SL + subsequent contract status.
-  - Evidence: boundary fixtures in/out; SQL cross-check of the kicker.
+## D. The Ledger
 
-- The Second Summer compares returners to their own prior SL and the typical year-2 jump.
-  - Verify: seed a returner with known '25 and '26 lines; hand-compute ΔGmSc/ΔTS% and the typical-jump baseline from all returner pairs in the sample.
-  - Expected: deltas exact; grade chip (well above / above / flat / below) matches the baseline comparison; a true rookie never appears; a year-2 player with no prior SL minutes is omitted or explicitly annotated, not shown with a bogus delta.
-  - Evidence: hand computation; edge-case fixtures.
+- **Single full-width top-performers table** (no echo/"Priors Updated" panel).
+  - Evidence: one table, no second column; no echo card in DOM.
 
-## Scope, Safety, Performance
+- **Performance of the Night hero** = top performer by **cohort percentile, not raw GmSc**;
+  ties broken by raw GmSc.
+  - Verify: seed an undrafted 98th-pctl night and a lottery pick at 90th-pctl with higher raw GmSc.
+  - Expected: the 98th-pctl undrafted player is the hero.
 
-- The home page stays within its query budget with the Desk in every state.
-  - Verify: `make perf` for `/` in each seeded state (morning / live / ledger / off-window).
-  - Expected: within the (consciously set) budget in all states; off-window adds at most 1–2 queries over the pre-feature baseline.
-  - Evidence: perf test output per state.
+- Each row's "vs cohort" read is a computed comparison; the row deep-links to the player's SL page.
 
-- New Desk queries are index-backed on a prod-like DB.
-  - Verify: `make explain ROUTE=/` against the Neon read branch for each new query.
-  - Expected: Index Scans on large tables (game logs, player seasons, baselines); no Seq Scan on a large table.
-  - Evidence: EXPLAIN output captured.
+---
 
-- The module degrades gracefully with JS disabled and on mobile.
-  - Verify: disable JS, load each state; then 390px viewport.
-  - Expected: all content server-rendered and readable (ticker may be static or hidden — but never a blank strip); no horizontal scroll on mobile; tables scroll within their own containers.
-  - Evidence: JS-off + mobile screenshots.
+## E. Class Tracker (pinned under all states)
 
-- Sample-size honesty: tiny samples never render as authoritative.
-  - Verify: a 1-GP player in the tracker; a percentile computed off <5 cohort games.
-  - Expected: visible sample-size cue (GP column adjacent, or explicit badge per spec); no percentile shown where the cohort base is below the spec'd floor.
-  - Evidence: rendered treatment of seeded small-sample cases.
+- **Six cohorts filter correctly:** Lottery (R1 & pick ≤14) · Round 1 (1–30) · Round 2 (31–60)
+  · Full class (all drafted) · Sophomores (prior-year draftees returned) · Undrafted (no `draft_pick`).
+  - Verify: seed players spanning all buckets incl. a #14 (lottery) vs #15 (R1-not-lottery),
+    a #31 (R2), an undrafted, and a returning sophomore.
+  - Expected: each cohort toggle shows exactly its membership.
 
-- No editorial or market vocabulary anywhere in the module.
-  - Verify: text audit of every rendered template string across states.
-  - Expected: every sentence is template-generated from computed values; no "stock", "price", ▲/▼ delta framing.
-  - Evidence: grep of templates + rendered-page audit.
+- **Scope = ALL Summer League games (all venues), not tournament-only.**
+  - Verify: seed a player with games across CA Classic + Vegas incl. non-tournament games.
+  - Expected: GP / aggregates include every SL game, not just a tournament subset.
 
-- P2 Roster Wire (only if built): only relevance-rule-passing adds appear.
-  - Verify: seed 10 adds, 3 passing the rule (drafted / NBA games / prior SL overperformance / top-N consensus).
-  - Expected: exactly those 3 render, with the "N adds · showing M" framing; the section is absent entirely outside the pre-event window.
-  - Evidence: fixture check.
+- **Variable length, capped at 30** — cohort shows as many rows as qualify; a cohort with >30
+  members shows the **top 30 by the active sort** (GmSc default).
+  - Verify: seed a 35-member Full class.
+  - Expected: 30 rows, the top 30 by GmSc; caption states the cap.
+
+- **Stat-view taxonomy** — Box / Per-36 / Per-100 share **one column set rescaled**; Advanced
+  is its own set; the **fixed frame (Player · GP · MIN · GmSc · grade) is constant** and the
+  board always sorts by GmSc.
+  - Verify: toggle each mode.
+  - Expected: Box family = PTS·REB·AST·STL·BLK·TOV·FG%·3P%·FT% (counting stats rescale
+    per-36/per-100; shooting %s **unchanged** across those three); Advanced =
+    TS%·eFG%·USG%·AST%·TOV%·REB%·3PAr·FTr·WS/82·BPM; fixed frame + GmSc sort unchanged in all four.
+    BPM is shown from `SummerLeaguePlayerSeason` when the row is advanced-eligible; otherwise
+    it renders as an em-dash.
+  - Evidence: per-36 PTS ≈ per-game PTS × 36/MIN (spot-check one row); FG% identical Box↔Per-36.
+
+- **Undrafted cohort identity swap** — draft-slot column → status; "vs slot cohort" → "vs status cohort."
+
+- **GP=0 rostered players** render with em-dashes across stat + rate columns (no 0.0 / NaN).
+
+- **Sortable** on every column within the cohort; deep-links per row.
+
+---
+
+## F. Cohort / percentile correctness (highest statistical risk)
+
+- **"vs cohort" grade = event-aggregate GmSc percentile within the slot/status cohort**, against
+  the **all-venue 2017–25 baseline** with the min-minutes gate.
+  - Verify: hand-compute a small fixture cohort distribution; assert the subject's pctl + grade
+    (hot ≥90 / warm 65–89 / mid 40–64 / cold <40).
+
+- **Mid-event gate ladder** — with a 1-game sample the board walks the adaptive ladder rather
+  than publishing a confident percentile.
+  - Verify: seed a player with 1 game in a thin cohort.
+  - Expected: `gated=true` behavior (suppressed/qualified pctl), not a noisy 1-game percentile.
+
+- **Debut bar** = cohort mean GmSc for that slot's first-ever SL games; "beat his 11.2 debut bar"
+  reflects the fixture's computed mean.
+
+---
+
+## G. Storyline engine
+
+- **Five triggers only**, each by deterministic rule: Debut (no prior SL log), Duel (two prominent
+  prospects share a game; consensus rank ≤14 or fallback draft slot ≤14), Streak (≥3 straight
+  games at/above cohort median with average run percentile ≥65), Status heat (undrafted or
+  2nd-round player ≥85th percentile vs status cohort), 2nd look (returner above/below his
+  prior SL). **No Stakes.**
+  - Verify: one positive + one near-miss per rule.
+
+- **Weight = Σ(base × magnitude)**; magnitude driven by **consensus-rank prominence** (fallback
+  draft slot). A #1 debut outranks a #45 debut; a #1-vs-#2 duel outranks two second-rounders.
+  - Verify: two Debut games differing only in prominence.
+  - Expected: higher-prominence game ranks above.
+
+- **Deviation-first per state** — Morning ranks by entering/expected weight; Live re-ranks by
+  realized deviation; finished games sink below in-progress.
+
+---
+
+## H. Commentary integrity (fact → angle → phrase)
+
+- **Every rendered sentence traces to a fact detector** (has a `detector_id` / provenance); no
+  free-text, no unattributed claims, no hot takes.
+  - Verify: for each visible string, assert a backing fact object exists.
+
+- **Deterministic** — same fixture rendered twice → byte-identical copy (no runtime LLM/randomness).
+
+- **Angle chosen by notability** — the highest-extremity fact wins the hero tagline.
+  - Verify: fixture where a "rank #1 in cohort" fact and a "96th pctl" fact both apply.
+  - Expected: the rank-1 (`cohort_rank`) sentence is chosen; percentile is not duplicated.
+
+- **No banned/unsupported copy** anywhere in the DOM: "McDonald's", "two-way", "signed a deal",
+  "audition" as a per-player claim, "career-best", tournament/competitive terms.
+
+---
+
+## I. Interaction, visual, perf
+
+- **No user-facing state controls** — the module renders the single current state (verified via
+  seeded state / test override); no Morning-Live-Ledger switcher in the DOM.
+- **Visual** (`make visual`): each state's dark hero, the slate grid, the live board + Top
+  Performer column, the single-column Ledger, the pinned Class Tracker with the stat-view toggle
+  — all match the mockup and the "light retro analytics" style guide; adequate space below the hero.
+- **Mobile**: tables scroll inside their card (no page horizontal scroll); hero stacks compactly
+  enough that the next section is discoverable in the first viewport.
+- **Home-page perf** — `/` query budget holds **in every state**; the Desk reads projections
+  (T2/T4/`event_desk_state`), it does **not** recompute cohorts/storylines per request, and it does not inherit
+  the known `/` N+1. Budget entry set consciously in `tests/integration/perf/budgets.py`.
