@@ -41,8 +41,13 @@ async def _seed_player(
     reb: int = 4,
     ast: int = 4,
     seconds: int = 1800,
+    pace: float | None = 100.0,
 ) -> None:
-    """Seed ``n_games`` identical played logs (``seconds`` each) for one player."""
+    """Seed ``n_games`` identical played logs (``seconds`` each) for one player.
+
+    ``pace`` is the NBA on-court pace stamped on each log; pass ``None`` to model
+    pace-gap games (pre-2017 pools that carry no possession estimate).
+    """
     _N["i"] += 1
     sp = SummerLeagueSourcePlayer(
         nba_stats_person_id=f"p-{_N['i']}",
@@ -76,7 +81,7 @@ async def _seed_player(
                 nba_stats_person_id=sp.nba_stats_person_id,
                 raw_player_name=player.display_name or "Player",
                 minutes_seconds=seconds,
-                pace=100.0,
+                pace=pace,
                 pts=pts,
                 reb=reb,
                 ast=ast,
@@ -184,6 +189,89 @@ async def test_leaders_modes_ranking_and_filter(
     assert all(not c.placeholder for c in adv.columns)
     assert adv.is_advanced is True
     assert adv.rows == []
+
+
+@pytest.mark.asyncio
+async def test_per_100_extrapolates_over_pace_gap(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Per-100 spans pace-gap games instead of inflating counting stats.
+
+    A player whose career straddles the 2017 pace boundary has pace-covered
+    numerators for every game but pace only on the modern ones. Dividing full
+    totals by pace-covered-only possessions inflated per-100 by
+    ``total_min / covered_min`` (issue #496). The denominator must extrapolate to
+    all minutes so the rate stays realistic; a wholly pre-2017 player carries no
+    possessions and shows a blank per-100 rather than a garbage number.
+    """
+    modern = SummerLeagueCompetition(
+        year=2025, league_id="15", venue_slug="las_vegas", display_name="2025 LV"
+    )
+    legacy = SummerLeagueCompetition(
+        year=2015, league_id="15", venue_slug="las_vegas", display_name="2015 LV"
+    )
+    db_session.add_all([modern, legacy])
+    await db_session.flush()
+    assert modern.id is not None and legacy.id is not None
+    m_team = SummerLeagueTeamEntry(
+        competition_id=modern.id,
+        nba_stats_team_id="m1",
+        raw_team_name="Modern",
+        raw_team_abbreviation="MOD",
+        team_slug="mod",
+    )
+    l_team = SummerLeagueTeamEntry(
+        competition_id=legacy.id,
+        nba_stats_team_id="l1",
+        raw_team_name="Legacy",
+        raw_team_abbreviation="LEG",
+        team_slug="leg",
+    )
+    db_session.add_all([m_team, l_team])
+    await db_session.flush()
+
+    straddler = make_player("Strad", "Dler", school="Gonzaga")
+    ancient = make_player("Anc", "Ient", school="Butler")
+    db_session.add_all([straddler, ancient])
+    await db_session.flush()
+
+    # 30 pts in 30 min at pace 100 → 62.5 poss/game → a realistic ~48 per-100.
+    # The straddler plays 2 pace-covered modern games + 6 pace-gap legacy games;
+    # the pre-fix denominator only saw the 2 covered games → ~4x inflation.
+    await _seed_player(
+        db_session, comp=modern, team=m_team, player=straddler, n_games=2, pts=30
+    )
+    await _seed_player(
+        db_session,
+        comp=legacy,
+        team=l_team,
+        player=straddler,
+        n_games=6,
+        pts=30,
+        pace=None,
+    )
+    # Wholly pre-2017: no pace-covered games at all.
+    await _seed_player(
+        db_session,
+        comp=legacy,
+        team=l_team,
+        player=ancient,
+        n_games=4,
+        pts=30,
+        pace=None,
+    )
+    await db_session.commit()
+
+    res = await get_leaders(
+        db_session, mode="per_100", sort="pts", min_games=1, min_minutes=0
+    )
+    rows = {r.name: r for r in res.rows}
+
+    # Extrapolated over all minutes: ~48, not the ~192 the pace-gap bug produced.
+    assert rows["Strad Dler"].values["pts"] == pytest.approx(48.0, abs=0.5)
+    # No possessions to normalize by → blank, never an inflated number.
+    assert rows["Anc Ient"].values["pts"] is None
 
 
 async def _seed_two_venues(db: AsyncSession) -> None:

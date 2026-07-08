@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
@@ -531,6 +531,19 @@ async def _aggregate(
     if venue:
         conds.append(comp.venue_slug == venue)  # type: ignore[arg-type]
 
+    # per_100's denominator is pace-derived possessions, but ``pace`` is NULL for
+    # pace-gap games (pre-2017 pools reconstructed without team box data). Summing
+    # only the pace-covered possessions while the counting-stat numerators cover
+    # *every* game inflates per-100 by ``total_min / pace_covered_min`` for any
+    # player whose career straddles the boundary. Extrapolate possessions to all
+    # minutes with the minute-weighted observed pace so numerator and denominator
+    # span the same games — mirroring the Explorer's ``pace_sec_expr``:
+    #   pace_sec = SUM(pace × sec) × SUM(sec) / SUM(sec where pace > 0).
+    # Complete coverage leaves this exact; no pace-covered games → NULL → per-100
+    # renders blank rather than a garbage rate.
+    paced_sec = func.sum(case((pgl.pace > 0, sec), else_=literal(0)))  # type: ignore[arg-type, operator]
+    pace_sec_expr = func.sum(pgl.pace * sec) * func.sum(sec) / func.nullif(paced_sec, 0)
+
     stmt = (
         select(
             pgl.player_id,
@@ -538,7 +551,7 @@ async def _aggregate(
             PlayerMaster.display_name,
             func.count().label("gp"),
             func.sum(sec).label("sec"),
-            func.sum(pgl.pace * sec).label("pace_sec"),
+            pace_sec_expr.label("pace_sec"),
             func.sum(pgl.pts).label("pts"),
             func.sum(pgl.oreb).label("oreb"),
             func.sum(pgl.dreb).label("dreb"),
