@@ -41,6 +41,14 @@ Agents may occasionally need to reference these business considerations to:
 
 Whenever a change could influence monetization, growth, or user retention, refer to the upcoming business document for guidance.
 
+## 🧭 Strategic Roadmap Alignment
+New features should be scoped to **fit into the broader roadmap initiative**, not built as one-off silos. The long-term backbone is the **Global Player-Journey Graph** (`docs/plans/global-player-journey-graph.md`): a hub-and-spoke data model for tracking every prospect's full lifecycle — youth → international → college → Summer League → NBA — as one holistic, connected view. When scoping or building anything that touches player data, consider:
+- Can it **reuse or extend the backbone** (canonical identity, time-aware affiliation assertions, participation-grain stat spokes, derived projections) rather than adding a parallel data store?
+- Does it respect the **assertion-and-projection** distinction (canonical assertions with provenance vs. replaceable read-model projections like lifecycle/timeline/graph)?
+- How does it advance the connected roadmap — the [draft-calendar pipeline](docs/plans) strategy, Summer League as the first proven spoke, and sport-extensibility (nfldraft.app)?
+
+Call this out explicitly in product pitches and tech specs: state how the feature advances (or is constrained by) the journey-graph backbone. Mechanical fixes are exempt; anything net-new or data-shaped is not.
+
 ---
 
 # Definition of Done

@@ -319,18 +319,50 @@ follows, not replaces, steps 1–5.
 
 ---
 
-## 13. Open items still to specify
+## 13. Decision log — resolved & remaining
 
-- **Transaction-event vocabulary** (the closed set for `player_transaction` — observations
-  excluded).
-- **Eligibility ruleset** for `expected_draft_year` (+ override path).
-- **Cross-spoke normalized-headline metric set** (per-36/per-100 + level-adjusted rating).
-- **Org-model details** — relationship types, where governing bodies sit.
-- **Bitemporal vs. supersession** choice for affiliation assertions (§5b).
-- **Data-sourcing spike** — one well-structured source, one upcoming edition (FIBA
-  LiveStats / EuroLeague / RealGM), mirroring `scripts/probe_summer_league_api.py`.
-- **Auto-stitch confidence threshold** (precision-biased).
-- **Graph-store trigger** — the concrete feature that would justify Apache AGE.
+**Resolved 2026-07-08** (⭐ = user-ratified; others adopted along the review recommendation):
+
+1. **Transaction-event vocabulary** — closed, versioned enum of *transitions only*
+   (measurements/stats excluded), grouped:
+   - *Recruiting:* `COMMITTED`, `DECOMMITTED`, `RECLASSIFIED`
+   - *Draft process:* `DECLARED`, `WITHDREW`, `DRAFTED`, `WENT_UNDRAFTED`
+   - *Pro movement:* `SIGNED`, `WAIVED`, `TRANSFERRED`, `LOANED`, `DEBUTED`
+   - *College:* `ENROLLED`, `ENTERED_PORTAL`, `TRANSFERRED_SCHOOL`
+
+   Each row carries `effective_date` + evidence.
+2. **Eligibility ruleset ⭐** — **heuristic + override now.** A pathway heuristic
+   (`birthdate` + pathway + HS class) yields a *default* `expected_draft_year`, always beaten
+   by a sourced/manual value that wins; store `expected_draft_year_source`
+   (RULE | SOURCE | MANUAL). Full rules engine deferred until international volume justifies it.
+3. **Org model** — add an `organization.org_kind` discriminator
+   (CLUB / FEDERATION / LEAGUE / SCHOOL / ACADEMY / NATIONAL_PROGRAM). Affiliations point only
+   to a team/program; a national team is a team/program **OWNED** by a federation org; leagues
+   live in the competition/edition model with a governing org attached via a typed edge.
+4. **Affiliation temporal model ⭐** — **supersession-first.** Immutable assertions with
+   `supersedes_id` / `retracted_at` + effective/recorded/superseded timestamps. Upgrade to full
+   bitemporal only if a shipped feature must reproduce past *beliefs* exactly (see remaining).
+5. **Data-sourcing spike ⭐** — **FIBA LiveStats first**, targeting an upcoming U18/U19 summer
+   edition, mirroring `scripts/probe_summer_league_api.py`. EuroLeague/EuroCup is the intended
+   second spoke; RealGM deprioritized (scrape-fragile).
+6. **Auto-stitch policy** — precision-biased three bands: (a) auto-accept only on hard
+   external-ID match or exact name+birthdate+crosswalk with no competing candidate; (b) anything
+   below a high score → visible-unresolved / review queue; (c) never auto-merge two existing
+   canonical players (always via `player_identity_action` + actor). Calibrate the numeric
+   threshold against the known-journey backfill as a labeled set — no hard-coded magic number.
+7. **Graph-store trigger** — adopt a graph store (Apache AGE) only when a *shipped* feature
+   needs variable-length / >2-hop traversal that indexed SQL can't serve within the perf budget
+   (e.g., interactive multi-hop shortest-connection). Bounded 1–2 hop stays in Postgres via
+   `player_connection_summary`.
+
+**Still open:**
+- **Level-adjusted metric model (§7c).** The rate layer (per-36/per-100) ships now as a shared
+  util; the level-adjustment translation model (per-level, per-season factors, versioned via
+  `calculation_version`) still needs its own spec — the moat piece.
+- **Bitemporal upgrade trigger** — the concrete feature that would force the
+  supersession → bitemporal upgrade (reproduce-past-beliefs reproducibility).
+- **Auto-stitch numeric threshold** — to be set empirically from the backfill labeled set,
+  not chosen up front.
 
 ---
 
@@ -350,6 +382,12 @@ follows, not replaces, steps 1–5.
   on lifecycle; versioned reducer (`reducer_version`/`derived_at`/`input_watermark`);
   eligibility ruleset for draft year; richer aggregate provenance; basketball-first /
   sport-extensible (not sport-generic). Critical path reordered (§12).
+- **2026-07-08 — open-items decision pass.** Resolved §13: transaction vocabulary (closed
+  set), `org_kind` discriminator, auto-stitch three-band policy, and graph-store trigger rule
+  (adopted along recommendation); user-ratified: affiliation temporal model =
+  **supersession-first**, first data-sourcing spike = **FIBA LiveStats**, eligibility =
+  **heuristic + override now**. Still open: level-adjusted metric model spec, bitemporal
+  upgrade trigger, empirical auto-stitch threshold.
 
 ---
 
