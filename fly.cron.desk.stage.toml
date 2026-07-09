@@ -1,0 +1,84 @@
+# fly.cron.desk.stage.toml - Configuration for the staging Summer League Desk cron machine
+#
+# This defines a scheduled machine that runs the Summer League Desk hourly
+# tick (scripts/sl_desk_tick.py): scoreboard ingest -> normalize -> scoped
+# metrics rebuild -> grades -> storylines -> commentary -> event_desk_state
+# upsert. It shares the same Docker image as the main app but runs a
+# different command. Cloned from fly.cron.roster.stage.toml (the Summer
+# League roster cron), which follows the same pattern.
+#
+# NOTE: Fly.io scheduled machines only support: hourly, daily, weekly, monthly
+#       (not custom cron expressions like "*/30 * * * *")
+#
+# Cadence: hourly. This is not just a freshness preference -- it's a
+# correctness requirement. `app/services/event_desk/controller.py` hardcodes
+# `TICK_INTERVAL = timedelta(hours=1)` and stamps `next_tick_eta = now +
+# TICK_INTERVAL` on every event_desk_state upsert; the Desk UI displays that
+# ETA to users. Running this cron at any cadence other than hourly would make
+# the displayed freshness promise false.
+#
+# Cost note (per #517 investigation): each active-window tick that finds new
+# raw data to normalize triggers `app.services.summer_league.metrics.rebuild`
+# (scoped persistence, but `compute()` underneath always loads and fits over
+# the *entire* raw Summer League dataset -- see that module's docstring).
+# This sounds expensive, but it already runs hourly in production today via
+# the existing SL ingestion cron (`fly.cron.sl.toml` ->
+# `app.cli.summer_league_ingest_runner`), which calls the same `compute()`
+# path (actually the heavier *unscoped* wipe+rebuild, since it also refits
+# and writes the global model) whenever any venue had new games that hour.
+# That cron has run hourly in prod with no documented performance issues, so
+# hourly cadence for this tick's scoped rebuild is no riskier than what's
+# already shipped. Off-window/dormant ticks (outside the SL calendar) are
+# inert no-ops (freshness stamp only, no network/DB writes beyond that) per
+# `run_desk_tick`'s docstring, so this cadence is cheap outside the event
+# window. Known accepted redundancy: on an hour where both crons find new
+# data, the full-pool fit runs twice (once via each cron) -- bounded, not
+# runaway, since each individually is already proven at hourly cadence; a
+# future optimization could consolidate the two ticks or have one skip its
+# rebuild when the other already ran this hour, but that's out of scope here.
+#
+# Deployment:
+#   1. First, deploy the main app to build the image:
+#      flyctl deploy --config fly.toml --app draft-app
+#
+#   2. Create the scheduled machine (one-time setup):
+#      IMAGE=$(flyctl machine list --app draft-app --json | grep '"image":' | head -1 | sed 's/.*"image": "\([^"]*\)".*/\1/')
+#      flyctl machine run $IMAGE \
+#        --app draft-app \
+#        --schedule hourly \
+#        --name summer-league-desk-cron \
+#        --region ewr \
+#        --memory 1024 \
+#        --cpus 1 \
+#        --entrypoint "/app/.venv/bin/python" \
+#        -- scripts/sl_desk_tick.py
+#
+#   3. To update the machine after code changes: a plain `flyctl deploy` does
+#      NOT touch already-running scheduled machines -- they keep serving the
+#      OLD image until explicitly updated. This bit this repo before (the SL
+#      corrupt-minutes fix deployed but the cron machine kept running stale
+#      code -- see project_sl_corrupt_minutes_guard.md). ALWAYS follow a
+#      deploy with an explicit update of this cron machine:
+#      CRON_ID=$(flyctl machine list --app draft-app --json | jq -r '.[] | select(.name == "summer-league-desk-cron") | .id')
+#      flyctl machine update $CRON_ID --app draft-app --yes
+#      (Handled automatically by CI for the roster/ingestion crons today --
+#      wire this machine into the same CI step when it's created.)
+#
+# Monitoring:
+#   - View logs: flyctl logs --app draft-app --instance <machine-id>
+#   - List machines: flyctl machine list --app draft-app
+#   - Check status: flyctl machine status <machine-id> --app draft-app
+
+app = 'draft-app'
+primary_region = 'ewr'
+
+[build]
+
+# Override the default command to run the Summer League Desk tick script
+[processes]
+  cron = "/app/.venv/bin/python scripts/sl_desk_tick.py"
+
+[[vm]]
+  memory = '1024mb'
+  cpu_kind = 'shared'
+  cpus = 1
