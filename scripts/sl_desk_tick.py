@@ -28,17 +28,18 @@ storyline, or commentary logic of its own:
        ``desk_grades.grade_player_event``) -> T2.
     3. evaluate storyline triggers for today's games (#504,
        ``desk_storylines.compute_desk_storylines``) -> T3 + T4.
-    4. commentary -- wrap each graded player's outcome as a ``percentile``
-       Fact (#520 ``desk_facts.detect_percentile``, the one detector that's
-       always computable from a T2 row alone with no extra peer-population
-       queries) and persist it onto T2 (#519 ``desk_commentary.
-       persist_grade_facts``) and, grouped by tonight's rosters, onto each
-       touched T4 slate row (``persist_slate_facts``). The richer detectors
-       (cohort_rank / streak / leads_field / debut_vs_bar / count_club /
-       first_since) need caller-fetched peer populations beyond what this
-       orchestration ticket scopes -- they are fully implemented and unit
-       tested (#520) but wiring them to live peer queries is a follow-up,
-       not invented here.
+    4. commentary (#524) -- fire all eight #520 detectors for each graded
+       player (``percentile``, ``cohort_rank``, ``streak``, ``self_delta``,
+       ``leads_field``, ``debut_vs_bar``, ``count_club``, ``first_since``),
+       each fed by a batched peer-population fetch from
+       ``desk_fact_queries.py`` (never one query per player -- see that
+       module's docstring for exactly how each is batched), and persist the
+       resulting Facts onto T2 (#519 ``desk_commentary.persist_grade_facts``)
+       and, grouped by tonight's rosters, onto each touched T4 slate row
+       (``persist_slate_facts``) -- both of which run every fired Fact
+       through Stage 2 selection (``desk_selection.dedup_facts`` /
+       ``select_facts``, e.g. a rank-1 ``cohort_rank`` subsuming its own
+       ``percentile``) via ``desk_commentary.build_facts_payload``.
     5. upsert ``event_desk_state`` (#506 ``event_desk.controller.
        run_event_desk_tick`` -- the only module that writes that table).
 
@@ -99,7 +100,10 @@ from app.schemas.summer_league import (  # noqa: E402
     SummerLeagueGame,
     SummerLeagueParticipation,
 )
-from app.schemas.summer_league_desk import SummerLeagueCohortBaseline  # noqa: E402
+from app.schemas.summer_league_desk import (  # noqa: E402
+    SummerLeagueCohortBaseline,
+    SummerLeagueDeskGrain,
+)
 from app.services.event_desk.controller import run_event_desk_tick  # noqa: E402
 from app.services.event_desk.registry import (  # noqa: E402
     SUMMER_LEAGUE_REGISTRATION,
@@ -108,14 +112,37 @@ from app.services.event_desk.registry import (  # noqa: E402
 )
 from app.services.event_desk.state_machine import inner_state  # noqa: E402
 from app.services.event_desk.timeutils import to_eastern_date  # noqa: E402
+from app.services.summer_league.cohort_baselines import cohort_key_for  # noqa: E402
 from app.services.summer_league.desk_commentary import (  # noqa: E402
     persist_grade_facts,
     persist_slate_facts,
 )
+from app.services.summer_league.desk_fact_queries import (  # noqa: E402
+    club_members_clearing,
+    cohort_peers,
+    count_club_threshold,
+    field_peers,
+    fetch_cohort_members,
+    fetch_current_event_gp,
+    fetch_debut_baselines,
+    fetch_debut_status,
+    fetch_event_baselines,
+    fetch_game_lines,
+    fetch_prior_events,
+    fetch_tonight_field,
+    most_recent_prior_holder,
+)
 from app.services.summer_league.desk_facts import (  # noqa: E402
     Fact,
     FactSubject,
+    detect_cohort_rank,
+    detect_count_club,
+    detect_debut_vs_bar,
+    detect_first_since,
+    detect_leads_field,
     detect_percentile,
+    detect_self_delta,
+    detect_streak,
 )
 from app.services.summer_league.desk_grades import GradeRow, grade_player_event  # noqa: E402
 from app.services.summer_league.desk_storylines import (  # noqa: E402
@@ -344,17 +371,27 @@ async def _game_roster_player_ids(
 async def _commentary_for_competition(
     db: AsyncSession,
     *,
-    competition_id: int,
+    competition: SummerLeagueCompetition,
     baseline_version: str,
     game_date: date,
     grade_by_player: dict[int, GradeRow],
     slate: Sequence[SlateRow],
 ) -> None:
-    """Job B step 4 -- percentile Facts onto graded T2 rows and their T4 game rows.
+    """Job B step 4 -- all eight #520 Facts onto graded T2 rows and their T4 game rows.
+
+    Wires every detector `desk_facts.py` (#520) ships, each fed by the
+    batched read layer `desk_fact_queries.py` (#524) -- ``percentile``
+    (always fires, straight off the T2 :class:`GradeRow`), ``cohort_rank``,
+    ``streak``, ``self_delta``, ``leads_field``, ``debut_vs_bar``,
+    ``count_club``, and ``first_since``. Every extra read here is issued
+    ONCE for the whole competition/roster this tick, never once per player
+    (module docstring's CRITICAL constraint) -- see `desk_fact_queries.py`
+    for the exact batching per query.
 
     Args:
         db: Active database session.
-        competition_id: Scopes the roster lookup for grouping Facts by game.
+        competition: The competition this tick is grading/storylining --
+            ``.year`` scopes prior-event/debut-status/count-club lookups.
         baseline_version: The T1 baseline version graded/storylines ran against.
         game_date: Today's (Eastern) slate date.
         grade_by_player: Every player graded this tick for this competition
@@ -365,36 +402,199 @@ async def _commentary_for_competition(
     if not grade_by_player:
         return
 
+    assert competition.id is not None
+    competition_id = competition.id
+    player_ids = list(grade_by_player.keys())
+
     players = (
         (
             await db.execute(
                 select(PlayerMaster).where(  # type: ignore[call-overload]
-                    PlayerMaster.id.in_(grade_by_player.keys())  # type: ignore[union-attr]
+                    PlayerMaster.id.in_(player_ids)  # type: ignore[union-attr]
                 )
             )
         )
         .scalars()
         .all()
     )
+    player_by_id = {p.id: p for p in players if p.id is not None}
     label_by_id = {p.id: (p.display_name or f"Player {p.id}") for p in players}
 
-    fact_by_player: dict[int, Fact] = {}
-    for player_id, grade in grade_by_player.items():
-        fact = detect_percentile(
-            subject=FactSubject(
-                player_id=player_id,
-                player_label=label_by_id.get(player_id, f"Player {player_id}"),
-                competition_id=competition_id,
-            ),
-            grade=grade,
+    # -- Batched context fetches (once per competition/tick, never per player) --
+    cohort_keys = {g.cohort_key for g in grade_by_player.values()}
+    event_baselines = await fetch_event_baselines(
+        db, baseline_version=baseline_version, cohort_keys=list(cohort_keys)
+    )
+    cohort_members_by_key = await fetch_cohort_members(
+        db, baselines_by_cohort=event_baselines
+    )
+
+    debut_status = await fetch_debut_status(
+        db, player_ids=player_ids, before_year=competition.year
+    )
+    debut_cohort_keys = {
+        cohort_key_for(
+            player_by_id[pid].draft_round,
+            player_by_id[pid].draft_pick,
+            grain=SummerLeagueDeskGrain.DEBUT,
         )
-        fact_by_player[player_id] = fact
+        for pid, is_debut in debut_status.items()
+        if is_debut and pid in player_by_id
+    }
+    debut_baselines = await fetch_debut_baselines(
+        db, baseline_version=baseline_version, cohort_keys=list(debut_cohort_keys)
+    )
+
+    prior_events = await fetch_prior_events(
+        db, player_ids=player_ids, before_year=competition.year
+    )
+    current_gp_by_player = await fetch_current_event_gp(
+        db, player_ids=player_ids, year=competition.year
+    )
+
+    baseline_by_player = {
+        pid: event_baselines.get(grade.cohort_key)
+        for pid, grade in grade_by_player.items()
+    }
+    game_lines_by_player = await fetch_game_lines(
+        db,
+        player_ids=player_ids,
+        competition_id=competition_id,
+        game_date=game_date,
+        baseline_by_player=baseline_by_player,
+    )
+
+    field_entries = await fetch_tonight_field(
+        db, competition_id=competition_id, game_date=game_date
+    )
+    field_value_by_player = {e.player_id: e.value for e in field_entries}
+
+    fact_by_player: dict[int, list[Fact]] = {}
+    for player_id, grade in grade_by_player.items():
+        subject = FactSubject(
+            player_id=player_id,
+            player_label=label_by_id.get(player_id, f"Player {player_id}"),
+            competition_id=competition_id,
+        )
+        facts: list[Fact] = [detect_percentile(subject=subject, grade=grade)]
+
+        members = cohort_members_by_key.get(grade.cohort_key, [])
+        baseline = event_baselines.get(grade.cohort_key)
+
+        cohort_rank_fact = detect_cohort_rank(
+            subject=subject,
+            subject_value=grade.subject_value,
+            metric="gmsc",
+            cohort_key=grade.cohort_key,
+            peers=cohort_peers(members, exclude_player_id=player_id),
+            baseline_version=baseline_version,
+        )
+        if cohort_rank_fact is not None:
+            facts.append(cohort_rank_fact)
+
+        if baseline is not None:
+            threshold = count_club_threshold(baseline)
+            if threshold is not None:
+                count_club_fact = detect_count_club(
+                    subject=subject,
+                    metric="gmsc",
+                    cohort_key=grade.cohort_key,
+                    subject_value=grade.subject_value,
+                    threshold=threshold,
+                    since_year=_season_range_start(baseline.season_range),
+                    other_members=club_members_clearing(
+                        members, exclude_player_id=player_id, threshold=threshold
+                    ),
+                    baseline_version=baseline_version,
+                )
+                if count_club_fact is not None:
+                    facts.append(count_club_fact)
+
+                # `detect_first_since` always returns a Fact -- it's the
+                # caller's job to only invoke it when the subject itself
+                # clears the same qualifying bar (else it would read as a
+                # superlative for an unremarkable performance).
+                if grade.subject_value >= threshold:
+                    prior_holder = most_recent_prior_holder(
+                        members,
+                        exclude_player_id=player_id,
+                        threshold=threshold,
+                        before_year=competition.year,
+                    )
+                    facts.append(
+                        detect_first_since(
+                            subject=subject,
+                            metric="gmsc",
+                            cohort_key=grade.cohort_key,
+                            subject_value=grade.subject_value,
+                            current_year=competition.year,
+                            since_year=_season_range_start(baseline.season_range),
+                            most_recent_prior=prior_holder,
+                            baseline_version=baseline_version,
+                        )
+                    )
+
+        streak_fact = detect_streak(
+            subject=subject,
+            metric="gmsc",
+            cohort_key=grade.cohort_key,
+            games=game_lines_by_player.get(player_id, []),
+            baseline_version=baseline_version,
+        )
+        if streak_fact is not None:
+            facts.append(streak_fact)
+
+        prior = prior_events.get(player_id)
+        if prior is not None:
+            self_delta_fact = detect_self_delta(
+                subject=subject,
+                metric="gmsc",
+                cohort_key=grade.cohort_key,
+                current_value=grade.subject_value,
+                current_gp=current_gp_by_player.get(player_id, 0),
+                prior=prior,
+                baseline_version=baseline_version,
+            )
+            if self_delta_fact is not None:
+                facts.append(self_delta_fact)
+
+        if debut_status.get(player_id) and player_id in player_by_id:
+            player = player_by_id[player_id]
+            debut_key = cohort_key_for(
+                player.draft_round, player.draft_pick, grain=SummerLeagueDeskGrain.DEBUT
+            )
+            debut_baseline = debut_baselines.get(debut_key)
+            if debut_baseline is not None:
+                facts.append(
+                    detect_debut_vs_bar(
+                        subject=subject,
+                        metric="gmsc",
+                        debut_cohort_key=debut_key,
+                        subject_value=grade.subject_value,
+                        debut_bar=debut_baseline.mean_value,
+                        baseline_version=baseline_version,
+                    )
+                )
+
+        subject_field_value = field_value_by_player.get(player_id)
+        if subject_field_value is not None:
+            leads_field_fact = detect_leads_field(
+                subject=subject,
+                subject_value=subject_field_value,
+                metric="gmsc",
+                field_label="tonight's slate",
+                field=field_peers(field_entries, exclude_player_id=player_id),
+            )
+            if leads_field_fact is not None:
+                facts.append(leads_field_fact)
+
+        fact_by_player[player_id] = facts
         await persist_grade_facts(
             db,
             player_id=player_id,
             competition_id=competition_id,
             baseline_version=baseline_version,
-            facts=[fact],
+            facts=facts,
         )
 
     if not slate:
@@ -404,10 +604,10 @@ async def _commentary_for_competition(
         db, competition_id=competition_id, game_date=game_date
     )
     for slate_row in slate:
-        game_facts = [
-            fact_by_player[pid]
+        game_facts: list[Fact] = [
+            fact
             for pid in roster_by_game.get(slate_row.game_id, [])
-            if pid in fact_by_player
+            for fact in fact_by_player.get(pid, [])
         ]
         await persist_slate_facts(
             db,
@@ -415,6 +615,12 @@ async def _commentary_for_competition(
             facts=game_facts,
             is_hero=slate_row.is_hero,
         )
+
+
+def _season_range_start(season_range: str) -> int:
+    """``"2017-2025"`` -> ``2017`` (mirrors ``cohort_baselines._parse_season_range``)."""
+    start_str, _sep, _end_str = season_range.partition("-")
+    return int(start_str)
 
 
 async def run_desk_tick(
@@ -535,10 +741,10 @@ async def run_desk_tick(
         )
         storyline_results[competition_id] = result
 
-        # Step 4 -- commentary (percentile Facts onto T2 + grouped onto T4).
+        # Step 4 -- commentary (all eight #520 Facts onto T2 + grouped onto T4).
         await _commentary_for_competition(
             db,
-            competition_id=competition_id,
+            competition=competition,
             baseline_version=baseline_version,
             game_date=today,
             grade_by_player=grade_by_player,
