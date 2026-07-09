@@ -47,6 +47,20 @@ from __future__ import annotations
 # already-built board, bringing it to 43 here (and a larger win in prod, where
 # the loop cost scaled with the number of sources).
 ROUTE_BUDGETS: dict[str, int] = {
+    # The Summer League Desk read service (#508) adds one query to every "/"
+    # render -- a single `events` lookup by key that decides whether the SL
+    # event's lifecycle is currently `active` at all. The `representative_dataset`
+    # fixture below seeds no `events`/`event_desk_state`/T1-T4 rows, so this
+    # route always exercises the off-window path here: the lookup finds no row
+    # and the desk service short-circuits to `None` before touching any other
+    # desk table. Measured with that query included: still 52 (this branch's
+    # pre-desk baseline had 1 query of headroom already, from unrelated earlier
+    # work on this feature branch) -- so no numeric bump was needed, but it is
+    # called out here explicitly per the "conscious accounting" policy rather
+    # than silently absorbed. The desk-*active* states (Preview/Live/Recap/
+    # quiet-slate) are NOT exercised by this generic, single-dataset harness --
+    # see `DESK_HOME_QUERY_BUDGETS` below and `tests/integration/test_sl_desk_home.py`,
+    # which seed each state directly and assert its own query count.
     "/": 52,
     "/news": 8,
     "/podcasts": 5,
@@ -110,4 +124,42 @@ ROUTE_BUDGETS: dict[str, int] = {
 # Kept here as a single source-of-truth reference for the max query count.
 ADMIN_ROUTE_BUDGETS: dict[str, int] = {
     "/admin/players/stubs": 10,
+}
+
+# Summer League Desk read service (#508) -- per-state query budgets for
+# `app.services.summer_league.desk_read.get_desk_payload`, asserted directly by
+# `tests/integration/test_sl_desk_home.py` (not by the generic, single-dataset
+# `test_route_query_budgets.py` above -- that harness's seeded dataset never
+# puts the Desk into an active state, so it only ever exercises "off_window").
+#
+# These are deliberately NOT folded into `ROUTE_BUDGETS["/"]`: doing so would
+# either force that budget absurdly high (to cover the richest state) or hide
+# a real per-state regression behind a single number that's only ever measured
+# against one (off-window) fixture. Each number below is the EXACT count
+# `tests/integration/test_sl_desk_home.py` measured against a minimal
+# one/two-game, one/two-player fixture; it does not scale with the number of
+# tracked players or games (no per-player, no per-game queries -- see
+# `desk_read.py`'s module docstring), so this is a regression ratchet on
+# *section count*, not on data volume.
+DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
+    # Event lookup only, then short-circuit before touching any other desk
+    # table -- the cheapest path by design.
+    "off_window": 1,
+    # Measured 16: state resolution (event + resolve_calendar_facts' own
+    # event/competitions/game_dates/today lookups = 5) + baseline_version (1)
+    # + freshness (1) + today's T4 slate (1) + games (1) + team entries (1) +
+    # hero's T3 subject lookup (1) + Class Tracker's 5 batched queries
+    # (roster/players/seasons/teams/baselines).
+    "preview": 16,
+    # Measured 17: preview's queries + the live board's one batched
+    # top-performer query.
+    "live": 17,
+    # Measured 17: state resolution/baseline/freshness (7) + ledger_date (1)
+    # + ledger game logs/players/baselines/facts (4) + Class Tracker (5).
+    "recap": 17,
+    # Measured 11: state resolution/baseline/freshness (7) + the empty T4
+    # slate probe (1) + quiet-slate hero's T2 + players_master lookup (2) +
+    # Class Tracker on an empty roster short-circuits after 1 query (roster
+    # probe returns nothing -- no players/seasons/teams/baselines queries).
+    "quiet_slate": 11,
 }

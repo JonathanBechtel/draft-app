@@ -74,6 +74,7 @@ from app.services.player_service import (
     get_player_profile_by_slug,
 )
 from app.services.school_logo_service import get_logo_url_for_school
+from app.services.summer_league.desk_read import get_desk_payload
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from app.services.summer_league_stats_service import (
     get_player_shotchart_context,
@@ -135,6 +136,16 @@ async def home(
     db: AsyncSession = Depends(get_session),
 ):
     """Render the Homepage with consensus hero, trending players, VS arena, and news feed."""
+    # --- Summer League Desk (event-instance #1 of the Event Desk framework) ---
+    # One service call assembles the current-state payload from the precomputed
+    # T2/T4/event_desk_state projections; `daily_state` itself is resolved at
+    # request time by the framework's pure resolvers (see
+    # app.services.summer_league.desk_read module docstring). `None` means the
+    # SL event's lifecycle isn't currently active -- the template collapses to
+    # the archive-strip treatment (behavior spec §2) instead of the takeover.
+    desk_payload = await get_desk_payload(db, now=datetime.utcnow())
+    desk_window_open = desk_payload is not None
+
     # --- Consensus hero -------------------------------------------------------
     # Select the board kind from the draft calendar.  Fall back to BIG_BOARD
     # when the calendar-selected kind returns no rows (e.g. MOCK_DRAFT data has
@@ -392,6 +403,9 @@ async def home(
         "home.html",
         {
             "request": request,
+            # Summer League Desk (None/False off-window -> collapsed strip)
+            "desk_payload": desk_payload,
+            "desk_window_open": desk_window_open,
             # Consensus hero
             "board_kind": board_kind,
             "consensus_rows": consensus_rows,
