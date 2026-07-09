@@ -1,0 +1,314 @@
+"""Job B step 2 — the Summer League Desk cohort percentile + grade service (T2).
+
+Ranks one player's Summer League **event-aggregate GmSc** (blended across every
+venue they've played this year, same grain #502's Job A used to build T1)
+against the **active** cohort baseline for their draft-slot/status cohort, and
+upserts the result into ``summer_league_desk_player_grades`` (T2)
+(`docs/plans/summer-league-scouts-desk-behavior-spec.md` §6, §10 T2, Job B
+step 2).
+
+**Reuses, doesn't re-derive:**
+
+* Cohort classification (``cohort_key_for``) and the event-aggregate blend
+  (``blend_event_aggregates``) from ``app.services.summer_league.cohort_baselines``
+  (#502) — the ``draft_pick`` is WITHIN-ROUND gotcha lives there once.
+* The **adaptive gate ladder** (2 games/60 min -> 1/20 -> 1/0) shipped for the
+  Leaders board (``app.services.summer_league_leaders_service.GATE_LADDER``),
+  applied here to a single subject's own event sample rather than a whole
+  leaderboard population, plus that same module's ``TARGET_BOARD_ROWS`` (10)
+  as the floor for a cohort baseline being too thin to trust at all.
+* ``SummerLeaguePlayerSeason.gmsc`` — already computed from
+  ``game_score_line()`` (`app/services/summer_league/metrics.py`) when the
+  materialized per-(player, competition) row is built; grading reads that
+  column via the same blend path #502 uses rather than recomputing GmSc from
+  raw box logs.
+
+T1 is never rebuilt here — a ``ValueError`` when no active baseline row
+exists for the player's cohort is a real error (Job A hasn't run / the
+cohort has no history), not a fallback to compute one on the fly.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.schemas.players_master import PlayerMaster
+from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league_desk import (
+    SummerLeagueCohortBaseline,
+    SummerLeagueDeskGrade,
+    SummerLeagueDeskGrain,
+    SummerLeagueDeskPlayerGrade,
+)
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.summer_league.cohort_baselines import (
+    blend_event_aggregates,
+    cohort_key_for,
+)
+from app.services.summer_league_leaders_service import GATE_LADDER, TARGET_BOARD_ROWS
+
+# Grade thresholds (#503 Definition of Done, behavior spec §6/§10 T2).
+# Checked highest-first; the first floor a percentile clears wins.
+GRADE_THRESHOLDS: tuple[tuple[float, SummerLeagueDeskGrade], ...] = (
+    (90.0, SummerLeagueDeskGrade.HOT),
+    (65.0, SummerLeagueDeskGrade.WARM),
+    (40.0, SummerLeagueDeskGrade.MID),
+)
+
+
+@dataclass(frozen=True)
+class GradeRow:
+    """The graded outcome for one (player, competition, baseline_version).
+
+    A plain DTO mirroring the T2 row shape, decoupled from the ORM/session
+    lifecycle so downstream consumers (#504 storyline engine, #520 Class
+    Tracker read service) don't need a live, unexpired SQLModel instance.
+    """
+
+    player_id: int
+    competition_id: int
+    baseline_version: str
+    cohort_key: str
+    subject_value: float
+    pctl: float
+    grade: SummerLeagueDeskGrade
+    n_cohort: int
+    gated: bool
+
+
+def is_gated(rung: Optional[int], n_members: int) -> bool:
+    """Whether a graded outcome should be flagged as not-yet-confident.
+
+    Split out from :func:`grade_player_event` as a small pure predicate so
+    the gate decision is unit-testable without a database: gated whenever
+    the subject's own sample only cleared a relaxed :data:`GATE_LADDER`
+    rung (or none at all), OR the T1 cohort baseline itself is too thin
+    (fewer than :data:`~app.services.summer_league_leaders_service.TARGET_BOARD_ROWS`
+    historical members) to trust regardless of the subject's sample.
+
+    Args:
+        rung: Result of :func:`gate_rung` for the subject's (gp, minutes).
+        n_members: The T1 baseline row's ``n_members`` (cohort sample size).
+
+    Returns:
+        ``True`` when the percentile should be treated as not confident.
+    """
+    return rung is None or rung > 0 or n_members < TARGET_BOARD_ROWS
+
+
+def grade_for_percentile(pctl: float) -> SummerLeagueDeskGrade:
+    """Map a percentile (0-100) to its coarse grade bucket.
+
+    Args:
+        pctl: A cohort percentile, 0-100.
+
+    Returns:
+        ``hot`` (>=90) / ``warm`` (65-89) / ``mid`` (40-64) / ``cold`` (<40).
+    """
+    for floor, grade in GRADE_THRESHOLDS:
+        if pctl >= floor:
+            return grade
+    return SummerLeagueDeskGrade.COLD
+
+
+def percentile_of_value(breakpoints: dict[str, float], value: float) -> float:
+    """Invert a T1 ``breakpoints`` map (percentile -> value) to rank ``value``.
+
+    ``compute_breakpoints`` (#502) fits a monotonically non-decreasing
+    percentile -> value grid via linear interpolation over a sorted
+    distribution. This is the reverse lookup: given a subject's value, find
+    the percentile it falls at by locating the bracketing grid points and
+    linearly interpolating back, mirroring numpy's ``'linear'`` method so a
+    value at exactly a fitted breakpoint returns exactly that percentile.
+
+    Args:
+        breakpoints: ``{"0": ..., "5": ..., ..., "100": ...}`` from a T1 row.
+        value: The subject's metric value (event-aggregate GmSc) to rank.
+
+    Returns:
+        The interpolated percentile, 0-100 (clamped at the grid's ends for
+        values outside the observed range), rounded to 2 decimals.
+
+    Raises:
+        ValueError: ``breakpoints`` is empty (an empty/never-built cohort).
+    """
+    if not breakpoints:
+        raise ValueError("Cannot rank a value against an empty breakpoints map.")
+
+    points = sorted(((int(p), v) for p, v in breakpoints.items()), key=lambda t: t[0])
+    lowest_p, lowest_v = points[0]
+    highest_p, highest_v = points[-1]
+
+    if value <= lowest_v:
+        return float(lowest_p)
+    if value >= highest_v:
+        return float(highest_p)
+
+    for (p_lo, v_lo), (p_hi, v_hi) in zip(points, points[1:]):
+        if v_lo <= value <= v_hi:
+            # v_hi == v_lo (a flat plateau) never reaches here as the first
+            # bracketing pair: the pre-loop clamps above already catch a
+            # plateau starting at index 0, and a later plateau is always
+            # caught first by the non-degenerate pair transitioning into it
+            # (whose v_hi already equals the plateau's value).
+            frac = (value - v_lo) / (v_hi - v_lo)
+            return round(p_lo + frac * (p_hi - p_lo), 2)
+
+    # Unreachable: the grid is sorted and covers [lowest_v, highest_v], and
+    # value is already known to fall inside that range at this point.
+    return float(highest_p)
+
+
+def gate_rung(gp: int, minutes: float) -> Optional[int]:
+    """The index of the strictest :data:`GATE_LADDER` rung ``(gp, minutes)`` clears.
+
+    Reuses the exact ladder the Leaders board walks (2 games/60 minutes ->
+    1/20 -> 1/0), applied here to a single subject's own event sample instead
+    of a whole leaderboard population. Rung 0 (the standard gate) means a
+    confident sample; any later rung means the sample only cleared a relaxed
+    rung — i.e. still thin.
+
+    Args:
+        gp: The subject's blended games played for the event.
+        minutes: The subject's blended minutes for the event.
+
+    Returns:
+        The 0-based rung index, or ``None`` if the sample doesn't even clear
+        the loosest rung (no games at all — nothing to grade).
+    """
+    for i, (min_gp, min_minutes) in enumerate(GATE_LADDER):
+        if gp >= min_gp and minutes >= min_minutes:
+            return i
+    return None
+
+
+async def grade_player_event(
+    session: AsyncSession,
+    player_id: int,
+    competition_id: int,
+    *,
+    baseline_version: str,
+) -> GradeRow:
+    """Rank a player's SL event-aggregate GmSc against their cohort baseline (T1).
+
+    Reads every ``SummerLeaguePlayerSeason`` row for ``player_id`` in
+    ``competition_id``'s year (across every venue they played, same
+    event-aggregate grain #502's Job A used to build T1), blends them
+    games-weighted with no eligibility floor (``min_minutes=0.0`` — unlike
+    Job A's historical build, a live tick must still grade a thin/1-game
+    subject; the gate ladder below is what flags that thinness rather than
+    the blend silently dropping the player), classifies the player's cohort
+    via #502's ``cohort_key_for``, ranks the blended value against the
+    active T1 baseline row for that cohort, applies the adaptive gate ladder,
+    and upserts the outcome into T2
+    (``player_id``, ``competition_id``, ``baseline_version`` unique).
+
+    Does not commit; the caller controls the transaction (mirrors
+    ``app.services.summer_league.cohort_baselines.build_baselines``).
+
+    Args:
+        session: Active database session.
+        player_id: The player's ID in ``players_master``.
+        competition_id: The ``summer_league_competitions`` row identifying
+            which (year, venue) tick context this grade is being written
+            under. The subject value still blends across every venue the
+            player played that year, not just this competition's venue.
+        baseline_version: Which T1 ``baseline_version`` to rank against
+            (must have an active row for the player's cohort).
+
+    Returns:
+        The graded outcome as a :class:`GradeRow`.
+
+    Raises:
+        ValueError: ``competition_id``/``player_id`` don't resolve, the
+            player has no Summer League game data for the competition's
+            year, or no active T1 baseline row exists for the player's
+            cohort under ``baseline_version``.
+    """
+    competition = await session.get(SummerLeagueCompetition, competition_id)
+    if competition is None:
+        raise ValueError(f"No summer_league_competitions row for id={competition_id}.")
+
+    player = await session.get(PlayerMaster, player_id)
+    if player is None:
+        raise ValueError(f"No players_master row for id={player_id}.")
+
+    season_stmt = select(  # type: ignore[call-overload]
+        SummerLeaguePlayerSeason.player_id,
+        SummerLeaguePlayerSeason.year,
+        SummerLeaguePlayerSeason.gmsc,
+        SummerLeaguePlayerSeason.minutes,
+        SummerLeaguePlayerSeason.gp,
+    ).where(
+        SummerLeaguePlayerSeason.player_id == player_id,
+        SummerLeaguePlayerSeason.year == competition.year,
+    )
+    rows = (await session.execute(season_stmt)).all()
+
+    events = blend_event_aggregates(rows, min_minutes=0.0)
+    agg = events.get((player_id, competition.year))
+    if agg is None:
+        raise ValueError(
+            f"No Summer League game data for player_id={player_id} in "
+            f"{competition.year} (competition_id={competition_id})."
+        )
+
+    cohort_key = cohort_key_for(
+        player.draft_round, player.draft_pick, grain=SummerLeagueDeskGrain.EVENT
+    )
+
+    baseline_stmt = select(SummerLeagueCohortBaseline).where(
+        SummerLeagueCohortBaseline.baseline_version == baseline_version,  # type: ignore[arg-type]
+        SummerLeagueCohortBaseline.cohort_key == cohort_key,  # type: ignore[arg-type]
+        SummerLeagueCohortBaseline.is_active.is_(True),  # type: ignore[attr-defined]
+    )
+    baseline = (await session.execute(baseline_stmt)).scalar_one_or_none()
+    if baseline is None:
+        raise ValueError(
+            f"No active T1 baseline for cohort_key={cohort_key!r} under "
+            f"baseline_version={baseline_version!r}."
+        )
+
+    pctl = percentile_of_value(baseline.breakpoints, agg.gmsc)
+    grade = grade_for_percentile(pctl)
+
+    rung = gate_rung(agg.gp, agg.minutes)
+    gated = is_gated(rung, baseline.n_members)
+
+    values = {
+        "player_id": player_id,
+        "competition_id": competition_id,
+        "baseline_version": baseline_version,
+        "cohort_key": cohort_key,
+        "subject_value": agg.gmsc,
+        "pctl": pctl,
+        "grade": grade,
+        "n_cohort": baseline.n_members,
+        "gated": gated,
+        "computed_at": datetime.utcnow(),
+    }
+    stmt = insert(SummerLeagueDeskPlayerGrade).values(**values)
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_summer_league_desk_player_grades_player_competition_version",
+        set_=values,
+    )
+    await session.execute(stmt)
+    await session.flush()
+
+    return GradeRow(
+        player_id=player_id,
+        competition_id=competition_id,
+        baseline_version=baseline_version,
+        cohort_key=cohort_key,
+        subject_value=agg.gmsc,
+        pctl=pctl,
+        grade=grade,
+        n_cohort=baseline.n_members,
+        gated=gated,
+    )
