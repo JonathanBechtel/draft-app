@@ -88,6 +88,7 @@ def test_product_enum_values_match_spec() -> None:
     ]
     assert [status.value for status in SummerLeagueGameStatus] == [
         "scheduled",
+        "in_progress",
         "final",
         "unknown",
     ]
@@ -138,3 +139,11 @@ def test_product_table_uniqueness_constraints_are_named() -> None:
         "uq_summer_league_team_game_logs_game_team",
         "uq_summer_league_player_game_logs_game_person_team",
     }
+
+
+def test_game_table_has_nullable_tip_datetime_column() -> None:
+    """summer_league_games gains a nullable UTC tip_datetime (Desk timing prereq)."""
+    table = SummerLeagueGame.__table__  # type: ignore[attr-defined]
+
+    assert "tip_datetime" in table.c
+    assert table.c.tip_datetime.nullable is True

@@ -56,6 +56,7 @@ class SummerLeagueGameStatus(str, Enum):
     """Normalized Summer League game status."""
 
     SCHEDULED = "scheduled"
+    IN_PROGRESS = "in_progress"
     FINAL = "final"
     UNKNOWN = "unknown"
 
@@ -277,6 +278,10 @@ class SummerLeagueGame(SQLModel, table=True):  # type: ignore[call-arg]
     competition_id: int = Field(foreign_key="summer_league_competitions.id")
     nba_stats_game_id: str = Field(nullable=False)
     game_date: Optional[date] = Field(default=None)
+    # Scheduled/actual tip-off in UTC (Desk state machine + Morning Card timing).
+    # Nullable: legacy rows predate scoreboard ingest (behavior spec §10) and the
+    # scoreboard/schedule step that populates this is ticket #515, not this migration.
+    tip_datetime: Optional[datetime] = Field(default=None)
     home_team_entry_id: Optional[int] = Field(
         default=None,
         foreign_key="summer_league_team_entries.id",
