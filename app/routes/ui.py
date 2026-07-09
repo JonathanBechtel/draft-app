@@ -1,7 +1,7 @@
 """UI Routes - Renders Jinja templates for the frontend."""
 
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -143,7 +143,13 @@ async def home(
     # app.services.summer_league.desk_read module docstring). `None` means the
     # SL event's lifecycle isn't currently active -- the template collapses to
     # the archive-strip treatment (behavior spec §2) instead of the takeover.
-    desk_payload = await get_desk_payload(db, now=datetime.utcnow())
+    # `now` is naive UTC (tzinfo stripped): the framework resolvers compare it
+    # against `summer_league_games.tip_datetime`, which is naive UTC by repo
+    # convention, so an aware value here would raise on the comparison. Building
+    # it timezone-aware first (not deprecated `utcnow()`) then dropping tzinfo
+    # yields the correct wall-clock instant without an aware/naive mismatch.
+    now_naive_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    desk_payload = await get_desk_payload(db, now=now_naive_utc)
     desk_window_open = desk_payload is not None
 
     # --- Consensus hero -------------------------------------------------------

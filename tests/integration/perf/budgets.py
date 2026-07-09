@@ -47,20 +47,25 @@ from __future__ import annotations
 # already-built board, bringing it to 43 here (and a larger win in prod, where
 # the loop cost scaled with the number of sources).
 ROUTE_BUDGETS: dict[str, int] = {
-    # The Summer League Desk read service (#508) adds one query to every "/"
-    # render -- a single `events` lookup by key that decides whether the SL
-    # event's lifecycle is currently `active` at all. The `representative_dataset`
-    # fixture below seeds no `events`/`event_desk_state`/T1-T4 rows, so this
-    # route always exercises the off-window path here: the lookup finds no row
-    # and the desk service short-circuits to `None` before touching any other
-    # desk table. Measured with that query included: still 52 (this branch's
-    # pre-desk baseline had 1 query of headroom already, from unrelated earlier
-    # work on this feature branch) -- so no numeric bump was needed, but it is
-    # called out here explicitly per the "conscious accounting" policy rather
-    # than silently absorbed. The desk-*active* states (Preview/Live/Recap/
-    # quiet-slate) are NOT exercised by this generic, single-dataset harness --
-    # see `DESK_HOME_QUERY_BUDGETS` below and `tests/integration/test_sl_desk_home.py`,
-    # which seed each state directly and assert its own query count.
+    # `/` HAS TWO REGIMES -- this 52 covers only the OFF-WINDOW one:
+    #   * OFF-WINDOW (this budget, the year-round default): the Summer League
+    #     Desk (#508) fires ONE `events` lookup by key, finds no active event,
+    #     and short-circuits to `None` before touching any other desk table.
+    #     `representative_dataset` seeds no events/T1-T4 rows, so THIS test only
+    #     ever measures this path. Measured with the desk lookup included: still
+    #     52 (this feature branch's pre-desk baseline already had 1 query of
+    #     headroom from unrelated earlier work), so no numeric bump was needed
+    #     -- called out explicitly per the "conscious accounting" policy rather
+    #     than silently absorbed.
+    #   * IN-WINDOW (during a live SL event, e.g. Vegas 2026 Jul 9-19): `/`
+    #     renders the full Desk and fires ~16 more queries. That composite is
+    #     budgeted SEPARATELY in `DESK_HOME_PAGE_BUDGETS` below and asserted by
+    #     `test_desk_home_inwindow_budget.py` (which seeds an active event) --
+    #     NOT here, because this fixture can't put the Desk in-window.
+    # The isolated `get_desk_payload` per-state numbers live in
+    # `DESK_HOME_QUERY_BUDGETS`. Both totals still include the repo's known,
+    # pre-existing `/` N+1 (see the module note above) -- these are regression
+    # ratchets, not a claim the page is N+1-free.
     "/": 52,
     "/news": 8,
     "/podcasts": 5,
@@ -162,4 +167,43 @@ DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
     # Class Tracker on an empty roster short-circuits after 1 query (roster
     # probe returns nothing -- no players/seasons/teams/baselines queries).
     "quiet_slate": 11,
+}
+
+# Summer League Desk -- FULL in-window `/` PAGE budgets (#508 follow-up), per
+# resolved Desk state. Distinct from `DESK_HOME_QUERY_BUDGETS` above (which
+# budgets `get_desk_payload` in ISOLATION): these are the whole `/` render --
+# consensus hero, trending, news, podcasts, film room AND the active Desk --
+# and are asserted by `test_desk_home_inwindow_budget.py`, which layers an
+# active SL event on top of the full `representative_dataset`.
+#
+# Why this exists: `ROUTE_BUDGETS["/"]` (52) is measured against
+# `representative_dataset`, which seeds NO events/T1-T4 rows, so it only ever
+# exercises the Desk's OFF-WINDOW short-circuit (one `events` lookup, then
+# `None`). During the SL event itself (Vegas 2026: Jul 9-19) `/` is in-window
+# and renders the full Desk -- ~an-order-more queries -- and nothing budgeted
+# that composite until this dict. The two regimes are:
+#   * OFF-WINDOW  -> `ROUTE_BUDGETS["/"] = 52` (the year-round default).
+#   * IN-WINDOW   -> these numbers (only during a live SL event).
+# The delta between them is essentially `DESK_HOME_QUERY_BUDGETS[state] - 1`
+# (the in-window Desk replaces the single off-window `events` lookup with its
+# full per-state assembly).
+#
+# NOTE: like `ROUTE_BUDGETS["/"]`, these totals still INCLUDE the repo's known,
+# pre-existing `/` N+1 (see the ROUTE_BUDGETS note above) -- they are NOT a
+# claim that the whole page is N+1-free, only a ratchet freezing the in-window
+# count at today's honestly-measured level so a NEW Desk regression can't creep
+# in unbudgeted. Numbers are the exact counts measured by
+# `test_desk_home_inwindow_budget.py`; do not tune code to round them.
+DESK_HOME_PAGE_BUDGETS: dict[str, int] = {
+    # Measured 68: the off-window `/` baseline (52, which already includes the
+    # single off-window `events` lookup) + the Live Desk's net +16 (its 17
+    # service queries minus that 1 lookup it replaces). The Live board's
+    # top-performer read is one batched query over the whole slate -- it does
+    # NOT scale per game or per tracked player.
+    "live": 68,
+    # Measured 68: same composite total as Live here -- the Ledger's assembly
+    # (last-final-date + batched game-logs/players/baselines/facts) happens to
+    # land on the same query count as the Live board on this fixture. Both are
+    # section-bounded, not data-volume-bounded.
+    "recap": 68,
 }
