@@ -15,7 +15,15 @@ storyline, or commentary logic of its own:
        audited raw box scores for today's competitions. Best-effort per
        competition: a competition with no audited raw run yet this hour is
        not an error (raw fetch/audit runs on its own cadence, independent
-       of this hourly tick).
+       of this hourly tick). Every competition normalize actually touched
+       this tick is then passed to a *scoped* ``summer_league_player_seasons``
+       rebuild (#523, ``app.services.summer_league.metrics.rebuild`` called
+       with ``competition_ids=``) so step 2's grading reads freshly
+       recomputed event aggregates rather than whatever was materialized on
+       a prior tick -- never the unscoped, whole-table wipe-and-rebuild
+       ``scripts/rebuild_sl_metrics.py`` performs (far too heavy for an
+       hourly cron, and destructive to any competition this tick didn't
+       just normalize).
     2. per active roster player -> grade vs the active T1 baseline (#503,
        ``desk_grades.grade_player_event``) -> T2.
     3. evaluate storyline triggers for today's games (#504,
@@ -115,6 +123,7 @@ from app.services.summer_league.desk_storylines import (  # noqa: E402
     StorylineTickResult,
     compute_desk_storylines,
 )
+from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics  # noqa: E402
 from app.services.summer_league.nba_stats_client import NBAStatsClient  # noqa: E402
 from app.services.summer_league.normalization import (  # noqa: E402
     normalize_competition_games,
@@ -475,6 +484,19 @@ async def run_desk_tick(
         assert competition.id is not None
         if await _normalize_competition(db, competition, raw_root=raw_root):
             normalized_ids.append(competition.id)
+
+    # Step 1b -- scoped metrics rebuild (#523): refresh
+    # summer_league_player_seasons for exactly the competitions normalize
+    # touched this tick, so step 2's grading below reads fresh event
+    # aggregates instead of stale ones. Writes are sequential (no concurrent
+    # session use) and scoped by competition_id, so a competition this tick
+    # didn't normalize -- including rows this module never wrote at all --
+    # is never deleted or replaced. A no-op (empty `normalized_ids`, the
+    # common case when raw fetch/audit hasn't produced anything new this
+    # hour) skips the call entirely rather than issuing an empty-scope
+    # rebuild.
+    if normalized_ids:
+        await rebuild_sl_metrics(db, competition_ids=normalized_ids)
 
     mode: Literal["morning", "live"] = (
         "morning" if daily_state == EventDailyState.PREVIEW else "live"

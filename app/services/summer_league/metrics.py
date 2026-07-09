@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
@@ -1250,37 +1250,118 @@ def _season_columns(
     }
 
 
-async def rebuild(
-    db: AsyncSession, *, model_version: Optional[str] = None
-) -> dict[str, int]:
-    """Recompute and replace all materialized SL metric tables.
+async def _active_or_fresh_model_version(db: AsyncSession) -> str:
+    """The currently active model's version stamp, or a freshly minted one.
 
-    Returns a small summary dict (counts). The caller controls the transaction.
+    A scoped :func:`rebuild` call never writes a new
+    :class:`SummerLeagueMetricModel` row (see that function's docstring),
+    but ``SummerLeaguePlayerSeason.model_version`` is still a useful
+    informational stamp (no FK relies on it) -- reuse whichever model is
+    active so a scoped tick's season rows reference the same fit the last
+    full rebuild wrote, falling back to a freshly minted version only when
+    no full rebuild has ever run yet (nothing to reference).
     """
-    result = await compute(db)
-    version = model_version or datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    adv_cids = {cid for cid, ctx in result.contexts.items() if ctx.adv_eligible}
-
-    # Clear existing rows (full rebuild).
-    await db.execute(delete(SummerLeaguePlayerSeason))
-    await db.execute(delete(SummerLeagueMetricContext))
-    await db.execute(delete(SummerLeagueMetricModel))
-
-    db.add(
-        SummerLeagueMetricModel(
-            model_version=version,
-            pyth_exponent=result.pyth_exponent,
-            ws_ppw_coeff=result.ws_ppw_coeff,
-            pyth_n_teams=result.pyth_n,
-            bpm_intercept=result.bpm_intercept,
-            bpm_r2=result.bpm_r2,
-            bpm_n_fit=result.bpm_n_fit,
-            bpm_replacement=VORP_REPLACEMENT,
-            bpm_coefficients=result.bpm_coef or {},
-        )
+    stmt = (
+        select(SummerLeagueMetricModel.model_version)  # type: ignore[call-overload]
+        .where(SummerLeagueMetricModel.is_active.is_(True))  # type: ignore[attr-defined]
+        .order_by(SummerLeagueMetricModel.id.desc())  # type: ignore[union-attr]
+        .limit(1)
     )
+    row = (await db.execute(stmt)).first()
+    if row is not None:
+        return str(row[0])
+    return datetime.utcnow().strftime("%Y%m%d%H%M%S")
 
-    for ctx in result.contexts.values():
+
+async def rebuild(
+    db: AsyncSession,
+    *,
+    model_version: Optional[str] = None,
+    competition_ids: Optional[Sequence[int]] = None,
+) -> dict[str, int]:
+    """Recompute materialized SL metric tables -- full rebuild, or scoped by competition.
+
+    Two modes, selected by ``competition_ids``:
+
+    * **Unscoped** (default, ``competition_ids=None``) -- a full
+      wipe-and-rebuild, byte-for-byte the same as before #523: every
+      ``summer_league_player_seasons`` / ``_metric_contexts`` /
+      ``_metric_models`` row is deleted and replaced, including a freshly
+      minted, freshly fitted global model row. This is what
+      ``scripts/rebuild_sl_metrics.py`` (the offline full recompute) calls.
+    * **Scoped** (``competition_ids`` a sequence of competition ids) -- only
+      ``SummerLeaguePlayerSeason`` / ``SummerLeagueMetricContext`` rows for
+      those competition ids are deleted and replaced; every other
+      competition's materialized rows -- including rows this function never
+      wrote at all -- are left untouched. The global
+      ``SummerLeagueMetricModel`` fit is never written on a scoped call: it
+      isn't scoped data, and refitting the league-wide Pythagorean/BPM
+      coefficients from an hourly per-competition tick would spam model
+      versions for no benefit. Scoped season rows are instead stamped with
+      :func:`_active_or_fresh_model_version`. An empty ``competition_ids``
+      sequence is a safe no-op (nothing loaded, deleted, or written) --
+      mirrors "nothing new to normalize this tick".
+
+    :func:`compute` always loads and fits over the *entire* raw dataset
+    regardless of scope: the league-relative recalibration constants and the
+    SL-native Pythagorean/BPM fits are only correct when derived from the
+    full pool, never a truncated one. Scope only narrows what gets
+    *persisted* -- which is what makes a scoped call safe to run hourly
+    without either an expensive/incorrect truncated fit or a destructive
+    wipe of data outside its scope.
+
+    Returns a small summary dict (counts of what was actually written). The
+    caller controls the transaction.
+    """
+    if competition_ids is not None and not competition_ids:
+        return {"seasons": 0, "contexts": 0, "adv_pools": 0}
+
+    result = await compute(db)
+    adv_cids = {cid for cid, ctx in result.contexts.items() if ctx.adv_eligible}
+    scope = frozenset(competition_ids) if competition_ids is not None else None
+
+    if scope is None:
+        # Unscoped: full wipe-and-rebuild, unchanged from before #523.
+        await db.execute(delete(SummerLeaguePlayerSeason))
+        await db.execute(delete(SummerLeagueMetricContext))
+        await db.execute(delete(SummerLeagueMetricModel))
+
+        version = model_version or datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        db.add(
+            SummerLeagueMetricModel(
+                model_version=version,
+                pyth_exponent=result.pyth_exponent,
+                ws_ppw_coeff=result.ws_ppw_coeff,
+                pyth_n_teams=result.pyth_n,
+                bpm_intercept=result.bpm_intercept,
+                bpm_r2=result.bpm_r2,
+                bpm_n_fit=result.bpm_n_fit,
+                bpm_replacement=VORP_REPLACEMENT,
+                bpm_coefficients=result.bpm_coef or {},
+            )
+        )
+        contexts_to_write = list(result.contexts.values())
+        seasons_to_write = result.seasons
+    else:
+        # Scoped: delete + write only rows for the given competition ids;
+        # never touch the global model row (see docstring above).
+        await db.execute(
+            delete(SummerLeaguePlayerSeason).where(
+                SummerLeaguePlayerSeason.competition_id.in_(scope)  # type: ignore[attr-defined]
+            )
+        )
+        await db.execute(
+            delete(SummerLeagueMetricContext).where(
+                SummerLeagueMetricContext.competition_id.in_(scope)  # type: ignore[attr-defined]
+            )
+        )
+        version = model_version or await _active_or_fresh_model_version(db)
+        contexts_to_write = [
+            ctx for cid, ctx in result.contexts.items() if cid in scope
+        ]
+        seasons_to_write = [ps for ps in result.seasons if ps.competition_id in scope]
+
+    for ctx in contexts_to_write:
         db.add(
             SummerLeagueMetricContext(
                 competition_id=ctx.competition_id,
@@ -1300,7 +1381,7 @@ async def rebuild(
         )
 
     n_seasons = 0
-    for ps in result.seasons:
+    for ps in seasons_to_write:
         zone_fga = result.shot_diet.get((ps.player_id, ps.competition_id), {})
         pbp_counts = result.assisted_fg.get((ps.player_id, ps.competition_id))
         cols = _season_columns(
@@ -1311,6 +1392,6 @@ async def rebuild(
 
     return {
         "seasons": n_seasons,
-        "contexts": len(result.contexts),
-        "adv_pools": len(adv_cids),
+        "contexts": len(contexts_to_write),
+        "adv_pools": len(adv_cids if scope is None else adv_cids & scope),
     }
