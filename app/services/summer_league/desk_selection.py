@@ -12,13 +12,20 @@ the angle -- it renders no prose** (`docs/plans/summer-league-scouts-desk-behavi
 
 Two policies drive that pipeline, both pinned by spec §11 Stage 2:
 
-* **Dedup / subsumption.** Two Facts about the same (subject, metric, cohort)
-  are "the same angle" restated at different strength -- e.g. a #1 cohort
-  rank and a 96th-percentile grade on the same metric/cohort are two views of
-  one data point ("rank=1 subsumes its own percentile"). :func:`dedup_facts`
-  generalizes this: it groups Facts on that axis and keeps only the single
-  most-notable one, for ANY pair of overlapping kinds -- not a hardcoded
-  ``cohort_rank``/``percentile`` special case.
+* **Dedup / subsumption.** Subsumption is about *restatement*, not merely
+  sharing an axis. Spec §11 Stage 2 pins exactly one relation: "dedup
+  overlapping angles (rank=1 subsumes its own percentile)" -- a #1 cohort
+  rank and its own percentile grade on the same metric/cohort restate one
+  data point, so the rank makes the percentile redundant. But a `streak`
+  and a `percentile` on that *same* axis say different things (an active
+  run vs. an event-aggregate standing), so neither subsumes the other.
+  :func:`dedup_facts` therefore does NOT collapse an axis to one survivor;
+  it (a) collapses exact duplicates -- two Facts of the SAME kind on the
+  same axis keep the more notable one -- and (b) applies an explicit,
+  documented :data:`_SUBSUMPTION_RULES` relation over *pairs of FactKinds*,
+  each gated on a strength condition (rank-1 cohort_rank subsumes
+  percentile; a rank-7 cohort_rank subsumes nothing). Kinds with no
+  declared relation both survive. See :data:`_SUBSUMPTION_RULES`.
 * **Chips bypass selection.** "Grade chips render regardless (a chip is not
   prose)" -- chips read off the raw, undeduped, unfiltered Fact list
   (:func:`chip_facts`), never off :func:`select_facts`'s output. A Fact
@@ -39,10 +46,11 @@ notability-first ordering here is unaffected either way.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence
 
-from app.services.summer_league.desk_facts import Fact
+from app.services.summer_league.desk_facts import Fact, FactKind
 
 # Below this, a Fact isn't "worth a sentence" (spec §11 Stage 2) -- it may
 # still back a grade chip (see module docstring), but prose selection drops
@@ -113,18 +121,99 @@ def _sort_key(fact: Fact) -> tuple[float, str, str, str, int, int]:
     )
 
 
+@dataclass(frozen=True)
+class _SubsumptionRule:
+    """A "``strong`` restates and outranks ``weak``" relation between two kinds.
+
+    Applies only to two Facts already on the SAME (subject, metric, cohort)
+    axis, and only when ``condition`` holds on the stronger Fact -- so a
+    weak-but-present strong-kind Fact (e.g. a cohort_rank of 7) subsumes
+    nothing. ``condition`` reads the stronger Fact's own ``values``; it must
+    NOT assume notability ordering implies the relation (a rank-7 fact can
+    still out-notability a mid-pack percentile without subsuming it).
+    """
+
+    strong: FactKind
+    weak: FactKind
+    condition: Callable[[Fact], bool]
+
+
+def _is_rank_one(fact: Fact) -> bool:
+    """Whether a ``cohort_rank`` Fact is the #1 (superlative) case.
+
+    ``detect_cohort_rank`` stores the computed rank in ``values["rank"]``
+    (1 == leads the cohort). Only rank 1 restates "top of the cohort" the
+    way a top-percentile grade does; any other rank is a distinct, weaker
+    standing that does not subsume the percentile.
+    """
+    return fact.values.get("rank") == 1
+
+
+# The subsumption relation, derived from spec §11 Stage 2's ONE pinned
+# example -- "dedup overlapping angles (rank=1 subsumes its own percentile)"
+# (docs/plans/summer-league-scouts-desk-behavior-spec.md line 432). The spec
+# pins no other pair, so this list is deliberately minimal: a rank-1
+# `cohort_rank` subsumes the `percentile` restating the same standing. Add a
+# row here (with its strength condition) if a future spec revision pins
+# another restatement pair; the default for any undeclared pair is "no
+# subsumption -- both survive." (`leads_field` is itself a rank-1 superlative
+# but always carries a `field:{label}` cohort, so it never shares an axis
+# with a slot/status-cohort `percentile`/`cohort_rank` and needs no rule.)
+_SUBSUMPTION_RULES: tuple[_SubsumptionRule, ...] = (
+    _SubsumptionRule(
+        strong=FactKind.COHORT_RANK,
+        weak=FactKind.PERCENTILE,
+        condition=_is_rank_one,
+    ),
+)
+
+
+def _dedup_within_axis(group: Sequence[Fact]) -> list[Fact]:
+    """Collapse one axis-group: exact-duplicate kinds, then subsumption.
+
+    Step 1 keeps the single most-notable Fact per :class:`FactKind` (two
+    percentile Facts on one axis are the same claim twice). Step 2 removes
+    a surviving weak-kind Fact when a surviving strong-kind Fact subsumes it
+    per :data:`_SUBSUMPTION_RULES`. Kinds with no declared relation both
+    survive -- a streak and a percentile on the same axis are different
+    claims, so both stay.
+    """
+    best_per_kind: dict[FactKind, Fact] = {}
+    for fact in group:
+        current = best_per_kind.get(fact.kind)
+        if current is None or _sort_key(fact) < _sort_key(current):
+            best_per_kind[fact.kind] = fact
+
+    subsumed: set[FactKind] = set()
+    for rule in _SUBSUMPTION_RULES:
+        strong = best_per_kind.get(rule.strong)
+        if strong is not None and rule.weak in best_per_kind and rule.condition(strong):
+            subsumed.add(rule.weak)
+
+    return [f for kind, f in best_per_kind.items() if kind not in subsumed]
+
+
 def dedup_facts(facts: Sequence[Fact]) -> list[Fact]:
-    """Collapse overlapping Facts to the single strongest one per axis.
+    """Remove restated/duplicate Facts, keeping genuinely distinct angles.
 
-    Generalizes the spec's "rank=1 subsumes its own percentile" example: any
-    two Facts sharing a (subject.player_id, subject.competition_id, metric,
-    cohort) axis describe the same underlying data point, so only the most
-    notable one is kept for prose. Facts on a different axis -- a different
-    metric, a different cohort, or a different subject -- never collide, so
-    unrelated storylines about the same player (e.g. a streak on ``gmsc``
-    and a debut-vs-bar on a different cohort) all survive independently.
+    NOT an axis-wide collapse. Two Facts share an axis (same
+    ``subject.player_id``, ``subject.competition_id``, ``metric``, ``cohort``)
+    only get merged when one actually restates the other:
 
-    This never mutates or drops anything from a caller's original Fact list
+    * **Exact duplicate** -- two Facts of the SAME kind on one axis: keep the
+      more notable one (ties broken by :func:`_sort_key`).
+    * **Subsumption** -- a stronger kind restates a weaker one per
+      :data:`_SUBSUMPTION_RULES`, and its strength condition holds (a rank-1
+      ``cohort_rank`` subsumes ``percentile``; a rank-7 one subsumes
+      nothing).
+
+    Everything else survives: a ``streak`` and a ``percentile`` on the same
+    metric+cohort say different things, so BOTH stay -- which is what lets a
+    single-subject ``TICK_NOTE``/``LEDGER_ECHO`` surface actually reach its
+    ``k>1`` budget. Facts on different metrics, cohorts, or subjects never
+    collide.
+
+    This never mutates or drops anything from the caller's original Fact list
     -- it returns a new, smaller list. Chip rendering must keep using the
     original (or :func:`chip_facts`), never this function's output.
 
@@ -133,15 +222,16 @@ def dedup_facts(facts: Sequence[Fact]) -> list[Fact]:
             competitions mixed together).
 
     Returns:
-        One Fact per (subject, metric, cohort) axis -- the highest-
-        notability Fact in each group, ties broken by :func:`_sort_key` --
-        sorted strongest-first. Empty when ``facts`` is empty.
+        The surviving Facts, sorted strongest-first by :func:`_sort_key`.
+        Empty when ``facts`` is empty.
     """
     groups: dict[tuple[int, Optional[int], str, Optional[str]], list[Fact]] = {}
     for fact in facts:
         groups.setdefault(_dedup_axis(fact), []).append(fact)
 
-    survivors = [min(group, key=_sort_key) for group in groups.values()]
+    survivors: list[Fact] = []
+    for group in groups.values():
+        survivors.extend(_dedup_within_axis(group))
     survivors.sort(key=_sort_key)
     return survivors
 

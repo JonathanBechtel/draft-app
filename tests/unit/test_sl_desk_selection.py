@@ -42,15 +42,17 @@ def _fact(
     metric: str = "gmsc",
     cohort: str | None = "slot:1-4",
     notability: float = 0.5,
+    values: dict[str, object] | None = None,
 ) -> Fact:
-    """Build a minimal Fact directly -- selection logic doesn't care about
-    detector internals, only kind/subject/metric/cohort/notability."""
+    """Build a minimal Fact directly -- selection logic only cares about
+    kind/subject/metric/cohort/notability (+ ``values["rank"]`` for the
+    cohort_rank subsumption condition)."""
     return Fact(
         kind=kind,
         subject=subject,
         metric=metric,
         cohort=cohort,
-        values={},
+        values=values if values is not None else {},
         notability=notability,
         provenance=FactProvenance(detector_id=kind.value),
     )
@@ -125,6 +127,56 @@ def test_dedup_never_deletes_from_original_list() -> None:
     assert original == [a, b]
 
 
+def test_dedup_keeps_streak_and_percentile_on_same_axis() -> None:
+    """A streak and a percentile on the SAME metric+cohort are different
+    claims (an active run vs. an event-aggregate standing) -- neither
+    subsumes the other, so BOTH survive. This is the regression the
+    axis-wide collapse got wrong: the streak was silently swallowed."""
+    pctl = _fact(
+        kind=FactKind.PERCENTILE, metric="gmsc", cohort="slot:1-4", notability=0.9
+    )
+    streak = _fact(
+        kind=FactKind.STREAK, metric="gmsc", cohort="slot:1-4", notability=0.7
+    )
+    survivors = dedup_facts([pctl, streak])
+    assert len(survivors) == 2
+    assert pctl in survivors
+    assert streak in survivors
+
+
+def test_dedup_rank_seven_subsumes_nothing() -> None:
+    """A cohort_rank that is NOT rank 1 restates no percentile -- the
+    strength condition (rank==1) fails, so both survive even sharing an
+    axis. Encoded via the condition, not inferred from notability order."""
+    rank7 = _fact(
+        kind=FactKind.COHORT_RANK,
+        metric="gmsc",
+        cohort="slot:1-4",
+        notability=0.4,
+        values={"rank": 7},
+    )
+    pctl = _fact(
+        kind=FactKind.PERCENTILE, metric="gmsc", cohort="slot:1-4", notability=0.9
+    )
+    survivors = dedup_facts([rank7, pctl])
+    assert len(survivors) == 2
+    assert rank7 in survivors
+    assert pctl in survivors
+
+
+def test_dedup_collapses_exact_duplicate_kind_on_same_axis() -> None:
+    """Two Facts of the SAME kind on the same axis are one claim twice --
+    keep only the more notable one."""
+    hi = _fact(
+        kind=FactKind.PERCENTILE, metric="gmsc", cohort="slot:1-4", notability=0.9
+    )
+    lo = _fact(
+        kind=FactKind.PERCENTILE, metric="gmsc", cohort="slot:1-4", notability=0.4
+    )
+    survivors = dedup_facts([lo, hi])
+    assert survivors == [hi]
+
+
 # --------------------------------------------------------------------------- #
 # notability floor
 # --------------------------------------------------------------------------- #
@@ -193,6 +245,21 @@ def test_tick_note_selects_up_to_configured_k() -> None:
     assert [f.notability for f in selected] == sorted(
         (f.notability for f in facts), reverse=True
     )[:k]
+
+
+def test_tick_note_k_is_reachable_for_one_subject_same_axis() -> None:
+    """The bug the axis-wide collapse caused: a single player with four
+    distinct, non-overlapping kinds on ONE metric+cohort must be able to
+    fill k=3 -- previously all four collapsed to one and k>1 was
+    unreachable for any single-subject surface."""
+    facts = [
+        _fact(kind=FactKind.PERCENTILE, metric="gmsc", cohort="slot:1-4", notability=0.9),
+        _fact(kind=FactKind.STREAK, metric="gmsc", cohort="slot:1-4", notability=0.85),
+        _fact(kind=FactKind.SELF_DELTA, metric="gmsc", cohort="slot:1-4", notability=0.8),
+        _fact(kind=FactKind.COUNT_CLUB, metric="gmsc", cohort="slot:1-4", notability=0.75),
+    ]
+    selected = select_facts(facts, surface=Surface.TICK_NOTE)
+    assert len(selected) == SURFACE_K[Surface.TICK_NOTE] == 3
 
 
 def test_ledger_echo_uses_its_own_surface_default() -> None:
