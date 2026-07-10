@@ -1,12 +1,21 @@
-{# Summer League Desk -- Live hero (#509): the key-matchup duel.
+{# Summer League Desk -- Live hero (#509, extended #541): the key-matchup duel.
 
    `desk_payload.hero.kind == "live_duel"`. Per-subject live box lines (PTS/
-   REB/AST/GmSc) are NOT part of the DeskHero contract (#506) -- only the
-   game-level score/status live on `DeskLiveBoardRow`, so this cross-references
-   `desk_payload.live_board` by `hero.game_id` for the running score and reuses
-   that row's Top Performer for a live-flavor stat chip, rather than inventing
-   per-subject numbers the payload doesn't carry. `headline`/`tagline` are
-   already-rendered commentary prose (#519) -- placed here, not re-worded. #}
+   REB/AST/GmSc) live on `hero.subject_line`/`hero.subject_line_2` (#541) --
+   both subjects' tonight running lines, nullable pre-tip (em dash, never a
+   zero or an event/career total). The game-level score/status still live on
+   `DeskLiveBoardRow`, so this cross-references `desk_payload.live_board` by
+   `hero.game_id` for the running score and reuses that row's Top Performer
+   for a live-flavor stat chip. `headline`/`tagline` are already-rendered
+   commentary prose (#519) -- placed here, not re-worded. #}
+{% macro hero_line(line) %}
+<div class="desk__hero-statline">
+  <span><b>{% if line and line.pts is not none %}{{ line.pts }}{% else %}&mdash;{% endif %}</b> PTS</span>
+  <span><b>{% if line and line.reb is not none %}{{ line.reb }}{% else %}&mdash;{% endif %}</b> REB</span>
+  <span><b>{% if line and line.ast is not none %}{{ line.ast }}{% else %}&mdash;{% endif %}</b> AST</span>
+  <span><b>{% if line and line.gmsc is not none %}{{ '%.1f'|format(line.gmsc) }}{% else %}&mdash;{% endif %}</b> GmSc</span>
+</div>
+{% endmacro %}
 {% set hero = desk_payload.hero %}
 {% set p1 = desk_players.get(hero.subject_player_id) if hero.subject_player_id else None %}
 {% set p2 = desk_players.get(hero.subject_player_id_2) if hero.subject_player_id_2 else None %}
@@ -36,6 +45,7 @@
         {% if p1.slug %}<a href="/players/{{ p1.slug }}?ref=sl-desk">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
       </div>
       <div class="desk__hero-meta">{{ p1.draft_tag }}</div>
+      {{ hero_line(hero.subject_line) }}
     </div>
     <div class="desk__hero-center">
       <span class="desk__hero-vs">VS</span>
@@ -50,6 +60,7 @@
         {% if p2.slug %}<a href="/players/{{ p2.slug }}?ref=sl-desk">{{ p2.display_name }}</a>{% else %}{{ p2.display_name }}{% endif %}
       </div>
       <div class="desk__hero-meta">{{ p2.draft_tag }}</div>
+      {{ hero_line(hero.subject_line_2) }}
     </div>
   </div>
   {% elif p1 %}
@@ -64,6 +75,7 @@
         {% if p1.slug %}<a href="/players/{{ p1.slug }}?ref=sl-desk">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
       </div>
       <div class="desk__hero-meta">{{ p1.draft_tag }}</div>
+      {{ hero_line(hero.subject_line) }}
     </div>
   </div>
   {% endif %}

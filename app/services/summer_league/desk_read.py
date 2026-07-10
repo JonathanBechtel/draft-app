@@ -52,7 +52,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from typing import Callable, Optional, Sequence
+from typing import Callable, Mapping, Optional, Sequence
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -85,6 +85,7 @@ from app.services.event_desk.lifecycle import lifecycle_phase, resolve_home_owne
 from app.services.event_desk.payload import (
     DeskFreshness,
     DeskHero,
+    DeskHeroLine,
     DeskLedgerRow,
     DeskLiveBoardRow,
     DeskPayload,
@@ -484,6 +485,44 @@ async def _hero_subjects_for_game(
     return row[0], row[1]
 
 
+def _hero_line_from_logs(
+    logs_by_game: Mapping[int, Sequence[SummerLeaguePlayerGameLog]],
+    *,
+    game_id: Optional[int],
+    player_id: Optional[int],
+) -> Optional[DeskHeroLine]:
+    """One Live hero subject's tonight's running box line (#541).
+
+    ``None`` only when there's no subject at all (``player_id is None`` --
+    e.g. a single-subject Live hero's ``subject_line_2``). A real subject who
+    simply hasn't logged tonight's game yet (pretip) still gets a
+    :class:`DeskHeroLine`, just with every field ``None`` -- the template
+    renders that as an em dash, never a zero or an event/career total.
+
+    Args:
+        logs_by_game: Every resolved box-score line for tonight's slate,
+            grouped by ``game_id`` (see :func:`_fetch_game_logs_for_games`).
+        game_id: The hero game's id (``None`` degrades to the all-``None``
+            line, same as an unresolved subject).
+        player_id: The subject's player id, or ``None``.
+
+    Returns:
+        The subject's tonight line, or an all-``None`` line pre-tip.
+    """
+    if player_id is None:
+        return None
+    if game_id is not None:
+        for row in logs_by_game.get(game_id, []):
+            if row.player_id == player_id:
+                return DeskHeroLine(
+                    pts=row.pts,
+                    reb=row.reb,
+                    ast=row.ast,
+                    gmsc=round(game_score_from_row(row), 2),
+                )
+    return DeskHeroLine(pts=None, reb=None, ast=None, gmsc=None)
+
+
 async def _build_game_hero(
     db: AsyncSession,
     hero_row: SummerLeagueDeskSlate,
@@ -491,8 +530,17 @@ async def _build_game_hero(
     teams: dict[int, SummerLeagueTeamEntry],
     *,
     kind: str,
+    logs_by_game: Optional[Mapping[int, Sequence[SummerLeaguePlayerGameLog]]] = None,
 ) -> DeskHero:
-    """Build the Morning marquee / Live key-matchup hero from a T4 row."""
+    """Build the Morning marquee / Live key-matchup hero from a T4 row.
+
+    ``logs_by_game`` (#541) only matters for the Live hero (``kind ==
+    "live_duel"``) -- Morning's marquee never populates ``subject_line*``
+    since nothing has tipped yet. Callers pass the SAME batched
+    :func:`_fetch_game_logs_for_games` result :func:`_build_live_board` uses,
+    so adding both subjects' running lines costs zero additional queries over
+    what the Live Desk's top-performer board already fetched.
+    """
     game = games.get(hero_row.game_id)
     matchup = _matchup_label(game, teams)
     subject1, subject2 = await _hero_subjects_for_game(db, hero_row.game_id)
@@ -502,6 +550,18 @@ async def _build_game_hero(
     tagline = _extract_prose(hero_row.facts, surface=Surface.TICK_NOTE)
     if tagline == headline:
         tagline = None
+
+    subject_line: Optional[DeskHeroLine] = None
+    subject_line_2: Optional[DeskHeroLine] = None
+    if kind == "live_duel":
+        logs = logs_by_game or {}
+        subject_line = _hero_line_from_logs(
+            logs, game_id=hero_row.game_id, player_id=subject1
+        )
+        subject_line_2 = _hero_line_from_logs(
+            logs, game_id=hero_row.game_id, player_id=subject2
+        )
+
     return DeskHero(
         kind=kind,
         game_id=hero_row.game_id,
@@ -510,6 +570,8 @@ async def _build_game_hero(
         headline=headline,
         tagline=tagline,
         facts=list(hero_row.facts or []),
+        subject_line=subject_line,
+        subject_line_2=subject_line_2,
     )
 
 
@@ -586,16 +648,20 @@ async def _quiet_slate_hero(
 
 
 # --------------------------------------------------------------------------- #
-# Live Desk's all-games board (behavior spec §1 "Live tick board")
+# Live Desk's all-games board (behavior spec §1 "Live tick board") + the Live
+# hero's two-subject running line (#541) -- both read from ONE shared fetch.
 # --------------------------------------------------------------------------- #
-async def _top_performers(
+async def _fetch_game_logs_for_games(
     db: AsyncSession, game_ids: Sequence[int]
-) -> dict[int, tuple[int, float]]:
-    """Highest live GmSc tracked (resolved) player per game -- one batched query.
+) -> dict[int, list[SummerLeaguePlayerGameLog]]:
+    """Every resolved box-score line for ``game_ids``, grouped by game -- ONE query.
 
-    Simplification: scoped to every resolved (``player_id IS NOT NULL``) game
-    log line, not narrowed further to "actively rostered" -- a resolved player
-    in a live box score is, by construction, someone this app tracks.
+    Shared by the Live Desk's top-performer board (:func:`_top_performers_from_logs`)
+    and the Live hero's two-subject running-line render
+    (:func:`_hero_line_from_logs`) so both read the identical tonight's-logs
+    fetch instead of issuing it twice -- the net per-request query cost stays
+    flat versus the pre-#541 ``_top_performers``-only fetch (module docstring:
+    "no request-time query count proportional to players or games").
     """
     if not game_ids:
         return {}
@@ -604,27 +670,43 @@ async def _top_performers(
         SummerLeaguePlayerGameLog.player_id.is_not(None),  # type: ignore[union-attr]
     )
     rows = (await db.execute(stmt)).scalars().all()
-    best: dict[int, tuple[int, float]] = {}
+    out: dict[int, list[SummerLeaguePlayerGameLog]] = defaultdict(list)
     for row in rows:
-        if row.player_id is None:
-            continue
-        gmsc = round(game_score_from_row(row), 2)
-        current = best.get(row.game_id)
-        if current is None or gmsc > current[1]:
-            best[row.game_id] = (row.player_id, gmsc)
+        out[row.game_id].append(row)
+    return dict(out)
+
+
+def _top_performers_from_logs(
+    logs_by_game: Mapping[int, Sequence[SummerLeaguePlayerGameLog]],
+) -> dict[int, tuple[int, float]]:
+    """Highest live GmSc tracked (resolved) player per game, from an already-fetched log set.
+
+    Simplification: scoped to every resolved (``player_id IS NOT NULL``) game
+    log line, not narrowed further to "actively rostered" -- a resolved player
+    in a live box score is, by construction, someone this app tracks. Pure
+    (no I/O) since :func:`_fetch_game_logs_for_games` already did the fetch.
+    """
+    best: dict[int, tuple[int, float]] = {}
+    for game_id, rows in logs_by_game.items():
+        for row in rows:
+            if row.player_id is None:
+                continue
+            gmsc = round(game_score_from_row(row), 2)
+            current = best.get(game_id)
+            if current is None or gmsc > current[1]:
+                best[game_id] = (row.player_id, gmsc)
     return best
 
 
-async def _build_live_board(
-    db: AsyncSession,
+def _build_live_board(
     *,
     slate_rows: Sequence[SummerLeagueDeskSlate],
     games: dict[int, SummerLeagueGame],
     teams: dict[int, SummerLeagueTeamEntry],
+    logs_by_game: Mapping[int, Sequence[SummerLeaguePlayerGameLog]],
 ) -> list[DeskLiveBoardRow]:
     """The Live Desk's all-games board -- every game, including the hero's."""
-    game_ids = [row.game_id for row in slate_rows]
-    top_by_game = await _top_performers(db, game_ids)
+    top_by_game = _top_performers_from_logs(logs_by_game)
     out: list[DeskLiveBoardRow] = []
     for row in slate_rows:
         game = games.get(row.game_id)
@@ -1449,15 +1531,32 @@ async def _assemble_desk_payload(
             live = window.daily_state == EventDailyState.LIVE
             hero_row = _pick_hero_slate_row(slate_rows, games, live=live)
             assert hero_row is not None  # slate_rows is non-empty here
+
+            # #541 -- fetched ONCE (only when live; Morning has nothing to
+            # show yet), then shared by both the hero's two-subject running
+            # line and the Live board's top-performer column below, so this
+            # doesn't add a second query on top of the pre-#541 fetch.
+            logs_by_game: dict[int, list[SummerLeaguePlayerGameLog]] = {}
+            if live:
+                logs_by_game = await _fetch_game_logs_for_games(db, game_ids)
+
             hero = await _build_game_hero(
-                db, hero_row, games, teams, kind="live_duel" if live else "marquee"
+                db,
+                hero_row,
+                games,
+                teams,
+                kind="live_duel" if live else "marquee",
+                logs_by_game=logs_by_game,
             )
             slate = _build_slate_rows(
                 slate_rows, games, teams, exclude_game_id=hero_row.game_id
             )
             if live:
-                live_board = await _build_live_board(
-                    db, slate_rows=slate_rows, games=games, teams=teams
+                live_board = _build_live_board(
+                    slate_rows=slate_rows,
+                    games=games,
+                    teams=teams,
+                    logs_by_game=logs_by_game,
                 )
 
     if hero is None:

@@ -552,6 +552,18 @@ async def test_live_state_populates_live_board_top_performer_within_budget(
     assert board_row.home_score == 40
     assert board_row.away_score == 38
 
+    # #541 -- the (single-subject) Live hero's tonight running line matches
+    # the exact box line seeded above, not the event-aggregate GmSc.
+    assert payload.hero.subject_player_id == player.id
+    assert payload.hero.subject_line is not None
+    assert payload.hero.subject_line.pts == 24
+    assert payload.hero.subject_line.reb == 8
+    assert payload.hero.subject_line.ast == 5
+    assert payload.hero.subject_line.gmsc == board_row.top_performer_gmsc
+    # One-subject degradation (behavior spec): no second subject -> no second line.
+    assert payload.hero.subject_player_id_2 is None
+    assert payload.hero.subject_line_2 is None
+
     # Only one game today -> "games_today - 1 (hero)" leaves an empty slate.
     assert payload.slate == []
     assert payload.ledger == []
@@ -559,6 +571,99 @@ async def test_live_state_populates_live_board_top_performer_within_budget(
     budget = DESK_HOME_QUERY_BUDGETS["live"]
     assert len(captured) <= budget, (
         f"live issued {len(captured)} queries, over budget of {budget}: {captured}"
+    )
+
+
+async def test_live_state_duel_hero_renders_both_subjects_one_pretip_em_dash(
+    db_session: AsyncSession, async_engine: AsyncEngine
+) -> None:
+    """#541: a Duel hero renders BOTH subjects' running lines; a not-yet-logged
+
+    subject's line is a real `DeskHeroLine` with every field `None` (pretip
+    em dash at render time), never a dropped line, a zero, or an event total.
+    """
+    year = 2026
+    now = datetime(2026, 7, 10, 23, 30)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    game = await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.IN_PROGRESS,
+        home_score=40,
+        away_score=38,
+    )
+    # Two top-14 prospects (Duel qualifies on draft slot alone -- no consensus
+    # rank needed, `DUEL_PROMINENCE_CUTOFF`) sharing tonight's one game.
+    player_a = await _seed_player(
+        db_session, name="DuelA", draft_year=year, draft_round=1, draft_pick=1
+    )
+    player_b = await _seed_player(
+        db_session, name="DuelB", draft_year=year, draft_round=1, draft_pick=2
+    )
+    source_a = await _roster_player(db_session, competition, home, player_a)
+    await _roster_player(db_session, competition, away, player_b)
+    await _seed_baseline(db_session, baseline_version="desk-home-v1")
+
+    # Only player_a has logged tonight's game so far -- player_b hasn't
+    # checked in yet on this tick's box score.
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=game,
+        team=home,
+        source_player=source_a,
+        player=player_a,
+        pts=22,
+        reb=9,
+        ast=6,
+    )
+    await db_session.commit()
+
+    result = await run_desk_tick(db_session, now=now, client=_fake_client())
+    await db_session.commit()
+    assert result.daily_state == EventDailyState.LIVE
+
+    with count_queries(async_engine) as captured:
+        payload = await get_desk_payload(db_session, now=now)
+
+    assert payload is not None
+    assert payload.hero.kind == "live_duel"
+    assert {payload.hero.subject_player_id, payload.hero.subject_player_id_2} == {
+        player_a.id,
+        player_b.id,
+    }
+
+    lines_by_subject = {
+        payload.hero.subject_player_id: payload.hero.subject_line,
+        payload.hero.subject_player_id_2: payload.hero.subject_line_2,
+    }
+    logged_line = lines_by_subject[player_a.id]
+    pretip_line = lines_by_subject[player_b.id]
+
+    assert logged_line is not None
+    assert (logged_line.pts, logged_line.reb, logged_line.ast) == (22, 9, 6)
+    assert logged_line.gmsc is not None
+
+    assert pretip_line is not None  # a real line object, not dropped
+    assert (pretip_line.pts, pretip_line.reb, pretip_line.ast, pretip_line.gmsc) == (
+        None,
+        None,
+        None,
+        None,
+    )
+
+    budget = DESK_HOME_QUERY_BUDGETS["live"]
+    assert len(captured) <= budget, (
+        f"duel live issued {len(captured)} queries, over budget of {budget}: {captured}"
     )
 
 

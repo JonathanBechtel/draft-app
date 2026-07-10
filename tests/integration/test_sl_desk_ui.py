@@ -401,6 +401,67 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
     assert "?ref=sl-desk" in html
 
 
+async def test_live_duel_hero_renders_both_running_lines_one_pretip_em_dash(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """#541: the Live Duel hero renders both subjects' PTS/REB/AST/GmSc.
+
+    A logged subject shows real numbers; a not-yet-tipped subject on the SAME
+    game shows an em dash for every stat -- never a zero, never dropped.
+    """
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+
+    competition = await _seed_competition(db_session, today=today)
+    home = await _seed_team(db_session, competition, franchise_stats_id="1610612747")
+    away = await _seed_team(db_session, competition, franchise_stats_id="1610612744")
+    duel_game = await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=today,
+        tip_datetime=now - timedelta(hours=1),
+        status=SummerLeagueGameStatus.IN_PROGRESS,
+        home_score=40,
+        away_score=38,
+    )
+    # Two top-14 prospects (Duel qualifies on draft slot alone) sharing tonight's game.
+    player_a = await _seed_player(db_session, name="DuelLogged", draft_round=1, draft_pick=1)
+    player_b = await _seed_player(db_session, name="DuelPretip", draft_round=1, draft_pick=2)
+    source_a = await _roster_player(db_session, competition, home, player_a)
+    await _roster_player(db_session, competition, away, player_b)
+    await _seed_baseline(db_session, baseline_version="desk-ui-duel-v1")
+
+    # Only player_a has a tonight's box line -- player_b hasn't logged yet.
+    await _seed_game_log(
+        db_session, competition=competition, game=duel_game, team=home,
+        source_player=source_a, player=player_a, pts=24,
+    )
+
+    await db_session.commit()
+    await run_desk_tick(db_session, now=now, client=_fake_client())
+    await db_session.commit()
+
+    warmup = await app_client.get("/")
+    assert warmup.status_code == 200
+    response = await app_client.get("/")
+    assert response.status_code == 200
+    html = response.text
+
+    assert 'desk__hero--live' in html
+    assert 'data-desk-hero-kind="live_duel"' in html
+    # The logged subject's real tonight line (`_seed_game_log`'s fixed ast=5/reb=7).
+    assert "5</b> AST" in html or ">5</b>" in html
+    assert "GmSc" in html
+    # The pretip subject's line renders em dashes, never a zero or a total.
+    assert html.count("&mdash;</b> PTS") >= 1
+    assert html.count("&mdash;</b> REB") >= 1
+    assert html.count("&mdash;</b> AST") >= 1
+    assert html.count("&mdash;</b> GmSc") >= 1
+    _assert_no_switcher_chrome(html)
+
+
 # --------------------------------------------------------------------------- #
 # The Ledger (time-independent: forced by an all-final slate)
 # --------------------------------------------------------------------------- #

@@ -33,6 +33,7 @@ from app.schemas.event_desk_render_snapshot import EventDeskRenderSnapshot
 from app.services.event_desk.payload import (
     DeskFreshness,
     DeskHero,
+    DeskHeroLine,
     DeskLedgerRow,
     DeskLiveBoardRow,
     DeskPayload,
@@ -107,6 +108,20 @@ def _deserialize_freshness(data: JsonDict) -> DeskFreshness:
     )
 
 
+def _serialize_hero_line(line: Optional[DeskHeroLine]) -> Optional[JsonDict]:
+    if line is None:
+        return None
+    return {"pts": line.pts, "reb": line.reb, "ast": line.ast, "gmsc": line.gmsc}
+
+
+def _deserialize_hero_line(data: Optional[JsonDict]) -> Optional[DeskHeroLine]:
+    if data is None:
+        return None
+    return DeskHeroLine(
+        pts=data["pts"], reb=data["reb"], ast=data["ast"], gmsc=data["gmsc"]
+    )
+
+
 def _serialize_hero(hero: DeskHero) -> JsonDict:
     return {
         "kind": hero.kind,
@@ -116,6 +131,8 @@ def _serialize_hero(hero: DeskHero) -> JsonDict:
         "headline": hero.headline,
         "tagline": hero.tagline,
         "facts": list(hero.facts),
+        "subject_line": _serialize_hero_line(hero.subject_line),
+        "subject_line_2": _serialize_hero_line(hero.subject_line_2),
     }
 
 
@@ -128,6 +145,11 @@ def _deserialize_hero(data: JsonDict) -> DeskHero:
         headline=data["headline"],
         tagline=data["tagline"],
         facts=list(data.get("facts") or []),
+        # `.get(...)` (not `data[...]`) -- a schema_version=1 row persisted
+        # before #541 has neither key; both decode to `None` (the same
+        # default a pre-#541 `DeskHero` had), never a KeyError.
+        subject_line=_deserialize_hero_line(data.get("subject_line")),
+        subject_line_2=_deserialize_hero_line(data.get("subject_line_2")),
     )
 
 

@@ -33,8 +33,10 @@ from app.services.summer_league.desk_storylines import (
     detect_streak,
     draft_slot_fallback,
     effective_prominence_rank,
+    max_realized_deviation,
     prominence_score,
     rank_slate,
+    realized_deviation_from_pctl,
     select_quiet_slate_hero,
     slate_needs_quiet_fallback,
 )
@@ -388,6 +390,118 @@ def test_rank_slate_is_deterministic_across_repeated_calls() -> None:
 
 def test_rank_slate_empty_input_returns_empty_list() -> None:
     assert rank_slate([], mode="morning") == []
+
+
+# --------------------------------------------------------------------------- #
+# #541 -- realized (game-grain) Live deviation: hand-computed deviation table
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "pctl,expected",
+    [
+        (50.0, 0.0),
+        (90.0, 40.0),
+        (10.0, 40.0),  # symmetric: 90th and 10th BOTH score 40 (DoD).
+        (100.0, 50.0),
+        (0.0, 50.0),
+        (65.0, 15.0),
+    ],
+)
+def test_realized_deviation_from_pctl_hand_computed_table(
+    pctl: float, expected: float
+) -> None:
+    assert realized_deviation_from_pctl(pctl) == expected
+
+
+def test_realized_deviation_from_pctl_90th_and_10th_both_score_40() -> None:
+    """DoD: '90th and 10th percentile lines both have distance 40.'"""
+    assert realized_deviation_from_pctl(90.0) == realized_deviation_from_pctl(10.0) == 40.0
+
+
+def test_max_realized_deviation_empty_returns_none() -> None:
+    """No tracked player has a resolved tonight's line yet (pretip) -> None, not 0."""
+    assert max_realized_deviation([]) is None
+
+
+def test_max_realized_deviation_picks_the_largest_and_is_order_independent() -> None:
+    assert max_realized_deviation([55.0, 90.0, 60.0]) == 40.0  # |90-50| beats the rest
+    assert max_realized_deviation([90.0, 55.0, 60.0]) == 40.0  # same result, any order
+
+
+def test_max_realized_deviation_tie_between_90th_and_10th_resolves_deterministically() -> None:
+    """A 90th- and a 10th-percentile line in the same game both score 40 -- no ambiguity."""
+    assert max_realized_deviation([90.0, 10.0]) == 40.0
+    assert max_realized_deviation([10.0, 90.0]) == 40.0
+
+
+# --------------------------------------------------------------------------- #
+# #541 -- rank_slate Live mode: live_deviation drives order, deterministic ties
+# --------------------------------------------------------------------------- #
+def test_rank_slate_live_prefers_live_deviation_over_trigger_instances() -> None:
+    """A real tonight's-line deviation outranks a stale trigger-instance-summed weight."""
+    weak_by_instance_strong_by_line = GameSlateInput(
+        game_id=1, competition_id=1, game_date=date(2026, 7, 10), status="in_progress", tip_datetime=None,
+        instances=[_instance(SummerLeagueDeskTriggerType.STREAK, 65.0, realized=1.0)],
+        live_deviation=45.0,
+    )
+    strong_by_instance_weak_by_line = GameSlateInput(
+        game_id=2, competition_id=1, game_date=date(2026, 7, 10), status="in_progress", tip_datetime=None,
+        instances=[_instance(SummerLeagueDeskTriggerType.STREAK, 65.0, realized=99.0)],
+        live_deviation=5.0,
+    )
+    rows = rank_slate(
+        [weak_by_instance_strong_by_line, strong_by_instance_weak_by_line], mode="live"
+    )
+    assert [r.game_id for r in rows] == [1, 2]
+    assert rows[0].total_weight == 45.0
+
+
+def test_rank_slate_live_falls_back_to_entering_weight_when_live_deviation_missing() -> None:
+    """Deterministic missing-line fallback: `live_deviation=None` -> entering weight, not 0."""
+    pretip = GameSlateInput(
+        game_id=1, competition_id=1, game_date=date(2026, 7, 10), status="scheduled", tip_datetime=None,
+        instances=[_instance(SummerLeagueDeskTriggerType.DEBUT, 80.0)],
+        live_deviation=None,
+    )
+    rows = rank_slate([pretip], mode="live")
+    assert rows[0].total_weight == 80.0
+
+
+def test_rank_slate_live_tie_on_live_deviation_breaks_deterministically_on_game_id() -> None:
+    """A 90th- and a 10th-pctl game both scoring 40 -- game_id breaks the tie, every time."""
+    ninetieth = GameSlateInput(
+        game_id=5, competition_id=1, game_date=date(2026, 7, 10), status="in_progress", tip_datetime=None,
+        live_deviation=realized_deviation_from_pctl(90.0),
+    )
+    tenth = GameSlateInput(
+        game_id=3, competition_id=1, game_date=date(2026, 7, 10), status="in_progress", tip_datetime=None,
+        live_deviation=realized_deviation_from_pctl(10.0),
+    )
+    first = [r.game_id for r in rank_slate([ninetieth, tenth], mode="live")]
+    second = [r.game_id for r in rank_slate([tenth, ninetieth], mode="live")]
+    assert first == second == [3, 5]  # lower game_id wins the tie, regardless of input order
+
+
+def test_rank_slate_live_changing_one_players_line_changes_the_order() -> None:
+    """DoD: changing one player's line changes the next tick's order."""
+    game_a = GameSlateInput(
+        game_id=1, competition_id=1, game_date=date(2026, 7, 10), status="in_progress", tip_datetime=None,
+        live_deviation=10.0,
+    )
+    game_b = GameSlateInput(
+        game_id=2, competition_id=1, game_date=date(2026, 7, 10), status="in_progress", tip_datetime=None,
+        live_deviation=15.0,
+    )
+    before = [r.game_id for r in rank_slate([game_a, game_b], mode="live")]
+    assert before == [2, 1]
+
+    # Game A's tracked subject goes off for a much bigger deviation on the
+    # next tick -- the SAME pure ranking call, only `live_deviation` changed.
+    game_a_hot = GameSlateInput(
+        game_id=1, competition_id=1, game_date=date(2026, 7, 10), status="in_progress", tip_datetime=None,
+        live_deviation=42.0,
+    )
+    after = [r.game_id for r in rank_slate([game_a_hot, game_b], mode="live")]
+    assert after == [1, 2]
 
 
 # --------------------------------------------------------------------------- #

@@ -14,6 +14,7 @@ from datetime import datetime
 from app.services.event_desk.payload import (
     DeskFreshness,
     DeskHero,
+    DeskHeroLine,
     DeskLedgerRow,
     DeskLiveBoardRow,
     DeskPayload,
@@ -51,6 +52,46 @@ def test_desk_hero_defaults_empty_facts() -> None:
     assert hero.kind == "marquee"
     assert hero.subject_player_id_2 == 102
     assert hero.facts == []
+
+
+def test_desk_hero_defaults_no_subject_lines() -> None:
+    """#541: a non-Live hero (e.g. Morning marquee) never carries running lines."""
+    hero = DeskHero(
+        kind="marquee",
+        game_id=42,
+        subject_player_id=101,
+        subject_player_id_2=102,
+        headline="A tale-of-the-tape headline.",
+        tagline=None,
+    )
+    assert hero.subject_line is None
+    assert hero.subject_line_2 is None
+
+
+def test_desk_hero_line_carries_nullable_pts_reb_ast_gmsc() -> None:
+    """#541 typed hero contract: PTS/REB/AST/GmSc are individually nullable."""
+    line = DeskHeroLine(pts=18, reb=6, ast=4, gmsc=21.3)
+    assert (line.pts, line.reb, line.ast, line.gmsc) == (18, 6, 4, 21.3)
+
+    pretip = DeskHeroLine(pts=None, reb=None, ast=None, gmsc=None)
+    assert (pretip.pts, pretip.reb, pretip.ast, pretip.gmsc) == (None, None, None, None)
+
+
+def test_desk_hero_live_duel_carries_both_subjects_running_lines() -> None:
+    hero = DeskHero(
+        kind="live_duel",
+        game_id=8,
+        subject_player_id=101,
+        subject_player_id_2=102,
+        headline="Two lottery picks trade buckets in the third.",
+        tagline=None,
+        subject_line=DeskHeroLine(pts=18, reb=6, ast=4, gmsc=21.3),
+        subject_line_2=DeskHeroLine(pts=None, reb=None, ast=None, gmsc=None),
+    )
+    assert hero.subject_line is not None
+    assert hero.subject_line.pts == 18
+    assert hero.subject_line_2 is not None
+    assert hero.subject_line_2.pts is None  # pretip subject -- em dash at render time
 
 
 def test_desk_hero_single_subject_has_no_second_player() -> None:

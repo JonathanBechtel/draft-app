@@ -15,6 +15,7 @@ import pytest
 from app.services.event_desk.payload import (
     DeskFreshness,
     DeskHero,
+    DeskHeroLine,
     DeskLedgerRow,
     DeskLiveBoardRow,
     DeskPayload,
@@ -131,6 +132,10 @@ def _live_view() -> DeskView:
         headline="Leads all rookies through three quarters.",
         tagline=None,
         facts=[],
+        # #541 -- one real running line (subject has logged tonight's game),
+        # `subject_line_2` stays `None` (single-subject Live hero degradation).
+        subject_line=DeskHeroLine(pts=18, reb=6, ast=4, gmsc=20.8),
+        subject_line_2=None,
     )
     payload = DeskPayload(
         daily_state="live",
@@ -326,6 +331,101 @@ def test_deserialize_desk_view_rejects_unknown_schema_version() -> None:
             schema_version=999,
         )
     assert exc_info.value.schema_version == 999
+
+
+def test_serialize_desk_view_preserves_pretip_hero_line_all_none_fields() -> None:
+    """#541: a pretip subject's `DeskHeroLine` (every field None) survives round-trip.
+
+    Distinct from `subject_line_2 is None` (no second subject at all, tested by
+    `_live_view` above) -- this is a REAL subject whose line hasn't tipped yet,
+    so every inner field is `None` but the `DeskHeroLine` object itself is not.
+    """
+    view = _live_view()
+    hero = view.payload.hero  # type: ignore[union-attr]
+    pretip_hero = DeskHero(
+        kind=hero.kind,
+        game_id=hero.game_id,
+        subject_player_id=hero.subject_player_id,
+        subject_player_id_2=202,
+        headline=hero.headline,
+        tagline=hero.tagline,
+        facts=hero.facts,
+        subject_line=hero.subject_line,
+        subject_line_2=DeskHeroLine(pts=None, reb=None, ast=None, gmsc=None),
+    )
+    payload = view.payload
+    assert payload is not None
+    view = DeskView(
+        payload=DeskPayload(
+            daily_state=payload.daily_state,
+            is_home_owner=payload.is_home_owner,
+            hero=pretip_hero,
+            slate=payload.slate,
+            live_board=payload.live_board,
+            ledger=payload.ledger,
+            tracker=payload.tracker,
+            freshness=payload.freshness,
+        ),
+        players=view.players,
+        matchups=view.matchups,
+        tracker_teams=view.tracker_teams,
+    )
+
+    payload_json, view_context_json = serialize_desk_view(view)
+    assert payload_json is not None
+    assert payload_json["hero"]["subject_line_2"] == {
+        "pts": None,
+        "reb": None,
+        "ast": None,
+        "gmsc": None,
+    }
+
+    decoded = deserialize_desk_view(
+        payload_json=payload_json,
+        view_context_json=view_context_json,
+        schema_version=CURRENT_SCHEMA_VERSION,
+    )
+    assert decoded == view
+    assert decoded.payload is not None
+    assert decoded.payload.hero.subject_line_2 is not None
+    assert decoded.payload.hero.subject_line_2.pts is None
+
+
+def test_deserialize_hero_defaults_subject_lines_to_none_for_pre_541_snapshots() -> None:
+    """A schema_version=1 row persisted before #541 has no `subject_line*` keys.
+
+    `_deserialize_hero` must decode it to `None`/`None` (the pre-#541 default)
+    rather than raising a `KeyError` -- old, already-materialized render
+    snapshots must not become unreadable the instant this ships.
+    """
+    pre_541_hero_json = {
+        "kind": "live_duel",
+        "game_id": 8,
+        "subject_player_id": 101,
+        "subject_player_id_2": None,
+        "headline": "Leads all rookies through three quarters.",
+        "tagline": None,
+        "facts": [],
+        # No "subject_line"/"subject_line_2" keys at all.
+    }
+    hero = deserialize_desk_payload(
+        {
+            "daily_state": "live",
+            "is_home_owner": True,
+            "hero": pre_541_hero_json,
+            "slate": [],
+            "live_board": [],
+            "ledger": [],
+            "tracker": {"cohort": "full_class", "stat_view": "box", "rows": [], "truncated": False},
+            "freshness": {
+                "last_tick_at": None,
+                "next_tick_eta": None,
+                "as_of_et_label": "—",
+            },
+        }
+    ).hero
+    assert hero.subject_line is None
+    assert hero.subject_line_2 is None
 
 
 def test_serialize_desk_payload_matches_deserialize_desk_payload_round_trip() -> None:

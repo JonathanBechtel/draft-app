@@ -43,6 +43,25 @@ class DeskFreshness:
 
 
 @dataclass(frozen=True)
+class DeskHeroLine:
+    """One Live hero subject's tonight's running box line (#541).
+
+    Populated only for the Live hero (`kind == "live_duel"`); every field is
+    `None` pre-tip (the subject hasn't logged tonight's game yet) or when the
+    subject didn't play -- the template renders `None` as an em dash, NEVER a
+    zero or a career/event total (behavior spec: "pretip/missing values use
+    em dashes, never event totals or zeros"). `gmsc` is tonight's single-game
+    Hollinger Game Score (`app.services.summer_league.metrics.game_score_from_row`),
+    not the event-aggregate GmSc T2 grades carry.
+    """
+
+    pts: Optional[int]
+    reb: Optional[int]
+    ast: Optional[int]
+    gmsc: Optional[float]
+
+
+@dataclass(frozen=True)
 class DeskHero:
     """The single featured hero for the current `daily_state` (behavior spec §4).
 
@@ -65,6 +84,12 @@ class DeskHero:
     # kept as plain dicts here since the Fact dataclass itself belongs to the
     # commentary engine ticket, not this framework-level contract.
     facts: list[dict[str, object]] = field(default_factory=list)
+    # Both subjects' tonight's running box line (#541) -- only populated for the
+    # Live hero (`kind == "live_duel"`); `None` for every other hero kind, and
+    # `subject_line_2` stays `None` whenever there's no second subject (a
+    # single-subject Live hero, per the one-subject degradation rule above).
+    subject_line: Optional[DeskHeroLine] = None
+    subject_line_2: Optional[DeskHeroLine] = None
 
 
 @dataclass(frozen=True)

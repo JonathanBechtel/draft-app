@@ -871,6 +871,199 @@ async def test_compute_desk_storylines_writes_streak_from_prior_game_logs(
     assert persisted[0].base_weight == 65.0
 
 
+# --------------------------------------------------------------------------- #
+# #541 -- Live ordering by tonight's realized game-grain deviation
+# --------------------------------------------------------------------------- #
+async def test_compute_desk_storylines_live_orders_by_realized_tonight_line_not_entering_weight(
+    db_session: AsyncSession,
+) -> None:
+    """Live mode ranks games by tonight's REAL box line, not the Morning entering weight.
+
+    Both players are #1-overall debutants (identical Morning/entering weight:
+    Debut fires on both at the same magnitude), so an entering-weight-only
+    ranker would tie them. Their tonight's canonical GmSc lines rank very
+    differently against the active game-grain cohort baseline -- Live mode
+    must use THAT (`GameSlateInput.live_deviation`, #541) to pick a winner.
+    """
+    competition = await _seed_competition(db_session)
+
+    weak_home = await _seed_team(db_session, competition)
+    weak_away = await _seed_team(db_session, competition)
+    weak_game = await _seed_game(
+        db_session, competition, weak_home, weak_away, status=SummerLeagueGameStatus.IN_PROGRESS
+    )
+    strong_home = await _seed_team(db_session, competition)
+    strong_away = await _seed_team(db_session, competition)
+    strong_game = await _seed_game(
+        db_session, competition, strong_home, strong_away, status=SummerLeagueGameStatus.IN_PROGRESS
+    )
+
+    weak_player = await _seed_player(db_session, name="WeakLine", draft_round=1, draft_pick=1)
+    weak_source = await _roster_player(db_session, competition, weak_home, weak_player)
+    strong_player = await _seed_player(db_session, name="StrongLine", draft_round=1, draft_pick=1)
+    strong_source = await _roster_player(db_session, competition, strong_home, strong_player)
+
+    # Game-grain baseline both players' cohort ("game:1-4") ranks against.
+    await _seed_baseline(
+        db_session,
+        cohort_key="game:1-4",
+        cohort_kind=SummerLeagueDeskCohortKind.SLOT_WINDOW,
+        breakpoints={"0": 0.0, "50": 10.0, "100": 30.0},
+        median_value=10.0,
+        mean_value=12.0,
+        grain=SummerLeagueDeskGrain.GAME,
+    )
+
+    # Tonight's REAL canonical lines (GmSc == pts on this fixture -- other box
+    # components are 0): weak_player sits at the cohort's 50th pctl (0
+    # deviation); strong_player sits near the top (large deviation).
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=weak_game,
+        team=weak_home,
+        player=weak_player,
+        source_player=weak_source,
+        pts=10.0,
+    )
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=strong_game,
+        team=strong_home,
+        player=strong_player,
+        source_player=strong_source,
+        pts=25.0,
+    )
+
+    result = await compute_desk_storylines(
+        db_session,
+        game_date=_GAME_DATE,
+        competition_id=competition.id,  # type: ignore[arg-type]
+        baseline_version=_BASELINE_VERSION,
+        mode="live",
+    )
+
+    assert len(result.slate) == 2
+    assert strong_game.id is not None
+    assert weak_game.id is not None
+    by_game = {row.game_id: row for row in result.slate}
+    assert by_game[strong_game.id].is_hero is True
+    assert by_game[strong_game.id].rank == 1
+    assert by_game[weak_game.id].is_hero is False
+    # 25 GmSc interpolates to pctl 87.5 -> deviation 37.5; 10 GmSc is exactly
+    # the cohort median (pctl 50) -> deviation 0.
+    assert by_game[strong_game.id].total_weight == pytest.approx(37.5)
+    assert by_game[weak_game.id].total_weight == pytest.approx(0.0)
+
+    persisted_slate = {
+        row.game_id: row
+        for row in (
+            (
+                await db_session.execute(
+                    select(SummerLeagueDeskSlate).where(
+                        SummerLeagueDeskSlate.competition_id == competition.id,  # type: ignore[arg-type]
+                        SummerLeagueDeskSlate.game_date == _GAME_DATE,  # type: ignore[arg-type]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    }
+    assert persisted_slate[strong_game.id].is_hero is True
+    assert persisted_slate[weak_game.id].is_hero is False
+
+
+async def test_compute_desk_storylines_live_reorders_on_next_tick_when_a_line_changes(
+    db_session: AsyncSession,
+) -> None:
+    """DoD: changing one player's line changes the NEXT tick's order.
+
+    Runs the exact same `compute_desk_storylines(mode="live")` call twice
+    over the SAME two games -- mirroring two consecutive hourly ticks -- with
+    only one game's player's canonical box line mutated in between
+    (simulating a fresh live-refresh landing new box-score data, #530).
+    """
+    competition = await _seed_competition(db_session)
+
+    home_a = await _seed_team(db_session, competition)
+    away_a = await _seed_team(db_session, competition)
+    game_a = await _seed_game(
+        db_session, competition, home_a, away_a, status=SummerLeagueGameStatus.IN_PROGRESS
+    )
+    home_b = await _seed_team(db_session, competition)
+    away_b = await _seed_team(db_session, competition)
+    game_b = await _seed_game(
+        db_session, competition, home_b, away_b, status=SummerLeagueGameStatus.IN_PROGRESS
+    )
+
+    player_a = await _seed_player(db_session, name="PlayerA", draft_round=1, draft_pick=1)
+    source_a = await _roster_player(db_session, competition, home_a, player_a)
+    player_b = await _seed_player(db_session, name="PlayerB", draft_round=1, draft_pick=1)
+    source_b = await _roster_player(db_session, competition, home_b, player_b)
+
+    await _seed_baseline(
+        db_session,
+        cohort_key="game:1-4",
+        cohort_kind=SummerLeagueDeskCohortKind.SLOT_WINDOW,
+        breakpoints={"0": 0.0, "50": 10.0, "100": 30.0},
+        median_value=10.0,
+        mean_value=12.0,
+        grain=SummerLeagueDeskGrain.GAME,
+    )
+
+    log_a = await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=game_a,
+        team=home_a,
+        player=player_a,
+        source_player=source_a,
+        pts=12.0,  # pctl ~55 -> small deviation
+    )
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=game_b,
+        team=home_b,
+        player=player_b,
+        source_player=source_b,
+        pts=18.0,  # pctl 70 -> deviation 20, outranks game_a on tick 1
+    )
+
+    assert game_a.id is not None
+    assert game_b.id is not None
+
+    tick1 = await compute_desk_storylines(
+        db_session,
+        game_date=_GAME_DATE,
+        competition_id=competition.id,  # type: ignore[arg-type]
+        baseline_version=_BASELINE_VERSION,
+        mode="live",
+    )
+    by_game_tick1 = {row.game_id: row for row in tick1.slate}
+    assert by_game_tick1[game_b.id].is_hero is True
+    assert by_game_tick1[game_a.id].is_hero is False
+
+    # Next tick: player_a's canonical line refreshes to a much hotter line --
+    # nothing about game_b changes.
+    log_a.pts = 29  # pctl 97.5 -> deviation 47.5, now the biggest in the slate
+    db_session.add(log_a)
+    await db_session.flush()
+
+    tick2 = await compute_desk_storylines(
+        db_session,
+        game_date=_GAME_DATE,
+        competition_id=competition.id,  # type: ignore[arg-type]
+        baseline_version=_BASELINE_VERSION,
+        mode="live",
+    )
+    by_game_tick2 = {row.game_id: row for row in tick2.slate}
+    assert by_game_tick2[game_a.id].is_hero is True
+    assert by_game_tick2[game_b.id].is_hero is False
+
+
 async def test_compute_desk_storylines_streak_reads_game_grain_not_event_grain(
     db_session: AsyncSession,
 ) -> None:

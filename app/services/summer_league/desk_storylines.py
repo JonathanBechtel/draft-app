@@ -42,6 +42,7 @@ Two layers:
 from __future__ import annotations
 
 import math
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Literal, Optional, Sequence
@@ -474,6 +475,55 @@ def detect_second_look(
 
 
 # --------------------------------------------------------------------------- #
+# Realized (game-grain) deviation -- #541's Live re-rank score
+# --------------------------------------------------------------------------- #
+def realized_deviation_from_pctl(pctl: float) -> float:
+    """Absolute percentile distance from 50 -- the Live re-rank score for one line.
+
+    A 90th-percentile line and a 10th-percentile line both score 40: Live
+    ordering cares about how far a realized performance sits from the
+    cohort's midpoint in EITHER direction (a historically rough outing is
+    just as much a live storyline as a historically great one), not which
+    side of the median it fell on.
+
+    Args:
+        pctl: A game-grain cohort percentile (0-100), e.g. from
+            ``desk_grades.percentile_of_value`` against a ``game``-grain T1
+            baseline (#525).
+
+    Returns:
+        ``abs(pctl - 50.0)``, rounded to 2 decimals -- always in ``[0, 50]``.
+    """
+    return round(abs(pctl - 50.0), 2)
+
+
+def max_realized_deviation(pctls: Sequence[float]) -> Optional[float]:
+    """One game's Live re-rank score: the largest realized deviation among its lines.
+
+    The single most notable tonight's-game-grain performance among a game's
+    tracked players drives that game's Live-mode ordering (#541) -- not a
+    sum across every tracked player, which would let a game with many
+    merely-average lines outrank a game with one truly extreme one.
+
+    Args:
+        pctls: Every tracked player's tonight game-grain percentile in one
+            game (any order -- the max is order-independent, so ties between
+            e.g. a 90th- and a 10th-percentile line resolve identically
+            regardless of input order).
+
+    Returns:
+        The largest :func:`realized_deviation_from_pctl` score, or ``None``
+        when ``pctls`` is empty -- the caller's deterministic missing-line
+        fallback (no tracked player has a resolved tonight's line yet, e.g.
+        pretip) is to fall back to the game's entering weight, not to treat
+        an empty game as a zero-deviation one.
+    """
+    if not pctls:
+        return None
+    return max(realized_deviation_from_pctl(p) for p in pctls)
+
+
+# --------------------------------------------------------------------------- #
 # Slate ranking (behavior spec §3 "Deviation-first per state", §5)
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
@@ -489,6 +539,13 @@ class GameSlateInput:
     # Best (lowest-number) consensus/prominence rank among tonight's tracked
     # players in this game -- the Morning tiebreak (behavior spec §3).
     best_consensus_rank: Optional[int] = None
+    # #541 -- this game's realized (tonight's, game-grain-ranked) Live
+    # re-rank score (:func:`max_realized_deviation` over the game's tracked
+    # players' tonight lines), or ``None`` when no tracked player has a
+    # resolved tonight's line yet (pretip / no active game-grain baseline).
+    # Takes priority over the pre-#541 trigger-instance-summed fallback in
+    # :func:`rank_slate`'s live branch -- see that function's docstring.
+    live_deviation: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -528,13 +585,19 @@ def rank_slate(
 
     Morning: weight = additive sum of entering trigger weights; ties broken
     by best consensus rank among tracked players (behavior spec §3). Live:
-    games re-rank by realized deviation, with in-progress games always
-    outranking finals (behavior spec §3 "finished games sink below
-    in-progress ones"); a game with no realized-deviation instances yet
-    (not tipped, or a tick hasn't landed) falls back to its entering weight
-    so it doesn't sort as if it scored zero. Sort is fully deterministic
-    (``game_id`` as the final tiebreak) so re-running on identical input
-    always produces the identical ordering.
+    games re-rank by :attr:`GameSlateInput.live_deviation` -- tonight's
+    realized game-grain deviation (#541, :func:`max_realized_deviation`) --
+    with in-progress games always outranking finals (behavior spec §3
+    "finished games sink below in-progress ones"). A game with
+    ``live_deviation is None`` (no tracked player has a resolved tonight's
+    line yet -- pretip, or no active game-grain baseline) falls back to the
+    sum of its trigger instances' ``realized_deviation`` (the pre-#541
+    status-heat-only signal), and if even that's empty, to the game's
+    entering weight -- so a not-yet-live game never sorts as if it scored a
+    fabricated zero. Sort is fully deterministic (``game_id`` as the final
+    tiebreak) so re-running on identical input -- or on two games whose
+    ``live_deviation`` ties exactly (e.g. a 90th- and a 10th-percentile line
+    both scoring 40) -- always produces the identical ordering.
 
     Args:
         games: This day's games with their fired trigger instances.
@@ -558,12 +621,15 @@ def rank_slate(
             weight = entering_weight
             sort_key = (0.0, -weight, rank_tiebreak, float(g.game_id))
         else:
-            realized = [
-                i.realized_deviation
-                for i in g.instances
-                if i.realized_deviation is not None
-            ]
-            weight = round(sum(realized), 2) if realized else entering_weight
+            if g.live_deviation is not None:
+                weight = g.live_deviation
+            else:
+                realized = [
+                    i.realized_deviation
+                    for i in g.instances
+                    if i.realized_deviation is not None
+                ]
+                weight = round(sum(realized), 2) if realized else entering_weight
             status_priority = float(_LIVE_STATUS_PRIORITY.get(g.status, 1))
             sort_key = (status_priority, -weight, rank_tiebreak, float(g.game_id))
         entries.append((sort_key, g, weight))
@@ -993,6 +1059,32 @@ async def compute_desk_storylines(
         )
         game_baselines = {row.cohort_key: row for row in game_baseline_rows}
 
+    # #541 -- tonight's realized (game-grain) lines back Live-mode ordering.
+    # ONE batched query for the whole night's slate (never per-game/per-player):
+    # every resolved log line any tracked player has logged in TODAY's games,
+    # grouped by game_id below. Only fetched in "live" mode -- Morning has
+    # nothing to rank a realized deviation against yet.
+    tonight_logs_by_game: dict[int, list[SummerLeaguePlayerGameLog]] = defaultdict(list)
+    if mode == "live" and all_player_ids:
+        touched_game_ids = [g.id for g in games if g.id is not None]
+        tonight_log_rows = (
+            (
+                await session.execute(
+                    select(SummerLeaguePlayerGameLog).where(
+                        SummerLeaguePlayerGameLog.competition_id == competition_id,  # type: ignore[arg-type]
+                        SummerLeaguePlayerGameLog.game_id.in_(touched_game_ids),  # type: ignore[attr-defined]
+                        SummerLeaguePlayerGameLog.player_id.in_(all_player_ids),  # type: ignore[union-attr]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for log_row in tonight_log_rows:
+            if log_row.player_id is None:
+                continue
+            tonight_logs_by_game[log_row.game_id].append(log_row)
+
     game_inputs: list[GameSlateInput] = []
     new_storyline_rows: list[SummerLeagueDeskStoryline] = []
 
@@ -1004,6 +1096,7 @@ async def compute_desk_storylines(
                 + roster_by_team.get(g.away_team_entry_id or -1, [])
             )
         )
+        roster_id_set = set(roster_ids)
 
         slots: list[ProspectSlot] = []
         for pid in roster_ids:
@@ -1104,6 +1197,40 @@ async def compute_desk_storylines(
             if rank is not None and (best_rank is None or rank < best_rank):
                 best_rank = rank
 
+        # #541 -- this game's realized Live re-rank score: every tracked
+        # (active-roster) player's TONIGHT line, ranked through the active
+        # game-grain cohort baseline. A player without an active game-grain
+        # baseline for their cohort, or with no resolved line yet, simply
+        # doesn't contribute a percentile -- `max_realized_deviation` returns
+        # `None` (not a fabricated 0) when nobody in the game has one yet,
+        # which `rank_slate` treats as "fall back to entering weight."
+        live_deviation: Optional[float] = None
+        if mode == "live":
+            game_pctls: list[float] = []
+            for log_row in tonight_logs_by_game.get(g.id, []):
+                if log_row.player_id is None or log_row.player_id not in roster_id_set:
+                    continue
+                player = player_by_id.get(log_row.player_id)
+                if player is None:
+                    continue
+                game_baseline = game_baselines.get(
+                    cohort_key_for(
+                        player.draft_round,
+                        player.draft_pick,
+                        grain=SummerLeagueDeskGrain.GAME,
+                    )
+                )
+                if game_baseline is None:
+                    continue
+                gmsc = round(game_score_from_row(log_row), 2)
+                try:
+                    game_pctls.append(
+                        percentile_of_value(game_baseline.breakpoints, gmsc)
+                    )
+                except ValueError:
+                    continue
+            live_deviation = max_realized_deviation(game_pctls)
+
         game_inputs.append(
             GameSlateInput(
                 game_id=g.id,
@@ -1113,6 +1240,7 @@ async def compute_desk_storylines(
                 tip_datetime=g.tip_datetime,
                 instances=tuple(instances),
                 best_consensus_rank=best_rank,
+                live_deviation=live_deviation,
             )
         )
 
@@ -1257,8 +1385,10 @@ __all__ = [
     "detect_streak",
     "draft_slot_fallback",
     "effective_prominence_rank",
+    "max_realized_deviation",
     "prominence_score",
     "rank_slate",
+    "realized_deviation_from_pctl",
     "select_quiet_slate_hero",
     "select_quiet_slate_hero_from_grades",
     "slate_needs_quiet_fallback",
