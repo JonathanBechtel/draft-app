@@ -290,6 +290,13 @@ class SummerLeagueGame(SQLModel, table=True):  # type: ignore[call-arg]
         default=None,
         foreign_key="summer_league_team_entries.id",
     )
+    # Raw NBA Stats provider team IDs (schedule feed's homeTeam.teamId /
+    # awayTeam.teamId, stringified), retained independently of the resolved
+    # *_team_entry_id FKs above so scoreboard ingest (#529) can report a
+    # provider team ID it couldn't resolve to an existing
+    # `summer_league_team_entries` row without fabricating a parallel row.
+    home_nba_stats_team_id: Optional[str] = Field(default=None)
+    away_nba_stats_team_id: Optional[str] = Field(default=None)
     home_score: Optional[int] = Field(default=None)
     away_score: Optional[int] = Field(default=None)
     status: SummerLeagueGameStatus = Field(
@@ -304,6 +311,11 @@ class SummerLeagueGame(SQLModel, table=True):  # type: ignore[call-arg]
             server_default=SummerLeagueGameStatus.UNKNOWN.value,
         ),
     )
+    # Honest raw provider status text (e.g. "Final/OT", "PPD", "Qtr 3 - 4:12"),
+    # kept alongside the coarse `status` enum bucket since the enum alone
+    # cannot distinguish an OT final from a regulation final, or a postponed
+    # game from a merely-scheduled one.
+    status_text: Optional[str] = Field(default=None)
     source_quality: SummerLeagueDataQuality = Field(
         default=SummerLeagueDataQuality.RAW_ONLY,
         sa_column=Column(

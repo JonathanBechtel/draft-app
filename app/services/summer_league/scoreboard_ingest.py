@@ -1,12 +1,16 @@
 """Job B step 0 — Summer League scoreboard/schedule ingest.
 
-Fetches today's and tomorrow's Summer League games from the stats.nba.com
-schedule feed and upserts ``tip_datetime`` + live status onto
+Fetches the active event's full Summer League schedule from the
+stats.nba.com schedule feed and upserts ``tip_datetime`` + honest status
+(coarse enum + raw text) + raw provider team IDs/links + non-null scores onto
 ``summer_league_games`` **before** normalization or any Desk projection runs
 (`docs/plans/summer-league-scouts-desk-behavior-spec.md` §2 "Resolution & data
 prerequisites", §10 Job B step 0). The Morning Card and the Ledger->Morning
 state-machine flip cannot exist without tip times, so this step runs first in
-every tick.
+every tick. #529 widened this from a rolling today/tomorrow window to the
+full active-event schedule so this doubles as a complete canonical schedule
+source, not just a state-machine anchor -- the date window is now opt-in via
+``target_dates`` for tests/callers that want a narrower slice.
 
 **Reuses, doesn't re-derive:**
 
@@ -32,7 +36,7 @@ standalone.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Iterable, Mapping
 
 from sqlalchemy import select
@@ -43,6 +47,7 @@ from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
+    SummerLeagueTeamEntry,
 )
 from app.services.summer_league.endpoints import build_schedule_params
 from app.services.summer_league.nba_stats_client import NBAStatsAPIError, NBAStatsClient
@@ -59,6 +64,15 @@ _STATUS_CODE_MAP: dict[int, SummerLeagueGameStatus] = {
     3: SummerLeagueGameStatus.FINAL,
 }
 
+# Substrings (already lower-cased) that mark a game as postponed/canceled in
+# ``gameStatusText``. "ppd" is a confirmed real value captured from the NBA
+# Stats schedule feed (LeagueID 15, 2021 season, game 1522100005 -- rained
+# out during Las Vegas Summer League); "postpon"/"cancel" are defensive
+# variants for the same real-world condition. Checked *before* the numeric
+# ``gameStatus`` code below so a feed that briefly reports a stale/live code
+# alongside postponed/canceled text is never classified as live.
+_POSTPONED_OR_CANCELED_MARKERS = ("ppd", "postpon", "cancel")
+
 
 @dataclass(frozen=True)
 class ScoreboardGame:
@@ -68,6 +82,17 @@ class ScoreboardGame:
     game_date: date | None
     tip_datetime: datetime | None
     status: SummerLeagueGameStatus
+    # Honest raw ``gameStatusText`` (e.g. "Final/OT", "PPD"), retained
+    # alongside the coarse ``status`` enum bucket.
+    status_text: str | None = None
+    # Raw NBA Stats provider team IDs (schedule feed's homeTeam.teamId /
+    # awayTeam.teamId, stringified). Resolved against
+    # ``summer_league_team_entries`` in a single batch query per competition
+    # by :func:`upsert_scoreboard_games`.
+    home_nba_stats_team_id: str | None = None
+    away_nba_stats_team_id: str | None = None
+    home_score: int | None = None
+    away_score: int | None = None
 
 
 @dataclass
@@ -79,6 +104,11 @@ class ScoreboardIngestReport:
     games_created: int = 0
     games_updated: int = 0
     errors: list[str] = field(default_factory=list)
+    # Provider team IDs (schedule feed's teamId, stringified) seen on a game
+    # but not resolvable to an existing ``summer_league_team_entries`` row
+    # for that competition. Reported rather than fabricated as a new row --
+    # team entries are owned by roster/normalization ingest, not this step.
+    unresolved_team_ids: list[str] = field(default_factory=list)
 
 
 def map_game_status(
@@ -96,6 +126,14 @@ def map_game_status(
     Returns:
         ``SCHEDULED`` / ``IN_PROGRESS`` / ``FINAL`` / ``UNKNOWN``.
     """
+    text = (game_status_text or "").strip().lower()
+
+    # Postponed/canceled text wins over the numeric code, checked first: a
+    # postponed game is never live, regardless of what (possibly stale)
+    # ``gameStatus`` code the feed is currently reporting alongside it.
+    if any(marker in text for marker in _POSTPONED_OR_CANCELED_MARKERS):
+        return SummerLeagueGameStatus.SCHEDULED
+
     code: int | None = None
     if isinstance(game_status, bool):
         code = None
@@ -107,7 +145,6 @@ def map_game_status(
     if code is not None and code in _STATUS_CODE_MAP:
         return _STATUS_CODE_MAP[code]
 
-    text = (game_status_text or "").strip().lower()
     if "final" in text:
         return SummerLeagueGameStatus.FINAL
     if "qtr" in text or "half" in text or "progress" in text:
@@ -201,21 +238,51 @@ def _parse_game_date(
     return None
 
 
+def _team_id_or_none(value: Any) -> str | None:
+    """Stringify a raw provider ``teamId``, or ``None`` when absent/blank."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _score_or_none(value: Any) -> int | None:
+    """Parse a raw provider team score, treating ``0``/missing as "not yet scored".
+
+    The schedule feed reports ``0`` for both teams on every game that hasn't
+    tipped off yet -- indistinguishable from a real 0 (which never happens in
+    basketball). Normalizing both to ``None`` here means callers can safely
+    apply "only overwrite when not ``None``" update semantics without a
+    scheduled game's placeholder zero ever clobbering a real score.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value or None
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        parsed = int(value.strip())
+        return parsed or None
+    return None
+
+
 def parse_scoreboard_games(
-    payload: Mapping[str, Any], *, target_dates: Iterable[date]
+    payload: Mapping[str, Any], *, target_dates: Iterable[date] | None = None
 ) -> list[ScoreboardGame]:
-    """Parse a ``scheduleleaguev2`` payload into games tipping on the target dates.
+    """Parse a ``scheduleleaguev2`` payload into :class:`ScoreboardGame` rows.
 
     Args:
         payload: Parsed NBA Stats ``scheduleleaguev2`` JSON response.
-        target_dates: Calendar dates to keep; Job B step 0 passes
-            ``{today, tomorrow}``.
+        target_dates: Optional calendar dates to keep. When ``None`` (the
+            production default -- see :func:`run_scoreboard_ingest`), every
+            game with a resolvable schedule date is kept, i.e. the full
+            known schedule for whichever competition the payload came from.
+            Tests/callers that want a narrower slice (e.g. "just today and
+            tomorrow") pass an explicit set.
 
     Returns:
-        One :class:`ScoreboardGame` per game whose schedule date falls in
-        ``target_dates``, in payload order.
+        One :class:`ScoreboardGame` per kept game, in payload order.
     """
-    wanted = set(target_dates)
+    wanted = set(target_dates) if target_dates is not None else None
     schedule = payload.get("leagueSchedule") or {}
     games: list[ScoreboardGame] = []
     for game_date_block in schedule.get("gameDates") or []:
@@ -225,15 +292,29 @@ def parse_scoreboard_games(
                 continue
             tip_datetime = parse_tip_datetime_utc(game)
             game_date = _parse_game_date(game, tip_datetime)
-            if game_date is None or game_date not in wanted:
+            if game_date is None:
                 continue
-            status = map_game_status(game.get("gameStatus"), game.get("gameStatusText"))
+            if wanted is not None and game_date not in wanted:
+                continue
+            status_text_raw = game.get("gameStatusText")
+            status = map_game_status(game.get("gameStatus"), status_text_raw)
+            home_team = game.get("homeTeam") or {}
+            away_team = game.get("awayTeam") or {}
             games.append(
                 ScoreboardGame(
                     nba_stats_game_id=game_id,
                     game_date=game_date,
                     tip_datetime=tip_datetime,
                     status=status,
+                    status_text=(
+                        status_text_raw.strip()
+                        if isinstance(status_text_raw, str) and status_text_raw.strip()
+                        else None
+                    ),
+                    home_nba_stats_team_id=_team_id_or_none(home_team.get("teamId")),
+                    away_nba_stats_team_id=_team_id_or_none(away_team.get("teamId")),
+                    home_score=_score_or_none(home_team.get("score")),
+                    away_score=_score_or_none(away_team.get("score")),
                 )
             )
     return games
@@ -283,14 +364,41 @@ async def resolve_target_competitions(
     return list(result.scalars().all())
 
 
+async def _teams_by_source_id(
+    db: AsyncSession, competition_id: int
+) -> dict[str, SummerLeagueTeamEntry]:
+    """Batch-load one competition's team entries, keyed by ``nba_stats_team_id``.
+
+    One query per competition per :func:`upsert_scoreboard_games` call --
+    resolving every game's home/away provider team ID against this in-memory
+    map, rather than a per-game lookup query, is what keeps team resolution
+    from being N+1.
+    """
+    result = await db.execute(
+        select(SummerLeagueTeamEntry).where(
+            SummerLeagueTeamEntry.competition_id == competition_id  # type: ignore[arg-type]
+        )
+    )
+    return {team.nba_stats_team_id: team for team in result.scalars().all()}
+
+
 async def upsert_scoreboard_games(
     db: AsyncSession, *, competition_id: int, games: Iterable[ScoreboardGame]
-) -> tuple[int, int]:
+) -> tuple[int, int, list[str]]:
     """Create or update ``summer_league_games`` rows from parsed scoreboard games.
 
-    Only touches ``game_date`` / ``tip_datetime`` / ``status`` -- box-score
-    fields (teams, score) stay owned by ``normalize_summer_league`` and are
-    left untouched on existing rows.
+    Resolves every game's raw provider team IDs against this competition's
+    ``summer_league_team_entries`` in a single batch query
+    (:func:`_teams_by_source_id`) and links ``home_team_entry_id`` /
+    ``away_team_entry_id`` when resolved. An unresolved provider team ID is
+    reported (returned, not fabricated as a new team-entry row) -- team
+    entries are owned by roster/normalization ingest.
+
+    Missing/zero fields never overwrite canonical values: an update only
+    touches ``home_team_entry_id`` / ``away_team_entry_id`` / ``home_score`` /
+    ``away_score`` when the freshly-parsed value is present, so a
+    not-yet-tipped or unresolved re-poll can never null out or zero a value
+    a previous poll (or normalization) already set.
 
     Args:
         db: Async database session (caller controls the transaction/commit).
@@ -298,16 +406,37 @@ async def upsert_scoreboard_games(
         games: Parsed scoreboard games, e.g. from :func:`parse_scoreboard_games`.
 
     Returns:
-        ``(created, updated)`` row counts.
+        ``(created, updated, unresolved_team_ids)`` -- row counts plus any
+        provider team IDs seen but not found in this competition's team
+        entries.
     """
     created = 0
     updated = 0
+    unresolved_team_ids: list[str] = []
+    teams_by_source_id = await _teams_by_source_id(db, competition_id)
+
     for game in games:
         stmt = select(SummerLeagueGame).where(
             SummerLeagueGame.nba_stats_game_id == game.nba_stats_game_id  # type: ignore[arg-type]
         )
         existing = (await db.execute(stmt)).scalar_one_or_none()
         tip_datetime = _to_naive_utc(game.tip_datetime)
+
+        home_team = (
+            teams_by_source_id.get(game.home_nba_stats_team_id)
+            if game.home_nba_stats_team_id
+            else None
+        )
+        away_team = (
+            teams_by_source_id.get(game.away_nba_stats_team_id)
+            if game.away_nba_stats_team_id
+            else None
+        )
+        if game.home_nba_stats_team_id and home_team is None:
+            unresolved_team_ids.append(game.home_nba_stats_team_id)
+        if game.away_nba_stats_team_id and away_team is None:
+            unresolved_team_ids.append(game.away_nba_stats_team_id)
+
         if existing is None:
             db.add(
                 SummerLeagueGame(
@@ -316,6 +445,13 @@ async def upsert_scoreboard_games(
                     game_date=game.game_date,
                     tip_datetime=tip_datetime,
                     status=game.status,
+                    status_text=game.status_text,
+                    home_nba_stats_team_id=game.home_nba_stats_team_id,
+                    away_nba_stats_team_id=game.away_nba_stats_team_id,
+                    home_team_entry_id=home_team.id if home_team else None,
+                    away_team_entry_id=away_team.id if away_team else None,
+                    home_score=game.home_score,
+                    away_score=game.away_score,
                 )
             )
             created += 1
@@ -325,32 +461,57 @@ async def upsert_scoreboard_games(
             if tip_datetime is not None:
                 existing.tip_datetime = tip_datetime
             existing.status = game.status
+            if game.status_text is not None:
+                existing.status_text = game.status_text
+            if game.home_nba_stats_team_id is not None:
+                existing.home_nba_stats_team_id = game.home_nba_stats_team_id
+            if game.away_nba_stats_team_id is not None:
+                existing.away_nba_stats_team_id = game.away_nba_stats_team_id
+            if home_team is not None:
+                existing.home_team_entry_id = home_team.id
+            if away_team is not None:
+                existing.away_team_entry_id = away_team.id
+            if game.home_score is not None:
+                existing.home_score = game.home_score
+            if game.away_score is not None:
+                existing.away_score = game.away_score
             updated += 1
     await db.flush()
-    return created, updated
+    return created, updated, unresolved_team_ids
 
 
 async def run_scoreboard_ingest(
     db: AsyncSession,
     *,
     today: date | None = None,
+    target_dates: Iterable[date] | None = None,
     client: NBAStatsClient | None = None,
 ) -> ScoreboardIngestReport:
-    """Job B step 0 -- fetch and upsert today's and tomorrow's SL games.
+    """Job B step 0 -- fetch and upsert the active event's SL schedule.
 
     Resolves the active competition(s) (:func:`resolve_target_competitions`),
     fetches each one's ``scheduleleaguev2`` feed via the shared ``curl_cffi``
-    :class:`NBAStatsClient`, filters to games tipping today or tomorrow, maps
-    NBA Stats status codes to :class:`SummerLeagueGameStatus`, and upserts
-    ``tip_datetime`` / ``status`` onto ``summer_league_games`` -- before
+    :class:`NBAStatsClient`, maps NBA Stats status codes to
+    :class:`SummerLeagueGameStatus`, and upserts ``tip_datetime`` / ``status``
+    / raw provider team IDs / scores onto ``summer_league_games`` -- before
     normalization or the rest of the desk tick runs (behavior spec §10 Job B
     step 0). The caller owns the session commit, matching every other Summer
     League ingest step in this package.
 
+    By default (``target_dates=None``) every known game for each resolved
+    competition is retained -- the schedule feed already scopes each fetch to
+    one competition's own tournament window, so this keeps the full active
+    event's schedule as the canonical source (#529), including games more
+    than a day or two out. Pass an explicit ``target_dates`` to narrow to a
+    specific window (tests, or a caller that only wants a slice).
+
     Args:
         db: Async database session (caller controls the transaction).
         today: Override for "today" (tests only); defaults to the current UTC
-            date.
+            date. Only used for the competition year-fallback in
+            :func:`resolve_target_competitions`.
+        target_dates: Optional calendar dates to restrict ingested games to.
+            Omit for the production full-schedule default.
         client: Optional injected :class:`NBAStatsClient` (tests only); when
             omitted a real client is opened for the duration of the run and
             closed afterward.
@@ -358,11 +519,9 @@ async def run_scoreboard_ingest(
     Returns:
         Aggregate counts across every resolved competition, plus any
         per-competition fetch errors (a failed competition does not abort the
-        others).
+        others) and any unresolved provider team IDs.
     """
     resolved_today = today or datetime.now(timezone.utc).date()
-    tomorrow = resolved_today + timedelta(days=1)
-    target_dates = {resolved_today, tomorrow}
 
     report = ScoreboardIngestReport()
     competitions = await resolve_target_competitions(db, today=resolved_today)
@@ -390,11 +549,12 @@ async def run_scoreboard_ingest(
             games = parse_scoreboard_games(payload, target_dates=target_dates)
             report.games_seen += len(games)
             assert competition.id is not None
-            created, updated = await upsert_scoreboard_games(
+            created, updated, unresolved_team_ids = await upsert_scoreboard_games(
                 db, competition_id=competition.id, games=games
             )
             report.games_created += created
             report.games_updated += updated
+            report.unresolved_team_ids.extend(unresolved_team_ids)
     finally:
         if owns_client:
             active_client.close()

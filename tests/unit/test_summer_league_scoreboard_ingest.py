@@ -1,21 +1,53 @@
 """Unit tests for the Summer League scoreboard/schedule ingest (Job B step 0).
 
-Covers the pure status-code mapping and UTC tip-time parsing, plus payload
+Covers the pure status-code mapping, UTC tip-time parsing, and payload
 parsing/filtering -- no database, no network.
+
+Several tests parse REAL captured ``scheduleleaguev2`` payloads rather than
+hand-authored dicts (repo convention -- see ``test_summer_league_bracket.py``
+for the same pattern against the same 2024 fixture):
+
+* ``scheduleleaguev2_15_2024.json`` -- pre-existing repo fixture, real 2024
+  Las Vegas Summer League final games (used elsewhere for bracket-round
+  parsing).
+* ``scheduleleaguev2_15_2026_live_pretip.json`` -- captured live from
+  stats.nba.com (LeagueID 15, Season 2026) on 2026-07-10 ~19:34 UTC, a few
+  hours into the real Las Vegas Summer League window: a genuine mix of real
+  Final games (2026-07-09) and real not-yet-tipped Scheduled games spanning
+  2026-07-10 through 2026-07-19.
+* ``scoreboard_real_postponed_2021.json`` -- one real game (LeagueID 15,
+  Season 2021, gameId 1522100005, WAS @ IND) trimmed from a live capture of
+  that season's full schedule feed. This is the only real "PPD"
+  (postponed) game found across every Summer League year/venue (2016-2026)
+  this ingest step covers -- confirmed by an exhaustive capture sweep, not
+  assumed.
 """
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
+from pathlib import Path
 
 from app.schemas.summer_league import SummerLeagueGameStatus
 from app.services.summer_league.scoreboard_ingest import (
     _parse_game_date,
+    _score_or_none,
+    _team_id_or_none,
     _to_naive_utc,
     map_game_status,
     parse_scoreboard_games,
     parse_tip_datetime_utc,
 )
+
+_FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "summer_league"
+_REAL_FINAL_FIXTURE = _FIXTURE_ROOT / "scheduleleaguev2_15_2024.json"
+_REAL_LIVE_FIXTURE = _FIXTURE_ROOT / "scheduleleaguev2_15_2026_live_pretip.json"
+_REAL_POSTPONED_FIXTURE = _FIXTURE_ROOT / "scoreboard_real_postponed_2021.json"
+
+
+def _load_fixture(path: Path) -> dict[str, object]:
+    return json.loads(path.read_text())  # type: ignore[no-any-return]
 
 
 def test_map_game_status_scheduled_code() -> None:
@@ -55,6 +87,27 @@ def test_map_game_status_treats_bool_as_not_a_code() -> None:
     """A stray bool (a Python int subclass) is never treated as a status code."""
     assert map_game_status(True, "Final") == SummerLeagueGameStatus.FINAL
     assert map_game_status(False, None) == SummerLeagueGameStatus.UNKNOWN
+
+
+def test_map_game_status_postponed_text_is_scheduled_not_live() -> None:
+    """A real "PPD" status text maps to SCHEDULED with its real, observed code.
+
+    "PPD" is the real status text NBA Stats used for a rained-out SL game
+    (LeagueID 15, 2021 season, gameId 1522100005).
+    """
+    assert map_game_status(1, "PPD") == SummerLeagueGameStatus.SCHEDULED
+
+
+def test_map_game_status_postponed_text_beats_a_live_numeric_code() -> None:
+    """Postponed/canceled text wins even when paired with a live/final code.
+
+    Checked *before* the numeric code, so a feed that (however implausibly)
+    still reports a live/final code alongside postponed/canceled text is
+    never classified as live or final.
+    """
+    assert map_game_status(2, "PPD") == SummerLeagueGameStatus.SCHEDULED
+    assert map_game_status(3, "Postponed") == SummerLeagueGameStatus.SCHEDULED
+    assert map_game_status(2, "Canceled") == SummerLeagueGameStatus.SCHEDULED
 
 
 def test_parse_tip_datetime_utc_prefers_game_date_time_utc() -> None:
@@ -105,6 +158,12 @@ def test_to_naive_utc_strips_tzinfo_and_passes_through_none() -> None:
     assert _to_naive_utc(None) is None
 
 
+def test_to_naive_utc_passes_through_an_already_naive_datetime() -> None:
+    """An already-naive datetime is returned unchanged (no tzinfo to strip)."""
+    naive = datetime(2026, 7, 9, 22, 0)
+    assert _to_naive_utc(naive) == naive
+
+
 def test_parse_game_date_falls_back_through_date_fields() -> None:
     """The gameDateEst field in ISO form (not the schedule's slash format) still parses."""
     assert _parse_game_date({"gameDateEst": "2026-07-09T00:00:00Z"}, None) == date(
@@ -119,6 +178,25 @@ def test_parse_game_date_falls_back_to_tip_datetime_then_none() -> None:
     assert _parse_game_date({}, None) is None
 
 
+def test_team_id_or_none_stringifies_and_blanks_out_absent_values() -> None:
+    """A provider teamId (int in the payload) is stringified; blanks are None."""
+    assert _team_id_or_none(1610612739) == "1610612739"
+    assert _team_id_or_none("1610612739") == "1610612739"
+    assert _team_id_or_none(None) is None
+    assert _team_id_or_none("") is None
+    assert _team_id_or_none("  ") is None
+
+
+def test_score_or_none_treats_zero_and_missing_as_not_yet_scored() -> None:
+    """0 (the schedule feed's not-yet-tipped placeholder) and missing values are None."""
+    assert _score_or_none(0) is None
+    assert _score_or_none(None) is None
+    assert _score_or_none(True) is None  # bool is an int subclass; not a real score.
+    assert _score_or_none(79) == 79
+    assert _score_or_none("34") == 34
+    assert _score_or_none("not-a-number") is None
+
+
 def _schedule_payload(*games_by_date: tuple[str, list[dict[str, object]]]) -> dict:
     return {
         "leagueSchedule": {
@@ -130,8 +208,8 @@ def _schedule_payload(*games_by_date: tuple[str, list[dict[str, object]]]) -> di
     }
 
 
-def test_parse_scoreboard_games_filters_to_target_dates() -> None:
-    """Only games whose schedule date is in target_dates are kept."""
+def test_parse_scoreboard_games_filters_to_target_dates_when_given() -> None:
+    """An explicit target_dates set still narrows the kept games (opt-in filter)."""
     payload = _schedule_payload(
         (
             "07/09/2026 00:00:00",
@@ -186,6 +264,25 @@ def test_parse_scoreboard_games_skips_games_without_an_id() -> None:
     assert parse_scoreboard_games(payload, target_dates={date(2026, 7, 9)}) == []
 
 
+def test_parse_scoreboard_games_skips_a_game_with_no_resolvable_date() -> None:
+    """A game with a real gameId but no usable date field anywhere is skipped.
+
+    Applies even under the default full-horizon (target_dates=None) mode --
+    a game with no resolvable date has no schedule-worthy identity to store.
+    """
+    payload = {
+        "leagueSchedule": {
+            "gameDates": [
+                {
+                    "gameDate": "not-a-real-date",
+                    "games": [{"gameId": "no-date-game", "gameStatus": 1}],
+                }
+            ]
+        }
+    }
+    assert parse_scoreboard_games(payload, target_dates=None) == []
+
+
 def test_parse_scoreboard_games_empty_payload() -> None:
     """An empty or missing leagueSchedule yields no games."""
     assert parse_scoreboard_games({}, target_dates={date(2026, 7, 9)}) == []
@@ -195,3 +292,89 @@ def test_parse_scoreboard_games_empty_payload() -> None:
         )
         == []
     )
+
+
+def test_parse_scoreboard_games_extracts_real_team_ids_and_scores() -> None:
+    """A real Final game's raw home/away provider team IDs and scores parse correctly.
+
+    Fixture: 2024 Las Vegas Summer League, gameId 1522400001 (real payload) --
+    Orlando Magic 106, home; Cleveland Cavaliers 79, away.
+    """
+    payload = _load_fixture(_REAL_FINAL_FIXTURE)
+    games = parse_scoreboard_games(payload, target_dates=None)
+    by_id = {g.nba_stats_game_id: g for g in games}
+
+    game = by_id["1522400001"]
+    assert game.status == SummerLeagueGameStatus.FINAL
+    assert game.status_text == "Final"
+    assert game.home_nba_stats_team_id == "1610612753"  # ORL
+    assert game.away_nba_stats_team_id == "1610612739"  # CLE
+    assert game.home_score == 106
+    assert game.away_score == 79
+
+
+def test_parse_scoreboard_games_default_keeps_the_full_real_schedule() -> None:
+    """With no target_dates, every game across the real live capture's 11 dates is kept.
+
+    Fixture: a live capture of the 2026 Las Vegas schedule feed spanning
+    2026-07-09 (real Finals) through 2026-07-19 (real not-yet-tipped
+    Scheduled games) -- 76 real games total.
+    """
+    payload = _load_fixture(_REAL_LIVE_FIXTURE)
+    games = parse_scoreboard_games(payload, target_dates=None)
+
+    assert len(games) == 76
+    by_id = {g.nba_stats_game_id: g for g in games}
+    # A real game tipping 07/12 -- more than two days past "today" (07/10 in
+    # this live capture) -- is retained under the full-horizon default.
+    assert "1522600024" in by_id
+    assert by_id["1522600024"].game_date == date(2026, 7, 12)
+
+
+def test_parse_scoreboard_games_explicit_target_dates_still_narrows_real_schedule() -> (
+    None
+):
+    """Passing target_dates against the same real payload narrows to that window."""
+    payload = _load_fixture(_REAL_LIVE_FIXTURE)
+    games = parse_scoreboard_games(payload, target_dates={date(2026, 7, 10)})
+
+    assert len(games) == 8
+    assert all(g.game_date == date(2026, 7, 10) for g in games)
+    assert "1522600024" not in {g.nba_stats_game_id for g in games}
+
+
+def test_parse_scoreboard_games_scheduled_game_score_is_none_not_zero() -> None:
+    """A real not-yet-tipped game's placeholder 0-0 score parses to None, not 0."""
+    payload = _load_fixture(_REAL_LIVE_FIXTURE)
+    games = parse_scoreboard_games(payload, target_dates={date(2026, 7, 10)})
+    by_id = {g.nba_stats_game_id: g for g in games}
+
+    game = by_id["1522600008"]
+    assert game.status == SummerLeagueGameStatus.SCHEDULED
+    assert game.home_score is None
+    assert game.away_score is None
+    assert game.home_nba_stats_team_id is not None
+    assert game.away_nba_stats_team_id is not None
+
+
+def test_parse_scoreboard_games_real_postponed_game_is_never_live() -> None:
+    """The one real captured "PPD" game (2021 season) is parsed as SCHEDULED.
+
+    Fixture: LeagueID 15, Season 2021, gameId 1522100005 (WAS @ IND), rained
+    out during Las Vegas Summer League -- the schedule feed still reports
+    numeric code 1 (scheduled), but confirms the honest raw status text is
+    retained for a case a purely code-driven mapping would otherwise blur
+    with a merely-not-yet-tipped game.
+    """
+    payload = _load_fixture(_REAL_POSTPONED_FIXTURE)
+    games = parse_scoreboard_games(payload, target_dates=None)
+
+    assert len(games) == 1
+    game = games[0]
+    assert game.nba_stats_game_id == "1522100005"
+    assert game.status == SummerLeagueGameStatus.SCHEDULED
+    assert game.status_text == "PPD"
+    assert game.home_nba_stats_team_id == "1610612754"  # IND
+    assert game.away_nba_stats_team_id == "1610612764"  # WAS
+    assert game.home_score is None
+    assert game.away_score is None

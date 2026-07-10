@@ -964,7 +964,7 @@ def _summarize(result: DeskTickResult) -> str:
         lines.append(
             f"  scoreboard: checked={report.competitions_checked} "
             f"created={report.games_created} updated={report.games_updated} "
-            f"errors={report.errors}"
+            f"errors={report.errors} unresolved_team_ids={report.unresolved_team_ids}"
         )
     for competition_id, storyline_result in result.storyline_results.items():
         lines.append(
