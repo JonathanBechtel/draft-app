@@ -12,19 +12,18 @@ language. **Status heat** (formerly "Contract watch") is a percentile-tracking
 trigger only -- this module holds no two-way/Exhibit-10/signing/contract data
 and never implies any.
 
-**Approximation this module deliberately ships (documented per ticket
-instruction, not silently inert):** the ``streak`` trigger needs a per-game
-"cohort-median GmSc" bar and a per-game percentile. #502's Job A only built
-**event**- and **debut**-grain T1 baselines -- there is no ``game``-grain
-cohort distribution, and building one is out of scope here (that would be a
-new Job A grain, not this ticket). Per the resolved spec gap, this module
-ranks each individual game's GmSc against the player's cohort's **event-grain**
-T1 row: the bar is that row's ``median_value``, and the per-game percentile is
-``desk_grades.percentile_of_value(event_row.breakpoints, game_gmsc)``. This is
-an approximation -- one game measured against an event-aggregate distribution,
-not a true single-game distribution -- but it is real, reproducible, and wired
-to data rather than left inert. #520's ``detect_streak`` was built with exactly
-this caller-supplied-``pctl`` seam for this reason; this module is that caller.
+**Streak trigger data source (#525):** the ``streak`` trigger needs a per-game
+"cohort-median GmSc" bar and a per-game percentile. #502's Job A originally
+shipped only **event**- and **debut**-grain T1 baselines, so this module used
+to rank each individual game against the event-aggregate distribution -- a
+documented approximation (event aggregates have much lower variance than
+individual games, which stretches percentiles toward the tails). #525 added a
+``game``-grain T1 baseline (`cohort_baselines.build_baselines`, pooling every
+qualifying individual-game GmSc per cohort) and retargeted this module to it:
+the bar is the game-grain row's ``median_value``, and the per-game percentile
+is ``desk_grades.percentile_of_value(game_row.breakpoints, game_gmsc)``. #520's
+``detect_streak`` was built with exactly this caller-supplied-``pctl`` seam
+for this reason; this module is that caller.
 
 Two layers:
 
@@ -71,6 +70,7 @@ from app.schemas.player_affiliation import AffiliationStatus
 from app.services.summer_league.cohort_baselines import (
     EventAggregate,
     blend_event_aggregates,
+    cohort_key_for,
 )
 from app.services.summer_league.desk_facts import (
     FactSubject,
@@ -295,7 +295,7 @@ def detect_duel(*, candidates: Sequence[ProspectSlot]) -> Optional[TriggerInstan
 
 
 # --------------------------------------------------------------------------- #
-# Trigger 3 -- Streak (event-grain approximation; see module docstring)
+# Trigger 3 -- Streak (game-grain baseline; see module docstring)
 # --------------------------------------------------------------------------- #
 def detect_streak(
     *,
@@ -310,13 +310,13 @@ def detect_streak(
     reimplementing it -- this function only adapts the resulting
     :class:`~app.services.summer_league.desk_facts.Fact` into a
     :class:`TriggerInstance`. ``games`` must already carry each line's
-    event-grain-approximated ``pctl`` (see module docstring); a line with
-    ``pctl=None`` stops the run exactly as ``desk_facts.detect_streak``
-    documents.
+    game-grain ``pctl`` (see module docstring); a line with ``pctl=None``
+    stops the run exactly as ``desk_facts.detect_streak`` documents.
 
     Args:
         subject: The tracked player.
-        cohort_key: The cohort the median/percentiles are scoped to.
+        cohort_key: The cohort the median/percentiles are scoped to
+            (**game-grain**, e.g. ``game:1-4`` -- see module docstring).
         games: The player's SL game log this competition, oldest first,
             *not including* tonight's game (an "entering" run).
 
@@ -770,8 +770,8 @@ async def _game_lines_before(
 ) -> list[GameLine]:
     """The player's chronological GmSc log this competition, before ``before_date``.
 
-    Each line's ``pctl`` is the event-grain approximation (module docstring):
-    the game's GmSc ranked against the player's own cohort's event-grain T1
+    Each line's ``pctl`` is the game-grain ranking (module docstring): the
+    game's GmSc ranked against the player's own cohort's **game-grain** T1
     breakpoints. ``pctl`` stays ``None`` (stopping any streak through it) when
     no baseline is available.
     """
@@ -971,6 +971,32 @@ async def compute_desk_storylines(
         )
         baselines = {row.cohort_key: row for row in baseline_rows}
 
+    # Game-grain baselines back the streak trigger's per-game bar/percentile
+    # (#525) -- a separate fetch since the streak trigger measures individual
+    # games against a game-grain distribution while `baselines` above (event
+    # grain) still backs the 2nd-look trigger's event-aggregate comparison.
+    game_cohort_keys = {
+        cohort_key_for(p.draft_round, p.draft_pick, grain=SummerLeagueDeskGrain.GAME)
+        for p in player_by_id.values()
+    }
+    game_baselines: dict[str, SummerLeagueCohortBaseline] = {}
+    if game_cohort_keys:
+        game_baseline_rows = (
+            (
+                await session.execute(
+                    select(SummerLeagueCohortBaseline).where(
+                        SummerLeagueCohortBaseline.baseline_version == baseline_version,  # type: ignore[arg-type]
+                        SummerLeagueCohortBaseline.cohort_key.in_(game_cohort_keys),  # type: ignore[attr-defined]
+                        SummerLeagueCohortBaseline.grain == SummerLeagueDeskGrain.GAME,  # type: ignore[arg-type]
+                        SummerLeagueCohortBaseline.is_active.is_(True),  # type: ignore[attr-defined]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        game_baselines = {row.cohort_key: row for row in game_baseline_rows}
+
     game_inputs: list[GameSlateInput] = []
     new_storyline_rows: list[SummerLeagueDeskStoryline] = []
 
@@ -1020,15 +1046,19 @@ async def compute_desk_storylines(
 
             if grade is not None:
                 baseline = baselines.get(grade.cohort_key)
+                game_cohort_key = cohort_key_for(
+                    slot.draft_round, slot.draft_pick, grain=SummerLeagueDeskGrain.GAME
+                )
+                game_baseline = game_baselines.get(game_cohort_key)
                 lines = await _game_lines_before(
                     session,
                     player_id=slot.player_id,
                     competition_id=competition_id,
                     before_date=g.game_date or game_date,
-                    baseline=baseline,
+                    baseline=game_baseline,
                 )
                 streak = detect_streak(
-                    subject=slot, cohort_key=grade.cohort_key, games=lines
+                    subject=slot, cohort_key=game_cohort_key, games=lines
                 )
                 if streak is not None:
                     instances.append(streak)

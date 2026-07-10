@@ -26,11 +26,11 @@ re-querying per subject.
   -- the exact same event-aggregate blend and slot/round/status
   classification Job A used to build T1, applied here to fetch labeled
   per-member rows instead of collapsing them into breakpoints.
-* :func:`~app.services.summer_league.desk_grades.percentile_of_value` (#503)
-  and the **event-grain approximation** #504's ``desk_storylines`` module
-  documents and pioneers for per-game percentiles (there is no ``game``-grain
-  T1 baseline -- ticket #524's CRITICAL constraints reiterate: reuse this
-  approximation, don't invent a new one).
+* :func:`~app.services.summer_league.desk_grades.percentile_of_value` (#503),
+  applied here to the **game-grain** T1 baseline (#525) for per-game
+  percentiles -- :func:`fetch_game_baselines` fetches those rows the same way
+  :func:`fetch_event_baselines`/:func:`fetch_debut_baselines` fetch their
+  grains.
 * :func:`~app.services.summer_league.metrics.game_score_from_row` --
   the single source of GmSc (`game_score_line()`).
 
@@ -316,6 +316,25 @@ async def fetch_debut_baselines(
     )
 
 
+async def fetch_game_baselines(
+    db: AsyncSession, *, baseline_version: str, cohort_keys: Sequence[str]
+) -> dict[str, SummerLeagueCohortBaseline]:
+    """The active T1 **game-grain** baseline row for each of ``cohort_keys``.
+
+    ``cohort_keys`` here are ``game:``-prefixed (`cohort_baselines.cohort_key_for`
+    with ``grain=SummerLeagueDeskGrain.GAME`). Feeds :func:`fetch_game_lines`'s
+    ``baseline_by_player`` and :func:`~app.services.summer_league.desk_facts.detect_streak`'s
+    per-game percentile bar (#525 -- the correct single-game distribution,
+    replacing the event-grain approximation earlier tickets shipped).
+    """
+    return await _fetch_baselines(
+        db,
+        baseline_version=baseline_version,
+        cohort_keys=cohort_keys,
+        grain=SummerLeagueDeskGrain.GAME,
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Tonight's live field (leads_field)
 # --------------------------------------------------------------------------- #
@@ -486,7 +505,7 @@ async def fetch_debut_status(
 
 
 # --------------------------------------------------------------------------- #
-# Per-game GmSc log this event, event-grain-approximated pctl (streak)
+# Per-game GmSc log this event, game-grain pctl (streak)
 # --------------------------------------------------------------------------- #
 async def fetch_game_lines(
     db: AsyncSession,
@@ -499,13 +518,11 @@ async def fetch_game_lines(
     """Each player's chronological GmSc log this competition, through ``game_date``.
 
     One batched query for every player_id (mirrors
-    ``desk_storylines._game_lines_before``'s per-player fetch and its
-    documented **event-grain approximation** -- ticket #524 CRITICAL
-    constraints: "rank each game's GmSc against the event-grain T1 row's
-    breakpoints ... reuse it, do NOT build a game-grain baseline" -- applied
-    across the whole roster in one round trip). Each player's line is scored
-    against *their own* cohort's baseline (``baseline_by_player``), since
-    different players can carry different ``cohort_key``s in the same tick.
+    ``desk_storylines._game_lines_before``'s per-player fetch, applied across
+    the whole roster in one round trip). Each player's line is scored against
+    *their own* cohort's **game-grain** baseline (``baseline_by_player`` --
+    see :func:`fetch_game_baselines`), since different players can carry
+    different ``cohort_key``s in the same tick.
 
     Args:
         db: Active database session.
@@ -515,7 +532,7 @@ async def fetch_game_lines(
             an "as of tonight" log for :func:`~app.services.summer_league.desk_facts.detect_streak`,
             not the "entering" (pre-tonight) log ``desk_storylines`` computes
             for its own trigger.
-        baseline_by_player: Each player's active T1 **event-grain** baseline
+        baseline_by_player: Each player's active T1 **game-grain** baseline
             row (or ``None`` -- that player's lines get ``pctl=None``,
             stopping any streak through them per `desk_facts.detect_streak`).
 
@@ -584,6 +601,7 @@ __all__ = [
     "fetch_debut_baselines",
     "fetch_debut_status",
     "fetch_event_baselines",
+    "fetch_game_baselines",
     "fetch_game_lines",
     "fetch_prior_events",
     "fetch_tonight_field",

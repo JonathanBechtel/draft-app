@@ -205,6 +205,7 @@ async def _seed_baseline(
     breakpoints: dict[str, float],
     median_value: float,
     mean_value: float,
+    grain: SummerLeagueDeskGrain = SummerLeagueDeskGrain.EVENT,
 ) -> SummerLeagueCohortBaseline:
     baseline = SummerLeagueCohortBaseline(
         baseline_version=_BASELINE_VERSION,
@@ -212,7 +213,7 @@ async def _seed_baseline(
         cohort_key=cohort_key,
         cohort_kind=cohort_kind,
         metric="gmsc",
-        grain=SummerLeagueDeskGrain.EVENT,
+        grain=grain,
         venue_scope="all",
         season_range="2017-2025",
         min_minutes=40.0,
@@ -637,11 +638,12 @@ async def test_compute_desk_storylines_rerun_replaces_rather_than_duplicates_t3(
 async def test_compute_desk_storylines_writes_streak_from_prior_game_logs(
     db_session: AsyncSession,
 ) -> None:
-    """A run of 3 prior games clearing cohort median (event-grain pctl approx) fires Streak.
+    """A run of 3 prior games clearing the game-grain cohort median fires Streak.
 
-    Exercises the resolved spec-gap path: each prior game's GmSc is ranked
-    against the player's cohort's *event-grain* T1 breakpoints
-    (``percentile_of_value``) with the bar = that row's ``median_value``.
+    #525: each prior game's GmSc is ranked against the player's cohort's
+    *game-grain* T1 breakpoints (``percentile_of_value``) with the bar =
+    that row's ``median_value`` -- the correct single-game distribution,
+    not the event-aggregate one.
     """
     competition = await _seed_competition(db_session)
     home = await _seed_team(db_session, competition)
@@ -653,13 +655,16 @@ async def test_compute_desk_storylines_writes_streak_from_prior_game_logs(
 
     # Breakpoints chosen so the seeded ~18.4-GmSc games rank >= 65th pctl and
     # clear the 10.0 cohort median -> 3 straight qualifying games -> a streak.
+    # Game grain (`game:1-4`), not event grain -- the streak trigger ranks
+    # each individual game against the game-grain T1 row (#525).
     await _seed_baseline(
         db_session,
-        cohort_key="slot:1-4",
+        cohort_key="game:1-4",
         cohort_kind=SummerLeagueDeskCohortKind.SLOT_WINDOW,
         breakpoints={"0": 0.0, "50": 10.0, "65": 15.0, "100": 30.0},
         median_value=10.0,
         mean_value=12.0,
+        grain=SummerLeagueDeskGrain.GAME,
     )
     await _seed_grade(
         db_session,
@@ -708,3 +713,76 @@ async def test_compute_desk_storylines_writes_streak_from_prior_game_logs(
     assert len(persisted) == 1
     assert persisted[0].subject_player_id == player.id
     assert persisted[0].base_weight == 65.0
+
+
+async def test_compute_desk_storylines_streak_reads_game_grain_not_event_grain(
+    db_session: AsyncSession,
+) -> None:
+    """A hostile event-grain row (that would fail the streak) proves the game grain wins.
+
+    Seeds BOTH an event-grain baseline whose median (25.0) the seeded
+    ~18.4-GmSc games would NOT clear, and a game-grain baseline whose median
+    (10.0) they DO clear. If the streak trigger were still (mis)reading the
+    event-grain row, no run would qualify and Streak would never fire.
+    """
+    competition = await _seed_competition(db_session)
+    home = await _seed_team(db_session, competition)
+    away = await _seed_team(db_session, competition)
+    await _seed_game(db_session, competition, home, away)
+
+    player = await _seed_player(
+        db_session, name="GrainCheck", draft_round=1, draft_pick=1
+    )
+    source_player = await _roster_player(db_session, competition, home, player)
+
+    # Event grain: median 25.0 -- the ~18.4 GmSc games fall BELOW this, which
+    # would break any run if this were the row consulted.
+    await _seed_baseline(
+        db_session,
+        cohort_key="slot:1-4",
+        cohort_kind=SummerLeagueDeskCohortKind.SLOT_WINDOW,
+        breakpoints={"0": 10.0, "50": 25.0, "65": 28.0, "100": 40.0},
+        median_value=25.0,
+        mean_value=25.0,
+        grain=SummerLeagueDeskGrain.EVENT,
+    )
+    # Game grain: median 10.0 -- the games clear it and rank >= 65th pctl.
+    await _seed_baseline(
+        db_session,
+        cohort_key="game:1-4",
+        cohort_kind=SummerLeagueDeskCohortKind.SLOT_WINDOW,
+        breakpoints={"0": 0.0, "50": 10.0, "65": 15.0, "100": 30.0},
+        median_value=10.0,
+        mean_value=12.0,
+        grain=SummerLeagueDeskGrain.GAME,
+    )
+    await _seed_grade(
+        db_session,
+        player=player,
+        competition=competition,
+        cohort_key="slot:1-4",
+        pctl=73.0,
+        subject_value=18.4,
+    )
+
+    for day in (8, 9, 10):
+        await _seed_prior_game_log(
+            db_session,
+            competition=competition,
+            team=home,
+            player=player,
+            source_player=source_player,
+            game_date=date(2026, 7, day),
+        )
+
+    result = await compute_desk_storylines(
+        db_session,
+        game_date=_GAME_DATE,
+        competition_id=competition.id,  # type: ignore[arg-type]
+        baseline_version=_BASELINE_VERSION,
+        mode="morning",
+    )
+
+    assert len(result.slate) == 1
+    trigger_types = {i.trigger_type for i in result.slate[0].instances}
+    assert SummerLeagueDeskTriggerType.STREAK in trigger_types

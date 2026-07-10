@@ -13,18 +13,16 @@ dataclasses below) rather than an ``AsyncSession`` -- #518/#519 are
 responsible for fetching those inputs from T1/T2 (`cohort_baselines.py`,
 `desk_grades.py`) and raw game logs, then calling these functions.
 
-**Known gap this module designs around, not around:** #502
-(`cohort_baselines.py`) shipped the ``event`` and ``debut`` T1 baseline
-grains but not ``game`` -- there is no cohort distribution to rank a single
-game's Game Score against. ``detect_streak`` is the one detector that
-conceptually needs a per-game cohort percentile (spec: "the run's average
-percentile >= 65"). Rather than inventing a game-grain baseline here, its
-input shape (:class:`GameLine`) simply carries an *optional* ``pctl`` field
-documented as coming from a game-grain baseline that does not exist yet;
-the detector honestly declines to fire a streak through any game lacking
-one. It is fully implemented and unit-tested against hand-supplied
-percentiles -- it just can't be wired to real data until a future ticket
-either builds a game-grain baseline or picks an approved substitute.
+**Streak's per-game percentile source:** ``detect_streak`` is the one
+detector that conceptually needs a per-game cohort percentile (spec: "the
+run's average percentile >= 65"). Its input shape (:class:`GameLine`) carries
+an *optional* ``pctl`` field so the detector stays pure/DB-free -- callers
+(`desk_storylines.py`, `desk_fact_queries.fetch_game_lines`) supply it from
+#525's ``game``-grain T1 baseline (`cohort_baselines.build_baselines`,
+pooling every qualifying individual-game GmSc per cohort). A caller without
+an active game-grain baseline row for the subject's cohort passes
+``pctl=None``; the detector honestly declines to fire a streak through any
+game lacking one rather than guessing.
 
 Provenance: every emitted :class:`Fact` carries a
 :class:`FactProvenance` (``detector_id``, ``baseline_version``,
@@ -284,10 +282,11 @@ def detect_percentile(
 class GameLine:
     """One game in a player's chronological SL log, pre-scored vs a cohort.
 
-    ``pctl`` requires a **game-grain** cohort baseline, which #502 did not
-    build (see module docstring "Known gap"). Callers without one should
-    pass ``pctl=None``; :func:`detect_streak` treats that as "can't extend
-    the run through this game" rather than guessing.
+    ``pctl`` is populated from a **game-grain** T1 cohort baseline (#525,
+    `cohort_baselines.py` grain=``game`` -- see module docstring). Callers
+    without an active baseline row for the subject's cohort should pass
+    ``pctl=None``; :func:`detect_streak` treats that as "can't extend the run
+    through this game" rather than guessing.
     """
 
     value: float

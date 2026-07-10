@@ -180,7 +180,7 @@ def test_detect_duel_top_pair_outranks_two_second_rounders() -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Trigger 3 -- Streak (event-grain approximation)
+# Trigger 3 -- Streak (game-grain baseline)
 # --------------------------------------------------------------------------- #
 def _streak_games(pctls: list[float], value: float = 20.0, median: float = 10.0) -> list[GameLine]:
     return [GameLine(value=value, cohort_median=median, pctl=p) for p in pctls]
@@ -189,7 +189,7 @@ def _streak_games(pctls: list[float], value: float = 20.0, median: float = 10.0)
 def test_detect_streak_positive_three_games_avg_pctl_above_floor() -> None:
     subject = ProspectSlot(player_id=1, player_label="Hot", draft_round=1, draft_pick=1)
     games = _streak_games([70.0, 75.0, 80.0])
-    inst = detect_streak(subject=subject, cohort_key="slot:1-4", games=games)
+    inst = detect_streak(subject=subject, cohort_key="game:1-4", games=games)
     assert inst is not None
     assert inst.trigger_type == SummerLeagueDeskTriggerType.STREAK
     assert inst.base_weight == 65.0
@@ -199,14 +199,14 @@ def test_detect_streak_positive_three_games_avg_pctl_above_floor() -> None:
 def test_detect_streak_near_miss_only_two_games_does_not_fire() -> None:
     subject = ProspectSlot(player_id=1, player_label="ShortRun", draft_round=1, draft_pick=1)
     games = _streak_games([70.0, 75.0])
-    assert detect_streak(subject=subject, cohort_key="slot:1-4", games=games) is None
+    assert detect_streak(subject=subject, cohort_key="game:1-4", games=games) is None
 
 
 def test_detect_streak_near_miss_avg_pctl_below_floor_does_not_fire() -> None:
     subject = ProspectSlot(player_id=1, player_label="Mid", draft_round=1, draft_pick=1)
     # Three games clear the median but average pctl (60) is below the 65 floor.
     games = _streak_games([55.0, 60.0, 65.0])
-    assert detect_streak(subject=subject, cohort_key="slot:1-4", games=games) is None
+    assert detect_streak(subject=subject, cohort_key="game:1-4", games=games) is None
 
 
 # --------------------------------------------------------------------------- #

@@ -33,7 +33,7 @@ semantics — ``players_master.draft_pick`` is **within-round**, not overall):
 the membership test uses the within-round column), except for the status
 cohort where both are ``None``.
 
-**Grain:** V1 builds two of the three ``SummerLeagueDeskGrain`` values:
+**Grain:** builds all three ``SummerLeagueDeskGrain`` values:
 
 * ``event`` — one data point per (player, year): that player's SL-season
   event-aggregate GmSc, games-weighted across every venue they played that
@@ -49,10 +49,30 @@ cohort where both are ``None``.
   ``debut`` regardless of which underlying slot/round/status window it
   represents — that dedicated kind is how a debut-grain row is told apart
   from an event-grain row sharing the same slot window.
+* ``game`` — one data point per **individual game log line**: a player's raw
+  per-game GmSc (``game_score_from_row``), gated by a **per-game** minutes
+  floor (:data:`DEFAULT_GAME_MIN_MINUTES`) rather than the event grain's
+  blended season-level floor (:data:`DEFAULT_MIN_MINUTES`) — a single
+  qualifying game only needs a meaningful run, not a whole summer's worth of
+  minutes. Unlike ``event`` (every same-year row blended into ONE point per
+  player), ``game`` pools every qualifying game log line ungrouped, so a
+  player who logs five qualifying games in a summer contributes five points
+  to the distribution. ``cohort_key`` uses the ``game:`` prefix (mirrors the
+  ``debut:`` convention) so a game-grain row never collides with its
+  cohort's event-grain row under the same ``baseline_version`` — the T1
+  table's ``(baseline_version, cohort_key)`` uniqueness needs the grain
+  distinguished in the key itself, not just the ``grain`` column.
+  ``cohort_kind`` follows the same window/bucket kind as ``event``
+  (``slot_window``/``round_bucket``/``status``) — ``game`` is a different
+  measurement grain of the identical draft-slot classification, not a
+  distinct *kind* of cohort the way ``debut`` is.
 
-``game`` grain is **out of scope for this ticket** — the spec doesn't pin a
-single-game cohort methodology and it isn't required by #502's Definition of
-Done; a future ticket can add it once a detector needs it.
+Added by #525 to replace the ``streak`` trigger's event-grain approximation
+(``desk_storylines.py`` / ``desk_facts.py`` / ``desk_fact_queries.py`` used to
+rank one game's GmSc against the event-aggregate distribution — a real but
+documented approximation, since event aggregates have much lower variance
+than individual games and stretch percentiles toward the tails) with the
+correct single-game distribution.
 """
 
 from __future__ import annotations
@@ -66,12 +86,14 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
+from app.schemas.summer_league import SummerLeagueCompetition, SummerLeaguePlayerGameLog
 from app.schemas.summer_league_desk import (
     SummerLeagueCohortBaseline,
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.summer_league.metrics import game_score_from_row
 
 # --------------------------------------------------------------------------- #
 # Window rule
@@ -83,6 +105,13 @@ ROUND2_LOW, ROUND2_HIGH = 31, 60
 
 DEFAULT_SEASON_RANGE = "2017-2025"
 DEFAULT_MIN_MINUTES = 40.0
+
+# Per-game (not blended-season) eligibility floor for the `game` grain —
+# deliberately much lower than DEFAULT_MIN_MINUTES: a single qualifying game
+# only needs a meaningful run (not a token cameo), never a whole summer's
+# worth of minutes. A documented judgment call (ticket #525), not a spec-pinned
+# number — the behavior spec doesn't prescribe a single-game methodology.
+DEFAULT_GAME_MIN_MINUTES = 10.0
 
 # Percentile keys the breakpoints map is fit at (0-100 step 5 — dense enough
 # for O(1) percentile lookups via linear interpolation, matching numpy's
@@ -149,15 +178,21 @@ def cohort_key_for(
         draft_pick: ``players_master.draft_pick`` — WITHIN-ROUND, not overall.
         grain: ``event`` (default) uses the ``slot:``/``round:``/``status:``
             prefix; ``debut`` always uses the ``debut:`` prefix over the same
-            suffix (e.g. ``slot:1-4`` -> ``debut:1-4``).
+            suffix (e.g. ``slot:1-4`` -> ``debut:1-4``); ``game`` always uses
+            the ``game:`` prefix over the same suffix (e.g.
+            ``slot:1-4`` -> ``game:1-4``) — mirrors the ``debut:`` convention
+            so a game-grain row's key never collides with its cohort's
+            event-grain row under the same ``baseline_version``.
 
     Returns:
         e.g. ``"slot:1-4"``, ``"round:1_late"``, ``"round:2"``,
-        ``"status:undrafted"``, ``"debut:1-4"``.
+        ``"status:undrafted"``, ``"debut:1-4"``, ``"game:1-4"``.
     """
     suffix, _bounds, _kind = _bucket(draft_round, draft_pick)
     if grain == SummerLeagueDeskGrain.DEBUT:
         return f"debut:{suffix}"
+    if grain == SummerLeagueDeskGrain.GAME:
+        return f"game:{suffix}"
     prefix = {
         SummerLeagueDeskCohortKind.SLOT_WINDOW: "slot",
         SummerLeagueDeskCohortKind.ROUND_BUCKET: "round",
@@ -303,6 +338,62 @@ def _parse_season_range(season_range: str) -> tuple[int, int]:
 
 
 # --------------------------------------------------------------------------- #
+# Game-grain (single individual-game GmSc, per-game minutes floor)
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class GameValue:
+    """One player's single individual-game GmSc — the ``game`` grain's raw data point."""
+
+    player_id: int
+    game_id: int
+    gmsc: float
+    minutes: float
+
+
+def qualifying_game_values(
+    rows: Sequence[Any], *, min_minutes: float
+) -> list[GameValue]:
+    """Individual per-game GmSc values gated by a per-game minutes floor.
+
+    The ``game``-grain twin of :func:`blend_event_aggregates`: where that
+    function collapses every same-year row into ONE event-aggregate data
+    point per player, this keeps every qualifying game log line as its own
+    ungrouped data point — the correct grain for a per-game cohort
+    distribution. Reuses :func:`~app.services.summer_league.metrics.game_score_from_row`
+    (the single source of GmSc every other read surface funnels through)
+    rather than recomputing anything.
+
+    Args:
+        rows: Objects (ORM rows or any object) exposing ``player_id``,
+            ``game_id``, ``minutes_seconds``, and the twelve
+            ``game_score_line`` box-score fields (missing/``None``
+            coalesce to 0 via ``game_score_from_row``).
+        min_minutes: The per-game eligibility gate — deliberately a
+            *per-game* floor (:data:`DEFAULT_GAME_MIN_MINUTES`), not the
+            event grain's blended season-level floor
+            (:data:`DEFAULT_MIN_MINUTES`): a single qualifying game only
+            needs a meaningful run, not a whole summer's worth of minutes.
+
+    Returns:
+        One :class:`GameValue` per row clearing ``min_minutes``.
+    """
+    out: list[GameValue] = []
+    for r in rows:
+        minutes = round(float(getattr(r, "minutes_seconds", 0) or 0) / 60.0, 1)
+        if minutes < min_minutes:
+            continue
+        out.append(
+            GameValue(
+                player_id=r.player_id,
+                game_id=r.game_id,
+                gmsc=round(game_score_from_row(r), 2),
+                minutes=minutes,
+            )
+        )
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Orchestration
 # --------------------------------------------------------------------------- #
 async def build_baselines(
@@ -310,6 +401,7 @@ async def build_baselines(
     *,
     season_range: str = DEFAULT_SEASON_RANGE,
     min_minutes: float = DEFAULT_MIN_MINUTES,
+    game_min_minutes: float = DEFAULT_GAME_MIN_MINUTES,
 ) -> str:
     """Build a new versioned T1 baseline set from SL history and activate it.
 
@@ -317,12 +409,15 @@ async def build_baselines(
     blends each player's same-year rows into an event-aggregate GmSc (the
     min-minutes gate applied here), assigns each event to its player's
     slot/round/status cohort (event grain) and — for each player's earliest
-    qualifying year — their debut cohort (debut grain), computes
-    breakpoints/mean/median per cohort, and writes them all under one new
-    ``baseline_version`` with ``is_active=True``. Every row from every prior
-    version is flipped to ``is_active=False`` in the same call — old rows are
-    never deleted or mutated otherwise, so a rebuild is always idempotent and
-    non-destructive.
+    qualifying year — their debut cohort (debut grain); separately reads
+    every ``SummerLeaguePlayerGameLog`` row within the same ``season_range``
+    and assigns each qualifying individual game (the per-game
+    ``game_min_minutes`` floor applied here) to the same cohort under the
+    ``game`` grain. Computes breakpoints/mean/median per cohort per grain,
+    and writes every row under one new ``baseline_version`` with
+    ``is_active=True``. Every row from every prior version is flipped to
+    ``is_active=False`` in the same call — old rows are never deleted or
+    mutated otherwise, so a rebuild is always idempotent and non-destructive.
 
     Does not commit; the caller controls the transaction (mirrors
     ``app.services.summer_league.metrics.rebuild``).
@@ -332,7 +427,11 @@ async def build_baselines(
         season_range: ``"<start>-<end>"`` inclusive year bounds, e.g.
             ``"2017-2025"``.
         min_minutes: Minimum blended minutes for a player-year event to enter
-            the distribution.
+            the event/debut-grain distributions.
+        game_min_minutes: Minimum single-game minutes for an individual game
+            log line to enter the game-grain distribution (a per-game floor,
+            deliberately much lower than ``min_minutes``'s blended-season
+            floor).
 
     Returns:
         The new ``baseline_version`` string.
@@ -361,7 +460,22 @@ async def build_baselines(
             f"(min_minutes={min_minutes}); refusing to write an empty baseline_version."
         )
 
-    player_ids = {pid for pid, _year in events}
+    game_stmt = (
+        select(SummerLeaguePlayerGameLog)
+        .join(
+            SummerLeagueCompetition,
+            SummerLeagueCompetition.id == SummerLeaguePlayerGameLog.competition_id,  # type: ignore[arg-type]
+        )
+        .where(
+            SummerLeaguePlayerGameLog.player_id.is_not(None),  # type: ignore[union-attr]
+            SummerLeagueCompetition.year >= start_year,  # type: ignore[arg-type]
+            SummerLeagueCompetition.year <= end_year,  # type: ignore[arg-type]
+        )
+    )
+    game_rows = (await db.execute(game_stmt)).scalars().all()
+    game_values = qualifying_game_values(game_rows, min_minutes=game_min_minutes)
+
+    player_ids = {pid for pid, _year in events} | {gv.player_id for gv in game_values}
     slot_stmt = select(  # type: ignore[call-overload]
         PlayerMaster.id, PlayerMaster.draft_round, PlayerMaster.draft_pick
     ).where(
@@ -395,6 +509,17 @@ async def build_baselines(
             debut_key = f"debut:{suffix}"
             debut_values[debut_key].append(agg.gmsc)
             debut_meta[debut_key] = bounds
+
+    game_gmsc_values: dict[str, list[float]] = defaultdict(list)
+    game_meta: dict[
+        str, tuple[Optional[tuple[int, int]], SummerLeagueDeskCohortKind]
+    ] = {}
+    for gv in game_values:
+        rnd, pick = draft_slot.get(gv.player_id, (None, None))
+        _suffix, bounds, kind = _bucket(rnd, pick)
+        game_key = cohort_key_for(rnd, pick, grain=SummerLeagueDeskGrain.GAME)
+        game_gmsc_values[game_key].append(gv.gmsc)
+        game_meta[game_key] = (bounds, kind)
 
     version = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
 
@@ -437,6 +562,28 @@ async def build_baselines(
                 venue_scope="all",
                 season_range=season_range,
                 min_minutes=min_minutes,
+                n_members=len(values),
+                breakpoints=compute_breakpoints(values),
+                mean_value=compute_mean(values),
+                median_value=compute_median(values),
+            )
+        )
+    for key, values in game_gmsc_values.items():
+        bounds, kind = game_meta[key]
+        low, high = bounds if bounds else (None, None)
+        new_rows.append(
+            SummerLeagueCohortBaseline(
+                baseline_version=version,
+                is_active=True,
+                cohort_key=key,
+                cohort_kind=kind,
+                slot_low=low,
+                slot_high=high,
+                metric="gmsc",
+                grain=SummerLeagueDeskGrain.GAME,
+                venue_scope="all",
+                season_range=season_range,
+                min_minutes=game_min_minutes,
                 n_members=len(values),
                 breakpoints=compute_breakpoints(values),
                 mean_value=compute_mean(values),

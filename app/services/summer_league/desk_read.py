@@ -676,12 +676,14 @@ async def _assemble_ledger(
 ) -> tuple[list[DeskLedgerRow], dict[int, PlayerMaster]]:
     """The Ledger's top-performers list: per-game GmSc + cohort percentile.
 
-    Percentile uses the same event-grain-baseline approximation
-    `desk_storylines.detect_streak`'s caller uses for a single game (module
-    docstring there: no game-grain T1 baseline exists, so a single game's GmSc
-    is ranked against the player's cohort's event-grain distribution). A player
-    whose cohort has no active baseline yet is skipped rather than assigned a
-    fabricated percentile.
+    Percentile ranks a single game's GmSc against the player's cohort's
+    **event-grain** distribution. This is the same variance-mismatch
+    approximation the streak trigger used before #525 retargeted it to the
+    new ``game``-grain T1 baseline (`cohort_baselines.build_baselines`); the
+    Ledger is a separate read surface out of that ticket's scope and still
+    reads the event grain — aligning it to the game grain is a documented
+    follow-up, not done here. A player whose cohort has no active baseline yet
+    is skipped rather than assigned a fabricated percentile.
     """
     if not competition_ids or ledger_date is None:
         return [], {}

@@ -14,7 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeaguePlayerGameLog,
+    SummerLeagueSourcePlayer,
+    SummerLeagueTeamEntry,
+)
 from app.schemas.summer_league_desk import (
     SummerLeagueCohortBaseline,
     SummerLeagueDeskCohortKind,
@@ -89,6 +95,105 @@ async def _seed_season(
     db.add(season)
     await db.flush()
     return season
+
+
+_GAME_IDX = {"i": 0}
+
+
+def _next_game_idx() -> int:
+    _GAME_IDX["i"] += 1
+    return _GAME_IDX["i"]
+
+
+async def _seed_team(
+    db: AsyncSession, competition: SummerLeagueCompetition
+) -> SummerLeagueTeamEntry:
+    idx = _next_game_idx()
+    assert competition.id is not None
+    team = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id=f"t-{idx}",
+        raw_team_name=f"Team {idx}",
+        team_slug=f"team-{idx}",
+    )
+    db.add(team)
+    await db.flush()
+    assert team.id is not None
+    return team
+
+
+async def _seed_game(
+    db: AsyncSession,
+    competition: SummerLeagueCompetition,
+    home: SummerLeagueTeamEntry,
+    away: SummerLeagueTeamEntry,
+) -> SummerLeagueGame:
+    idx = _next_game_idx()
+    assert competition.id is not None
+    assert home.id is not None
+    assert away.id is not None
+    game = SummerLeagueGame(
+        competition_id=competition.id,
+        nba_stats_game_id=f"cohort-baseline-game-{idx}",
+        game_date=date(competition.year, 7, 10),
+        home_team_entry_id=home.id,
+        away_team_entry_id=away.id,
+    )
+    db.add(game)
+    await db.flush()
+    assert game.id is not None
+    return game
+
+
+async def _seed_source_player(
+    db: AsyncSession, *, player: PlayerMaster
+) -> SummerLeagueSourcePlayer:
+    idx = _next_game_idx()
+    assert player.id is not None
+    source_player = SummerLeagueSourcePlayer(
+        nba_stats_person_id=f"src-{idx}",
+        raw_player_name=player.display_name or "Test Player",
+        normalized_name=(player.display_name or "test player").lower(),
+        canonical_player_id=player.id,
+    )
+    db.add(source_player)
+    await db.flush()
+    assert source_player.id is not None
+    return source_player
+
+
+async def _seed_game_log(
+    db: AsyncSession,
+    *,
+    competition: SummerLeagueCompetition,
+    game: SummerLeagueGame,
+    team: SummerLeagueTeamEntry,
+    source_player: SummerLeagueSourcePlayer,
+    player: PlayerMaster,
+    minutes_seconds: int,
+    pts: float,
+) -> SummerLeaguePlayerGameLog:
+    """One box line whose GmSc equals ``pts`` (every other component is 0/None)."""
+    idx = _next_game_idx()
+    assert competition.id is not None
+    assert game.id is not None
+    assert team.id is not None
+    assert source_player.id is not None
+    assert player.id is not None
+    log = SummerLeaguePlayerGameLog(
+        competition_id=competition.id,
+        game_id=game.id,
+        team_entry_id=team.id,
+        source_player_id=source_player.id,
+        player_id=player.id,
+        nba_stats_person_id=f"srcpid-{idx}",
+        raw_player_name=player.display_name or "Test Player",
+        minutes_seconds=minutes_seconds,
+        pts=int(pts),
+    )
+    db.add(log)
+    await db.flush()
+    return log
 
 
 async def _active_rows(
@@ -373,3 +478,83 @@ async def test_build_baselines_idempotent_rerun_flips_active_without_corrupting(
     assert old_row.is_active is False
     assert old_row.baseline_version == version_1
     assert old_row.mean_value == v1_mean
+
+
+async def test_build_baselines_game_grain_pools_individual_games(
+    db_session: AsyncSession,
+) -> None:
+    """The `game` grain (#525) pools raw per-game GmSc, gated by the per-game floor.
+
+    Two #1 picks share the ``slot:1-4``/``game:1-4`` cohort. Player A logs
+    three qualifying individual games (each its own data point, NOT blended
+    into one). Player B logs one game under the per-game minutes floor
+    (dropped) and one that clears it. The event grain still builds
+    normally alongside the new game grain -- both coexist under the same
+    ``baseline_version`` without colliding cohort_keys.
+    """
+    comp = await _seed_competition(
+        db_session, year=2024, venue_slug="las_vegas", league_id="13"
+    )
+    home = await _seed_team(db_session, comp)
+    away = await _seed_team(db_session, comp)
+
+    player_a = await _seed_player(db_session, name="GameA", draft_round=1, draft_pick=1)
+    player_b = await _seed_player(db_session, name="GameB", draft_round=1, draft_pick=1)
+
+    # Event grain still needs at least one qualifying blended-season row.
+    await _seed_season(
+        db_session, competition=comp, player=player_a, year=2024, gmsc=20.0,
+        minutes=100.0, gp=5,
+    )
+    await _seed_season(
+        db_session, competition=comp, player=player_b, year=2024, gmsc=8.0,
+        minutes=100.0, gp=5,
+    )
+
+    source_a = await _seed_source_player(db_session, player=player_a)
+    source_b = await _seed_source_player(db_session, player=player_b)
+
+    for pts in (10.0, 20.0, 30.0):
+        game = await _seed_game(db_session, comp, home, away)
+        await _seed_game_log(
+            db_session, competition=comp, game=game, team=home,
+            source_player=source_a, player=player_a,
+            minutes_seconds=25 * 60, pts=pts,
+        )
+
+    thin_game = await _seed_game(db_session, comp, home, away)
+    await _seed_game_log(
+        db_session, competition=comp, game=thin_game, team=home,
+        source_player=source_b, player=player_b,
+        minutes_seconds=3 * 60, pts=99.0,  # under the per-game floor -- dropped
+    )
+    ok_game = await _seed_game(db_session, comp, home, away)
+    await _seed_game_log(
+        db_session, competition=comp, game=ok_game, team=home,
+        source_player=source_b, player=player_b,
+        minutes_seconds=15 * 60, pts=8.0,
+    )
+
+    version = await build_baselines(
+        db_session, season_range="2024-2024", min_minutes=40.0, game_min_minutes=10.0
+    )
+    await db_session.flush()
+    rows = await _active_rows(db_session, version)
+
+    game_row = rows["game:1-4"]
+    assert game_row.grain == SummerLeagueDeskGrain.GAME
+    assert game_row.cohort_kind == SummerLeagueDeskCohortKind.SLOT_WINDOW
+    assert (game_row.slot_low, game_row.slot_high) == (1, 4)
+    assert game_row.min_minutes == 10.0
+    # Player A's 3 qualifying games + player B's 1 qualifying game == 4;
+    # player B's 3-minute game is excluded by the per-game floor.
+    assert game_row.n_members == 4
+    assert game_row.mean_value == round((10.0 + 20.0 + 30.0 + 8.0) / 4, 2)
+    assert game_row.is_active is True
+
+    # The event grain still builds too, unaffected, under the SAME cohort's
+    # non-colliding key.
+    event_row = rows["slot:1-4"]
+    assert event_row.grain == SummerLeagueDeskGrain.EVENT
+    assert event_row.n_members == 2
+    assert event_row.mean_value == 14.0

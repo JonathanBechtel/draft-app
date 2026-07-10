@@ -17,6 +17,8 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskGrain,
 )
 from app.services.summer_league.cohort_baselines import (
+    DEFAULT_GAME_MIN_MINUTES,
+    DEFAULT_MIN_MINUTES,
     EventAggregate,
     blend_event_aggregates,
     cohort_key_for,
@@ -24,9 +26,12 @@ from app.services.summer_league.cohort_baselines import (
     compute_breakpoints,
     compute_mean,
     compute_median,
+    qualifying_game_values,
     slot_bounds_for,
     slot_window,
 )
+from app.services.summer_league.desk_grades import percentile_of_value
+from app.services.summer_league.metrics import game_score_line
 
 
 # --------------------------------------------------------------------------- #
@@ -122,6 +127,29 @@ class TestCohortKeyFor:
         assert (
             cohort_key_for(None, None, grain=SummerLeagueDeskGrain.DEBUT)
             == "debut:undrafted"
+        )
+
+    def test_game_prefix_mirrors_slot_suffix(self) -> None:
+        assert cohort_key_for(1, 1, grain=SummerLeagueDeskGrain.GAME) == "game:1-4"
+
+    def test_game_prefix_mirrors_round_suffix(self) -> None:
+        assert cohort_key_for(1, 20, grain=SummerLeagueDeskGrain.GAME) == "game:1_late"
+        assert cohort_key_for(2, 5, grain=SummerLeagueDeskGrain.GAME) == "game:2"
+
+    def test_game_prefix_mirrors_undrafted_suffix(self) -> None:
+        assert (
+            cohort_key_for(None, None, grain=SummerLeagueDeskGrain.GAME)
+            == "game:undrafted"
+        )
+
+    def test_game_prefix_never_collides_with_event_prefix(self) -> None:
+        """The uniqueness this key format exists to preserve (module docstring).
+
+        A T1 row is unique on (baseline_version, cohort_key) -- game and event
+        grain must never produce the same string for the same slot.
+        """
+        assert cohort_key_for(1, 1, grain=SummerLeagueDeskGrain.GAME) != cohort_key_for(
+            1, 1, grain=SummerLeagueDeskGrain.EVENT
         )
 
 
@@ -238,3 +266,109 @@ def test_blend_event_aggregates_skips_null_gmsc_rows() -> None:
     rows = [_row(1, 2024, gmsc=None, minutes=50.0, gp=1)]
     out = blend_event_aggregates(rows, min_minutes=40.0)
     assert (1, 2024) not in out
+
+
+# --------------------------------------------------------------------------- #
+# Game-grain: individual per-game GmSc values, per-game min-minutes gate (#525)
+# --------------------------------------------------------------------------- #
+def _game_row(
+    player_id: int, game_id: int, minutes_seconds: int, pts: float = 10.0
+) -> SimpleNamespace:
+    """A minimal box line -- other `game_score_line` fields default to 0 via
+    `game_score_from_row`'s `getattr(row, f, 0)`, so with every other
+    component at 0 the resulting GmSc equals `pts` exactly."""
+    return SimpleNamespace(
+        player_id=player_id, game_id=game_id, minutes_seconds=minutes_seconds, pts=pts
+    )
+
+
+def test_qualifying_game_values_gates_below_floor_per_game() -> None:
+    """A single game under the per-game minutes floor is dropped entirely."""
+    rows = [
+        _game_row(1, 100, minutes_seconds=5 * 60, pts=20.0),  # 5 min, below floor
+        _game_row(1, 101, minutes_seconds=15 * 60, pts=12.0),  # 15 min, clears
+    ]
+    out = qualifying_game_values(rows, min_minutes=10.0)
+    game_ids = {gv.game_id for gv in out}
+    assert game_ids == {101}
+
+
+def test_qualifying_game_values_keeps_every_qualifying_game_ungrouped() -> None:
+    """Unlike blend_event_aggregates, each qualifying game is its own data point."""
+    rows = [
+        _game_row(1, 100, minutes_seconds=20 * 60, pts=10.0),
+        _game_row(1, 101, minutes_seconds=20 * 60, pts=30.0),
+    ]
+    out = qualifying_game_values(rows, min_minutes=10.0)
+    assert len(out) == 2
+    assert {gv.gmsc for gv in out} == {10.0, 30.0}
+    assert all(gv.player_id == 1 for gv in out)
+
+
+def test_qualifying_game_values_computes_gmsc_via_game_score_from_row() -> None:
+    """GmSc is the real Hollinger Game Score, not the raw pts total."""
+    row = SimpleNamespace(
+        player_id=1,
+        game_id=100,
+        minutes_seconds=25 * 60,
+        pts=20,
+        fgm=8,
+        fga=15,
+        ftm=4,
+        fta=5,
+        oreb=1,
+        dreb=4,
+        ast=3,
+        stl=2,
+        blk=1,
+        tov=2,
+        pf=3,
+    )
+    out = qualifying_game_values([row], min_minutes=10.0)
+    assert len(out) == 1
+    expected = game_score_line(
+        pts=20, fgm=8, fga=15, ftm=4, fta=5, oreb=1, dreb=4, ast=3, stl=2, blk=1, tov=2, pf=3
+    )
+    assert out[0].gmsc == round(expected, 2)
+
+
+def test_qualifying_game_values_empty_rows_returns_empty_list() -> None:
+    assert qualifying_game_values([], min_minutes=10.0) == []
+
+
+def test_qualifying_game_values_default_floor_is_lower_than_event_floor() -> None:
+    """The per-game floor (#525) is deliberately much lower than the event grain's."""
+    assert DEFAULT_GAME_MIN_MINUTES < DEFAULT_MIN_MINUTES
+
+
+# --------------------------------------------------------------------------- #
+# The bug this ticket fixes: event-grain vs game-grain percentiles diverge
+# --------------------------------------------------------------------------- #
+def test_same_game_ranks_differently_against_event_grain_vs_game_grain() -> None:
+    """A hand-built cohort with known single-game spread: the two grains disagree.
+
+    Event-aggregate GmSc (season-blended, low variance) and individual-game
+    GmSc (high variance) are different distributions even when they come from
+    the same underlying players -- ranking one game against the wrong one
+    (the bug #525 fixes) skews the percentile toward the tails.
+    """
+    # Event grain: 5 players' season-blended GmSc -- tightly clustered.
+    event_values = [14.0, 15.0, 16.0, 17.0, 18.0]
+    # Game grain: the same players' individual games -- much wider spread
+    # (a hot night can far exceed, a cold night can far undercut, the season
+    # average).
+    game_values = [2.0, 8.0, 15.0, 24.0, 30.0, 6.0, 20.0, 12.0, 28.0, 4.0]
+
+    event_breakpoints = compute_breakpoints(event_values)
+    game_breakpoints = compute_breakpoints(game_values)
+
+    # One big game: 22 GmSc.
+    subject_game_gmsc = 22.0
+    event_pctl = percentile_of_value(event_breakpoints, subject_game_gmsc)
+    game_pctl = percentile_of_value(game_breakpoints, subject_game_gmsc)
+
+    assert event_pctl != game_pctl
+    # Ranked against the tight event distribution, 22 reads near the very
+    # top (inflated); against the true wide game distribution it's real but
+    # more modest.
+    assert event_pctl > game_pctl

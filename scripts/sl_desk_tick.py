@@ -127,6 +127,7 @@ from app.services.summer_league.desk_fact_queries import (  # noqa: E402
     fetch_debut_baselines,
     fetch_debut_status,
     fetch_event_baselines,
+    fetch_game_baselines,
     fetch_game_lines,
     fetch_prior_events,
     fetch_tonight_field,
@@ -452,9 +453,29 @@ async def _commentary_for_competition(
         db, player_ids=player_ids, year=competition.year
     )
 
+    # Streak's per-game bar/percentile ranks against the game-grain baseline
+    # (#525), not the event-grain one `baseline_by_player` used to point at --
+    # a separate cohort-key map since a player's game-grain key (`game:...`)
+    # differs from their event-grain key (`slot:.../round:.../status:...`)
+    # even though both derive from the same draft slot.
+    game_cohort_key_by_player = {
+        pid: cohort_key_for(
+            player_by_id[pid].draft_round,
+            player_by_id[pid].draft_pick,
+            grain=SummerLeagueDeskGrain.GAME,
+        )
+        for pid in player_ids
+        if pid in player_by_id
+    }
+    game_baselines = await fetch_game_baselines(
+        db,
+        baseline_version=baseline_version,
+        cohort_keys=list(set(game_cohort_key_by_player.values())),
+    )
     baseline_by_player = {
-        pid: event_baselines.get(grade.cohort_key)
-        for pid, grade in grade_by_player.items()
+        pid: game_baselines.get(game_cohort_key_by_player[pid])
+        for pid in player_ids
+        if pid in game_cohort_key_by_player
     }
     game_lines_by_player = await fetch_game_lines(
         db,
@@ -537,7 +558,7 @@ async def _commentary_for_competition(
         streak_fact = detect_streak(
             subject=subject,
             metric="gmsc",
-            cohort_key=grade.cohort_key,
+            cohort_key=game_cohort_key_by_player.get(player_id, grade.cohort_key),
             games=game_lines_by_player.get(player_id, []),
             baseline_version=baseline_version,
         )
