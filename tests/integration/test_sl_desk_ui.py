@@ -27,6 +27,8 @@ from pathlib import Path
 import pytest
 from httpx import AsyncClient
 from jinja2 import Environment, FileSystemLoader
+
+from app.templating import register_template_filters
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_affiliation import AffiliationStatus
@@ -506,6 +508,7 @@ async def test_morning_hero_and_slate_tail_collapse_with_ref_tagging(
     game_year = to_eastern_date(now).year
 
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=True)
+    register_template_filters(env)
     hero_html = env.get_template("summer_league/desk/hero_morning.html").render(
         desk_payload=payload,
         desk_players=view["players"],
@@ -533,6 +536,10 @@ async def test_morning_hero_and_slate_tail_collapse_with_ref_tagging(
     assert 'id="deskSlateToggle"' in slate_html
     assert "Show all 6 games" in slate_html
     assert "?ref=sl-desk" in slate_html
+    # Slate tips are naive UTC (01:00 UTC Jul 11) -> must render as 9:00 PM ET
+    # (Jul 10), not the raw-UTC "1:00 AM ET" the card used to mislabel them.
+    assert "9:00 PM ET" in slate_html
+    assert " AM ET" not in slate_html
     _assert_no_switcher_chrome(slate_html)
 
 
@@ -588,6 +595,7 @@ async def test_quiet_slate_hero_renders_solo_fallback(db_session: AsyncSession) 
 
     view = await get_desk_view_context(db_session, payload)
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=True)
+    register_template_filters(env)
     hero_html = env.get_template("summer_league/desk/hero_morning.html").render(
         desk_payload=payload,
         desk_players=view["players"],

@@ -35,6 +35,7 @@ from app.utils.db_async import (
 
 from app.logging_config import setup_logging
 from app.config import settings
+from app.templating import register_template_filters
 
 import logging
 
@@ -113,6 +114,7 @@ if settings.log_requests:
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.state.templates = Jinja2Templates(directory="app/templates")
+register_template_filters(app.state.templates.env)
 app.include_router(consensus.router)
 app.include_router(export.router)
 app.include_router(news.router)

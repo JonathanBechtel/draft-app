@@ -47,6 +47,22 @@ def to_eastern(value: datetime) -> datetime:
     return aware_utc.astimezone(EASTERN)
 
 
+def format_et_clock(value: datetime | None) -> str:
+    """Render a naive-UTC (or aware) datetime as an Eastern wall-clock label.
+
+    A 23:00 UTC tip becomes ``"7:00 PM ET"`` (DST-correct); ``None`` yields an
+    empty string. Registered as the ``et_time`` Jinja filter so templates never
+    format a raw naive-UTC value and mislabel it ET -- the hour is built by hand
+    (not ``strftime('%-I')``) to avoid platform-specific strftime flags.
+    """
+    if value is None:
+        return ""
+    eastern = to_eastern(value)
+    hour12 = eastern.hour % 12 or 12
+    ampm = "AM" if eastern.hour < 12 else "PM"
+    return f"{hour12}:{eastern.minute:02d} {ampm} ET"
+
+
 def to_eastern_date(value: datetime) -> date:
     """The Eastern calendar date a naive-UTC (or aware) datetime falls on.
 

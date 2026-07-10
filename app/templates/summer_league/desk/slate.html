@@ -24,7 +24,7 @@
           {{ row.status.replace('_', ' ') | title }}
         </span>
         {% if row.tip_datetime %}
-        <span class="desk__game-card-time">{{ row.tip_datetime.strftime('%-I:%M %p ET') }}</span>
+        <span class="desk__game-card-time">{{ row.tip_datetime | et_time }}</span>
         {% endif %}
       </div>
       <div class="desk__game-card-title">
