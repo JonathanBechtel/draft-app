@@ -6,29 +6,46 @@ step supplied by a sibling ticket's already-shipped, already-tested public
 API — this module is pure orchestration, it implements no new grading,
 storyline, or commentary logic of its own:
 
-    0. schedule/scoreboard ingest (#515) — upsert today's + tomorrow's SL
-       games (``tip_datetime`` / status) before anything else, since the
-       state machine and Morning Card can't exist without tip times.
-    1. (existing) normalize -- ``normalize_competition_games`` /
+    0. schedule/scoreboard ingest (#515, #529) — upsert the active event's
+       full known schedule (``tip_datetime`` / status / scores) before
+       anything else, since the state machine and Morning Card can't exist
+       without tip times, and every later step reads this as the
+       provider-authoritative live status for each game.
+    1. targeted live raw refresh (#531,
+       ``app.services.summer_league.live_ingestion.run_live_ingestion``) --
+       force a fresh boxscore/pbp/shotchart pull for exactly the
+       Scheduled/In-Progress games sitting in an active time window around
+       "now" (never the whole season). Runs *after* scoreboard so the
+       selection reads each game's freshest known status, and *before*
+       normalization so normalize always sees this tick's newest raw
+       snapshot, never a stale one from an earlier hour.
+    2. (existing) normalize -- ``normalize_competition_games`` /
        ``normalize_player_game_logs`` (the same functions
        ``scripts/normalize_summer_league.py`` calls) pick up any newly
        audited raw box scores for today's competitions. Best-effort per
        competition: a competition with no audited raw run yet this hour is
        not an error (raw fetch/audit runs on its own cadence, independent
-       of this hourly tick). Every competition normalize actually touched
-       this tick is then passed to a *scoped* ``summer_league_player_seasons``
-       rebuild (#523, ``app.services.summer_league.metrics.rebuild`` called
-       with ``competition_ids=``) so step 2's grading reads freshly
-       recomputed event aggregates rather than whatever was materialized on
-       a prior tick -- never the unscoped, whole-table wipe-and-rebuild
+       of this hourly tick). Status resolution here is pure and one-way
+       (#530, ``normalization.resolve_game_status``) -- a partial mid-game
+       snapshot can never promote a Scheduled/In-Progress game to Final on
+       its own (only scoreboard, already reflected in the persisted status
+       by tick order, or a fully ``COMPLETE`` audited historic backfill with
+       no scoreboard tracking at all, ever does that), and a proven Final is
+       monotonic against any later, less-complete call. Every competition
+       normalize actually touched this tick is then passed to a *scoped*
+       ``summer_league_player_seasons`` rebuild (#523,
+       ``app.services.summer_league.metrics.rebuild`` called with
+       ``competition_ids=``) so step 3's grading reads freshly recomputed
+       event aggregates rather than whatever was materialized on a prior
+       tick -- never the unscoped, whole-table wipe-and-rebuild
        ``scripts/rebuild_sl_metrics.py`` performs (far too heavy for an
        hourly cron, and destructive to any competition this tick didn't
        just normalize).
-    2. per active roster player -> grade vs the active T1 baseline (#503,
+    3. per active roster player -> grade vs the active T1 baseline (#503,
        ``desk_grades.grade_player_event``) -> T2.
-    3. evaluate storyline triggers for today's games (#504,
+    4. evaluate storyline triggers for today's games (#504,
        ``desk_storylines.compute_desk_storylines``) -> T3 + T4.
-    4. commentary (#524) -- fire all eight #520 detectors for each graded
+    5. commentary (#524) -- fire all eight #520 detectors for each graded
        player (``percentile``, ``cohort_rank``, ``streak``, ``self_delta``,
        ``leads_field``, ``debut_vs_bar``, ``count_club``, ``first_since``),
        each fed by a batched peer-population fetch from
@@ -40,8 +57,14 @@ storyline, or commentary logic of its own:
        through Stage 2 selection (``desk_selection.dedup_facts`` /
        ``select_facts``, e.g. a rank-1 ``cohort_rank`` subsuming its own
        ``percentile``) via ``desk_commentary.build_facts_payload``.
-    5. upsert ``event_desk_state`` (#506 ``event_desk.controller.
-       run_event_desk_tick`` -- the only module that writes that table).
+    6. render/state freshness -- upsert ``event_desk_state`` (#506
+       ``event_desk.controller.run_event_desk_tick`` -- the only module that
+       writes that table). Only reached once every *required* step above
+       has genuinely succeeded (#530): if step 1's targeted refresh reports
+       any error for a game it actually selected this tick, the whole tick
+       raises before this step, so a failed refresh never gets to claim
+       fresh state -- the caller's transaction rolls back and the next
+       scheduled tick retries.
 
 **Never rebuilds a distribution.** Job A (``scripts/build_sl_cohort_baselines.py``)
 is the rare, offline cohort-baseline (T1) builder; this tick only ever reads
@@ -169,12 +192,17 @@ from app.services.summer_league.desk_storylines import (  # noqa: E402
     StorylineTickResult,
     compute_desk_storylines,
 )
+from app.services.summer_league.live_ingestion import (  # noqa: E402
+    LiveIngestionReport,
+    run_live_ingestion,
+)
 from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics  # noqa: E402
 from app.services.summer_league.nba_stats_client import NBAStatsClient  # noqa: E402
 from app.services.summer_league.normalization import (  # noqa: E402
     normalize_competition_games,
     normalize_player_game_logs,
 )
+from app.services.summer_league.raw_store import SummerLeagueRawStore  # noqa: E402
 from app.services.summer_league.scoreboard_ingest import (  # noqa: E402
     ScoreboardIngestReport,
     resolve_target_competitions,
@@ -205,6 +233,10 @@ class DeskTickResult:
     daily_state: Optional[EventDailyState]
     baseline_version: Optional[str] = None
     scoreboard_report: Optional[ScoreboardIngestReport] = None
+    # Step 1 -- targeted live raw refresh (#531/#530). `None` on a dormant
+    # tick (step 1 never runs there); otherwise always populated, including
+    # the common empty-window case (`selected=0`).
+    live_refresh_report: Optional[LiveIngestionReport] = None
     normalized_competition_ids: tuple[int, ...] = ()
     graded_player_ids: tuple[int, ...] = ()
     storyline_results: dict[int, StorylineTickResult] = field(default_factory=dict)
@@ -790,10 +822,12 @@ async def run_desk_tick(
         now: Override for "now" (tests only); defaults to the current UTC
             instant.
         raw_root: Root directory of audited raw Summer League snapshots,
-            forwarded to the normalize step.
+            forwarded to the normalize and targeted-live-refresh steps.
         client: Optional injected :class:`NBAStatsClient` (tests only),
-            forwarded to the scoreboard ingest step; when omitted a real
-            client is opened for the duration of that step.
+            forwarded to the scoreboard ingest and targeted live-refresh
+            steps (they share one client/session); when omitted a real
+            client is opened for the duration of those steps and closed
+            afterward.
 
     Returns:
         A :class:`DeskTickResult` summarizing every stage's outcome.
@@ -801,7 +835,11 @@ async def run_desk_tick(
     Raises:
         RuntimeError: The tick is not off-window (there's real work to do)
             but no active T1 cohort baseline exists -- Job A
-            (``scripts/build_sl_cohort_baselines.py``) must run first.
+            (``scripts/build_sl_cohort_baselines.py``) must run first; or
+            the targeted live raw refresh (step 1) reported an error for a
+            game it actually selected this tick -- a required refresh
+            failure must never let the tick reach step 6 and claim fresh
+            state (#530).
     """
     resolved_now = now if now is not None else datetime.utcnow()
 
@@ -844,25 +882,65 @@ async def run_desk_tick(
 
     today = to_eastern_date(resolved_now)
 
-    # Step 0 -- schedule/scoreboard ingest. Already ran above if this tick
-    # needed the #527 bootstrap; skip the duplicate network round-trip.
-    if bootstrap_report is not None:
-        scoreboard_report = bootstrap_report
-    else:
-        scoreboard_report = await run_scoreboard_ingest(db, today=today, client=client)
+    # Steps 0-1 share one NBA Stats client/session -- opened here (once) when
+    # the caller didn't inject one, and always closed afterward, mirroring
+    # the owns-client pattern each individual step manages internally when
+    # called standalone.
+    owns_client = client is None
+    active_client = client or NBAStatsClient()
+    try:
+        # Step 0 -- schedule/scoreboard ingest. Already ran above if this
+        # tick needed the #527 bootstrap; skip the duplicate network
+        # round-trip.
+        if bootstrap_report is not None:
+            scoreboard_report = bootstrap_report
+        else:
+            scoreboard_report = await run_scoreboard_ingest(
+                db, today=today, client=active_client
+            )
+
+        # Step 1 -- targeted live raw refresh (#531/#530). Reads
+        # `summer_league_games` fresh (including anything step 0 -- or the
+        # #527 bootstrap above -- just flushed this tick), so a Scheduled
+        # game bootstrapped moments ago is already visible here; selection
+        # is status/window-scoped, not tied to `competitions` below.
+        live_refresh_report = await run_live_ingestion(
+            db,
+            client=active_client,
+            store=SummerLeagueRawStore(raw_root),
+            clock=lambda: resolved_now,
+        )
+        if live_refresh_report.required_errors > 0:
+            # A group's *required* season gamelog fetch failed outright for
+            # games this tick actually selected -- every subsequent
+            # normalize pass for that group would run with no season-level
+            # anchor at all. Raise before any T1-T4 write or the step 6
+            # freshness stamp so the caller's transaction rolls back cleanly
+            # and the next scheduled tick retries from the prior good state
+            # (#530). A merely optional per-game/endpoint hiccup (reflected
+            # in `.errors` but not `.required_errors`) does not abort the
+            # tick -- normalize already tolerates partial per-game raw data.
+            raise RuntimeError(
+                "Required Summer League live raw refresh failed "
+                f"({live_refresh_report.required_errors} required error(s)): "
+                f"{'; '.join(live_refresh_report.error_messages)}"
+            )
+    finally:
+        if owns_client:
+            active_client.close()
 
     competitions = await resolve_target_competitions(db, today=today)
 
-    # Step 1 -- normalize (existing normalizer; best-effort per competition).
+    # Step 2 -- normalize (existing normalizer; best-effort per competition).
     normalized_ids: list[int] = []
     for competition in competitions:
         assert competition.id is not None
         if await _normalize_competition(db, competition, raw_root=raw_root):
             normalized_ids.append(competition.id)
 
-    # Step 1b -- scoped metrics rebuild (#523): refresh
+    # Step 2b -- scoped metrics rebuild (#523): refresh
     # summer_league_player_seasons for exactly the competitions normalize
-    # touched this tick, so step 2's grading below reads fresh event
+    # touched this tick, so step 3's grading below reads fresh event
     # aggregates instead of stale ones. Writes are sequential (no concurrent
     # session use) and scoped by competition_id, so a competition this tick
     # didn't normalize -- including rows this module never wrote at all --
@@ -884,7 +962,7 @@ async def run_desk_tick(
         assert competition.id is not None
         competition_id = competition.id
 
-        # Step 2 -- grades (T2).
+        # Step 3 -- grades (T2).
         grade_by_player: dict[int, GradeRow] = {}
         for player_id in await _active_roster_player_ids(db, competition_id):
             try:
@@ -900,7 +978,7 @@ async def run_desk_tick(
                 )
         graded_player_ids.extend(grade_by_player.keys())
 
-        # Step 3 -- storylines (T3 + T4).
+        # Step 4 -- storylines (T3 + T4).
         result = await compute_desk_storylines(
             db,
             game_date=today,
@@ -910,7 +988,7 @@ async def run_desk_tick(
         )
         storyline_results[competition_id] = result
 
-        # Step 4 -- commentary (all eight #520 Facts onto T2 + grouped onto T4).
+        # Step 5 -- commentary (all eight #520 Facts onto T2 + grouped onto T4).
         await _commentary_for_competition(
             db,
             competition=competition,
@@ -920,8 +998,10 @@ async def run_desk_tick(
             slate=result.slate,
         )
 
-    # Step 5 -- event_desk_state upsert (last; reflects the freshly ingested
-    # scoreboard rather than the pre-tick snapshot the step-0 pre-check saw).
+    # Step 6 -- render/state freshness: event_desk_state upsert (last;
+    # reflects the freshly ingested scoreboard rather than the pre-tick
+    # snapshot the step-0 pre-check saw, and is only reached once every
+    # required step above has genuinely succeeded).
     states = await run_event_desk_tick(db, now=resolved_now)
 
     return DeskTickResult(
@@ -930,6 +1010,7 @@ async def run_desk_tick(
         daily_state=daily_state,
         baseline_version=baseline_version,
         scoreboard_report=scoreboard_report,
+        live_refresh_report=live_refresh_report,
         normalized_competition_ids=tuple(normalized_ids),
         graded_player_ids=tuple(graded_player_ids),
         storyline_results=storyline_results,
@@ -965,6 +1046,12 @@ def _summarize(result: DeskTickResult) -> str:
             f"  scoreboard: checked={report.competitions_checked} "
             f"created={report.games_created} updated={report.games_updated} "
             f"errors={report.errors} unresolved_team_ids={report.unresolved_team_ids}"
+        )
+    if result.live_refresh_report is not None:
+        refresh = result.live_refresh_report
+        lines.append(
+            f"  live_refresh: selected={refresh.selected} groups={refresh.groups} "
+            f"written={refresh.written} errors={refresh.errors}"
         )
     for competition_id, storyline_result in result.storyline_results.items():
         lines.append(

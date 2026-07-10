@@ -29,6 +29,7 @@ from app.schemas.summer_league import (
     SummerLeagueRawFile,
     SummerLeagueRawFileStatus,
     SummerLeagueRawRun,
+    SummerLeagueRawRunStatus,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
     SummerLeagueSourcePlayer,
@@ -269,6 +270,13 @@ async def normalize_competition_games(
         raise RuntimeError("Raw run id was not populated")
     raw_files = await _get_raw_files(db, raw_run_id=raw_run.id)
     quality = _competition_quality(raw_run, raw_files)
+    # Whole-slice completion evidence (#530): only a fully audited raw run --
+    # every expected file for this year/league successfully captured -- is
+    # strong enough evidence to establish Final for a game normalization is
+    # seeing for the first time with no scoreboard-tracked status at all (see
+    # `resolve_game_status`). A live event's raw run stays PARTIAL for as
+    # long as any game hasn't finished, so this never fires mid-event.
+    raw_run_complete = raw_run.status == SummerLeagueRawRunStatus.COMPLETE
     competition = await _upsert_competition(db, raw_run, quality)
     await db.flush()
     if competition.id is None:
@@ -300,6 +308,7 @@ async def normalize_competition_games(
             rows,
             teams_by_source_id,
             quality,
+            raw_run_complete=raw_run_complete,
         )
         await db.flush()
         games_by_source_id[game_id] = game
@@ -1236,6 +1245,61 @@ async def _upsert_team_entry(
     return row
 
 
+def resolve_game_status(
+    *,
+    current_status: SummerLeagueGameStatus,
+    raw_run_complete: bool,
+) -> SummerLeagueGameStatus:
+    """Pure Job B status resolution for one ``summer_league_games`` row (#530).
+
+    Normalization alone must never promote a game from Scheduled/In-Progress
+    to Final just because *some* raw box data for it happened to parse this
+    pass -- a live tick's targeted raw refresh
+    (``app.services.summer_league.live_ingestion``) can legitimately force a
+    fresh boxscore snapshot for a game that is nowhere near over, and Job B's
+    tick order (scoreboard -> targeted raw refresh -> normalization) means
+    ``current_status`` already carries whatever the scoreboard step (the
+    provider-authoritative source for live status, #529) most recently wrote
+    onto this row. Only two things ever establish Final here:
+
+    1. Scoreboard's own provider truth, already reflected in
+       ``current_status`` by the time this runs.
+    2. A fully audited, ``COMPLETE`` raw run (``raw_run_complete``) for a
+       game scoreboard has never tracked at all (``current_status`` is
+       ``UNKNOWN`` -- a historic year normalized straight from a one-shot
+       full backfill with no live scoreboard step ever run against it). The
+       whole audited slice being genuinely complete -- every discovered
+       game's raw files successfully captured -- is real completion evidence
+       there, matching this normalizer's original behavior for full historic
+       ingests. A live event's raw run stays ``PARTIAL`` for as long as any
+       game hasn't finished, so this path never fires mid-event.
+
+    Once Final, monotonic: no later call -- partial, stale, or otherwise --
+    can regress it back to Scheduled/In-Progress/Unknown.
+
+    Args:
+        current_status: The game's persisted status before this call (the
+            existing row's ``status``, or ``UNKNOWN`` -- the schema default
+            -- for a brand-new row).
+        raw_run_complete: Whether the audited ``SummerLeagueRawRun`` driving
+            this normalize call is ``COMPLETE`` (every expected raw file for
+            the whole year/league successfully captured).
+
+    Returns:
+        The status to persist.
+    """
+    if current_status == SummerLeagueGameStatus.FINAL:
+        return SummerLeagueGameStatus.FINAL
+    if current_status in (
+        SummerLeagueGameStatus.SCHEDULED,
+        SummerLeagueGameStatus.IN_PROGRESS,
+    ):
+        return current_status
+    if raw_run_complete:
+        return SummerLeagueGameStatus.FINAL
+    return SummerLeagueGameStatus.UNKNOWN
+
+
 async def _upsert_game(
     db: AsyncSession,
     competition_id: int,
@@ -1243,6 +1307,8 @@ async def _upsert_game(
     rows: list[ParsedTeamGamelogRow],
     teams_by_source_id: dict[str, SummerLeagueTeamEntry],
     quality: SummerLeagueDataQuality,
+    *,
+    raw_run_complete: bool,
 ) -> SummerLeagueGame:
     result = await db.execute(
         select(SummerLeagueGame).where(
@@ -1268,7 +1334,9 @@ async def _upsert_game(
     row.away_team_entry_id = away_team.id if away_team else None
     row.home_score = home_row.pts if home_row else None
     row.away_score = away_row.pts if away_row else None
-    row.status = SummerLeagueGameStatus.FINAL
+    row.status = resolve_game_status(
+        current_status=row.status, raw_run_complete=raw_run_complete
+    )
     row.source_quality = quality
     row.updated_at = _utc_now_naive()
     return row

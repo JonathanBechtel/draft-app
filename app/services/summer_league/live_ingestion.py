@@ -96,6 +96,14 @@ class LiveIngestionReport:
             failed outright on a required season gamelog. Errors are never
             folded into ``written`` -- a failed endpoint cannot be reported
             as a successful refresh.
+        required_errors: The subset of ``errors`` caused by a group's
+            *required* season gamelog fetch failing outright
+            (``SummerLeagueRequiredGamelogError``) -- the prerequisite every
+            game in that group's normalize pass depends on. A single
+            optional per-game/endpoint hiccup (one bad shotchart fetch, say)
+            does not count here; callers that need to decide whether a tick
+            can safely proceed to normalize/claim fresh state should gate on
+            this, not on ``errors``.
         error_messages: Human-readable detail for each counted error.
     """
 
@@ -104,6 +112,7 @@ class LiveIngestionReport:
     written: int = 0
     skipped: int = 0
     errors: int = 0
+    required_errors: int = 0
     error_messages: list[str] = field(default_factory=list)
 
 
@@ -241,6 +250,7 @@ def refresh_selected_games(
             manifest = ingestor.fetch_year_league(options)
         except SummerLeagueRequiredGamelogError as exc:
             report.errors += 1
+            report.required_errors += 1
             report.error_messages.append(f"{year}/{league_id}: {exc}")
             continue
         report.written += len(manifest.files_written)
