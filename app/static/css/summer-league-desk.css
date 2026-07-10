@@ -430,6 +430,78 @@
 }
 .desk__offwindow-link:hover { text-decoration: underline; }
 
+/* ===== Class Tracker (#511) ===== */
+.desk__tracker-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+.desk__tracker-cohorts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.desk__tracker-toggle-btn {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-slate-300);
+  background: var(--color-white);
+  color: var(--color-slate-700);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.desk__tracker-toggle-btn:hover { background: var(--color-slate-100); }
+.desk__tracker-toggle-btn.is-active { background: var(--color-slate-900); color: #fff; border-color: var(--color-slate-900); }
+
+.desk__tracker-statview { margin-left: auto; }
+
+/* The Explorer's segmented-toggle look (`.slg-mode-toggle`/`.slg-mode-btn`)
+   lives only in that template's own scoped <style> block (no build step, no
+   shared component CSS file) -- copied here verbatim so the Class Tracker's
+   stat-view toggle matches it exactly, per the ticket's explicit instruction
+   to reuse those classes. Applied to <a> elements here (a plain GET
+   round-trip) rather than the Explorer's radio-labeled <form> controls;
+   the visual rules are identical either way. */
+.slg-mode-toggle { display: inline-flex; flex-wrap: wrap; width: fit-content; border: 1px solid var(--color-slate-300, #cbd5e1); border-radius: 6px; overflow: hidden; }
+.slg-mode-btn { font-family: var(--font-mono, monospace); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.45rem 1rem; cursor: pointer; color: var(--color-slate-700, #334155); background: #fff; border-right: 1px solid var(--color-slate-300, #cbd5e1); text-decoration: none; display: inline-block; user-select: none; transition: background 0.15s, color 0.15s; }
+.slg-mode-btn:last-child { border-right: none; }
+.slg-mode-btn:hover:not(.is-active) { background: var(--color-slate-100, #f1f5f9); }
+.slg-mode-btn.is-active { background: var(--color-slate-900, #0f172a); color: #fff; }
+
+.desk__tracker-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.desk__tracker-table th {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-slate-500);
+  text-align: right;
+  padding: 0.45rem 0.55rem;
+  border-bottom: 2px solid var(--color-slate-200);
+  white-space: nowrap;
+}
+.desk__tracker-table th:first-child,
+.desk__tracker-table td:first-child { text-align: left; }
+.desk__tracker-table td { padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--color-slate-100); vertical-align: middle; text-align: right; white-space: nowrap; }
+.desk__tracker-table tr:hover td { background: var(--color-slate-50); }
+.desk__tracker-th--active { color: var(--color-slate-900); font-weight: 600; }
+.desk__tracker-identity { font-family: var(--font-mono); font-size: 0.62rem; color: var(--color-slate-500); }
+.desk__tracker-caption { font-size: 0.72rem; color: var(--color-slate-500); margin: 0.55rem 0.3rem 0.3rem; }
+.desk__tracker-empty { padding: 1.3rem 1rem; text-align: center; color: var(--color-slate-500); font-size: 0.85rem; }
+
+@media (max-width: 620px) {
+  .desk__tracker-toggles { flex-direction: column; align-items: stretch; }
+  .desk__tracker-statview { margin-left: 0; }
+}
+
 /* Tables scroll inside their own card, never the page (repo-wide mobile rule). */
 @media (max-width: 768px) {
   .desk__slate-grid { grid-template-columns: 1fr; }

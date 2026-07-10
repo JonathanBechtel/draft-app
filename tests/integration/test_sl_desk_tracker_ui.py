@@ -1,0 +1,737 @@
+"""Integration tests for the Summer League Desk Class Tracker UI (#511).
+
+Covers the ticket's Definition of Done: six cohort toggles (with the
+within-round `draft_pick` boundary translated correctly -- see
+`app.services.summer_league.cohort_baselines`'s module docstring for the
+"draft_pick is WITHIN-ROUND" gotcha this repo hinges on), the Box/Per-36/
+Per-100/Advanced stat-view rescale (counting stats scale, shooting
+percentages stay invariant, BPM/WS82 em-dash when a pool isn't
+`adv_eligible`), the cap-30 + truncation caption, GP=0 em-dashes, the
+Undrafted identity swap, `?ref=sl-desk` deep-linking, and the `/` query
+budget with cohort/statview params set.
+
+Arithmetic assertions (rescale factors, cohort membership sets) call
+`get_desk_payload` directly for precision; HTML-shape assertions (toggle
+markup, deep-links, em-dashes) go through the real `/` route, forced into a
+time-independent state via an all-`FINAL` slate (Recap -- same technique
+`test_sl_desk_ui.py` uses, since Live/Recap are driven by game *status*, not
+wall-clock).
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta
+
+import pytest
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+
+from app.schemas.player_affiliation import AffiliationStatus
+from app.schemas.players_master import PlayerMaster
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeagueGameStatus,
+    SummerLeagueParticipation,
+    SummerLeagueSourcePlayer,
+    SummerLeagueTeamEntry,
+)
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.event_desk.registry import sync_summer_league_event
+from app.services.event_desk.timeutils import to_eastern_date
+from app.services.summer_league.desk_read import (
+    TRACKER_CAP,
+    get_desk_payload,
+)
+from tests.integration.perf._capture import count_queries
+from tests.integration.perf.budgets import DESK_HOME_PAGE_BUDGETS
+
+pytestmark = pytest.mark.asyncio
+
+_IDX = {"n": 0}
+
+
+def _idx() -> int:
+    _IDX["n"] += 1
+    return _IDX["n"]
+
+
+async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueCompetition:
+    idx = _idx()
+    comp = SummerLeagueCompetition(
+        year=year,
+        league_id="15",
+        venue_slug=f"vegas-tracker-{idx}",
+        display_name=f"{year} Las Vegas",
+        starts_on=date(year, 7, 1),
+        ends_on=date(year, 7, 20),
+    )
+    db.add(comp)
+    await db.flush()
+    assert comp.id is not None
+    return comp
+
+
+async def _seed_team(
+    db: AsyncSession, competition: SummerLeagueCompetition, *, franchise_id: str = ""
+) -> SummerLeagueTeamEntry:
+    idx = _idx()
+    assert competition.id is not None
+    team = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id=franchise_id or f"tracker-team-{idx}",
+        raw_team_name=f"Team {idx}",
+        raw_team_abbreviation=f"T{idx}",
+        team_slug=f"tracker-team-{idx}",
+    )
+    db.add(team)
+    await db.flush()
+    assert team.id is not None
+    return team
+
+
+async def _seed_game(
+    db: AsyncSession,
+    competition: SummerLeagueCompetition,
+    home: SummerLeagueTeamEntry,
+    away: SummerLeagueTeamEntry,
+    *,
+    game_date: date,
+    tip_datetime: datetime,
+    status: SummerLeagueGameStatus,
+) -> SummerLeagueGame:
+    idx = _idx()
+    assert competition.id is not None and home.id is not None and away.id is not None
+    game = SummerLeagueGame(
+        competition_id=competition.id,
+        nba_stats_game_id=f"tracker-game-{idx}",
+        game_date=game_date,
+        tip_datetime=tip_datetime,
+        home_team_entry_id=home.id,
+        away_team_entry_id=away.id,
+        status=status,
+        home_score=70 if status == SummerLeagueGameStatus.FINAL else None,
+        away_score=65 if status == SummerLeagueGameStatus.FINAL else None,
+    )
+    db.add(game)
+    await db.flush()
+    assert game.id is not None
+    return game
+
+
+async def _seed_player(
+    db: AsyncSession,
+    *,
+    name: str,
+    draft_year: int | None,
+    draft_round: int | None,
+    draft_pick: int | None,
+) -> PlayerMaster:
+    idx = _idx()
+    player = PlayerMaster(
+        first_name=name,
+        last_name=f"Test{idx}",
+        display_name=f"{name} Test{idx}",
+        draft_year=draft_year,
+        draft_round=draft_round,
+        draft_pick=draft_pick,
+        position="G",
+        is_stub=False,
+    )
+    db.add(player)
+    await db.flush()
+    assert player.id is not None
+    return player
+
+
+async def _roster_player(
+    db: AsyncSession,
+    competition: SummerLeagueCompetition,
+    team: SummerLeagueTeamEntry,
+    player: PlayerMaster,
+) -> SummerLeagueSourcePlayer:
+    idx = _idx()
+    assert competition.id is not None and team.id is not None and player.id is not None
+    source_player = SummerLeagueSourcePlayer(
+        nba_stats_person_id=f"tracker-src-{idx}",
+        raw_player_name=player.display_name or "Test Player",
+        normalized_name=(player.display_name or "test player").lower(),
+        canonical_player_id=player.id,
+    )
+    db.add(source_player)
+    await db.flush()
+    assert source_player.id is not None
+
+    db.add(
+        SummerLeagueParticipation(
+            competition_id=competition.id,
+            team_entry_id=team.id,
+            source_player_id=source_player.id,
+            player_id=player.id,
+            roster_status=AffiliationStatus.ACTIVE,
+        )
+    )
+    await db.flush()
+    return source_player
+
+
+async def _seed_active_window_game(
+    db: AsyncSession, competition: SummerLeagueCompetition, *, now: datetime
+) -> None:
+    """Seed one game so `sync_summer_league_event` finds an ACTIVE outer window.
+
+    Tests that only need `get_desk_payload`'s tracker section (not the hero/
+    slate) still need at least one game on the books -- the outer lifecycle
+    resolves from the event's game-date window, which is empty without one.
+    """
+    home = await _seed_team(db, competition)
+    away = await _seed_team(db, competition)
+    await _seed_game(
+        db,
+        competition,
+        home,
+        away,
+        game_date=to_eastern_date(now),
+        tip_datetime=now - timedelta(hours=1),
+        status=SummerLeagueGameStatus.FINAL,
+    )
+
+
+async def _seed_season(
+    db: AsyncSession,
+    *,
+    competition: SummerLeagueCompetition,
+    player: PlayerMaster,
+    year: int,
+    gp: int = 3,
+    minutes: float = 90.0,
+    gmsc: float | None = 20.0,
+    pts: int = 60,
+    reb: int = 30,
+    ast: int = 15,
+    stl: int = 6,
+    blk: int = 3,
+    tov: int = 9,
+    fgm: int = 20,
+    fga: int = 40,
+    fg3m: int = 5,
+    fg3a: int = 10,
+    ftm: int = 15,
+    fta: int = 20,
+    pace: float | None = None,
+    usg_pct: float | None = None,
+    ast_pct: float | None = None,
+    tov_pct: float | None = None,
+    trb_pct: float | None = None,
+    ws82: float | None = None,
+    bpm: float | None = None,
+    adv_eligible: bool = False,
+) -> SummerLeaguePlayerSeason:
+    assert competition.id is not None and player.id is not None
+    season = SummerLeaguePlayerSeason(
+        competition_id=competition.id,
+        player_id=player.id,
+        year=year,
+        venue_slug=competition.venue_slug,
+        gp=gp,
+        minutes=minutes,
+        gmsc=gmsc,
+        pts=pts,
+        reb=reb,
+        ast=ast,
+        stl=stl,
+        blk=blk,
+        tov=tov,
+        fgm=fgm,
+        fga=fga,
+        fg3m=fg3m,
+        fg3a=fg3a,
+        ftm=ftm,
+        fta=fta,
+        pace=pace,
+        usg_pct=usg_pct,
+        ast_pct=ast_pct,
+        tov_pct=tov_pct,
+        trb_pct=trb_pct,
+        ws82=ws82,
+        bpm=bpm,
+        adv_eligible=adv_eligible,
+    )
+    db.add(season)
+    await db.flush()
+    return season
+
+
+# --------------------------------------------------------------------------- #
+# Cohort membership + within-round boundary picks
+# --------------------------------------------------------------------------- #
+async def test_cohort_membership_including_within_round_boundary_picks(
+    db_session: AsyncSession,
+) -> None:
+    """Boundary overall picks 14/15/30/31 translate correctly to WITHIN-ROUND columns.
+
+    `players_master.draft_pick` is within-round, so an overall pick 31 is
+    `draft_round=2, draft_pick=1` (round2's lowest), not `draft_pick=31`.
+    """
+    year = 2026
+    now = datetime(2026, 7, 10, 20, 0)
+    competition = await _seed_competition(db_session, year=year)
+    team = await _seed_team(db_session, competition)
+
+    # Overall #14 -- lottery's upper boundary.
+    lottery_edge = await _seed_player(
+        db_session, name="LotteryEdge", draft_year=year, draft_round=1, draft_pick=14
+    )
+    # Overall #15 -- first round-1 pick NOT in the lottery.
+    round1_late = await _seed_player(
+        db_session, name="Round1Late", draft_year=year, draft_round=1, draft_pick=15
+    )
+    # Overall #30 -- round 1's last pick.
+    round1_last = await _seed_player(
+        db_session, name="Round1Last", draft_year=year, draft_round=1, draft_pick=30
+    )
+    # Overall #31 -- round 2's first pick (draft_pick=1 WITHIN round 2).
+    round2_first = await _seed_player(
+        db_session, name="Round2First", draft_year=year, draft_round=2, draft_pick=1
+    )
+    undrafted = await _seed_player(
+        db_session, name="Undrafted", draft_year=None, draft_round=None, draft_pick=None
+    )
+    sophomore = await _seed_player(
+        db_session,
+        name="Sophomore",
+        draft_year=year - 1,
+        draft_round=1,
+        draft_pick=3,
+    )
+
+    for p in (
+        lottery_edge,
+        round1_late,
+        round1_last,
+        round2_first,
+        undrafted,
+        sophomore,
+    ):
+        await _roster_player(db_session, competition, team, p)
+        await _seed_season(db_session, competition=competition, player=p, year=year)
+    await db_session.commit()
+
+    await _seed_active_window_game(db_session, competition, now=now)
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    async def _members(cohort: str) -> set[int]:
+        payload = await get_desk_payload(
+            db_session, now=now, tracker_cohort=cohort, tracker_stat_view="box"
+        )
+        assert payload is not None
+        return {row.player_id for row in payload.tracker.rows}
+
+    lottery_members = await _members("lottery")
+    assert lottery_edge.id in lottery_members
+    assert round1_late.id not in lottery_members
+    assert round2_first.id not in lottery_members
+
+    round1_members = await _members("round1")
+    assert {lottery_edge.id, round1_late.id, round1_last.id} <= round1_members
+    assert round2_first.id not in round1_members
+
+    round2_members = await _members("round2")
+    assert round2_first.id in round2_members
+    assert round1_last.id not in round2_members
+
+    full_class_members = await _members("full_class")
+    assert {lottery_edge.id, round1_late.id, round1_last.id, round2_first.id} <= (
+        full_class_members
+    )
+    assert undrafted.id not in full_class_members
+    assert sophomore.id not in full_class_members  # prior-year draftee, not this class
+
+    sophomore_members = await _members("sophomores")
+    assert sophomore_members == {sophomore.id}
+
+    undrafted_members = await _members("undrafted")
+    assert undrafted_members == {undrafted.id}
+
+
+# --------------------------------------------------------------------------- #
+# Stat-view rescale: Box / Per-36 / Per-100 rescale counting stats; shooting
+# percentages stay invariant.
+# --------------------------------------------------------------------------- #
+async def test_stat_view_rescales_counting_stats_and_keeps_pct_invariant(
+    db_session: AsyncSession,
+) -> None:
+    """PTS rescales exactly by mode; FG%/3P%/FT% are identical across all three."""
+    year = 2026
+    now = datetime(2026, 7, 10, 20, 0)
+    competition = await _seed_competition(db_session, year=year)
+    team = await _seed_team(db_session, competition)
+
+    player = await _seed_player(
+        db_session, name="RateCheck", draft_year=year, draft_round=1, draft_pick=1
+    )
+    await _roster_player(db_session, competition, team, player)
+    # gp=3, minutes=90 (30 MPG); pts=60 (20 PPG); fgm/fga=20/40 (50% FG);
+    # fg3m/fg3a=5/10 (50% 3P); ftm/fta=15/20 (75% FT); pace=90.0 (per-48).
+    await _seed_season(
+        db_session,
+        competition=competition,
+        player=player,
+        year=year,
+        gp=3,
+        minutes=90.0,
+        pts=60,
+        fgm=20,
+        fga=40,
+        fg3m=5,
+        fg3a=10,
+        ftm=15,
+        fta=20,
+        pace=90.0,
+    )
+    await db_session.commit()
+    await _seed_active_window_game(db_session, competition, now=now)
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    box = await get_desk_payload(
+        db_session, now=now, tracker_cohort="full_class", tracker_stat_view="box"
+    )
+    per36 = await get_desk_payload(
+        db_session, now=now, tracker_cohort="full_class", tracker_stat_view="per36"
+    )
+    per100 = await get_desk_payload(
+        db_session, now=now, tracker_cohort="full_class", tracker_stat_view="per100"
+    )
+    assert box is not None and per36 is not None and per100 is not None
+
+    box_row = next(r for r in box.tracker.rows if r.player_id == player.id)
+    per36_row = next(r for r in per36.tracker.rows if r.player_id == player.id)
+    per100_row = next(r for r in per100.tracker.rows if r.player_id == player.id)
+
+    # Box (per-game): 60 pts / 3 gp = 20.0 PPG.
+    assert box_row.stat_columns["pts"] == pytest.approx(20.0)
+    # Per-36: PTS x 36 / total MIN = 60 * 36 / 90 = 24.0.
+    assert per36_row.stat_columns["pts"] == pytest.approx(24.0)
+    # Per-100: pace=90 (per-48) over 90 minutes -> poss = (90*90/48) * (90/90)
+    # = 168.75; PTS x 100 / poss = 60 * 100 / 168.75 ~= 35.6.
+    assert per100_row.stat_columns["pts"] == pytest.approx(35.6, abs=0.05)
+
+    # Shooting percentages are recombined from pooled makes/attempts -- they
+    # do not change across Box/Per-36/Per-100 (only counting stats rescale).
+    for row in (box_row, per36_row, per100_row):
+        assert row.stat_columns["fg_pct"] == pytest.approx(50.0)
+        assert row.stat_columns["fg3_pct"] == pytest.approx(50.0)
+        assert row.stat_columns["ft_pct"] == pytest.approx(75.0)
+
+
+# --------------------------------------------------------------------------- #
+# Advanced view: BPM/WS82 em-dash (None) when the pool isn't adv_eligible;
+# real values when it is.
+# --------------------------------------------------------------------------- #
+async def test_advanced_view_bpm_null_when_not_adv_eligible(
+    db_session: AsyncSession,
+) -> None:
+    """BPM/WS82 render `None` (em-dash) for a non-adv_eligible pool; real otherwise."""
+    year = 2026
+    now = datetime(2026, 7, 10, 20, 0)
+    competition = await _seed_competition(db_session, year=year)
+    team = await _seed_team(db_session, competition)
+
+    ineligible = await _seed_player(
+        db_session, name="Thin", draft_year=year, draft_round=1, draft_pick=2
+    )
+    eligible = await _seed_player(
+        db_session, name="Calibrated", draft_year=year, draft_round=1, draft_pick=3
+    )
+    await _roster_player(db_session, competition, team, ineligible)
+    await _roster_player(db_session, competition, team, eligible)
+
+    # Ineligible pool: bpm/ws82/usg_pct etc. are None, matching how
+    # `app.services.summer_league.metrics` writes a non-adv_eligible pool.
+    await _seed_season(
+        db_session,
+        competition=competition,
+        player=ineligible,
+        year=year,
+        bpm=None,
+        ws82=None,
+        usg_pct=None,
+        adv_eligible=False,
+    )
+    await _seed_season(
+        db_session,
+        competition=competition,
+        player=eligible,
+        year=year,
+        bpm=4.2,
+        ws82=6.5,
+        usg_pct=24.0,
+        ast_pct=18.0,
+        tov_pct=11.0,
+        trb_pct=9.0,
+        adv_eligible=True,
+    )
+    await db_session.commit()
+    await _seed_active_window_game(db_session, competition, now=now)
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    payload = await get_desk_payload(
+        db_session, now=now, tracker_cohort="full_class", tracker_stat_view="advanced"
+    )
+    assert payload is not None
+
+    ineligible_row = next(
+        r for r in payload.tracker.rows if r.player_id == ineligible.id
+    )
+    eligible_row = next(r for r in payload.tracker.rows if r.player_id == eligible.id)
+
+    assert ineligible_row.stat_columns["bpm"] is None
+    assert ineligible_row.stat_columns["ws82"] is None
+
+    assert eligible_row.stat_columns["bpm"] == pytest.approx(4.2)
+    assert eligible_row.stat_columns["ws82"] == pytest.approx(6.5)
+    assert eligible_row.stat_columns["usg_pct"] == pytest.approx(24.0)
+
+
+# --------------------------------------------------------------------------- #
+# Cap-30 + truncation flag
+# --------------------------------------------------------------------------- #
+async def test_cohort_over_30_caps_at_30_by_gmsc_and_flags_truncated(
+    db_session: AsyncSession,
+) -> None:
+    """A 35-member cohort renders the top 30 by GmSc; `truncated` is True."""
+    year = 2026
+    now = datetime(2026, 7, 10, 20, 0)
+    competition = await _seed_competition(db_session, year=year)
+    team = await _seed_team(db_session, competition)
+
+    n = TRACKER_CAP + 5
+    players: list[PlayerMaster] = []
+    for i in range(n):
+        p = await _seed_player(
+            db_session, name=f"Round2P{i}", draft_year=year, draft_round=2, draft_pick=1
+        )
+        await _roster_player(db_session, competition, team, p)
+        # Descending GmSc so the top-30 slice is deterministic.
+        await _seed_season(
+            db_session,
+            competition=competition,
+            player=p,
+            year=year,
+            gmsc=float(n - i),
+        )
+        players.append(p)
+    await db_session.commit()
+    await _seed_active_window_game(db_session, competition, now=now)
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    payload = await get_desk_payload(
+        db_session, now=now, tracker_cohort="round2", tracker_stat_view="box"
+    )
+    assert payload is not None
+    assert len(payload.tracker.rows) == TRACKER_CAP
+    assert payload.tracker.truncated is True
+    top_30_ids = {p.id for p in players[:TRACKER_CAP]}
+    assert {r.player_id for r in payload.tracker.rows} == top_30_ids
+
+    # A cohort under the cap is NOT truncated.
+    lottery_payload = await get_desk_payload(
+        db_session, now=now, tracker_cohort="lottery", tracker_stat_view="box"
+    )
+    assert lottery_payload is not None
+    assert lottery_payload.tracker.truncated is False
+
+
+# --------------------------------------------------------------------------- #
+# HTML-shape assertions: GP=0 em-dashes, Undrafted identity swap, ref-tagging,
+# toggle markup -- driven through the real `/` route, forced to Recap (a
+# time-independent state -- Live/Recap resolve from game *status*, not the
+# wall clock) via an all-FINAL slate.
+# --------------------------------------------------------------------------- #
+async def _seed_recap_window(db: AsyncSession, *, now: datetime) -> SummerLeagueCompetition:
+    """An active SL event with an all-FINAL slate -- forces Recap deterministically."""
+    today = to_eastern_date(now)
+    competition = await _seed_competition(db, year=today.year)
+    home = await _seed_team(db, competition)
+    away = await _seed_team(db, competition)
+    await _seed_game(
+        db,
+        competition,
+        home,
+        away,
+        game_date=today,
+        tip_datetime=now - timedelta(hours=3),
+        status=SummerLeagueGameStatus.FINAL,
+    )
+    return competition
+
+
+async def test_gp_zero_row_renders_em_dashes(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A rostered player with no season row (GP=0, e.g. debuts tonight) shows em-dashes."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    year = today.year
+    competition = await _seed_recap_window(db_session, now=now)
+    team = await _seed_team(db_session, competition)
+
+    debut = await _seed_player(
+        db_session, name="Debuting", draft_year=year, draft_round=1, draft_pick=1
+    )
+    await _roster_player(db_session, competition, team, debut)
+    # No SummerLeaguePlayerSeason row seeded for `debut` -- GP=0 case.
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+
+    warmup = await app_client.get("/?cohort=full_class&statview=box")
+    assert warmup.status_code == 200
+    response = await app_client.get("/?cohort=full_class&statview=box")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "slDeskTracker" in html
+    assert "Debuting Test" in html
+    assert "&mdash;" in html
+
+
+async def test_undrafted_identity_swap_and_status_cohort_label(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The Undrafted cohort swaps identity to status form and relabels 'vs status cohort'."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    year = today.year
+    competition = await _seed_recap_window(db_session, now=now)
+    team = await _seed_team(db_session, competition, franchise_id="1610612747")
+
+    undrafted = await _seed_player(
+        db_session, name="Grinder", draft_year=None, draft_round=None, draft_pick=None
+    )
+    await _roster_player(db_session, competition, team, undrafted)
+    await _seed_season(db_session, competition=competition, player=undrafted, year=year)
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+
+    warmup = await app_client.get("/?cohort=undrafted&statview=box")
+    assert warmup.status_code == 200
+    response = await app_client.get("/?cohort=undrafted&statview=box")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "Grinder Test" in html
+    assert "Undrafted &middot;" in html or "Undrafted ·" in html
+    assert "vs status cohort" in html
+    assert "?ref=sl-desk" in html
+
+
+async def test_cohort_and_statview_toggles_round_trip_via_query_params(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Toggle links carry BOTH params; the active toggle + column set match the request."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    year = today.year
+    competition = await _seed_recap_window(db_session, now=now)
+    team = await _seed_team(db_session, competition)
+
+    player = await _seed_player(
+        db_session, name="Toggle", draft_year=year, draft_round=2, draft_pick=5
+    )
+    await _roster_player(db_session, competition, team, player)
+    await _seed_season(db_session, competition=competition, player=player, year=year)
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+
+    warmup = await app_client.get("/?cohort=round2&statview=advanced")
+    assert warmup.status_code == 200
+    response = await app_client.get("/?cohort=round2&statview=advanced")
+    assert response.status_code == 200
+    html = response.text
+
+    # Advanced column headers present; box-family headers are not.
+    assert "<th>BPM</th>" in html
+    assert "<th>WS/82</th>" in html
+    assert "<th>PTS</th>" not in html
+
+    # Cohort toggle link for the currently-inactive "lottery" preserves the
+    # active statview; the active cohort/statview render with `is-active`.
+    assert 'href="/?cohort=lottery&statview=advanced#slDeskTracker"' in html
+    assert 'class="desk__tracker-toggle-btn is-active"' in html
+    assert 'class="slg-mode-btn is-active"' in html
+
+
+async def test_tracker_row_deep_link_carries_ref_sl_desk(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A player row's link to their SL page carries `?ref=sl-desk`."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    year = today.year
+    competition = await _seed_recap_window(db_session, now=now)
+    team = await _seed_team(db_session, competition)
+
+    player = await _seed_player(
+        db_session, name="DeepLink", draft_year=year, draft_round=1, draft_pick=1
+    )
+    await _roster_player(db_session, competition, team, player)
+    await _seed_season(db_session, competition=competition, player=player, year=year)
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+
+    warmup = await app_client.get("/")
+    assert warmup.status_code == 200
+    response = await app_client.get("/")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "?ref=sl-desk" in html
+
+
+# --------------------------------------------------------------------------- #
+# Query budget with cohort/statview params set (ticket DoD).
+# --------------------------------------------------------------------------- #
+async def test_query_budget_holds_with_tracker_params(
+    app_client: AsyncClient, db_session: AsyncSession, async_engine: AsyncEngine
+) -> None:
+    """`/` with `?cohort=...&statview=...` set stays within `DESK_HOME_PAGE_BUDGETS["recap"]`."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    year = today.year
+    competition = await _seed_recap_window(db_session, now=now)
+    team = await _seed_team(db_session, competition, franchise_id="1610612747")
+
+    for i in range(3):
+        p = await _seed_player(
+            db_session,
+            name=f"Budget{i}",
+            draft_year=year,
+            draft_round=1,
+            draft_pick=i + 1,
+        )
+        await _roster_player(db_session, competition, team, p)
+        await _seed_season(db_session, competition=competition, player=p, year=year)
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+
+    warmup = await app_client.get("/?cohort=lottery&statview=advanced")
+    assert warmup.status_code == 200
+
+    with count_queries(async_engine) as captured:
+        response = await app_client.get("/?cohort=lottery&statview=advanced")
+    assert response.status_code == 200
+
+    budget = DESK_HOME_PAGE_BUDGETS["recap"]
+    assert len(captured) <= budget, (
+        f"/ with tracker params issued {len(captured)} queries, over budget of "
+        f"{budget}: {captured}"
+    )

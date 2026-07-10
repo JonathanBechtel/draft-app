@@ -75,7 +75,11 @@ from app.services.player_service import (
 )
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.school_logo_service import get_logo_url_for_school
-from app.services.summer_league.desk_read import get_desk_view
+from app.services.summer_league.desk_read import (
+    DEFAULT_TRACKER_COHORT,
+    DEFAULT_TRACKER_STAT_VIEW,
+    get_desk_view,
+)
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from app.services.summer_league_stats_service import (
     get_player_shotchart_context,
@@ -135,6 +139,12 @@ CONSENSUS_LOTTERY_PICKS = 14
 async def home(
     request: Request,
     db: AsyncSession = Depends(get_session),
+    # Class Tracker toggle state (#511) -- server round-trip query params, the
+    # SL Explorer's existing pattern. Raw/unknown values are validated and
+    # normalized inside `get_desk_view`/`_assemble_tracker`, not here -- this
+    # route stays thin and never queries for the Desk itself.
+    cohort: str = Query(default=DEFAULT_TRACKER_COHORT),
+    statview: str = Query(default=DEFAULT_TRACKER_STAT_VIEW),
 ):
     """Render the Homepage with consensus hero, trending players, VS arena, and news feed."""
     # --- Summer League Desk (event-instance #1 of the Event Desk framework) ---
@@ -153,7 +163,9 @@ async def home(
     # it timezone-aware first (not deprecated `utcnow()`) then dropping tzinfo
     # yields the correct wall-clock instant without an aware/naive mismatch.
     now_naive_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    desk_view = await get_desk_view(db, now=now_naive_utc)
+    desk_view = await get_desk_view(
+        db, now=now_naive_utc, tracker_cohort=cohort, tracker_stat_view=statview
+    )
     desk_payload = desk_view.payload
     desk_window_open = desk_payload is not None
     desk_game_year = to_eastern_date(now_naive_utc).year
@@ -420,6 +432,7 @@ async def home(
             "desk_window_open": desk_window_open,
             "desk_players": desk_view.players,
             "desk_matchups": desk_view.matchups,
+            "desk_tracker_teams": desk_view.tracker_teams,
             "desk_game_year": desk_game_year,
             # Consensus hero
             "board_kind": board_kind,

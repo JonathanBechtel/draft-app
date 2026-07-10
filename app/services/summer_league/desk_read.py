@@ -49,6 +49,7 @@ this call assembles.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Callable, Optional, Sequence
@@ -107,6 +108,7 @@ from app.services.summer_league.desk_grades import (
     percentile_of_value,
 )
 from app.services.summer_league.desk_selection import Surface
+from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.desk_storylines import (
     ClassLeaderCandidate,
     draft_slot_fallback,
@@ -116,6 +118,10 @@ from app.services.summer_league.desk_storylines import (
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league.scoreboard_ingest import EVENT_KEY_SUMMER_LEAGUE
 from app.services.summer_league.team_logos import franchise_logo_url
+from app.services.summer_league_explorer_service import (
+    rollup_rate_composite,
+    rollup_recombinable,
+)
 from app.utils.images import get_placeholder_url, get_player_image_url
 
 # Roster statuses treated as "actively tracked" -- mirrors
@@ -796,8 +802,135 @@ def _ledger_hero(
 
 
 # --------------------------------------------------------------------------- #
-# Class Tracker (behavior spec §7) -- fixed frame only; #511 wires stat_columns
+# Class Tracker (behavior spec §7) -- stat-view rescaling (#511)
+#
+# Reuses the SL Explorer's rate-service roll-up primitives
+# (`app.services.summer_league_explorer_service.rollup_recombinable` /
+# `rollup_rate_composite`) rather than re-deriving per-mode arithmetic --
+# see behavior spec §7's column taxonomy table:
+#   Box family (Box / Per-36 / Per-100): PTS/REB/AST/STL/BLK/TOV rescale by
+#     mode; FG%/3P%/FT% are recombined from pooled makes/attempts and are
+#     therefore rate-invariant across all three modes.
+#   Advanced: its own ten-column set (TS%/eFG%/USG%/AST%/TOV%/REB%/3PAr/FTr/
+#     WS82/BPM), constant regardless of the Box/Per-36/Per-100 toggle.
 # --------------------------------------------------------------------------- #
+
+# Box-family counting stats that rescale per Box/Per-36/Per-100 mode.
+_BOX_COUNTING_KEYS: tuple[str, ...] = ("pts", "reb", "ast", "stl", "blk", "tov")
+# Box-family shooting percentages: recombined from pooled box components, so
+# they render identically in all three Box/Per-36/Per-100 modes (never scaled).
+_BOX_PCT_KEYS: tuple[str, ...] = ("fg_pct", "fg3_pct", "ft_pct")
+# Advanced set: box-derived (recombinable, mode-independent by nature; keys
+# ts_pct/efg_pct/fg3ar/ftr, handled inline below) vs. league-relative
+# composites (minute-weighted; `None` on a pool that isn't `adv_eligible` --
+# see `app.services.summer_league.metrics`, which stores these `None`
+# outright on ineligible pools).  `rollup_rate_composite` skips `None`
+# inputs, so BPM/WS82 naturally render `None` (em-dash) when every pooled
+# competition row for a player is ineligible -- no extra gating needed here.
+_ADV_RATE_COMPOSITE_KEYS: tuple[str, ...] = (
+    "usg_pct",
+    "ast_pct",
+    "tov_pct",
+    "trb_pct",
+    "ws82",
+    "bpm",
+)
+
+
+def _r1(value: Optional[float]) -> Optional[float]:
+    """Round to 1 decimal, passing ``None`` through."""
+    return round(value, 1) if value is not None else None
+
+
+def _r3(value: Optional[float]) -> Optional[float]:
+    """Round to 3 decimals (0-1 fraction columns: ``fg3ar``/``ftr``)."""
+    return round(value, 3) if value is not None else None
+
+
+def _pooled_possessions(rows: Sequence[SummerLeaguePlayerSeason]) -> Optional[float]:
+    """Pace-covered possessions extrapolated across a player's pooled venue rows.
+
+    Mirrors the denominator `summer_league_explorer_service.rollup_recombinable`
+    uses for its ``"pts_per100"`` key (career-grain per-100 extrapolation over
+    the 2017 pace-coverage gap, generalized here to any counting stat rather
+    than only points): sum pace x minutes over pace-covered rows, then
+    extrapolate to the player's *total* pooled minutes via the minute-weighted
+    observed pace, so a player with partial pace coverage isn't divided by
+    only the covered slice. ``None`` when no pooled row carries pace data.
+
+    Args:
+        rows: A player's pooled ``SummerLeaguePlayerSeason`` rows for one event.
+
+    Returns:
+        Extrapolated possessions, or ``None`` when no row has pace data.
+    """
+    covered_minutes = sum(float(r.minutes or 0) for r in rows if r.pace is not None)
+    if not covered_minutes:
+        return None
+    total_minutes = sum(float(r.minutes or 0) for r in rows)
+    pace_weighted = sum(float(r.pace or 0) * float(r.minutes or 0) for r in rows)
+    return (pace_weighted / MINUTES_PER_GAME) * (total_minutes / covered_minutes)
+
+
+def _build_stat_columns(
+    rows: Sequence[SummerLeaguePlayerSeason], stat_view: str
+) -> dict[str, Optional[float]]:
+    """The Box/Per-36/Per-100/Advanced middle block for one Class Tracker row.
+
+    ``rows`` is one player's pooled ``SummerLeaguePlayerSeason`` rows across
+    every venue in the event cluster for the event year (the same pool
+    `_assemble_tracker`'s fixed-frame GP/MIN/GmSc blend uses). A player with no
+    rows (e.g. rostered but hasn't debuted yet -- GP=0) returns every column
+    ``None`` -- the template renders that as an em-dash, matching behavior
+    spec §7's "GP=0 rostered players appear with em-dashes across stat and
+    rate columns."
+
+    Args:
+        rows: A player's pooled per-competition season rows for the event.
+        stat_view: One of `TRACKER_STAT_VIEWS` (already validated/normalized
+            by the caller).
+
+    Returns:
+        A flat ``{column_key: value}`` dict -- the box-family nine-column set
+        for ``"box"``/``"per36"``/``"per100"``, or the advanced ten-column set
+        for ``"advanced"``.
+    """
+    if stat_view == "advanced":
+        return {
+            "ts_pct": _r1(rollup_recombinable(rows, "ts_pct")),
+            "efg_pct": _r1(rollup_recombinable(rows, "efg_pct")),
+            "fg3ar": _r3(rollup_recombinable(rows, "fg3ar")),
+            "ftr": _r3(rollup_recombinable(rows, "ftr")),
+            **{
+                key: _r1(rollup_rate_composite(rows, key))
+                for key in _ADV_RATE_COMPOSITE_KEYS
+            },
+        }
+
+    gp_total = sum(r.gp for r in rows)
+    minutes_total = sum(float(r.minutes or 0) for r in rows)
+
+    factor: Optional[float]
+    if stat_view == "per36":
+        factor = 36.0 / minutes_total if minutes_total else None
+    elif stat_view == "per100":
+        poss = _pooled_possessions(rows)
+        factor = 100.0 / poss if poss else None
+    else:  # "box" -- per-game average, the tracker's baseline display.
+        factor = 1.0 / gp_total if gp_total else None
+
+    def _scaled(key: str) -> Optional[float]:
+        if factor is None:
+            return None
+        total = sum(float(getattr(r, key, 0) or 0) for r in rows)
+        return round(total * factor, 1)
+
+    return {
+        **{key: _scaled(key) for key in _BOX_COUNTING_KEYS},
+        **{key: _r1(rollup_recombinable(rows, key)) for key in _BOX_PCT_KEYS},
+    }
+
+
 def _tracker_cohort_predicate(
     cohort: str,
 ) -> Callable[[PlayerMaster, int], bool]:
@@ -834,17 +967,20 @@ async def _assemble_tracker(
     baseline_version: Optional[str],
     cohort: str,
     stat_view: str,
-) -> DeskTrackerSection:
-    """The pinned Class Tracker's fixed frame (Player/GP/MIN/GmSc/grade).
+) -> tuple[DeskTrackerSection, dict[int, dict[str, Optional[str]]]]:
+    """The pinned Class Tracker: fixed frame + the active stat view's middle block (#511).
 
-    Populates every column behavior spec §7 calls "fixed" (constant across all
-    four stat views). ``stat_columns`` (the Box/Per-36/Per-100/Advanced middle
-    block) is intentionally left empty here -- #511 ("Build Class Tracker UI")
-    owns wiring it via the SL Explorer's rate-mode read service, per that
-    ticket's own file list (`app/services/summer_league/desk_read.py` is listed
-    as a file *it* also changes). This function still validates/normalizes
-    ``cohort``/``stat_view`` and returns them on the section so the toggle UI
-    has a stable contract to extend.
+    Populates every column behavior spec §7 calls "fixed" (Player/GP/MIN/GmSc/
+    grade -- constant across all four stat views) plus ``stat_columns``, the
+    Box/Per-36/Per-100/Advanced middle block, via `_build_stat_columns`.
+
+    Returns the section alongside a ``{player_id: {"abbrev", "logo_url"}}``
+    lookup for the rows actually returned (post-cap). `DeskTrackerRow` (#506)
+    is a frozen read-model contract with no room for display assets, so this
+    reuses the team-entry rows this function already fetches for
+    ``identity_label`` instead of `get_desk_view_context` re-querying
+    `SummerLeagueParticipation`/`SummerLeagueTeamEntry` a second time --
+    zero net-new queries for row headshots/team logos.
     """
     cohort = cohort if cohort in TRACKER_COHORTS else DEFAULT_TRACKER_COHORT
     stat_view = (
@@ -854,7 +990,7 @@ async def _assemble_tracker(
         cohort=cohort, stat_view=stat_view, rows=[], truncated=False
     )
     if not competition_ids:
-        return empty
+        return empty, {}
 
     roster_stmt = select(  # type: ignore[call-overload]
         SummerLeagueParticipation.player_id,
@@ -874,7 +1010,7 @@ async def _assemble_tracker(
         player_ids.add(player_id)
         team_entry_by_player[player_id] = team_entry_id
     if not player_ids:
-        return empty
+        return empty, {}
 
     players = (
         (
@@ -897,20 +1033,20 @@ async def _assemble_tracker(
         and predicate(player, event_year)
     ]
     if not member_ids:
-        return empty
+        return empty, {}
 
-    season_stmt = select(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.player_id,
-        SummerLeaguePlayerSeason.year,
-        SummerLeaguePlayerSeason.gmsc,
-        SummerLeaguePlayerSeason.minutes,
-        SummerLeaguePlayerSeason.gp,
-    ).where(
+    # Full rows (not just the gp/minutes/gmsc slice) so `_build_stat_columns`
+    # has box totals + advanced composites to pool per player, across every
+    # venue in the event cluster this year.
+    season_stmt = select(SummerLeaguePlayerSeason).where(
         SummerLeaguePlayerSeason.player_id.in_(member_ids),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year == event_year,  # type: ignore[arg-type]
     )
-    season_rows = (await db.execute(season_stmt)).all()
+    season_rows = (await db.execute(season_stmt)).scalars().all()
     events = blend_event_aggregates(season_rows, min_minutes=0.0)
+    season_rows_by_player: dict[int, list[SummerLeaguePlayerSeason]] = defaultdict(list)
+    for row in season_rows:
+        season_rows_by_player[row.player_id].append(row)
 
     teams = await _fetch_team_entries(
         db, [team_entry_by_player.get(pid) for pid in member_ids]
@@ -970,15 +1106,29 @@ async def _assemble_tracker(
                 minutes=minutes,
                 gmsc=gmsc,
                 grade=grade,
-                stat_columns={},
+                stat_columns=_build_stat_columns(
+                    season_rows_by_player.get(pid, []), stat_view
+                ),
             )
         )
 
     rows.sort(key=lambda r: (r.gmsc is None, -(r.gmsc or 0.0)))
     truncated = len(rows) > TRACKER_CAP
-    return DeskTrackerSection(
-        cohort=cohort, stat_view=stat_view, rows=rows[:TRACKER_CAP], truncated=truncated
+    capped_rows = rows[:TRACKER_CAP]
+
+    tracker_teams: dict[int, dict[str, Optional[str]]] = {}
+    for tracker_row in capped_rows:
+        team_entry = teams.get(team_entry_by_player.get(tracker_row.player_id, -1))
+        if team_entry is not None:
+            tracker_teams[tracker_row.player_id] = {
+                "abbrev": _team_label(team_entry),
+                "logo_url": franchise_logo_url(team_entry.nba_stats_team_id),
+            }
+
+    section = DeskTrackerSection(
+        cohort=cohort, stat_view=stat_view, rows=capped_rows, truncated=truncated
     )
+    return section, tracker_teams
 
 
 # --------------------------------------------------------------------------- #
@@ -1029,6 +1179,10 @@ async def get_desk_view_context(
             player_ids.add(live_row.top_performer_player_id)
     for ledger_row in payload.ledger:
         player_ids.add(ledger_row.player_id)
+    # Class Tracker rows (#511) -- folded into the SAME batched PlayerMaster
+    # query below, so headshots/slugs cost nothing extra over #509's budget.
+    for tracker_row in payload.tracker.rows:
+        player_ids.add(tracker_row.player_id)
 
     game_ids: set[int] = set()
     if payload.hero.game_id is not None:
@@ -1138,12 +1292,16 @@ class DeskView:
     strip in that case); `players`/`matchups` are always present but empty
     when there is nothing to enrich (off-window, or an in-window payload that
     references no players/games -- doesn't happen in practice, but the
-    enrichment pass degrades to empty dicts rather than raising).
+    enrichment pass degrades to empty dicts rather than raising). `tracker_teams`
+    (#511) is a `{player_id: {"abbrev", "logo_url"}}` lookup for Class Tracker
+    rows, sourced from `_assemble_tracker`'s own team-entry fetch (see that
+    function's docstring for why it isn't folded into `players`/`matchups`).
     """
 
     payload: Optional[DeskPayload]
     players: dict[int, dict]
     matchups: dict[int, dict]
+    tracker_teams: dict[int, dict[str, Optional[str]]]
 
 
 async def get_desk_view(
@@ -1155,24 +1313,24 @@ async def get_desk_view(
 ) -> DeskView:
     """The ONE call `app.routes.ui.home` makes to assemble the Desk for `/`.
 
-    Composes `get_desk_payload` (the pure read-model) with
-    `get_desk_view_context` (the player/team enrichment templates need) so
-    the route itself never touches `select()`/`db.execute` for the Desk --
-    it just unpacks this one result into the template context. See
-    `get_desk_view_context`'s docstring for why the enrichment stays a
-    companion structure instead of a payload field.
+    Composes `_assemble_desk_payload` (the pure read-model, shared with
+    `get_desk_payload`) with `get_desk_view_context` (the player/team
+    enrichment templates need) so the route itself never touches
+    `select()`/`db.execute` for the Desk -- it just unpacks this one result
+    into the template context. See `get_desk_view_context`'s docstring for why
+    the enrichment stays a companion structure instead of a payload field.
 
     Args:
         db: Active database session (read-only).
         now: Override for "now" (tests; defaults to the current UTC instant).
-        tracker_cohort: Forwarded to `get_desk_payload`.
-        tracker_stat_view: Forwarded to `get_desk_payload`.
+        tracker_cohort: Forwarded to the payload assembly.
+        tracker_stat_view: Forwarded to the payload assembly.
 
     Returns:
         A `DeskView` with the resolved payload (`None` off-window) and its
-        player/matchup enrichment dicts (empty off-window).
+        player/matchup/tracker-team enrichment dicts (empty off-window).
     """
-    payload = await get_desk_payload(
+    payload, tracker_teams = await _assemble_desk_payload(
         db,
         now=now,
         tracker_cohort=tracker_cohort,
@@ -1183,6 +1341,7 @@ async def get_desk_view(
         payload=payload,
         players=view_context["players"],
         matchups=view_context["matchups"],
+        tracker_teams=tracker_teams,
     )
 
 
@@ -1217,11 +1376,34 @@ async def get_desk_payload(
         for the current state, or ``None`` when the SL event's lifecycle isn't
         currently ``active`` (off-window).
     """
+    payload, _tracker_teams = await _assemble_desk_payload(
+        db,
+        now=now,
+        tracker_cohort=tracker_cohort,
+        tracker_stat_view=tracker_stat_view,
+    )
+    return payload
+
+
+async def _assemble_desk_payload(
+    db: AsyncSession,
+    *,
+    now: Optional[datetime],
+    tracker_cohort: str,
+    tracker_stat_view: str,
+) -> tuple[Optional[DeskPayload], dict[int, dict[str, Optional[str]]]]:
+    """Shared body behind `get_desk_payload`/`get_desk_view` (#511).
+
+    Split out so `get_desk_view` can reuse `_assemble_tracker`'s own
+    team-entry fetch for row logos (see `DeskView.tracker_teams`) without
+    `get_desk_payload`'s public, frozen-shape contract (`Optional[DeskPayload]`
+    only) having to change.
+    """
     resolved_now = now if now is not None else datetime.utcnow()
 
     window = await _resolve_window_state(db, now=resolved_now)
     if window is None:
-        return None
+        return None, {}
 
     baseline_version = await _active_baseline_version(db)
     today = to_eastern_date(resolved_now)
@@ -1280,7 +1462,7 @@ async def get_desk_payload(
     if hero is None:
         hero = _FALLBACK_HERO
 
-    tracker = await _assemble_tracker(
+    tracker, tracker_teams = await _assemble_tracker(
         db,
         competition_ids=window.competition_ids,
         event_year=today.year,
@@ -1289,7 +1471,7 @@ async def get_desk_payload(
         stat_view=tracker_stat_view,
     )
 
-    return DeskPayload(
+    payload = DeskPayload(
         daily_state=window.daily_state.value,
         is_home_owner=window.is_home_owner,
         hero=hero,
@@ -1299,6 +1481,7 @@ async def get_desk_payload(
         tracker=tracker,
         freshness=freshness,
     )
+    return payload, tracker_teams
 
 
 __all__ = [

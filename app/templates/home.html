@@ -55,8 +55,9 @@
       {% include "summer_league/desk/ledger_table.html" %}
     {% endif %}
 
-    {# Class Tracker (ticket #511, not built here) -- include point stub. #}
-    <!-- desk-tracker-include-point -->
+    {% if desk_payload.tracker %}
+      {% include "summer_league/desk/class_tracker.html" %}
+    {% endif %}
   </section>
   {% elif not desk_window_open %}
     {% include "summer_league/desk/offwindow_strip.html" %}

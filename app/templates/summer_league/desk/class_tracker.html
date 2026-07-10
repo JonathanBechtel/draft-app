@@ -1,0 +1,151 @@
+{# Summer League Desk -- Class Tracker (#511): the pinned board beneath the
+   current Desk state. Six cohort toggles + Box/Per-36/Per-100/Advanced stat
+   view, both server round-trips via query params on `/` (behavior spec §7 --
+   the SL Explorer's existing pattern; the six cohorts x four stat views are
+   NEVER preloaded client-side, only the active combination renders). Reuses
+   the Explorer's `.slg-mode-toggle`/`.slg-mode-btn` classes for the stat-view
+   toggle for visual parity (rules copied into summer-league-desk.css since
+   the Explorer's originals live in that template's own scoped <style> block).
+
+   Column sort is fixed at GmSc desc (the spec's "every column sortable"
+   affordance is a deliberate, documented deferral -- out of this ticket's
+   file list / explicit test list; a follow-up can add sort=<col>&dir=
+   params without changing this markup's shape). #}
+{% set tracker = desk_payload.tracker %}
+{% set is_undrafted_cohort = tracker.cohort == 'undrafted' %}
+{% set cohort_labels = [
+     ('lottery', 'Lottery'), ('round1', 'Round 1'), ('round2', 'Round 2'),
+     ('full_class', 'Full class'), ('sophomores', 'Sophomores'), ('undrafted', 'Undrafted')
+   ] %}
+{% set statview_labels = [
+     ('box', 'Box'), ('per36', 'Per 36'), ('per100', 'Per 100'), ('advanced', 'Advanced')
+   ] %}
+
+{% macro cell(value, decimals=1) %}{% if value is none %}&mdash;{% else %}{{ ('%.' ~ decimals ~ 'f')|format(value) }}{% endif %}{% endmacro %}
+
+<section id="slDeskTracker" aria-label="Class Tracker">
+  <h2 class="desk__section-title" style="border-left-color: var(--color-accent-amber);">Class Tracker</h2>
+  <p class="desk__section-sub">Every tracked player's Summer League body of work so far, scored against his cohort.</p>
+
+  <div class="desk__tracker-toggles">
+    <div class="desk__tracker-cohorts" role="radiogroup" aria-label="Cohort">
+      {% for key, label in cohort_labels %}
+      <a class="desk__tracker-toggle-btn{{ ' is-active' if tracker.cohort == key else '' }}"
+         href="/?cohort={{ key }}&statview={{ tracker.stat_view }}#slDeskTracker"
+         aria-current="{{ 'true' if tracker.cohort == key else 'false' }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+    <div class="slg-mode-toggle desk__tracker-statview" role="radiogroup" aria-label="Stat view">
+      {% for key, label in statview_labels %}
+      <a class="slg-mode-btn{{ ' is-active' if tracker.stat_view == key else '' }}"
+         href="/?cohort={{ tracker.cohort }}&statview={{ key }}#slDeskTracker">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card" style="padding: 0.4rem 0.4rem 0.2rem;">
+    <div class="scanlines"></div>
+    {% if tracker.rows %}
+    <div class="desk__table-scroll">
+      <table class="desk__tracker-table">
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>GP</th>
+            <th>MIN</th>
+            <th class="desk__tracker-th--active">GmSc</th>
+            <th>{{ 'vs status cohort' if is_undrafted_cohort else 'vs cohort' }}</th>
+            {% if tracker.stat_view == 'advanced' %}
+            <th>TS%</th>
+            <th>eFG%</th>
+            <th>USG%</th>
+            <th>AST%</th>
+            <th>TOV%</th>
+            <th>REB%</th>
+            <th>3PAr</th>
+            <th>FTr</th>
+            <th>WS/82</th>
+            <th>BPM</th>
+            {% else %}
+            <th>PTS</th>
+            <th>REB</th>
+            <th>AST</th>
+            <th>STL</th>
+            <th>BLK</th>
+            <th>TOV</th>
+            <th>FG%</th>
+            <th>3P%</th>
+            <th>FT%</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in tracker.rows %}
+          {% set p = desk_players.get(row.player_id) %}
+          {% set team = desk_tracker_teams.get(row.player_id) %}
+          {% set sc = row.stat_columns %}
+          <tr data-player-id="{{ row.player_id }}">
+            <td>
+              <div class="desk__name-cell">
+                <span class="desk__avatar desk__avatar--sm">
+                  {% if p and p.photo_url %}<img src="{{ p.photo_url }}" alt="">{% endif %}
+                </span>
+                {% if team and team.logo_url %}<img class="desk__team-logo desk__team-logo--sm" src="{{ team.logo_url }}" alt="{{ team.abbrev }}">{% endif %}
+                <div>
+                  <span class="desk__player-name">
+                    {% if p and p.slug %}<a href="/players/{{ p.slug }}?ref=sl-desk">{{ row.display_name }}</a>{% else %}{{ row.display_name }}{% endif %}
+                  </span>
+                  <br>
+                  <span class="desk__tracker-identity">{{ row.identity_label }}</span>
+                </div>
+              </div>
+            </td>
+            <td class="tabular-nums">{{ row.gp }}</td>
+            <td class="tabular-nums">{% if row.gp %}{{ cell(row.minutes) }}{% else %}&mdash;{% endif %}</td>
+            <td class="desk__gmsc-cell tabular-nums desk__tracker-th--active">{{ cell(row.gmsc) }}</td>
+            <td>
+              {% if row.grade %}
+              <span class="desk__pctl-chip desk__pctl-chip--{{ row.grade }}">{{ row.grade | capitalize }}</span>
+              {% else %}
+              &mdash;
+              {% endif %}
+            </td>
+            {% if tracker.stat_view == 'advanced' %}
+            <td class="tabular-nums">{{ cell(sc.ts_pct) }}</td>
+            <td class="tabular-nums">{{ cell(sc.efg_pct) }}</td>
+            <td class="tabular-nums">{{ cell(sc.usg_pct) }}</td>
+            <td class="tabular-nums">{{ cell(sc.ast_pct) }}</td>
+            <td class="tabular-nums">{{ cell(sc.tov_pct) }}</td>
+            <td class="tabular-nums">{{ cell(sc.trb_pct) }}</td>
+            <td class="tabular-nums">{{ cell(sc.fg3ar, 3) }}</td>
+            <td class="tabular-nums">{{ cell(sc.ftr, 3) }}</td>
+            <td class="tabular-nums">{{ cell(sc.ws82) }}</td>
+            <td class="tabular-nums">{{ cell(sc.bpm) }}</td>
+            {% else %}
+            <td class="tabular-nums">{{ cell(sc.pts) }}</td>
+            <td class="tabular-nums">{{ cell(sc.reb) }}</td>
+            <td class="tabular-nums">{{ cell(sc.ast) }}</td>
+            <td class="tabular-nums">{{ cell(sc.stl) }}</td>
+            <td class="tabular-nums">{{ cell(sc.blk) }}</td>
+            <td class="tabular-nums">{{ cell(sc.tov) }}</td>
+            <td class="tabular-nums">{{ cell(sc.fg_pct) }}</td>
+            <td class="tabular-nums">{{ cell(sc.fg3_pct) }}</td>
+            <td class="tabular-nums">{{ cell(sc.ft_pct) }}</td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="desk__tracker-caption">
+      {% if tracker.truncated %}
+      Showing the top {{ tracker.rows | length }} of a larger cohort, ranked by GmSc.
+      {% else %}
+      Showing all {{ tracker.rows | length }} tracked player{{ 's' if tracker.rows | length != 1 else '' }} in this cohort.
+      {% endif %}
+    </p>
+    {% else %}
+    <div class="desk__tracker-empty">No tracked players in this cohort yet.</div>
+    {% endif %}
+  </div>
+</section>
