@@ -263,6 +263,12 @@
   .desk__hero { padding: 1rem 1rem 1.05rem; margin-bottom: 1.4rem; }
   .desk__hero-eyebrow { font-size: 0.58rem; gap: 0.35rem; margin-bottom: 0.75rem; }
   .desk__hero-eyebrow .desk__hero-tip { margin-left: 0; flex-basis: 100%; text-align: center; }
+  /* The freshness instant already renders in the `.desk__freshness` pill
+     directly above the hero (`.desk__head`) -- repeating it as a second
+     eyebrow line only costs vertical space on the narrowest screens, where
+     hero height is the thing being budgeted. Desktop keeps it (same row,
+     no added height). */
+  .desk__hero-eyebrow .desk__hero-tip--freshness { display: none; }
   .desk__hero-stage { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
   .desk__hero-center { grid-column: 1 / -1; order: -1; padding-top: 0; margin-bottom: 0.3rem; }
   .desk__hero-vs { font-size: 1.5rem; }
@@ -270,6 +276,12 @@
   .desk__hero-name { font-size: 1rem; }
   .desk__hero-tagline { font-size: 0.78rem; margin-top: 0.8rem; line-height: 1.45; }
   .desk__hero-solo { flex-direction: column; text-align: center; }
+  /* A long player name can push the "Top performer: <name> · NN.N GmSc"
+     chip wider than the card at this width; `.desk__chip`'s base `nowrap`
+     then gets clipped by the hero's `overflow: hidden` (#522). Let hero
+     chips wrap instead -- every other chip usage (grade pills, matchup
+     labels) is short enough this never engages. */
+  .desk__hero-chips .desk__chip { white-space: normal; max-width: 100%; }
 }
 
 /* ===== Morning slate grid ===== */
@@ -500,6 +512,12 @@
 @media (max-width: 620px) {
   .desk__tracker-toggles { flex-direction: column; align-items: stretch; }
   .desk__tracker-statview { margin-left: 0; }
+  /* At this width the fourth ("Advanced") button doesn't fit the first
+     row's content-sized run, wraps alone, and leaves the bordered toggle
+     group with a lopsided empty strip beside it (#522). Spread all four
+     evenly across the full row instead. */
+  .desk__tracker-statview.slg-mode-toggle { width: 100%; }
+  .desk__tracker-statview .slg-mode-btn { flex: 1 1 0; text-align: center; padding-left: 0.3rem; padding-right: 0.3rem; }
 }
 
 /* Tables scroll inside their own card, never the page (repo-wide mobile rule). */

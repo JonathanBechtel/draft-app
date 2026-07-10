@@ -14,7 +14,7 @@
     {% set m = desk_matchups[hero.game_id] %}
     <span class="desk__hero-tip">{{ m.away.abbrev }} @ {{ m.home.abbrev }}</span>
     {% endif %}
-    <span class="desk__hero-tip">{{ desk_payload.freshness.as_of_et_label }}</span>
+    <span class="desk__hero-tip desk__hero-tip--freshness">{{ desk_payload.freshness.as_of_et_label }}</span>
   </div>
 
   {% if p1 %}
