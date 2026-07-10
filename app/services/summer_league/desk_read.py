@@ -51,7 +51,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Callable, Optional, Sequence
 
 from sqlalchemy import func, select
@@ -1399,7 +1399,9 @@ async def _assemble_desk_payload(
     `get_desk_payload`'s public, frozen-shape contract (`Optional[DeskPayload]`
     only) having to change.
     """
-    resolved_now = now if now is not None else datetime.utcnow()
+    resolved_now = (
+        now if now is not None else datetime.now(timezone.utc).replace(tzinfo=None)
+    )
 
     window = await _resolve_window_state(db, now=resolved_now)
     if window is None:

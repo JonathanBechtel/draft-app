@@ -28,7 +28,7 @@ import math
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import delete, func, select
@@ -1270,7 +1270,7 @@ async def _active_or_fresh_model_version(db: AsyncSession) -> str:
     row = (await db.execute(stmt)).first()
     if row is not None:
         return str(row[0])
-    return datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
 
 async def rebuild(
@@ -1326,7 +1326,7 @@ async def rebuild(
         await db.execute(delete(SummerLeagueMetricContext))
         await db.execute(delete(SummerLeagueMetricModel))
 
-        version = model_version or datetime.utcnow().strftime("%Y%m%d%H%M%S")
+        version = model_version or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
         db.add(
             SummerLeagueMetricModel(
                 model_version=version,

@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Literal, Optional, Sequence
 
 from sqlalchemy import delete, select
@@ -1117,7 +1117,7 @@ async def compute_desk_storylines(
             "total_weight": slate_row.total_weight,
             "rank": slate_row.rank,
             "is_hero": slate_row.is_hero,
-            "computed_at": datetime.utcnow(),
+            "computed_at": datetime.now(timezone.utc).replace(tzinfo=None),
         }
         stmt = insert(SummerLeagueDeskSlate).values(**values)
         stmt = stmt.on_conflict_do_update(

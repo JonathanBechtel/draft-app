@@ -22,7 +22,7 @@ priority, content providers). This module holds that seam:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Awaitable, Callable, Mapping, Protocol
 
@@ -208,7 +208,10 @@ async def _upsert_event_row(
         "priority": registration.priority,
         "is_active": True,
     }
-    insert_values = {**base_values, "created_at": datetime.utcnow()}
+    insert_values = {
+        **base_values,
+        "created_at": datetime.now(timezone.utc).replace(tzinfo=None),
+    }
     update_values = {k: v for k, v in base_values.items() if k != "key"}
 
     stmt = insert(Event).values(**insert_values)

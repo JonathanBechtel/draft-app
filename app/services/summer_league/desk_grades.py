@@ -31,7 +31,7 @@ cohort has no history), not a fallback to compute one on the fly.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
@@ -291,7 +291,7 @@ async def grade_player_event(
         "grade": grade,
         "n_cohort": baseline.n_members,
         "gated": gated,
-        "computed_at": datetime.utcnow(),
+        "computed_at": datetime.now(timezone.utc).replace(tzinfo=None),
     }
     stmt = insert(SummerLeagueDeskPlayerGrade).values(**values)
     stmt = stmt.on_conflict_do_update(

@@ -59,7 +59,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
 from sqlalchemy import select, update
@@ -396,7 +396,7 @@ async def build_baselines(
             debut_values[debut_key].append(agg.gmsc)
             debut_meta[debut_key] = bounds
 
-    version = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+    version = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
 
     new_rows: list[SummerLeagueCohortBaseline] = []
     for key, values in event_values.items():

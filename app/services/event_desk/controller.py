@@ -16,7 +16,7 @@ package; `lifecycle.py` and `state_machine.py` stay pure and are called from her
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Sequence
 
 from sqlalchemy import select
@@ -124,7 +124,9 @@ async def run_event_desk_tick(
         One upserted :class:`~app.schemas.event_desk.EventDeskState` row per
         registration, in registration order.
     """
-    resolved_now = now if now is not None else datetime.utcnow()
+    resolved_now = (
+        now if now is not None else datetime.now(timezone.utc).replace(tzinfo=None)
+    )
 
     event_rows: list[Event] = []
     desk_events: list[DeskEvent] = []
