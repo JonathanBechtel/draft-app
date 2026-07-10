@@ -29,7 +29,6 @@ from httpx import AsyncClient
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.routes.ui import _build_desk_view_context
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
@@ -48,7 +47,10 @@ from app.schemas.summer_league_desk import (
 )
 from app.services.event_desk.registry import sync_summer_league_event
 from app.services.event_desk.timeutils import to_eastern_date
-from app.services.summer_league.desk_read import get_desk_payload
+from app.services.summer_league.desk_read import (
+    get_desk_payload,
+    get_desk_view_context,
+)
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from scripts.sl_desk_tick import run_desk_tick
 
@@ -500,7 +502,7 @@ async def test_morning_hero_and_slate_tail_collapse_with_ref_tagging(
     assert payload.hero.game_id == hero_game.id
     assert len(payload.slate) == 6
 
-    view = await _build_desk_view_context(db_session, payload)
+    view = await get_desk_view_context(db_session, payload)
     game_year = to_eastern_date(now).year
 
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=True)
@@ -584,7 +586,7 @@ async def test_quiet_slate_hero_renders_solo_fallback(db_session: AsyncSession) 
     assert payload is not None
     assert payload.hero.kind == "quiet_slate"
 
-    view = await _build_desk_view_context(db_session, payload)
+    view = await get_desk_view_context(db_session, payload)
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=True)
     hero_html = env.get_template("summer_league/desk/hero_morning.html").render(
         desk_payload=payload,

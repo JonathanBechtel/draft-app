@@ -73,14 +73,9 @@ from app.services.player_service import (
     get_college_stats_by_player_id,
     get_player_profile_by_slug,
 )
-from app.schemas.players_master import PlayerMaster
-from app.schemas.summer_league import SummerLeagueGame, SummerLeagueTeamEntry
-from app.services.event_desk.payload import DeskPayload
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.school_logo_service import get_logo_url_for_school
-from app.services.summer_league.desk_read import get_desk_payload
-from app.services.summer_league.desk_storylines import draft_slot_fallback
-from app.services.summer_league.team_logos import franchise_logo_url
+from app.services.summer_league.desk_read import get_desk_view
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from app.services.summer_league_stats_service import (
     get_player_shotchart_context,
@@ -136,145 +131,6 @@ CONSENSUS_DRAFT_YEAR = 2026
 CONSENSUS_LOTTERY_PICKS = 14
 
 
-async def _build_desk_view_context(
-    db: AsyncSession, payload: Optional[DeskPayload]
-) -> dict[str, dict]:
-    """Batch-enrich a Desk payload with the player identity + team-logo data templates need.
-
-    `DeskPayload` (#506) deliberately carries only ids -- `subject_player_id`,
-    `top_performer_player_id`, ledger `player_id`, `game_id` -- no display
-    names, headshots, or team crests (see that module's docstring: it's an
-    internal read-model, not a view model). Templates need those, so this
-    does ONE small, batched enrichment pass per render rather than resolving
-    per-row inside a template (which would silently reintroduce an N+1 into
-    `/`'s query budget). Fires at most two round trips total (players, then
-    games+teams) regardless of how many rows/games the payload has.
-
-    Args:
-        db: Active database session.
-        payload: The current render's Desk payload, or `None` off-window (in
-            which case this returns empty lookups without querying anything).
-
-    Returns:
-        `{"players": {player_id: {...}}, "matchups": {game_id: {...}}}`.
-        Each player entry has `display_name`, `slug`, `photo_url`,
-        `draft_tag` (e.g. "Pick 5", "Undrafted"). Each matchup entry has
-        `home`/`away`, each `{"abbrev": str, "logo_url": Optional[str]}`.
-    """
-    if payload is None:
-        return {"players": {}, "matchups": {}}
-
-    player_ids: set[int] = set()
-    if payload.hero.subject_player_id is not None:
-        player_ids.add(payload.hero.subject_player_id)
-    if payload.hero.subject_player_id_2 is not None:
-        player_ids.add(payload.hero.subject_player_id_2)
-    for live_row in payload.live_board:
-        if live_row.top_performer_player_id is not None:
-            player_ids.add(live_row.top_performer_player_id)
-    for ledger_row in payload.ledger:
-        player_ids.add(ledger_row.player_id)
-
-    game_ids: set[int] = set()
-    if payload.hero.game_id is not None:
-        game_ids.add(payload.hero.game_id)
-    for slate_row in payload.slate:
-        game_ids.add(slate_row.game_id)
-    for live_row in payload.live_board:
-        game_ids.add(live_row.game_id)
-    for ledger_row in payload.ledger:
-        game_ids.add(ledger_row.game_id)
-
-    players: dict[int, dict] = {}
-    if player_ids:
-        player_rows = (
-            (
-                await db.execute(
-                    select(PlayerMaster).where(  # type: ignore[call-overload]
-                        PlayerMaster.id.in_(player_ids)  # type: ignore[union-attr]
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        for p in player_rows:
-            if p.id is None:
-                continue
-            if p.draft_round is None:
-                draft_tag = "Undrafted"
-            else:
-                overall = draft_slot_fallback(p.draft_round, p.draft_pick)
-                draft_tag = f"Pick {overall}" if overall else "Drafted"
-            players[p.id] = {
-                "display_name": p.display_name or f"Player {p.id}",
-                "slug": p.slug,
-                "photo_url": (
-                    get_player_image_url(player_id=p.id, slug=p.slug, style="default")
-                    if p.slug
-                    else get_placeholder_url(
-                        p.display_name, player_id=p.id, width=160, height=160
-                    )
-                ),
-                "position": p.position,
-                "draft_tag": draft_tag,
-            }
-
-    matchups: dict[int, dict] = {}
-    if game_ids:
-        game_rows = (
-            (
-                await db.execute(
-                    select(SummerLeagueGame).where(  # type: ignore[call-overload]
-                        SummerLeagueGame.id.in_(game_ids)  # type: ignore[union-attr]
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        team_ids: set[int] = set()
-        for g in game_rows:
-            if g.home_team_entry_id is not None:
-                team_ids.add(g.home_team_entry_id)
-            if g.away_team_entry_id is not None:
-                team_ids.add(g.away_team_entry_id)
-
-        teams: dict[int, SummerLeagueTeamEntry] = {}
-        if team_ids:
-            team_rows = (
-                (
-                    await db.execute(
-                        select(SummerLeagueTeamEntry).where(  # type: ignore[call-overload]
-                            SummerLeagueTeamEntry.id.in_(team_ids)  # type: ignore[union-attr]
-                        )
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            teams = {t.id: t for t in team_rows if t.id is not None}
-
-        def _side(team_entry_id: Optional[int]) -> dict:
-            team = teams.get(team_entry_id) if team_entry_id is not None else None
-            if team is None:
-                return {"abbrev": "TBD", "logo_url": None}
-            return {
-                "abbrev": team.raw_team_abbreviation or team.raw_team_name or "TBD",
-                "logo_url": franchise_logo_url(team.nba_stats_team_id),
-            }
-
-        for g in game_rows:
-            if g.id is None:
-                continue
-            matchups[g.id] = {
-                "home": _side(g.home_team_entry_id),
-                "away": _side(g.away_team_entry_id),
-            }
-
-    return {"players": players, "matchups": matchups}
-
-
 @router.get("/", response_class=HTMLResponse)
 async def home(
     request: Request,
@@ -282,25 +138,24 @@ async def home(
 ):
     """Render the Homepage with consensus hero, trending players, VS arena, and news feed."""
     # --- Summer League Desk (event-instance #1 of the Event Desk framework) ---
-    # One service call assembles the current-state payload from the precomputed
-    # T2/T4/event_desk_state projections; `daily_state` itself is resolved at
-    # request time by the framework's pure resolvers (see
-    # app.services.summer_league.desk_read module docstring). `None` means the
-    # SL event's lifecycle isn't currently active -- the template collapses to
-    # the archive-strip treatment (behavior spec §2) instead of the takeover.
+    # ONE service call assembles the current-state payload (from the precomputed
+    # T2/T4/event_desk_state projections) AND its player/team view-context
+    # enrichment -- see `get_desk_view`'s docstring for why those two things are
+    # composed there rather than in this route. `daily_state` itself is resolved
+    # at request time by the framework's pure resolvers (see
+    # app.services.summer_league.desk_read module docstring). A `None` payload
+    # means the SL event's lifecycle isn't currently active -- the template
+    # collapses to the archive-strip treatment (behavior spec §2) instead of the
+    # takeover; the enrichment dicts degrade to empty in that case too.
     # `now` is naive UTC (tzinfo stripped): the framework resolvers compare it
     # against `summer_league_games.tip_datetime`, which is naive UTC by repo
     # convention, so an aware value here would raise on the comparison. Building
     # it timezone-aware first (not deprecated `utcnow()`) then dropping tzinfo
     # yields the correct wall-clock instant without an aware/naive mismatch.
     now_naive_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-    desk_payload = await get_desk_payload(db, now=now_naive_utc)
+    desk_view = await get_desk_view(db, now=now_naive_utc)
+    desk_payload = desk_view.payload
     desk_window_open = desk_payload is not None
-    # Player identity + team-logo enrichment for the Desk templates (#509) --
-    # a no-op, zero-query call off-window. See the helper's docstring for why
-    # this can't live inside `get_desk_payload` (that's a pure read-model,
-    # not a view model) or inside the templates (would reintroduce an N+1).
-    desk_view = await _build_desk_view_context(db, desk_payload)
     desk_game_year = to_eastern_date(now_naive_utc).year
 
     # --- Consensus hero -------------------------------------------------------
@@ -563,8 +418,8 @@ async def home(
             # Summer League Desk (None/False off-window -> collapsed strip)
             "desk_payload": desk_payload,
             "desk_window_open": desk_window_open,
-            "desk_players": desk_view["players"],
-            "desk_matchups": desk_view["matchups"],
+            "desk_players": desk_view.players,
+            "desk_matchups": desk_view.matchups,
             "desk_game_year": desk_game_year,
             # Consensus hero
             "board_kind": board_kind,

@@ -1,9 +1,11 @@
 """Summer League Desk read service — assembles one `/` render from T2/T4 (#508).
 
-The home route calls :func:`get_desk_payload` exactly once. It is a **pure read**:
-no writes, no distribution rebuilds, no per-request storyline/grade recompute. Two
-different things happen at two different times, and this module is careful never
-to conflate them:
+The home route calls :func:`get_desk_view` exactly once -- the ONE service call
+that assembles both the payload (:func:`get_desk_payload`) and its player/team
+view-context enrichment (:func:`get_desk_view_context`) for `/`'s template. Both
+are **pure reads**: no writes, no distribution rebuilds, no per-request
+storyline/grade recompute. Two different things happen at two different times,
+and this module is careful never to conflate them:
 
 * **Content** (hero copy, slate weights, grades, commentary prose) is whatever the
   last hourly tick (`scripts/sl_desk_tick.py`, #516/#523) wrote to T2
@@ -113,6 +115,8 @@ from app.services.summer_league.desk_storylines import (
 )
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league.scoreboard_ingest import EVENT_KEY_SUMMER_LEAGUE
+from app.services.summer_league.team_logos import franchise_logo_url
+from app.utils.images import get_placeholder_url, get_player_image_url
 
 # Roster statuses treated as "actively tracked" -- mirrors
 # `desk_storylines._ROSTER_ACTIVE_STATUSES` / `sl_desk_tick._ROSTER_ACTIVE_STATUSES`.
@@ -978,6 +982,211 @@ async def _assemble_tracker(
 
 
 # --------------------------------------------------------------------------- #
+# View-context enrichment (#509; relocated from `app.routes.ui` per follow-up
+# ticket -- routes must stay thin, and #508's contract is "one service call
+# assembles the page payload")
+# --------------------------------------------------------------------------- #
+async def get_desk_view_context(
+    db: AsyncSession, payload: Optional[DeskPayload]
+) -> dict[str, dict]:
+    """Batch-enrich a Desk payload with the player identity + team-logo data templates need.
+
+    `DeskPayload` (#506) deliberately carries only ids -- `subject_player_id`,
+    `top_performer_player_id`, ledger `player_id`, `game_id` -- no display
+    names, headshots, or team crests (see that module's docstring: it's an
+    internal read-model, not a view model). Templates need those, so this
+    does ONE small, batched enrichment pass per render rather than resolving
+    per-row inside a template (which would silently reintroduce an N+1 into
+    `/`'s query budget). Fires at most two round trips total (players, then
+    games+teams) regardless of how many rows/games the payload has.
+
+    Kept as a companion structure -- a plain dict keyed by id -- rather than
+    folded into `DeskPayload` itself: that dataclass (and its nested
+    hero/slate/live_board/ledger/tracker rows) is a frozen contract #511 and
+    #522 also build against.
+
+    Args:
+        db: Active database session.
+        payload: The current render's Desk payload, or `None` off-window (in
+            which case this returns empty lookups without querying anything).
+
+    Returns:
+        `{"players": {player_id: {...}}, "matchups": {game_id: {...}}}`.
+        Each player entry has `display_name`, `slug`, `photo_url`,
+        `draft_tag` (e.g. "Pick 5", "Undrafted"). Each matchup entry has
+        `home`/`away`, each `{"abbrev": str, "logo_url": Optional[str]}`.
+    """
+    if payload is None:
+        return {"players": {}, "matchups": {}}
+
+    player_ids: set[int] = set()
+    if payload.hero.subject_player_id is not None:
+        player_ids.add(payload.hero.subject_player_id)
+    if payload.hero.subject_player_id_2 is not None:
+        player_ids.add(payload.hero.subject_player_id_2)
+    for live_row in payload.live_board:
+        if live_row.top_performer_player_id is not None:
+            player_ids.add(live_row.top_performer_player_id)
+    for ledger_row in payload.ledger:
+        player_ids.add(ledger_row.player_id)
+
+    game_ids: set[int] = set()
+    if payload.hero.game_id is not None:
+        game_ids.add(payload.hero.game_id)
+    for slate_row in payload.slate:
+        game_ids.add(slate_row.game_id)
+    for live_row in payload.live_board:
+        game_ids.add(live_row.game_id)
+    for ledger_row in payload.ledger:
+        game_ids.add(ledger_row.game_id)
+
+    players: dict[int, dict] = {}
+    if player_ids:
+        player_rows = (
+            (
+                await db.execute(
+                    select(PlayerMaster).where(  # type: ignore[call-overload]
+                        PlayerMaster.id.in_(player_ids)  # type: ignore[union-attr]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for p in player_rows:
+            if p.id is None:
+                continue
+            if p.draft_round is None:
+                draft_tag = "Undrafted"
+            else:
+                overall = draft_slot_fallback(p.draft_round, p.draft_pick)
+                draft_tag = f"Pick {overall}" if overall else "Drafted"
+            players[p.id] = {
+                "display_name": p.display_name or f"Player {p.id}",
+                "slug": p.slug,
+                "photo_url": (
+                    get_player_image_url(player_id=p.id, slug=p.slug, style="default")
+                    if p.slug
+                    else get_placeholder_url(
+                        p.display_name, player_id=p.id, width=160, height=160
+                    )
+                ),
+                "position": p.position,
+                "draft_tag": draft_tag,
+            }
+
+    matchups: dict[int, dict] = {}
+    if game_ids:
+        game_rows = (
+            (
+                await db.execute(
+                    select(SummerLeagueGame).where(  # type: ignore[call-overload]
+                        SummerLeagueGame.id.in_(game_ids)  # type: ignore[union-attr]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        team_ids: set[int] = set()
+        for g in game_rows:
+            if g.home_team_entry_id is not None:
+                team_ids.add(g.home_team_entry_id)
+            if g.away_team_entry_id is not None:
+                team_ids.add(g.away_team_entry_id)
+
+        teams: dict[int, SummerLeagueTeamEntry] = {}
+        if team_ids:
+            team_rows = (
+                (
+                    await db.execute(
+                        select(SummerLeagueTeamEntry).where(  # type: ignore[call-overload]
+                            SummerLeagueTeamEntry.id.in_(team_ids)  # type: ignore[union-attr]
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            teams = {t.id: t for t in team_rows if t.id is not None}
+
+        def _side(team_entry_id: Optional[int]) -> dict:
+            team = teams.get(team_entry_id) if team_entry_id is not None else None
+            if team is None:
+                return {"abbrev": "TBD", "logo_url": None}
+            return {
+                "abbrev": team.raw_team_abbreviation or team.raw_team_name or "TBD",
+                "logo_url": franchise_logo_url(team.nba_stats_team_id),
+            }
+
+        for g in game_rows:
+            if g.id is None:
+                continue
+            matchups[g.id] = {
+                "home": _side(g.home_team_entry_id),
+                "away": _side(g.away_team_entry_id),
+            }
+
+    return {"players": players, "matchups": matchups}
+
+
+@dataclass(frozen=True)
+class DeskView:
+    """The full `/` route's Desk data: the read-model payload plus its view-context.
+
+    `payload` is `None` off-window (the route renders the collapsed archive
+    strip in that case); `players`/`matchups` are always present but empty
+    when there is nothing to enrich (off-window, or an in-window payload that
+    references no players/games -- doesn't happen in practice, but the
+    enrichment pass degrades to empty dicts rather than raising).
+    """
+
+    payload: Optional[DeskPayload]
+    players: dict[int, dict]
+    matchups: dict[int, dict]
+
+
+async def get_desk_view(
+    db: AsyncSession,
+    *,
+    now: Optional[datetime] = None,
+    tracker_cohort: str = DEFAULT_TRACKER_COHORT,
+    tracker_stat_view: str = DEFAULT_TRACKER_STAT_VIEW,
+) -> DeskView:
+    """The ONE call `app.routes.ui.home` makes to assemble the Desk for `/`.
+
+    Composes `get_desk_payload` (the pure read-model) with
+    `get_desk_view_context` (the player/team enrichment templates need) so
+    the route itself never touches `select()`/`db.execute` for the Desk --
+    it just unpacks this one result into the template context. See
+    `get_desk_view_context`'s docstring for why the enrichment stays a
+    companion structure instead of a payload field.
+
+    Args:
+        db: Active database session (read-only).
+        now: Override for "now" (tests; defaults to the current UTC instant).
+        tracker_cohort: Forwarded to `get_desk_payload`.
+        tracker_stat_view: Forwarded to `get_desk_payload`.
+
+    Returns:
+        A `DeskView` with the resolved payload (`None` off-window) and its
+        player/matchup enrichment dicts (empty off-window).
+    """
+    payload = await get_desk_payload(
+        db,
+        now=now,
+        tracker_cohort=tracker_cohort,
+        tracker_stat_view=tracker_stat_view,
+    )
+    view_context = await get_desk_view_context(db, payload)
+    return DeskView(
+        payload=payload,
+        players=view_context["players"],
+        matchups=view_context["matchups"],
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Public entry point
 # --------------------------------------------------------------------------- #
 async def get_desk_payload(
@@ -989,10 +1198,11 @@ async def get_desk_payload(
 ) -> Optional[DeskPayload]:
     """Assemble one `/` render's Summer League Desk payload, or ``None`` off-window.
 
-    One call, no per-player/per-game queries (see module docstring). The
-    caller (`app.routes.ui.home`) is responsible for the off-window UI
-    treatment when this returns ``None`` -- this function's only job is to
-    return the correct answer, not to render anything.
+    One call, no per-player/per-game queries (see module docstring). Called by
+    `get_desk_view` (which also runs the view-context enrichment); the `/`
+    route is responsible for the off-window UI treatment when this returns
+    ``None`` -- this function's only job is to return the correct answer, not
+    to render anything.
 
     Args:
         db: Active database session (read-only; this function never writes).
@@ -1098,5 +1308,8 @@ __all__ = [
     "TRACKER_CAP",
     "TRACKER_COHORTS",
     "TRACKER_STAT_VIEWS",
+    "DeskView",
     "get_desk_payload",
+    "get_desk_view",
+    "get_desk_view_context",
 ]

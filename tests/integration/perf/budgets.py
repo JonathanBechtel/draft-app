@@ -198,11 +198,11 @@ DESK_HOME_PAGE_BUDGETS: dict[str, int] = {
     # Measured 71 (raised from 68 by #509's Desk states UI): `DeskPayload`
     # (#506) deliberately carries only ids -- no player display names/photos,
     # no team crests -- so the templates need a small, per-render enrichment
-    # pass. `app.routes.ui._build_desk_view_context` does this in exactly
-    # THREE additional batched queries (never per-row): PlayerMaster by id,
-    # SummerLeagueGame by id, SummerLeagueTeamEntry by id -- covering every
-    # player/game referenced across hero + slate + live_board + ledger in one
-    # pass each, regardless of row count. +3 over the prior 68 for both
+    # pass. `app.services.summer_league.desk_read.get_desk_view_context` does
+    # this in exactly THREE additional batched queries (never per-row):
+    # PlayerMaster by id, SummerLeagueGame by id, SummerLeagueTeamEntry by id --
+    # covering every player/game referenced across hero + slate + live_board +
+    # ledger in one pass each, regardless of row count. +3 over the prior 68 for both
     # in-window states below.
     #
     # Measured 68 (pre-#509): the off-window `/` baseline (52, which already includes the
