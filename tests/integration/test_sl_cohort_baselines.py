@@ -262,6 +262,8 @@ async def test_build_baselines_round_bucket_and_undrafted_and_debut(
     comp = await _seed_competition(
         db_session, year=2024, venue_slug="las_vegas", league_id="13"
     )
+    home = await _seed_team(db_session, comp)
+    away = await _seed_team(db_session, comp)
 
     r1_late = await _seed_player(
         db_session, name="R1Late", draft_round=1, draft_pick=20
@@ -274,6 +276,22 @@ async def test_build_baselines_round_bucket_and_undrafted_and_debut(
         gmsc=15.0,
         minutes=100.0,
         gp=5,
+    )
+    # Debut grain (#539) is built from the player's earliest qualifying
+    # individual GAME, not the season aggregate -- seed one qualifying game
+    # log whose GmSc (== pts, per `_seed_game_log`) matches the season value
+    # so the debut assertion below stays hand-computable.
+    r1_late_source = await _seed_source_player(db_session, player=r1_late)
+    r1_late_game = await _seed_game(db_session, comp, home, away)
+    await _seed_game_log(
+        db_session,
+        competition=comp,
+        game=r1_late_game,
+        team=home,
+        source_player=r1_late_source,
+        player=r1_late,
+        minutes_seconds=25 * 60,
+        pts=15.0,
     )
 
     # R2's within-round pick is 1-30 (overall picks 31-60) -- NOT pick<=14.
@@ -364,6 +382,37 @@ async def test_build_baselines_debut_grain_uses_earliest_year_only(
         gmsc=30.0,
         minutes=100.0,
         gp=5,
+    )
+
+    # Debut grain (#539) is game-based: seed one qualifying game log per year
+    # (each competition's `_seed_game` date carries its own year, so these
+    # sort chronologically) so the 2023 game -- not the 2024 one -- wins.
+    source_player = await _seed_source_player(db_session, player=player)
+    home_2023 = await _seed_team(db_session, comp_2023)
+    away_2023 = await _seed_team(db_session, comp_2023)
+    game_2023 = await _seed_game(db_session, comp_2023, home_2023, away_2023)
+    await _seed_game_log(
+        db_session,
+        competition=comp_2023,
+        game=game_2023,
+        team=home_2023,
+        source_player=source_player,
+        player=player,
+        minutes_seconds=25 * 60,
+        pts=10.0,
+    )
+    home_2024 = await _seed_team(db_session, comp_2024)
+    away_2024 = await _seed_team(db_session, comp_2024)
+    game_2024 = await _seed_game(db_session, comp_2024, home_2024, away_2024)
+    await _seed_game_log(
+        db_session,
+        competition=comp_2024,
+        game=game_2024,
+        team=home_2024,
+        source_player=source_player,
+        player=player,
+        minutes_seconds=25 * 60,
+        pts=30.0,
     )
 
     version = await build_baselines(

@@ -677,13 +677,14 @@ async def _assemble_ledger(
     """The Ledger's top-performers list: per-game GmSc + cohort percentile.
 
     Percentile ranks a single game's GmSc against the player's cohort's
-    **event-grain** distribution. This is the same variance-mismatch
-    approximation the streak trigger used before #525 retargeted it to the
-    new ``game``-grain T1 baseline (`cohort_baselines.build_baselines`); the
-    Ledger is a separate read surface out of that ticket's scope and still
-    reads the event grain — aligning it to the game grain is a documented
-    follow-up, not done here. A player whose cohort has no active baseline yet
-    is skipped rather than assigned a fabricated percentile.
+    **game-grain** distribution (#539) -- the correct single-game baseline
+    #525 introduced and the streak trigger already reads
+    (`cohort_baselines.build_baselines`, ``grain="game"``); ranking a single
+    game against the event-grain (season-blended, low-variance) distribution
+    was the same approximation #525 fixed for the streak trigger, carried
+    over here. A player whose cohort has no active **game-grain** baseline
+    yet is skipped entirely rather than assigned a fabricated percentile off
+    a mismatched grain.
     """
     if not competition_ids or ledger_date is None:
         return [], {}
@@ -722,6 +723,7 @@ async def _assemble_ledger(
         cohort_key_for(
             player_by_id[pid].draft_round if pid in player_by_id else None,
             player_by_id[pid].draft_pick if pid in player_by_id else None,
+            grain=SummerLeagueDeskGrain.GAME,
         )
         for pid in player_ids
     }
@@ -730,7 +732,7 @@ async def _assemble_ledger(
         baseline_stmt = select(SummerLeagueCohortBaseline).where(
             SummerLeagueCohortBaseline.baseline_version == baseline_version,  # type: ignore[arg-type]
             SummerLeagueCohortBaseline.cohort_key.in_(cohort_keys),  # type: ignore[attr-defined]
-            SummerLeagueCohortBaseline.grain == SummerLeagueDeskGrain.EVENT,  # type: ignore[arg-type]
+            SummerLeagueCohortBaseline.grain == SummerLeagueDeskGrain.GAME,  # type: ignore[arg-type]
             SummerLeagueCohortBaseline.is_active.is_(True),  # type: ignore[attr-defined]
         )
         baseline_rows = (await db.execute(baseline_stmt)).scalars().all()
@@ -755,6 +757,7 @@ async def _assemble_ledger(
         cohort_key = cohort_key_for(
             player.draft_round if player else None,
             player.draft_pick if player else None,
+            grain=SummerLeagueDeskGrain.GAME,
         )
         baseline = baselines.get(cohort_key)
         if baseline is None:

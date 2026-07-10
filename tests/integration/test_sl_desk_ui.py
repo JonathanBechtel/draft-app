@@ -241,6 +241,25 @@ async def _seed_baseline(db: AsyncSession, *, baseline_version: str) -> None:
             median_value=50.0,
         )
     )
+    # The Ledger (#539) ranks a single game's GmSc against the GAME-grain
+    # baseline, not EVENT -- seed both so the Recap Ledger table renders.
+    db.add(
+        SummerLeagueCohortBaseline(
+            baseline_version=baseline_version,
+            is_active=True,
+            cohort_key="game:1-4",
+            cohort_kind=SummerLeagueDeskCohortKind.SLOT_WINDOW,
+            metric="gmsc",
+            grain=SummerLeagueDeskGrain.GAME,
+            venue_scope="all",
+            season_range="2017-2025",
+            min_minutes=10.0,
+            n_members=20,
+            breakpoints={"0": 5.0, "25": 15.0, "50": 25.0, "75": 40.0, "100": 60.0},
+            mean_value=25.0,
+            median_value=25.0,
+        )
+    )
     await db.flush()
 
 

@@ -8,6 +8,7 @@ percentile-breakpoint math, and the min-minutes gate. No DB — see
 
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -20,12 +21,14 @@ from app.services.summer_league.cohort_baselines import (
     DEFAULT_GAME_MIN_MINUTES,
     DEFAULT_MIN_MINUTES,
     EventAggregate,
+    FirstQualifyingGame,
     blend_event_aggregates,
     cohort_key_for,
     cohort_kind_for,
     compute_breakpoints,
     compute_mean,
     compute_median,
+    first_qualifying_games,
     qualifying_game_values,
     slot_bounds_for,
     slot_window,
@@ -372,3 +375,109 @@ def test_same_game_ranks_differently_against_event_grain_vs_game_grain() -> None
     # top (inflated); against the true wide game distribution it's real but
     # more modest.
     assert event_pctl > game_pctl
+
+
+# --------------------------------------------------------------------------- #
+# first_qualifying_games (#539): the ONE shared debut-game reduction
+# --------------------------------------------------------------------------- #
+def _dated_row(
+    player_id: int,
+    game_id: int,
+    minutes_seconds: int,
+    pts: float = 10.0,
+) -> SimpleNamespace:
+    """A minimal box line -- GmSc equals ``pts`` (every other component 0)."""
+    return SimpleNamespace(
+        player_id=player_id, game_id=game_id, minutes_seconds=minutes_seconds, pts=pts
+    )
+
+
+def test_first_qualifying_games_hand_computed_picks_earliest_qualifying_per_player() -> (
+    None
+):
+    """Hand-computed: each player's earliest-dated qualifying game wins, not the highest GmSc."""
+    rows = [
+        # Player 1: game 102 (July 5, 30 GmSc) precedes game 101 (July 10, 10
+        # GmSc) chronologically -- the EARLIER date wins even though it's the
+        # lower-GmSc game.
+        (_dated_row(1, 101, 20 * 60, pts=10.0), date(2024, 7, 10)),
+        (_dated_row(1, 102, 20 * 60, pts=30.0), date(2024, 7, 5)),
+        # Player 2: a single qualifying game.
+        (_dated_row(2, 200, 20 * 60, pts=18.0), date(2024, 7, 8)),
+    ]
+    result = first_qualifying_games(rows, min_minutes=10.0)
+
+    assert result[1] == FirstQualifyingGame(
+        player_id=1, game_id=102, gmsc=30.0, game_date=date(2024, 7, 5)
+    )
+    assert result[2] == FirstQualifyingGame(
+        player_id=2, game_id=200, gmsc=18.0, game_date=date(2024, 7, 8)
+    )
+
+
+def test_first_qualifying_games_gates_below_floor_even_if_chronologically_first() -> (
+    None
+):
+    """A thin game that's chronologically first is skipped for the next qualifying one."""
+    rows = [
+        (_dated_row(1, 100, 3 * 60, pts=40.0), date(2024, 7, 1)),  # 3 min -- dropped
+        (_dated_row(1, 101, 15 * 60, pts=12.0), date(2024, 7, 5)),  # 15 min -- qualifies
+    ]
+    result = first_qualifying_games(rows, min_minutes=10.0)
+    assert result[1].game_id == 101
+    assert result[1].gmsc == 12.0
+
+
+def test_first_qualifying_games_ties_break_on_lower_game_id() -> None:
+    """A same-day doubleheader breaks the tie on the lower game_id, deterministically."""
+    rows = [
+        (_dated_row(1, 202, 20 * 60, pts=5.0), date(2024, 7, 10)),
+        (_dated_row(1, 201, 20 * 60, pts=9.0), date(2024, 7, 10)),
+    ]
+    result = first_qualifying_games(rows, min_minutes=10.0)
+    assert result[1].game_id == 201
+
+
+def test_first_qualifying_games_missing_date_never_wins_over_a_dated_row() -> None:
+    """A row with no game_date sorts last -- it never counts as "first"."""
+    rows = [
+        (_dated_row(1, 100, 20 * 60, pts=5.0), None),
+        (_dated_row(1, 101, 20 * 60, pts=9.0), date(2024, 7, 10)),
+    ]
+    result = first_qualifying_games(rows, min_minutes=10.0)
+    assert result[1].game_id == 101
+
+
+def test_first_qualifying_games_empty_rows_returns_empty_dict() -> None:
+    assert first_qualifying_games([], min_minutes=10.0) == {}
+
+
+def test_first_qualifying_games_skips_rows_with_no_player_id() -> None:
+    row = SimpleNamespace(player_id=None, game_id=1, minutes_seconds=20 * 60, pts=10.0)
+    assert first_qualifying_games([(row, date(2024, 7, 10))], min_minutes=10.0) == {}
+
+
+def test_first_qualifying_games_computes_gmsc_via_game_score_from_row() -> None:
+    """GmSc is the real Hollinger Game Score, not the raw pts total."""
+    row = SimpleNamespace(
+        player_id=1,
+        game_id=100,
+        minutes_seconds=25 * 60,
+        pts=20,
+        fgm=8,
+        fga=15,
+        ftm=4,
+        fta=5,
+        oreb=1,
+        dreb=4,
+        ast=3,
+        stl=2,
+        blk=1,
+        tov=2,
+        pf=3,
+    )
+    result = first_qualifying_games([(row, date(2024, 7, 10))], min_minutes=10.0)
+    expected = game_score_line(
+        pts=20, fgm=8, fga=15, ftm=4, fta=5, oreb=1, dreb=4, ast=3, stl=2, blk=1, tov=2, pf=3
+    )
+    assert result[1].gmsc == round(expected, 2)

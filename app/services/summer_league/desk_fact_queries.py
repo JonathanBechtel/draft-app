@@ -63,8 +63,11 @@ from app.schemas.summer_league_desk import (
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league.cohort_baselines import (
+    DEFAULT_GAME_MIN_MINUTES,
+    FirstQualifyingGame,
     blend_event_aggregates,
     cohort_key_for,
+    first_qualifying_games,
 )
 from app.services.summer_league.desk_facts import (
     ClubMember,
@@ -475,33 +478,87 @@ async def fetch_current_event_gp(
     return dict(out)
 
 
+async def fetch_first_qualifying_games(
+    db: AsyncSession,
+    *,
+    player_ids: Sequence[int],
+    min_minutes: float = DEFAULT_GAME_MIN_MINUTES,
+) -> dict[int, FirstQualifyingGame]:
+    """The ONE batched ``player_id -> first-qualifying-game`` lookup (#539).
+
+    Every read path that needs to know "which single game was this player's
+    debut" -- the storyline debut trigger
+    (`desk_storylines.compute_desk_storylines`, which fires only when
+    tonight's ``game_id`` matches) and the fact path's debut-status check
+    (:func:`fetch_debut_status`, below) -- shares this ONE query and the
+    SAME reduction (`cohort_baselines.first_qualifying_games`) Job A's
+    ``debut`` grain builds from. Scoped to every game a player has EVER
+    logged (not bounded by any one competition's ``season_range``), since a
+    player's real debut can predate whatever window a given tick's Job A
+    baseline happens to cover.
+
+    Args:
+        db: Active database session.
+        player_ids: Every player to resolve a first-qualifying-game for.
+        min_minutes: The per-game eligibility gate (mirrors
+            `cohort_baselines.DEFAULT_GAME_MIN_MINUTES`).
+
+    Returns:
+        ``player_id -> FirstQualifyingGame``. A player with no qualifying
+        game logged yet is simply absent.
+    """
+    if not player_ids:
+        return {}
+    stmt = (
+        select(  # type: ignore[call-overload]
+            SummerLeaguePlayerGameLog, SummerLeagueGame.game_date
+        )
+        .join(
+            SummerLeagueGame, SummerLeagueGame.id == SummerLeaguePlayerGameLog.game_id
+        )
+        .where(
+            SummerLeaguePlayerGameLog.player_id.in_(player_ids),  # type: ignore[union-attr]
+        )
+    )
+    rows = (await db.execute(stmt)).all()
+    return first_qualifying_games(rows, min_minutes=min_minutes)
+
+
 async def fetch_debut_status(
     db: AsyncSession, *, player_ids: Sequence[int], before_year: int
 ) -> dict[int, bool]:
-    """Whether each player has NO qualifying SL game log before ``before_year``.
+    """Whether each player's canonical first-qualifying game (#539) predates ``before_year``.
 
-    One batched query (mirrors ``desk_storylines._has_prior_sl_log``, applied
-    to the whole roster at once). ``True`` means the player is debuting this
-    event -- feeds the caller's decision to call
+    Reuses :func:`fetch_first_qualifying_games` -- the SAME shared lookup the
+    storyline debut trigger fires against -- rather than an independently
+    derived "has a prior year of SL history" check, so the fact path's
+    ``debut_vs_bar`` Fact and the storyline path's Debut trigger always agree
+    on which single game counted as a player's debut. ``True`` means the
+    player is debuting this event -- feeds the caller's decision to call
     :func:`~app.services.summer_league.desk_facts.detect_debut_vs_bar`.
+
+    Args:
+        db: Active database session.
+        player_ids: Every player to resolve debut status for.
+        before_year: A player whose first qualifying game falls in a year
+            strictly before this one has already debuted; anything else
+            (including no qualifying game on record at all yet) reads as a
+            debutant.
 
     Returns:
         ``player_id -> is_debut`` for every id in ``player_ids``.
     """
     if not player_ids:
         return {}
-    stmt = (
-        select(SummerLeaguePlayerSeason.player_id)  # type: ignore[call-overload]
-        .where(
-            SummerLeaguePlayerSeason.player_id.in_(player_ids),  # type: ignore[attr-defined]
-            SummerLeaguePlayerSeason.year < before_year,
-            SummerLeaguePlayerSeason.gp > 0,
-        )
-        .distinct()
-    )
-    rows = (await db.execute(stmt)).scalars().all()
-    has_prior = set(rows)
-    return {pid: pid not in has_prior for pid in player_ids}
+    first_games = await fetch_first_qualifying_games(db, player_ids=player_ids)
+    out: dict[int, bool] = {}
+    for pid in player_ids:
+        fqg = first_games.get(pid)
+        if fqg is None or fqg.game_date is None:
+            out[pid] = True
+            continue
+        out[pid] = fqg.game_date.year >= before_year
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -601,6 +658,7 @@ __all__ = [
     "fetch_debut_baselines",
     "fetch_debut_status",
     "fetch_event_baselines",
+    "fetch_first_qualifying_games",
     "fetch_game_baselines",
     "fetch_game_lines",
     "fetch_prior_events",

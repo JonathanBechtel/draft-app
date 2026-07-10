@@ -158,6 +158,47 @@ async def _roster_player(
     return source_player
 
 
+async def _seed_game_log(
+    db: AsyncSession,
+    *,
+    competition: SummerLeagueCompetition,
+    game: SummerLeagueGame,
+    team: SummerLeagueTeamEntry,
+    player: PlayerMaster,
+    source_player: SummerLeagueSourcePlayer,
+    minutes_seconds: int = 25 * 60,
+    pts: float = 15.0,
+) -> SummerLeaguePlayerGameLog:
+    """One qualifying box line (GmSc == ``pts``) attached to an EXISTING game.
+
+    Unlike ``_seed_prior_game_log`` (which creates its own game), this
+    attaches to a game the caller already has -- e.g. tonight's game, so a
+    player's debut trigger (#539: fires only when the current game is their
+    canonical first-qualifying game) can actually clear the per-game minutes
+    floor on the same game being evaluated.
+    """
+    idx = _next_idx()
+    assert competition.id is not None
+    assert game.id is not None
+    assert team.id is not None
+    assert source_player.id is not None
+    assert player.id is not None
+    log = SummerLeaguePlayerGameLog(
+        competition_id=competition.id,
+        game_id=game.id,
+        team_entry_id=team.id,
+        source_player_id=source_player.id,
+        player_id=player.id,
+        nba_stats_person_id=f"srcpid-{idx}",
+        raw_player_name=player.display_name or "Test Player",
+        minutes_seconds=minutes_seconds,
+        pts=int(pts),
+    )
+    db.add(log)
+    await db.flush()
+    return log
+
+
 async def _seed_prior_game_log(
     db: AsyncSession,
     *,
@@ -294,7 +335,17 @@ async def test_compute_desk_storylines_writes_debut_and_status_heat_for_undrafte
     game = await _seed_game(db_session, competition, home, away)
 
     player = await _seed_player(db_session, name="Sleeper", draft_round=None, draft_pick=None)
-    await _roster_player(db_session, competition, home, player)
+    source_player = await _roster_player(db_session, competition, home, player)
+    # Debut (#539) fires only when tonight's game is the subject's canonical
+    # first-qualifying game -- seed one qualifying box line on `game` itself.
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=game,
+        team=home,
+        player=player,
+        source_player=source_player,
+    )
 
     await _seed_baseline(
         db_session,
@@ -533,6 +584,28 @@ async def test_compute_desk_storylines_second_look_for_returning_player_and_no_d
     db_session.add(prior_season)
     await db_session.flush()
 
+    # #539: Debut now reads a real qualifying GAME log, not just the season
+    # aggregate -- back the prior-year season with one actual qualifying
+    # game so the shared first-qualifying-game lookup sees this player as
+    # already debuted (a season aggregate with no underlying game log would
+    # never happen in real, materialized-from-logs data).
+    prior_home = await _seed_team(db_session, prior_competition)
+    prior_away = await _seed_team(db_session, prior_competition)
+    prior_source_player = await _roster_player(
+        db_session, prior_competition, prior_home, player
+    )
+    prior_game = await _seed_game(
+        db_session, prior_competition, prior_home, prior_away, game_date=date(2025, 7, 10)
+    )
+    await _seed_game_log(
+        db_session,
+        competition=prior_competition,
+        game=prior_game,
+        team=prior_home,
+        player=player,
+        source_player=prior_source_player,
+    )
+
     baseline = await _seed_baseline(
         db_session,
         cohort_key="slot:8-11",
@@ -564,6 +637,79 @@ async def test_compute_desk_storylines_second_look_for_returning_player_and_no_d
     assert SummerLeagueDeskTriggerType.DEBUT not in trigger_types
 
 
+async def test_compute_desk_storylines_debut_fires_once_not_on_every_game_of_the_season(
+    db_session: AsyncSession,
+) -> None:
+    """#539 DoD: the first qualifying game fires Debut; the second one cannot.
+
+    Seeds a debutant with TWO qualifying games this event -- an earlier one
+    (day 1) and a later one (day 2, evaluated as its own separate
+    ``compute_desk_storylines`` tick, mirroring two different hourly ticks on
+    two different nights). Only day 1's tick sees the Debut trigger; day 2's
+    tick -- for the SAME player, same cohort -- must not re-fire it, proving
+    the shared ``first_qualifying_games`` lookup pins the debut to exactly
+    one game rather than the player's whole debut season.
+    """
+    competition = await _seed_competition(db_session)
+    home = await _seed_team(db_session, competition)
+    away = await _seed_team(db_session, competition)
+
+    day1 = date(2026, 7, 10)
+    day2 = date(2026, 7, 12)  # == _GAME_DATE
+    game1 = await _seed_game(
+        db_session, competition, home, away, game_date=day1, status=SummerLeagueGameStatus.FINAL
+    )
+    game2 = await _seed_game(
+        db_session, competition, home, away, game_date=day2, status=SummerLeagueGameStatus.FINAL
+    )
+
+    player = await _seed_player(db_session, name="TwoGameDebut", draft_round=1, draft_pick=1)
+    source_player = await _roster_player(db_session, competition, home, player)
+
+    # Both games clear the per-game qualifying floor; game1 is chronologically
+    # first, so it -- not game2 -- is the canonical debut game.
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=game1,
+        team=home,
+        player=player,
+        source_player=source_player,
+        minutes_seconds=20 * 60,
+        pts=14.0,
+    )
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=game2,
+        team=home,
+        player=player,
+        source_player=source_player,
+        minutes_seconds=22 * 60,
+        pts=18.0,
+    )
+
+    day1_result = await compute_desk_storylines(
+        db_session,
+        game_date=day1,
+        competition_id=competition.id,  # type: ignore[arg-type]
+        baseline_version=_BASELINE_VERSION,
+        mode="morning",
+    )
+    day1_trigger_types = {i.trigger_type for i in day1_result.slate[0].instances}
+    assert SummerLeagueDeskTriggerType.DEBUT in day1_trigger_types
+
+    day2_result = await compute_desk_storylines(
+        db_session,
+        game_date=day2,
+        competition_id=competition.id,  # type: ignore[arg-type]
+        baseline_version=_BASELINE_VERSION,
+        mode="morning",
+    )
+    day2_trigger_types = {i.trigger_type for i in day2_result.slate[0].instances}
+    assert SummerLeagueDeskTriggerType.DEBUT not in day2_trigger_types
+
+
 async def test_compute_desk_storylines_rerun_replaces_rather_than_duplicates_t3(
     db_session: AsyncSession,
 ) -> None:
@@ -574,7 +720,17 @@ async def test_compute_desk_storylines_rerun_replaces_rather_than_duplicates_t3(
     game = await _seed_game(db_session, competition, home, away)
 
     player = await _seed_player(db_session, name="Repeat", draft_round=None, draft_pick=None)
-    await _roster_player(db_session, competition, home, player)
+    source_player = await _roster_player(db_session, competition, home, player)
+    # Debut (#539) fires only when tonight's game is the subject's canonical
+    # first-qualifying game -- seed one qualifying box line on `game` itself.
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=game,
+        team=home,
+        player=player,
+        source_player=source_player,
+    )
     await _seed_baseline(
         db_session,
         cohort_key="status:undrafted",

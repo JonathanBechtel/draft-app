@@ -38,6 +38,7 @@ from app.schemas.summer_league_desk import (
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.event_desk.registry import sync_summer_league_event
 from app.services.summer_league.desk_read import get_desk_payload
+from app.services.summer_league.metrics import game_score_line
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from scripts.sl_desk_tick import run_desk_tick
 from tests.integration.perf._capture import count_queries
@@ -237,7 +238,11 @@ async def _seed_season(
 
 
 async def _seed_baseline(
-    db: AsyncSession, *, baseline_version: str, cohort_key: str = "slot:1-4"
+    db: AsyncSession,
+    *,
+    baseline_version: str,
+    cohort_key: str = "slot:1-4",
+    grain: SummerLeagueDeskGrain = SummerLeagueDeskGrain.EVENT,
 ) -> None:
     db.add(
         SummerLeagueCohortBaseline(
@@ -246,7 +251,7 @@ async def _seed_baseline(
             cohort_key=cohort_key,
             cohort_kind=SummerLeagueDeskCohortKind.SLOT_WINDOW,
             metric="gmsc",
-            grain=SummerLeagueDeskGrain.EVENT,
+            grain=grain,
             venue_scope="all",
             season_range="2017-2025",
             min_minutes=40.0,
@@ -602,6 +607,14 @@ async def test_recap_state_builds_ledger_from_last_final_within_budget(
     )
     source_player = await _roster_player(db_session, competition, home, player)
     await _seed_baseline(db_session, baseline_version="desk-home-v1")
+    # The Ledger (#539) ranks a single game's GmSc against the GAME-grain
+    # baseline, not EVENT -- seed both so the percentile actually resolves.
+    await _seed_baseline(
+        db_session,
+        baseline_version="desk-home-v1",
+        cohort_key="game:1-4",
+        grain=SummerLeagueDeskGrain.GAME,
+    )
     await _seed_game_log(
         db_session,
         competition=competition,
@@ -684,6 +697,14 @@ async def test_offday_recap_ledger_looks_back_to_last_nights_date(
     )
     source_player = await _roster_player(db_session, competition, home, player)
     await _seed_baseline(db_session, baseline_version="desk-home-v1")
+    # The Ledger (#539) ranks a single game's GmSc against the GAME-grain
+    # baseline, not EVENT -- seed both so the percentile actually resolves.
+    await _seed_baseline(
+        db_session,
+        baseline_version="desk-home-v1",
+        cohort_key="game:1-4",
+        grain=SummerLeagueDeskGrain.GAME,
+    )
     await _seed_game_log(
         db_session,
         competition=competition,
@@ -702,6 +723,125 @@ async def test_offday_recap_ledger_looks_back_to_last_nights_date(
     assert payload.daily_state == "recap"
     assert len(payload.ledger) == 1
     assert payload.ledger[0].game_id == game.id
+
+
+async def test_recap_ledger_renders_the_game_grain_percentile_not_event_grain(
+    db_session: AsyncSession,
+) -> None:
+    """#539: a fixture where EVENT/GAME percentiles sharply diverge -- the Ledger renders GAME.
+
+    Builds an EVENT-grain baseline whose breakpoints sit entirely ABOVE the
+    subject's actual single-game GmSc (so ranking against it would clamp to
+    the 0th percentile) and a GAME-grain baseline whose breakpoints sit
+    entirely BELOW it (so ranking against it clamps to the 100th percentile).
+    If `_assemble_ledger` were still reading the EVENT-grain row (the #539
+    bug), this game would render as the worst possible percentile instead of
+    the best.
+    """
+    year = 2026
+    game_date = date(2026, 7, 10)
+    now = datetime(2026, 7, 11, 15, 0)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    game = await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=game_date,
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.FINAL,
+        home_score=88,
+        away_score=80,
+    )
+    # Tonight's game keeps the outer lifecycle Active on 7/11 (Recap, not
+    # Wind-down) -- same fixture shape as the sibling Recap tests above.
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 11),
+        tip_datetime=datetime(2026, 7, 11, 23, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+    player = await _seed_player(
+        db_session, name="Diverge", draft_year=year, draft_round=1, draft_pick=1
+    )
+    source_player = await _roster_player(db_session, competition, home, player)
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=game,
+        team=home,
+        source_player=source_player,
+        player=player,
+        pts=30,
+    )
+    actual_gmsc = game_score_line(
+        pts=30, fgm=8, fga=15, ftm=2, fta=2, oreb=1, dreb=7, ast=5, stl=1, blk=0, tov=2, pf=2
+    )
+
+    # EVENT grain: every breakpoint sits ABOVE the actual GmSc -- ranking
+    # against this clamps to the 0th percentile.
+    db_session.add(
+        SummerLeagueCohortBaseline(
+            baseline_version="desk-home-v1",
+            is_active=True,
+            cohort_key="slot:1-4",
+            cohort_kind=SummerLeagueDeskCohortKind.SLOT_WINDOW,
+            metric="gmsc",
+            grain=SummerLeagueDeskGrain.EVENT,
+            venue_scope="all",
+            season_range="2017-2025",
+            min_minutes=40.0,
+            n_members=20,
+            breakpoints={"0": actual_gmsc + 100.0, "100": actual_gmsc + 200.0},
+            mean_value=actual_gmsc + 150.0,
+            median_value=actual_gmsc + 150.0,
+        )
+    )
+    # GAME grain: every breakpoint sits BELOW the actual GmSc -- ranking
+    # against this clamps to the 100th percentile.
+    db_session.add(
+        SummerLeagueCohortBaseline(
+            baseline_version="desk-home-v1",
+            is_active=True,
+            cohort_key="game:1-4",
+            cohort_kind=SummerLeagueDeskCohortKind.SLOT_WINDOW,
+            metric="gmsc",
+            grain=SummerLeagueDeskGrain.GAME,
+            venue_scope="all",
+            season_range="2017-2025",
+            min_minutes=10.0,
+            n_members=20,
+            breakpoints={"0": actual_gmsc - 200.0, "100": actual_gmsc - 100.0},
+            mean_value=actual_gmsc - 150.0,
+            median_value=actual_gmsc - 150.0,
+        )
+    )
+    await db_session.commit()
+
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    payload = await get_desk_payload(db_session, now=now)
+
+    assert payload is not None
+    assert payload.daily_state == "recap"
+    assert len(payload.ledger) == 1
+    ledger_row = payload.ledger[0]
+    assert ledger_row.pctl == 100.0
+    assert ledger_row.grade == "hot"
+
+    # The hero ("Performance of the Night") reads off the same GAME-grain row.
+    assert payload.hero.kind == "performance_of_night"
+    assert payload.hero.subject_player_id == player.id
+    assert "100th percentile" in (payload.hero.headline or "")
 
 
 # --------------------------------------------------------------------------- #

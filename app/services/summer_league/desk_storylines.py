@@ -69,6 +69,7 @@ from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.schemas.player_affiliation import AffiliationStatus
 from app.services.summer_league.cohort_baselines import (
     EventAggregate,
+    FirstQualifyingGame,
     blend_event_aggregates,
     cohort_key_for,
 )
@@ -79,6 +80,7 @@ from app.services.summer_league.desk_facts import (
     detect_self_delta,
 )
 from app.services.summer_league.desk_facts import detect_streak as _facts_detect_streak
+from app.services.summer_league.desk_fact_queries import fetch_first_qualifying_games
 from app.services.summer_league.desk_grades import GradeRow, percentile_of_value
 from app.services.summer_league.metrics import game_score_from_row
 
@@ -712,22 +714,6 @@ async def _consensus_rank_map(
     return out
 
 
-async def _has_prior_sl_log(
-    session: AsyncSession, player_id: int, before_year: int
-) -> bool:
-    """Whether the player has any SL game log before ``before_year``."""
-    stmt = (
-        select(SummerLeaguePlayerSeason.id)  # type: ignore[call-overload]
-        .where(
-            SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.year < before_year,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.gp > 0,  # type: ignore[arg-type]
-        )
-        .limit(1)
-    )
-    return (await session.execute(stmt)).first() is not None
-
-
 async def _prior_event(
     session: AsyncSession, player_id: int, before_year: int
 ) -> Optional[PriorEvent]:
@@ -922,6 +908,16 @@ async def compute_desk_storylines(
 
     consensus_rank_map = await _consensus_rank_map(session, list(all_player_ids))
 
+    # The ONE batched player_id -> first-qualifying-game lookup (#539), shared
+    # with the fact path (`desk_fact_queries.fetch_debut_status`) and Job A's
+    # debut-grain baseline (`cohort_baselines.first_qualifying_games`) --
+    # never "no prior-year log" (the pre-#539 approximation that fired the
+    # Debut trigger on every game of a debut season instead of just the
+    # first one).
+    first_qualifying_by_player: dict[
+        int, FirstQualifyingGame
+    ] = await fetch_first_qualifying_games(session, player_ids=list(all_player_ids))
+
     grades = (
         (
             await session.execute(
@@ -1033,9 +1029,20 @@ async def compute_desk_storylines(
         for slot in slots:
             grade = grade_by_player.get(slot.player_id)
 
-            is_debut = not await _has_prior_sl_log(
-                session, slot.player_id, competition.year
-            )
+            # Debut fires when the subject has no EARLIER qualifying game on
+            # record (#539): either they've never once cleared the per-game
+            # floor yet (``first_qualifying is None`` -- covers the Morning/
+            # Preview prediction case, before tonight's game has even been
+            # played) or the one qualifying game they DO have on record IS
+            # this one (``g``). A player whose earliest qualifying game
+            # points at some OTHER game -- an earlier game this same event,
+            # or any prior year -- has already debuted, so `g` (whatever it
+            # is) can never re-trigger Debut. This is what stops a debut
+            # season's 2nd/3rd/... game (and every sophomore's game) from
+            # re-firing the trigger the old "no prior *year* of history"
+            # check used to.
+            first_qualifying = first_qualifying_by_player.get(slot.player_id)
+            is_debut = first_qualifying is None or first_qualifying.game_id == g.id
             debut = detect_debut(subject=slot, is_debut=is_debut)
             if debut is not None:
                 instances.append(debut)
