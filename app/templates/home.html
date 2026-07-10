@@ -11,12 +11,56 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/podcasts.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/film-room.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/consensus-detail.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-desk.css') }}">
 {% endblock %}
 
 {% block content %}
 <!-- Main Content Container -->
 <main class="home-container mt-28">
 
+  <!-- ==========================================================================
+       SUMMER LEAGUE DESK (#509)
+       Renders the SINGLE current state (Morning Card / Live Desk / The
+       Ledger) chosen by the request-time state machine -- there is NO
+       user-facing state switcher (behavior spec §1/§2). Off-window collapses
+       to the archive strip. Sits above the news hero per the ticket's scope.
+       ========================================================================== -->
+  {% if desk_window_open and desk_payload %}
+  <section class="desk" id="slDeskSection" aria-label="Summer League Desk">
+    <div class="desk__head">
+      <span class="desk__title">Summer League Desk</span>
+      <span class="desk__freshness">{{ desk_payload.freshness.as_of_et_label }}</span>
+    </div>
+
+    {% if desk_payload.hero.kind == 'live_duel' %}
+      {% include "summer_league/desk/hero_live.html" %}
+    {% elif desk_payload.hero.kind == 'performance_of_night' %}
+      {% include "summer_league/desk/hero_ledger.html" %}
+    {% else %}
+      {# Covers hero.kind == "marquee" (Morning face-off / single-subject
+         degrade) AND "quiet_slate" (class-leader fallback) -- both ship in
+         hero_morning.html per the ticket's file list. #}
+      {% include "summer_league/desk/hero_morning.html" %}
+    {% endif %}
+
+    {% if desk_payload.daily_state == 'preview' and desk_payload.slate %}
+      {% include "summer_league/desk/slate.html" %}
+    {% endif %}
+
+    {% if desk_payload.daily_state == 'live' and desk_payload.live_board %}
+      {% include "summer_league/desk/live_board.html" %}
+    {% endif %}
+
+    {% if desk_payload.daily_state == 'recap' and desk_payload.ledger %}
+      {% include "summer_league/desk/ledger_table.html" %}
+    {% endif %}
+
+    {# Class Tracker (ticket #511, not built here) -- include point stub. #}
+    <!-- desk-tracker-include-point -->
+  </section>
+  {% elif not desk_window_open %}
+    {% include "summer_league/desk/offwindow_strip.html" %}
+  {% endif %}
 
   <!-- ==========================================================================
        NEWS HERO
@@ -831,4 +875,5 @@
 <script src="{{ url_for('static', path='js/home.js') }}"></script>
 <script src="{{ url_for('static', path='js/film-room.js') }}"></script>
 <script src="{{ url_for('static', path='js/consensus-detail.js') }}"></script>
+<script src="{{ url_for('static', path='js/summer-league-desk.js') }}"></script>
 {% endblock %}

@@ -1,0 +1,45 @@
+{# Summer League Desk -- Ledger hero (#509): Performance of the Night.
+
+   `desk_payload.hero.kind == "performance_of_night"` -- always a single
+   subject (the top Ledger row). `headline` is already-rendered commentary
+   prose (#519); this template only places it. #}
+{% set hero = desk_payload.hero %}
+{% set p1 = desk_players.get(hero.subject_player_id) if hero.subject_player_id else None %}
+{% set top_ledger_row = desk_payload.ledger[0] if desk_payload.ledger else None %}
+<section class="card desk__hero desk__hero--ledger" data-desk-hero-kind="{{ hero.kind }}" aria-label="Summer League Desk performance of the night">
+  <div class="scanlines"></div>
+  <div class="desk__hero-eyebrow">
+    <span>&#9670; Performance of the Night</span>
+    {% if hero.game_id and hero.game_id in desk_matchups %}
+    {% set m = desk_matchups[hero.game_id] %}
+    <span class="desk__hero-tip">{{ m.away.abbrev }} @ {{ m.home.abbrev }}</span>
+    {% endif %}
+    <span class="desk__hero-tip">{{ desk_payload.freshness.as_of_et_label }}</span>
+  </div>
+
+  {% if p1 %}
+  <div class="desk__hero-solo">
+    <div class="desk__hero-imgwrap">
+      <span class="desk__avatar desk__avatar--xl">
+        {% if p1.photo_url %}<img src="{{ p1.photo_url }}" alt="">{% endif %}
+      </span>
+    </div>
+    <div class="desk__hero-solo-body">
+      <div class="desk__hero-bigname">
+        {% if p1.slug %}<a href="/players/{{ p1.slug }}?ref=sl-desk">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
+      </div>
+      <div class="desk__hero-meta">{{ p1.draft_tag }}</div>
+      {% if top_ledger_row %}
+      <span class="desk__pctl-chip desk__pctl-chip--{{ top_ledger_row.grade }}">
+        {{ top_ledger_row.pctl | round(0, 'floor') | int }}th pctl &middot; {{ '%.1f'|format(top_ledger_row.gmsc) }} GmSc
+      </span>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <p class="desk__hero-tagline">
+    <span class="desk__hero-headline">{{ hero.headline }}</span>
+    {% if hero.tagline %} {{ hero.tagline }}{% endif %}
+  </p>
+</section>

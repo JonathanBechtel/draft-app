@@ -1,0 +1,57 @@
+{# Summer League Desk -- The Ledger table (#509): last night's top performers,
+   ranked by cohort percentile. `row.read` is already-rendered commentary
+   prose (#519) -- placed here, never re-worded. A single full-width table
+   (no per-cohort splitting) per the ticket's scope. #}
+<section>
+  <h2 class="desk__section-title" style="border-left-color: var(--color-accent-indigo);">Last Night's Top Performers</h2>
+  <p class="desk__section-sub">All players -- drafted rookies, sophomores, and undrafted standouts -- scored against their cohort.</p>
+  <div class="card" style="padding: 0.4rem 0.4rem 0.2rem;">
+    <div class="scanlines"></div>
+    <div class="desk__table-scroll">
+      <table class="desk__ledger-table">
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>GmSc</th>
+            <th>vs cohort</th>
+            <th>Read</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in desk_payload.ledger %}
+          {% set p = desk_players.get(row.player_id) %}
+          <tr data-player-id="{{ row.player_id }}" data-game-id="{{ row.game_id }}">
+            <td>
+              <div class="desk__name-cell">
+                <span class="desk__avatar desk__avatar--md">
+                  {% if p and p.photo_url %}<img src="{{ p.photo_url }}" alt="">{% endif %}
+                </span>
+                <div>
+                  <span class="desk__player-name">
+                    {% if p and p.slug %}<a href="/players/{{ p.slug }}?ref=sl-desk">{{ p.display_name }}</a>{% else %}{{ p.display_name if p else "Player " ~ row.player_id }}{% endif %}
+                  </span>
+                  {% if p %}
+                  <br>
+                  <span class="desk__status-tag {{ 'desk__status-tag--undrafted' if p.draft_tag == 'Undrafted' else 'desk__status-tag--pick' }}">{{ p.draft_tag }}</span>
+                  {% endif %}
+                  {% if row.game_id in desk_matchups %}
+                  {% set m = desk_matchups[row.game_id] %}
+                  <span style="font-family: var(--font-mono); font-size: 0.62rem; color: var(--color-slate-500); margin-left: 0.35rem;">
+                    {{ m.away.abbrev }} @ {{ m.home.abbrev }}
+                  </span>
+                  {% endif %}
+                </div>
+              </div>
+            </td>
+            <td class="desk__gmsc-cell">{{ '%.1f'|format(row.gmsc) }}</td>
+            <td>
+              <span class="desk__pctl-chip desk__pctl-chip--{{ row.grade }}">{{ row.pctl | round(0, 'floor') | int }}th pctl</span>
+            </td>
+            <td class="desk__read-cell">{{ row.read or "" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>

@@ -195,15 +195,26 @@ DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
 # in unbudgeted. Numbers are the exact counts measured by
 # `test_desk_home_inwindow_budget.py`; do not tune code to round them.
 DESK_HOME_PAGE_BUDGETS: dict[str, int] = {
-    # Measured 68: the off-window `/` baseline (52, which already includes the
+    # Measured 71 (raised from 68 by #509's Desk states UI): `DeskPayload`
+    # (#506) deliberately carries only ids -- no player display names/photos,
+    # no team crests -- so the templates need a small, per-render enrichment
+    # pass. `app.routes.ui._build_desk_view_context` does this in exactly
+    # THREE additional batched queries (never per-row): PlayerMaster by id,
+    # SummerLeagueGame by id, SummerLeagueTeamEntry by id -- covering every
+    # player/game referenced across hero + slate + live_board + ledger in one
+    # pass each, regardless of row count. +3 over the prior 68 for both
+    # in-window states below.
+    #
+    # Measured 68 (pre-#509): the off-window `/` baseline (52, which already includes the
     # single off-window `events` lookup) + the Live Desk's net +16 (its 17
     # service queries minus that 1 lookup it replaces). The Live board's
     # top-performer read is one batched query over the whole slate -- it does
     # NOT scale per game or per tracked player.
-    "live": 68,
-    # Measured 68: same composite total as Live here -- the Ledger's assembly
+    "live": 71,
+    # Measured 71: same composite total as Live here -- the Ledger's assembly
     # (last-final-date + batched game-logs/players/baselines/facts) happens to
     # land on the same query count as the Live board on this fixture. Both are
-    # section-bounded, not data-volume-bounded.
-    "recap": 68,
+    # section-bounded, not data-volume-bounded. (+3 over the prior 68, same
+    # #509 view-context enrichment described above.)
+    "recap": 71,
 }

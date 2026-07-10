@@ -1,0 +1,58 @@
+{# Summer League Desk -- Morning slate grid (#509): "The Rest of Tonight's Slate".
+
+   `desk_payload.slate` is already rank-ordered (highest storyline weight
+   first -- see `desk_read._fetch_today_slate`'s `.order_by(rank.asc())`), so
+   a positional cutoff after `visible_count` IS the no-signal tail: the games
+   this far down the ranking are the ones without a fired storyline. Rows
+   beyond the cutoff render with the `hidden` attribute (present in the DOM,
+   just not painted) so JS-off users still get every game in the page source;
+   `summer-league-desk.js` removes `hidden` on click -- no state/tab JS here. #}
+{% set visible_count = 4 %}
+{% set total_games = desk_payload.slate | length %}
+<section class="desk__slate" id="deskSlate">
+  <h2 class="desk__section-title">The Rest of Tonight's Slate</h2>
+  <p class="desk__section-sub">Every other game, ranked by computed storyline weight.</p>
+  <div class="desk__slate-grid">
+    {% for row in desk_payload.slate %}
+    {% set is_tail = loop.index > visible_count %}
+    <div class="card desk__game-card{% if is_tail %} desk__game-card--tail{% endif %}"
+         {% if is_tail %}hidden{% endif %}
+         data-game-id="{{ row.game_id }}">
+      <div class="scanlines"></div>
+      <div class="desk__game-card-top">
+        <span class="desk__status-pill desk__status-pill--{{ 'live' if row.status == 'in_progress' else ('final' if row.status == 'final' else 'upcoming') }}">
+          {{ row.status.replace('_', ' ') | title }}
+        </span>
+        {% if row.tip_datetime %}
+        <span class="desk__game-card-time">{{ row.tip_datetime.strftime('%-I:%M %p ET') }}</span>
+        {% endif %}
+      </div>
+      <div class="desk__game-card-title">
+        {% if row.game_id in desk_matchups %}
+        {% set m = desk_matchups[row.game_id] %}
+        {% if m.away.logo_url %}<img class="desk__team-logo" src="{{ m.away.logo_url }}" alt="{{ m.away.abbrev }}">{% endif %}
+        <a href="/stats/summer-league/{{ desk_game_year }}/games/{{ row.game_id }}?ref=sl-desk" style="color:inherit;text-decoration:none;">
+          {{ m.away.abbrev }} <span class="desk__vs">vs</span> {{ m.home.abbrev }}
+        </a>
+        {% if m.home.logo_url %}<img class="desk__team-logo" src="{{ m.home.logo_url }}" alt="{{ m.home.abbrev }}">{% endif %}
+        {% else %}
+        <a href="/stats/summer-league/{{ desk_game_year }}/games/{{ row.game_id }}?ref=sl-desk" style="color:inherit;text-decoration:none;">
+          {{ row.matchup_label }}
+        </a>
+        {% endif %}
+      </div>
+      {% if row.read %}
+      <div class="desk__game-card-insight">{{ row.read }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% if total_games > visible_count %}
+  <button type="button"
+          class="desk__slate-toggle"
+          id="deskSlateToggle"
+          aria-expanded="false"
+          data-more="Show all {{ total_games }} games"
+          data-less="Show fewer games">Show all {{ total_games }} games</button>
+  {% endif %}
+</section>

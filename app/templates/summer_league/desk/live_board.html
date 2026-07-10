@@ -1,0 +1,71 @@
+{# Summer League Desk -- Live tick board (#509): every game, its status, score,
+   Top Performer (headshot + live GmSc; em-dash pre-tip per behavior spec §1),
+   and the last tick's read. `row.read` is already-rendered commentary prose
+   (#519) -- placed here, never re-worded. #}
+<section>
+  <h2 class="desk__section-title" style="border-left-color: var(--color-accent-cyan);">Every Game at the Last Tick</h2>
+  <p class="desk__section-sub">Not play-by-play -- where every game and its top performer stand as of {{ desk_payload.freshness.as_of_et_label }}.</p>
+  <div class="card" style="padding: 0.4rem 0.4rem 0.2rem;">
+    <div class="scanlines"></div>
+    <div class="desk__table-scroll">
+      <table class="desk__live-board">
+        <thead>
+          <tr>
+            <th>Game</th>
+            <th>Status</th>
+            <th>Score</th>
+            <th>Top performer</th>
+            <th>Read at this tick</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in desk_payload.live_board %}
+          <tr data-game-id="{{ row.game_id }}">
+            <td>
+              <span class="desk__matchup-cell">
+                {% if row.game_id in desk_matchups %}
+                {% set m = desk_matchups[row.game_id] %}
+                {% if m.away.logo_url %}<img class="desk__team-logo desk__team-logo--sm" src="{{ m.away.logo_url }}" alt="{{ m.away.abbrev }}">{% endif %}
+                <a href="/stats/summer-league/{{ desk_game_year }}/games/{{ row.game_id }}?ref=sl-desk" style="color:inherit;text-decoration:none;">{{ m.away.abbrev }} &ndash; {{ m.home.abbrev }}</a>
+                {% if m.home.logo_url %}<img class="desk__team-logo desk__team-logo--sm" src="{{ m.home.logo_url }}" alt="{{ m.home.abbrev }}">{% endif %}
+                {% else %}
+                <a href="/stats/summer-league/{{ desk_game_year }}/games/{{ row.game_id }}?ref=sl-desk" style="color:inherit;text-decoration:none;">{{ row.matchup_label }}</a>
+                {% endif %}
+              </span>
+            </td>
+            <td>
+              <span class="desk__status-pill desk__status-pill--{{ 'live' if row.status == 'in_progress' else ('final' if row.status == 'final' else 'upcoming') }}">
+                {{ row.status.replace('_', ' ') | title }}
+              </span>
+            </td>
+            <td class="desk__score-cell">
+              {% if row.home_score is not none and row.away_score is not none %}
+                {{ row.away_score }}&ndash;{{ row.home_score }}
+              {% else %}
+                &mdash;
+              {% endif %}
+            </td>
+            <td>
+              {% if row.top_performer_gmsc is not none %}
+              {% set tp = desk_players.get(row.top_performer_player_id) %}
+              <span class="desk__top-perf">
+                <span class="desk__avatar desk__avatar--sm">
+                  {% if tp and tp.photo_url %}<img src="{{ tp.photo_url }}" alt="">{% endif %}
+                </span>
+                <span class="desk__top-perf-body">
+                  {% if tp and tp.slug %}<a href="/players/{{ tp.slug }}?ref=sl-desk" style="color:inherit;text-decoration:none;">{{ tp.display_name }}</a>{% else %}{{ tp.display_name if tp else "Player " ~ row.top_performer_player_id }}{% endif %}
+                  <span class="desk__top-perf-gs">{{ '%.1f'|format(row.top_performer_gmsc) }} GmSc</span>
+                </span>
+              </span>
+              {% else %}
+              <span class="desk__top-perf--empty" aria-label="No performance yet -- before tip" title="Before tip">&mdash;</span>
+              {% endif %}
+            </td>
+            <td class="desk__read-cell">{{ row.read or "" }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>

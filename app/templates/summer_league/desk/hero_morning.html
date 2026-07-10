@@ -1,0 +1,82 @@
+{# Summer League Desk -- Morning hero (#509).
+
+   Handles THREE visual variants of `desk_payload.hero`, all grouped under
+   this one partial per the ticket's file list:
+     - kind == "marquee", two subjects  -> face-off (tale of the tape)
+     - kind == "marquee", one subject   -> single-subject degrade (no pairing)
+     - kind == "quiet_slate"            -> class-leader fallback hero
+   `hero.headline`/`hero.tagline` are already-rendered commentary-engine
+   prose (#519) -- this template places them, it never re-renders or
+   re-words them. #}
+{% set hero = desk_payload.hero %}
+{% set p1 = desk_players.get(hero.subject_player_id) if hero.subject_player_id else None %}
+{% set p2 = desk_players.get(hero.subject_player_id_2) if hero.subject_player_id_2 else None %}
+<section class="card desk__hero" data-desk-hero-kind="{{ hero.kind }}" aria-label="Summer League Desk marquee">
+  <div class="scanlines"></div>
+  <div class="desk__hero-eyebrow">
+    <span>{% if hero.kind == 'quiet_slate' %}Class Leader{% else %}Tonight's Marquee{% endif %}</span>
+    {% if hero.game_id and hero.game_id in desk_matchups %}
+    <span class="desk__hero-tip">
+      {% set m = desk_matchups[hero.game_id] %}
+      {{ m.away.abbrev }} @ {{ m.home.abbrev }}
+    </span>
+    {% endif %}
+  </div>
+
+  {% if p1 and p2 %}
+  <div class="desk__hero-stage">
+    <div class="desk__hero-player">
+      <div class="desk__hero-imgwrap">
+        <span class="desk__avatar">
+          {% if p1.photo_url %}<img src="{{ p1.photo_url }}" alt="">{% endif %}
+        </span>
+      </div>
+      <div class="desk__hero-name">
+        {% if p1.slug %}<a href="/players/{{ p1.slug }}?ref=sl-desk">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
+      </div>
+      <div class="desk__hero-meta">{{ p1.draft_tag }}</div>
+    </div>
+    <div class="desk__hero-center">
+      <span class="desk__hero-vs">VS</span>
+    </div>
+    <div class="desk__hero-player">
+      <div class="desk__hero-imgwrap">
+        <span class="desk__avatar">
+          {% if p2.photo_url %}<img src="{{ p2.photo_url }}" alt="">{% endif %}
+        </span>
+      </div>
+      <div class="desk__hero-name">
+        {% if p2.slug %}<a href="/players/{{ p2.slug }}?ref=sl-desk">{{ p2.display_name }}</a>{% else %}{{ p2.display_name }}{% endif %}
+      </div>
+      <div class="desk__hero-meta">{{ p2.draft_tag }}</div>
+    </div>
+  </div>
+  {% elif p1 %}
+  <div class="desk__hero-solo">
+    <div class="desk__hero-imgwrap">
+      <span class="desk__avatar desk__avatar--xl">
+        {% if p1.photo_url %}<img src="{{ p1.photo_url }}" alt="">{% endif %}
+      </span>
+    </div>
+    <div class="desk__hero-solo-body">
+      <div class="desk__hero-bigname">
+        {% if p1.slug %}<a href="/players/{{ p1.slug }}?ref=sl-desk">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
+      </div>
+      <div class="desk__hero-meta">{{ p1.draft_tag }}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <p class="desk__hero-tagline">
+    <span class="desk__hero-headline">{{ hero.headline }}</span>
+    {% if hero.tagline %} {{ hero.tagline }}{% endif %}
+  </p>
+
+  {% if hero.facts %}
+  <div class="desk__hero-chips">
+    {% for fact in hero.facts %}
+      {% if fact.chip %}<span class="desk__chip">{{ fact.chip }}</span>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
