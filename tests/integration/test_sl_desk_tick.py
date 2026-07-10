@@ -97,7 +97,13 @@ def _empty_schedule_payload() -> dict[str, Any]:
 
 
 async def _seed_competition(
-    db: AsyncSession, *, year: int, league_id: str = "15", venue_slug: str = "las_vegas"
+    db: AsyncSession,
+    *,
+    year: int,
+    league_id: str = "15",
+    venue_slug: str = "las_vegas",
+    starts_on: date | None = None,
+    ends_on: date | None = None,
 ) -> SummerLeagueCompetition:
     idx = _next_idx()
     comp = SummerLeagueCompetition(
@@ -105,13 +111,36 @@ async def _seed_competition(
         league_id=league_id,
         venue_slug=f"{venue_slug}-{idx}",
         display_name=f"{year} {venue_slug}",
-        starts_on=date(year, 7, 1),
-        ends_on=date(year, 7, 20),
+        starts_on=starts_on or date(year, 7, 1),
+        ends_on=ends_on or date(year, 7, 20),
     )
     db.add(comp)
     await db.flush()
     assert comp.id is not None
     return comp
+
+
+def _schedule_payload_with_game(
+    *, game_id: str, tip_iso: str, status: int = 1, status_text: str = "Scheduled"
+) -> dict[str, Any]:
+    """A ``scheduleleaguev2``-shaped payload carrying exactly one game."""
+    return {
+        "leagueSchedule": {
+            "gameDates": [
+                {
+                    "gameDate": tip_iso,
+                    "games": [
+                        {
+                            "gameId": game_id,
+                            "gameStatus": status,
+                            "gameStatusText": status_text,
+                            "gameDateTimeUTC": tip_iso,
+                        }
+                    ],
+                }
+            ]
+        }
+    }
 
 
 async def _seed_team(
@@ -488,3 +517,103 @@ async def test_desk_tick_off_window_is_a_no_op(db_session: AsyncSession) -> None
     assert state.lifecycle_phase == EventLifecyclePhase.DORMANT
     assert state.daily_state is None
     assert state.freshness_tick_at == now
+
+
+async def test_desk_tick_bootstraps_scoreboard_on_first_morning_with_no_games_yet(
+    db_session: AsyncSession,
+) -> None:
+    """#527: a fresh competition with zero games, ticked on its very first morning, self-bootstraps.
+
+    `_resolve_daily_state` alone would see an empty calendar (zero
+    `summer_league_games` rows anywhere for this competition) and resolve
+    dormant -- exactly the chicken-and-egg gap #527 fixes: step 0 (scoreboard
+    ingest) is what would create that anchor, but the dormancy guard was
+    skipping straight past it. This proves the tick instead recognizes the
+    first-morning/pre-roll window via the competition's configured
+    ``starts_on``/``ends_on``, runs the scoreboard bootstrap once, and
+    produces a non-dormant Morning Card (``PREVIEW``) slate.
+    """
+    year = 2026
+    competition = await _seed_competition(
+        db_session,
+        year=year,
+        starts_on=date(year, 7, 10),
+        ends_on=date(year, 7, 20),
+    )
+
+    baseline_version = "sl-desk-tick-bootstrap-v1"
+    await _seed_baseline(db_session, baseline_version=baseline_version)
+    await db_session.commit()
+
+    assert (await db_session.execute(select(SummerLeagueGame))).scalars().all() == []
+
+    now = datetime(
+        2026, 7, 10, 19, 0
+    )  # 3:00pm ET (EDT) -- after the Morning flip, before tip.
+    payload = _schedule_payload_with_game(
+        game_id="desk-tick-bootstrap-game-1",
+        tip_iso="2026-07-10T23:00:00Z",  # 7:00pm ET tip.
+    )
+    session = FakeSession({"15": FakeResponse(payload)})
+    client = NBAStatsClient(session=session)
+
+    result = await run_desk_tick(db_session, now=now, client=client)
+    await db_session.commit()
+
+    assert result.dormant is False
+    assert result.bootstrapped is True
+    assert result.daily_state == EventDailyState.PREVIEW
+    assert result.scoreboard_report is not None
+    assert result.scoreboard_report.games_created == 1
+
+    games = (await db_session.execute(select(SummerLeagueGame))).scalars().all()
+    assert len(games) == 1
+    assert games[0].competition_id == competition.id
+    assert games[0].game_date == date(2026, 7, 10)
+
+    # T4 -- a Morning slate row exists for the newly-bootstrapped game.
+    slate_rows = (
+        (await db_session.execute(select(SummerLeagueDeskSlate))).scalars().all()
+    )
+    assert len(slate_rows) == 1
+    assert slate_rows[0].game_id == games[0].id
+
+    state = await _event_desk_state_for(db_session)
+    assert state.lifecycle_phase == EventLifecyclePhase.ACTIVE
+    assert state.daily_state == EventDailyState.PREVIEW
+
+
+async def test_desk_tick_far_off_competition_stays_dormant_without_bootstrap(
+    db_session: AsyncSession,
+) -> None:
+    """A current-year competition exists but `now` is nowhere near its window -- stays inert.
+
+    No fake NBA Stats client is injected, same guarantee as
+    `test_desk_tick_off_window_is_a_no_op`: if `_needs_scoreboard_bootstrap`
+    regressed and fired for a competition that's merely registered (not
+    actually imminent per its `starts_on`/`ends_on`), `run_scoreboard_ingest`
+    would try to open a real client and this test would fail/hang.
+    """
+    year = 2026
+    await _seed_competition(
+        db_session,
+        year=year,
+        starts_on=date(year, 7, 10),
+        ends_on=date(year, 7, 20),
+    )
+    await db_session.commit()
+
+    # Three months before `announce_horizon_days` (14) even opens the window.
+    now = datetime(year, 3, 1, 12, 0)
+
+    result = await run_desk_tick(db_session, now=now)
+    await db_session.commit()
+
+    assert result.dormant is True
+    assert result.bootstrapped is False
+    assert result.daily_state is None
+    assert (await db_session.execute(select(SummerLeagueGame))).scalars().all() == []
+
+    state = await _event_desk_state_for(db_session)
+    assert state.lifecycle_phase == EventLifecyclePhase.DORMANT
+    assert state.daily_state is None

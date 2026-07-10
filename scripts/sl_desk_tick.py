@@ -60,6 +60,19 @@ freshness fields (``freshness_tick_at`` / ``next_tick_eta``) and leaves
 ``daily_state``/``hero_ref`` untouched -- "safe freshness behavior," per
 spec, not a full state write.
 
+**#527 pre-anchor bootstrap.** The dormancy resolver above derives the
+event's outer lifecycle phase from known ``summer_league_games`` rows, which
+don't exist yet on the very first morning of the season (or any tick in the
+announce/pre-roll window before step 0 has ever run) -- a chicken-and-egg
+gap, since step 0 is exactly what would create that anchor. Before falling
+back to the inert path, a resolved-``None`` tick calls
+``_needs_scoreboard_bootstrap`` -- a synthetic-calendar check over each
+target competition's configured ``starts_on``/``ends_on`` (**not** a network
+call) -- and, only when that places the event in Announced/Warm-up/Active,
+runs step 0 once and re-resolves. A genuinely off-window/dormant event
+(``_needs_scoreboard_bootstrap`` returns ``False``) never reaches step 0
+here, preserving #516's deliberate network-free guarantee for that case.
+
 **Idempotent.** Every write this module performs delegates to an existing
 upsert (``grade_player_event``, ``compute_desk_storylines``,
 ``persist_grade_facts``, ``persist_slate_facts``, ``run_event_desk_tick``,
@@ -81,7 +94,7 @@ import os
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -92,7 +105,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv()
 
-from app.schemas.event_desk import EventDailyState, EventDeskState  # noqa: E402
+from app.schemas.event_desk import (  # noqa: E402
+    EventDailyState,
+    EventDeskState,
+    EventLifecyclePhase,
+)
 from app.schemas.player_affiliation import AffiliationStatus  # noqa: E402
 from app.schemas.players_master import PlayerMaster  # noqa: E402
 from app.schemas.summer_league import (  # noqa: E402
@@ -105,6 +122,7 @@ from app.schemas.summer_league_desk import (  # noqa: E402
     SummerLeagueDeskGrain,
 )
 from app.services.event_desk.controller import run_event_desk_tick  # noqa: E402
+from app.services.event_desk.lifecycle import lifecycle_phase  # noqa: E402
 from app.services.event_desk.registry import (  # noqa: E402
     SUMMER_LEAGUE_REGISTRATION,
     DeskEvent,
@@ -191,6 +209,9 @@ class DeskTickResult:
     graded_player_ids: tuple[int, ...] = ()
     storyline_results: dict[int, StorylineTickResult] = field(default_factory=dict)
     event_desk_states: tuple[EventDeskState, ...] = ()
+    # Whether the #527 pre-anchor bootstrap (`_needs_scoreboard_bootstrap`) ran
+    # `run_scoreboard_ingest` before the normal daily-state resolution succeeded.
+    bootstrapped: bool = False
 
 
 async def _resolve_daily_state(
@@ -227,6 +248,112 @@ async def _resolve_daily_state(
     return inner_state(
         now, calendar_facts.today_schedule, calendar_facts.today_statuses, desk_event
     )
+
+
+# Outer lifecycle phases #527's bootstrap should attempt for: the event is on
+# the calendar (Announced), imminent (Warm-up), or literally its first known
+# day (Active) -- as opposed to Dormant (nowhere near the window) or Archived
+# (long over), which must stay network-free per #516's cost decision.
+_BOOTSTRAP_ELIGIBLE_PHASES = frozenset(
+    {
+        EventLifecyclePhase.ANNOUNCED,
+        EventLifecyclePhase.WARMUP,
+        EventLifecyclePhase.ACTIVE,
+    }
+)
+
+
+def _synthetic_calendar_dates(
+    competitions: Sequence[SummerLeagueCompetition],
+) -> tuple[date, ...]:
+    """Every day spanned by each competition's configured ``starts_on``/``ends_on``.
+
+    Used only as a stand-in for real ``summer_league_games`` dates when a
+    competition genuinely has zero game rows yet -- `lifecycle_phase`'s
+    gap-bridge clustering (`app.services.event_desk.lifecycle`) sees an empty
+    calendar as "far off," which is the #527 chicken-and-egg bug: no games
+    yet means no anchor to even try the schedule feed that would create them.
+    A competition missing either date contributes nothing (there's no
+    fallback anchor to synthesize for it).
+
+    Args:
+        competitions: The target competitions for today (`resolve_target_competitions`).
+
+    Returns:
+        Every date in each competition's inclusive ``[starts_on, ends_on]``
+        span, possibly empty (and possibly containing duplicates across
+        competitions -- `lifecycle_phase`'s clustering dedupes internally).
+    """
+    dates: list[date] = []
+    for competition in competitions:
+        if competition.starts_on is None or competition.ends_on is None:
+            continue
+        span_days = (competition.ends_on - competition.starts_on).days
+        if span_days < 0:
+            continue
+        dates.extend(
+            competition.starts_on + timedelta(days=offset)
+            for offset in range(span_days + 1)
+        )
+    return tuple(dates)
+
+
+async def _needs_scoreboard_bootstrap(db: AsyncSession, *, now: datetime) -> bool:
+    """#527 -- should this off-window tick still attempt scoreboard ingest?
+
+    ``_resolve_daily_state`` resolves ``None`` (inert) both for a genuinely
+    dormant event *and* for an event whose window has arrived but has zero
+    ``summer_league_games`` rows yet to anchor `lifecycle_phase`'s gap-bridge
+    clustering (the very first morning of the season, before Job B step 0 has
+    ever run) -- a chicken-and-egg gap, since step 0 is exactly what would
+    create that anchor. This helper distinguishes the two: a real game
+    already exists (the normal resolver is authoritative -- no bootstrap
+    needed, `run_desk_tick`'s later steps already handle it), or a
+    configured ``starts_on``/``ends_on`` places the event's *outer* lifecycle
+    phase in Announced/Warm-up/Active (:data:`_BOOTSTRAP_ELIGIBLE_PHASES`) --
+    only then does this return ``True``. A competition with no configured
+    dates either, or one whose synthetic phase is Dormant/Wind-down/Archived,
+    returns ``False`` and the tick stays network-free (preserves #516's
+    deliberate off-window cost decision).
+
+    Args:
+        db: Active database session (caller controls the transaction).
+        now: The tick's reference instant (naive UTC).
+
+    Returns:
+        Whether `run_desk_tick` should run `run_scoreboard_ingest` before
+        re-attempting `_resolve_daily_state`.
+    """
+    today = to_eastern_date(now)
+    competitions = await resolve_target_competitions(db, today=today)
+    if not competitions:
+        return False
+
+    competition_ids = [c.id for c in competitions if c.id is not None]
+    if competition_ids:
+        has_games_stmt = (
+            select(SummerLeagueGame.id)  # type: ignore[call-overload]
+            .where(SummerLeagueGame.competition_id.in_(competition_ids))  # type: ignore[attr-defined]
+            .limit(1)
+        )
+        if (await db.execute(has_games_stmt)).first() is not None:
+            # A real anchor already exists somewhere in this year's
+            # competitions; the normal resolver is authoritative.
+            return False
+
+    synthetic_dates = _synthetic_calendar_dates(competitions)
+    if not synthetic_dates:
+        return False
+
+    registration = SUMMER_LEAGUE_REGISTRATION
+    event_row = await registration.sync(db, today)
+    synthetic_event = DeskEvent(
+        key=registration.key,
+        priority=event_row.priority,
+        window_priors=WindowPriors.from_dict(event_row.window_priors),
+        game_dates=synthetic_dates,
+    )
+    return lifecycle_phase(now, synthetic_event) in _BOOTSTRAP_ELIGIBLE_PHASES
 
 
 async def _active_baseline_version(db: AsyncSession) -> Optional[str]:
@@ -679,6 +806,22 @@ async def run_desk_tick(
     resolved_now = now if now is not None else datetime.utcnow()
 
     daily_state = await _resolve_daily_state(db, now=resolved_now)
+
+    # #527 -- the very first morning of the season (or any tick in the
+    # announce/pre-roll window) has zero `summer_league_games` rows to anchor
+    # the resolver above, so it comes back dormant even though step 0 is
+    # exactly what would create that anchor. Attempt the bootstrap ingest
+    # once and re-resolve before falling back to the dormant/inert path --
+    # a genuinely off-window tick (`_needs_scoreboard_bootstrap` returns
+    # `False`) never reaches `run_scoreboard_ingest` here, preserving #516's
+    # network-free guarantee for the truly dormant case.
+    bootstrap_report: Optional[ScoreboardIngestReport] = None
+    if daily_state is None and await _needs_scoreboard_bootstrap(db, now=resolved_now):
+        bootstrap_report = await run_scoreboard_ingest(
+            db, today=to_eastern_date(resolved_now), client=client
+        )
+        daily_state = await _resolve_daily_state(db, now=resolved_now)
+
     if daily_state is None:
         # Off-window/dormant: inert. `run_event_desk_tick` still upserts
         # event_desk_state (phase + freshness stamp), but every network call
@@ -689,6 +832,7 @@ async def run_desk_tick(
             dormant=True,
             daily_state=None,
             event_desk_states=tuple(states),
+            bootstrapped=bootstrap_report is not None,
         )
 
     baseline_version = await _active_baseline_version(db)
@@ -700,8 +844,12 @@ async def run_desk_tick(
 
     today = to_eastern_date(resolved_now)
 
-    # Step 0 -- schedule/scoreboard ingest.
-    scoreboard_report = await run_scoreboard_ingest(db, today=today, client=client)
+    # Step 0 -- schedule/scoreboard ingest. Already ran above if this tick
+    # needed the #527 bootstrap; skip the duplicate network round-trip.
+    if bootstrap_report is not None:
+        scoreboard_report = bootstrap_report
+    else:
+        scoreboard_report = await run_scoreboard_ingest(db, today=today, client=client)
 
     competitions = await resolve_target_competitions(db, today=today)
 
@@ -786,18 +934,28 @@ async def run_desk_tick(
         graded_player_ids=tuple(graded_player_ids),
         storyline_results=storyline_results,
         event_desk_states=tuple(states),
+        bootstrapped=bootstrap_report is not None,
     )
 
 
 def _summarize(result: DeskTickResult) -> str:
     """Human-readable one-tick summary for the CLI entrypoint."""
     if result.dormant:
-        return f"Summer League Desk tick @ {result.now.isoformat()}: off-window (dormant) -- no-op."
+        suffix = (
+            " (bootstrap ingest attempted, still no anchor)"
+            if result.bootstrapped
+            else ""
+        )
+        return (
+            f"Summer League Desk tick @ {result.now.isoformat()}: "
+            f"off-window (dormant) -- no-op{suffix}."
+        )
 
     lines = [
         f"Summer League Desk tick @ {result.now.isoformat()}: "
         f"daily_state={result.daily_state.value if result.daily_state else None} "
-        f"baseline_version={result.baseline_version}",
+        f"baseline_version={result.baseline_version}"
+        f"{' (#527 bootstrap ingest ran)' if result.bootstrapped else ''}",
         f"  graded_players={len(result.graded_player_ids)} "
         f"normalized_competitions={list(result.normalized_competition_ids)}",
     ]
