@@ -757,10 +757,12 @@ async def test_cohort_and_statview_toggles_round_trip_via_query_params(
     assert response.status_code == 200
     html = response.text
 
-    # Advanced column headers present; box-family headers are not.
-    assert "<th>BPM</th>" in html
-    assert "<th>WS/82</th>" in html
-    assert "<th>PTS</th>" not in html
+    # Advanced column headers present (now carrying #556's sort attributes,
+    # so match by inner text rather than the exact old bare `<th>` tag);
+    # box-family headers are not.
+    assert 'data-sort-key="bpm">BPM</th>' in html
+    assert 'data-sort-key="ws82">WS/82</th>' in html
+    assert ">PTS</th>" not in html
 
     # Cohort toggle link for the currently-inactive "lottery" preserves the
     # active statview; the active cohort/statview render with `is-active`.
@@ -796,6 +798,112 @@ async def test_tracker_row_deep_link_carries_ref_sl_desk(
     html = response.text
 
     assert "?ref=sl-desk" in html
+    # #556: Desk player links route through the SL-scoped player page, not
+    # the generic player page, and carry placement attribution for the
+    # `sl_desk_click` analytics event.
+    assert "/summer-league?ref=sl-desk" in html
+    assert 'data-desk-placement="tracker"' in html
+
+
+# --------------------------------------------------------------------------- #
+# Client-side column sort (#556): sortable numeric headers carry
+# `data-sort-key`; rows carry matching `data-value` (empty for `None`) and a
+# `data-name` tiebreak. The reorder itself is pure client-side JS (verified
+# in a real browser per the ticket) -- these assertions cover the rendered
+# metadata contract JS depends on.
+# --------------------------------------------------------------------------- #
+async def test_tracker_sort_metadata_rendered_box_view(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Box view: numeric headers carry `data-sort-key`; GP=0 row's MIN sorts as missing."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    year = today.year
+    competition = await _seed_recap_window(db_session, now=now)
+    team = await _seed_team(db_session, competition)
+
+    logged = await _seed_player(
+        db_session, name="Logged", draft_year=year, draft_round=1, draft_pick=1
+    )
+    await _roster_player(db_session, competition, team, logged)
+    await _seed_season(db_session, competition=competition, player=logged, year=year)
+
+    debut = await _seed_player(
+        db_session, name="Debut", draft_year=year, draft_round=1, draft_pick=2
+    )
+    await _roster_player(db_session, competition, team, debut)
+    # No season row -- GP=0, MIN must render as a missing (empty data-value).
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+    await _materialize_desk_snapshots(db_session, now=now)
+
+    warmup = await app_client.get("/?cohort=lottery&statview=box")
+    assert warmup.status_code == 200
+    response = await app_client.get("/?cohort=lottery&statview=box")
+    assert response.status_code == 200
+    html = response.text
+
+    # Sortable numeric headers.
+    for key in ("gp", "minutes", "gmsc", "pts", "reb", "ast", "stl", "blk", "tov"):
+        assert f'data-sort-key="{key}"' in html, f"missing sort header for {key}"
+    # GmSc defaults to the pre-sorted descending state.
+    assert 'data-sort-key="gmsc" aria-sort="descending"' in html
+    # A GP=0 row's MIN cell has no data-value (missing -> sorts last).
+    assert 'data-value=""' in html
+    # The logged row's name is present for the stable-tiebreak attribute.
+    assert 'data-name="Logged Test' in html
+
+
+async def test_tracker_sort_metadata_rendered_advanced_view(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Advanced view: BPM/WS82 sort keys render; a None stat has an empty data-value."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    year = today.year
+    competition = await _seed_recap_window(db_session, now=now)
+    team = await _seed_team(db_session, competition)
+
+    ineligible = await _seed_player(
+        db_session, name="Ineligible", draft_year=year, draft_round=1, draft_pick=1
+    )
+    await _roster_player(db_session, competition, team, ineligible)
+    await _seed_season(
+        db_session,
+        competition=competition,
+        player=ineligible,
+        year=year,
+        bpm=None,
+        ws82=None,
+        adv_eligible=False,
+    )
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+    await _materialize_desk_snapshots(db_session, now=now)
+
+    warmup = await app_client.get("/?cohort=lottery&statview=advanced")
+    assert warmup.status_code == 200
+    response = await app_client.get("/?cohort=lottery&statview=advanced")
+    assert response.status_code == 200
+    html = response.text
+
+    for key in (
+        "ts_pct",
+        "efg_pct",
+        "usg_pct",
+        "ast_pct",
+        "tov_pct",
+        "trb_pct",
+        "fg3ar",
+        "ftr",
+        "ws82",
+        "bpm",
+    ):
+        assert f'data-sort-key="{key}"' in html, f"missing sort header for {key}"
+    # The ineligible player's BPM/WS82 are None -> empty data-value.
+    assert 'data-value=""' in html
 
 
 # --------------------------------------------------------------------------- #

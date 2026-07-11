@@ -402,6 +402,12 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
     assert "GmSc" in html
     _assert_no_switcher_chrome(html)
     assert "?ref=sl-desk" in html
+    # #556: Desk player links (hero + live-board top performer) route through
+    # the SL-scoped player page and carry placement attribution.
+    assert "/summer-league?ref=sl-desk" in html
+    assert 'data-desk-placement="hero"' in html
+    assert 'data-desk-placement="live_board"' in html
+    assert 'data-desk-daily-state="live"' in html
 
 
 async def test_live_duel_hero_renders_both_running_lines_one_pretip_em_dash(
@@ -533,15 +539,21 @@ async def test_recap_state_renders_ledger_table(
     assert "desk__pctl-chip" in html
     _assert_no_switcher_chrome(html)
     assert "?ref=sl-desk" in html
+    # #556: Desk player links (hero + Ledger row) route through the SL-scoped
+    # player page and carry placement attribution.
+    assert "/summer-league?ref=sl-desk" in html
+    assert 'data-desk-placement="hero"' in html
+    assert 'data-desk-placement="ledger"' in html
+    assert 'data-desk-daily-state="recap"' in html
 
 
 # --------------------------------------------------------------------------- #
 # Morning Card (time-of-day dependent -- rendered directly, not via HTTP)
 # --------------------------------------------------------------------------- #
-async def test_morning_hero_and_slate_tail_collapse_with_ref_tagging(
+async def test_morning_hero_and_slate_under_ten_never_collapses(
     db_session: AsyncSession,
 ) -> None:
-    """Preview: marquee hero + slate render; the no-signal tail collapses behind a toggle.
+    """Preview: marquee hero + slate render; under 10 games, nothing collapses (#556).
 
     Renders `hero_morning.html` / `slate.html` directly against a
     `get_desk_payload(..., now=<pinned>)` result -- see the module docstring
@@ -568,8 +580,8 @@ async def test_morning_hero_and_slate_tail_collapse_with_ref_tagging(
     await _roster_player(db_session, competition, home1, player)
     await _seed_baseline(db_session, baseline_version="desk-ui-v3")
 
-    # Six more games (well above the slate.html visible_count of 4) so the
-    # tail-collapse toggle is exercised.
+    # Six more games -- under the 10-game disclosure floor (#556), so the
+    # slate must never collapse regardless of signal.
     for i in range(6):
         home_i = await _seed_team(
             db_session, competition, franchise_stats_id=f"exhibit-home-{i}"
@@ -621,22 +633,112 @@ async def test_morning_hero_and_slate_tail_collapse_with_ref_tagging(
     # Single-subject degrade: the hero game's storyline has one tracked
     # player rostered, so no second face-off subject exists.
     assert "Marquee Test" in hero_html
-    assert "?ref=sl-desk" in hero_html
+    assert "/summer-league?ref=sl-desk" in hero_html
+    assert 'data-desk-placement="hero"' in hero_html
     _assert_no_switcher_chrome(hero_html)
 
-    # Tail-collapse: all 6 rows are present in the server-rendered markup
-    # (JS-off content present), but only 4 lack the `hidden` attribute.
-    assert slate_html.count('class="card desk__game-card') == 6
-    assert slate_html.count("desk__game-card--tail") == 2
-    assert slate_html.count("hidden") >= 2
-    assert 'id="deskSlateToggle"' in slate_html
-    assert "Show all 6 games" in slate_html
+    # #556: under 10 total games, the slate NEVER collapses -- every card
+    # renders unhidden, no `hidden` attribute anywhere, and no toggle (that's
+    # only ever created client-side, and only for 10+ game slates).
+    assert slate_html.count('class="card desk__game-card"') == 6
+    assert "desk__game-card--tail" not in slate_html
+    assert "hidden" not in slate_html
+    assert 'id="deskSlateToggle"' not in slate_html
     assert "?ref=sl-desk" in slate_html
+    # Every card carries the signal metadata JS reads (none actually collapse
+    # here, but the attribute must always be present for JS to reason about).
+    assert (
+        slate_html.count('data-signal="0"') + slate_html.count('data-signal="1"')
+        == 6
+    )
     # Slate tips are naive UTC (01:00 UTC Jul 11) -> must render as 9:00 PM ET
     # (Jul 10), not the raw-UTC "1:00 AM ET" the card used to mislabel them.
     assert "9:00 PM ET" in slate_html
     assert " AM ET" not in slate_html
     _assert_no_switcher_chrome(slate_html)
+
+
+async def test_slate_ten_plus_games_marks_zero_signal_tail_for_js(
+    db_session: AsyncSession,
+) -> None:
+    """10+ games: server HTML stays fully unhidden; `data-signal` marks the JS-only tail (#556).
+
+    The collapse itself is JS-driven (verified in a real browser per the
+    ticket) -- this test proves the server-rendered contract JS depends on:
+    every card present and unhidden, and `data-signal="0"` on exactly the
+    trailing no-storyline games (never on the signal-bearing hero game).
+    """
+    now = datetime(2026, 7, 10, 20, 0)  # 4:00pm ET -- well before the 7pm tip.
+    today = date(2026, 7, 10)
+
+    competition = await _seed_competition(db_session, today=today)
+    home1, away1 = (
+        await _seed_team(db_session, competition, franchise_stats_id="1610612747"),
+        await _seed_team(db_session, competition, franchise_stats_id="1610612744"),
+    )
+    hero_game = await _seed_game(
+        db_session,
+        competition,
+        home1,
+        away1,
+        game_date=today,
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+    player = await _seed_player(db_session, name="TenPlus", draft_round=1, draft_pick=1)
+    await _roster_player(db_session, competition, home1, player)
+    await _seed_baseline(db_session, baseline_version="desk-ui-tenplus-v1")
+
+    # 11 more games -- pushes the slate to 11 (well past the 10-game floor),
+    # none carrying a storyline of their own (no tracked-player roster), so
+    # every slate row lacks a `read` and is zero-signal.
+    for i in range(11):
+        home_i = await _seed_team(
+            db_session, competition, franchise_stats_id=f"tenplus-home-{i}"
+        )
+        away_i = await _seed_team(
+            db_session, competition, franchise_stats_id=f"tenplus-away-{i}"
+        )
+        await _seed_game(
+            db_session,
+            competition,
+            home_i,
+            away_i,
+            game_date=today,
+            tip_datetime=datetime(2026, 7, 11, 1, i),
+            status=SummerLeagueGameStatus.SCHEDULED,
+        )
+
+    await db_session.commit()
+    result = await run_desk_tick(db_session, now=now, client=_fake_client())
+    await db_session.commit()
+    assert result.daily_state is not None and result.daily_state.value == "preview"
+
+    payload = await get_desk_payload(db_session, now=now)
+    assert payload is not None
+    assert payload.hero.game_id == hero_game.id
+    assert len(payload.slate) == 11
+
+    view = await get_desk_view_context(db_session, payload)
+    game_year = to_eastern_date(now).year
+
+    env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=True)
+    register_template_filters(env)
+    slate_html = env.get_template("summer_league/desk/slate.html").render(
+        desk_payload=payload,
+        desk_players=view["players"],
+        desk_matchups=view["matchups"],
+        desk_game_year=game_year,
+    )
+
+    # Every one of the 11 games is present, server-side, unhidden -- the
+    # collapse never happens without JS.
+    assert slate_html.count('class="card desk__game-card"') == 11
+    assert "hidden" not in slate_html
+    assert "desk__game-card--tail" not in slate_html
+    assert 'id="deskSlateToggle"' not in slate_html
+    # Zero-signal metadata is present for JS to act on post-load.
+    assert 'data-signal="0"' in slate_html
 
 
 async def test_quiet_slate_hero_renders_solo_fallback(db_session: AsyncSession) -> None:

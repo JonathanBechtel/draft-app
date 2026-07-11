@@ -28,7 +28,7 @@
                 </span>
                 <div>
                   <span class="desk__player-name">
-                    {% if p and p.slug %}<a href="/players/{{ p.slug }}?ref=sl-desk">{{ p.display_name }}</a>{% else %}{{ p.display_name if p else "Player " ~ row.player_id }}{% endif %}
+                    {% if p and p.slug %}<a href="/players/{{ p.slug }}/summer-league?ref=sl-desk" data-desk-placement="ledger">{{ p.display_name }}</a>{% else %}{{ p.display_name if p else "Player " ~ row.player_id }}{% endif %}
                   </span>
                   {% if p %}
                   <br>

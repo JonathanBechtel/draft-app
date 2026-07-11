@@ -53,7 +53,7 @@
                   {% if tp and tp.photo_url %}<img src="{{ tp.photo_url }}" alt="">{% endif %}
                 </span>
                 <span class="desk__top-perf-body">
-                  {% if tp and tp.slug %}<a href="/players/{{ tp.slug }}?ref=sl-desk" style="color:inherit;text-decoration:none;">{{ tp.display_name }}</a>{% else %}{{ tp.display_name if tp else "Player " ~ row.top_performer_player_id }}{% endif %}
+                  {% if tp and tp.slug %}<a href="/players/{{ tp.slug }}/summer-league?ref=sl-desk" data-desk-placement="live_board" style="color:inherit;text-decoration:none;">{{ tp.display_name }}</a>{% else %}{{ tp.display_name if tp else "Player " ~ row.top_performer_player_id }}{% endif %}
                   <span class="desk__top-perf-gs">{{ '%.1f'|format(row.top_performer_gmsc) }} GmSc</span>
                 </span>
               </span>

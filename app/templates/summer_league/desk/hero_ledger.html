@@ -26,7 +26,7 @@
     </div>
     <div class="desk__hero-solo-body">
       <div class="desk__hero-bigname">
-        {% if p1.slug %}<a href="/players/{{ p1.slug }}?ref=sl-desk">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
+        {% if p1.slug %}<a href="/players/{{ p1.slug }}/summer-league?ref=sl-desk" data-desk-placement="hero">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
       </div>
       <div class="desk__hero-meta">{{ p1.draft_tag }}</div>
       {% if top_ledger_row %}

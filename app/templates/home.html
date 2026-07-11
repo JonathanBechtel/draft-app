@@ -26,7 +26,7 @@
        to the archive strip. Sits above the news hero per the ticket's scope.
        ========================================================================== -->
   {% if desk_window_open and desk_payload %}
-  <section class="desk" id="slDeskSection" aria-label="Summer League Desk">
+  <section class="desk" id="slDeskSection" aria-label="Summer League Desk" data-desk-daily-state="{{ desk_payload.daily_state }}">
     <div class="desk__head">
       <span class="desk__title">Summer League Desk</span>
       <span class="desk__freshness desk__freshness--{{ desk_payload.freshness.state }}">{{ desk_payload.freshness.as_of_et_label }}</span>

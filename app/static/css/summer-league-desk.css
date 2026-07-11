@@ -527,6 +527,29 @@
   border-bottom: 2px solid var(--color-slate-200);
   white-space: nowrap;
 }
+
+/* Sortable Tracker columns (#556) -- `data-sort-key` headers get pointer +
+   keyboard affordance and an `aria-sort`-driven arrow; `summer-league-desk.js`
+   sets `tabindex`/keydown handling at init, so these rules only style the
+   already-interactive state (no dead cursor when JS never runs). */
+.desk__tracker-table th[data-sort-key] {
+  cursor: pointer;
+  user-select: none;
+}
+.desk__tracker-table th[data-sort-key]:hover {
+  color: var(--color-slate-900);
+}
+.desk__tracker-table th[data-sort-key]:focus-visible {
+  outline: 2px solid var(--color-accent-cyan);
+  outline-offset: -2px;
+  color: var(--color-slate-900);
+}
+.desk__tracker-table th[aria-sort="ascending"]::after {
+  content: " \2191";
+}
+.desk__tracker-table th[aria-sort="descending"]::after {
+  content: " \2193";
+}
 .desk__tracker-table th:first-child,
 .desk__tracker-table td:first-child { text-align: left; }
 .desk__tracker-table td { padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--color-slate-100); vertical-align: middle; text-align: right; white-space: nowrap; }

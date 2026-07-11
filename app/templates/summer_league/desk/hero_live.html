@@ -42,7 +42,7 @@
         </span>
       </div>
       <div class="desk__hero-name">
-        {% if p1.slug %}<a href="/players/{{ p1.slug }}?ref=sl-desk">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
+        {% if p1.slug %}<a href="/players/{{ p1.slug }}/summer-league?ref=sl-desk" data-desk-placement="hero">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
       </div>
       <div class="desk__hero-meta">{{ p1.draft_tag }}</div>
       {{ hero_line(hero.subject_line) }}
@@ -57,7 +57,7 @@
         </span>
       </div>
       <div class="desk__hero-name">
-        {% if p2.slug %}<a href="/players/{{ p2.slug }}?ref=sl-desk">{{ p2.display_name }}</a>{% else %}{{ p2.display_name }}{% endif %}
+        {% if p2.slug %}<a href="/players/{{ p2.slug }}/summer-league?ref=sl-desk" data-desk-placement="hero">{{ p2.display_name }}</a>{% else %}{{ p2.display_name }}{% endif %}
       </div>
       <div class="desk__hero-meta">{{ p2.draft_tag }}</div>
       {{ hero_line(hero.subject_line_2) }}
@@ -72,7 +72,7 @@
     </div>
     <div class="desk__hero-solo-body">
       <div class="desk__hero-bigname">
-        {% if p1.slug %}<a href="/players/{{ p1.slug }}?ref=sl-desk">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
+        {% if p1.slug %}<a href="/players/{{ p1.slug }}/summer-league?ref=sl-desk" data-desk-placement="hero">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
       </div>
       <div class="desk__hero-meta">{{ p1.draft_tag }}</div>
       {{ hero_line(hero.subject_line) }}
