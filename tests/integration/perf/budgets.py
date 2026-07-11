@@ -49,23 +49,27 @@ from __future__ import annotations
 ROUTE_BUDGETS: dict[str, int] = {
     # `/` HAS TWO REGIMES -- this 52 covers only the OFF-WINDOW one:
     #   * OFF-WINDOW (this budget, the year-round default): the Summer League
-    #     Desk (#508) fires ONE `events` lookup by key, finds no active event,
-    #     and short-circuits to `None` before touching any other desk table.
-    #     `representative_dataset` seeds no events/T1-T4 rows, so THIS test only
-    #     ever measures this path. Measured with the desk lookup included: still
-    #     52 (this feature branch's pre-desk baseline already had 1 query of
-    #     headroom from unrelated earlier work), so no numeric bump was needed
-    #     -- called out explicitly per the "conscious accounting" policy rather
-    #     than silently absorbed.
+    #     Desk (#508/#548) fires ONE `events` lookup by key, finds no active
+    #     event, and short-circuits to `None` before touching any other desk
+    #     table. `representative_dataset` seeds no events/T1-T4 rows, so THIS
+    #     test only ever measures this path -- 1 Desk query, well inside
+    #     #548's 5-Desk-query-per-state contract (see
+    #     `tests/integration/perf/test_desk_state_resolution_budget.py`, which
+    #     also separately proves the OTHER honest off-window shape -- a
+    #     dormant event whose `events` row already exists post-tick -- at 3).
     #   * IN-WINDOW (during a live SL event, e.g. Vegas 2026 Jul 9-19): `/`
-    #     renders the full Desk and fires ~16 more queries. That composite is
-    #     budgeted SEPARATELY in `DESK_HOME_PAGE_BUDGETS` below and asserted by
+    #     renders the full Desk. That composite is budgeted SEPARATELY in
+    #     `DESK_HOME_PAGE_BUDGETS` below and asserted by
     #     `test_desk_home_inwindow_budget.py` (which seeds an active event) --
     #     NOT here, because this fixture can't put the Desk in-window.
-    # The isolated `get_desk_payload` per-state numbers live in
-    # `DESK_HOME_QUERY_BUDGETS`. Both totals still include the repo's known,
+    # #548 tightened the Desk's OWN added query cost (state resolution + the
+    # one snapshot read) to <=5 for every state (Off-window/Preview/Live/
+    # Recap/Wind-down) -- see `test_desk_state_resolution_budget.py`, which
+    # measures that cost in isolation via `get_desk_view_from_snapshot`
+    # directly rather than through the whole `/` route. This 52 and
+    # `DESK_HOME_PAGE_BUDGETS`'s numbers still include the repo's known,
     # pre-existing `/` N+1 (see the module note above) -- these are regression
-    # ratchets, not a claim the page is N+1-free.
+    # ratchets on the WHOLE route, not a claim the page is N+1-free.
     "/": 52,
     "/news": 8,
     "/podcasts": 5,
@@ -196,16 +200,30 @@ DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
 # lifecycle/daily state fresh and then loads ONE already-materialized
 # `event_desk_render_snapshots` row -- the whole payload + player/matchup/
 # tracker-team view-context comes back decoded from that row's JSON columns,
-# with NO per-player/per-game/grade/storyline enrichment afterward. That
-# dropped the in-window `/` from 71 (the pre-#551 live-assembly total) to 57
-# for BOTH states, a 14-query improvement locked in here.
+# with NO per-player/per-game/grade/storyline enrichment afterward.
 #
-# The +5 the in-window Desk adds over the off-window baseline (52 - 1
-# off-window `events` lookup + 6 snapshot-path queries = 57) is: fresh state
-# resolution (event lookup + `resolve_calendar_facts`'
-# competitions/game-dates/today-statuses reads = 5) plus the ONE indexed
-# `get_render_snapshot` lookup. It does NOT scale with tracked players or
-# games -- the snapshot read is a single row fetch regardless.
+# #548 TIGHTENED THIS FURTHER, from 57 to 55, by removing a genuine duplicate
+# query `_resolve_window_state` used to issue: it fetched the `events` row
+# itself, then called the framework's generic `resolve_calendar_facts`, which
+# turned around and re-fetched that SAME `events` row (plus a redundant full
+# `summer_league_competitions` row-fetch it also didn't need) via its own
+# internal `resolve_target_competitions` call, purely to re-derive
+# `competition_ids` that `_resolve_window_state` already had in hand from the
+# `events` row's own `calendar_ref`. `_resolve_window_state` now derives
+# `competition_ids` once, up front, and calls the new
+# `registry.calendar_facts_for_competition_ids` directly -- 2 queries
+# (game_dates + today's schedule/statuses) instead of the old path's 4
+# (redundant `events` refetch + competitions fetch + those same 2). Old
+# allowances REMOVED: this was 57 (state resolution 5 + 1 snapshot read = 6
+# Desk queries atop the 51-query non-Desk `/` base), down from the pre-#551
+# live-assembly total of 71. The Desk's own added cost per in-window request
+# is now state resolution (3: events lookup + 2 calendar-fact reads) + 1
+# snapshot read = 4 -- inside #548's <=5-Desk-query-per-state contract for
+# EVERY state (Off-window/Preview/Live/Recap/Wind-down), proven directly (in
+# isolation from the rest of `/`) by
+# `tests/integration/perf/test_desk_state_resolution_budget.py`. It does NOT
+# scale with tracked players or games -- the snapshot read is a single row
+# fetch regardless.
 #
 # NOTE: like `ROUTE_BUDGETS["/"]`, these totals still INCLUDE the repo's known,
 # pre-existing `/` N+1 (see the ROUTE_BUDGETS note above) -- they are NOT a
@@ -214,15 +232,15 @@ DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
 # in unbudgeted. Numbers are the exact counts measured by
 # `test_desk_home_inwindow_budget.py`; do not tune code to round them.
 DESK_HOME_PAGE_BUDGETS: dict[str, int] = {
-    # Measured 57 (down from the pre-#551 live-assembly 71): off-window `/`
+    # Measured 55 (down from 57 pre-#548, 71 pre-#551): off-window `/`
     # baseline (52, which already includes the single off-window `events`
-    # lookup) - 1 (that lookup) + 6 (state resolution 5 + one snapshot read).
+    # lookup) - 1 (that lookup) + 4 (state resolution 3 + one snapshot read).
     # Live and Recap land on the SAME total now -- both replace their whole
     # per-state assembly with the identical single-snapshot read path.
-    "live": 57,
-    # Measured 57: identical to Live here -- the snapshot-backed read is the
+    "live": 55,
+    # Measured 55: identical to Live here -- the snapshot-backed read is the
     # same single-row fetch regardless of which state's variant it loads (the
     # per-state assembly differences that used to make Live/Recap diverge now
     # live entirely at tick-materialization time, off the request path).
-    "recap": 57,
+    "recap": 55,
 }

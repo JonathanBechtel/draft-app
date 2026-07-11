@@ -78,9 +78,9 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import bindparam, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league_desk import (
@@ -719,6 +719,186 @@ async def persist_slate_facts(
     return payload
 
 
+async def persist_grade_facts_bulk(
+    session: AsyncSession,
+    *,
+    competition_id: int,
+    baseline_version: str,
+    facts_by_player: Mapping[int, Sequence[Fact]],
+) -> dict[int, list[dict[str, Any]]]:
+    """Render + write ``facts`` onto every graded player's T2 row in O(1) queries (#548).
+
+    Bulk sibling of :func:`persist_grade_facts` -- replaces a per-player loop
+    (one ``select`` + one ``flush`` PER PLAYER, the tick's step-5 N+1 this
+    ticket removes) with exactly ONE ``select`` (every matching T2 row,
+    batched by ``player_id.in_(...)``) followed by ONE bulk ``UPDATE``
+    (SQLAlchemy's ``executemany``-style bulk update: one compiled statement,
+    one round trip, applied per matched row's own ``id`` -- never a
+    per-player ``execute``/``flush``). Row-for-row, the rendered payload is
+    identical to what N calls to :func:`persist_grade_facts` would have
+    produced (both call the same pure :func:`build_facts_payload`).
+
+    Does not create T2 rows -- every ``player_id`` in ``facts_by_player``
+    must already have a matching row (mirrors :func:`persist_grade_facts`).
+    Does not commit; the caller controls the transaction.
+
+    Args:
+        session: Active database session.
+        competition_id: The event every row belongs to.
+        baseline_version: Which T1 baseline version every row was graded
+            against (part of T2's unique key).
+        facts_by_player: ``player_id -> every Fact fired for them this tick``.
+            Empty returns ``{}`` with no queries at all.
+
+    Returns:
+        ``player_id -> persisted payload`` (see :func:`build_facts_payload`).
+
+    Raises:
+        ValueError: Some ``player_id`` in ``facts_by_player`` has no matching
+            T2 row yet.
+    """
+    if not facts_by_player:
+        return {}
+
+    player_ids = list(facts_by_player.keys())
+    stmt = select(SummerLeagueDeskPlayerGrade).where(
+        SummerLeagueDeskPlayerGrade.player_id.in_(player_ids),  # type: ignore[attr-defined]
+        SummerLeagueDeskPlayerGrade.competition_id == competition_id,  # type: ignore[arg-type]
+        SummerLeagueDeskPlayerGrade.baseline_version == baseline_version,  # type: ignore[arg-type]
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    row_by_player = {row.player_id: row for row in rows}
+
+    missing = [pid for pid in player_ids if pid not in row_by_player]
+    if missing:
+        raise ValueError(
+            f"No summer_league_desk_player_grades row for player_id(s)={missing}, "
+            f"competition_id={competition_id}, baseline_version={baseline_version!r} "
+            "-- run grade_player_event/grade_players_bulk (Job B step 2) before "
+            "persisting commentary."
+        )
+
+    payload_by_player: dict[int, list[dict[str, Any]]] = {}
+    update_params: list[dict[str, object]] = []
+    for player_id, facts in facts_by_player.items():
+        payload = build_facts_payload(facts, prose_surfaces=GRADE_PROSE_SURFACES)
+        payload_by_player[player_id] = payload
+        update_params.append({"_id": row_by_player[player_id].id, "_facts": payload})
+
+    if update_params:
+        # `dml_strategy="core_only"`: forces a plain executemany-style Core
+        # UPDATE (one compiled statement, one round trip against a list of
+        # parameter sets) instead of SQLAlchemy 2.0's ORM-enabled "bulk
+        # UPDATE by primary key" fast path, which demands its parameter dict
+        # keys match mapped attribute names exactly (not arbitrary bindparam
+        # names) and would otherwise misfire here.
+        # `synchronize_session=None`: skips syncing this session's identity
+        # map from the UPDATE -- which would otherwise leave the
+        # `row_by_player` objects fetched above (and any other already-loaded
+        # row sharing a PK) stale for the rest of the transaction -- so the
+        # `session.expire(...)` calls below are load-bearing, not decorative:
+        # they force the NEXT read of each touched row's `facts` (e.g.
+        # `_assemble_ledger`'s own T2 read later in this same tick's
+        # transaction) to come from the fresh column data any subsequent
+        # `select()` returns, rather than the pre-update value cached in
+        # memory.
+        bulk_stmt = (
+            update(SummerLeagueDeskPlayerGrade)
+            .where(SummerLeagueDeskPlayerGrade.id == bindparam("_id"))  # type: ignore[arg-type]
+            .values(facts=bindparam("_facts"))
+            .execution_options(synchronize_session=None, dml_strategy="core_only")
+        )
+        await session.execute(bulk_stmt, update_params)
+        await session.flush()
+        for row in row_by_player.values():
+            session.expire(row, ["facts"])
+
+    return payload_by_player
+
+
+async def persist_slate_facts_bulk(
+    session: AsyncSession,
+    *,
+    facts_by_game: Mapping[int, Sequence[Fact]],
+    hero_game_ids: Sequence[int] = (),
+) -> dict[int, list[dict[str, Any]]]:
+    """Render + write ``facts`` onto every touched game's T4 row in O(1) queries (#548).
+
+    Bulk sibling of :func:`persist_slate_facts` -- replaces a per-game loop
+    (one ``select`` + one ``flush`` PER GAME) with exactly ONE ``select``
+    (every matching T4 row, batched by ``game_id.in_(...)``) followed by ONE
+    bulk ``UPDATE`` (same ``executemany``-style pattern as
+    :func:`persist_grade_facts_bulk` -- see its docstring). Row-for-row, the
+    rendered payload is identical to what N calls to
+    :func:`persist_slate_facts` would have produced.
+
+    Does not create T4 rows -- every ``game_id`` in ``facts_by_game`` must
+    already have a matching row. Does not commit; the caller controls the
+    transaction.
+
+    Args:
+        session: Active database session.
+        facts_by_game: ``game_id -> every Fact fired for that game's tracked
+            subjects this tick``. Empty returns ``{}`` with no queries.
+        hero_game_ids: Which of ``facts_by_game``'s keys are today's hero
+            game(s) (mirrors :func:`persist_slate_facts`'s ``is_hero`` flag --
+            in practice at most one per competition, but a caller batching
+            more than one competition's slate in a single call can pass more
+            than one).
+
+    Returns:
+        ``game_id -> persisted payload`` (see :func:`build_facts_payload`).
+
+    Raises:
+        ValueError: Some ``game_id`` in ``facts_by_game`` has no matching T4
+            row yet.
+    """
+    if not facts_by_game:
+        return {}
+
+    hero_ids = set(hero_game_ids)
+    game_ids = list(facts_by_game.keys())
+    stmt = select(SummerLeagueDeskSlate).where(
+        SummerLeagueDeskSlate.game_id.in_(game_ids)  # type: ignore[attr-defined]
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    row_by_game = {row.game_id: row for row in rows}
+
+    missing = [gid for gid in game_ids if gid not in row_by_game]
+    if missing:
+        raise ValueError(
+            f"No summer_league_desk_slate row for game_id(s)={missing} -- run "
+            "compute_desk_storylines (Job B step 3) before persisting commentary."
+        )
+
+    payload_by_game: dict[int, list[dict[str, Any]]] = {}
+    update_params: list[dict[str, object]] = []
+    for game_id, facts in facts_by_game.items():
+        prose_surfaces = (
+            SLATE_HERO_PROSE_SURFACES if game_id in hero_ids else SLATE_PROSE_SURFACES
+        )
+        payload = build_facts_payload(facts, prose_surfaces=prose_surfaces)
+        payload_by_game[game_id] = payload
+        update_params.append({"_id": row_by_game[game_id].id, "_facts": payload})
+
+    if update_params:
+        # See `persist_grade_facts_bulk` for why `synchronize_session=None`
+        # plus the targeted `session.expire(...)` calls below are both
+        # required here.
+        bulk_stmt = (
+            update(SummerLeagueDeskSlate)
+            .where(SummerLeagueDeskSlate.id == bindparam("_id"))  # type: ignore[arg-type]
+            .values(facts=bindparam("_facts"))
+            .execution_options(synchronize_session=None, dml_strategy="core_only")
+        )
+        await session.execute(bulk_stmt, update_params)
+        await session.flush()
+        for row in row_by_game.values():
+            session.expire(row, ["facts"])
+
+    return payload_by_game
+
+
 __all__ = [
     "GRADE_PROSE_SURFACES",
     "SLATE_HERO_PROSE_SURFACES",
@@ -727,7 +907,9 @@ __all__ = [
     "humanize_cohort_key",
     "metric_label",
     "persist_grade_facts",
+    "persist_grade_facts_bulk",
     "persist_slate_facts",
+    "persist_slate_facts_bulk",
     "render_chip",
     "render_fact",
     "render_prose_for_surface",

@@ -96,9 +96,9 @@ from app.services.event_desk.payload import (
     DeskTrackerSection,
 )
 from app.services.event_desk.registry import (
-    SUMMER_LEAGUE_REGISTRATION,
     DeskEvent,
     WindowPriors,
+    calendar_facts_for_competition_ids,
 )
 from app.services.event_desk.state_machine import inner_state
 from app.services.event_desk.timeutils import to_eastern, to_eastern_date
@@ -357,14 +357,46 @@ async def _resolve_window_state(
     Returns:
         The resolved window state, or ``None`` when off-window (or, with
         ``require_owner=True``, when in-window but not the home owner).
+
+    **Query budget (#548).** Exactly 3 queries in the common case (an
+    ``events`` row already carries ``calendar_ref["competition_ids"]``, the
+    normal post-tick state): the ``events`` lookup, then
+    `registry.calendar_facts_for_competition_ids`'s two calendar reads
+    (game_dates + today's schedule/statuses). This resolves
+    ``competition_ids`` ONCE, up front, straight off the already-fetched
+    ``event_row`` -- the pre-#548 version called the full
+    `registry.resolve_calendar_facts` (which redundantly re-fetches the SAME
+    ``events`` row plus every competition row via its own
+    `~app.services.summer_league.scoreboard_ingest.resolve_target_competitions`
+    call) and only derived ``competition_ids`` a second time afterward, for a
+    total of 5. The rare fallback (an ``events`` row with an empty
+    ``calendar_ref`` -- Job B's registration sync never wrote one) adds one
+    more query, matching the pre-#548 fallback path's cost exactly.
     """
     event_stmt = select(Event).where(Event.key == EVENT_KEY_SUMMER_LEAGUE)  # type: ignore[arg-type]
     event_row = (await db.execute(event_stmt)).scalar_one_or_none()
     if event_row is None:
         return None
 
-    calendar_facts = await SUMMER_LEAGUE_REGISTRATION.provider.resolve_calendar_facts(
-        db, now=now
+    competition_ids = _competition_ids_from_calendar_ref(event_row)
+    if not competition_ids:
+        year = to_eastern_date(now).year
+        comp_ids = (
+            (
+                await db.execute(
+                    select(SummerLeagueCompetition.id).where(  # type: ignore[call-overload]
+                        SummerLeagueCompetition.year == year  # type: ignore[arg-type]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        competition_ids = [cid for cid in comp_ids if cid is not None]
+
+    today = to_eastern_date(now)
+    calendar_facts = await calendar_facts_for_competition_ids(
+        db, competition_ids=competition_ids, today=today
     )
     desk_event = DeskEvent(
         key=EVENT_KEY_SUMMER_LEAGUE,
@@ -393,22 +425,6 @@ async def _resolve_window_state(
     is_home_owner = owner is not None and owner.key == desk_event.key
     if require_owner and not is_home_owner:
         return None
-
-    competition_ids = _competition_ids_from_calendar_ref(event_row)
-    if not competition_ids:
-        year = to_eastern_date(now).year
-        comp_ids = (
-            (
-                await db.execute(
-                    select(SummerLeagueCompetition.id).where(  # type: ignore[call-overload]
-                        SummerLeagueCompetition.year == year  # type: ignore[arg-type]
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        competition_ids = [cid for cid in comp_ids if cid is not None]
 
     return _WindowState(
         event_row=event_row,

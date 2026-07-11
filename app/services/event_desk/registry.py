@@ -276,6 +276,58 @@ async def sync_summer_league_event(db: AsyncSession, today: date) -> Event:
     )
 
 
+async def calendar_facts_for_competition_ids(
+    db: AsyncSession, *, competition_ids: list[int], today: date
+) -> CalendarFacts:
+    """Resolve SL's calendar facts for an ALREADY-KNOWN set of competition ids.
+
+    The two queries under :meth:`_SummerLeagueCalendarProvider.resolve_calendar_facts`
+    that actually depend on ``now``/``today`` -- split out (#548) so a caller
+    that already has ``competition_ids`` in hand (e.g.
+    `app.services.summer_league.desk_read._resolve_window_state`, which reads
+    them straight off an already-fetched ``events`` row) can skip
+    `resolve_target_competitions`'s own redundant ``events``+competitions
+    re-fetch entirely -- 2 queries here instead of 4.
+
+    Args:
+        db: Active database session.
+        competition_ids: The target competitions (already resolved by the
+            caller; an empty list short-circuits to empty facts with no
+            queries).
+        today: The Eastern calendar date "today's" schedule/statuses are
+            scoped to.
+
+    Returns:
+        :class:`CalendarFacts` -- every known SL game date (for the outer
+        lifecycle's gap-bridge clustering) plus today's (Eastern-date) tip
+        schedule and game statuses (for the inner state machine).
+    """
+    if not competition_ids:
+        return CalendarFacts(game_dates=(), today_schedule=(), today_statuses=())
+
+    dates_stmt = select(SummerLeagueGame.game_date).where(  # type: ignore[call-overload]
+        SummerLeagueGame.competition_id.in_(competition_ids),  # type: ignore[attr-defined]
+        SummerLeagueGame.game_date.is_not(None),  # type: ignore[union-attr]
+    )
+    game_dates = tuple(sorted({row[0] for row in (await db.execute(dates_stmt)).all()}))
+
+    today_stmt = select(  # type: ignore[call-overload]
+        SummerLeagueGame.tip_datetime, SummerLeagueGame.status
+    ).where(
+        SummerLeagueGame.competition_id.in_(competition_ids),  # type: ignore[attr-defined]
+        SummerLeagueGame.game_date == today,  # type: ignore[arg-type]
+    )
+    today_rows = (await db.execute(today_stmt)).all()
+    today_schedule = tuple(tip for tip, _status in today_rows if tip is not None)
+    today_statuses = tuple(_to_generic_status(status) for _tip, status in today_rows)
+
+    return CalendarFacts(
+        game_dates=game_dates,
+        today_schedule=today_schedule,
+        today_statuses=today_statuses,
+    )
+
+
 class _SummerLeagueCalendarProvider:
     """SL's :class:`DeskContentProvider` — resolves calendar facts from `summer_league_games`.
 
@@ -287,6 +339,15 @@ class _SummerLeagueCalendarProvider:
         self, db: AsyncSession, *, now: datetime
     ) -> CalendarFacts:
         """Resolve SL's calendar facts for one tick.
+
+        Resolves ``competition_ids`` itself via `resolve_target_competitions`
+        (an ``events`` lookup + a competitions fetch) -- this is the
+        "resolve everything from ``now`` alone" entry point every generic
+        `DeskContentProvider` caller (the tick, the controller) uses. A
+        caller that already has ``competition_ids`` in hand should call
+        :func:`calendar_facts_for_competition_ids` directly instead to skip
+        this method's redundant ``events`` re-fetch (see that function's
+        docstring).
 
         Args:
             db: Active database session.
@@ -300,33 +361,8 @@ class _SummerLeagueCalendarProvider:
         today = to_eastern_date(now)
         competitions = await resolve_target_competitions(db, today=today)
         competition_ids = [c.id for c in competitions if c.id is not None]
-        if not competition_ids:
-            return CalendarFacts(game_dates=(), today_schedule=(), today_statuses=())
-
-        dates_stmt = select(SummerLeagueGame.game_date).where(  # type: ignore[call-overload]
-            SummerLeagueGame.competition_id.in_(competition_ids),  # type: ignore[attr-defined]
-            SummerLeagueGame.game_date.is_not(None),  # type: ignore[union-attr]
-        )
-        game_dates = tuple(
-            sorted({row[0] for row in (await db.execute(dates_stmt)).all()})
-        )
-
-        today_stmt = select(  # type: ignore[call-overload]
-            SummerLeagueGame.tip_datetime, SummerLeagueGame.status
-        ).where(
-            SummerLeagueGame.competition_id.in_(competition_ids),  # type: ignore[attr-defined]
-            SummerLeagueGame.game_date == today,  # type: ignore[arg-type]
-        )
-        today_rows = (await db.execute(today_stmt)).all()
-        today_schedule = tuple(tip for tip, _status in today_rows if tip is not None)
-        today_statuses = tuple(
-            _to_generic_status(status) for _tip, status in today_rows
-        )
-
-        return CalendarFacts(
-            game_dates=game_dates,
-            today_schedule=today_schedule,
-            today_statuses=today_statuses,
+        return await calendar_facts_for_competition_ids(
+            db, competition_ids=competition_ids, today=today
         )
 
 

@@ -66,12 +66,9 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskStoryline,
     SummerLeagueDeskTriggerType,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.schemas.player_affiliation import AffiliationStatus
 from app.services.summer_league.cohort_baselines import (
-    EventAggregate,
     FirstQualifyingGame,
-    blend_event_aggregates,
     cohort_key_for,
 )
 from app.services.summer_league.desk_facts import (
@@ -81,7 +78,12 @@ from app.services.summer_league.desk_facts import (
     detect_self_delta,
 )
 from app.services.summer_league.desk_facts import detect_streak as _facts_detect_streak
-from app.services.summer_league.desk_fact_queries import fetch_first_qualifying_games
+from app.services.summer_league.desk_fact_queries import (
+    fetch_current_event_gp,
+    fetch_first_qualifying_games,
+    fetch_game_lines,
+    fetch_prior_events,
+)
 from app.services.summer_league.desk_grades import GradeRow, percentile_of_value
 from app.services.summer_league.metrics import game_score_from_row
 
@@ -780,92 +782,6 @@ async def _consensus_rank_map(
     return out
 
 
-async def _prior_event(
-    session: AsyncSession, player_id: int, before_year: int
-) -> Optional[PriorEvent]:
-    """The player's most recent prior-year blended SL event, if any."""
-    stmt = select(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.player_id,
-        SummerLeaguePlayerSeason.year,
-        SummerLeaguePlayerSeason.gmsc,
-        SummerLeaguePlayerSeason.minutes,
-        SummerLeaguePlayerSeason.gp,
-    ).where(
-        SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
-        SummerLeaguePlayerSeason.year < before_year,  # type: ignore[arg-type]
-    )
-    rows = (await session.execute(stmt)).all()
-    events = blend_event_aggregates(rows, min_minutes=0.0)
-    if not events:
-        return None
-    latest: EventAggregate = max(events.values(), key=lambda e: e.year)
-    return PriorEvent(year=latest.year, value=latest.gmsc, gp=latest.gp)
-
-
-async def _current_event_gp(session: AsyncSession, player_id: int, year: int) -> int:
-    """Sum of games played across every venue the player played in ``year``."""
-    stmt = select(SummerLeaguePlayerSeason.gp).where(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
-        SummerLeaguePlayerSeason.year == year,  # type: ignore[arg-type]
-    )
-    rows = (await session.execute(stmt)).scalars().all()
-    return sum(int(gp or 0) for gp in rows)
-
-
-async def _game_lines_before(
-    session: AsyncSession,
-    *,
-    player_id: int,
-    competition_id: int,
-    before_date: date,
-    baseline: Optional[SummerLeagueCohortBaseline],
-) -> list[GameLine]:
-    """The player's chronological GmSc log this competition, before ``before_date``.
-
-    Each line's ``pctl`` is the game-grain ranking (module docstring): the
-    game's GmSc ranked against the player's own cohort's **game-grain** T1
-    breakpoints. ``pctl`` stays ``None`` (stopping any streak through it) when
-    no baseline is available.
-    """
-    stmt = (
-        select(  # type: ignore[call-overload]
-            SummerLeaguePlayerGameLog, SummerLeagueGame.game_date
-        )
-        .join(
-            SummerLeagueGame, SummerLeagueGame.id == SummerLeaguePlayerGameLog.game_id
-        )
-        .where(
-            SummerLeaguePlayerGameLog.player_id == player_id,  # type: ignore[arg-type]
-            SummerLeaguePlayerGameLog.competition_id == competition_id,  # type: ignore[arg-type]
-            SummerLeagueGame.game_date < before_date,  # type: ignore[operator]
-        )
-        .order_by(SummerLeagueGame.game_date.asc())  # type: ignore[union-attr]
-    )
-    rows = (await session.execute(stmt)).all()
-
-    lines: list[GameLine] = []
-    for log_row, game_date in rows:
-        gmsc = round(game_score_from_row(log_row), 2)
-        pctl: Optional[float] = None
-        cohort_median = 0.0
-        if baseline is not None:
-            cohort_median = baseline.median_value
-            try:
-                pctl = percentile_of_value(baseline.breakpoints, gmsc)
-            except ValueError:
-                pctl = None
-        lines.append(
-            GameLine(
-                value=gmsc,
-                cohort_median=cohort_median,
-                pctl=pctl,
-                game_id=log_row.game_id,
-                label=game_date.isoformat() if game_date else None,
-            )
-        )
-    return lines
-
-
 async def compute_desk_storylines(
     session: AsyncSession,
     *,
@@ -1037,10 +953,13 @@ async def compute_desk_storylines(
     # (#525) -- a separate fetch since the streak trigger measures individual
     # games against a game-grain distribution while `baselines` above (event
     # grain) still backs the 2nd-look trigger's event-aggregate comparison.
-    game_cohort_keys = {
-        cohort_key_for(p.draft_round, p.draft_pick, grain=SummerLeagueDeskGrain.GAME)
-        for p in player_by_id.values()
+    game_cohort_key_by_player: dict[int, str] = {
+        pid: cohort_key_for(
+            p.draft_round, p.draft_pick, grain=SummerLeagueDeskGrain.GAME
+        )
+        for pid, p in player_by_id.items()
     }
+    game_cohort_keys = set(game_cohort_key_by_player.values())
     game_baselines: dict[str, SummerLeagueCohortBaseline] = {}
     if game_cohort_keys:
         game_baseline_rows = (
@@ -1058,6 +977,29 @@ async def compute_desk_storylines(
             .all()
         )
         game_baselines = {row.cohort_key: row for row in game_baseline_rows}
+
+    # #548 -- batch every remaining per-player storyline context UP FRONT (one
+    # query each, never once per slot) so the per-game/per-slot loop below is
+    # entirely DB-free trigger evaluation. Formerly per-player awaits
+    # (``_game_lines_before`` / ``_prior_event`` / ``_current_event_gp``,
+    # removed) that grew this call's query count linearly with roster size.
+    baseline_by_player: dict[int, Optional[SummerLeagueCohortBaseline]] = {
+        pid: game_baselines.get(game_cohort_key_by_player[pid]) for pid in player_by_id
+    }
+    game_lines_by_player = await fetch_game_lines(
+        session,
+        player_ids=list(all_player_ids),
+        competition_id=competition_id,
+        game_date=game_date,
+        baseline_by_player=baseline_by_player,
+        inclusive=False,
+    )
+    prior_events_by_player = await fetch_prior_events(
+        session, player_ids=list(all_player_ids), before_year=competition.year
+    )
+    current_gp_by_player = await fetch_current_event_gp(
+        session, player_ids=list(all_player_ids), year=competition.year
+    )
 
     # #541 -- tonight's realized (game-grain) lines back Live-mode ordering.
     # ONE batched query for the whole night's slate (never per-game/per-player):
@@ -1146,28 +1088,23 @@ async def compute_desk_storylines(
 
             if grade is not None:
                 baseline = baselines.get(grade.cohort_key)
-                game_cohort_key = cohort_key_for(
+                game_cohort_key = game_cohort_key_by_player.get(
+                    slot.player_id
+                ) or cohort_key_for(
                     slot.draft_round, slot.draft_pick, grain=SummerLeagueDeskGrain.GAME
                 )
-                game_baseline = game_baselines.get(game_cohort_key)
-                lines = await _game_lines_before(
-                    session,
-                    player_id=slot.player_id,
-                    competition_id=competition_id,
-                    before_date=g.game_date or game_date,
-                    baseline=game_baseline,
-                )
+                # DB-free (#548): both context reads below are pure dict
+                # lookups off the batched fetches above, not per-slot awaits.
+                lines = game_lines_by_player.get(slot.player_id, [])
                 streak = detect_streak(
                     subject=slot, cohort_key=game_cohort_key, games=lines
                 )
                 if streak is not None:
                     instances.append(streak)
 
-                prior = await _prior_event(session, slot.player_id, competition.year)
+                prior = prior_events_by_player.get(slot.player_id)
                 if prior is not None:
-                    current_gp = await _current_event_gp(
-                        session, slot.player_id, competition.year
-                    )
+                    current_gp = current_gp_by_player.get(slot.player_id, 0)
                     current_pctl = grade.pctl
                     prior_pctl: Optional[float] = None
                     if baseline is not None:

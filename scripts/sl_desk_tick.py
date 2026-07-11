@@ -42,7 +42,8 @@ storyline, or commentary logic of its own:
        hourly cron, and destructive to any competition this tick didn't
        just normalize).
     3. per active roster player -> grade vs the active T1 baseline (#503,
-       ``desk_grades.grade_player_event``) -> T2.
+       ``desk_grades.grade_players_bulk``, #548's bulk entry point -- ONE
+       batched grading pass for the whole roster, not a per-player loop) -> T2.
     4. evaluate storyline triggers for today's games (#504,
        ``desk_storylines.compute_desk_storylines``) -> T3 + T4.
     5. commentary (#524) -- fire all eight #520 detectors for each graded
@@ -51,12 +52,15 @@ storyline, or commentary logic of its own:
        each fed by a batched peer-population fetch from
        ``desk_fact_queries.py`` (never one query per player -- see that
        module's docstring for exactly how each is batched), and persist the
-       resulting Facts onto T2 (#519 ``desk_commentary.persist_grade_facts``)
-       and, grouped by tonight's rosters, onto each touched T4 slate row
-       (``persist_slate_facts``) -- both of which run every fired Fact
-       through Stage 2 selection (``desk_selection.dedup_facts`` /
-       ``select_facts``, e.g. a rank-1 ``cohort_rank`` subsuming its own
-       ``percentile``) via ``desk_commentary.build_facts_payload``.
+       resulting Facts onto T2 (#519/#548
+       ``desk_commentary.persist_grade_facts_bulk``) and, grouped by
+       tonight's rosters, onto each touched T4 slate row
+       (``persist_slate_facts_bulk``) -- ONE batched select + ONE batched
+       update each, never a per-player/per-game ``select``+``flush`` -- both
+       of which run every fired Fact through Stage 2 selection
+       (``desk_selection.dedup_facts`` / ``select_facts``, e.g. a rank-1
+       ``cohort_rank`` subsuming its own ``percentile``) via
+       ``desk_commentary.build_facts_payload``.
     6. render/state freshness -- upsert ``event_desk_state`` (#506
        ``event_desk.controller.run_event_desk_tick`` -- the only module that
        writes that table). Only reached once every *required* step above
@@ -112,10 +116,10 @@ runs step 0 once and re-resolves. A genuinely off-window/dormant event
 here, preserving #516's deliberate network-free guarantee for that case.
 
 **Idempotent.** Every write this module performs delegates to an existing
-upsert (``grade_player_event``, ``compute_desk_storylines``,
-``persist_grade_facts``, ``persist_slate_facts``, ``run_event_desk_tick``,
-``upsert_scoreboard_games``) -- re-running the tick over the same data
-updates rows in place rather than duplicating them.
+upsert (``grade_players_bulk``, ``compute_desk_storylines``,
+``persist_grade_facts_bulk``, ``persist_slate_facts_bulk``,
+``run_event_desk_tick``, ``upsert_scoreboard_games``) -- re-running the tick
+over the same data updates rows in place rather than duplicating them.
 
 Run:
   scripts/with-db-env.sh conda run -n draftguru python scripts/sl_desk_tick.py
@@ -174,8 +178,8 @@ from app.services.event_desk.state_machine import inner_state  # noqa: E402
 from app.services.event_desk.timeutils import to_eastern_date  # noqa: E402
 from app.services.summer_league.cohort_baselines import cohort_key_for  # noqa: E402
 from app.services.summer_league.desk_commentary import (  # noqa: E402
-    persist_grade_facts,
-    persist_slate_facts,
+    persist_grade_facts_bulk,
+    persist_slate_facts_bulk,
 )
 from app.services.summer_league.desk_fact_queries import (  # noqa: E402
     club_members_clearing,
@@ -205,7 +209,10 @@ from app.services.summer_league.desk_facts import (  # noqa: E402
     detect_self_delta,
     detect_streak,
 )
-from app.services.summer_league.desk_grades import GradeRow, grade_player_event  # noqa: E402
+from app.services.summer_league.desk_grades import (  # noqa: E402
+    GradeRow,
+    grade_players_bulk,
+)
 from app.services.summer_league.desk_read import (  # noqa: E402
     build_desk_render_variants,
 )
@@ -797,13 +804,15 @@ async def _commentary_for_competition(
                 facts.append(leads_field_fact)
 
         fact_by_player[player_id] = facts
-        await persist_grade_facts(
-            db,
-            player_id=player_id,
-            competition_id=competition_id,
-            baseline_version=baseline_version,
-            facts=facts,
-        )
+
+    # One batched select + one batched update for every graded player's T2
+    # row (#548) -- never a per-player `select`+`flush` inside this loop.
+    await persist_grade_facts_bulk(
+        db,
+        competition_id=competition_id,
+        baseline_version=baseline_version,
+        facts_by_player=fact_by_player,
+    )
 
     if not slate:
         return
@@ -811,18 +820,20 @@ async def _commentary_for_competition(
     roster_by_game = await _game_roster_player_ids(
         db, competition_id=competition_id, game_date=game_date
     )
-    for slate_row in slate:
-        game_facts: list[Fact] = [
+    facts_by_game: dict[int, list[Fact]] = {
+        slate_row.game_id: [
             fact
             for pid in roster_by_game.get(slate_row.game_id, [])
             for fact in fact_by_player.get(pid, [])
         ]
-        await persist_slate_facts(
-            db,
-            game_id=slate_row.game_id,
-            facts=game_facts,
-            is_hero=slate_row.is_hero,
-        )
+        for slate_row in slate
+    }
+    hero_game_ids = [slate_row.game_id for slate_row in slate if slate_row.is_hero]
+    # One batched select + one batched update for every touched T4 slate row
+    # (#548) -- never a per-game `select`+`flush` inside this loop.
+    await persist_slate_facts_bulk(
+        db, facts_by_game=facts_by_game, hero_game_ids=hero_game_ids
+    )
 
 
 def _season_range_start(season_range: str) -> int:
@@ -1061,20 +1072,15 @@ async def run_desk_tick(
         assert competition.id is not None
         competition_id = competition.id
 
-        # Step 3 -- grades (T2).
-        grade_by_player: dict[int, GradeRow] = {}
-        for player_id in await _active_roster_player_ids(db, competition_id):
-            try:
-                grade_by_player[player_id] = await grade_player_event(
-                    db, player_id, competition_id, baseline_version=baseline_version
-                )
-            except ValueError as exc:
-                logger.info(
-                    "sl_desk_tick: skip grading player_id=%s competition_id=%s (%s)",
-                    player_id,
-                    competition_id,
-                    exc,
-                )
+        # Step 3 -- grades (T2). Bulk-graded (#548): one batched pass for the
+        # whole roster instead of a per-player `grade_player_event` loop --
+        # players with no data/baseline are silently omitted (see
+        # `grade_players_bulk`'s docstring), same skip semantics the old
+        # per-player try/except performed.
+        roster_player_ids = await _active_roster_player_ids(db, competition_id)
+        grade_by_player: dict[int, GradeRow] = await grade_players_bulk(
+            db, roster_player_ids, competition_id, baseline_version=baseline_version
+        )
         graded_player_ids.extend(grade_by_player.keys())
 
         # Step 4 -- storylines (T3 + T4).

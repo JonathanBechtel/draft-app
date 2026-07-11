@@ -571,24 +571,32 @@ async def fetch_game_lines(
     competition_id: int,
     game_date: date,
     baseline_by_player: Mapping[int, Optional[SummerLeagueCohortBaseline]],
+    inclusive: bool = True,
 ) -> dict[int, list[GameLine]]:
-    """Each player's chronological GmSc log this competition, through ``game_date``.
+    """Each player's chronological GmSc log this competition, through/before ``game_date``.
 
-    One batched query for every player_id (mirrors
-    ``desk_storylines._game_lines_before``'s per-player fetch, applied across
-    the whole roster in one round trip). Each player's line is scored against
-    *their own* cohort's **game-grain** baseline (``baseline_by_player`` --
-    see :func:`fetch_game_baselines`), since different players can carry
-    different ``cohort_key``s in the same tick.
+    ONE batched query for the whole roster (never per-player) -- shared by
+    two callers with different date-boundary needs, both formerly per-player
+    loops (#548): this module's own tick-time streak fact
+    (:func:`~app.services.summer_league.desk_facts.detect_streak` via
+    ``desk_fact_queries``' caller, ``inclusive=True``, "as of tonight") and
+    ``desk_storylines.compute_desk_storylines``'s entering-weight streak
+    trigger (``inclusive=False``, strictly *before* tonight -- the pre-#548
+    per-player ``desk_storylines._game_lines_before`` this replaces). Each
+    player's line is scored against *their own* cohort's **game-grain**
+    baseline (``baseline_by_player`` -- see :func:`fetch_game_baselines`),
+    since different players can carry different ``cohort_key``s in the same
+    tick.
 
     Args:
         db: Active database session.
         player_ids: Every player to fetch a log for.
         competition_id: Scopes the game log to one event.
-        game_date: Games through (and including) this date are included --
-            an "as of tonight" log for :func:`~app.services.summer_league.desk_facts.detect_streak`,
-            not the "entering" (pre-tonight) log ``desk_storylines`` computes
-            for its own trigger.
+        game_date: The date boundary; see ``inclusive``.
+        inclusive: ``True`` (default) includes ``game_date`` itself -- an "as
+            of tonight" log. ``False`` excludes it -- an "entering" (strictly
+            pre-tonight) log, e.g. for a Morning/pre-tip streak evaluation
+            where tonight's own game hasn't happened yet.
         baseline_by_player: Each player's active T1 **game-grain** baseline
             row (or ``None`` -- that player's lines get ``pctl=None``,
             stopping any streak through them per `desk_facts.detect_streak`).
@@ -599,7 +607,7 @@ async def fetch_game_lines(
     """
     if not player_ids:
         return {}
-    through_date = game_date + timedelta(days=1)
+    cutoff = game_date + timedelta(days=1) if inclusive else game_date
     stmt = (
         select(  # type: ignore[call-overload]
             SummerLeaguePlayerGameLog, SummerLeagueGame.game_date
@@ -610,7 +618,7 @@ async def fetch_game_lines(
         .where(
             SummerLeaguePlayerGameLog.player_id.in_(player_ids),  # type: ignore[union-attr]
             SummerLeaguePlayerGameLog.competition_id == competition_id,  # type: ignore[arg-type]
-            SummerLeagueGame.game_date < through_date,  # type: ignore[operator]
+            SummerLeagueGame.game_date < cutoff,  # type: ignore[operator]
         )
         .order_by(
             SummerLeaguePlayerGameLog.player_id.asc(),  # type: ignore[union-attr]
