@@ -51,6 +51,9 @@ JsonDict = dict[str, Any]
 # Bump when a `DeskPayload`/`DeskView` field is added, removed, or reshaped in a way the
 # codec below can't decode losslessly. Persisted rows carry the version they were written
 # with; `deserialize_desk_view` rejects anything it doesn't recognize instead of guessing.
+# `DeskFreshness` gained `state`/`next_tick_eta_label` (#544) the same additive way
+# `DeskHero` gained `subject_line`/`subject_line_2` (#541): decoded via `.get(...)` with a
+# pre-#544 default rather than a version bump -- see `_deserialize_freshness`.
 CURRENT_SCHEMA_VERSION = 1
 
 
@@ -97,6 +100,8 @@ def _serialize_freshness(freshness: DeskFreshness) -> JsonDict:
         "last_tick_at": _dt_to_iso(freshness.last_tick_at),
         "next_tick_eta": _dt_to_iso(freshness.next_tick_eta),
         "as_of_et_label": freshness.as_of_et_label,
+        "state": freshness.state,
+        "next_tick_eta_label": freshness.next_tick_eta_label,
     }
 
 
@@ -105,6 +110,11 @@ def _deserialize_freshness(data: JsonDict) -> DeskFreshness:
         last_tick_at=_iso_to_dt(data["last_tick_at"]),
         next_tick_eta=_iso_to_dt(data["next_tick_eta"]),
         as_of_et_label=data["as_of_et_label"],
+        # `.get(...)` (not `data[...]`) -- a pre-#544 row has neither key;
+        # both decode to the same defaults `DeskFreshness` itself uses, never
+        # a KeyError (mirrors `_deserialize_hero`'s `subject_line*` handling).
+        state=data.get("state", "fresh"),
+        next_tick_eta_label=data.get("next_tick_eta_label"),
     )
 
 

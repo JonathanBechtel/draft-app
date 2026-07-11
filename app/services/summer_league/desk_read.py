@@ -57,6 +57,7 @@ from typing import Callable, Mapping, Optional, Sequence
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.schemas.event_desk import (
     Event,
     EventDailyState,
@@ -81,6 +82,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskStoryline,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.event_desk.controller import TICK_INTERVAL
 from app.services.event_desk.lifecycle import lifecycle_phase, resolve_home_owner
 from app.services.event_desk.payload import (
     DeskFreshness,
@@ -151,6 +153,22 @@ TRACKER_CAP = 30
 
 # The Ledger shows a bounded top-performers list, not the full field.
 MAX_LEDGER_ROWS = 10
+
+# Freshness is "stale" once it's older than this cadence multiple. Twice the
+# controller's hourly tick (`TICK_INTERVAL`) tolerates exactly one missed
+# tick before flagging staleness -- the same documented policy
+# `scripts/check_sl_desk_readiness.py::DEFAULT_STALENESS_HOURS` uses for its
+# post-tick readiness gate, reused here (not re-derived) so the two never
+# drift on what "stale" means.
+FRESHNESS_STALE_AFTER = 2 * TICK_INTERVAL
+
+# Lifecycle phases the Desk can take over the home page for (framework doc
+# "EventDesk controller": home-eligible = Warm-up/Active/Wind-down; V1 has no
+# Warm-up content yet -- behavior spec §9 "Pre-roll ... P2" -- so Warm-up
+# still collapses to the off-window strip here until that ships). Wind-down
+# renders the Recap treatment straight through (behavior spec/framework doc:
+# "Wind-down: last final + post_roll_days tail -- final recap persists").
+_HOME_TAKEOVER_PHASES = (EventLifecyclePhase.ACTIVE, EventLifecyclePhase.WINDDOWN)
 
 _FALLBACK_HERO = DeskHero(
     kind="quiet_slate",
@@ -274,12 +292,17 @@ async def _fetch_team_entries(
     return {t.id: t for t in rows if t.id is not None}
 
 
-def _et_label(dt: datetime) -> str:
-    """``"as of 4:12pm ET"``-style stamp for a naive-UTC (or aware) instant."""
+def _et_time(dt: datetime) -> str:
+    """``"4:12pm ET"``-style clock stamp for a naive-UTC (or aware) instant."""
     eastern = to_eastern(dt)
     hour12 = eastern.hour % 12 or 12
     ampm = "am" if eastern.hour < 12 else "pm"
-    return f"as of {hour12}:{eastern.minute:02d}{ampm} ET"
+    return f"{hour12}:{eastern.minute:02d}{ampm} ET"
+
+
+def _et_label(dt: datetime) -> str:
+    """``"as of 4:12pm ET"``-style stamp for a naive-UTC (or aware) instant."""
+    return f"as of {_et_time(dt)}"
 
 
 # --------------------------------------------------------------------------- #
@@ -304,22 +327,36 @@ def _competition_ids_from_calendar_ref(event_row: Event) -> list[int]:
 
 
 async def _resolve_window_state(
-    db: AsyncSession, *, now: datetime
+    db: AsyncSession, *, now: datetime, require_owner: bool = True
 ) -> Optional[_WindowState]:
     """Resolve the SL event's current window state, fresh, at ``now``.
 
-    Returns ``None`` whenever the outer lifecycle phase isn't ``active`` --
-    including when no ``events`` row exists yet (the tick has never run). This
-    is the off-window signal the caller uses to render the collapsed strip
-    instead of the full Desk. Never writes anything (unlike
-    `registry.sync_summer_league_event`, which this deliberately does NOT call).
+    Returns ``None`` whenever the outer lifecycle phase isn't one of
+    :data:`_HOME_TAKEOVER_PHASES` -- including when no ``events`` row exists
+    yet (the tick has never run). This is the off-window signal the caller
+    uses to render the collapsed strip instead of the full Desk. Never writes
+    anything (unlike `registry.sync_summer_league_event`, which this
+    deliberately does NOT call).
+
+    Wind-down renders the Recap treatment straight through to Archived
+    (framework doc: "final recap persists") -- the inner Preview/Live/Recap
+    machine only runs while Active (`inner_state` requires it and returns
+    `None` otherwise), so Wind-down's ``daily_state`` is set directly to
+    ``RECAP`` here rather than calling `inner_state`.
 
     Args:
         db: Active database session.
         now: The request instant (naive UTC).
+        require_owner: Whether the resolved event must also be the winning
+            `is_home_owner` (single-owner-by-priority) to take over the home
+            page -- ``True`` in auto mode (`settings.sl_desk_force_mode ==
+            "auto"`). ``settings.sl_desk_force_mode == "on"`` passes
+            ``False`` to bypass just this gate; it never fabricates an
+            in-window phase that the calendar doesn't have.
 
     Returns:
-        The resolved window state, or ``None`` when off-window.
+        The resolved window state, or ``None`` when off-window (or, with
+        ``require_owner=True``, when in-window but not the home owner).
     """
     event_stmt = select(Event).where(Event.key == EVENT_KEY_SUMMER_LEAGUE)  # type: ignore[arg-type]
     event_row = (await db.execute(event_stmt)).scalar_one_or_none()
@@ -336,18 +373,26 @@ async def _resolve_window_state(
         game_dates=calendar_facts.game_dates,
     )
     phase = lifecycle_phase(now, desk_event)
-    if phase != EventLifecyclePhase.ACTIVE:
+    if phase not in _HOME_TAKEOVER_PHASES:
         return None
 
-    daily_state = inner_state(
-        now, calendar_facts.today_schedule, calendar_facts.today_statuses, desk_event
-    )
-    # Guaranteed non-None: `inner_state` only returns None when the outer phase
-    # isn't ACTIVE, which is already ruled out above.
-    assert daily_state is not None
+    if phase == EventLifecyclePhase.ACTIVE:
+        daily_state = inner_state(
+            now,
+            calendar_facts.today_schedule,
+            calendar_facts.today_statuses,
+            desk_event,
+        )
+        # Guaranteed non-None: `inner_state` only returns None when the outer
+        # phase isn't ACTIVE, which is already ruled out above.
+        assert daily_state is not None
+    else:
+        daily_state = EventDailyState.RECAP
 
     owner = resolve_home_owner(now, [desk_event])
     is_home_owner = owner is not None and owner.key == desk_event.key
+    if require_owner and not is_home_owner:
+        return None
 
     competition_ids = _competition_ids_from_calendar_ref(event_row)
     if not competition_ids:
@@ -376,15 +421,42 @@ async def _resolve_window_state(
 async def _freshness_for(
     db: AsyncSession, event_row: Event, *, now: datetime
 ) -> DeskFreshness:
-    """Build the freshness stamp from ``event_desk_state`` -- data only, no verdict."""
+    """Build the honest freshness stamp from ``event_desk_state`` -- data only, no verdict.
+
+    Never fabricates "as of now": a missing ``event_desk_state`` row (no tick
+    has ever run for this event) renders ``state="missing"`` with an
+    explicit "unavailable" label, never `_et_label(now)`. Freshness older
+    than :data:`FRESHNESS_STALE_AFTER` renders ``state="stale"`` with an
+    honest "-- stale" suffix rather than silently presenting it as current.
+    The next-tick ETA is pre-rendered once here (``next_tick_eta_label``) so
+    the one template slot that shows it never has to duplicate the "as of"
+    stamp or do its own timezone math.
+    """
     stmt = select(EventDeskState).where(EventDeskState.event_id == event_row.id)  # type: ignore[arg-type]
     state_row = (await db.execute(stmt)).scalar_one_or_none()
     last_tick_at = state_row.freshness_tick_at if state_row else None
     next_tick_eta = state_row.next_tick_eta if state_row else None
+
+    if last_tick_at is None:
+        return DeskFreshness(
+            last_tick_at=None,
+            next_tick_eta=next_tick_eta,
+            as_of_et_label="freshness unavailable -- no tick has run yet",
+            state="missing",
+            next_tick_eta_label=None,
+        )
+
+    is_stale = (now - last_tick_at) > FRESHNESS_STALE_AFTER
+    as_of_et_label = _et_label(last_tick_at) + (" -- stale" if is_stale else "")
+    next_tick_eta_label = (
+        f"next update ~{_et_time(next_tick_eta)}" if next_tick_eta is not None else None
+    )
     return DeskFreshness(
         last_tick_at=last_tick_at,
         next_tick_eta=next_tick_eta,
-        as_of_et_label=_et_label(last_tick_at or now),
+        as_of_et_label=as_of_et_label,
+        state="stale" if is_stale else "fresh",
+        next_tick_eta_label=next_tick_eta_label,
     )
 
 
@@ -1494,6 +1566,33 @@ async def get_desk_payload(
     return payload
 
 
+def _effective_now(now: Optional[datetime]) -> datetime:
+    """Resolve the request instant, honoring `settings.sl_desk_force_date`.
+
+    `settings.sl_desk_force_date` is the framework doc's "config ... date
+    override" lever (`docs/plans/event-desk-framework.md`: "Window source =
+    schedule-driven with a config force-on/off & date override") -- an
+    operator-set calendar date that every Desk request/tick resolves "today"
+    against instead of the real wall-clock date, for demoing/QAing a specific
+    day without waiting for the actual calendar. The time-of-day component of
+    ``now`` (explicit or real wall-clock) is preserved so live-vs-scheduled
+    comparisons still behave realistically on the overridden date.
+
+    Args:
+        now: Caller-supplied override (tests), or ``None`` to use the current
+            UTC instant.
+
+    Returns:
+        The naive-UTC instant to resolve the Desk against.
+    """
+    resolved = (
+        now if now is not None else datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+    if settings.sl_desk_force_date is not None:
+        resolved = datetime.combine(settings.sl_desk_force_date, resolved.time())
+    return resolved
+
+
 async def _assemble_desk_payload(
     db: AsyncSession,
     *,
@@ -1507,12 +1606,22 @@ async def _assemble_desk_payload(
     team-entry fetch for row logos (see `DeskView.tracker_teams`) without
     `get_desk_payload`'s public, frozen-shape contract (`Optional[DeskPayload]`
     only) having to change.
-    """
-    resolved_now = (
-        now if now is not None else datetime.now(timezone.utc).replace(tzinfo=None)
-    )
 
-    window = await _resolve_window_state(db, now=resolved_now)
+    Honors `settings.sl_desk_force_mode` (#544): ``"off"`` short-circuits to
+    off-window unconditionally (a kill switch, ahead of even the cheap
+    `events` lookup); ``"on"`` bypasses `_resolve_window_state`'s
+    `is_home_owner` gate while still requiring an actual Active/Wind-down
+    lifecycle window. ``"auto"`` (default) requires both -- see
+    `_resolve_window_state`'s docstring.
+    """
+    resolved_now = _effective_now(now)
+
+    if settings.sl_desk_force_mode == "off":
+        return None, {}
+
+    window = await _resolve_window_state(
+        db, now=resolved_now, require_owner=settings.sl_desk_force_mode != "on"
+    )
     if window is None:
         return None, {}
 
@@ -1540,9 +1649,13 @@ async def _assemble_desk_payload(
         slate_rows = await _fetch_today_slate(
             db, competition_ids=window.competition_ids, today=today
         )
-        if slate_needs_quiet_fallback(slate_rows):  # type: ignore[arg-type]
-            hero = None
-        else:
+        # Zero-signal days still retain their schedule (#544): the slate/live
+        # board list every game today regardless of storyline weight -- only
+        # the HERO's framing changes when nothing clears a storyline
+        # threshold (`slate_needs_quiet_fallback`), falling through to the
+        # quiet-slate class-leader hero below instead of a game-based one.
+        quiet = slate_needs_quiet_fallback(slate_rows)  # type: ignore[arg-type]
+        if slate_rows:
             game_ids = [row.game_id for row in slate_rows]
             games = await _fetch_games(db, game_ids)
             team_ids: list[Optional[int]] = []
@@ -1551,9 +1664,6 @@ async def _assemble_desk_payload(
             teams = await _fetch_team_entries(db, team_ids)
 
             live = window.daily_state == EventDailyState.LIVE
-            hero_row = _pick_hero_slate_row(slate_rows, games, live=live)
-            assert hero_row is not None  # slate_rows is non-empty here
-
             # #541 -- fetched ONCE (only when live; Morning has nothing to
             # show yet), then shared by both the hero's two-subject running
             # line and the Live board's top-performer column below, so this
@@ -1562,16 +1672,26 @@ async def _assemble_desk_payload(
             if live:
                 logs_by_game = await _fetch_game_logs_for_games(db, game_ids)
 
-            hero = await _build_game_hero(
-                db,
-                hero_row,
-                games,
-                teams,
-                kind="live_duel" if live else "marquee",
-                logs_by_game=logs_by_game,
-            )
+            hero_game_id: Optional[int] = None
+            if not quiet:
+                hero_row = _pick_hero_slate_row(slate_rows, games, live=live)
+                assert hero_row is not None  # slate_rows is non-empty here
+                hero_game_id = hero_row.game_id
+                hero = await _build_game_hero(
+                    db,
+                    hero_row,
+                    games,
+                    teams,
+                    kind="live_duel" if live else "marquee",
+                    logs_by_game=logs_by_game,
+                )
+
+            # A quiet slate excludes nothing (no game earns the hero slot);
+            # a signal-bearing slate still excludes the hero's own game, same
+            # as before -- "1-game day -> empty slate, hero carries it"
+            # (behavior spec §5) only applies once a game IS the hero.
             slate = _build_slate_rows(
-                slate_rows, games, teams, exclude_game_id=hero_row.game_id
+                slate_rows, games, teams, exclude_game_id=hero_game_id
             )
             if live:
                 live_board = _build_live_board(
@@ -1580,6 +1700,8 @@ async def _assemble_desk_payload(
                     teams=teams,
                     logs_by_game=logs_by_game,
                 )
+        # else: no games today at all -- slate/live_board stay empty; hero
+        # falls through to the quiet-slate class-leader fallback below.
 
     if hero is None:
         hero = await _quiet_slate_hero(

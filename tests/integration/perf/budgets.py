@@ -163,11 +163,15 @@ DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
     # Measured 17: state resolution/baseline/freshness (7) + ledger_date (1)
     # + ledger game logs/players/baselines/facts (4) + Class Tracker (5).
     "recap": 17,
-    # Measured 11: state resolution/baseline/freshness (7) + the empty T4
-    # slate probe (1) + quiet-slate hero's T2 + players_master lookup (2) +
-    # Class Tracker on an empty roster short-circuits after 1 query (roster
-    # probe returns nothing -- no players/seasons/teams/grades queries).
-    "quiet_slate": 11,
+    # Measured 13 (raised from 11 by #544 "zero-signal days retain their
+    # schedule"): state resolution/baseline/freshness (7) + T4 slate (1) +
+    # games (1) + team entries (1) -- the quiet path now fetches/builds the
+    # slate rows same as a signal-bearing day (only the HERO skips the
+    # game-based build) -- + quiet-slate hero's T2 + players_master lookup
+    # (2) + Class Tracker on an empty roster short-circuits after 1 query
+    # (roster probe returns nothing -- no players/seasons/teams/grades
+    # queries).
+    "quiet_slate": 13,
 }
 
 # Summer League Desk -- FULL in-window `/` PAGE budgets (#508 follow-up), per

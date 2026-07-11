@@ -32,14 +32,34 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class DeskFreshness:
-    """The freshness/staleness stamp shown on every Desk render (behavior spec §2)."""
+    """The freshness/staleness stamp shown on every Desk render (behavior spec §2).
 
-    # Naive UTC; None before the first tick has ever run for this event.
+    `state` is the honest verdict this stamp represents -- `"missing"` (no tick
+    has ever run for this event), `"fresh"` (within the documented cadence), or
+    `"stale"` (older than the documented cadence multiple; see
+    `app.services.summer_league.desk_read.FRESHNESS_STALE_AFTER`). Compose logic
+    lives entirely in `desk_read._freshness_for` so this dataclass never has to
+    be re-derived/guessed by a template: a render must NEVER say "as of now"
+    when `last_tick_at` is `None`.
+    """
+
+    # Naive UTC; None when no tick has ever run for this event ("missing").
     last_tick_at: Optional[datetime]
     next_tick_eta: Optional[datetime]
-    # Pre-rendered ET display stamp, e.g. "as of 4:12pm ET" — computed once by the
-    # read service so templates never do timezone math.
+    # Honest, pre-rendered ET display stamp -- "freshness unavailable ..." when
+    # `state == "missing"`, "as of 4:12pm ET" when fresh, "as of 4:12pm ET --
+    # stale" when stale. Computed once by the read service so templates never
+    # do timezone/staleness math themselves.
     as_of_et_label: str
+    # One of "missing" / "fresh" / "stale". Defaults to "fresh" only so
+    # call sites that predate this field (tests fixturing a plain "as of"
+    # stamp) keep compiling -- `desk_read._freshness_for`, the one place this
+    # is actually computed, always sets it explicitly.
+    state: str = "fresh"
+    # Pre-rendered "next update ~5:00pm ET" hint, or `None` when there's no
+    # known next-tick ETA (e.g. `state == "missing"`). Meant to render AT MOST
+    # ONCE per page -- callers must not also fold this into `as_of_et_label`.
+    next_tick_eta_label: Optional[str] = None
 
 
 @dataclass(frozen=True)

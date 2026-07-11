@@ -41,6 +41,27 @@
   letter-spacing: 0.06em;
 }
 
+/* Honest freshness states (#544) -- `--fresh` reuses the existing pill look;
+   `--stale`/`--missing` shift the accent to flag the copy is no longer (or
+   never was) current, without changing layout. */
+.desk__freshness--stale {
+  color: #9a3412;
+  background: #fff7ed;
+  border-color: #fb923c;
+}
+.desk__freshness--missing {
+  color: var(--color-slate-500);
+  background: var(--color-slate-100);
+  border-color: var(--color-slate-300);
+}
+.desk__freshness-eta {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--color-slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 .desk__section-title {
   font-family: var(--font-mono);
   font-size: 1rem;

@@ -125,6 +125,45 @@ class Settings(BaseSettings):
     # (False) so it only goes live once the draft order is seeded and reviewed.
     mock_draft_team_overlay_enabled: bool = False
 
+    # Summer League Desk home-page takeover -- the operator override lever the
+    # Event Desk framework doc calls out ("Window source = schedule-driven with
+    # a config force-on/off & date override"). `app.services.summer_league.
+    # desk_read` is the sole reader; see that module's docstring for the exact
+    # gating semantics.
+    #   - "auto" (default): the calendar decides. The Desk takes over the home
+    #     page only when the SL event's lifecycle is Active/Wind-down AND it is
+    #     the resolved `is_home_owner` (single-owner-by-priority, per
+    #     `event_desk.lifecycle.resolve_home_owner`).
+    #   - "off": kill switch. The Desk never takes over, regardless of
+    #     lifecycle/ownership -- for incident response or a deliberate pause.
+    #   - "on": bypasses the `is_home_owner` requirement only (still requires an
+    #     actual Active/Wind-down lifecycle window on the calendar -- this never
+    #     fabricates a window that doesn't exist). Lets ops force SL's takeover
+    #     even when a higher-priority registered event would otherwise win.
+    sl_desk_force_mode: Literal["auto", "off", "on"] = Field(
+        default="auto",
+        validation_alias=AliasChoices("SL_DESK_FORCE_MODE"),
+        description=(
+            "Summer League Desk home-page takeover override: 'auto' (calendar + "
+            "ownership decide), 'off' (never takes over), 'on' (bypass the "
+            "is_home_owner gate; the lifecycle window itself is still required)."
+        ),
+    )
+    # Optional calendar-date override for the Desk's window resolution (same
+    # framework-doc lever as `sl_desk_force_mode`). When set, every Desk
+    # request/tick resolves "today" against this date instead of the real
+    # wall-clock date -- useful for demoing/QAing a specific day (e.g. a
+    # Wind-down Ledger) without waiting for the actual calendar. `None`
+    # (default) means "use the real current date."
+    sl_desk_force_date: Optional[date] = Field(
+        default=None,
+        validation_alias=AliasChoices("SL_DESK_FORCE_DATE"),
+        description=(
+            "Optional calendar-date override for the Summer League Desk's "
+            "window resolution. Unset uses the real current date."
+        ),
+    )
+
     @property
     def is_dev(self) -> bool:
         return self.env == "dev" or self.debug is True

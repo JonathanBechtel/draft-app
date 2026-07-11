@@ -10,12 +10,13 @@ short-circuit, the quiet-slate fallback, and each state's query-count budget
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
+from app.config import settings
 from app.schemas.event_desk import Event, EventDailyState, EventDeskState
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
@@ -955,7 +956,13 @@ async def test_recap_ledger_renders_the_game_grain_percentile_not_event_grain(
 async def test_quiet_slate_hero_when_nothing_clears_the_threshold(
     db_session: AsyncSession, async_engine: AsyncEngine
 ) -> None:
-    """A game today with no fired storyline (zero weight) still forces a headline."""
+    """A game today with no fired storyline (zero weight) still forces a headline.
+
+    #544: a quiet (zero-weight) slate retains its schedule -- the one game
+    tonight still shows in `payload.slate` even though the hero itself uses
+    the class-leader fallback framing (`kind == "quiet_slate"`), rather than
+    disappearing the way a pre-#544 quiet slate did.
+    """
     year = 2026
     now = datetime(2026, 7, 10, 20, 0)
 
@@ -964,7 +971,7 @@ async def test_quiet_slate_hero_when_nothing_clears_the_threshold(
         await _seed_team(db_session, competition),
         await _seed_team(db_session, competition),
     )
-    await _seed_game(
+    game = await _seed_game(
         db_session,
         competition,
         home,
@@ -1009,10 +1016,157 @@ async def test_quiet_slate_hero_when_nothing_clears_the_threshold(
     assert payload.hero.subject_player_id == leader.id
     assert payload.hero.headline
 
+    # #544: the one-game zero-signal night still lists in the slate -- a
+    # quiet hero changes framing only, never drops the schedule.
+    assert {row.game_id for row in payload.slate} == {game.id}
+
     budget = DESK_HOME_QUERY_BUDGETS["quiet_slate"]
     assert len(captured) <= budget, (
         f"quiet_slate issued {len(captured)} queries, over budget of {budget}: {captured}"
     )
+
+
+async def test_quiet_slate_multi_game_night_retains_every_game(
+    db_session: AsyncSession,
+) -> None:
+    """#544: a multi-game zero-signal night retains every game in `payload.slate`.
+
+    Pre-#544, `slate_needs_quiet_fallback` short-circuited the whole games/
+    teams/slate build, so a quiet multi-game night rendered an EMPTY "Rest of
+    Tonight's Slate" even though several real games were scheduled. This
+    proves all of them still show, unranked by any real signal (every row's
+    `weight` is 0).
+    """
+    year = 2026
+    now = datetime(2026, 7, 10, 20, 0)
+
+    competition = await _seed_competition(db_session, year=year)
+    home1, away1 = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    game1 = await _seed_game(
+        db_session,
+        competition,
+        home1,
+        away1,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+    home2, away2 = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    game2 = await _seed_game(
+        db_session,
+        competition,
+        home2,
+        away2,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 11, 1, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+    # No rostered tracked players anywhere -> no trigger can fire on either
+    # game -> both T4 rows carry zero weight.
+    baseline_version = "desk-home-v1"
+    await _seed_baseline(db_session, baseline_version=baseline_version)
+    leader = await _seed_player(
+        db_session, name="Leader", draft_year=year, draft_round=1, draft_pick=2
+    )
+    db_session.add(
+        SummerLeagueDeskPlayerGrade(
+            player_id=leader.id,
+            competition_id=competition.id,
+            baseline_version=baseline_version,
+            cohort_key="slot:1-4",
+            subject_value=80.0,
+            pctl=95.0,
+            grade=SummerLeagueDeskGrade.HOT,
+            n_cohort=20,
+            gated=False,
+        )
+    )
+    await db_session.commit()
+
+    await run_desk_tick(db_session, now=now, client=_fake_client())
+    await db_session.commit()
+
+    payload = await get_desk_payload(db_session, now=now)
+
+    assert payload is not None
+    assert payload.hero.kind == "quiet_slate"
+    assert {row.game_id for row in payload.slate} == {game1.id, game2.id}
+    assert all(row.weight <= 0 for row in payload.slate)
+
+
+async def test_quiet_live_night_still_populates_live_board(
+    db_session: AsyncSession,
+) -> None:
+    """#544: a quiet (zero-weight) LIVE night still populates the live board.
+
+    Pre-#544 the live board was built inside the same "not quiet" branch as
+    the hero/slate, so a zero-signal in-progress game rendered an EMPTY live
+    board -- the Live Desk's whole "every game and its status" board
+    disappeared, not just the hero. This proves the board still renders (em
+    dashes for top performer since nobody tracked has logged anything).
+    """
+    year = 2026
+    now = datetime(2026, 7, 10, 23, 30)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    game = await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.IN_PROGRESS,
+        home_score=10,
+        away_score=8,
+    )
+    # No rostered tracked players -> no storyline weight, no top performer.
+    baseline_version = "desk-home-v1"
+    await _seed_baseline(db_session, baseline_version=baseline_version)
+    leader = await _seed_player(
+        db_session, name="Leader", draft_year=year, draft_round=1, draft_pick=2
+    )
+    db_session.add(
+        SummerLeagueDeskPlayerGrade(
+            player_id=leader.id,
+            competition_id=competition.id,
+            baseline_version=baseline_version,
+            cohort_key="slot:1-4",
+            subject_value=80.0,
+            pctl=95.0,
+            grade=SummerLeagueDeskGrade.HOT,
+            n_cohort=20,
+            gated=False,
+        )
+    )
+    await db_session.commit()
+
+    result = await run_desk_tick(db_session, now=now, client=_fake_client())
+    await db_session.commit()
+    assert result.daily_state == EventDailyState.LIVE
+
+    payload = await get_desk_payload(db_session, now=now)
+
+    assert payload is not None
+    assert payload.daily_state == "live"
+    assert payload.hero.kind == "quiet_slate"
+    assert len(payload.live_board) == 1
+    board_row = payload.live_board[0]
+    assert board_row.game_id == game.id
+    assert board_row.home_score == 10
+    assert board_row.away_score == 8
+    assert board_row.top_performer_player_id is None
+    assert board_row.top_performer_gmsc is None
 
 
 # --------------------------------------------------------------------------- #
@@ -1074,3 +1228,382 @@ async def test_tracker_cohort_filters_membership_and_falls_back_on_unknown(
     assert fallback_payload is not None
     assert fallback_payload.tracker.cohort == "full_class"
     assert fallback_payload.tracker.stat_view == "box"
+
+
+# --------------------------------------------------------------------------- #
+# Wind-down (#544: "final recap persists" through the post-roll tail)
+# --------------------------------------------------------------------------- #
+async def test_winddown_renders_last_ledger_instead_of_off_window(
+    db_session: AsyncSession,
+) -> None:
+    """A day after the last final, still inside `post_roll_days`, renders the Ledger.
+
+    Pre-#544, `_resolve_window_state` only recognized the ACTIVE lifecycle
+    phase -- Wind-down (last final + `post_roll_days` tail) fell straight to
+    the off-window archive strip, dropping the recap the morning after the
+    event's last game. This proves Wind-down instead renders exactly the
+    Recap treatment (`daily_state == "recap"`, last night's Ledger populated).
+    """
+    year = 2026
+    last_game_date = date(2026, 7, 10)
+    # One day after the only known game -- outside Active (no game today),
+    # but inside the default `post_roll_days=2` Wind-down tail.
+    today = date(2026, 7, 11)
+    now = datetime(2026, 7, 11, 18, 0)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    game = await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=last_game_date,
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.FINAL,
+        home_score=88,
+        away_score=80,
+    )
+    player = await _seed_player(
+        db_session, name="Rookie", draft_year=year, draft_round=1, draft_pick=1
+    )
+    source_player = await _roster_player(db_session, competition, home, player)
+    await _seed_baseline(
+        db_session,
+        baseline_version="desk-home-v1",
+        cohort_key="game:1-4",
+        grain=SummerLeagueDeskGrain.GAME,
+    )
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=game,
+        team=home,
+        source_player=source_player,
+        player=player,
+        pts=30,
+    )
+    await db_session.commit()
+
+    # No future game seeded -- the calendar's only cluster is [7/10, 7/10],
+    # so `today` (7/11) resolves to Wind-down, not Active.
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+
+    payload = await get_desk_payload(db_session, now=now)
+
+    assert payload is not None, (
+        "Wind-down must still take over the home page with the last recap, "
+        "not collapse to the off-window archive strip"
+    )
+    assert payload.daily_state == "recap"
+    assert payload.is_home_owner is True
+    assert len(payload.ledger) == 1
+    assert payload.ledger[0].game_id == game.id
+    assert payload.hero.kind == "performance_of_night"
+
+    # Class Tracker still renders during Wind-down (it's pinned, not gated by
+    # daily_state).
+    tracker_ids = {row.player_id for row in payload.tracker.rows}
+    assert player.id in tracker_ids
+
+
+async def test_archived_after_post_roll_tail_stays_off_window(
+    db_session: AsyncSession,
+) -> None:
+    """Once the post-roll tail elapses (Archived), the Desk goes back off-window."""
+    year = 2026
+    last_game_date = date(2026, 7, 10)
+    # Default `post_roll_days=2` -> Wind-down ends 7/12; 7/13 is Archived.
+    today = date(2026, 7, 13)
+    now = datetime(2026, 7, 13, 18, 0)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=last_game_date,
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.FINAL,
+    )
+    await db_session.commit()
+
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+
+    payload = await get_desk_payload(db_session, now=now)
+    assert payload is None
+
+
+# --------------------------------------------------------------------------- #
+# Ownership + force mode (#544)
+# --------------------------------------------------------------------------- #
+async def test_auto_mode_does_not_take_over_when_not_home_owner(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Auto mode requires BOTH an active window AND `is_home_owner`.
+
+    Losing ownership (e.g. a future higher-priority event winning the
+    tie-break) must render off-window, not silently take over anyway.
+    """
+    year = 2026
+    now = datetime(2026, 7, 10, 23, 30)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.IN_PROGRESS,
+    )
+    await db_session.commit()
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.summer_league.desk_read.resolve_home_owner",
+        lambda now, events: None,  # nobody wins the takeover this tick.
+    )
+
+    payload = await get_desk_payload(db_session, now=now)
+    assert payload is None
+
+
+async def test_force_on_bypasses_ownership_gate(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`sl_desk_force_mode="on"` still takes over even when not the resolved owner."""
+    year = 2026
+    now = datetime(2026, 7, 10, 23, 30)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.IN_PROGRESS,
+    )
+    await db_session.commit()
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.summer_league.desk_read.resolve_home_owner",
+        lambda now, events: None,
+    )
+    monkeypatch.setattr(settings, "sl_desk_force_mode", "on")
+
+    payload = await get_desk_payload(db_session, now=now)
+    assert payload is not None
+    assert payload.daily_state == "live"
+
+
+async def test_force_off_never_takes_over_even_when_active_and_owner(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`sl_desk_force_mode="off"` is a kill switch -- off regardless of the calendar."""
+    year = 2026
+    now = datetime(2026, 7, 10, 23, 30)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.IN_PROGRESS,
+    )
+    await db_session.commit()
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    # Sanity: this event is genuinely active + owner without the override.
+    baseline_payload = await get_desk_payload(db_session, now=now)
+    assert baseline_payload is not None
+
+    monkeypatch.setattr(settings, "sl_desk_force_mode", "off")
+    payload = await get_desk_payload(db_session, now=now)
+    assert payload is None
+
+
+async def test_force_date_override_pins_the_resolved_calendar_date(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`sl_desk_force_date` overrides which date the Desk resolves against.
+
+    Even though the request instant passed to `get_desk_payload` is an
+    otherwise off-window date (year 2099), the forced date lands squarely on
+    a real in-progress game -- proving the override wins over the caller's
+    own `now`, the same way an operator's env var would in production.
+    """
+    year = 2026
+    game_date = date(2026, 7, 15)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=game_date,
+        tip_datetime=datetime(2026, 7, 15, 23, 0),
+        status=SummerLeagueGameStatus.IN_PROGRESS,
+    )
+    await db_session.commit()
+    await sync_summer_league_event(db_session, game_date)
+    await db_session.commit()
+
+    monkeypatch.setattr(settings, "sl_desk_force_date", game_date)
+    # The passed `now` is a wildly off-window YEAR, but the same time-of-day
+    # (23:30) as the seeded tip -- only the date should come from the override.
+    off_window_now = datetime(2099, 1, 1, 23, 30)
+
+    payload = await get_desk_payload(db_session, now=off_window_now)
+    assert payload is not None
+    assert payload.daily_state == "live"
+
+
+# --------------------------------------------------------------------------- #
+# Freshness (#544: missing state never says "as of now"; stale after cadence)
+# --------------------------------------------------------------------------- #
+async def test_freshness_missing_before_any_tick_has_run(
+    db_session: AsyncSession,
+) -> None:
+    """No `event_desk_state` row yet -> "missing", never a fabricated "as of now"."""
+    year = 2026
+    now = datetime(2026, 7, 10, 20, 0)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+    await db_session.commit()
+
+    # Registers the `events` row WITHOUT running the tick pipeline -- no
+    # `event_desk_state` row exists yet, matching "the tick has never run".
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    payload = await get_desk_payload(db_session, now=now)
+
+    assert payload is not None
+    assert payload.freshness.state == "missing"
+    assert payload.freshness.last_tick_at is None
+    assert payload.freshness.next_tick_eta_label is None
+    assert "unavailable" in payload.freshness.as_of_et_label
+    assert "as of" not in payload.freshness.as_of_et_label
+
+
+async def test_freshness_fresh_immediately_after_a_tick(
+    db_session: AsyncSession,
+) -> None:
+    """A tick that just ran renders "fresh" with a next-update ETA."""
+    year = 2026
+    now = datetime(2026, 7, 10, 20, 0)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+    await _seed_baseline(db_session, baseline_version="desk-home-v1")
+    await db_session.commit()
+
+    await run_desk_tick(db_session, now=now, client=_fake_client())
+    await db_session.commit()
+
+    payload = await get_desk_payload(db_session, now=now)
+
+    assert payload is not None
+    assert payload.freshness.state == "fresh"
+    assert "stale" not in payload.freshness.as_of_et_label
+    assert payload.freshness.next_tick_eta_label is not None
+    assert "next update" in payload.freshness.next_tick_eta_label
+
+
+async def test_freshness_stale_after_the_documented_cadence_multiple(
+    db_session: AsyncSession,
+) -> None:
+    """A tick 3 hours old (> the 2x hourly-cadence threshold) renders "stale"."""
+    year = 2026
+    request_now = datetime(2026, 7, 10, 20, 0)
+    tick_now = request_now - timedelta(hours=3)
+
+    competition = await _seed_competition(db_session, year=year)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+    await _seed_baseline(db_session, baseline_version="desk-home-v1")
+    await db_session.commit()
+
+    await run_desk_tick(db_session, now=tick_now, client=_fake_client())
+    await db_session.commit()
+
+    payload = await get_desk_payload(db_session, now=request_now)
+
+    assert payload is not None
+    assert payload.freshness.state == "stale"
+    assert payload.freshness.as_of_et_label.endswith("-- stale")
+    assert payload.freshness.last_tick_at == tick_now

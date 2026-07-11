@@ -29,7 +29,10 @@
   <section class="desk" id="slDeskSection" aria-label="Summer League Desk">
     <div class="desk__head">
       <span class="desk__title">Summer League Desk</span>
-      <span class="desk__freshness">{{ desk_payload.freshness.as_of_et_label }}</span>
+      <span class="desk__freshness desk__freshness--{{ desk_payload.freshness.state }}">{{ desk_payload.freshness.as_of_et_label }}</span>
+      {% if desk_payload.freshness.next_tick_eta_label %}
+      <span class="desk__freshness-eta">{{ desk_payload.freshness.next_tick_eta_label }}</span>
+      {% endif %}
     </div>
 
     {% if desk_payload.hero.kind == 'live_duel' %}
