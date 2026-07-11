@@ -65,6 +65,21 @@ storyline, or commentary logic of its own:
        raises before this step, so a failed refresh never gets to claim
        fresh state -- the caller's transaction rolls back and the next
        scheduled tick retries.
+    7. render snapshot materialization (#551, launch-readiness item 10) --
+       build the COMPLETE Preview/Live/Recap x Tracker cohort/stat-view
+       variant matrix (``desk_read.build_desk_render_variants``) and
+       atomically upsert every row in ONE bounded statement
+       (``event_desk.render_snapshots.upsert_render_snapshots``), carrying
+       step 6's just-stamped freshness. The FINAL step -- reached under the
+       exact same "every required step above succeeded" guarantee as step 6,
+       since it always runs immediately after it and shares the same
+       caller-controlled transaction: a failure anywhere in steps 0-6 (or in
+       this step itself) rolls back this tick's writes wholesale, so
+       whatever the PRIOR successful tick materialized is never overwritten
+       with a partial result. This is what lets the homepage read a single
+       persisted snapshot at request time instead of reassembling the Desk
+       (the pre-#551 ~71-query-per-request assembler,
+       ``desk_read._assemble_desk_payload``) on every visit.
 
 **Never rebuilds a distribution.** Job A (``scripts/build_sl_cohort_baselines.py``)
 is the rare, offline cohort-baseline (T1) builder; this tick only ever reads
@@ -151,6 +166,10 @@ from app.services.event_desk.registry import (  # noqa: E402
     DeskEvent,
     WindowPriors,
 )
+from app.services.event_desk.render_snapshots import (  # noqa: E402
+    RenderSnapshotWrite,
+    upsert_render_snapshots,
+)
 from app.services.event_desk.state_machine import inner_state  # noqa: E402
 from app.services.event_desk.timeutils import to_eastern_date  # noqa: E402
 from app.services.summer_league.cohort_baselines import cohort_key_for  # noqa: E402
@@ -187,6 +206,9 @@ from app.services.summer_league.desk_facts import (  # noqa: E402
     detect_streak,
 )
 from app.services.summer_league.desk_grades import GradeRow, grade_player_event  # noqa: E402
+from app.services.summer_league.desk_read import (  # noqa: E402
+    build_desk_render_variants,
+)
 from app.services.summer_league.desk_storylines import (  # noqa: E402
     SlateRow,
     StorylineTickResult,
@@ -244,6 +266,12 @@ class DeskTickResult:
     # Whether the #527 pre-anchor bootstrap (`_needs_scoreboard_bootstrap`) ran
     # `run_scoreboard_ingest` before the normal daily-state resolution succeeded.
     bootstrapped: bool = False
+    # Step 7 -- render snapshot materialization (#551, launch-readiness item
+    # 10). The number of `(daily_state, tracker_cohort, tracker_stat_view)`
+    # variant rows upserted this tick -- 0 off-window (nothing to
+    # materialize), otherwise `len(DESK_RENDER_DAILY_STATES) *
+    # len(TRACKER_COHORTS) * len(TRACKER_STAT_VIEWS)` (72 today).
+    materialized_variant_count: int = 0
 
 
 async def _resolve_daily_state(
@@ -803,6 +831,68 @@ def _season_range_start(season_range: str) -> int:
     return int(start_str)
 
 
+async def _materialize_render_snapshots(db: AsyncSession, *, now: datetime) -> int:
+    """Job B step 7 (#551, launch-readiness item 10) -- the tick's FINAL step.
+
+    Builds the complete Preview/Live/Recap x Tracker cohort/stat-view variant
+    matrix (`desk_read.build_desk_render_variants`) and atomically upserts
+    every row in ONE bounded statement
+    (`render_snapshots.upsert_render_snapshots`). Called only after step 6
+    (`run_event_desk_tick`) has already stamped this tick's freshness, so the
+    variants persisted here carry that same freshness stamp -- and only ever
+    reached at all when every earlier *required* step in `run_desk_tick`
+    genuinely succeeded, since a required failure raises before execution
+    ever gets here and the caller's transaction (`db.begin()` in `main`
+    below) rolls back this tick's writes wholesale, leaving whatever the
+    prior successful tick wrote untouched.
+
+    `source_freshness_tick_at`/`source_freshness_next_tick_eta` are read off
+    each variant's own freshly-assembled `DeskFreshness` (`view.payload.
+    freshness`) rather than re-queried -- every variant in one tick shares
+    the identical freshness stamp by construction (`build_desk_render_variants`
+    resolves it once and reuses it across the whole matrix).
+
+    Args:
+        db: Active database session (caller controls the transaction; never
+            commits here -- delegates to `upsert_render_snapshots`, which
+            also never commits).
+        now: The tick's reference instant (naive UTC) -- forwarded to
+            `build_desk_render_variants` unchanged.
+
+    Returns:
+        The number of variant rows upserted -- 0 when the event is
+        off-window (nothing to materialize; any prior snapshots are left
+        untouched, never truncated).
+    """
+    result = await build_desk_render_variants(db, now=now)
+    if result is None:
+        return 0
+    event_id, variants = result
+
+    writes = [
+        RenderSnapshotWrite(
+            event_id=event_id,
+            daily_state=variant.daily_state,
+            tracker_cohort=variant.tracker_cohort,
+            tracker_stat_view=variant.tracker_stat_view,
+            view=variant.view,
+            source_freshness_tick_at=(
+                variant.view.payload.freshness.last_tick_at
+                if variant.view.payload is not None
+                else None
+            ),
+            source_freshness_next_tick_eta=(
+                variant.view.payload.freshness.next_tick_eta
+                if variant.view.payload is not None
+                else None
+            ),
+        )
+        for variant in variants
+    ]
+    await upsert_render_snapshots(db, writes, now=now)
+    return len(writes)
+
+
 async def run_desk_tick(
     db: AsyncSession,
     *,
@@ -863,14 +953,23 @@ async def run_desk_tick(
     if daily_state is None:
         # Off-window/dormant: inert. `run_event_desk_tick` still upserts
         # event_desk_state (phase + freshness stamp), but every network call
-        # and every T2/T3/T4 write below is skipped entirely.
+        # and every T2/T3/T4 write below is skipped entirely. Step 7 still
+        # runs (cheap: `build_desk_render_variants` re-resolves the window
+        # itself, honoring `sl_desk_force_mode`, and is a genuine no-op --
+        # `materialized_variant_count=0` -- for a real off-window event; it
+        # only actually writes rows here under a force-mode QA override that
+        # fakes an in-window state this tick's OWN resolver above didn't see).
         states = await run_event_desk_tick(db, now=resolved_now)
+        materialized_variant_count = await _materialize_render_snapshots(
+            db, now=resolved_now
+        )
         return DeskTickResult(
             now=resolved_now,
             dormant=True,
             daily_state=None,
             event_desk_states=tuple(states),
             bootstrapped=bootstrap_report is not None,
+            materialized_variant_count=materialized_variant_count,
         )
 
     baseline_version = await _active_baseline_version(db)
@@ -1004,6 +1103,15 @@ async def run_desk_tick(
     # required step above has genuinely succeeded).
     states = await run_event_desk_tick(db, now=resolved_now)
 
+    # Step 7 -- render snapshot materialization (#551, launch-readiness item
+    # 10). The FINAL step, only reached once every required step above has
+    # genuinely succeeded -- builds and atomically upserts the complete
+    # Preview/Live/Recap x Tracker cohort/stat-view variant matrix so the
+    # homepage never has to reassemble the Desk at request time.
+    materialized_variant_count = await _materialize_render_snapshots(
+        db, now=resolved_now
+    )
+
     return DeskTickResult(
         now=resolved_now,
         dormant=False,
@@ -1016,6 +1124,7 @@ async def run_desk_tick(
         storyline_results=storyline_results,
         event_desk_states=tuple(states),
         bootstrapped=bootstrap_report is not None,
+        materialized_variant_count=materialized_variant_count,
     )
 
 
@@ -1027,9 +1136,15 @@ def _summarize(result: DeskTickResult) -> str:
             if result.bootstrapped
             else ""
         )
+        variant_note = (
+            f" (materialized {result.materialized_variant_count} render "
+            "snapshot variants under a force-mode override)"
+            if result.materialized_variant_count
+            else ""
+        )
         return (
             f"Summer League Desk tick @ {result.now.isoformat()}: "
-            f"off-window (dormant) -- no-op{suffix}."
+            f"off-window (dormant) -- no-op{suffix}{variant_note}."
         )
 
     lines = [
@@ -1039,6 +1154,7 @@ def _summarize(result: DeskTickResult) -> str:
         f"{' (#527 bootstrap ingest ran)' if result.bootstrapped else ''}",
         f"  graded_players={len(result.graded_player_ids)} "
         f"normalized_competitions={list(result.normalized_competition_ids)}",
+        f"  materialized_render_snapshot_variants={result.materialized_variant_count}",
     ]
     if result.scoreboard_report is not None:
         report = result.scoreboard_report

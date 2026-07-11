@@ -50,7 +50,7 @@ this call assembles.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dataclass_replace
 from datetime import date, datetime, timezone
 from typing import Callable, Mapping, Optional, Sequence
 
@@ -418,25 +418,48 @@ async def _resolve_window_state(
     )
 
 
-async def _freshness_for(
-    db: AsyncSession, event_row: Event, *, now: datetime
+def _build_freshness(
+    *,
+    last_tick_at: Optional[datetime],
+    next_tick_eta: Optional[datetime],
+    now: datetime,
 ) -> DeskFreshness:
-    """Build the honest freshness stamp from ``event_desk_state`` -- data only, no verdict.
+    """Pure freshness verdict from a raw ``(tick_at, next_tick_eta)`` stamp -- no I/O.
 
-    Never fabricates "as of now": a missing ``event_desk_state`` row (no tick
-    has ever run for this event) renders ``state="missing"`` with an
-    explicit "unavailable" label, never `_et_label(now)`. Freshness older
-    than :data:`FRESHNESS_STALE_AFTER` renders ``state="stale"`` with an
-    honest "-- stale" suffix rather than silently presenting it as current.
-    The next-tick ETA is pre-rendered once here (``next_tick_eta_label``) so
-    the one template slot that shows it never has to duplicate the "as of"
-    stamp or do its own timezone math.
+    Never fabricates "as of now": a missing stamp (``last_tick_at is None`` --
+    no tick has ever run for this event) renders ``state="missing"`` with an
+    explicit "unavailable" label, never `_et_label(now)`. A stamp older than
+    :data:`FRESHNESS_STALE_AFTER` renders ``state="stale"`` with an honest
+    "-- stale" suffix rather than silently presenting it as current. The
+    next-tick ETA is pre-rendered once here (``next_tick_eta_label``) so the
+    one template slot that shows it never has to duplicate the "as of" stamp
+    or do its own timezone math.
+
+    Shared by two callers that source the SAME kind of stamp from two
+    different places: :func:`_freshness_for` (reads it fresh from
+    ``event_desk_state`` for a live, per-request assembly) and the
+    snapshot-backed request-time read (`get_desk_view_from_snapshot`, which
+    reads the identical stamp already copied onto
+    ``EventDeskRenderSnapshot.source_freshness_tick_at`` /
+    ``source_freshness_next_tick_eta`` at materialization time -- see that
+    table's module docstring). This is why staleness must be computed HERE,
+    against the caller's ``now``, rather than trusted verbatim off a
+    persisted ``DeskPayload.freshness`` -- a snapshot's embedded freshness was
+    computed relative to the *tick's own* "now" at write time (always
+    "fresh", by construction, relative to itself), so a reader has to
+    re-judge it against the CURRENT request's "now" or a cron outage would
+    never surface as stale.
+
+    Args:
+        last_tick_at: The last successful tick's timestamp, or ``None`` if no
+            tick has ever run.
+        next_tick_eta: The next tick's ETA, or ``None``.
+        now: The instant to judge staleness against (the live request's
+            "now", not necessarily the tick's own "now").
+
+    Returns:
+        The honest :class:`DeskFreshness` verdict.
     """
-    stmt = select(EventDeskState).where(EventDeskState.event_id == event_row.id)  # type: ignore[arg-type]
-    state_row = (await db.execute(stmt)).scalar_one_or_none()
-    last_tick_at = state_row.freshness_tick_at if state_row else None
-    next_tick_eta = state_row.next_tick_eta if state_row else None
-
     if last_tick_at is None:
         return DeskFreshness(
             last_tick_at=None,
@@ -457,6 +480,23 @@ async def _freshness_for(
         as_of_et_label=as_of_et_label,
         state="stale" if is_stale else "fresh",
         next_tick_eta_label=next_tick_eta_label,
+    )
+
+
+async def _freshness_for(
+    db: AsyncSession, event_row: Event, *, now: datetime
+) -> DeskFreshness:
+    """Read ``event_desk_state``'s stamp and build the honest freshness verdict.
+
+    Thin DB-backed wrapper around :func:`_build_freshness` -- see that
+    function's docstring for the actual staleness logic.
+    """
+    stmt = select(EventDeskState).where(EventDeskState.event_id == event_row.id)  # type: ignore[arg-type]
+    state_row = (await db.execute(stmt)).scalar_one_or_none()
+    last_tick_at = state_row.freshness_tick_at if state_row else None
+    next_tick_eta = state_row.next_tick_eta if state_row else None
+    return _build_freshness(
+        last_tick_at=last_tick_at, next_tick_eta=next_tick_eta, now=now
     )
 
 
@@ -1593,48 +1633,59 @@ def _effective_now(now: Optional[datetime]) -> datetime:
     return resolved
 
 
-async def _assemble_desk_payload(
+async def _assemble_desk_payload_body(
     db: AsyncSession,
     *,
-    now: Optional[datetime],
+    window: _WindowState,
+    today: date,
+    baseline_version: Optional[str],
+    freshness: DeskFreshness,
+    daily_state: EventDailyState,
     tracker_cohort: str,
     tracker_stat_view: str,
-) -> tuple[Optional[DeskPayload], dict[int, dict[str, Optional[str]]]]:
-    """Shared body behind `get_desk_payload`/`get_desk_view` (#511).
+) -> tuple[DeskPayload, dict[int, dict[str, Optional[str]]]]:
+    """Assemble hero/slate/live_board/ledger/tracker for ONE (state, cohort, stat_view).
 
-    Split out so `get_desk_view` can reuse `_assemble_tracker`'s own
-    team-entry fetch for row logos (see `DeskView.tracker_teams`) without
-    `get_desk_payload`'s public, frozen-shape contract (`Optional[DeskPayload]`
-    only) having to change.
+    Split out of the old `_assemble_desk_payload` so the window/baseline/today/
+    freshness resolution (five-ish queries) happens exactly ONCE per tick or
+    request, while this body -- the part that actually varies per variant --
+    can be called repeatedly. Two callers:
 
-    Honors `settings.sl_desk_force_mode` (#544): ``"off"`` short-circuits to
-    off-window unconditionally (a kill switch, ahead of even the cheap
-    `events` lookup); ``"on"`` bypasses `_resolve_window_state`'s
-    `is_home_owner` gate while still requiring an actual Active/Wind-down
-    lifecycle window. ``"auto"`` (default) requires both -- see
-    `_resolve_window_state`'s docstring.
+    * `_assemble_desk_payload` (single-request path behind `get_desk_payload`/
+      `get_desk_view`): resolves `window` once, then calls this with
+      ``daily_state=window.daily_state`` -- i.e. exactly today's pre-refactor
+      behavior, byte-for-byte.
+    * `build_desk_render_variants` (tick-time materialization, launch-readiness
+      item 10): resolves `window`/`baseline_version`/`today`/`freshness` ONCE
+      per tick, then calls this once per `(daily_state, tracker_cohort,
+      tracker_stat_view)` in the full variant matrix -- `daily_state` here is
+      NOT necessarily `window.daily_state` (the tick builds all three states
+      unconditionally so a tip-time transition is already materialized before
+      it happens; see that function's docstring).
+
+    Args:
+        db: Active database session.
+        window: The already-resolved `_WindowState` (event_row/is_home_owner/
+            competition_ids) -- `daily_state` below is what actually selects
+            the Ledger vs. Preview/Live branch, not `window.daily_state`.
+        today: The resolved Eastern "today" date.
+        baseline_version: The active T1 baseline version, or `None`.
+        freshness: The pre-built `DeskFreshness` stamp for this payload.
+        daily_state: Which of the three states to build this call's hero/
+            slate/live_board/ledger for.
+        tracker_cohort: One of `TRACKER_COHORTS` (validated by `_assemble_tracker`).
+        tracker_stat_view: One of `TRACKER_STAT_VIEWS` (validated by `_assemble_tracker`).
+
+    Returns:
+        The assembled `DeskPayload` for this exact combination, plus its
+        `tracker_teams` companion lookup.
     """
-    resolved_now = _effective_now(now)
-
-    if settings.sl_desk_force_mode == "off":
-        return None, {}
-
-    window = await _resolve_window_state(
-        db, now=resolved_now, require_owner=settings.sl_desk_force_mode != "on"
-    )
-    if window is None:
-        return None, {}
-
-    baseline_version = await _active_baseline_version(db)
-    today = to_eastern_date(resolved_now)
-    freshness = await _freshness_for(db, window.event_row, now=resolved_now)
-
     hero: Optional[DeskHero] = None
     slate: list[DeskSlateRow] = []
     live_board: list[DeskLiveBoardRow] = []
     ledger: list[DeskLedgerRow] = []
 
-    if window.daily_state == EventDailyState.RECAP:
+    if daily_state == EventDailyState.RECAP:
         ledger_date = await _resolve_ledger_date(
             db, competition_ids=window.competition_ids, today=today
         )
@@ -1663,7 +1714,7 @@ async def _assemble_desk_payload(
                 team_ids.extend([game.home_team_entry_id, game.away_team_entry_id])
             teams = await _fetch_team_entries(db, team_ids)
 
-            live = window.daily_state == EventDailyState.LIVE
+            live = daily_state == EventDailyState.LIVE
             # #541 -- fetched ONCE (only when live; Morning has nothing to
             # show yet), then shared by both the hero's two-subject running
             # line and the Live board's top-performer column below, so this
@@ -1722,7 +1773,7 @@ async def _assemble_desk_payload(
     )
 
     payload = DeskPayload(
-        daily_state=window.daily_state.value,
+        daily_state=daily_state.value,
         is_home_owner=window.is_home_owner,
         hero=hero,
         slate=slate,
@@ -1734,15 +1785,331 @@ async def _assemble_desk_payload(
     return payload, tracker_teams
 
 
+async def _assemble_desk_payload(
+    db: AsyncSession,
+    *,
+    now: Optional[datetime],
+    tracker_cohort: str,
+    tracker_stat_view: str,
+) -> tuple[Optional[DeskPayload], dict[int, dict[str, Optional[str]]]]:
+    """Shared body behind `get_desk_payload`/`get_desk_view` (#511).
+
+    Split out so `get_desk_view` can reuse `_assemble_tracker`'s own
+    team-entry fetch for row logos (see `DeskView.tracker_teams`) without
+    `get_desk_payload`'s public, frozen-shape contract (`Optional[DeskPayload]`
+    only) having to change.
+
+    Honors `settings.sl_desk_force_mode` (#544): ``"off"`` short-circuits to
+    off-window unconditionally (a kill switch, ahead of even the cheap
+    `events` lookup); ``"on"`` bypasses `_resolve_window_state`'s
+    `is_home_owner` gate while still requiring an actual Active/Wind-down
+    lifecycle window. ``"auto"`` (default) requires both -- see
+    `_resolve_window_state`'s docstring.
+    """
+    resolved_now = _effective_now(now)
+
+    if settings.sl_desk_force_mode == "off":
+        return None, {}
+
+    window = await _resolve_window_state(
+        db, now=resolved_now, require_owner=settings.sl_desk_force_mode != "on"
+    )
+    if window is None:
+        return None, {}
+
+    baseline_version = await _active_baseline_version(db)
+    today = to_eastern_date(resolved_now)
+    freshness = await _freshness_for(db, window.event_row, now=resolved_now)
+
+    return await _assemble_desk_payload_body(
+        db,
+        window=window,
+        today=today,
+        baseline_version=baseline_version,
+        freshness=freshness,
+        daily_state=window.daily_state,
+        tracker_cohort=tracker_cohort,
+        tracker_stat_view=tracker_stat_view,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Tick-time variant materialization (launch-readiness item 10 / #551)
+# --------------------------------------------------------------------------- #
+
+# Every `EventDailyState` a materialized variant matrix covers. Unlike a live
+# request (which only ever resolves ONE current state via `_resolve_window_state`),
+# a tick builds all three unconditionally so a tip-time Preview->Live (or
+# Live->Recap) transition is already sitting in the table before the transition
+# happens -- see `build_desk_render_variants`.
+DESK_RENDER_DAILY_STATES: tuple[EventDailyState, ...] = (
+    EventDailyState.PREVIEW,
+    EventDailyState.LIVE,
+    EventDailyState.RECAP,
+)
+
+
+@dataclass(frozen=True)
+class DeskRenderVariant:
+    """One `(daily_state, tracker_cohort, tracker_stat_view)` slice of one tick's variant matrix.
+
+    Deliberately doesn't carry `event_id` or the freshness-stamp fields
+    `RenderSnapshotWrite` (`app.services.event_desk.render_snapshots`) needs --
+    this module can't import that one at module scope without a circular
+    import (`render_snapshots.py` imports `DeskView` from here), so the
+    conversion to `RenderSnapshotWrite` happens in the caller
+    (`scripts/sl_desk_tick.py`), which already imports both freely.
+    """
+
+    daily_state: EventDailyState
+    tracker_cohort: str
+    tracker_stat_view: str
+    view: DeskView
+
+
+async def build_desk_render_variants(
+    db: AsyncSession, *, now: Optional[datetime] = None
+) -> Optional[tuple[int, list[DeskRenderVariant]]]:
+    """Build the COMPLETE Preview/Live/Recap x Tracker cohort/stat-view variant matrix.
+
+    Called as the FINAL step of the Summer League Desk's hourly tick
+    (`scripts/sl_desk_tick.py::run_desk_tick`, launch-readiness item 10),
+    only after every required upstream step (scoreboard/live-refresh/
+    normalize/grades/storylines/commentary/`event_desk_state` freshness) has
+    genuinely succeeded -- the caller wraps the whole tick in one transaction
+    (`db.begin()`), so a failure anywhere upstream (or in this function
+    itself) rolls back this tick's writes wholesale and leaves whatever
+    snapshots the PRIOR successful tick wrote untouched.
+
+    Reuses the exact same assembly primitives a live per-request read used to
+    run inline (`_resolve_window_state`, `_active_baseline_version`,
+    `_freshness_for`, `_assemble_desk_payload_body`, `_assemble_tracker`,
+    `get_desk_view_context`) so every materialized variant is byte-for-byte
+    what a live request would have produced for that exact
+    `(daily_state, tracker_cohort, tracker_stat_view)` combination -- just
+    computed once per tick instead of once per visitor. `window` /
+    `baseline_version` / `today` / `freshness` are resolved ONCE here (they
+    don't vary across the matrix); only the per-variant body loop below
+    re-queries per combination.
+
+    Unlike a live request (which only ever resolves ONE current `daily_state`
+    via `_resolve_window_state`), this builds all three `EventDailyState`
+    values unconditionally: a tip-time Preview->Live (or Live->Recap)
+    transition must render correctly the INSTANT "now" crosses that boundary
+    (behavior spec §2), not wait for the next hourly tick to materialize the
+    new state. Building all three every tick is what makes that true --
+    the request-time reader (`get_desk_view_from_snapshot`) just picks
+    whichever pre-built row matches its own fresh state resolution.
+
+    Honors `settings.sl_desk_force_mode`/`sl_desk_force_date` identically to
+    `_assemble_desk_payload` (via `_effective_now` + the same force-mode
+    branch), so a force-mode QA session sees the SAME variants a tick would
+    have written under that override -- request-time reads and tick-time
+    writes never disagree about whether the event is in-window.
+
+    Args:
+        db: Active database session (caller controls the transaction; this
+            function never commits).
+        now: Override for "now" (tests; defaults to the current UTC instant).
+
+    Returns:
+        `None` when the event is off-window (nothing to materialize -- the
+        caller must leave any prior snapshots untouched, never truncate
+        them). Otherwise `(event_id, variants)`; `variants` always has
+        `len(DESK_RENDER_DAILY_STATES) * len(TRACKER_COHORTS) *
+        len(TRACKER_STAT_VIEWS)` entries (3 x 6 x 4 = 72 today), one per
+        unique `(daily_state, tracker_cohort, tracker_stat_view)` key.
+    """
+    resolved_now = _effective_now(now)
+
+    if settings.sl_desk_force_mode == "off":
+        return None
+
+    window = await _resolve_window_state(
+        db, now=resolved_now, require_owner=settings.sl_desk_force_mode != "on"
+    )
+    if window is None:
+        return None
+    assert window.event_row.id is not None
+    event_id = window.event_row.id
+
+    baseline_version = await _active_baseline_version(db)
+    today = to_eastern_date(resolved_now)
+    freshness = await _freshness_for(db, window.event_row, now=resolved_now)
+
+    variants: list[DeskRenderVariant] = []
+    for daily_state in DESK_RENDER_DAILY_STATES:
+        for cohort in TRACKER_COHORTS:
+            for stat_view in TRACKER_STAT_VIEWS:
+                payload, tracker_teams = await _assemble_desk_payload_body(
+                    db,
+                    window=window,
+                    today=today,
+                    baseline_version=baseline_version,
+                    freshness=freshness,
+                    daily_state=daily_state,
+                    tracker_cohort=cohort,
+                    tracker_stat_view=stat_view,
+                )
+                view_context = await get_desk_view_context(db, payload)
+                view = DeskView(
+                    payload=payload,
+                    players=view_context["players"],
+                    matchups=view_context["matchups"],
+                    tracker_teams=tracker_teams,
+                )
+                variants.append(
+                    DeskRenderVariant(
+                        daily_state=daily_state,
+                        tracker_cohort=cohort,
+                        tracker_stat_view=stat_view,
+                        view=view,
+                    )
+                )
+
+    return event_id, variants
+
+
+# --------------------------------------------------------------------------- #
+# Request-time snapshot-backed read (launch-readiness item 10 / #551)
+# --------------------------------------------------------------------------- #
+async def get_desk_view_from_snapshot(
+    db: AsyncSession,
+    *,
+    now: Optional[datetime] = None,
+    tracker_cohort: str = DEFAULT_TRACKER_COHORT,
+    tracker_stat_view: str = DEFAULT_TRACKER_STAT_VIEW,
+) -> DeskView:
+    """The fast, snapshot-backed read `app.routes.ui.home` calls in place of `get_desk_view`.
+
+    Resolves the CURRENT state fresh (`_resolve_window_state`, unchanged --
+    the same pure resolver a live request always used, so tip-time Preview->
+    Live/Live->Recap switching is exactly as correct as it always was) and
+    then does exactly ONE indexed lookup
+    (`app.services.event_desk.render_snapshots.get_render_snapshot`) for the
+    matching `(event_id, daily_state, tracker_cohort, tracker_stat_view)`
+    variant. Never queries `players_master`, `summer_league_games`,
+    `summer_league_desk_player_grades`, or any other per-player/per-game
+    table after that point -- the entire payload/view-context is decoded
+    straight out of the snapshot row's JSON columns.
+
+    **Never falls back to `get_desk_view`'s full assembly.** A missing
+    snapshot (this exact variant hasn't been materialized yet -- e.g. the
+    first tick after a fresh deploy hasn't run, or a schema-version bump
+    made an old row unreadable) degrades HONESTLY to the same empty
+    `DeskView` the off-window case renders (`desk_payload=None` -> the `/`
+    route's collapsed archive-strip treatment) rather than reconstructing the
+    page query-by-query. This is the whole point of the launch-readiness
+    "render snapshot persistence" work: a cold homepage request must never be
+    able to trigger the 71-query assembler again.
+
+    Freshness is recomputed HERE against `now` (this request's instant),
+    from the snapshot row's own `source_freshness_tick_at`/
+    `source_freshness_next_tick_eta` columns -- never trusted verbatim off
+    the persisted `DeskPayload.freshness`, which was computed relative to the
+    TICK's own "now" at write time (always "fresh" relative to itself; see
+    `_build_freshness`'s docstring). This is what lets a cron outage still
+    honestly render "-- stale" on a page that's reading a snapshot, not a
+    live query.
+
+    Args:
+        db: Active database session (read-only).
+        now: Override for "now" (tests; defaults to the current UTC instant).
+        tracker_cohort: One of `TRACKER_COHORTS`; falls back to
+            `DEFAULT_TRACKER_COHORT` when unset/unrecognized.
+        tracker_stat_view: One of `TRACKER_STAT_VIEWS`; same fallback.
+
+    Returns:
+        The matching `DeskView`, or an empty one (`payload=None`, empty
+        enrichment dicts) when off-window OR the exact variant hasn't been
+        materialized yet OR its `schema_version` is one this build's codec
+        no longer understands.
+    """
+    # Deferred import: `app.services.event_desk.render_snapshots` imports
+    # `DeskView` from THIS module at its own module scope, so a top-level
+    # import here would be circular. Safe as a function-local import -- by
+    # the time any request reaches this function, both modules have long
+    # since finished importing.
+    from app.services.event_desk.render_snapshots import (
+        UnsupportedRenderSnapshotSchemaVersion,
+        deserialize_desk_view,
+        get_render_snapshot,
+    )
+
+    resolved_now = _effective_now(now)
+    empty = DeskView(payload=None, players={}, matchups={}, tracker_teams={})
+
+    if settings.sl_desk_force_mode == "off":
+        return empty
+
+    window = await _resolve_window_state(
+        db, now=resolved_now, require_owner=settings.sl_desk_force_mode != "on"
+    )
+    if window is None:
+        return empty
+    assert window.event_row.id is not None
+
+    cohort = (
+        tracker_cohort if tracker_cohort in TRACKER_COHORTS else DEFAULT_TRACKER_COHORT
+    )
+    stat_view = (
+        tracker_stat_view
+        if tracker_stat_view in TRACKER_STAT_VIEWS
+        else DEFAULT_TRACKER_STAT_VIEW
+    )
+
+    row = await get_render_snapshot(
+        db,
+        event_id=window.event_row.id,
+        daily_state=window.daily_state,
+        tracker_cohort=cohort,
+        tracker_stat_view=stat_view,
+    )
+    if row is None:
+        # Not yet materialized for this exact variant -- degrade honestly,
+        # never fall back to `get_desk_view`'s full assembly.
+        return empty
+
+    try:
+        view = deserialize_desk_view(
+            payload_json=row.payload_json,
+            view_context_json=row.view_context_json,
+            schema_version=row.schema_version,
+        )
+    except UnsupportedRenderSnapshotSchemaVersion:
+        # A row this build's codec can't decode -- honest degrade, same as
+        # "missing," never a 500 and never the full assembler.
+        return empty
+
+    if view.payload is None:
+        # Defensive: a snapshot should never be persisted with a null
+        # payload for an in-window variant, but the codec stays total (see
+        # `serialize_desk_view`'s docstring) -- degrade honestly rather than
+        # assume.
+        return empty
+
+    fresh = _build_freshness(
+        last_tick_at=row.source_freshness_tick_at,
+        next_tick_eta=row.source_freshness_next_tick_eta,
+        now=resolved_now,
+    )
+    payload = dataclass_replace(view.payload, freshness=fresh)
+    return dataclass_replace(view, payload=payload)
+
+
 __all__ = [
     "DEFAULT_TRACKER_COHORT",
     "DEFAULT_TRACKER_STAT_VIEW",
+    "DESK_RENDER_DAILY_STATES",
     "MAX_LEDGER_ROWS",
     "TRACKER_CAP",
     "TRACKER_COHORTS",
     "TRACKER_STAT_VIEWS",
+    "DeskRenderVariant",
     "DeskView",
+    "build_desk_render_variants",
     "get_desk_payload",
     "get_desk_view",
     "get_desk_view_context",
+    "get_desk_view_from_snapshot",
 ]

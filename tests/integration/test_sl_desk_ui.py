@@ -47,7 +47,6 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
-from app.services.event_desk.registry import sync_summer_league_event
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.desk_read import (
     get_desk_payload,
@@ -107,7 +106,9 @@ def _fake_client() -> NBAStatsClient:
     return NBAStatsClient(session=_FakeSession())
 
 
-async def _seed_competition(db: AsyncSession, *, today: date) -> SummerLeagueCompetition:
+async def _seed_competition(
+    db: AsyncSession, *, today: date
+) -> SummerLeagueCompetition:
     idx = _idx()
     comp = SummerLeagueCompetition(
         year=today.year,
@@ -311,7 +312,9 @@ async def _seed_game_log(
 def _assert_no_switcher_chrome(html: str) -> None:
     """The one negative assertion the whole ticket hinges on: no state tabs."""
     for marker in _SWITCHER_MARKERS:
-        assert marker not in html, f"found review-only switcher chrome {marker!r} in the DOM"
+        assert marker not in html, (
+            f"found review-only switcher chrome {marker!r} in the DOM"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -390,10 +393,10 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
     html = response.text
 
     assert 'id="slDeskSection"' in html
-    assert 'desk__hero--live' in html
+    assert "desk__hero--live" in html
     assert 'class="desk__live-board"' in html
     # Em-dash before tip: the not-yet-started game's Top Performer cell.
-    assert 'desk__top-perf--empty' in html
+    assert "desk__top-perf--empty" in html
     assert "&mdash;" in html
     # The resolved game's top performer shows a real GmSc, not an em-dash.
     assert "GmSc" in html
@@ -427,16 +430,25 @@ async def test_live_duel_hero_renders_both_running_lines_one_pretip_em_dash(
         away_score=38,
     )
     # Two top-14 prospects (Duel qualifies on draft slot alone) sharing tonight's game.
-    player_a = await _seed_player(db_session, name="DuelLogged", draft_round=1, draft_pick=1)
-    player_b = await _seed_player(db_session, name="DuelPretip", draft_round=1, draft_pick=2)
+    player_a = await _seed_player(
+        db_session, name="DuelLogged", draft_round=1, draft_pick=1
+    )
+    player_b = await _seed_player(
+        db_session, name="DuelPretip", draft_round=1, draft_pick=2
+    )
     source_a = await _roster_player(db_session, competition, home, player_a)
     await _roster_player(db_session, competition, away, player_b)
     await _seed_baseline(db_session, baseline_version="desk-ui-duel-v1")
 
     # Only player_a has a tonight's box line -- player_b hasn't logged yet.
     await _seed_game_log(
-        db_session, competition=competition, game=duel_game, team=home,
-        source_player=source_a, player=player_a, pts=24,
+        db_session,
+        competition=competition,
+        game=duel_game,
+        team=home,
+        source_player=source_a,
+        player=player_a,
+        pts=24,
     )
 
     await db_session.commit()
@@ -449,7 +461,7 @@ async def test_live_duel_hero_renders_both_running_lines_one_pretip_em_dash(
     assert response.status_code == 200
     html = response.text
 
-    assert 'desk__hero--live' in html
+    assert "desk__hero--live" in html
     assert 'data-desk-hero-kind="live_duel"' in html
     # The logged subject's real tonight line (`_seed_game_log`'s fixed ast=5/reb=7).
     assert "5</b> AST" in html or ">5</b>" in html
@@ -500,7 +512,11 @@ async def test_recap_state_renders_ledger_table(
     )
     await db_session.commit()
 
-    await sync_summer_league_event(db_session, today)
+    # The `/` route reads a materialized render snapshot (#551) rather than
+    # live-assembling, so the Recap variant (Ledger + performance-of-night
+    # hero) must be materialized first -- `run_desk_tick` syncs the event AND
+    # runs its final materialization step, exactly as the hourly cron does.
+    await run_desk_tick(db_session, now=now, client=_fake_client())
     await db_session.commit()
 
     warmup = await app_client.get("/")
@@ -511,10 +527,10 @@ async def test_recap_state_renders_ledger_table(
     html = response.text
 
     assert 'id="slDeskSection"' in html
-    assert 'desk__hero--ledger' in html
+    assert "desk__hero--ledger" in html
     assert 'class="desk__ledger-table"' in html
-    assert 'desk__status-tag' in html
-    assert 'desk__pctl-chip' in html
+    assert "desk__status-tag" in html
+    assert "desk__pctl-chip" in html
     _assert_no_switcher_chrome(html)
     assert "?ref=sl-desk" in html
 

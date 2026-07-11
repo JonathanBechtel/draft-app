@@ -45,9 +45,14 @@ from app.schemas.summer_league_desk import (
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.event_desk.registry import sync_summer_league_event
+from app.services.event_desk.render_snapshots import (
+    RenderSnapshotWrite,
+    upsert_render_snapshots,
+)
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.desk_read import (
     TRACKER_CAP,
+    build_desk_render_variants,
     get_desk_payload,
 )
 from tests.integration.perf._capture import count_queries
@@ -61,6 +66,47 @@ _IDX = {"n": 0}
 def _idx() -> int:
     _IDX["n"] += 1
     return _IDX["n"]
+
+
+async def _materialize_desk_snapshots(db: AsyncSession, *, now: datetime) -> None:
+    """Simulate the hourly tick's final step (#551): materialize every render-snapshot variant.
+
+    The `/` route reads a persisted render snapshot (`get_desk_view_from_snapshot`)
+    and NEVER live-assembles, so a route render in a test must first materialize
+    snapshots exactly as `scripts/sl_desk_tick.py`'s step 7 does. Uses
+    `build_desk_render_variants` (T1-baseline-optional -- degrades gracefully)
+    rather than the full `run_desk_tick` so a Tracker test that doesn't seed a
+    baseline can still exercise the route. Commits, mirroring the tick's
+    caller-owned transaction boundary.
+    """
+    result = await build_desk_render_variants(db, now=now)
+    assert result is not None, "expected an in-window event to materialize"
+    event_id, variants = result
+    await upsert_render_snapshots(
+        db,
+        [
+            RenderSnapshotWrite(
+                event_id=event_id,
+                daily_state=v.daily_state,
+                tracker_cohort=v.tracker_cohort,
+                tracker_stat_view=v.tracker_stat_view,
+                view=v.view,
+                source_freshness_tick_at=(
+                    v.view.payload.freshness.last_tick_at
+                    if v.view.payload is not None
+                    else None
+                ),
+                source_freshness_next_tick_eta=(
+                    v.view.payload.freshness.next_tick_eta
+                    if v.view.payload is not None
+                    else None
+                ),
+            )
+            for v in variants
+        ],
+        now=now,
+    )
+    await db.commit()
 
 
 async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueCompetition:
@@ -640,6 +686,7 @@ async def test_gp_zero_row_renders_em_dashes(
     await db_session.commit()
     await sync_summer_league_event(db_session, today)
     await db_session.commit()
+    await _materialize_desk_snapshots(db_session, now=now)
 
     warmup = await app_client.get("/?cohort=full_class&statview=box")
     assert warmup.status_code == 200
@@ -670,6 +717,7 @@ async def test_undrafted_identity_swap_and_status_cohort_label(
     await db_session.commit()
     await sync_summer_league_event(db_session, today)
     await db_session.commit()
+    await _materialize_desk_snapshots(db_session, now=now)
 
     warmup = await app_client.get("/?cohort=undrafted&statview=box")
     assert warmup.status_code == 200
@@ -701,6 +749,7 @@ async def test_cohort_and_statview_toggles_round_trip_via_query_params(
     await db_session.commit()
     await sync_summer_league_event(db_session, today)
     await db_session.commit()
+    await _materialize_desk_snapshots(db_session, now=now)
 
     warmup = await app_client.get("/?cohort=round2&statview=advanced")
     assert warmup.status_code == 200
@@ -738,6 +787,7 @@ async def test_tracker_row_deep_link_carries_ref_sl_desk(
     await db_session.commit()
     await sync_summer_league_event(db_session, today)
     await db_session.commit()
+    await _materialize_desk_snapshots(db_session, now=now)
 
     warmup = await app_client.get("/")
     assert warmup.status_code == 200
@@ -916,6 +966,7 @@ async def test_gated_row_renders_unqualified_qualified_row_shows_grade_chip(
     await db_session.commit()
     await sync_summer_league_event(db_session, today)
     await db_session.commit()
+    await _materialize_desk_snapshots(db_session, now=now)
 
     warmup = await app_client.get("/?cohort=lottery&statview=box")
     assert warmup.status_code == 200
@@ -958,6 +1009,7 @@ async def test_query_budget_holds_with_tracker_params(
     await db_session.commit()
     await sync_summer_league_event(db_session, today)
     await db_session.commit()
+    await _materialize_desk_snapshots(db_session, now=now)
 
     warmup = await app_client.get("/?cohort=lottery&statview=advanced")
     assert warmup.status_code == 200
