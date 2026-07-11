@@ -1037,8 +1037,11 @@ def _tracker_cohort_predicate(
         "round1": lambda p, year: p.draft_year == year and p.draft_round == 1,
         "round2": lambda p, year: p.draft_year == year and p.draft_round == 2,
         "full_class": lambda p, year: p.draft_year == year and p.draft_round in (1, 2),
-        # "Prior-year draftees who returned" -- any round, drafted before this class.
-        "sophomores": lambda p, year: p.draft_year is not None and p.draft_year < year,
+        # "Prior-year draftees who returned" -- exactly one class behind, per
+        # #543 (previously any earlier `draft_year` was admitted, which pulled
+        # in players drafted two-plus years ago).
+        "sophomores": lambda p, year: p.draft_year is not None
+        and p.draft_year == year - 1,
         # "No draft pick in the current class." Contract type isn't in the data
         # model (behavior spec §7) -- drafted-vs-undrafted only.
         "undrafted": lambda p, _year: p.draft_round is None,
@@ -1060,6 +1063,14 @@ async def _assemble_tracker(
     Populates every column behavior spec §7 calls "fixed" (Player/GP/MIN/GmSc/
     grade -- constant across all four stat views) plus ``stat_columns``, the
     Box/Per-36/Per-100/Advanced middle block, via `_build_stat_columns`.
+
+    ``grade`` is READ from the persisted T2 contract
+    (``summer_league_desk_player_grades``, written offline by Job B's
+    ``desk_grades.grade_player_event``), never recomputed from T1 breakpoints
+    at request time (#543) -- a gated T2 row (thin sample; see
+    ``desk_grades.is_gated``) renders ``grade=None``, the same unqualified
+    (em-dash) treatment as a never-graded player, rather than a confident-
+    looking Hot/Warm/Cold label the gate ladder was designed to suppress.
 
     Returns the section alongside a ``{player_id: {"abbrev", "logo_url"}}``
     lookup for the rows actually returned (post-cap). `DeskTrackerRow` (#506)
@@ -1139,20 +1150,30 @@ async def _assemble_tracker(
         db, [team_entry_by_player.get(pid) for pid in member_ids]
     )
 
-    cohort_keys = {
-        cohort_key_for(player_by_id[pid].draft_round, player_by_id[pid].draft_pick)
-        for pid in member_ids
-    }
-    baselines: dict[str, SummerLeagueCohortBaseline] = {}
-    if baseline_version is not None and cohort_keys:
-        baseline_stmt = select(SummerLeagueCohortBaseline).where(
-            SummerLeagueCohortBaseline.baseline_version == baseline_version,  # type: ignore[arg-type]
-            SummerLeagueCohortBaseline.cohort_key.in_(cohort_keys),  # type: ignore[attr-defined]
-            SummerLeagueCohortBaseline.grain == SummerLeagueDeskGrain.EVENT,  # type: ignore[arg-type]
-            SummerLeagueCohortBaseline.is_active.is_(True),  # type: ignore[attr-defined]
+    # Read the persisted T2 grade contract (#543) -- never recompute a
+    # percentile/grade at request time. Job B's tick (`grade_player_event`)
+    # already ranked each member's event-aggregate GmSc against T1 and applied
+    # the adaptive gate ladder; this batch-reads that outcome instead of
+    # re-deriving it from T1 breakpoints directly (which -- unlike the tick --
+    # would render a confident-looking grade for a thin/one-game sample the
+    # gate ladder was designed to suppress). A player can carry a graded row
+    # per competition in the cluster (Job B grades once per active roster per
+    # competition); `setdefault` keeps the first (ordered) row since the
+    # underlying event-aggregate `subject_value` is identical across a
+    # player's rows for the same `baseline_version`.
+    grade_by_player: dict[int, SummerLeagueDeskPlayerGrade] = {}
+    if baseline_version is not None and member_ids:
+        grade_stmt = (
+            select(SummerLeagueDeskPlayerGrade)
+            .where(
+                SummerLeagueDeskPlayerGrade.player_id.in_(member_ids),  # type: ignore[attr-defined]
+                SummerLeagueDeskPlayerGrade.competition_id.in_(competition_ids),  # type: ignore[attr-defined]
+                SummerLeagueDeskPlayerGrade.baseline_version == baseline_version,  # type: ignore[arg-type]
+            )
+            .order_by(SummerLeagueDeskPlayerGrade.competition_id.asc())  # type: ignore[attr-defined]
         )
-        baseline_rows = (await db.execute(baseline_stmt)).scalars().all()
-        baselines = {b.cohort_key: b for b in baseline_rows}
+        for grade_row in (await db.execute(grade_stmt)).scalars().all():
+            grade_by_player.setdefault(grade_row.player_id, grade_row)
 
     rows: list[DeskTrackerRow] = []
     for pid in member_ids:
@@ -1162,15 +1183,16 @@ async def _assemble_tracker(
         minutes = round(agg.minutes, 1) if agg else 0.0
         gmsc = agg.gmsc if agg else None
 
-        pctl: Optional[float] = None
+        # A gated grade renders as unqualified -- no Hot/Warm/Cold label --
+        # same "degrade, never fabricate" contract #539 established for the
+        # Ledger's per-game percentile. `grade=None` already renders the
+        # template's em-dash (see `class_tracker.html`), so gated and
+        # never-graded (no tick has run for this player/version yet) collapse
+        # to the same rendering with no separate branch needed.
         grade: Optional[str] = None
-        if gmsc is not None:
-            baseline = baselines.get(
-                cohort_key_for(player.draft_round, player.draft_pick)
-            )
-            if baseline is not None:
-                pctl = percentile_of_value(baseline.breakpoints, gmsc)
-                grade = grade_for_percentile(pctl).value
+        member_grade = grade_by_player.get(pid)
+        if member_grade is not None and not member_grade.gated:
+            grade = member_grade.grade.value
 
         abbrev = _team_label(teams.get(team_entry_by_player.get(pid, -1)))
         position = player.position or "-"

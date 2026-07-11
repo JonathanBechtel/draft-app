@@ -154,7 +154,8 @@ DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
     # event/competitions/game_dates/today lookups = 5) + baseline_version (1)
     # + freshness (1) + today's T4 slate (1) + games (1) + team entries (1) +
     # hero's T3 subject lookup (1) + Class Tracker's 5 batched queries
-    # (roster/players/seasons/teams/baselines).
+    # (roster/players/seasons/teams/grades -- #543: reads persisted T2 grades
+    # instead of T1 baselines, same query count).
     "preview": 16,
     # Measured 17: preview's queries + the live board's one batched
     # top-performer query.
@@ -165,7 +166,7 @@ DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
     # Measured 11: state resolution/baseline/freshness (7) + the empty T4
     # slate probe (1) + quiet-slate hero's T2 + players_master lookup (2) +
     # Class Tracker on an empty roster short-circuits after 1 query (roster
-    # probe returns nothing -- no players/seasons/teams/baselines queries).
+    # probe returns nothing -- no players/seasons/teams/grades queries).
     "quiet_slate": 11,
 }
 

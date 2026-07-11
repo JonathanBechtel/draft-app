@@ -36,6 +36,13 @@ from app.schemas.summer_league import (
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
 )
+from app.schemas.summer_league_desk import (
+    SummerLeagueCohortBaseline,
+    SummerLeagueDeskCohortKind,
+    SummerLeagueDeskGrade,
+    SummerLeagueDeskGrain,
+    SummerLeagueDeskPlayerGrade,
+)
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.event_desk.registry import sync_summer_league_event
 from app.services.event_desk.timeutils import to_eastern_date
@@ -356,6 +363,49 @@ async def test_cohort_membership_including_within_round_boundary_picks(
 
 
 # --------------------------------------------------------------------------- #
+# Sophomores cohort (#543): exactly one class behind (`draft_year == year -
+# 1`), not "any earlier draft_year" -- a player drafted two-plus years ago
+# must NOT show up as a "prior-year draftee who returned."
+# --------------------------------------------------------------------------- #
+async def test_sophomores_cohort_admits_prior_year_excludes_older_draftee(
+    db_session: AsyncSession,
+) -> None:
+    """A `year - 1` draftee is a Sophomore; a `year - 2` draftee is not."""
+    year = 2026
+    now = datetime(2026, 7, 10, 20, 0)
+    competition = await _seed_competition(db_session, year=year)
+    team = await _seed_team(db_session, competition)
+
+    prior_year = await _seed_player(
+        db_session, name="PriorYear", draft_year=year - 1, draft_round=2, draft_pick=5
+    )
+    two_years_back = await _seed_player(
+        db_session,
+        name="TwoYearsBack",
+        draft_year=year - 2,
+        draft_round=2,
+        draft_pick=6,
+    )
+    for p in (prior_year, two_years_back):
+        await _roster_player(db_session, competition, team, p)
+        await _seed_season(db_session, competition=competition, player=p, year=year)
+    await db_session.commit()
+
+    await _seed_active_window_game(db_session, competition, now=now)
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    payload = await get_desk_payload(
+        db_session, now=now, tracker_cohort="sophomores", tracker_stat_view="box"
+    )
+    assert payload is not None
+    sophomore_ids = {row.player_id for row in payload.tracker.rows}
+
+    assert prior_year.id in sophomore_ids
+    assert two_years_back.id not in sophomore_ids
+
+
+# --------------------------------------------------------------------------- #
 # Stat-view rescale: Box / Per-36 / Per-100 rescale counting stats; shooting
 # percentages stay invariant.
 # --------------------------------------------------------------------------- #
@@ -552,7 +602,9 @@ async def test_cohort_over_30_caps_at_30_by_gmsc_and_flags_truncated(
 # time-independent state -- Live/Recap resolve from game *status*, not the
 # wall clock) via an all-FINAL slate.
 # --------------------------------------------------------------------------- #
-async def _seed_recap_window(db: AsyncSession, *, now: datetime) -> SummerLeagueCompetition:
+async def _seed_recap_window(
+    db: AsyncSession, *, now: datetime
+) -> SummerLeagueCompetition:
     """An active SL event with an all-FINAL slate -- forces Recap deterministically."""
     today = to_eastern_date(now)
     competition = await _seed_competition(db, year=today.year)
@@ -694,6 +746,190 @@ async def test_tracker_row_deep_link_carries_ref_sl_desk(
     html = response.text
 
     assert "?ref=sl-desk" in html
+
+
+# --------------------------------------------------------------------------- #
+# T2 grade contract (#543): the Tracker's `grade` column READS the persisted
+# `summer_league_desk_player_grades` row (value + gated state) rather than
+# recomputing a percentile from T1 breakpoints at request time. A gated row
+# (e.g. a one-game sample the adaptive gate ladder flagged as not-yet-
+# confident) renders exactly like an ungraded player -- `grade=None`, the
+# template's em-dash -- never a fabricated Hot/Warm/Cold label.
+# --------------------------------------------------------------------------- #
+async def _seed_t1_baseline(
+    db: AsyncSession, *, baseline_version: str, cohort_key: str = "slot:1-4"
+) -> None:
+    db.add(
+        SummerLeagueCohortBaseline(
+            baseline_version=baseline_version,
+            is_active=True,
+            cohort_key=cohort_key,
+            cohort_kind=SummerLeagueDeskCohortKind.SLOT_WINDOW,
+            metric="gmsc",
+            grain=SummerLeagueDeskGrain.EVENT,
+            venue_scope="all",
+            season_range="2017-2025",
+            min_minutes=40.0,
+            n_members=20,
+            breakpoints={"0": 10.0, "50": 25.0, "100": 40.0},
+            mean_value=25.0,
+            median_value=25.0,
+        )
+    )
+
+
+async def test_qualified_row_retains_persisted_grade_gated_row_grade_is_none(
+    db_session: AsyncSession,
+) -> None:
+    """A confident T2 row keeps its persisted grade; a gated one T2 row grades `None`.
+
+    Arithmetic/data-shape assertion via `get_desk_payload` directly (per this
+    module's own convention -- see file docstring) rather than through HTML,
+    for precision on the exact persisted value read back.
+    """
+    year = 2026
+    now = datetime(2026, 7, 10, 20, 0)
+    competition = await _seed_competition(db_session, year=year)
+    team = await _seed_team(db_session, competition)
+
+    qualified = await _seed_player(
+        db_session, name="Qualified", draft_year=year, draft_round=1, draft_pick=1
+    )
+    one_game = await _seed_player(
+        db_session, name="OneGame", draft_year=year, draft_round=1, draft_pick=1
+    )
+    for p in (qualified, one_game):
+        await _roster_player(db_session, competition, team, p)
+        await _seed_season(
+            db_session, competition=competition, player=p, year=year, gp=1, gmsc=25.0
+        )
+    await db_session.commit()
+
+    baseline_version = "tracker-t2-v1"
+    await _seed_t1_baseline(db_session, baseline_version=baseline_version)
+    assert (
+        qualified.id is not None
+        and one_game.id is not None
+        and competition.id is not None
+    )
+    db_session.add(
+        SummerLeagueDeskPlayerGrade(
+            player_id=qualified.id,
+            competition_id=competition.id,
+            baseline_version=baseline_version,
+            cohort_key="slot:1-4",
+            subject_value=25.0,
+            pctl=70.0,
+            grade=SummerLeagueDeskGrade.WARM,
+            n_cohort=20,
+            gated=False,
+        )
+    )
+    # A one-game sample: the tick still computed a (would-be HOT) percentile,
+    # but the adaptive gate ladder flagged it as not-yet-confident -- exactly
+    # the case the Tracker must render as unqualified, not as "Hot".
+    db_session.add(
+        SummerLeagueDeskPlayerGrade(
+            player_id=one_game.id,
+            competition_id=competition.id,
+            baseline_version=baseline_version,
+            cohort_key="slot:1-4",
+            subject_value=39.0,
+            pctl=98.0,
+            grade=SummerLeagueDeskGrade.HOT,
+            n_cohort=20,
+            gated=True,
+        )
+    )
+    await db_session.commit()
+
+    await _seed_active_window_game(db_session, competition, now=now)
+    await sync_summer_league_event(db_session, now.date())
+    await db_session.commit()
+
+    payload = await get_desk_payload(
+        db_session, now=now, tracker_cohort="lottery", tracker_stat_view="box"
+    )
+    assert payload is not None
+    rows_by_id = {r.player_id: r for r in payload.tracker.rows}
+
+    assert rows_by_id[qualified.id].grade == "warm"
+    assert rows_by_id[one_game.id].grade is None
+
+
+async def test_gated_row_renders_unqualified_qualified_row_shows_grade_chip(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """HTML-shape: the gated row's grade cell renders the em-dash, never a chip."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    year = today.year
+    competition = await _seed_recap_window(db_session, now=now)
+    team = await _seed_team(db_session, competition)
+
+    qualified = await _seed_player(
+        db_session, name="Confident", draft_year=year, draft_round=1, draft_pick=1
+    )
+    one_game = await _seed_player(
+        db_session, name="Thin", draft_year=year, draft_round=1, draft_pick=1
+    )
+    for p in (qualified, one_game):
+        await _roster_player(db_session, competition, team, p)
+        await _seed_season(
+            db_session, competition=competition, player=p, year=year, gp=1, gmsc=25.0
+        )
+    await db_session.commit()
+
+    baseline_version = "tracker-t2-v2"
+    await _seed_t1_baseline(db_session, baseline_version=baseline_version)
+    assert (
+        qualified.id is not None
+        and one_game.id is not None
+        and competition.id is not None
+    )
+    db_session.add(
+        SummerLeagueDeskPlayerGrade(
+            player_id=qualified.id,
+            competition_id=competition.id,
+            baseline_version=baseline_version,
+            cohort_key="slot:1-4",
+            subject_value=25.0,
+            pctl=70.0,
+            grade=SummerLeagueDeskGrade.WARM,
+            n_cohort=20,
+            gated=False,
+        )
+    )
+    db_session.add(
+        SummerLeagueDeskPlayerGrade(
+            player_id=one_game.id,
+            competition_id=competition.id,
+            baseline_version=baseline_version,
+            cohort_key="slot:1-4",
+            subject_value=39.0,
+            pctl=98.0,
+            grade=SummerLeagueDeskGrade.HOT,
+            n_cohort=20,
+            gated=True,
+        )
+    )
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+
+    warmup = await app_client.get("/?cohort=lottery&statview=box")
+    assert warmup.status_code == 200
+    response = await app_client.get("/?cohort=lottery&statview=box")
+    assert response.status_code == 200
+    html = response.text
+
+    assert "Confident Test" in html
+    assert "Thin Test" in html
+    # The qualified row's chip renders its persisted grade.
+    assert 'desk__pctl-chip--warm">Warm</span>' in html
+    # The gated row never renders a chip of any grade -- HOT never appears,
+    # even though the tick computed a (gated, would-be-HOT) percentile.
+    assert "desk__pctl-chip--hot" not in html
 
 
 # --------------------------------------------------------------------------- #
