@@ -597,7 +597,8 @@ async def build_baselines(
     # earliest qualifying game (#539) -- reuses the SAME per-game floor the
     # `game` grain applies, over the SAME rows already fetched above.
     first_qualifying = first_qualifying_games(
-        game_rows_with_dates, min_minutes=game_min_minutes
+        game_rows_with_dates,  # type: ignore[arg-type]
+        min_minutes=game_min_minutes,
     )
 
     player_ids = {pid for pid, _year in events} | {gv.player_id for gv in game_values}

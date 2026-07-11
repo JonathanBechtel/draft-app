@@ -521,7 +521,7 @@ async def fetch_first_qualifying_games(
         )
     )
     rows = (await db.execute(stmt)).all()
-    return first_qualifying_games(rows, min_minutes=min_minutes)
+    return first_qualifying_games(rows, min_minutes=min_minutes)  # type: ignore[arg-type]
 
 
 async def fetch_debut_status(
