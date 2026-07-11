@@ -315,6 +315,21 @@ async def test_in_window_home_within_budget(
         f"/ returned {response.status_code} in-window ({case.state}); expected 200."
     )
 
+    # Guard against a silent collapse to the off-window strip: if a
+    # materialization regression dropped the in-window Desk, the query count
+    # would fall *under* budget and this test would otherwise pass green. Assert
+    # the full Desk section actually rendered (and the off-window fallback did
+    # not) so the budget check can only pass on a genuinely in-window render.
+    assert 'id="slDeskSection"' in response.text, (
+        f"in-window / ({case.state}) did not render the full Desk section "
+        f"(id=slDeskSection missing); a within-budget pass here would be a false "
+        f"positive from a silently collapsed render."
+    )
+    assert "desk__offwindow" not in response.text, (
+        f"in-window / ({case.state}) rendered the off-window strip; the Desk "
+        f"collapsed to the dormant fallback while nominally in-window."
+    )
+
     if len(captured) > budget:
         listing = "\n".join(
             f"  {i + 1:>2}. {' '.join(stmt.split())[:120]}"
