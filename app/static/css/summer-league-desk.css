@@ -12,6 +12,16 @@
   margin: 1.8rem 0 2.4rem;
 }
 
+/* Contain each Desk card's absolutely-positioned `.scanlines` overlay
+   (position: absolute; inset: 0) to the card itself. The base `.card` sets
+   `overflow: hidden` but not `position: relative`, so without this the
+   overlay escapes to the nearest positioned ancestor and bleeds its faint
+   1px/3px horizontal texture across the page (visible as blurred lines over
+   the light data tables). Mirrors the containment other card variants add. */
+.desk .card {
+  position: relative;
+}
+
 .desk__head {
   display: flex;
   align-items: baseline;

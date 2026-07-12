@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,10 @@ from app.schemas.summer_league import (
     SummerLeagueTeamGameLog,
 )
 from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.normalization import normalize_competition_games
+from app.services.summer_league.normalization import (
+    normalize_competition_games,
+    refresh_competition_date_window,
+)
 
 
 def _result_set(
@@ -488,3 +492,138 @@ async def test_normalize_competition_games_keeps_final_monotonic_against_partial
         )
     ).scalar_one()
     assert game.status == SummerLeagueGameStatus.FINAL
+
+
+@pytest.mark.asyncio
+async def test_normalize_competition_games_sets_competition_date_window_from_games(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """#527/#528: normalizing a competition's games populates its date window.
+
+    ``_upsert_competition`` never wrote ``starts_on``/``ends_on`` itself, so
+    the Event Desk's opening-morning bootstrap (which derives a synthetic
+    event window from those two fields) was permanently inert. After
+    normalizing this fixture's one game (2024-07-12), the competition's
+    window should equal that game's date on both ends.
+    """
+    _write_fixture(tmp_path)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    competition = (
+        await db_session.execute(
+            select(SummerLeagueCompetition).where(
+                SummerLeagueCompetition.year == 2024,  # type: ignore[arg-type]
+                SummerLeagueCompetition.league_id == "15",  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    assert competition.starts_on == date(2024, 7, 12)
+    assert competition.ends_on == date(2024, 7, 12)
+
+
+@pytest.mark.asyncio
+async def test_refresh_competition_date_window_spans_min_and_max_game_dates(
+    db_session: AsyncSession,
+) -> None:
+    """Recomputing over several games sets the window to the true min/max.
+
+    Seeds three games directly (bypassing the raw-file pipeline) with dates
+    out of order, so a naive "last game wins" implementation would fail.
+    """
+    competition = SummerLeagueCompetition(
+        year=2025,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2025 Las Vegas Summer League",
+    )
+    db_session.add(competition)
+    await db_session.flush()
+    assert competition.id is not None
+
+    for suffix, game_date in enumerate(
+        [date(2025, 7, 15), date(2025, 7, 6), date(2025, 7, 20)]
+    ):
+        db_session.add(
+            SummerLeagueGame(
+                competition_id=competition.id,
+                nba_stats_game_id=f"152250000{suffix}",
+                game_date=game_date,
+            )
+        )
+    await db_session.flush()
+
+    await refresh_competition_date_window(db_session, competition_id=competition.id)
+
+    assert competition.starts_on == date(2025, 7, 6)
+    assert competition.ends_on == date(2025, 7, 20)
+
+
+@pytest.mark.asyncio
+async def test_refresh_competition_date_window_ignores_null_game_dates(
+    db_session: AsyncSession,
+) -> None:
+    """A game row with no ``game_date`` yet must not corrupt the aggregate."""
+    competition = SummerLeagueCompetition(
+        year=2025,
+        league_id="14",
+        venue_slug="orlando",
+        display_name="2025 Orlando Summer League",
+    )
+    db_session.add(competition)
+    await db_session.flush()
+    assert competition.id is not None
+
+    db_session.add(
+        SummerLeagueGame(
+            competition_id=competition.id,
+            nba_stats_game_id="1425000001",
+            game_date=date(2025, 7, 10),
+        )
+    )
+    db_session.add(
+        SummerLeagueGame(
+            competition_id=competition.id,
+            nba_stats_game_id="1425000002",
+            game_date=None,
+        )
+    )
+    await db_session.flush()
+
+    await refresh_competition_date_window(db_session, competition_id=competition.id)
+
+    assert competition.starts_on == date(2025, 7, 10)
+    assert competition.ends_on == date(2025, 7, 10)
+
+
+@pytest.mark.asyncio
+async def test_refresh_competition_date_window_leaves_null_with_zero_dated_games(
+    db_session: AsyncSession,
+) -> None:
+    """A competition with no dated games yet keeps a null window (no crash).
+
+    This is the residual #527 cold-start edge: a competition with zero games
+    ever ingested still has no anchor for the synthetic-calendar bootstrap.
+    That is expected and low-urgency -- this test only proves the helper
+    itself is a safe no-op rather than nulling out or erroring.
+    """
+    competition = SummerLeagueCompetition(
+        year=2027,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2027 Las Vegas Summer League",
+    )
+    db_session.add(competition)
+    await db_session.flush()
+    assert competition.id is not None
+
+    await refresh_competition_date_window(db_session, competition_id=competition.id)
+
+    assert competition.starts_on is None
+    assert competition.ends_on is None
