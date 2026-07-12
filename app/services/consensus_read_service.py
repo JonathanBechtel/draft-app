@@ -1472,7 +1472,27 @@ async def _source_ranks_for_players(
     if snapshot is None or not snapshot.board_ids:
         return {}
 
-    entry_rows = await _load_consensus_entries(db, snapshot.board_ids)
+    entry_cache = db.info.get(_CONSENSUS_ENTRY_CACHE_KEY)
+    if isinstance(entry_cache, dict):
+        # The composed homepage warms this cache with full board entries for
+        # the source spotlight panel, so reuse that read when it is available.
+        entry_rows = await _load_consensus_entries(db, snapshot.board_ids)
+    else:
+        # Standalone consensus calls only need ranks for the requested players;
+        # avoid loading every entry in every contributing board.
+        entry_rows = list(
+            (
+                await db.execute(
+                    select(BoardEntry)
+                    .where(  # type: ignore[call-overload]
+                        cast(Any, BoardEntry.board_id).in_(snapshot.board_ids)
+                    )
+                    .where(cast(Any, BoardEntry.player_id).in_(player_ids))
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     ranks: dict[int, list[int]] = {pid: [] for pid in player_ids}
     for row in entry_rows:

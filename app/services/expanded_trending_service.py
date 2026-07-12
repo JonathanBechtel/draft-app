@@ -592,7 +592,7 @@ async def _load_content_signals(
     dict[int, str],
     dict[int, list[TrendingMentionPreview]],
 ]:
-    """Load mention mix, dominant tags, and previews in one union query."""
+    """Load aggregate mention signals and bounded recent previews."""
     if not player_ids:
         return {}, {}, {}
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
@@ -601,73 +601,56 @@ async def _load_content_signals(
         cast(Any, PlayerContentMention.player_id).in_(player_ids),
         cast(Any, PlayerContentMention.published_at) >= cutoff,
     )
-    news_stmt = (
+    news_aggregate = (
         select(  # type: ignore[call-overload, misc]
             cast(Any, PlayerContentMention.player_id).label("player_id"),
             literal("news").label("content_type"),
-            cast(Any, PlayerContentMention.published_at).label("published_at"),
-            cast(Any, NewsItem.title).label("title"),
-            cast(Any, NewsItem.url).label("url"),
-            cast(Any, NewsSource.display_name).label("source_name"),
             cast(Any, NewsItem.tag).label("news_tag"),
+            func.count().label("mention_count"),
         )
         .join(NewsItem, cast(Any, NewsItem.id) == PlayerContentMention.content_id)
-        .join(NewsSource, cast(Any, NewsSource.id) == NewsItem.source_id)
         .where(cast(Any, PlayerContentMention.content_type) == ContentType.NEWS)
         .where(*common_filters)
+        .group_by(
+            cast(Any, PlayerContentMention.player_id),
+            cast(Any, NewsItem.tag),
+        )
     )
-    podcast_stmt = (
+    podcast_aggregate = (
         select(  # type: ignore[call-overload, misc]
             cast(Any, PlayerContentMention.player_id).label("player_id"),
             literal("podcast").label("content_type"),
-            cast(Any, PlayerContentMention.published_at).label("published_at"),
-            cast(Any, PodcastEpisode.title).label("title"),
-            func.coalesce(
-                PodcastEpisode.episode_url,
-                PodcastEpisode.audio_url,
-            ).label("url"),
-            cast(Any, PodcastShow.display_name).label("source_name"),
             literal(None).label("news_tag"),
         )
-        .join(
-            PodcastEpisode,
-            cast(Any, PodcastEpisode.id) == PlayerContentMention.content_id,
-        )
-        .join(PodcastShow, cast(Any, PodcastShow.id) == PodcastEpisode.show_id)
+        .add_columns(func.count().label("mention_count"))
         .where(cast(Any, PlayerContentMention.content_type) == ContentType.PODCAST)
         .where(*common_filters)
+        .group_by(cast(Any, PlayerContentMention.player_id))
     )
-    video_stmt = (
+    video_aggregate = (
         select(  # type: ignore[call-overload, misc]
             cast(Any, PlayerContentMention.player_id).label("player_id"),
             literal("video").label("content_type"),
-            cast(Any, PlayerContentMention.published_at).label("published_at"),
-            cast(Any, YouTubeVideo.title).label("title"),
-            cast(Any, YouTubeVideo.youtube_url).label("url"),
-            cast(Any, YouTubeChannel.display_name).label("source_name"),
             literal(None).label("news_tag"),
         )
-        .join(
-            YouTubeVideo,
-            cast(Any, YouTubeVideo.id) == PlayerContentMention.content_id,
-        )
-        .join(
-            YouTubeChannel,
-            cast(Any, YouTubeChannel.id) == YouTubeVideo.channel_id,
-        )
+        .add_columns(func.count().label("mention_count"))
         .where(cast(Any, PlayerContentMention.content_type) == ContentType.VIDEO)
         .where(*common_filters)
+        .group_by(cast(Any, PlayerContentMention.player_id))
     )
-    rows = (
-        (await db.execute(union_all(news_stmt, podcast_stmt, video_stmt)))
+    aggregate_rows = (
+        (
+            await db.execute(
+                union_all(news_aggregate, podcast_aggregate, video_aggregate)
+            )
+        )
         .mappings()
         .all()
     )
 
     content_mix: dict[int, dict[str, int]] = {}
     tag_counts: dict[int, dict[str, int]] = {}
-    previews: dict[int, list[TrendingMentionPreview]] = {}
-    for row in rows:
+    for row in aggregate_rows:
         player_id = row["player_id"]
         if player_id is None:
             continue
@@ -678,32 +661,24 @@ async def _load_content_signals(
             {"news": 0, "podcast": 0, "video": 0},
         )
         if content_type in bucket:
-            bucket[content_type] += 1
+            bucket[content_type] += int(row["mention_count"])
 
         if content_type == "news":
             tag = _resolve_news_tag_value(row["news_tag"])
             counts = tag_counts.setdefault(player_id, {})
-            counts[tag] = counts.get(tag, 0) + 1
-
-        previews.setdefault(player_id, []).append(
-            TrendingMentionPreview(
-                title=str(row["title"] or ""),
-                url=str(row["url"] or ""),
-                source_name=str(row["source_name"] or ""),
-                content_type=content_type,
-                published_at=row["published_at"],
-            )
-        )
+            counts[tag] = counts.get(tag, 0) + int(row["mention_count"])
 
     dominant_tags = {
         player_id: max(counts.items(), key=lambda item: (item[1], item[0]))[0]
         for player_id, counts in tag_counts.items()
         if counts
     }
-    recent_mentions: dict[int, list[TrendingMentionPreview]] = {}
-    for player_id, player_previews in previews.items():
-        player_previews.sort(key=lambda preview: preview.published_at, reverse=True)
-        recent_mentions[player_id] = player_previews[:limit_per_player]
+    recent_mentions = await _load_recent_mentions(
+        db,
+        player_ids,
+        days,
+        limit_per_player=limit_per_player,
+    )
     return content_mix, dominant_tags, recent_mentions
 
 
