@@ -12,6 +12,16 @@
   margin: 1.8rem 0 2.4rem;
 }
 
+/* Contain each Desk card's absolutely-positioned `.scanlines` overlay
+   (position: absolute; inset: 0) to the card itself. The base `.card` sets
+   `overflow: hidden` but not `position: relative`, so without this the
+   overlay escapes to the nearest positioned ancestor and bleeds its faint
+   1px/3px horizontal texture across the page (visible as blurred lines over
+   the light data tables). Mirrors the containment other card variants add. */
+.desk .card {
+  position: relative;
+}
+
 .desk__head {
   display: flex;
   align-items: baseline;
@@ -445,29 +455,6 @@
 .desk__pctl-chip--warm { background: #ecfeff; color: #0e7490; border: 1px solid #67e8f9; }
 .desk__pctl-chip--mid { background: var(--color-slate-100); color: var(--color-slate-600); border: 1px solid var(--color-slate-200); }
 .desk__pctl-chip--cold { background: #fff1f2; color: #be123c; border: 1px solid #fda4af; }
-
-/* ===== Off-window archive strip ===== */
-.desk__offwindow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  padding: 0.85rem 1.1rem;
-  margin: 1.4rem 0 2rem;
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  color: var(--color-slate-600);
-}
-.desk__offwindow-label { color: var(--color-slate-800); font-weight: 600; }
-.desk__offwindow-link {
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
-  color: var(--color-primary);
-  text-decoration: none;
-  white-space: nowrap;
-}
-.desk__offwindow-link:hover { text-decoration: underline; }
 
 /* ===== Class Tracker (#511) ===== */
 .desk__tracker-toggles {
