@@ -91,6 +91,8 @@ def test_product_enum_values_match_spec() -> None:
         "in_progress",
         "final",
         "unknown",
+        "postponed",
+        "canceled",
     ]
     assert [status.value for status in SummerLeagueResolutionStatus] == [
         "UNRESOLVED",
