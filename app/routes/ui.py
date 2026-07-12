@@ -76,9 +76,12 @@ from app.services.player_service import (
 )
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.school_logo_service import get_logo_url_for_school
+from app.services.event_desk.payload import DeskTrackerSection
 from app.services.summer_league.desk_read import (
     DEFAULT_TRACKER_COHORT,
     DEFAULT_TRACKER_STAT_VIEW,
+    TRACKER_COHORTS,
+    TRACKER_STAT_VIEWS,
     get_desk_view_from_snapshot,
 )
 from app.services.summer_league_metrics_service import get_player_metric_seasons
@@ -488,6 +491,54 @@ async def home(
             "current_year": datetime.now().year,
             "image_style": settings.default_image_style,
             "s3_image_base_url": get_s3_image_base_url(),
+        },
+    )
+
+
+@router.get("/desk/tracker", response_class=HTMLResponse)
+async def desk_tracker_partial(
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    cohort: str = Query(default=DEFAULT_TRACKER_COHORT),
+    statview: str = Query(default=DEFAULT_TRACKER_STAT_VIEW),
+):
+    """Class Tracker cohort/stat-view tab-switch fragment (behavior spec §7 JS path).
+
+    `summer-league-desk.js`'s `initTrackerToggles` fetches this instead of following
+    a toggle `<a href="/?cohort=..&statview=..">` link, so switching tabs costs the
+    SAME single indexed snapshot-row read `home` makes for the Desk's tracker section
+    -- never the full `/` route's consensus/news/hero query set. Renders ONLY
+    `class_tracker_table.html` (no page chrome), which `home.html` also `{% include
+    %}`s for the initial paint, so the two call sites can never drift.
+
+    Falls back to an empty-cohort render (never a 500) when the event is off-window
+    or this exact `(cohort, statview)` variant hasn't been materialized yet, matching
+    `get_desk_view_from_snapshot`'s honest-degrade contract.
+    """
+    now_naive_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    desk_view = await get_desk_view_from_snapshot(
+        db, now=now_naive_utc, tracker_cohort=cohort, tracker_stat_view=statview
+    )
+    if desk_view.payload is not None:
+        tracker = desk_view.payload.tracker
+    else:
+        tracker = DeskTrackerSection(
+            cohort=cohort if cohort in TRACKER_COHORTS else DEFAULT_TRACKER_COHORT,
+            stat_view=(
+                statview
+                if statview in TRACKER_STAT_VIEWS
+                else DEFAULT_TRACKER_STAT_VIEW
+            ),
+            rows=[],
+            truncated=False,
+        )
+    return request.app.state.templates.TemplateResponse(
+        "summer_league/desk/class_tracker_table.html",
+        {
+            "request": request,
+            "tracker": tracker,
+            "desk_players": desk_view.players,
+            "desk_tracker_teams": desk_view.tracker_teams,
         },
     )
 

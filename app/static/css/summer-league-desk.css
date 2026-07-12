@@ -569,6 +569,11 @@
 .desk__tracker-caption { font-size: 0.72rem; color: var(--color-slate-500); margin: 0.55rem 0.3rem 0.3rem; }
 .desk__tracker-empty { padding: 1.3rem 1rem; text-align: center; color: var(--color-slate-500); font-size: 0.85rem; }
 
+/* Client-side tab switch in flight (summer-league-desk.js `initTrackerToggles`) --
+   dims the current table/caption while `#slDeskTrackerCard`'s fragment fetch is
+   outstanding so a slow network doesn't read as an inert click. */
+.desk__tracker--loading #slDeskTrackerCard { opacity: 0.45; pointer-events: none; transition: opacity 0.1s ease; }
+
 @media (max-width: 620px) {
   .desk__tracker-toggles { flex-direction: column; align-items: stretch; }
   .desk__tracker-statview { margin-left: 0; }
