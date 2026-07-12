@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional, cast
 
-from sqlalchemy import desc, func, literal, select
+from sqlalchemy import and_, desc, func, literal, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType, MetricSource
@@ -180,18 +180,19 @@ async def get_expanded_trending_players(
     player_ids = [tp.player_id for tp in base]
 
     # Batched supplementary lookups. AsyncSession does not support concurrent
-    # queries on the same session, so these run sequentially.
+    # queries on the same session, so these run sequentially. The combined
+    # detail and content-signal reads keep the homepage from paying one
+    # round-trip per enrichment family.
     photos = await get_current_image_urls_for_players(
         db, player_ids=player_ids, style=image_style
     )
-    statuses = await _load_player_statuses(db, player_ids)
-    masters = await _load_player_masters(db, player_ids)
-    college_stats = await _load_latest_college_stats(db, player_ids)
+    masters, statuses, college_stats = await _load_player_details(db, player_ids)
     combine_grades = await _load_combine_grades(db, player_ids, masters)
-    content_mix = await _load_content_type_breakdown(db, player_ids, days)
-    dominant_tags = await _load_dominant_news_tags(db, player_ids, days)
-    recent_mentions = await _load_recent_mentions(
-        db, player_ids, days, limit_per_player=RECENT_MENTIONS_PER_PLAYER
+    content_mix, dominant_tags, recent_mentions = await _load_content_signals(
+        db,
+        player_ids,
+        days,
+        limit_per_player=RECENT_MENTIONS_PER_PLAYER,
     )
 
     classifications: list[tuple[int, Any, bool]] = []
@@ -310,6 +311,112 @@ def _compute_spike_state(daily_counts: list[int]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Batched lookups
 # ---------------------------------------------------------------------------
+
+
+async def _load_player_details(
+    db: AsyncSession, player_ids: list[int]
+) -> tuple[
+    dict[int, dict[str, Any]], dict[int, dict[str, Any]], dict[int, TrendingStatLine]
+]:
+    """Load master, status, and latest college stats in one joined query."""
+    if not player_ids:
+        return {}, {}, {}
+
+    rank_col = (
+        func.row_number()
+        .over(
+            partition_by=cast(Any, PlayerCollegeStats.player_id),
+            order_by=desc(cast(Any, PlayerCollegeStats.season)),
+        )
+        .label("rn")
+    )
+    stats_inner = (
+        select(  # type: ignore[call-overload, misc]
+            PlayerCollegeStats.player_id,
+            PlayerCollegeStats.season,
+            PlayerCollegeStats.ppg,
+            PlayerCollegeStats.rpg,
+            PlayerCollegeStats.apg,
+            PlayerCollegeStats.spg,
+            PlayerCollegeStats.bpg,
+            PlayerCollegeStats.fg_pct,
+            PlayerCollegeStats.three_p_pct,
+            PlayerCollegeStats.ft_pct,
+            rank_col,
+        )
+        .where(cast(Any, PlayerCollegeStats.player_id).in_(player_ids))
+        .subquery()
+    )
+    stmt = (
+        select(  # type: ignore[call-overload, misc]
+            cast(Any, PlayerMaster.id).label("master_id"),
+            PlayerMaster.is_stub,
+            PlayerMaster.school,
+            PlayerMaster.draft_year,
+            cast(Any, PlayerStatus.player_id).label("status_player_id"),
+            PlayerStatus.raw_position,
+            PlayerStatus.height_in,
+            PlayerStatus.weight_lb,
+            cast(Any, Position.code).label("position_code"),
+            stats_inner.c.season,
+            stats_inner.c.ppg,
+            stats_inner.c.rpg,
+            stats_inner.c.apg,
+            stats_inner.c.spg,
+            stats_inner.c.bpg,
+            stats_inner.c.fg_pct,
+            stats_inner.c.three_p_pct,
+            stats_inner.c.ft_pct,
+        )
+        .select_from(PlayerMaster)
+        .outerjoin(
+            PlayerStatus,
+            cast(Any, PlayerStatus.player_id) == PlayerMaster.id,
+        )
+        .outerjoin(Position, cast(Any, Position.id) == PlayerStatus.position_id)
+        .outerjoin(
+            stats_inner,
+            and_(
+                stats_inner.c.player_id == PlayerMaster.id,
+                stats_inner.c.rn == 1,
+            ),
+        )
+        .where(cast(Any, PlayerMaster.id).in_(player_ids))
+    )
+    rows = (await db.execute(stmt)).mappings().all()
+
+    masters: dict[int, dict[str, Any]] = {}
+    statuses: dict[int, dict[str, Any]] = {}
+    college_stats: dict[int, TrendingStatLine] = {}
+    for row in rows:
+        player_id = row["master_id"]
+        if player_id is None:
+            continue
+        player_id = int(player_id)
+        masters[player_id] = {
+            "is_stub": bool(row["is_stub"]),
+            "school": row["school"],
+            "draft_year": row["draft_year"],
+        }
+        if row["status_player_id"] is not None:
+            statuses[player_id] = {
+                "position": row["position_code"] or row["raw_position"],
+                "height_in": row["height_in"],
+                "weight_lb": row["weight_lb"],
+            }
+        if row["season"] is not None:
+            college_stats[player_id] = TrendingStatLine(
+                season=str(row["season"]),
+                ppg=row["ppg"],
+                rpg=row["rpg"],
+                apg=row["apg"],
+                spg=row["spg"],
+                bpg=row["bpg"],
+                fg_pct=row["fg_pct"],
+                three_p_pct=row["three_p_pct"],
+                ft_pct=row["ft_pct"],
+            )
+    return masters, statuses, college_stats
 
 
 async def _load_player_masters(
@@ -436,102 +543,168 @@ async def _load_combine_grades(
     if not player_ids:
         return {}
 
-    draft_years_set: set[int] = set()
-    for m in masters.values():
-        dy = m.get("draft_year")
-        if dy is not None:
-            draft_years_set.add(int(dy))
-    if not draft_years_set:
-        return {}
-
-    season_stmt = select(Season.id, Season.start_year).where(  # type: ignore[call-overload]
-        cast(Any, Season.start_year).in_(sorted(draft_years_set))
+    stmt = (
+        select(  # type: ignore[call-overload, misc]
+            PlayerMetricValue.player_id, PlayerMetricValue.percentile
+        )
+        .select_from(PlayerMetricValue)
+        .join(
+            MetricSnapshot,
+            MetricSnapshot.id == PlayerMetricValue.snapshot_id,
+        )
+        .join(Season, Season.id == MetricSnapshot.season_id)
+        .join(
+            MetricDefinition,
+            MetricDefinition.id == PlayerMetricValue.metric_definition_id,
+        )
+        .join(PlayerMaster, PlayerMaster.id == PlayerMetricValue.player_id)
+        .where(cast(Any, PlayerMetricValue.player_id).in_(player_ids))
+        .where(PlayerMaster.draft_year == Season.start_year)
+        .where(cast(Any, PlayerMaster.draft_year).is_not(None))
+        .where(cast(Any, MetricSnapshot.source) == MetricSource.combine_score)
+        .where(cast(Any, MetricSnapshot.cohort) == CohortType.current_draft)
+        .where(cast(Any, MetricSnapshot.is_current).is_(True))
+        .where(cast(Any, MetricSnapshot.position_scope_parent).is_(None))
+        .where(cast(Any, MetricSnapshot.position_scope_fine).is_(None))
+        .where(cast(Any, MetricDefinition.metric_key) == "combine_score_overall")
     )
-    season_rows = await db.execute(season_stmt)
-    season_id_by_year: dict[int, int] = {
-        int(row["start_year"]): int(row["id"])
-        for row in season_rows.mappings().all()
-        if row["id"] is not None and row["start_year"] is not None
-    }
-    if not season_id_by_year:
-        return {}
-
-    snap_stmt = select(MetricSnapshot.id, MetricSnapshot.season_id).where(  # type: ignore[call-overload]
-        cast(Any, MetricSnapshot.source) == MetricSource.combine_score,
-        cast(Any, MetricSnapshot.cohort) == CohortType.current_draft,
-        cast(Any, MetricSnapshot.is_current).is_(True),
-        cast(Any, MetricSnapshot.season_id).in_(list(season_id_by_year.values())),
-        cast(Any, MetricSnapshot.position_scope_parent).is_(None),
-        cast(Any, MetricSnapshot.position_scope_fine).is_(None),
-    )
-    snap_rows = await db.execute(snap_stmt)
-    snapshot_id_by_season: dict[int, int] = {}
-    for row in snap_rows.mappings().all():
-        sid = row["season_id"]
-        if sid is None:
-            continue
-        snapshot_id_by_season[int(sid)] = int(row["id"])
-    if not snapshot_id_by_season:
-        return {}
-
-    # Pin each player to *their* draft-year snapshot. Players without a
-    # draft_year (or whose draft_year has no current snapshot) drop out
-    # here and will not receive a grade — this is intentional. The pairing
-    # is also enforced post-query so a stale PMV row in a different season's
-    # snapshot can't leak into the wrong player's grade.
-    snapshot_for_player: dict[int, int] = {}
-    for pid, master in masters.items():
-        dy = master.get("draft_year")
-        if dy is None:
-            continue
-        season_id = season_id_by_year.get(int(dy))
-        if season_id is None:
-            continue
-        snapshot_id = snapshot_id_by_season.get(season_id)
-        if snapshot_id is None:
-            continue
-        snapshot_for_player[pid] = snapshot_id
-    if not snapshot_for_player:
-        return {}
-
-    defn_stmt = select(MetricDefinition.id).where(  # type: ignore[call-overload]
-        cast(Any, MetricDefinition.metric_key) == "combine_score_overall"
-    )
-    defn_result = await db.execute(defn_stmt)
-    overall_def_id = defn_result.scalar_one_or_none()
-    if overall_def_id is None:
-        return {}
-
-    pmv_stmt = select(  # type: ignore[call-overload]
-        PlayerMetricValue.player_id,
-        PlayerMetricValue.snapshot_id,
-        PlayerMetricValue.percentile,
-    ).where(
-        cast(Any, PlayerMetricValue.player_id).in_(list(snapshot_for_player.keys())),
-        cast(Any, PlayerMetricValue.snapshot_id).in_(
-            list(set(snapshot_for_player.values()))
-        ),
-        cast(Any, PlayerMetricValue.metric_definition_id) == overall_def_id,
-    )
-    pmv_rows = await db.execute(pmv_stmt)
-
+    rows = (await db.execute(stmt)).mappings().all()
     out: dict[int, str] = {}
-    for row in pmv_rows.mappings().all():
-        raw_pid = row["player_id"]
-        raw_sid = row["snapshot_id"]
-        if raw_pid is None or raw_sid is None:
-            continue
-        pid = int(raw_pid)
-        sid = int(raw_sid)
-        # Enforce the pairing: this PMV row must come from the player's own
-        # draft-year snapshot, not just *any* snapshot in scope.
-        if snapshot_for_player.get(pid) != sid:
+    for row in rows:
+        player_id = row["player_id"]
+        if player_id is None:
             continue
         pct = row["percentile"]
         letter = grade_letter(float(pct) if pct is not None else None)
         if letter is not None:
-            out[pid] = letter
+            out[int(player_id)] = letter
     return out
+
+
+async def _load_content_signals(
+    db: AsyncSession,
+    player_ids: list[int],
+    days: int,
+    *,
+    limit_per_player: int,
+) -> tuple[
+    dict[int, dict[str, int]],
+    dict[int, str],
+    dict[int, list[TrendingMentionPreview]],
+]:
+    """Load mention mix, dominant tags, and previews in one union query."""
+    if not player_ids:
+        return {}, {}, {}
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=days)
+
+    common_filters = (
+        cast(Any, PlayerContentMention.player_id).in_(player_ids),
+        cast(Any, PlayerContentMention.published_at) >= cutoff,
+    )
+    news_stmt = (
+        select(  # type: ignore[call-overload, misc]
+            cast(Any, PlayerContentMention.player_id).label("player_id"),
+            literal("news").label("content_type"),
+            cast(Any, PlayerContentMention.published_at).label("published_at"),
+            cast(Any, NewsItem.title).label("title"),
+            cast(Any, NewsItem.url).label("url"),
+            cast(Any, NewsSource.display_name).label("source_name"),
+            cast(Any, NewsItem.tag).label("news_tag"),
+        )
+        .join(NewsItem, cast(Any, NewsItem.id) == PlayerContentMention.content_id)
+        .join(NewsSource, cast(Any, NewsSource.id) == NewsItem.source_id)
+        .where(cast(Any, PlayerContentMention.content_type) == ContentType.NEWS)
+        .where(*common_filters)
+    )
+    podcast_stmt = (
+        select(  # type: ignore[call-overload, misc]
+            cast(Any, PlayerContentMention.player_id).label("player_id"),
+            literal("podcast").label("content_type"),
+            cast(Any, PlayerContentMention.published_at).label("published_at"),
+            cast(Any, PodcastEpisode.title).label("title"),
+            func.coalesce(
+                PodcastEpisode.episode_url,
+                PodcastEpisode.audio_url,
+            ).label("url"),
+            cast(Any, PodcastShow.display_name).label("source_name"),
+            literal(None).label("news_tag"),
+        )
+        .join(
+            PodcastEpisode,
+            cast(Any, PodcastEpisode.id) == PlayerContentMention.content_id,
+        )
+        .join(PodcastShow, cast(Any, PodcastShow.id) == PodcastEpisode.show_id)
+        .where(cast(Any, PlayerContentMention.content_type) == ContentType.PODCAST)
+        .where(*common_filters)
+    )
+    video_stmt = (
+        select(  # type: ignore[call-overload, misc]
+            cast(Any, PlayerContentMention.player_id).label("player_id"),
+            literal("video").label("content_type"),
+            cast(Any, PlayerContentMention.published_at).label("published_at"),
+            cast(Any, YouTubeVideo.title).label("title"),
+            cast(Any, YouTubeVideo.youtube_url).label("url"),
+            cast(Any, YouTubeChannel.display_name).label("source_name"),
+            literal(None).label("news_tag"),
+        )
+        .join(
+            YouTubeVideo,
+            cast(Any, YouTubeVideo.id) == PlayerContentMention.content_id,
+        )
+        .join(
+            YouTubeChannel,
+            cast(Any, YouTubeChannel.id) == YouTubeVideo.channel_id,
+        )
+        .where(cast(Any, PlayerContentMention.content_type) == ContentType.VIDEO)
+        .where(*common_filters)
+    )
+    rows = (
+        (await db.execute(union_all(news_stmt, podcast_stmt, video_stmt)))
+        .mappings()
+        .all()
+    )
+
+    content_mix: dict[int, dict[str, int]] = {}
+    tag_counts: dict[int, dict[str, int]] = {}
+    previews: dict[int, list[TrendingMentionPreview]] = {}
+    for row in rows:
+        player_id = row["player_id"]
+        if player_id is None:
+            continue
+        player_id = int(player_id)
+        content_type = str(row["content_type"])
+        bucket = content_mix.setdefault(
+            player_id,
+            {"news": 0, "podcast": 0, "video": 0},
+        )
+        if content_type in bucket:
+            bucket[content_type] += 1
+
+        if content_type == "news":
+            tag = _resolve_news_tag_value(row["news_tag"])
+            counts = tag_counts.setdefault(player_id, {})
+            counts[tag] = counts.get(tag, 0) + 1
+
+        previews.setdefault(player_id, []).append(
+            TrendingMentionPreview(
+                title=str(row["title"] or ""),
+                url=str(row["url"] or ""),
+                source_name=str(row["source_name"] or ""),
+                content_type=content_type,
+                published_at=row["published_at"],
+            )
+        )
+
+    dominant_tags = {
+        player_id: max(counts.items(), key=lambda item: (item[1], item[0]))[0]
+        for player_id, counts in tag_counts.items()
+        if counts
+    }
+    recent_mentions: dict[int, list[TrendingMentionPreview]] = {}
+    for player_id, player_previews in previews.items():
+        player_previews.sort(key=lambda preview: preview.published_at, reverse=True)
+        recent_mentions[player_id] = player_previews[:limit_per_player]
+    return content_mix, dominant_tags, recent_mentions
 
 
 async def _load_content_type_breakdown(

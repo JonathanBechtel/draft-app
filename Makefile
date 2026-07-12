@@ -168,7 +168,7 @@ perf:
 #   make explain ROUTE=/news ARGS="--no-plans"
 ROUTE ?= /
 explain:
-	scripts/with-db-env.sh conda run -n draftguru python scripts/explain_route.py $(ROUTE) $(ARGS)
+	scripts/with-db-env.sh conda run -n draftguru python -m scripts.explain_route $(ROUTE) $(ARGS)
 
 # Run tests with coverage report (terminal + HTML)
 # Usage:

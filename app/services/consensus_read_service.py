@@ -47,6 +47,27 @@ from app.utils.combine_formatters import format_height_inches
 # trending and stats lists already use, so we hit the same generated assets.
 _CONSENSUS_PHOTO_STYLE = "default"
 
+# The homepage composes several consensus panels in one request. Opt-in
+# request-scoped caches let those panels reuse the same latest snapshot and
+# source analytics without changing the standalone service semantics used by
+# API routes and background jobs.
+_CONSENSUS_SNAPSHOT_CACHE_KEY = "_draftguru_consensus_snapshot_ids"
+_CONSENSUS_SOURCE_ANALYTICS_CACHE_KEY = "_draftguru_consensus_source_analytics"
+_CONSENSUS_SNAPSHOT_OBJECT_CACHE_KEY = "_draftguru_consensus_snapshots"
+_CONSENSUS_BOARD_CACHE_KEY = "_draftguru_consensus_boards"
+_CONSENSUS_ENTRY_CACHE_KEY = "_draftguru_consensus_board_entries"
+_CONSENSUS_SOURCE_CACHE_KEY = "_draftguru_consensus_sources"
+
+
+def enable_consensus_request_cache(db: AsyncSession) -> None:
+    """Enable request-scoped consensus read caches for a composed page."""
+    db.info[_CONSENSUS_SNAPSHOT_CACHE_KEY] = {}
+    db.info[_CONSENSUS_SOURCE_ANALYTICS_CACHE_KEY] = {}
+    db.info[_CONSENSUS_SNAPSHOT_OBJECT_CACHE_KEY] = {}
+    db.info[_CONSENSUS_BOARD_CACHE_KEY] = {}
+    db.info[_CONSENSUS_ENTRY_CACHE_KEY] = {}
+    db.info[_CONSENSUS_SOURCE_CACHE_KEY] = {}
+
 
 async def _resolve_snapshot_id(
     db: AsyncSession,
@@ -62,19 +83,161 @@ async def _resolve_snapshot_id(
     surfacing cross-year rows under the requested year. When ``snapshot_id``
     is omitted, the most recent snapshot for ``draft_year`` is selected.
     """
+    cache = db.info.get(_CONSENSUS_SNAPSHOT_CACHE_KEY)
+    cache_key = (draft_year, snapshot_id)
+    if isinstance(cache, dict) and cache_key in cache:
+        return cache[cache_key]
+
     if snapshot_id is not None:
-        return await db.scalar(
+        resolved = await db.scalar(
             select(ConsensusSnapshot.id)  # type: ignore[call-overload]
             .where(ConsensusSnapshot.id == snapshot_id)  # type: ignore[arg-type]
             .where(ConsensusSnapshot.draft_year == draft_year)  # type: ignore[arg-type]
         )
-    sid = await db.scalar(
-        select(ConsensusSnapshot.id)  # type: ignore[call-overload]
-        .where(ConsensusSnapshot.draft_year == draft_year)  # type: ignore[arg-type]
-        .order_by(ConsensusSnapshot.computed_at.desc())  # type: ignore[attr-defined]
-        .limit(1)
+    else:
+        resolved = await db.scalar(
+            select(ConsensusSnapshot.id)  # type: ignore[call-overload]
+            .where(ConsensusSnapshot.draft_year == draft_year)  # type: ignore[arg-type]
+            .order_by(ConsensusSnapshot.computed_at.desc())  # type: ignore[attr-defined]
+            .limit(1)
+        )
+    if isinstance(cache, dict):
+        cache[cache_key] = resolved
+    return resolved  # type: ignore[return-value]
+
+
+async def _get_source_analytics_rows(
+    db: AsyncSession, snapshot_id: int
+) -> list[SourceAnalytics]:
+    """Load source analytics once when a composed homepage needs two panels."""
+    cache = db.info.get(_CONSENSUS_SOURCE_ANALYTICS_CACHE_KEY)
+    if isinstance(cache, dict) and snapshot_id in cache:
+        return list(cache[snapshot_id])
+
+    rows = list(
+        (
+            await db.execute(
+                select(SourceAnalytics).where(  # type: ignore[call-overload]
+                    SourceAnalytics.snapshot_id == snapshot_id  # type: ignore[arg-type]
+                )
+            )
+        )
+        .scalars()
+        .all()
     )
-    return sid  # type: ignore[return-value]
+    if isinstance(cache, dict):
+        cache[snapshot_id] = rows
+    return rows
+
+
+async def _load_consensus_snapshot(
+    db: AsyncSession, snapshot_id: int
+) -> Optional[ConsensusSnapshot]:
+    """Load and cache one snapshot object for the composed homepage."""
+    cache = db.info.get(_CONSENSUS_SNAPSHOT_OBJECT_CACHE_KEY)
+    if isinstance(cache, dict) and snapshot_id in cache:
+        return cache[snapshot_id]
+    snapshot = (
+        await db.execute(
+            select(ConsensusSnapshot).where(  # type: ignore[call-overload]
+                ConsensusSnapshot.id == snapshot_id  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one_or_none()
+    if isinstance(cache, dict):
+        cache[snapshot_id] = snapshot
+    return snapshot
+
+
+async def _load_consensus_boards(
+    db: AsyncSession,
+    board_ids: list[int],
+) -> list[Board]:
+    """Load and cache board rows shared by spotlight and freshness."""
+    if not board_ids:
+        return []
+    cache = db.info.get(_CONSENSUS_BOARD_CACHE_KEY)
+    if isinstance(cache, dict) and all(board_id in cache for board_id in board_ids):
+        return [
+            cache[board_id] for board_id in board_ids if cache[board_id] is not None
+        ]
+    rows = list(
+        (
+            await db.execute(
+                select(Board).where(  # type: ignore[call-overload]
+                    Board.id.in_(board_ids)  # type: ignore[union-attr]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if isinstance(cache, dict):
+        for row in rows:
+            if row.id is not None:
+                cache[row.id] = row
+        for board_id in board_ids:
+            cache.setdefault(board_id, None)
+    return rows
+
+
+async def _load_consensus_entries(
+    db: AsyncSession,
+    board_ids: list[int],
+) -> list[BoardEntry]:
+    """Load and cache board entries shared by controversy and spotlight."""
+    if not board_ids:
+        return []
+    cache = db.info.get(_CONSENSUS_ENTRY_CACHE_KEY)
+    if isinstance(cache, dict) and all(board_id in cache for board_id in board_ids):
+        return [entry for board_id in board_ids for entry in cache[board_id]]
+    rows = list(
+        (
+            await db.execute(
+                select(BoardEntry).where(  # type: ignore[call-overload, attr-defined]
+                    cast(Any, BoardEntry.board_id).in_(board_ids)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if isinstance(cache, dict):
+        for board_id in board_ids:
+            cache[board_id] = [row for row in rows if row.board_id == board_id]
+    return rows
+
+
+async def _load_consensus_sources(
+    db: AsyncSession,
+    source_ids: list[int],
+) -> list[NewsSource]:
+    """Load and cache source rows shared by attribution panels."""
+    if not source_ids:
+        return []
+    cache = db.info.get(_CONSENSUS_SOURCE_CACHE_KEY)
+    if isinstance(cache, dict) and all(source_id in cache for source_id in source_ids):
+        return [
+            cache[source_id] for source_id in source_ids if cache[source_id] is not None
+        ]
+    rows = list(
+        (
+            await db.execute(
+                select(NewsSource).where(  # type: ignore[call-overload]
+                    NewsSource.id.in_(source_ids)  # type: ignore[union-attr]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if isinstance(cache, dict):
+        for row in rows:
+            if row.id is not None:
+                cache[row.id] = row
+        for source_id in source_ids:
+            cache.setdefault(source_id, None)
+    return rows
 
 
 async def _player_name_map(
@@ -488,13 +651,7 @@ async def get_player_consensus_detail(
     # Per-source breakdown.
     # Join board_entries → boards → news_sources for the boards that fed
     # the latest snapshot.
-    snapshot = (
-        await db.execute(
-            select(ConsensusSnapshot).where(  # type: ignore[call-overload]
-                ConsensusSnapshot.id == sid  # type: ignore[arg-type]
-            )
-        )
-    ).scalar_one_or_none()
+    snapshot = await _load_consensus_snapshot(db, sid)
 
     source_ranks: list[SourceRankEntry] = []
     if snapshot and snapshot.board_ids:
@@ -640,33 +797,17 @@ async def get_source_analytics(
     if sid is None:
         return []
 
-    sa_rows = (
-        (
-            await db.execute(
-                select(SourceAnalytics)  # type: ignore[call-overload]
-                .where(SourceAnalytics.snapshot_id == sid)  # type: ignore[arg-type]
-                .order_by(SourceAnalytics.contrarian_score.desc())  # type: ignore[attr-defined]
-            )
-        )
-        .scalars()
-        .all()
+    sa_rows = sorted(
+        await _get_source_analytics_rows(db, sid),
+        key=lambda row: row.contrarian_score,
+        reverse=True,
     )
 
     if not sa_rows:
         return []
 
     source_ids = [r.news_source_id for r in sa_rows]
-    source_rows = (
-        (
-            await db.execute(
-                select(NewsSource).where(  # type: ignore[call-overload]
-                    NewsSource.id.in_(source_ids)  # type: ignore[union-attr]
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
+    source_rows = await _load_consensus_sources(db, source_ids)
     source_map = {s.id: s for s in source_rows if s.id is not None}
 
     out: list[SourceAnalyticsRow] = []
@@ -710,6 +851,7 @@ async def get_source_leaderboard(
     db: AsyncSession,
     *,
     draft_year: int,
+    consensus_rows: Optional[list[ConsensusRow]] = None,
 ) -> list[dict]:
     """Return source analytics rows shaped for the /sources leaderboard page.
 
@@ -719,6 +861,7 @@ async def get_source_leaderboard(
     Args:
         db: Async DB session.
         draft_year: Draft class to query.
+        consensus_rows: Optional rows already loaded by a composed homepage.
 
     Returns:
         List of dicts ready for template rendering, or empty list when no
@@ -735,13 +878,23 @@ async def get_source_leaderboard(
         for r in analytics_rows
         if r.biggest_outlier_player_id is not None
     ]
-    outlier_player_map = await _player_name_map(db, outlier_player_ids)
+    outlier_player_map: dict[int, Any] = {}
+    if consensus_rows is None:
+        outlier_player_map = await _player_name_map(db, outlier_player_ids)
+    else:
+        outlier_player_map = {row.player_id: row for row in consensus_rows}
 
     out: list[dict] = []
     for row in analytics_rows:
         outlier_player = (
             outlier_player_map.get(row.biggest_outlier_player_id)
             if row.biggest_outlier_player_id is not None
+            else None
+        )
+        outlier_name = (
+            getattr(outlier_player, "display_name", None)
+            or getattr(outlier_player, "player_name", None)
+            if outlier_player
             else None
         )
         out.append(
@@ -752,9 +905,7 @@ async def get_source_leaderboard(
                 "source_slug": generate_slug(row.source_name),
                 "contrarian_score": row.contrarian_score,
                 "avg_deviation": row.avg_deviation,
-                "biggest_outlier_player_name": outlier_player.display_name
-                if outlier_player
-                else None,
+                "biggest_outlier_player_name": outlier_name,
                 "biggest_outlier_player_slug": outlier_player.slug
                 if outlier_player
                 else None,
@@ -1076,6 +1227,7 @@ async def get_biggest_movers(
     *,
     draft_year: int,
     k: int = 5,
+    consensus_rows: Optional[list[ConsensusRow]] = None,
 ) -> dict:
     """Return the top risers and fallers between the two most recent snapshots.
 
@@ -1087,6 +1239,7 @@ async def get_biggest_movers(
         db: Async DB session.
         draft_year: Draft class to query.
         k: Maximum number of risers and fallers to return (each).
+        consensus_rows: Optional rows already loaded by a composed homepage.
 
     Returns:
         ``{"risers": [...], "fallers": [...]}`` where each item is a dict with
@@ -1097,6 +1250,35 @@ async def get_biggest_movers(
     sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
     if sid is None:
         return {"risers": [], "fallers": []}
+
+    if consensus_rows is not None:
+        changed_rows = [row for row in consensus_rows if row.rank_delta is not None]
+
+        def _to_consensus_mover(row: ConsensusRow) -> dict:
+            return {
+                "player_id": row.player_id,
+                "player_name": row.player_name,
+                "slug": row.slug,
+                "school": row.school,
+                "photo_url": row.photo_url,
+                "school_logo_url": row.school_logo_url,
+                "consensus_rank": row.consensus_rank,
+                "rank_delta": row.rank_delta,
+                "prev_rank": row.prev_rank,
+            }
+
+        cached_risers = sorted(
+            [row for row in changed_rows if row.rank_delta and row.rank_delta > 0],
+            key=lambda row: -(row.rank_delta or 0),
+        )[:k]
+        cached_fallers = sorted(
+            [row for row in changed_rows if row.rank_delta and row.rank_delta < 0],
+            key=lambda row: row.rank_delta or 0,
+        )[:k]
+        return {
+            "risers": [_to_consensus_mover(row) for row in cached_risers],
+            "fallers": [_to_consensus_mover(row) for row in cached_fallers],
+        }
 
     # Fetch all rows for the current snapshot that have a non-null rank_delta.
     bbc_rows = (
@@ -1161,6 +1343,7 @@ async def get_most_controversial(
     draft_year: int,
     limit: int = 5,
     min_sources: int = 2,
+    consensus_rows: Optional[list[ConsensusRow]] = None,
 ) -> list[dict]:
     """Return the players with the widest spread of source ranks.
 
@@ -1176,6 +1359,7 @@ async def get_most_controversial(
         limit: Maximum number of players to return.
         min_sources: Minimum number of contributing sources required for a
             player to be eligible (default 2).
+        consensus_rows: Optional rows already loaded by a composed homepage.
 
     Returns:
         A list of dicts (most controversial first), each with ``player_id``,
@@ -1188,6 +1372,38 @@ async def get_most_controversial(
     sid = await _resolve_snapshot_id(db, draft_year=draft_year, snapshot_id=None)
     if sid is None:
         return []
+
+    if consensus_rows is not None:
+        rows = [
+            row
+            for row in consensus_rows
+            if row.num_sources >= min_sources and (row.std_dev or 0) > 0
+        ]
+        rows.sort(key=lambda row: row.std_dev or 0, reverse=True)
+        rows = rows[:limit]
+        if not rows:
+            return []
+        source_ranks_map = await _source_ranks_for_players(
+            db,
+            snapshot_id=sid,
+            player_ids=[row.player_id for row in rows],
+        )
+        return [
+            {
+                "player_id": row.player_id,
+                "player_name": row.player_name,
+                "slug": row.slug,
+                "photo_url": row.photo_url,
+                "consensus_rank": row.consensus_rank,
+                "avg_rank": row.avg_rank,
+                "high_rank": row.high_rank,
+                "low_rank": row.low_rank,
+                "std_dev": row.std_dev,
+                "num_sources": row.num_sources,
+                "source_ranks": source_ranks_map.get(row.player_id, []),
+            }
+            for row in rows
+        ]
 
     bbc_rows = (
         (
@@ -1252,25 +1468,11 @@ async def _source_ranks_for_players(
     if not player_ids:
         return {}
 
-    snapshot = (
-        await db.execute(
-            select(ConsensusSnapshot).where(  # type: ignore[call-overload]
-                ConsensusSnapshot.id == snapshot_id  # type: ignore[arg-type]
-            )
-        )
-    ).scalar_one_or_none()
+    snapshot = await _load_consensus_snapshot(db, snapshot_id)
     if snapshot is None or not snapshot.board_ids:
         return {}
 
-    entry_rows = (
-        await db.execute(
-            select(  # type: ignore[call-overload]
-                BoardEntry.player_id, BoardEntry.position
-            )
-            .where(BoardEntry.board_id.in_(snapshot.board_ids))  # type: ignore[union-attr, attr-defined]
-            .where(BoardEntry.player_id.in_(player_ids))  # type: ignore[union-attr, attr-defined]
-        )
-    ).all()
+    entry_rows = await _load_consensus_entries(db, snapshot.board_ids)
 
     ranks: dict[int, list[int]] = {pid: [] for pid in player_ids}
     for row in entry_rows:
@@ -1323,43 +1525,20 @@ async def _build_source_profiles(
 
     board_ids = [sa.latest_board_id for sa in sa_rows if sa.latest_board_id is not None]
 
-    boards = (
-        (
-            await db.execute(
-                select(Board).where(Board.id.in_(board_ids))  # type: ignore[call-overload, union-attr]
-            )
-        )
-        .scalars()
-        .all()
-    )
+    boards = await _load_consensus_boards(db, board_ids)
     board_by_id = {b.id: b for b in boards if b.id is not None}
 
     # All entries for those boards (not just consensus players) so board size
     # reflects the full depth the source actually ranked.
-    entry_rows = (
-        await db.execute(
-            select(  # type: ignore[call-overload]
-                BoardEntry.board_id, BoardEntry.player_id, BoardEntry.position
-            ).where(BoardEntry.board_id.in_(board_ids))  # type: ignore[union-attr, attr-defined]
-        )
-    ).all()
+    entry_rows = await _load_consensus_entries(db, board_ids)
     entries_by_board: dict[int, list[tuple[int, int]]] = {}
     for row in entry_rows:
-        entries_by_board.setdefault(row.board_id, []).append(
-            (row.player_id, row.position)
-        )
-
-    sources = (
-        (
-            await db.execute(
-                select(NewsSource).where(  # type: ignore[call-overload]
-                    NewsSource.id.in_([sa.news_source_id for sa in sa_rows])  # type: ignore[union-attr]
-                )
+        if row.board_id is not None and row.player_id is not None:
+            entries_by_board.setdefault(row.board_id, []).append(
+                (row.player_id, row.position)
             )
-        )
-        .scalars()
-        .all()
-    )
+
+    sources = await _load_consensus_sources(db, [sa.news_source_id for sa in sa_rows])
     source_by_id = {s.id: s for s in sources if s.id is not None}
 
     article_ids = [b.news_item_id for b in boards if b.news_item_id is not None]
@@ -1499,17 +1678,7 @@ async def get_source_spotlight(
     if sid is None:
         return None
 
-    sa_rows = list(
-        (
-            await db.execute(
-                select(SourceAnalytics).where(  # type: ignore[call-overload]
-                    SourceAnalytics.snapshot_id == sid  # type: ignore[arg-type]
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
+    sa_rows = await _get_source_analytics_rows(db, sid)
     if not sa_rows:
         return None
 
@@ -1729,17 +1898,11 @@ async def get_board_freshness(
     if snapshot is None or not snapshot.board_ids:
         return None
 
-    board_rows = (
-        (
-            await db.execute(
-                select(Board)  # type: ignore[call-overload]
-                .where(Board.id.in_(snapshot.board_ids))  # type: ignore[union-attr]
-                .where(Board.status == BoardStatus.APPROVED)  # type: ignore[arg-type]
-            )
-        )
-        .scalars()
-        .all()
-    )
+    board_rows = [
+        board
+        for board in await _load_consensus_boards(db, snapshot.board_ids)
+        if board.status == BoardStatus.APPROVED
+    ]
 
     if not board_rows:
         return None

@@ -25,6 +25,7 @@ from app.models.consensus import ConsensusRow
 from app.schemas.boards import BoardKind
 from app.schemas.player_content_mentions import ContentType
 from app.services.consensus_read_service import (
+    enable_consensus_request_cache,
     get_biggest_movers,
     get_board_freshness,
     get_consensus_board,
@@ -173,6 +174,11 @@ async def home(
     desk_window_open = desk_payload is not None
     desk_game_year = to_eastern_date(now_naive_utc).year
 
+    # The homepage composes multiple consensus panels from the same latest
+    # snapshot. Keep the cache request-scoped and opt-in so standalone API and
+    # service callers retain their existing read semantics.
+    enable_consensus_request_cache(db)
+
     # --- Consensus hero -------------------------------------------------------
     # Select the board kind from the draft calendar.  Fall back to BIG_BOARD
     # when the calendar-selected kind returns no rows (e.g. MOCK_DRAFT data has
@@ -224,15 +230,29 @@ async def home(
     # --- Supporting panels: Biggest Movers, Most Controversial, Source Spotlight
     # Movers are trimmed to 3-up per direction so the panel reads at a glance;
     # Board Freshness is rendered as a footnote rather than its own card.
-    biggest_movers = await get_biggest_movers(db, draft_year=CONSENSUS_DRAFT_YEAR, k=3)
-    most_controversial = await get_most_controversial(
-        db, draft_year=CONSENSUS_DRAFT_YEAR, limit=5
+    biggest_movers = await get_biggest_movers(
+        db,
+        draft_year=CONSENSUS_DRAFT_YEAR,
+        k=3,
+        consensus_rows=consensus_rows_raw,
     )
-    source_spotlight = await get_source_spotlight(db, draft_year=CONSENSUS_DRAFT_YEAR)
+    most_controversial = await get_most_controversial(
+        db,
+        draft_year=CONSENSUS_DRAFT_YEAR,
+        limit=5,
+        consensus_rows=consensus_rows_raw,
+    )
+    source_spotlight = await get_source_spotlight(
+        db,
+        draft_year=CONSENSUS_DRAFT_YEAR,
+        consensus_rows=consensus_rows_raw,
+    )
     board_freshness = await get_board_freshness(db, draft_year=CONSENSUS_DRAFT_YEAR)
     # Analysts whose boards feed the consensus — credited in the attribution note.
     attribution_sources = await get_source_leaderboard(
-        db, draft_year=CONSENSUS_DRAFT_YEAR
+        db,
+        draft_year=CONSENSUS_DRAFT_YEAR,
+        consensus_rows=consensus_rows_raw,
     )
 
     # --- Expanded trending payload (featured cards + compact tail) ------------
@@ -301,7 +321,11 @@ async def home(
 
     # Fetch news feed from database (falls back to empty if no items yet)
     # Fetch more items to enable pagination (6 per page in new grid layout)
-    news_feed = await get_news_feed(db, limit=HOME_NEWS_FEED_LIMIT)
+    news_feed = await get_news_feed(
+        db,
+        limit=HOME_NEWS_FEED_LIMIT,
+        include_total=False,
+    )
     sticky_item = await get_sticky_news_item(db)
     source_counter: Counter[str] = Counter()
     author_counter: Counter[str] = Counter()
