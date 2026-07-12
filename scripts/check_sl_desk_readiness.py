@@ -17,21 +17,38 @@ Two modes:
   baseline for every required grain -- event, debut, and game (the game
   grain was added by #525; ``run_desk_tick`` raises ``RuntimeError`` outright
   if no active baseline exists at all). State freshness and render snapshots
-  are checked too, but leniently: neither is expected to exist before the
-  first tick has ever run, so their absence is reported informationally
-  (``skip``), not as a failure.
+  are checked too, but leniently -- neither is a hard gate pre-tick:
+
+  * Freshness is reported informationally (``skip``), whether
+    ``event_desk_state`` is absent (expected -- no tick has run yet) *or*
+    present but stale (e.g. a redeploy/recovery, or a cron that was down).
+    Staleness is never a preflight ``fail``: the deploy workflow gates cron
+    *enablement* on preflight passing, so a stale prior state must never
+    block creating the very cron that would refresh it.
+  * Render snapshots are a "when present" check -- materialization is a
+    separate concern pre-tick, so an event with none yet is not itself a
+    preflight failure, but a mismatched ``schema_version`` on rows that *do*
+    exist is.
 * ``post-tick`` — run **after** a deliberate, one-time manual tick
   (``scripts/sl_desk_tick.py``) to confirm it actually took effect. The same
   two build-time checks are re-verified (Job A must still be satisfied), plus
-  two checks that only make sense once a tick has run: the tick's own step 0
-  (`registry.sync_summer_league_event`) must have synced an active
-  ``events`` row, and ``event_desk_state`` must carry a freshness stamp no
-  older than ``--staleness-hours`` (default matches twice
-  ``app.services.event_desk.controller.TICK_INTERVAL``, tolerating exactly
-  one missed hourly tick before flagging staleness). Render snapshots remain
-  a "when present" check in both modes -- materialization is a separate
-  ticket's concern, so an event with none yet is not itself a readiness
-  failure, but a mismatched ``schema_version`` on rows that *do* exist is.
+  two checks that only make sense once a tick has run:
+
+  * The tick's own step 0 (`registry.sync_summer_league_event`) must have
+    synced an active ``events`` row, and ``event_desk_state`` must carry a
+    freshness stamp no older than ``--staleness-hours`` (default matches
+    twice ``app.services.event_desk.controller.TICK_INTERVAL``, tolerating
+    exactly one missed hourly tick before flagging staleness) -- this IS a
+    hard ``fail`` in post-tick mode, since confirming the deliberate tick
+    actually refreshed the state is the whole point of running post-tick.
+  * Since #551 (commit 96c3ca9), materializing the FULL Preview/Live/Recap x
+    Class Tracker cohort/stat-view variant matrix is a mandatory final step
+    of every successful tick, so post-tick requires the complete expected
+    matrix (see ``DESK_RENDER_DAILY_STATES`` x ``TRACKER_COHORTS`` x
+    ``TRACKER_STAT_VIEWS`` in ``app.services.summer_league.desk_read``, 3 x 6
+    x 4 = 72 variants today) to be present for the active event, each at the
+    current ``schema_version`` -- zero snapshots, a partial matrix, or a
+    stale ``schema_version`` on any present row all ``fail``.
 
 **Never writes.** Every check is a plain ``SELECT`` over an
 ``AsyncSession`` opened without a transaction; nothing is ever ``add``ed,
@@ -53,6 +70,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import itertools
 import os
 import sys
 from dataclasses import dataclass
@@ -67,7 +85,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv()
 
-from app.schemas.event_desk import Event, EventDeskState  # noqa: E402
+from app.schemas.event_desk import Event, EventDailyState, EventDeskState  # noqa: E402
 from app.schemas.event_desk_render_snapshot import EventDeskRenderSnapshot  # noqa: E402
 from app.schemas.summer_league import SummerLeagueCompetition  # noqa: E402
 from app.schemas.summer_league_desk import (  # noqa: E402
@@ -76,6 +94,11 @@ from app.schemas.summer_league_desk import (  # noqa: E402
 )
 from app.services.event_desk.render_snapshots import CURRENT_SCHEMA_VERSION  # noqa: E402
 from app.services.event_desk.timeutils import to_eastern_date  # noqa: E402
+from app.services.summer_league.desk_read import (  # noqa: E402
+    DESK_RENDER_DAILY_STATES,
+    TRACKER_COHORTS,
+    TRACKER_STAT_VIEWS,
+)
 from app.services.summer_league.scoreboard_ingest import (  # noqa: E402
     EVENT_KEY_SUMMER_LEAGUE,
 )
@@ -97,6 +120,14 @@ REQUIRED_BASELINE_GRAINS: frozenset[SummerLeagueDeskGrain] = frozenset(
 # `app.services.event_desk.controller.TICK_INTERVAL` is one hour; tolerate exactly one
 # missed scheduled tick before flagging freshness as stale.
 DEFAULT_STALENESS_HOURS = 2.0
+
+# The COMPLETE render-snapshot variant matrix a successful tick must materialize as of
+# #551 (commit 96c3ca9) -- reuses the exact same constants the materializer
+# (`app.services.summer_league.desk_read.build_desk_render_variants`) iterates over, so
+# this checker can never drift from what a tick actually writes. 3 x 6 x 4 = 72 today.
+EXPECTED_RENDER_VARIANTS: frozenset[tuple[EventDailyState, str, str]] = frozenset(
+    itertools.product(DESK_RENDER_DAILY_STATES, TRACKER_COHORTS, TRACKER_STAT_VIEWS)
+)
 
 
 class ReadinessStatus(str, Enum):
@@ -230,6 +261,13 @@ async def _check_freshness(
     Absence is expected (and not a failure) in ``preflight`` mode, since no tick has
     run yet; it is a failure in ``post-tick`` mode, since the whole point of that
     mode is confirming the deliberate manual tick actually landed.
+
+    Staleness is handled the same asymmetric way: in ``preflight`` mode a present-but-
+    stale state is reported informationally (``skip``), never a hard ``fail`` -- the
+    deploy workflow gates cron *enablement* on preflight passing, so a stale prior
+    state (left over from a redeploy/recovery, or a cron that was down) must never
+    block creating the very cron that would refresh it. Only ``post-tick`` mode fails
+    on staleness, since that IS the point of running it.
     """
     event_stmt = select(Event).where(
         Event.key == event_key,  # type: ignore[arg-type]
@@ -276,6 +314,18 @@ async def _check_freshness(
     age = now - state.freshness_tick_at
     threshold = timedelta(hours=staleness_hours)
     if age > threshold:
+        if mode != "post-tick":
+            return CheckResult(
+                category="freshness",
+                status=ReadinessStatus.SKIP,
+                message=(
+                    f"event_desk_state.freshness_tick_at="
+                    f"{state.freshness_tick_at.isoformat()} is stale ({age} old, "
+                    f"exceeds {staleness_hours}h threshold as of {now.isoformat()}), "
+                    "but staleness isn't gated pre-tick; skipping so a stale prior "
+                    "state never blocks enabling the cron that would refresh it."
+                ),
+            )
         return CheckResult(
             category="freshness",
             status=ReadinessStatus.FAIL,
@@ -295,13 +345,24 @@ async def _check_freshness(
     )
 
 
-async def _check_render_snapshots(db: AsyncSession, *, event_key: str) -> CheckResult:
-    """Category 4 -- render snapshots, only "when present" (materialization is separate).
+async def _check_render_snapshots(
+    db: AsyncSession, *, mode: ReadinessMode, event_key: str
+) -> CheckResult:
+    """Category 4 -- render snapshots.
 
-    An event with zero materialized snapshots is not a readiness failure in either
-    mode (snapshot materialization, launch-readiness item 10, is a separate ticket);
-    a snapshot that *does* exist but carries a ``schema_version`` this build's codec
+    ``preflight`` stays "when present": snapshot materialization is a separate
+    concern pre-tick, so an event with zero snapshots is not a preflight failure --
+    but a snapshot that *does* exist carrying a ``schema_version`` this build's codec
     no longer understands is.
+
+    ``post-tick`` is strict: since #551 (commit 96c3ca9), materializing the COMPLETE
+    Preview/Live/Recap x Class Tracker cohort/stat-view variant matrix
+    (``EXPECTED_RENDER_VARIANTS``) is a mandatory final step of every successful tick,
+    so a post-tick check that green-lit zero (or a partial) matrix would pass a
+    deploy where materialization silently produced nothing (or dropped variants) --
+    defeating the gate's purpose. Post-tick fails on zero snapshots, a partial
+    matrix (naming what's missing), or any present snapshot at a stale
+    ``schema_version``.
     """
     event_stmt = select(Event).where(
         Event.key == event_key,  # type: ignore[arg-type]
@@ -320,30 +381,83 @@ async def _check_render_snapshots(db: AsyncSession, *, event_key: str) -> CheckR
         EventDeskRenderSnapshot.event_id == event.id  # type: ignore[arg-type]
     )
     snapshots = (await db.execute(snap_stmt)).scalars().all()
-    if not snapshots:
+
+    if mode != "post-tick":
+        if not snapshots:
+            return CheckResult(
+                category="render_snapshots",
+                status=ReadinessStatus.SKIP,
+                message="No render snapshots present yet; materialization not required for readiness.",
+            )
+        stale = [s for s in snapshots if s.schema_version != CURRENT_SCHEMA_VERSION]
+        if stale:
+            return CheckResult(
+                category="render_snapshots",
+                status=ReadinessStatus.FAIL,
+                message=(
+                    f"{len(stale)} of {len(snapshots)} render snapshot(s) carry a stale "
+                    f"schema_version (expected {CURRENT_SCHEMA_VERSION}); rematerialize "
+                    "before enabling the cron."
+                ),
+            )
         return CheckResult(
             category="render_snapshots",
-            status=ReadinessStatus.SKIP,
-            message="No render snapshots present yet; materialization not required for readiness.",
+            status=ReadinessStatus.PASS,
+            message=(
+                f"{len(snapshots)} render snapshot(s) present, schema_version="
+                f"{CURRENT_SCHEMA_VERSION} up to date."
+            ),
         )
 
-    stale = [s for s in snapshots if s.schema_version != CURRENT_SCHEMA_VERSION]
-    if stale:
+    # post-tick: the full matrix is mandatory.
+    if not snapshots:
         return CheckResult(
             category="render_snapshots",
             status=ReadinessStatus.FAIL,
             message=(
-                f"{len(stale)} of {len(snapshots)} render snapshot(s) carry a stale "
-                f"schema_version (expected {CURRENT_SCHEMA_VERSION}); rematerialize "
-                "before enabling the cron."
+                "0 render snapshots present after a tick; "
+                "build_desk_render_variants (#551) should have materialized the full "
+                f"{len(EXPECTED_RENDER_VARIANTS)}-variant matrix as the tick's final step."
             ),
         )
+
+    present = {
+        (s.daily_state, s.tracker_cohort, s.tracker_stat_view) for s in snapshots
+    }
+    missing = EXPECTED_RENDER_VARIANTS - present
+    stale = [s for s in snapshots if s.schema_version != CURRENT_SCHEMA_VERSION]
+
+    if missing or stale:
+        problems = []
+        if missing:
+            missing_str = ", ".join(
+                f"({d.value}, {c}, {v})" for d, c, v in sorted(missing, key=str)
+            )
+            problems.append(
+                f"missing {len(missing)}/{len(EXPECTED_RENDER_VARIANTS)} variant(s): "
+                f"{missing_str}"
+            )
+        if stale:
+            problems.append(
+                f"{len(stale)} of {len(snapshots)} present snapshot(s) carry a stale "
+                f"schema_version (expected {CURRENT_SCHEMA_VERSION})"
+            )
+        return CheckResult(
+            category="render_snapshots",
+            status=ReadinessStatus.FAIL,
+            message=(
+                "Render snapshot matrix incomplete after a tick: "
+                + "; ".join(problems)
+                + "; rematerialize before enabling the cron."
+            ),
+        )
+
     return CheckResult(
         category="render_snapshots",
         status=ReadinessStatus.PASS,
         message=(
-            f"{len(snapshots)} render snapshot(s) present, schema_version="
-            f"{CURRENT_SCHEMA_VERSION} up to date."
+            f"Full {len(EXPECTED_RENDER_VARIANTS)}-variant render snapshot matrix "
+            f"present, schema_version={CURRENT_SCHEMA_VERSION} up to date."
         ),
     )
 
@@ -389,7 +503,7 @@ async def build_readiness_report(
             event_key=event_key,
             staleness_hours=staleness_hours,
         ),
-        await _check_render_snapshots(db, event_key=event_key),
+        await _check_render_snapshots(db, mode=mode, event_key=event_key),
     )
     return ReadinessReport(mode=mode, now=resolved_now, results=results)
 

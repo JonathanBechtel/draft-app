@@ -3,7 +3,8 @@
 `scripts/check_sl_desk_readiness.py` gates enabling the Desk cron in two
 places: ``preflight`` (before the cron machine exists/is enabled) and
 ``post-tick`` (right after a deliberate one-time manual tick). These tests
-prove the exact behavioral contract the launch-readiness ticket calls for:
+prove the exact behavioral contract the launch-readiness ticket -- and its
+follow-up hardening fixes -- call for:
 
 * A fully-seeded valid state exits 0 (``report.ok``) in both modes without
   writing anything -- no row is ever added/updated by the checker itself.
@@ -11,9 +12,16 @@ prove the exact behavioral contract the launch-readiness ticket calls for:
   "freshness", "render_snapshots") fails on its own, with a distinct
   message identifying exactly what's missing, while every other category
   in that same seeded state still passes.
-* Render snapshots are a "when present" check: an event with none yet does
-  not fail readiness in either mode; one with a stale ``schema_version``
-  does.
+* Freshness is asymmetric by mode: a present-but-stale ``event_desk_state``
+  row is only informational (``skip``) in ``preflight`` -- never a hard
+  failure, since that would deadlock cron enablement on the very state the
+  cron would refresh -- but is a hard ``fail`` in ``post-tick``.
+* Render snapshots are asymmetric too: ``preflight`` stays "when present"
+  (zero snapshots is fine; a stale ``schema_version`` on rows that exist is
+  not). ``post-tick`` requires the COMPLETE materialized variant matrix
+  (``DESK_RENDER_DAILY_STATES`` x ``TRACKER_COHORTS`` x
+  ``TRACKER_STAT_VIEWS``, #551) at the current ``schema_version`` -- zero
+  snapshots, a partial matrix, or a stale ``schema_version`` all fail.
 """
 
 from __future__ import annotations
@@ -27,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.event_desk import (
     Event,
     EventCalendarSource,
+    EventDailyState,
     EventDeskState,
     EventLifecyclePhase,
     EventType,
@@ -41,6 +50,7 @@ from app.schemas.summer_league_desk import (
 from app.services.event_desk.render_snapshots import CURRENT_SCHEMA_VERSION
 from app.services.summer_league.scoreboard_ingest import EVENT_KEY_SUMMER_LEAGUE
 from scripts.check_sl_desk_readiness import (
+    EXPECTED_RENDER_VARIANTS,
     REQUIRED_BASELINE_GRAINS,
     ReadinessStatus,
     build_readiness_report,
@@ -143,9 +153,8 @@ async def _seed_state(
 async def _seed_render_snapshot(
     db: AsyncSession, *, event: Event, schema_version: int
 ) -> EventDeskRenderSnapshot:
+    """Seed a single render snapshot row (used for preflight "when present" cases)."""
     assert event.id is not None
-    from app.schemas.event_desk import EventDailyState
-
     snapshot = EventDeskRenderSnapshot(
         event_id=event.id,
         daily_state=EventDailyState.LIVE,
@@ -158,6 +167,37 @@ async def _seed_render_snapshot(
     db.add(snapshot)
     await db.flush()
     return snapshot
+
+
+async def _seed_full_render_snapshot_matrix(
+    db: AsyncSession,
+    *,
+    event: Event,
+    schema_version: int = CURRENT_SCHEMA_VERSION,
+    skip_variants: frozenset[tuple[EventDailyState, str, str]] = frozenset(),
+) -> None:
+    """Seed the COMPLETE post-#551 render snapshot matrix (`EXPECTED_RENDER_VARIANTS`).
+
+    ``skip_variants`` lets a caller seed a deliberately partial matrix (to test the
+    post-tick "missing variants" failure) by omitting specific `(daily_state,
+    tracker_cohort, tracker_stat_view)` combinations.
+    """
+    assert event.id is not None
+    for daily_state, cohort, stat_view in EXPECTED_RENDER_VARIANTS:
+        if (daily_state, cohort, stat_view) in skip_variants:
+            continue
+        db.add(
+            EventDeskRenderSnapshot(
+                event_id=event.id,
+                daily_state=daily_state,
+                tracker_cohort=cohort,
+                tracker_stat_view=stat_view,
+                schema_version=schema_version,
+                payload_json=None,
+                view_context_json={},
+            )
+        )
+    await db.flush()
 
 
 def _result_for(report, category: str):
@@ -285,9 +325,7 @@ async def test_post_tick_valid_state_exits_zero_no_writes(
     await _seed_all_required_baselines(db_session)
     event = await _seed_event(db_session, competition=competition)
     await _seed_state(db_session, event=event, freshness_tick_at=_NOW)
-    await _seed_render_snapshot(
-        db_session, event=event, schema_version=CURRENT_SCHEMA_VERSION
-    )
+    await _seed_full_render_snapshot_matrix(db_session, event=event)
     await db_session.commit()
 
     before = await _table_counts(db_session)
@@ -382,14 +420,26 @@ async def test_post_tick_missing_state_exits_one_with_distinct_message(
 async def test_post_tick_stale_render_snapshot_schema_exits_one_with_distinct_message(
     db_session: AsyncSession,
 ) -> None:
-    """A materialized render snapshot exists but carries an old schema_version."""
+    """The full matrix is materialized, but one row carries an old schema_version."""
     competition = await _seed_competition(db_session, year=_NOW.year)
     await _seed_all_required_baselines(db_session)
     event = await _seed_event(db_session, competition=competition)
     await _seed_state(db_session, event=event, freshness_tick_at=_NOW)
-    await _seed_render_snapshot(
-        db_session, event=event, schema_version=CURRENT_SCHEMA_VERSION + 999
+    await _seed_full_render_snapshot_matrix(db_session, event=event)
+    # Overwrite one row with a stale schema_version -- everything else in the
+    # matrix stays complete and current.
+    assert event.id is not None
+    stale_variant = next(iter(EXPECTED_RENDER_VARIANTS))
+    daily_state, cohort, stat_view = stale_variant
+    stmt = select(EventDeskRenderSnapshot).where(
+        EventDeskRenderSnapshot.event_id == event.id,
+        EventDeskRenderSnapshot.daily_state == daily_state,
+        EventDeskRenderSnapshot.tracker_cohort == cohort,
+        EventDeskRenderSnapshot.tracker_stat_view == stat_view,
     )
+    row = (await db_session.execute(stmt)).scalar_one()
+    row.schema_version = CURRENT_SCHEMA_VERSION + 999
+    db_session.add(row)
     await db_session.commit()
 
     report = await build_readiness_report(db_session, mode="post-tick", now=_NOW)
@@ -398,16 +448,18 @@ async def test_post_tick_stale_render_snapshot_schema_exits_one_with_distinct_me
     snapshots = _result_for(report, "render_snapshots")
     assert snapshots.status == ReadinessStatus.FAIL
     assert "schema_version" in snapshots.message
+    # The matrix is complete (no missing variants) -- only staleness is wrong.
+    assert "missing" not in snapshots.message
     # Everything else about this state is otherwise healthy.
     assert _result_for(report, "registration").status == ReadinessStatus.PASS
     assert _result_for(report, "baselines").status == ReadinessStatus.PASS
     assert _result_for(report, "freshness").status == ReadinessStatus.PASS
 
 
-async def test_post_tick_no_render_snapshots_is_skip_not_fail(
+async def test_post_tick_no_render_snapshots_exits_one_with_distinct_message(
     db_session: AsyncSession,
 ) -> None:
-    """Render snapshot materialization (a separate ticket) hasn't happened -- not a failure."""
+    """#551 made full matrix materialization mandatory -- zero snapshots is now a failure."""
     competition = await _seed_competition(db_session, year=_NOW.year)
     await _seed_all_required_baselines(db_session)
     event = await _seed_event(db_session, competition=competition)
@@ -416,5 +468,146 @@ async def test_post_tick_no_render_snapshots_is_skip_not_fail(
 
     report = await build_readiness_report(db_session, mode="post-tick", now=_NOW)
 
+    assert report.ok is False
+    snapshots = _result_for(report, "render_snapshots")
+    assert snapshots.status == ReadinessStatus.FAIL
+    assert "0 render snapshots" in snapshots.message
+    # Everything else about this state is otherwise healthy.
+    assert _result_for(report, "registration").status == ReadinessStatus.PASS
+    assert _result_for(report, "baselines").status == ReadinessStatus.PASS
+    assert _result_for(report, "freshness").status == ReadinessStatus.PASS
+
+
+async def test_post_tick_partial_render_snapshot_matrix_names_missing_variants(
+    db_session: AsyncSession,
+) -> None:
+    """A partial matrix (some variants never materialized) fails, naming what's missing."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await _seed_state(db_session, event=event, freshness_tick_at=_NOW)
+    missing_variant = next(iter(EXPECTED_RENDER_VARIANTS))
+    await _seed_full_render_snapshot_matrix(
+        db_session, event=event, skip_variants=frozenset({missing_variant})
+    )
+    await db_session.commit()
+
+    report = await build_readiness_report(db_session, mode="post-tick", now=_NOW)
+
+    assert report.ok is False
+    snapshots = _result_for(report, "render_snapshots")
+    assert snapshots.status == ReadinessStatus.FAIL
+    assert "missing 1/" in snapshots.message
+    daily_state, cohort, stat_view = missing_variant
+    assert f"({daily_state.value}, {cohort}, {stat_view})" in snapshots.message
+    # Everything else about this state is otherwise healthy.
+    assert _result_for(report, "registration").status == ReadinessStatus.PASS
+    assert _result_for(report, "baselines").status == ReadinessStatus.PASS
+    assert _result_for(report, "freshness").status == ReadinessStatus.PASS
+
+
+async def test_post_tick_full_render_snapshot_matrix_passes(
+    db_session: AsyncSession,
+) -> None:
+    """The COMPLETE variant matrix at the current schema_version -- render_snapshots passes."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await _seed_state(db_session, event=event, freshness_tick_at=_NOW)
+    await _seed_full_render_snapshot_matrix(db_session, event=event)
+    await db_session.commit()
+
+    report = await build_readiness_report(db_session, mode="post-tick", now=_NOW)
+
+    assert report.ok is True
+    snapshots = _result_for(report, "render_snapshots")
+    assert snapshots.status == ReadinessStatus.PASS
+    assert str(len(EXPECTED_RENDER_VARIANTS)) in snapshots.message
+
+
+async def test_preflight_render_snapshots_zero_is_skip(
+    db_session: AsyncSession,
+) -> None:
+    """Preflight keeps the lenient "when present" behavior: zero snapshots -> skip."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await db_session.commit()
+    assert event.id is not None
+
+    report = await build_readiness_report(db_session, mode="preflight", now=_NOW)
+
     assert report.ok is True
     assert _result_for(report, "render_snapshots").status == ReadinessStatus.SKIP
+
+
+async def test_preflight_render_snapshot_present_and_current_passes(
+    db_session: AsyncSession,
+) -> None:
+    """Preflight's "when present" leniency doesn't require the full post-tick matrix."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await _seed_render_snapshot(
+        db_session, event=event, schema_version=CURRENT_SCHEMA_VERSION
+    )
+    await db_session.commit()
+
+    report = await build_readiness_report(db_session, mode="preflight", now=_NOW)
+
+    assert report.ok is True
+    assert _result_for(report, "render_snapshots").status == ReadinessStatus.PASS
+
+
+async def test_preflight_render_snapshot_stale_schema_fails(
+    db_session: AsyncSession,
+) -> None:
+    """Preflight still fails a stale schema_version on a snapshot that DOES exist."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await _seed_render_snapshot(
+        db_session, event=event, schema_version=CURRENT_SCHEMA_VERSION + 999
+    )
+    await db_session.commit()
+
+    report = await build_readiness_report(db_session, mode="preflight", now=_NOW)
+
+    assert report.ok is False
+    snapshots = _result_for(report, "render_snapshots")
+    assert snapshots.status == ReadinessStatus.FAIL
+    assert "schema_version" in snapshots.message
+
+
+async def test_preflight_stale_freshness_is_skip_not_fail(
+    db_session: AsyncSession,
+) -> None:
+    """A present-but-stale event_desk_state row must not deadlock preflight.
+
+    The deploy workflow gates cron *enablement* on preflight passing; if a stale
+    prior state (e.g. left over from a redeploy/recovery, or a cron that was down)
+    hard-failed preflight, it would block creating the very cron that would refresh
+    it. Staleness is informational (skip) pre-tick -- only post-tick fails on it.
+    """
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    stale_tick = _NOW - timedelta(hours=5)
+    await _seed_state(db_session, event=event, freshness_tick_at=stale_tick)
+    await db_session.commit()
+
+    before = await _table_counts(db_session)
+    report = await build_readiness_report(
+        db_session, mode="preflight", now=_NOW, staleness_hours=2.0
+    )
+    await db_session.commit()
+
+    assert report.ok is True
+    freshness = _result_for(report, "freshness")
+    assert freshness.status == ReadinessStatus.SKIP
+    assert "stale" in freshness.message
+    # Registration/baselines are unaffected by the stale freshness stamp.
+    assert _result_for(report, "registration").status == ReadinessStatus.PASS
+    assert _result_for(report, "baselines").status == ReadinessStatus.PASS
+
+    await _assert_no_writes(db_session, before=before)
