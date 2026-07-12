@@ -59,6 +59,14 @@ class SummerLeagueGameStatus(str, Enum):
     IN_PROGRESS = "in_progress"
     FINAL = "final"
     UNKNOWN = "unknown"
+    # Terminal, non-Live statuses (fix #4, follow-up to #529/#530/fix #3): a
+    # postponed/canceled game will never tip, so it must be excluded by every
+    # consumer that filters on this column -- not re-derived per-consumer from
+    # ``status_text`` (see `scoreboard_ingest.map_game_status`,
+    # `live_ingestion._LIVE_STATUSES`, `normalization.resolve_game_status`,
+    # `event_desk.registry._to_generic_status`).
+    POSTPONED = "postponed"
+    CANCELED = "canceled"
 
 
 class SummerLeagueResolutionStatus(str, Enum):

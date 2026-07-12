@@ -49,6 +49,12 @@ from app.services.summer_league.raw_store import SummerLeagueRawStore
 # A game counts as "live" for this refresh only when its status is one of
 # these -- Final games are done (their raw snapshot is immutable) and never
 # selected, matching the ticket's "skip Final ... games" requirement.
+# Fix #4: POSTPONED/CANCELED are deliberately absent -- a postponed game will
+# never tip, so its critical box-score endpoints (boxscoretraditionalv2 etc.)
+# would never return data. Selecting it here would trip fix #2's
+# fail-the-whole-tick guard for every tick in its window. Since `map_game_status`
+# now persists the real terminal status instead of collapsing it to SCHEDULED,
+# this tuple excludes it with no extra filtering needed.
 _LIVE_STATUSES = (SummerLeagueGameStatus.SCHEDULED, SummerLeagueGameStatus.IN_PROGRESS)
 
 # How far before/after "now" a Scheduled/In-Progress game still counts as

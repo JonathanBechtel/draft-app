@@ -54,16 +54,16 @@ class GameStatus(str, Enum):
     ``SCHEDULED``/``IN_PROGRESS``/``FINAL``/``UNKNOWN`` mirror
     :class:`~app.schemas.summer_league.SummerLeagueGameStatus` 1:1 so a per-event
     provider maps its native status enum with a trivial ``GameStatus(status.value)``
-    cast. ``POSTPONED`` has no such DB counterpart: the persisted
-    ``summer_league_games.status`` column collapses postponed/canceled games to
-    ``SCHEDULED`` (the honest signal only survives in ``status_text`` — see
-    `scoreboard_ingest.map_game_status`), so a provider must re-detect it from
-    ``status_text`` (see :func:`_to_generic_status`) rather than casting it. Kept as
-    a single terminal bucket covering both postponed *and* canceled games (the DB
-    doesn't distinguish the two either -- both trip
-    ``_POSTPONED_OR_CANCELED_MARKERS``). This is a distinct type (not a reuse of
-    ``SummerLeagueGameStatus``) so the inner state machine stays reusable by a future
-    non-SL event without importing Summer-League-specific schemas.
+    cast. ``POSTPONED`` is a single terminal bucket covering both the DB's
+    ``POSTPONED`` *and* ``CANCELED`` statuses (fix #4;
+    `scoreboard_ingest.map_game_status` persists the real, distinct status --
+    :func:`_to_generic_status` collapses both to this one bucket since the inner
+    state machine only needs "will never tip," not which of the two). It also
+    still catches any legacy row persisted as ``SCHEDULED`` with a "PPD"/"cancel"
+    ``status_text`` from before fix #4 landed (see :func:`_to_generic_status`'s
+    fallback). This is a distinct type (not a reuse of ``SummerLeagueGameStatus``)
+    so the inner state machine stays reusable by a future non-SL event without
+    importing Summer-League-specific schemas.
     """
 
     SCHEDULED = "scheduled"
@@ -78,22 +78,30 @@ def _to_generic_status(
 ) -> GameStatus:
     """Map a Summer-League-native game status onto the event-agnostic :class:`GameStatus`.
 
-    Postponed/canceled games are persisted as ``SCHEDULED`` (see
-    `scoreboard_ingest.map_game_status`) with the honest signal retained only in
-    ``status_text``. Re-detecting it here -- via the same
-    ``_POSTPONED_OR_CANCELED_MARKERS`` substrings `map_game_status` checks -- promotes
-    those rows to the terminal :attr:`GameStatus.POSTPONED` so the inner state machine
+    Fix #4 made POSTPONED/CANCELED first-class persisted statuses on
+    ``summer_league_games.status`` (`scoreboard_ingest.map_game_status`), so a
+    freshly-ingested postponed/canceled row maps directly here. ``status_text``
+    re-detection (via the same ``_POSTPONED_OR_CANCELED_MARKERS`` substrings
+    `map_game_status` checks) is kept as a belt-and-suspenders fallback for any
+    legacy row already persisted as SCHEDULED+"PPD" *before* this migration/fix
+    landed and re-ingests it -- either signal promotes the row to the terminal
+    :attr:`GameStatus.POSTPONED` so the inner state machine
     (`state_machine.inner_state`) never treats a game that will never tip as
-    Live-triggering or perpetually unresolved.
+    Live-triggering or perpetually unresolved. The DB distinguishes POSTPONED
+    from CANCELED; the event-agnostic state machine does not need to, so both
+    collapse to the single terminal :attr:`GameStatus.POSTPONED` bucket.
 
     Args:
         status: The persisted `SummerLeagueGameStatus` code.
         status_text: The row's raw ``status_text`` (e.g. ``"PPD"``), if any.
 
     Returns:
-        :attr:`GameStatus.POSTPONED` when ``status_text`` matches a
-        postponed/canceled marker; otherwise the trivial 1:1 cast of ``status``.
+        :attr:`GameStatus.POSTPONED` when ``status`` is POSTPONED/CANCELED or
+        ``status_text`` matches a postponed/canceled marker; otherwise the
+        trivial 1:1 cast of ``status``.
     """
+    if status in (SummerLeagueGameStatus.POSTPONED, SummerLeagueGameStatus.CANCELED):
+        return GameStatus.POSTPONED
     text = (status_text or "").strip().lower()
     if any(marker in text for marker in _POSTPONED_OR_CANCELED_MARKERS):
         return GameStatus.POSTPONED

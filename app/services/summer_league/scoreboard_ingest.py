@@ -70,8 +70,19 @@ _STATUS_CODE_MAP: dict[int, SummerLeagueGameStatus] = {
 # out during Las Vegas Summer League); "postpon"/"cancel" are defensive
 # variants for the same real-world condition. Checked *before* the numeric
 # ``gameStatus`` code below so a feed that briefly reports a stale/live code
-# alongside postponed/canceled text is never classified as live.
+# alongside postponed/canceled text is never classified as live. Kept as one
+# combined tuple (rather than two disjoint ones) since callers outside this
+# module (``event_desk.registry._to_generic_status``) still need a single
+# "is this postponed-or-canceled at all" check against ``status_text`` for
+# legacy rows persisted before the POSTPONED/CANCELED statuses existed
+# (fix #4) -- ``_POSTPONED_MARKERS``/``_CANCELED_MARKERS`` below only decide
+# which of the two *new* statuses a freshly-ingested row gets.
 _POSTPONED_OR_CANCELED_MARKERS = ("ppd", "postpon", "cancel")
+
+# Disjoint marker subsets deciding which terminal status a freshly-ingested
+# row gets (fix #4): "cancel" text -> CANCELED, "ppd"/"postpon" -> POSTPONED.
+_POSTPONED_MARKERS = ("ppd", "postpon")
+_CANCELED_MARKERS = ("cancel",)
 
 
 @dataclass(frozen=True)
@@ -124,15 +135,23 @@ def map_game_status(
             missing or unrecognized.
 
     Returns:
-        ``SCHEDULED`` / ``IN_PROGRESS`` / ``FINAL`` / ``UNKNOWN``.
+        ``SCHEDULED`` / ``IN_PROGRESS`` / ``FINAL`` / ``POSTPONED`` /
+        ``CANCELED`` / ``UNKNOWN``.
     """
     text = (game_status_text or "").strip().lower()
 
     # Postponed/canceled text wins over the numeric code, checked first: a
     # postponed game is never live, regardless of what (possibly stale)
     # ``gameStatus`` code the feed is currently reporting alongside it.
-    if any(marker in text for marker in _POSTPONED_OR_CANCELED_MARKERS):
-        return SummerLeagueGameStatus.SCHEDULED
+    # Fix #4: persist the real terminal status instead of collapsing it to
+    # SCHEDULED, so every downstream consumer that filters on this column
+    # (`live_ingestion._LIVE_STATUSES`, `normalization.resolve_game_status`)
+    # excludes postponed/canceled games automatically rather than
+    # re-deriving from ``status_text``.
+    if any(marker in text for marker in _CANCELED_MARKERS):
+        return SummerLeagueGameStatus.CANCELED
+    if any(marker in text for marker in _POSTPONED_MARKERS):
+        return SummerLeagueGameStatus.POSTPONED
 
     code: int | None = None
     if isinstance(game_status, bool):

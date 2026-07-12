@@ -89,13 +89,14 @@ def test_map_game_status_treats_bool_as_not_a_code() -> None:
     assert map_game_status(False, None) == SummerLeagueGameStatus.UNKNOWN
 
 
-def test_map_game_status_postponed_text_is_scheduled_not_live() -> None:
-    """A real "PPD" status text maps to SCHEDULED with its real, observed code.
+def test_map_game_status_postponed_text_is_postponed_not_live() -> None:
+    """A real "PPD" status text maps to POSTPONED with its real, observed code.
 
     "PPD" is the real status text NBA Stats used for a rained-out SL game
-    (LeagueID 15, 2021 season, gameId 1522100005).
+    (LeagueID 15, 2021 season, gameId 1522100005). Fix #4: persisted as a
+    real terminal POSTPONED status, not collapsed to SCHEDULED.
     """
-    assert map_game_status(1, "PPD") == SummerLeagueGameStatus.SCHEDULED
+    assert map_game_status(1, "PPD") == SummerLeagueGameStatus.POSTPONED
 
 
 def test_map_game_status_postponed_text_beats_a_live_numeric_code() -> None:
@@ -105,9 +106,15 @@ def test_map_game_status_postponed_text_beats_a_live_numeric_code() -> None:
     still reports a live/final code alongside postponed/canceled text is
     never classified as live or final.
     """
-    assert map_game_status(2, "PPD") == SummerLeagueGameStatus.SCHEDULED
-    assert map_game_status(3, "Postponed") == SummerLeagueGameStatus.SCHEDULED
-    assert map_game_status(2, "Canceled") == SummerLeagueGameStatus.SCHEDULED
+    assert map_game_status(2, "PPD") == SummerLeagueGameStatus.POSTPONED
+    assert map_game_status(3, "Postponed") == SummerLeagueGameStatus.POSTPONED
+    assert map_game_status(2, "Canceled") == SummerLeagueGameStatus.CANCELED
+
+
+def test_map_game_status_canceled_text_maps_to_canceled_not_postponed() -> None:
+    """"Cancel" text maps to the distinct CANCELED status, not POSTPONED."""
+    assert map_game_status(1, "Game Canceled") == SummerLeagueGameStatus.CANCELED
+    assert map_game_status(None, "cancelled") == SummerLeagueGameStatus.CANCELED
 
 
 def test_parse_tip_datetime_utc_prefers_game_date_time_utc() -> None:
@@ -358,13 +365,13 @@ def test_parse_scoreboard_games_scheduled_game_score_is_none_not_zero() -> None:
 
 
 def test_parse_scoreboard_games_real_postponed_game_is_never_live() -> None:
-    """The one real captured "PPD" game (2021 season) is parsed as SCHEDULED.
+    """The one real captured "PPD" game (2021 season) is parsed as POSTPONED.
 
     Fixture: LeagueID 15, Season 2021, gameId 1522100005 (WAS @ IND), rained
     out during Las Vegas Summer League -- the schedule feed still reports
-    numeric code 1 (scheduled), but confirms the honest raw status text is
-    retained for a case a purely code-driven mapping would otherwise blur
-    with a merely-not-yet-tipped game.
+    numeric code 1 (scheduled), but confirms the honest raw status text
+    drives the real, persisted terminal POSTPONED status (fix #4) rather
+    than the game being blurred with a merely-not-yet-tipped game.
     """
     payload = _load_fixture(_REAL_POSTPONED_FIXTURE)
     games = parse_scoreboard_games(payload, target_dates=None)
@@ -372,7 +379,7 @@ def test_parse_scoreboard_games_real_postponed_game_is_never_live() -> None:
     assert len(games) == 1
     game = games[0]
     assert game.nba_stats_game_id == "1522100005"
-    assert game.status == SummerLeagueGameStatus.SCHEDULED
+    assert game.status == SummerLeagueGameStatus.POSTPONED
     assert game.status_text == "PPD"
     assert game.home_nba_stats_team_id == "1610612754"  # IND
     assert game.away_nba_stats_team_id == "1610612764"  # WAS

@@ -671,7 +671,11 @@ async def test_run_scoreboard_ingest_never_nulls_or_zeroes_existing_values(
 async def test_run_scoreboard_ingest_real_postponed_game_never_marked_live(
     db_session: AsyncSession,
 ) -> None:
-    """The one real captured "PPD" game ingests as SCHEDULED, honest text retained."""
+    """The one real captured "PPD" game ingests as POSTPONED, honest text retained.
+
+    Fix #4: persisted as a real terminal POSTPONED status (not collapsed to
+    SCHEDULED), so `select_active_window_games` excludes it by status alone.
+    """
     comp = await _competition(db_session, year=2021, league_id="15")
     assert comp.id is not None
 
@@ -689,7 +693,7 @@ async def test_run_scoreboard_ingest_real_postponed_game_never_marked_live(
             )
         )
     ).scalar_one()
-    assert game.status == SummerLeagueGameStatus.SCHEDULED
+    assert game.status == SummerLeagueGameStatus.POSTPONED
     assert game.status_text == "PPD"
 
 

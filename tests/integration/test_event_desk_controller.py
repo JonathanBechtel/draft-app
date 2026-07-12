@@ -245,6 +245,60 @@ async def test_calendar_facts_excludes_postponed_tip_but_surfaces_postponed_stat
 
 
 @pytest.mark.asyncio
+async def test_calendar_facts_maps_db_postponed_and_canceled_status_directly(
+    db_session: AsyncSession,
+) -> None:
+    """Fix #4: a row persisted with the real POSTPONED/CANCELED DB status maps to
+    `GameStatus.POSTPONED` with no ``status_text`` marker needed -- the direct
+    status-level reconciliation, as distinct from the pre-fix-#4 ``status_text``
+    fallback exercised by `test_calendar_facts_excludes_postponed_tip_but_surfaces_postponed_status`
+    above (which still persists SCHEDULED+"PPD", proving that legacy path stays green)."""
+    competition = await _make_competition(db_session)
+    assert competition.id is not None
+    real_tip = datetime(2026, 7, 10, 23, 0)
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 10),
+        tip_datetime=real_tip,
+        status=SummerLeagueGameStatus.SCHEDULED,
+        suffix="0001",
+    )
+    postponed_tip = datetime(2026, 7, 10, 10, 0)
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 10),
+        tip_datetime=postponed_tip,
+        status=SummerLeagueGameStatus.POSTPONED,
+        suffix="0002",
+        status_text="PPD",
+    )
+    canceled_tip = datetime(2026, 7, 10, 11, 0)
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 10),
+        tip_datetime=canceled_tip,
+        status=SummerLeagueGameStatus.CANCELED,
+        suffix="0003",
+        status_text="Canceled",
+    )
+
+    facts = await calendar_facts_for_competition_ids(
+        db_session, competition_ids=[competition.id], today=date(2026, 7, 10)
+    )
+
+    # Only the real game's tip drives `first_tip` math -- both the postponed and
+    # canceled games' tips are withheld entirely.
+    assert facts.today_schedule == (real_tip,)
+    # Both POSTPONED and CANCELED collapse to the single terminal generic bucket.
+    assert sorted(facts.today_statuses) == sorted(
+        (GameStatus.SCHEDULED, GameStatus.POSTPONED, GameStatus.POSTPONED)
+    )
+
+
+@pytest.mark.asyncio
 async def test_tick_postponed_only_day_resolves_recap_not_live(
     db_session: AsyncSession,
 ) -> None:

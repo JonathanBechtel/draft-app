@@ -1275,7 +1275,13 @@ def resolve_game_status(
        game hasn't finished, so this path never fires mid-event.
 
     Once Final, monotonic: no later call -- partial, stale, or otherwise --
-    can regress it back to Scheduled/In-Progress/Unknown.
+    can regress it back to Scheduled/In-Progress/Unknown. POSTPONED/CANCELED
+    (fix #4) are likewise terminal and pass straight through here unchanged:
+    a postponed game will never tip, so an audited-``COMPLETE`` raw run for
+    its year/league (evidence the *other* games in that slice genuinely
+    finished) must never be read as evidence that *this* game finished too
+    and get promoted to FINAL -- nor may it ever regress back to
+    Scheduled/In-Progress/Unknown.
 
     Args:
         current_status: The game's persisted status before this call (the
@@ -1288,8 +1294,12 @@ def resolve_game_status(
     Returns:
         The status to persist.
     """
-    if current_status == SummerLeagueGameStatus.FINAL:
-        return SummerLeagueGameStatus.FINAL
+    if current_status in (
+        SummerLeagueGameStatus.FINAL,
+        SummerLeagueGameStatus.POSTPONED,
+        SummerLeagueGameStatus.CANCELED,
+    ):
+        return current_status
     if current_status in (
         SummerLeagueGameStatus.SCHEDULED,
         SummerLeagueGameStatus.IN_PROGRESS,

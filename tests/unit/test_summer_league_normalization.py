@@ -75,6 +75,14 @@ def test_team_slug_uses_source_name_or_abbreviation() -> None:
         # Once Final, monotonic: a later partial/stale call never regresses it.
         (SummerLeagueGameStatus.FINAL, False, SummerLeagueGameStatus.FINAL),
         (SummerLeagueGameStatus.FINAL, True, SummerLeagueGameStatus.FINAL),
+        # Fix #4: POSTPONED/CANCELED are terminal like FINAL -- a game that will
+        # never tip must never get promoted to FINAL just because the audited
+        # raw run for its year/league happens to be COMPLETE (evidence the
+        # *other* games in that slice finished, not this one), nor regressed.
+        (SummerLeagueGameStatus.POSTPONED, False, SummerLeagueGameStatus.POSTPONED),
+        (SummerLeagueGameStatus.POSTPONED, True, SummerLeagueGameStatus.POSTPONED),
+        (SummerLeagueGameStatus.CANCELED, False, SummerLeagueGameStatus.CANCELED),
+        (SummerLeagueGameStatus.CANCELED, True, SummerLeagueGameStatus.CANCELED),
     ],
 )
 def test_resolve_game_status_table(

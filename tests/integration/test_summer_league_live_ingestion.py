@@ -161,6 +161,44 @@ async def test_select_active_window_games_excludes_final_games_even_inside_windo
 
 
 @pytest.mark.asyncio
+async def test_select_active_window_games_excludes_postponed_game_inside_window(
+    db_session: AsyncSession,
+) -> None:
+    """A POSTPONED game whose tip falls inside the active window is still excluded.
+
+    Core regression for fix #4: a prior fix made postponed games terminal in the
+    event-agnostic daily state machine, but the DB status column still persisted
+    them as SCHEDULED -- so `_LIVE_STATUSES` (which filters on this column) kept
+    selecting a postponed game for a critical box-score refresh whose endpoints
+    will never return data, which (combined with fix #2's fail-the-whole-tick
+    guard) would abort every tick in its window. `map_game_status` now persists
+    the real POSTPONED status, so `_LIVE_STATUSES` excludes it with no special
+    casing -- proven here against a game tipping squarely inside the window.
+    """
+    comp = await _competition(db_session, year=2026, league_id="15", venue="las_vegas")
+    assert comp.id is not None
+    await upsert_scoreboard_games(
+        db_session,
+        competition_id=comp.id,
+        games=[
+            ScoreboardGame(
+                nba_stats_game_id="postponed-1",
+                game_date=date(2026, 7, 10),
+                tip_datetime=datetime(2026, 7, 10, 20, 0),
+                status=SummerLeagueGameStatus.POSTPONED,
+                status_text="PPD",
+            )
+        ],
+    )
+    await db_session.commit()
+
+    now = datetime(2026, 7, 10, 19, 30)
+    selections = await select_active_window_games(db_session, now=now)
+
+    assert "postponed-1" not in {s.nba_stats_game_id for s in selections}
+
+
+@pytest.mark.asyncio
 async def test_select_active_window_games_scopes_to_the_requesting_competition_year_league(
     db_session: AsyncSession,
 ) -> None:
