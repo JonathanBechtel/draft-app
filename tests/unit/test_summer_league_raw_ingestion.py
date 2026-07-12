@@ -10,10 +10,12 @@ import pytest
 
 from app.services.summer_league.raw_ingestion import (
     GAME_ENDPOINTS,
+    REQUIRED_GAME_ENDPOINTS,
     RawIngestionOptions,
     SummerLeagueRequiredGamelogError,
     SummerLeagueRawIngestor,
     extract_game_ids,
+    is_required_game_endpoint,
 )
 from app.services.summer_league.raw_store import SummerLeagueRawStore
 
@@ -88,6 +90,34 @@ def _endpoint_payload(endpoint: str, game_id: str) -> dict[str, object]:
             }
         ]
     }
+
+
+def test_required_game_endpoints_are_exactly_the_box_score_endpoints() -> None:
+    """The critical set is the three box-score endpoints, nothing else.
+
+    Guards the single source of truth `live_ingestion.refresh_selected_games`
+    reads to decide `LiveIngestionReport.required_errors` -- pbp/shotchart
+    must stay outside it (non-blocking), while every box-score endpoint must
+    be inside it (blocks freshness).
+    """
+    assert REQUIRED_GAME_ENDPOINTS == {
+        "boxscoretraditionalv2",
+        "boxscoreadvancedv2",
+        "boxscorescoringv2",
+    }
+    assert REQUIRED_GAME_ENDPOINTS < set(GAME_ENDPOINTS)
+
+
+@pytest.mark.parametrize("endpoint", sorted(REQUIRED_GAME_ENDPOINTS))
+def test_is_required_game_endpoint_true_for_box_score_endpoints(endpoint: str) -> None:
+    """Every box-score endpoint classifies as required."""
+    assert is_required_game_endpoint(endpoint) is True
+
+
+@pytest.mark.parametrize("endpoint", ["playbyplayv2", "shotchartdetail", "unknownendpoint"])
+def test_is_required_game_endpoint_false_for_non_box_score_endpoints(endpoint: str) -> None:
+    """pbp/shotchart (and anything unrecognized) classify as non-blocking."""
+    assert is_required_game_endpoint(endpoint) is False
 
 
 def test_extract_game_ids_deduplicates_in_gamelog_order() -> None:

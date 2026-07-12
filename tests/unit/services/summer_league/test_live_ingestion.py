@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
 
+import pytest
+
 from app.services.summer_league.live_ingestion import (
     LiveGameSelection,
     _default_clock,
@@ -24,7 +26,10 @@ from app.services.summer_league.live_ingestion import (
     group_by_year_league,
     refresh_selected_games,
 )
-from app.services.summer_league.raw_ingestion import GAME_ENDPOINTS
+from app.services.summer_league.raw_ingestion import (
+    GAME_ENDPOINTS,
+    REQUIRED_GAME_ENDPOINTS,
+)
 from app.services.summer_league.raw_store import SummerLeagueRawStore
 
 
@@ -226,3 +231,75 @@ def test_refresh_selected_games_per_endpoint_failure_counts_as_error_not_written
     assert any("playbyplayv2" in message for message in report.error_messages)
     # Sibling endpoints for the same game still succeed.
     assert report.written == len(GAME_ENDPOINTS) - 1 + 2  # game endpoints + 2 gamelogs
+    # playbyplayv2 is non-blocking: an optional-endpoint hiccup must never
+    # count toward required_errors (that would abort the whole tick, #530's
+    # gate) -- only the box-score endpoints do.
+    assert report.required_errors == 0
+
+
+@pytest.mark.parametrize(
+    "endpoint", sorted(REQUIRED_GAME_ENDPOINTS)
+)
+def test_refresh_selected_games_critical_box_score_failure_increments_required_errors(
+    tmp_path: Path, endpoint: str
+) -> None:
+    """A failed traditional/advanced/scoring box-score fetch blocks freshness.
+
+    These three endpoints are (or directly feed) the player line the Desk
+    renders; `force=True` leaves the OLD on-disk snapshot in place on a
+    fetch failure, so a failure here must count toward `required_errors` so
+    the tick (#530's gate in `scripts/sl_desk_tick.py`) aborts before
+    stamping fresh state on a stale line.
+    """
+    client = FakeNBAStatsClient(failures={(endpoint, "live-1")})
+    selections = [LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")]
+
+    report = refresh_selected_games(
+        selections, client=client, store=SummerLeagueRawStore(tmp_path), sleep=lambda _: None
+    )
+
+    assert report.errors == 1
+    assert report.required_errors == 1
+    assert any(endpoint in message for message in report.error_messages)
+
+
+@pytest.mark.parametrize("endpoint", ["playbyplayv2", "shotchartdetail"])
+def test_refresh_selected_games_non_critical_endpoint_failure_stays_optional(
+    tmp_path: Path, endpoint: str
+) -> None:
+    """A failed play-by-play/shot-chart fetch is a visible error but never blocks freshness.
+
+    Unlike the box-score endpoints, these do not feed the player line the
+    Desk renders, so a bad fetch here must land in `errors` only --
+    `required_errors` must stay 0 so #530's tick-abort gate does not fire.
+    """
+    assert endpoint not in REQUIRED_GAME_ENDPOINTS
+    client = FakeNBAStatsClient(failures={(endpoint, "live-1")})
+    selections = [LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")]
+
+    report = refresh_selected_games(
+        selections, client=client, store=SummerLeagueRawStore(tmp_path), sleep=lambda _: None
+    )
+
+    assert report.errors == 1
+    assert report.required_errors == 0
+
+
+def test_refresh_selected_games_mixed_critical_and_optional_failures_counts_only_critical(
+    tmp_path: Path,
+) -> None:
+    """Two failures in one refresh -- only the critical one counts toward required_errors."""
+    client = FakeNBAStatsClient(
+        failures={
+            ("boxscoretraditionalv2", "live-1"),
+            ("shotchartdetail", "live-1"),
+        }
+    )
+    selections = [LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")]
+
+    report = refresh_selected_games(
+        selections, client=client, store=SummerLeagueRawStore(tmp_path), sleep=lambda _: None
+    )
+
+    assert report.errors == 2
+    assert report.required_errors == 1

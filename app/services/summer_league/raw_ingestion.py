@@ -27,6 +27,42 @@ GAME_ENDPOINTS = (
     "shotchartdetail",
 )
 
+# The subset of GAME_ENDPOINTS whose failure must block freshness. The three
+# box-score endpoints ARE (traditional) or directly feed (advanced/scoring)
+# the player line the Summer League Desk renders -- a failed fetch here that
+# silently falls back to an old on-disk snapshot (see `force=True` behavior
+# in `_fetch_game_endpoint` below) must never let a tick claim fresh state
+# (see `app.services.summer_league.live_ingestion.refresh_selected_games`,
+# which folds a critical failure into `LiveIngestionReport.required_errors`).
+# `playbyplayv2` and `shotchartdetail` are deliberately excluded: a bad
+# play-by-play/shot-chart fetch is a real, visible error but must stay
+# non-blocking -- it never gates the box-score line's freshness.
+REQUIRED_GAME_ENDPOINTS = frozenset(
+    {
+        "boxscoretraditionalv2",
+        "boxscoreadvancedv2",
+        "boxscorescoringv2",
+    }
+)
+
+
+def is_required_game_endpoint(endpoint: str) -> bool:
+    """Whether a per-game endpoint's failure must block freshness.
+
+    Single source of truth for classifying a per-game endpoint (as recorded
+    on a :class:`~app.services.summer_league.manifest.SummerLeagueRawError`)
+    as critical (a box-score endpoint -- must abort the tick before it
+    claims fresh state) or non-blocking (``playbyplayv2``/``shotchartdetail``
+    -- stays a visible but optional error). See :data:`REQUIRED_GAME_ENDPOINTS`.
+
+    Args:
+        endpoint: The NBA Stats endpoint name, e.g. ``"boxscoretraditionalv2"``.
+
+    Returns:
+        Whether ``endpoint`` is one of :data:`REQUIRED_GAME_ENDPOINTS`.
+    """
+    return endpoint in REQUIRED_GAME_ENDPOINTS
+
 
 class SummerLeagueRequiredGamelogError(RuntimeError):
     """Raised when a required season gamelog cannot be collected."""

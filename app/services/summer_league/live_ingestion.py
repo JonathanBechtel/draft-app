@@ -42,6 +42,7 @@ from app.services.summer_league.raw_ingestion import (
     RawIngestionOptions,
     SummerLeagueRawIngestor,
     SummerLeagueRequiredGamelogError,
+    is_required_game_endpoint,
 )
 from app.services.summer_league.raw_store import SummerLeagueRawStore
 
@@ -96,14 +97,22 @@ class LiveIngestionReport:
             failed outright on a required season gamelog. Errors are never
             folded into ``written`` -- a failed endpoint cannot be reported
             as a successful refresh.
-        required_errors: The subset of ``errors`` caused by a group's
-            *required* season gamelog fetch failing outright
-            (``SummerLeagueRequiredGamelogError``) -- the prerequisite every
-            game in that group's normalize pass depends on. A single
-            optional per-game/endpoint hiccup (one bad shotchart fetch, say)
-            does not count here; callers that need to decide whether a tick
-            can safely proceed to normalize/claim fresh state should gate on
-            this, not on ``errors``.
+        required_errors: The subset of ``errors`` that must block freshness --
+            a group's *required* season gamelog fetch failing outright
+            (``SummerLeagueRequiredGamelogError``, the prerequisite every
+            game in that group's normalize pass depends on), plus any
+            critical per-game box-score endpoint failure for a selected game
+            (``boxscoretraditionalv2``, ``boxscoreadvancedv2``,
+            ``boxscorescoringv2`` --
+            :func:`~app.services.summer_league.raw_ingestion.is_required_game_endpoint`).
+            A failed critical box-score fetch leaves the OLD on-disk
+            snapshot in place (``force=True`` only overwrites on a
+            successful fetch), so normalize would otherwise silently re-read
+            a stale player line as fresh. A non-blocking per-game/endpoint
+            hiccup (``playbyplayv2``/``shotchartdetail``) does not count
+            here; callers that need to decide whether a tick can safely
+            proceed to normalize/claim fresh state should gate on this, not
+            on ``errors``.
         error_messages: Human-readable detail for each counted error.
     """
 
@@ -215,7 +224,14 @@ def refresh_selected_games(
     (:class:`~app.services.summer_league.raw_ingestion.SummerLeagueRequiredGamelogError`)
     is recorded as an error for that group and does not abort sibling
     groups -- one bad LeagueID/year combination cannot silently swallow every
-    other live game's refresh.
+    other live game's refresh. Likewise, a critical per-game box-score
+    endpoint failure (see
+    :func:`~app.services.summer_league.raw_ingestion.is_required_game_endpoint`)
+    is folded into ``required_errors`` but does not stop this function from
+    processing the rest of the group or sibling groups -- it is the caller
+    (`scripts/sl_desk_tick.py`'s ``run_desk_tick``) that inspects
+    ``required_errors`` afterward and aborts the whole tick before claiming
+    fresh state.
 
     Args:
         selections: Exact games to refresh, e.g. from
@@ -256,6 +272,15 @@ def refresh_selected_games(
         report.written += len(manifest.files_written)
         report.skipped += len(manifest.files_skipped)
         report.errors += len(manifest.errors)
+        # A critical box-score endpoint failure (traditional/advanced/
+        # scoring) for a selected game leaves the stale on-disk snapshot in
+        # place, so it must block freshness the same way a required-gamelog
+        # failure does -- fold it into required_errors too, in addition to
+        # the unconditional errors count above. playbyplayv2/shotchartdetail
+        # failures stay in errors only.
+        report.required_errors += sum(
+            1 for error in manifest.errors if is_required_game_endpoint(error.endpoint)
+        )
         report.error_messages.extend(
             f"{year}/{league_id}/{error.game_id or '-'}: {error.endpoint}: {error.message}"
             for error in manifest.errors

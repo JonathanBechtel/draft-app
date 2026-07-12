@@ -618,7 +618,15 @@ async def test_desk_tick_bootstraps_scoreboard_on_first_morning_with_no_games_ye
         game_id="desk-tick-bootstrap-game-1",
         tip_iso="2026-07-10T23:00:00Z",  # 7:00pm ET tip.
     )
-    session = FakeSession({"15": FakeResponse(payload)})
+    # `FakeSession` (keyed only by LeagueID) would also serve the schedule
+    # payload back for the box-score endpoints step 1's live refresh fires
+    # for the newly-bootstrapped Scheduled game -- those requests carry no
+    # `LeagueID` param at all (`build_boxscore_params`), so a LeagueID-only
+    # fake would 404 them. This test isn't exercising the live-refresh path,
+    # so route by endpoint instead and let every unregistered endpoint (the
+    # season gamelogs and all five per-game endpoints) succeed with a
+    # trivial empty payload.
+    session = SequencedFakeSession({("scheduleleaguev2", ""): [FakeResponse(payload)]})
     client = NBAStatsClient(session=session)
 
     result = await run_desk_tick(db_session, now=now, raw_root=tmp_path, client=client)
@@ -892,3 +900,109 @@ async def test_desk_tick_required_live_refresh_failure_aborts_before_claiming_fr
     # reached step 6.
     states = (await db_session.execute(select(EventDeskState))).scalars().all()
     assert states == []
+
+
+async def test_desk_tick_required_box_score_failure_aborts_before_claiming_fresh_state(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A failed *critical* box-score fetch also aborts the tick, not just a gamelog failure.
+
+    Before this fix, only a required season-gamelog failure counted toward
+    ``LiveIngestionReport.required_errors``; a failed ``boxscoretraditionalv2``
+    fetch (the actual player box-score line) landed only in the non-blocking
+    ``errors`` count, so #530's abort gate never fired and the tick could
+    commit with the OLD on-disk snapshot (``force=True`` never overwrites on
+    a failed fetch) silently treated as fresh. This proves the fix: a
+    critical box-score endpoint failure for the one selected live game now
+    aborts the tick the same way a required-gamelog failure does, before
+    writing any T2-T4 row or the ``event_desk_state`` freshness stamp.
+    """
+    year = 2026
+    competition = await _seed_competition(db_session, year=year, league_id="15")
+    home = await _seed_team(db_session, competition)
+    away = await _seed_team(db_session, competition)
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 20, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+    baseline_version = "sl-desk-tick-box-score-failure-v1"
+    await _seed_baseline(db_session, baseline_version=baseline_version)
+    await db_session.commit()
+
+    # Scoreboard succeeds (empty schedule -- doesn't touch the seeded game);
+    # the required season gamelogs succeed (default empty-but-valid
+    # response, unregistered here); the critical boxscoretraditionalv2 fetch
+    # for the one selected live game fails outright (404, non-retryable).
+    session = SequencedFakeSession(
+        {
+            ("scheduleleaguev2", ""): [FakeResponse(_empty_schedule_payload())],
+            ("boxscoretraditionalv2", ""): [FakeResponse({}, status_code=404)],
+        }
+    )
+    client = NBAStatsClient(session=session)
+
+    now = datetime(2026, 7, 10, 19, 30)
+
+    with pytest.raises(
+        RuntimeError, match="Required Summer League live raw refresh failed"
+    ):
+        await run_desk_tick(db_session, now=now, raw_root=tmp_path, client=client)
+
+    # No event_desk_state row was ever written this call -- the tick never
+    # reached step 6, exactly as it would for a required-gamelog failure.
+    states = (await db_session.execute(select(EventDeskState))).scalars().all()
+    assert states == []
+
+
+async def test_desk_tick_optional_pbp_or_shotchart_failure_does_not_abort(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A failed shot-chart fetch stays non-blocking -- the tick still completes.
+
+    Mirrors the box-score-failure abort test above, but the failing endpoint
+    is ``shotchartdetail`` -- classified non-required
+    (``is_required_game_endpoint``), so ``required_errors`` stays 0 and the
+    tick reaches step 6/7 and stamps freshness normally, unlike a
+    box-score/gamelog failure.
+    """
+    year = 2026
+    competition = await _seed_competition(db_session, year=year, league_id="15")
+    home = await _seed_team(db_session, competition)
+    away = await _seed_team(db_session, competition)
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 20, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+    baseline_version = "sl-desk-tick-shotchart-failure-v1"
+    await _seed_baseline(db_session, baseline_version=baseline_version)
+    await db_session.commit()
+
+    session = SequencedFakeSession(
+        {
+            ("scheduleleaguev2", ""): [FakeResponse(_empty_schedule_payload())],
+            ("shotchartdetail", ""): [FakeResponse({}, status_code=404)],
+        }
+    )
+    client = NBAStatsClient(session=session)
+
+    now = datetime(2026, 7, 10, 19, 30)
+
+    result = await run_desk_tick(db_session, now=now, raw_root=tmp_path, client=client)
+
+    assert result.live_refresh_report is not None
+    assert result.live_refresh_report.required_errors == 0
+    assert result.live_refresh_report.errors >= 1
+    states = (await db_session.execute(select(EventDeskState))).scalars().all()
+    assert len(states) >= 1
