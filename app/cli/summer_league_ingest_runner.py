@@ -21,11 +21,29 @@ After every configured venue has been attempted, if *any* venue had games
 this run, the global advanced-metrics table is rebuilt once (it is a full
 wipe+rebuild, not scoped to one venue/year).
 
+5. Refreshes the active Summer League event's *forward* schedule (the
+   ``scheduleleaguev2`` feed, via
+   ``app.services.summer_league.scoreboard_ingest.run_scoreboard_ingest``)
+   so ``summer_league_games.tip_datetime`` stays fresh at this cron's own
+   hourly cadence, decoupled from the Summer League Desk tick
+   (``scripts/sl_desk_tick.py``) -- previously the *only* place that feed
+   was ever polled, and only once the Desk itself was already non-dormant.
+   That was a chicken-and-egg gap: the Desk can't wake up without tip
+   times, and it can't get tip times because it's asleep. This step reuses
+   the per-venue NBA Stats client already opened above (no second client)
+   and is gated by a window guard (:func:`_schedule_pull_in_window`) so it
+   never calls stats.nba.com during the long off-season -- see that
+   function's docstring for exactly how the window is resolved. Additive
+   and best-effort: a failure here is logged and does not fail the run, and
+   the Desk tick's own step-0 scoreboard ingest is left untouched as
+   belt-and-suspenders.
+
 One venue failing does not abort the others. Fetch-stage errors (e.g.
 stats.nba.com being unreachable) are treated the same as "no games yet" for
 that venue and do not fail the run -- there is nothing to process either way.
 Only a genuine failure *after* games were detected (backbone/normalization/
-metrics errors) marks the run as failed.
+metrics errors) marks the run as failed. The schedule refresh (step 5) is
+independently best-effort for the same reason -- see its own docstring.
 
 Usage:
     python -m app.cli.summer_league_ingest_runner
@@ -44,11 +62,17 @@ import asyncio
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from collections.abc import Sequence
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.event_desk import EventLifecyclePhase
+from app.schemas.summer_league import SummerLeagueCompetition
+from app.services.event_desk.lifecycle import lifecycle_phase
+from app.services.event_desk.registry import DeskEvent, SUMMER_LEAGUE_REGISTRATION
+from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.backfill import (
     SummerLeagueBackfillOptions,
     backfill_summer_league_backbone,
@@ -66,6 +90,11 @@ from app.services.summer_league.raw_ingestion import (
     SummerLeagueRawIngestor,
 )
 from app.services.summer_league.raw_store import SummerLeagueRawStore
+from app.services.summer_league.scoreboard_ingest import (
+    ScoreboardIngestReport,
+    resolve_target_competitions,
+    run_scoreboard_ingest,
+)
 from app.utils.db_async import SessionLocal, dispose_engine
 
 # Configure logging for cron context
@@ -136,6 +165,187 @@ def _resolve_league_ids() -> list[str]:
     if not league_ids:
         raise ValueError("No Summer League LeagueIDs resolved for ingestion")
     return league_ids
+
+
+# Outer lifecycle phases worth an NBA Stats schedule-feed round-trip: the
+# event is on the calendar (Announced), imminent (Warm-up), literally
+# playing (Active), or in its short wind-down tail (a day or two past the
+# last known game, per `post_roll_days` -- games can still slip/reschedule
+# in that window). Dormant (nowhere near the window) and Archived (long
+# over) are excluded so this hourly cron never calls stats.nba.com during
+# the ~11 off-season months. Wider than `scripts/sl_desk_tick.py`'s own
+# `_BOOTSTRAP_ELIGIBLE_PHASES` (which omits Wind-down) because that bootstrap
+# only exists to escape dormancy -- once awake, the Desk tick's own step 0
+# keeps polling every tick regardless of phase. This cron has no such
+# always-runs-when-awake step of its own, so it must keep covering Wind-down
+# itself to catch a late score/reschedule correction after the last game.
+_SCHEDULE_ELIGIBLE_PHASES = frozenset(
+    {
+        EventLifecyclePhase.ANNOUNCED,
+        EventLifecyclePhase.WARMUP,
+        EventLifecyclePhase.ACTIVE,
+        EventLifecyclePhase.WINDDOWN,
+    }
+)
+
+
+def _synthetic_schedule_dates(
+    competitions: Sequence[SummerLeagueCompetition],
+) -> tuple[date, ...]:
+    """Every day spanned by each target competition's ``starts_on``/``ends_on``.
+
+    Mirrors ``scripts/sl_desk_tick.py``'s ``_synthetic_calendar_dates`` --
+    duplicated here (not imported) since that module is a CLI entrypoint
+    script, not a shared service, and this runner is itself a separate CLI
+    entrypoint; both independently reuse the same two columns
+    ``normalization.refresh_competition_date_window`` populates from real
+    game data. Used as a stand-in for a real per-day ``summer_league_games``
+    calendar so :func:`~app.services.event_desk.lifecycle.lifecycle_phase`'s
+    gap-bridge clustering has something to reason about even on a run that
+    hasn't ingested any games yet itself.
+
+    Args:
+        competitions: The target competitions for today
+            (:func:`~app.services.summer_league.scoreboard_ingest.resolve_target_competitions`).
+
+    Returns:
+        Every date in each competition's inclusive ``[starts_on, ends_on]``
+        span, possibly empty (and possibly containing duplicates across
+        competitions -- `lifecycle_phase`'s clustering dedupes internally).
+        A competition missing either date contributes nothing.
+    """
+    dates: list[date] = []
+    for competition in competitions:
+        if competition.starts_on is None or competition.ends_on is None:
+            continue
+        span_days = (competition.ends_on - competition.starts_on).days
+        if span_days < 0:
+            continue
+        dates.extend(
+            competition.starts_on + timedelta(days=offset)
+            for offset in range(span_days + 1)
+        )
+    return tuple(dates)
+
+
+async def _schedule_pull_in_window(db: AsyncSession, *, now: datetime) -> bool:
+    """Window guard: is a registered Summer League competition in/near its window?
+
+    Reuses the same pure outer-lifecycle state machine
+    (:func:`~app.services.event_desk.lifecycle.lifecycle_phase`) the Summer
+    League Desk itself uses, rather than hand-rolling date-range arithmetic,
+    so this cron's notion of "in season" never drifts from the Desk's. Fed
+    by each target competition's ``starts_on``/``ends_on`` window spread
+    into a synthetic per-day calendar (:func:`_synthetic_schedule_dates`) --
+    mirrors ``scripts/sl_desk_tick.py``'s ``_needs_scoreboard_bootstrap`` /
+    `_synthetic_calendar_dates`` pattern for the identical "no
+    ``summer_league_games`` rows yet to anchor the resolver" gap, since this
+    guard runs *before* any schedule ingest this cron might do -- there may
+    be no real per-day game dates yet to read.
+
+    Uses :data:`~app.services.event_desk.registry.SUMMER_LEAGUE_REGISTRATION`'s
+    static ``window_priors`` default rather than reading them back off the
+    persisted ``events`` row (the only value ever written there, via
+    ``EventRegistration.sync``) -- deliberately so this guard stays a pure
+    read with no ``events`` upsert side effect just to decide there's
+    nothing to do.
+
+    A competition with zero games ever ingested *and* no
+    ``starts_on``/``ends_on`` configured (a true first-ever cold start,
+    before this cron -- or anything else -- has ever recorded a game date
+    for it) has no signal to reason about and this returns ``False``. That
+    mirrors the exact trade-off ``_needs_scoreboard_bootstrap`` already
+    makes for the Desk tick: a from-scratch season's first game date has to
+    get onto ``summer_league_games`` some other way (e.g. an operator's
+    manual scoreboard-ingest run, or this cron's own per-venue raw
+    ``leaguegamelog`` fetch once real games start appearing) before either
+    guard can self-trigger the forward-schedule call.
+
+    Args:
+        db: Active database session.
+        now: The run's reference instant (used both for the Eastern "today"
+            competition-year fallback and as `lifecycle_phase`'s clock).
+
+    Returns:
+        Whether the caller should run :func:`~app.services.summer_league.scoreboard_ingest.run_scoreboard_ingest`
+        this cycle.
+    """
+    today = to_eastern_date(now)
+    competitions = await resolve_target_competitions(db, today=today)
+    if not competitions:
+        return False
+    synthetic_dates = _synthetic_schedule_dates(competitions)
+    if not synthetic_dates:
+        return False
+    desk_event = DeskEvent(
+        key=SUMMER_LEAGUE_REGISTRATION.key,
+        priority=SUMMER_LEAGUE_REGISTRATION.priority,
+        window_priors=SUMMER_LEAGUE_REGISTRATION.window_priors,
+        game_dates=synthetic_dates,
+    )
+    return lifecycle_phase(now, desk_event) in _SCHEDULE_ELIGIBLE_PHASES
+
+
+async def _refresh_schedule(
+    db: AsyncSession, *, now: datetime, client: NBAStatsClient
+) -> ScoreboardIngestReport | None:
+    """Step 5 -- refresh the active event's forward schedule, if in/near its window.
+
+    Best-effort and additive: any failure (including an unexpected error
+    inside :func:`_schedule_pull_in_window` itself) is logged and swallowed
+    rather than failing the whole cron run -- this step exists to keep
+    ``tip_datetime`` fresh for the (separate) Summer League Desk tick to
+    read, not to gate this runner's own raw-ingestion/backbone/metrics
+    responsibilities.
+
+    Args:
+        db: Active database session (caller controls the transaction).
+        now: The run's reference instant.
+        client: The NBA Stats client already opened by ``main`` for this
+            run's per-venue raw fetches -- reused here rather than opening a
+            second client.
+
+    Returns:
+        The :class:`~app.services.summer_league.scoreboard_ingest.ScoreboardIngestReport`
+        when the window guard allowed a fetch; ``None`` when skipped
+        (off-window) or on an unexpected failure.
+    """
+    try:
+        in_window = await _schedule_pull_in_window(db, now=now)
+        # `_schedule_pull_in_window`'s own read (`resolve_target_competitions`)
+        # auto-begins a transaction on this session (SQLAlchemy async
+        # "autobegin"); commit it here -- a no-op for the DB since nothing
+        # was written -- before opening the explicit `db.begin()` below,
+        # which would otherwise raise "a transaction is already begun".
+        await db.commit()
+        if not in_window:
+            logger.info("Schedule refresh: skipped (off-window)")
+            return None
+        async with db.begin():
+            report = await run_scoreboard_ingest(
+                db, today=to_eastern_date(now), client=client
+            )
+        logger.info(
+            "Schedule refresh: competitions_checked=%d games_seen=%d "
+            "created=%d updated=%d errors=%s unresolved_team_ids=%s",
+            report.competitions_checked,
+            report.games_seen,
+            report.games_created,
+            report.games_updated,
+            report.errors,
+            report.unresolved_team_ids,
+        )
+        return report
+    except Exception as exc:
+        logger.warning(
+            "Schedule refresh failed (%s: %s); continuing", type(exc).__name__, exc
+        )
+        # Leave the session usable for whatever `main` does next (the
+        # metrics-rebuild step's own `db.begin()`): a mid-query failure can
+        # leave an autobegun transaction needing a rollback, and `db.begin()`
+        # raises (rather than no-ops) if one is still open.
+        await db.rollback()
+        return None
 
 
 async def _run_venue(
@@ -292,6 +502,14 @@ async def main() -> int:
                 )
                 any_games = any_games or had_games
                 failed = failed or venue_failed
+
+            # Step 5 -- forward-schedule refresh (decoupled from the Desk
+            # tick, see module docstring). Independent of `any_games`: a
+            # venue can be scoreless this run (pre-tip-off) while the
+            # schedule feed still has fresh tip times to upsert. Reuses the
+            # NBA Stats client already opened above; best-effort, so a
+            # failure here never flips `failed`.
+            await _refresh_schedule(db, now=start_time, client=client)
 
             if any_games:
                 try:
