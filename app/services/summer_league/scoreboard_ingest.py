@@ -51,6 +51,7 @@ from app.schemas.summer_league import (
 )
 from app.services.summer_league.endpoints import build_schedule_params
 from app.services.summer_league.nba_stats_client import NBAStatsAPIError, NBAStatsClient
+from app.services.summer_league.normalization import refresh_competition_date_window
 
 # Stable key for the (eventually #506-registered) Summer League events row.
 EVENT_KEY_SUMMER_LEAGUE = "summer_league"
@@ -419,6 +420,12 @@ async def upsert_scoreboard_games(
     not-yet-tipped or unresolved re-poll can never null out or zero a value
     a previous poll (or normalization) already set.
 
+    When at least one row was created or updated, also recomputes this
+    competition's ``starts_on``/``ends_on`` from its full current game set
+    (:func:`app.services.summer_league.normalization.refresh_competition_date_window`)
+    so a forward-scheduled ingest widens the window before any game is
+    played.
+
     Args:
         db: Async database session (caller controls the transaction/commit).
         competition_id: The competition new rows should be created under.
@@ -496,6 +503,15 @@ async def upsert_scoreboard_games(
                 existing.away_score = game.away_score
             updated += 1
     await db.flush()
+    if created or updated:
+        # #529 forward-scheduled games are how the Desk's opening-morning
+        # bootstrap (#527's `_needs_scoreboard_bootstrap` in
+        # `scripts/sl_desk_tick.py`) is actually meant to escape dormancy --
+        # extending `starts_on`/`ends_on` here (not just on the normalize
+        # path) lets a schedule ingest widen the window *before* any game has
+        # been played.
+        await refresh_competition_date_window(db, competition_id=competition_id)
+        await db.flush()
     return created, updated, unresolved_team_ids
 
 

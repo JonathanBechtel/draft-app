@@ -815,3 +815,47 @@ async def test_run_scoreboard_ingest_team_resolution_is_a_single_batch_query(
         f"expected exactly one summer_league_team_entries query, "
         f"got {len(team_entry_queries)}: {team_entry_queries}"
     )
+
+
+@pytest.mark.asyncio
+async def test_run_scoreboard_ingest_extends_competition_date_window_to_include_forward_scheduled_games(
+    db_session: AsyncSession,
+) -> None:
+    """#527/#529: a schedule ingest of forward-scheduled games extends the window.
+
+    This is what actually lets the Event Desk's opening-morning bootstrap
+    (``_needs_scoreboard_bootstrap`` / ``_synthetic_calendar_dates`` in
+    ``scripts/sl_desk_tick.py``) go Active before any game is played --
+    ``starts_on``/``ends_on`` previously stayed null forever because nothing
+    ever populated them from a forward-looking schedule fetch. The
+    competition starts with no configured window at all; after ingesting the
+    real captured mid-event snapshot (Final games from 2026-07-09 plus
+    not-yet-tipped Scheduled games through 2026-07-19), the window should
+    span that fixture's actual date range.
+    """
+    competition = SummerLeagueCompetition(
+        year=2026,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2026 Las Vegas Summer League",
+    )
+    db_session.add(competition)
+    await db_session.flush()
+    assert competition.id is not None
+    assert competition.starts_on is None
+    assert competition.ends_on is None
+    await db_session.commit()
+
+    payload = _load_fixture(_REAL_LIVE_FIXTURE)
+    session = FakeSession({"15": FakeResponse(payload)})
+    client = NBAStatsClient(session=session)
+
+    report = await run_scoreboard_ingest(
+        db_session, today=date(2026, 7, 10), client=client
+    )
+    await db_session.commit()
+    assert report.games_created == 76
+
+    await db_session.refresh(competition)
+    assert competition.starts_on == date(2026, 7, 9)
+    assert competition.ends_on == date(2026, 7, 19)
