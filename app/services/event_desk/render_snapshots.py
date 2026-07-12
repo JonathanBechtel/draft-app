@@ -219,6 +219,9 @@ def _serialize_ledger_row(row: DeskLedgerRow) -> JsonDict:
         "pctl": row.pctl,
         "grade": row.grade,
         "read": row.read,
+        "pts": row.pts,
+        "reb": row.reb,
+        "ast": row.ast,
     }
 
 
@@ -230,6 +233,9 @@ def _deserialize_ledger_row(data: JsonDict) -> DeskLedgerRow:
         pctl=data["pctl"],
         grade=data["grade"],
         read=data["read"],
+        pts=data.get("pts"),
+        reb=data.get("reb"),
+        ast=data.get("ast"),
     )
 
 

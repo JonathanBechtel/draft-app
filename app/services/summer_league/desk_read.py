@@ -985,6 +985,9 @@ async def _assemble_ledger(
                 read=_extract_prose(
                     facts_by_player.get(pid), surface=Surface.LEDGER_ECHO
                 ),
+                pts=log.pts,
+                reb=log.reb,
+                ast=log.ast,
             )
         )
 
