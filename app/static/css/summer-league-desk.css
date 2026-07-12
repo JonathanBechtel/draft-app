@@ -1,0 +1,576 @@
+/* ==========================================================================
+   Summer League Desk (#509) -- "light retro analytics" per docs/style_guide.md.
+   BEM block: `.desk`. Ported from mockups/draftguru_sl_scout_desk.html, minus
+   the review-only state-switcher chrome (`.desk-tabs` / `.state-panel`) --
+   production renders exactly one state server-side, so none of that markup
+   or CSS ships here. Reuses design tokens (--font-heading, --font-mono,
+   --color-*, .card, .scanlines, .section-divider) already defined in
+   main.css; only Desk-specific rules live in this file.
+   ========================================================================== */
+
+.desk {
+  margin: 1.8rem 0 2.4rem;
+}
+
+.desk__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.desk__title {
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  color: var(--color-slate-900);
+}
+
+.desk__freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: #0e7490;
+  background: #ecfeff;
+  border: 1px solid var(--color-accent-cyan);
+  border-radius: 999px;
+  padding: 0.15rem 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Honest freshness states (#544) -- `--fresh` reuses the existing pill look;
+   `--stale`/`--missing` shift the accent to flag the copy is no longer (or
+   never was) current, without changing layout. */
+.desk__freshness--stale {
+  color: #9a3412;
+  background: #fff7ed;
+  border-color: #fb923c;
+}
+.desk__freshness--missing {
+  color: var(--color-slate-500);
+  background: var(--color-slate-100);
+  border-color: var(--color-slate-300);
+}
+.desk__freshness-eta {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--color-slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.desk__section-title {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-left: 4px solid var(--color-accent-cyan);
+  padding-left: 0.6rem;
+  margin: 1.8rem 0 0.3rem;
+}
+
+.desk__section-sub {
+  font-size: 0.82rem;
+  color: var(--color-slate-500);
+  margin-bottom: 1rem;
+  padding-left: 0.65rem;
+}
+
+.desk__table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ===== Avatars (self-contained -- do not reuse home.css's .pavatar so this
+   module has no cross-file coupling to the news/consensus panels). ===== */
+.desk__avatar {
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-heading);
+  color: white;
+  flex-shrink: 0;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #64748b, #334155);
+  box-shadow: inset 0 -4px 8px rgba(0, 0, 0, 0.18);
+}
+.desk__avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 18%;
+}
+.desk__avatar--xl { width: 140px; height: 140px; }
+.desk__avatar--lg { width: 84px; height: 84px; }
+.desk__avatar--md { width: 40px; height: 40px; font-size: 0.85rem; }
+.desk__avatar--sm { width: 28px; height: 28px; font-size: 0.68rem; }
+
+.desk__team-logo {
+  height: 18px;
+  width: 18px;
+  object-fit: contain;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.desk__team-logo--sm { height: 14px; width: 14px; }
+
+/* ============================================================================
+   HERO -- shared dark broadcast treatment; exactly one renders per request.
+   ========================================================================= */
+.desk__hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1rem;
+  margin: 0 0 1.8rem;
+  padding: 1.35rem 1.5rem 1.5rem;
+  color: #fff;
+  background:
+    radial-gradient(120% 95% at 12% 15%, rgba(71, 85, 105, 0.55), transparent 55%),
+    radial-gradient(120% 95% at 88% 15%, rgba(99, 102, 241, 0.5), transparent 55%),
+    linear-gradient(135deg, #0a1120 0%, #101d33 55%, #0a1120 100%);
+  box-shadow: 0 24px 50px -22px rgba(2, 6, 23, 0.85), 0 0 0 1px rgba(148, 163, 184, 0.16);
+}
+.desk__hero--live {
+  background:
+    radial-gradient(120% 95% at 12% 15%, rgba(6, 182, 212, 0.42), transparent 55%),
+    radial-gradient(120% 95% at 88% 15%, rgba(14, 165, 233, 0.42), transparent 55%),
+    linear-gradient(135deg, #061420 0%, #0a2030 55%, #061420 100%);
+}
+.desk__hero--ledger {
+  background:
+    radial-gradient(130% 120% at 50% -5%, rgba(99, 102, 241, 0.55), transparent 60%),
+    linear-gradient(135deg, #0a1120 0%, #14113a 55%, #0a1120 100%);
+}
+.desk__hero-eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #7dd3fc;
+  margin-bottom: 1.1rem;
+}
+.desk__hero--live .desk__hero-eyebrow { color: #67e8f9; }
+.desk__hero--ledger .desk__hero-eyebrow { color: #c7d2fe; }
+.desk__hero-eyebrow .desk__hero-tip {
+  margin-left: auto;
+  color: var(--color-slate-300);
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+.desk__hero-stage {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  gap: 1rem;
+}
+.desk__hero-player { text-align: center; }
+.desk__hero-imgwrap {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  margin: 0 auto 0.7rem;
+}
+.desk__hero-imgwrap .desk__avatar {
+  width: 110px;
+  height: 110px;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.92);
+}
+.desk__hero-badge-logo {
+  position: absolute;
+  bottom: 0;
+  right: 4px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fff;
+  padding: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.desk__hero-badge-logo img { width: 100%; height: 100%; object-fit: contain; }
+.desk__hero-name { font-family: var(--font-heading); font-size: 1.3rem; line-height: 1.1; }
+.desk__hero-name a { color: inherit; text-decoration: none; }
+.desk__hero-name a:hover { text-decoration: underline; }
+.desk__hero-meta {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--color-slate-300);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 0.3rem;
+}
+.desk__hero-statline {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: #e2e8f0;
+  margin-top: 0.45rem;
+  font-variant-numeric: tabular-nums;
+}
+.desk__hero-statline span { white-space: nowrap; }
+.desk__hero-statline b { color: #fff; }
+.desk__hero-center { text-align: center; padding-top: 2rem; }
+.desk__hero-vs { font-family: var(--font-heading); font-size: 2.3rem; color: rgba(255, 255, 255, 0.22); line-height: 1; }
+
+.desk__hero-solo {
+  display: flex;
+  gap: 1.4rem;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+.desk__hero-solo-body { max-width: 24rem; }
+.desk__hero-bigname { font-family: var(--font-heading); font-size: 1.5rem; color: #fff; }
+.desk__hero-bigname a { color: inherit; text-decoration: none; }
+.desk__hero-bigname a:hover { text-decoration: underline; }
+
+.desk__hero-tagline {
+  text-align: center;
+  max-width: 46rem;
+  margin: 1.1rem auto 0;
+  font-size: 0.92rem;
+  color: var(--color-slate-200);
+}
+.desk__hero-headline { color: #fff; font-weight: 600; }
+
+.desk__hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+  margin-top: 0.9rem;
+}
+.desk__chip {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  padding: 0.16rem 0.6rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.desk__hero-matchup {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--color-slate-300);
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+.desk__hero-matchup a { color: inherit; text-decoration: none; }
+.desk__hero-matchup a:hover { text-decoration: underline; }
+
+@media (max-width: 620px) {
+  .desk__hero { padding: 1rem 1rem 1.05rem; margin-bottom: 1.4rem; }
+  .desk__hero-eyebrow { font-size: 0.58rem; gap: 0.35rem; margin-bottom: 0.75rem; }
+  .desk__hero-eyebrow .desk__hero-tip { margin-left: 0; flex-basis: 100%; text-align: center; }
+  /* The freshness instant already renders in the `.desk__freshness` pill
+     directly above the hero (`.desk__head`) -- repeating it as a second
+     eyebrow line only costs vertical space on the narrowest screens, where
+     hero height is the thing being budgeted. Desktop keeps it (same row,
+     no added height). */
+  .desk__hero-eyebrow .desk__hero-tip--freshness { display: none; }
+  .desk__hero-stage { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .desk__hero-center { grid-column: 1 / -1; order: -1; padding-top: 0; margin-bottom: 0.3rem; }
+  .desk__hero-vs { font-size: 1.5rem; }
+  .desk__hero-imgwrap, .desk__hero-imgwrap .desk__avatar { width: 76px; height: 76px; }
+  .desk__hero-name { font-size: 1rem; }
+  .desk__hero-statline { font-size: 0.62rem; gap: 0.05rem 0.35rem; margin-top: 0.35rem; }
+  .desk__hero-tagline { font-size: 0.78rem; margin-top: 0.8rem; line-height: 1.45; }
+  .desk__hero-solo { flex-direction: column; text-align: center; }
+  /* A long player name can push the "Top performer: <name> · NN.N GmSc"
+     chip wider than the card at this width; `.desk__chip`'s base `nowrap`
+     then gets clipped by the hero's `overflow: hidden` (#522). Let hero
+     chips wrap instead -- every other chip usage (grade pills, matchup
+     labels) is short enough this never engages. */
+  .desk__hero-chips .desk__chip { white-space: normal; max-width: 100%; }
+}
+
+/* ===== Morning slate grid ===== */
+.desk__slate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+}
+.desk__game-card { padding: 0.85rem 1rem 0.95rem; }
+.desk__game-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-500);
+  margin-bottom: 0.45rem;
+}
+.desk__game-card-title {
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  margin-bottom: 0.55rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.desk__game-card-title .desk__vs { color: var(--color-slate-300); font-size: 0.75rem; }
+.desk__game-card-time { font-family: var(--font-mono); font-size: 0.68rem; color: var(--color-slate-600); white-space: nowrap; }
+.desk__game-card-insight {
+  font-size: 0.74rem;
+  color: var(--color-slate-600);
+  border-top: 1px dashed var(--color-slate-200);
+  padding-top: 0.5rem;
+  margin-top: 0.2rem;
+}
+
+.desk__slate-toggle {
+  display: block;
+  margin: 0.9rem auto 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-slate-600);
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-300);
+  border-radius: 999px;
+  padding: 0.45rem 1.1rem;
+  cursor: pointer;
+}
+.desk__slate-toggle:hover { background: var(--color-slate-100); }
+
+/* ===== Live board ===== */
+.desk__live-board { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.desk__live-board th {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-500);
+  text-align: left;
+  padding: 0.45rem 0.6rem;
+  border-bottom: 2px solid var(--color-slate-200);
+}
+.desk__live-board td { padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--color-slate-100); vertical-align: top; }
+.desk__matchup-cell { display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; font-family: var(--font-mono); font-size: 0.72rem; }
+.desk__score-cell { font-family: var(--font-mono); font-weight: 600; white-space: nowrap; }
+.desk__read-cell { font-size: 0.72rem; color: var(--color-slate-600); }
+
+.desk__top-perf { display: inline-flex; align-items: center; gap: 0.45rem; white-space: nowrap; }
+.desk__top-perf-body { font-family: var(--font-mono); font-size: 0.72rem; line-height: 1.15; color: var(--color-slate-800); font-weight: 600; }
+.desk__top-perf-gs { display: block; font-size: 0.6rem; font-weight: 400; color: var(--color-slate-500); }
+.desk__top-perf--empty { color: var(--color-slate-300); font-family: var(--font-mono); font-size: 0.9rem; }
+
+.desk__status-pill {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.desk__status-pill--live { background: #ecfeff; color: #0e7490; border: 1px solid var(--color-accent-cyan); }
+.desk__status-pill--final { background: var(--color-slate-100); color: var(--color-slate-600); border: 1px solid var(--color-slate-200); }
+.desk__status-pill--upcoming { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
+
+/* ===== Ledger table ===== */
+.desk__ledger-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.desk__ledger-table th {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-slate-500);
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 2px solid var(--color-slate-200);
+}
+.desk__ledger-table td { padding: 0.6rem 0.7rem; border-bottom: 1px solid var(--color-slate-100); vertical-align: middle; }
+.desk__ledger-table tr:hover td { background: var(--color-slate-50); }
+.desk__name-cell { display: flex; align-items: center; gap: 0.55rem; min-width: 0; }
+.desk__player-name { font-weight: 600; white-space: nowrap; }
+.desk__player-name a { color: inherit; text-decoration: none; }
+.desk__player-name a:hover { text-decoration: underline; }
+.desk__gmsc-cell { font-family: var(--font-mono); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.desk__status-tag {
+  font-family: var(--font-mono);
+  font-size: 0.56rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.06rem 0.4rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+  display: inline-block;
+}
+.desk__status-tag--pick { background: var(--color-slate-900); color: white; }
+.desk__status-tag--undrafted { background: #fffbeb; color: #b45309; border: 1px solid #fcd34d; }
+
+.desk__pctl-chip {
+  font-family: var(--font-mono);
+  font-size: 0.63rem;
+  padding: 0.14rem 0.55rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  display: inline-block;
+}
+.desk__pctl-chip--hot { background: #ecfdf5; color: #047857; border: 1px solid #6ee7b7; }
+.desk__pctl-chip--warm { background: #ecfeff; color: #0e7490; border: 1px solid #67e8f9; }
+.desk__pctl-chip--mid { background: var(--color-slate-100); color: var(--color-slate-600); border: 1px solid var(--color-slate-200); }
+.desk__pctl-chip--cold { background: #fff1f2; color: #be123c; border: 1px solid #fda4af; }
+
+/* ===== Off-window archive strip ===== */
+.desk__offwindow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.85rem 1.1rem;
+  margin: 1.4rem 0 2rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-slate-600);
+}
+.desk__offwindow-label { color: var(--color-slate-800); font-weight: 600; }
+.desk__offwindow-link {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--color-primary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.desk__offwindow-link:hover { text-decoration: underline; }
+
+/* ===== Class Tracker (#511) ===== */
+.desk__tracker-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+}
+.desk__tracker-cohorts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.desk__tracker-toggle-btn {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-slate-300);
+  background: var(--color-white);
+  color: var(--color-slate-700);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.desk__tracker-toggle-btn:hover { background: var(--color-slate-100); }
+.desk__tracker-toggle-btn.is-active { background: var(--color-slate-900); color: #fff; border-color: var(--color-slate-900); }
+
+.desk__tracker-statview { margin-left: auto; }
+
+/* The Explorer's segmented-toggle look (`.slg-mode-toggle`/`.slg-mode-btn`)
+   lives only in that template's own scoped <style> block (no build step, no
+   shared component CSS file) -- copied here verbatim so the Class Tracker's
+   stat-view toggle matches it exactly, per the ticket's explicit instruction
+   to reuse those classes. Applied to <a> elements here (a plain GET
+   round-trip) rather than the Explorer's radio-labeled <form> controls;
+   the visual rules are identical either way. */
+.slg-mode-toggle { display: inline-flex; flex-wrap: wrap; width: fit-content; border: 1px solid var(--color-slate-300, #cbd5e1); border-radius: 6px; overflow: hidden; }
+.slg-mode-btn { font-family: var(--font-mono, monospace); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; padding: 0.45rem 1rem; cursor: pointer; color: var(--color-slate-700, #334155); background: #fff; border-right: 1px solid var(--color-slate-300, #cbd5e1); text-decoration: none; display: inline-block; user-select: none; transition: background 0.15s, color 0.15s; }
+.slg-mode-btn:last-child { border-right: none; }
+.slg-mode-btn:hover:not(.is-active) { background: var(--color-slate-100, #f1f5f9); }
+.slg-mode-btn.is-active { background: var(--color-slate-900, #0f172a); color: #fff; }
+
+.desk__tracker-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.desk__tracker-table th {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-slate-500);
+  text-align: right;
+  padding: 0.45rem 0.55rem;
+  border-bottom: 2px solid var(--color-slate-200);
+  white-space: nowrap;
+}
+
+/* Sortable Tracker columns (#556) -- `data-sort-key` headers get pointer +
+   keyboard affordance and an `aria-sort`-driven arrow; `summer-league-desk.js`
+   sets `tabindex`/keydown handling at init, so these rules only style the
+   already-interactive state (no dead cursor when JS never runs). */
+.desk__tracker-table th[data-sort-key] {
+  cursor: pointer;
+  user-select: none;
+}
+.desk__tracker-table th[data-sort-key]:hover {
+  color: var(--color-slate-900);
+}
+.desk__tracker-table th[data-sort-key]:focus-visible {
+  outline: 2px solid var(--color-accent-cyan);
+  outline-offset: -2px;
+  color: var(--color-slate-900);
+}
+.desk__tracker-table th[aria-sort="ascending"]::after {
+  content: " \2191";
+}
+.desk__tracker-table th[aria-sort="descending"]::after {
+  content: " \2193";
+}
+.desk__tracker-table th:first-child,
+.desk__tracker-table td:first-child { text-align: left; }
+.desk__tracker-table td { padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--color-slate-100); vertical-align: middle; text-align: right; white-space: nowrap; }
+.desk__tracker-table tr:hover td { background: var(--color-slate-50); }
+.desk__tracker-th--active { color: var(--color-slate-900); font-weight: 600; }
+.desk__tracker-identity { font-family: var(--font-mono); font-size: 0.62rem; color: var(--color-slate-500); }
+.desk__tracker-caption { font-size: 0.72rem; color: var(--color-slate-500); margin: 0.55rem 0.3rem 0.3rem; }
+.desk__tracker-empty { padding: 1.3rem 1rem; text-align: center; color: var(--color-slate-500); font-size: 0.85rem; }
+
+@media (max-width: 620px) {
+  .desk__tracker-toggles { flex-direction: column; align-items: stretch; }
+  .desk__tracker-statview { margin-left: 0; }
+  /* At this width the fourth ("Advanced") button doesn't fit the first
+     row's content-sized run, wraps alone, and leaves the bordered toggle
+     group with a lopsided empty strip beside it (#522). Spread all four
+     evenly across the full row instead. */
+  .desk__tracker-statview.slg-mode-toggle { width: 100%; }
+  .desk__tracker-statview .slg-mode-btn { flex: 1 1 0; text-align: center; padding-left: 0.3rem; padding-right: 0.3rem; }
+}
+
+/* Tables scroll inside their own card, never the page (repo-wide mobile rule). */
+@media (max-width: 768px) {
+  .desk__slate-grid { grid-template-columns: 1fr; }
+}

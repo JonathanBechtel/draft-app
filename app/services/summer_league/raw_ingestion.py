@@ -27,6 +27,42 @@ GAME_ENDPOINTS = (
     "shotchartdetail",
 )
 
+# The subset of GAME_ENDPOINTS whose failure must block freshness. The three
+# box-score endpoints ARE (traditional) or directly feed (advanced/scoring)
+# the player line the Summer League Desk renders -- a failed fetch here that
+# silently falls back to an old on-disk snapshot (see `force=True` behavior
+# in `_fetch_game_endpoint` below) must never let a tick claim fresh state
+# (see `app.services.summer_league.live_ingestion.refresh_selected_games`,
+# which folds a critical failure into `LiveIngestionReport.required_errors`).
+# `playbyplayv2` and `shotchartdetail` are deliberately excluded: a bad
+# play-by-play/shot-chart fetch is a real, visible error but must stay
+# non-blocking -- it never gates the box-score line's freshness.
+REQUIRED_GAME_ENDPOINTS = frozenset(
+    {
+        "boxscoretraditionalv2",
+        "boxscoreadvancedv2",
+        "boxscorescoringv2",
+    }
+)
+
+
+def is_required_game_endpoint(endpoint: str) -> bool:
+    """Whether a per-game endpoint's failure must block freshness.
+
+    Single source of truth for classifying a per-game endpoint (as recorded
+    on a :class:`~app.services.summer_league.manifest.SummerLeagueRawError`)
+    as critical (a box-score endpoint -- must abort the tick before it
+    claims fresh state) or non-blocking (``playbyplayv2``/``shotchartdetail``
+    -- stays a visible but optional error). See :data:`REQUIRED_GAME_ENDPOINTS`.
+
+    Args:
+        endpoint: The NBA Stats endpoint name, e.g. ``"boxscoretraditionalv2"``.
+
+    Returns:
+        Whether ``endpoint`` is one of :data:`REQUIRED_GAME_ENDPOINTS`.
+    """
+    return endpoint in REQUIRED_GAME_ENDPOINTS
+
 
 class SummerLeagueRequiredGamelogError(RuntimeError):
     """Raised when a required season gamelog cannot be collected."""
@@ -42,7 +78,29 @@ class NBAStatsJSONClient(Protocol):
 
 @dataclass(frozen=True)
 class RawIngestionOptions:
-    """Options for one Summer League year/LeagueID raw-ingestion run."""
+    """Options for one Summer League year/LeagueID raw-ingestion run.
+
+    Attributes:
+        year: Summer League season year.
+        league_id: NBA.com Summer League LeagueID.
+        limit_games: Optional cap on how many discovered game IDs get
+            per-game endpoint calls. Ignored when ``game_ids`` is set.
+        dry_run: Plan file writes without performing them.
+        force: Overwrite existing raw snapshots instead of reusing them.
+        delay_seconds: Sleep applied after each NBA Stats call.
+        skip_endpoints: Game endpoints to omit from ``GAME_ENDPOINTS``.
+        game_ids: Explicit game IDs to fetch endpoints for, overriding the
+            IDs discovered from the season team gamelog. ``None`` (the
+            default) preserves prior behavior -- game IDs come from the
+            season gamelog, optionally narrowed by ``limit_games``. An
+            empty tuple selects zero games, so no per-game endpoint calls
+            are made at all. The required season team/player gamelog
+            fetches still run either way -- this field only scopes the
+            per-game endpoint loop (boxscore/pbp/shotchart), which is what
+            targeted live refreshes (see
+            ``app.services.summer_league.live_ingestion``) need to force
+            without redownloading every game in the season.
+    """
 
     year: int
     league_id: str
@@ -51,6 +109,7 @@ class RawIngestionOptions:
     force: bool = False
     delay_seconds: float = 0.0
     skip_endpoints: tuple[str, ...] = ()
+    game_ids: tuple[str, ...] | None = None
 
 
 class SummerLeagueRawIngestor:
@@ -114,9 +173,15 @@ class SummerLeagueRawIngestor:
             )
         manifest.player_gamelog_rows = _first_result_set_row_count(player_payload)
 
-        game_ids_to_fetch = manifest.game_ids
-        if options.limit_games is not None:
-            game_ids_to_fetch = game_ids_to_fetch[: options.limit_games]
+        if options.game_ids is not None:
+            # Explicit selection wins outright: limit_games is a discovery-list
+            # narrowing tool and doesn't apply once the caller has named exact
+            # IDs (an empty tuple here deliberately means "fetch none").
+            game_ids_to_fetch = list(options.game_ids)
+        else:
+            game_ids_to_fetch = manifest.game_ids
+            if options.limit_games is not None:
+                game_ids_to_fetch = game_ids_to_fetch[: options.limit_games]
 
         skipped_endpoints = set(options.skip_endpoints)
         endpoints_to_fetch = [

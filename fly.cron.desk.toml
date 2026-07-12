@@ -1,0 +1,86 @@
+# fly.cron.desk.toml - Configuration for the production Summer League Desk cron machine
+#
+# This defines a scheduled machine that runs the Summer League Desk hourly
+# tick (scripts/sl_desk_tick.py): scoreboard ingest -> normalize -> scoped
+# metrics rebuild -> grades -> storylines -> commentary -> event_desk_state
+# upsert. It shares the same Docker image as the main app but runs a
+# different command. Cloned from fly.cron.desk.stage.toml (its staging
+# counterpart), which follows the same pattern.
+#
+# NOTE: Fly.io scheduled machines only support: hourly, daily, weekly, monthly
+#       (not custom cron expressions like "*/30 * * * *")
+#
+# Cadence: hourly. This is not just a freshness preference -- it's a
+# correctness requirement. `app/services/event_desk/controller.py` hardcodes
+# `TICK_INTERVAL = timedelta(hours=1)` and stamps `next_tick_eta = now +
+# TICK_INTERVAL` on every event_desk_state upsert; the Desk UI displays that
+# ETA to users. Running this cron at any cadence other than hourly would make
+# the displayed freshness promise false.
+#
+# Cost note (per #517 investigation): see fly.cron.desk.stage.toml's Cost note
+# -- identical reasoning applies here (this cron shares the same scoped-rebuild
+# path as the existing hourly `fly.cron.sl.toml` ingestion cron).
+#
+# Deployment (#536 -- see docs/plans/summer-league-desk-536-deploy-runbook.md for the
+# full copy-pasteable human runbook; this is the short version):
+#
+#   0. Preflight (read-only, never mutates anything) against the PROD database:
+#      scripts/with-db-env.sh conda run -n draftguru python scripts/check_sl_desk_readiness.py preflight
+#      Must exit 0 -- confirms this year's competition(s) are registered and Job A has
+#      produced an active baseline for every required grain (event, debut, game -- #525).
+#
+#   1. Job A -- build the T1 cohort baselines on PROD (deliberate, one-time; NEVER run by CI):
+#      scripts/with-db-env.sh conda run -n draftguru python scripts/build_sl_cohort_baselines.py
+#
+#   2. Deploy the main app to build/publish the image:
+#      flyctl deploy --config fly.prod.toml --app draft-app-prod
+#
+#   3. Machine create-or-update is HANDLED BY CI (`.github/workflows/fly-deploy-prod.yml`,
+#      "Deploy/update Summer League Desk cron machine" step), but -- unlike staging --
+#      it is DOUBLE-GATED and never runs automatically:
+#        a. `workflow_dispatch` input `enable_desk_cron` must be explicitly set to
+#           `true` for that run (default `false`) -- a human attesting that staging
+#           has already proven a successful tick (post-tick smoke check green there).
+#        b. Even with that input set, production's own preflight must still pass
+#           against the just-deployed prod database, or the step is skipped.
+#      Only when both hold does the step create-or-update the
+#      `summer-league-desk-cron` machine (create if absent, update-image if it
+#      already exists -- same idempotent logic as staging).
+#      Manual equivalent (only if CI is unavailable):
+#        IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
+#        CRON_ID=$(flyctl machine list --app draft-app-prod --json | jq -r '.[] | select(.name == "summer-league-desk-cron") | .id')
+#        if [ -n "$CRON_ID" ]; then
+#          flyctl machine update "$CRON_ID" --app draft-app-prod --image "$IMAGE" --yes
+#        else
+#          flyctl machine run "$IMAGE" --app draft-app-prod --schedule hourly \
+#            --name summer-league-desk-cron --region ewr --memory 1024 --cpus 1 \
+#            --entrypoint "/app/.venv/bin/python" -- scripts/sl_desk_tick.py
+#        fi
+#
+#   4. First tick after creating the machine is manual and deliberate (do not wait for the
+#      top of the hour): `flyctl machine start <machine-id> --app draft-app-prod`, wait for
+#      it to run once, then post-tick smoke check:
+#      scripts/with-db-env.sh conda run -n draftguru python scripts/check_sl_desk_readiness.py post-tick
+#
+# Rollback: `flyctl machine stop <machine-id> --app draft-app-prod` halts future ticks
+# immediately (event_desk_state simply stops refreshing; nothing else is torn down). To
+# fully remove: `flyctl machine destroy <machine-id> --app draft-app-prod --force`.
+#
+# Monitoring:
+#   - View logs: flyctl logs --app draft-app-prod --instance <machine-id>
+#   - List machines: flyctl machine list --app draft-app-prod
+#   - Check status: flyctl machine status <machine-id> --app draft-app-prod
+
+app = 'draft-app-prod'
+primary_region = 'ewr'
+
+[build]
+
+# Override the default command to run the Summer League Desk tick script
+[processes]
+  cron = "/app/.venv/bin/python scripts/sl_desk_tick.py"
+
+[[vm]]
+  memory = '1024mb'
+  cpu_kind = 'shared'
+  cpus = 1

@@ -47,6 +47,45 @@ Each app runs two types of machines:
 
 The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, logs progress, and exits cleanly.
 
+### Cron Machine (summer-league-desk-cron)
+
+- **Purpose**: Run the Summer League Desk hourly tick (`scripts/sl_desk_tick.py`):
+  scoreboard ingest -> targeted live raw refresh -> normalize -> scoped metrics
+  rebuild -> grades -> storylines -> commentary -> `event_desk_state` upsert.
+- **Resources**: 1 shared CPU, 1GB RAM
+- **Entrypoint**: `/app/.venv/bin/python scripts/sl_desk_tick.py`
+- **Region**: `ewr` (Newark)
+- **Schedule**: Hourly in both environments -- not just a freshness preference, a
+  correctness requirement. `app/services/event_desk/controller.py` hardcodes
+  `TICK_INTERVAL = timedelta(hours=1)` and the Desk UI displays `next_tick_eta`
+  derived from it; any other cadence would make that freshness promise false.
+- **Config**: `fly.cron.desk.stage.toml` (stage) / `fly.cron.desk.toml` (prod).
+
+Unlike every other cron above, this machine's create-and-update is **readiness-gated**
+and Job A is **never run automatically**:
+
+- **Readiness check** (`scripts/check_sl_desk_readiness.py`, read-only, never writes) has
+  two modes: `preflight` (run before creating/enabling the machine -- confirms this
+  year's Summer League competition(s) are registered and Job A produced an active T1
+  cohort baseline for every required grain: event, debut, game) and `post-tick` (run
+  right after a deliberate manual first tick -- additionally confirms the `events` row
+  synced and `event_desk_state` carries a recent freshness stamp, and validates any
+  materialized render snapshots' `schema_version`).
+- **Job A** (`scripts/build_sl_cohort_baselines.py`) is the rare, offline T1
+  cohort-baseline builder. It is a deliberate, one-time human step run directly against
+  an environment's database -- CI never invokes it, and the hourly tick itself raises
+  loudly if no active baseline exists rather than building one.
+- **Staging**: `.github/workflows/fly-deploy-stage.yml` runs the preflight check on every
+  push-to-`main` deploy; only when it passes does the workflow idempotently
+  create-if-absent / update-if-present the `summer-league-desk-cron` machine. A failed
+  preflight skips that step without failing the deploy.
+- **Production**: `.github/workflows/fly-deploy-prod.yml` is double-gated -- the
+  `enable_desk_cron` `workflow_dispatch` input must be explicitly set `true` (a human
+  attesting staging already proved a successful tick) **and** production's own preflight
+  must pass, or the create/update step is skipped.
+- **Full runbook** (baseline build, manual first tick, smoke check, stage-to-prod
+  promotion, rollback): `docs/plans/summer-league-desk-536-deploy-runbook.md`.
+
 ---
 
 ## Configuration Files
@@ -55,8 +94,11 @@ The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, 
 |------|---------|
 | `fly.toml` | Staging web app configuration |
 | `fly.prod.toml` | Production web app configuration |
-| `fly.cron.stage.toml` | Staging cron machine configuration |
-| `fly.cron.toml` | Production cron machine configuration |
+| `fly.cron.stage.toml` | Staging news-ingestion cron machine configuration |
+| `fly.cron.toml` | Production news-ingestion cron machine configuration |
+| `fly.cron.sl.stage.toml` / `fly.cron.sl.toml` | Staging / production Summer League ingestion cron |
+| `fly.cron.roster.stage.toml` / `fly.cron.roster.toml` | Staging / production Summer League roster cron |
+| `fly.cron.desk.stage.toml` / `fly.cron.desk.toml` | Staging / production Summer League Desk cron (readiness-gated -- see below) |
 
 ---
 
@@ -71,19 +113,27 @@ The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, 
   2. Run Alembic migrations
   3. Deploy via `flyctl deploy --remote-only`
   4. Set secrets (DATABASE_URL, SECRET_KEY, ENV=stage, etc.)
-  5. Update cron machine with latest app image
+  5. Update news/Summer-League-ingestion/roster cron machines with latest app image
+  6. Run `scripts/check_sl_desk_readiness.py preflight` (read-only); if it passes,
+     idempotently create-if-absent / update-if-present the Summer League Desk cron
+     machine. A failed preflight skips this step without failing the deploy.
 
 ### Production Deploy (`.github/workflows/fly-deploy-prod.yml`)
 
 - **Trigger**: Manual workflow dispatch only
-- **Input**: Optional git ref (SHA, tag, or branch) - defaults to `main`
+- **Input**: Optional git ref (SHA, tag, or branch) - defaults to `main`; optional
+  `enable_desk_cron` boolean (default `false`) - see below
 - **Concurrency**: One deploy at a time; does NOT cancel in-progress
 - **Steps**:
   1. Checkout specified ref
   2. Run Alembic migrations
   3. Set secrets on prod app
   4. Deploy via `flyctl deploy --config fly.prod.toml --remote-only --app draft-app-prod`
-  5. Update cron machine with latest app image
+  5. Update news/Summer-League-ingestion/roster cron machines with latest app image
+  6. Only when `enable_desk_cron` is `true`: run `scripts/check_sl_desk_readiness.py
+     preflight` against prod (read-only); if it also passes, idempotently
+     create-if-absent / update-if-present the Summer League Desk cron machine. Both
+     the input and the preflight must hold, or this step is skipped entirely.
 
 ### Review Apps (`.github/workflows/fly-deploy-review.yml`)
 

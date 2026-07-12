@@ -10,6 +10,7 @@ import pytest
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
+    SummerLeagueGameStatus,
     SummerLeagueRawFile,
     SummerLeagueRawFileStatus,
     SummerLeagueRawRun,
@@ -27,6 +28,7 @@ from app.services.summer_league.normalization import (
     parse_player_gamelog_box_rows,
     parse_team_box_rows,
     parse_team_gamelog,
+    resolve_game_status,
     team_slug,
 )
 
@@ -49,6 +51,52 @@ def test_team_slug_uses_source_name_or_abbreviation() -> None:
     """Team slugs are deterministic from source names."""
     assert team_slug("Los Angeles Lakers", "LAL") == "los-angeles-lakers"
     assert team_slug("", "NYK") == "nyk"
+
+
+@pytest.mark.parametrize(
+    "current_status, raw_run_complete, expected",
+    [
+        # No scoreboard row has ever tracked this game (brand-new row, the
+        # schema default) and the audited slice isn't fully captured yet --
+        # no evidence either way, stays Unknown.
+        (SummerLeagueGameStatus.UNKNOWN, False, SummerLeagueGameStatus.UNKNOWN),
+        # No scoreboard tracking, but the whole raw run is COMPLETE -- the
+        # historic full-backfill path (matches the normalizer's original,
+        # pre-#530 behavior for standalone historic ingests).
+        (SummerLeagueGameStatus.UNKNOWN, True, SummerLeagueGameStatus.FINAL),
+        # Scoreboard says Scheduled -- box data parsing (regardless of the
+        # audited run's completeness) can never promote this on its own.
+        (SummerLeagueGameStatus.SCHEDULED, False, SummerLeagueGameStatus.SCHEDULED),
+        (SummerLeagueGameStatus.SCHEDULED, True, SummerLeagueGameStatus.SCHEDULED),
+        # Scoreboard says In-Progress -- same guarantee: a targeted live raw
+        # refresh's partial mid-game snapshot must never finalize the game.
+        (SummerLeagueGameStatus.IN_PROGRESS, False, SummerLeagueGameStatus.IN_PROGRESS),
+        (SummerLeagueGameStatus.IN_PROGRESS, True, SummerLeagueGameStatus.IN_PROGRESS),
+        # Once Final, monotonic: a later partial/stale call never regresses it.
+        (SummerLeagueGameStatus.FINAL, False, SummerLeagueGameStatus.FINAL),
+        (SummerLeagueGameStatus.FINAL, True, SummerLeagueGameStatus.FINAL),
+        # Fix #4: POSTPONED/CANCELED are terminal like FINAL -- a game that will
+        # never tip must never get promoted to FINAL just because the audited
+        # raw run for its year/league happens to be COMPLETE (evidence the
+        # *other* games in that slice finished, not this one), nor regressed.
+        (SummerLeagueGameStatus.POSTPONED, False, SummerLeagueGameStatus.POSTPONED),
+        (SummerLeagueGameStatus.POSTPONED, True, SummerLeagueGameStatus.POSTPONED),
+        (SummerLeagueGameStatus.CANCELED, False, SummerLeagueGameStatus.CANCELED),
+        (SummerLeagueGameStatus.CANCELED, True, SummerLeagueGameStatus.CANCELED),
+    ],
+)
+def test_resolve_game_status_table(
+    current_status: SummerLeagueGameStatus,
+    raw_run_complete: bool,
+    expected: SummerLeagueGameStatus,
+) -> None:
+    """Pure status table (#530): missing evidence never promotes; Final is monotonic."""
+    assert (
+        resolve_game_status(
+            current_status=current_status, raw_run_complete=raw_run_complete
+        )
+        == expected
+    )
 
 
 def test_parse_player_gamelog_box_rows_builds_traditional_line(
@@ -398,6 +446,7 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
         _competition_id: int,
         game_id: str,
         *_args: object,
+        **_kwargs: object,
     ) -> SummerLeagueGame:
         return games[game_id]
 

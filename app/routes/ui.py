@@ -1,7 +1,7 @@
 """UI Routes - Renders Jinja templates for the frontend."""
 
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -73,7 +73,13 @@ from app.services.player_service import (
     get_college_stats_by_player_id,
     get_player_profile_by_slug,
 )
+from app.services.event_desk.timeutils import to_eastern_date
 from app.services.school_logo_service import get_logo_url_for_school
+from app.services.summer_league.desk_read import (
+    DEFAULT_TRACKER_COHORT,
+    DEFAULT_TRACKER_STAT_VIEW,
+    get_desk_view_from_snapshot,
+)
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from app.services.summer_league_stats_service import (
     get_player_shotchart_context,
@@ -133,8 +139,40 @@ CONSENSUS_LOTTERY_PICKS = 14
 async def home(
     request: Request,
     db: AsyncSession = Depends(get_session),
+    # Class Tracker toggle state (#511) -- server round-trip query params, the
+    # SL Explorer's existing pattern. Raw/unknown values are validated and
+    # normalized inside `get_desk_view_from_snapshot`, not here -- this route
+    # stays thin and never queries for the Desk itself.
+    cohort: str = Query(default=DEFAULT_TRACKER_COHORT),
+    statview: str = Query(default=DEFAULT_TRACKER_STAT_VIEW),
 ):
     """Render the Homepage with consensus hero, trending players, VS arena, and news feed."""
+    # --- Summer League Desk (event-instance #1 of the Event Desk framework) ---
+    # ONE service call resolves the current state fresh and loads the ONE
+    # already-materialized render-snapshot variant that matches it (#551,
+    # launch-readiness item 10) -- see `get_desk_view_from_snapshot`'s
+    # docstring. `daily_state` is still resolved at request time by the
+    # framework's pure resolvers (same `_resolve_window_state` a live
+    # assembly used), so tip-time Preview->Live/Live->Recap switching is
+    # exactly as correct as before; only the CONTENT for that state now comes
+    # from a single indexed snapshot lookup instead of reassembling the page
+    # query-by-query. A `None` payload means either the SL event's lifecycle
+    # isn't currently active OR this exact variant hasn't been materialized
+    # yet -- both degrade to the same archive-strip treatment (behavior spec
+    # §2); the enrichment dicts degrade to empty in that case too.
+    # `now` is naive UTC (tzinfo stripped): the framework resolvers compare it
+    # against `summer_league_games.tip_datetime`, which is naive UTC by repo
+    # convention, so an aware value here would raise on the comparison. Building
+    # it timezone-aware first (not deprecated `utcnow()`) then dropping tzinfo
+    # yields the correct wall-clock instant without an aware/naive mismatch.
+    now_naive_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+    desk_view = await get_desk_view_from_snapshot(
+        db, now=now_naive_utc, tracker_cohort=cohort, tracker_stat_view=statview
+    )
+    desk_payload = desk_view.payload
+    desk_window_open = desk_payload is not None
+    desk_game_year = to_eastern_date(now_naive_utc).year
+
     # --- Consensus hero -------------------------------------------------------
     # Select the board kind from the draft calendar.  Fall back to BIG_BOARD
     # when the calendar-selected kind returns no rows (e.g. MOCK_DRAFT data has
@@ -392,6 +430,13 @@ async def home(
         "home.html",
         {
             "request": request,
+            # Summer League Desk (None/False off-window -> collapsed strip)
+            "desk_payload": desk_payload,
+            "desk_window_open": desk_window_open,
+            "desk_players": desk_view.players,
+            "desk_matchups": desk_view.matchups,
+            "desk_tracker_teams": desk_view.tracker_teams,
+            "desk_game_year": desk_game_year,
             # Consensus hero
             "board_kind": board_kind,
             "consensus_rows": consensus_rows,

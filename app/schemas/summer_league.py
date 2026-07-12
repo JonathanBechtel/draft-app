@@ -56,8 +56,17 @@ class SummerLeagueGameStatus(str, Enum):
     """Normalized Summer League game status."""
 
     SCHEDULED = "scheduled"
+    IN_PROGRESS = "in_progress"
     FINAL = "final"
     UNKNOWN = "unknown"
+    # Terminal, non-Live statuses (fix #4, follow-up to #529/#530/fix #3): a
+    # postponed/canceled game will never tip, so it must be excluded by every
+    # consumer that filters on this column -- not re-derived per-consumer from
+    # ``status_text`` (see `scoreboard_ingest.map_game_status`,
+    # `live_ingestion._LIVE_STATUSES`, `normalization.resolve_game_status`,
+    # `event_desk.registry._to_generic_status`).
+    POSTPONED = "postponed"
+    CANCELED = "canceled"
 
 
 class SummerLeagueResolutionStatus(str, Enum):
@@ -277,6 +286,10 @@ class SummerLeagueGame(SQLModel, table=True):  # type: ignore[call-arg]
     competition_id: int = Field(foreign_key="summer_league_competitions.id")
     nba_stats_game_id: str = Field(nullable=False)
     game_date: Optional[date] = Field(default=None)
+    # Scheduled/actual tip-off in UTC (Desk state machine + Morning Card timing).
+    # Nullable: legacy rows predate scoreboard ingest (behavior spec §10) and the
+    # scoreboard/schedule step that populates this is ticket #515, not this migration.
+    tip_datetime: Optional[datetime] = Field(default=None)
     home_team_entry_id: Optional[int] = Field(
         default=None,
         foreign_key="summer_league_team_entries.id",
@@ -285,6 +298,13 @@ class SummerLeagueGame(SQLModel, table=True):  # type: ignore[call-arg]
         default=None,
         foreign_key="summer_league_team_entries.id",
     )
+    # Raw NBA Stats provider team IDs (schedule feed's homeTeam.teamId /
+    # awayTeam.teamId, stringified), retained independently of the resolved
+    # *_team_entry_id FKs above so scoreboard ingest (#529) can report a
+    # provider team ID it couldn't resolve to an existing
+    # `summer_league_team_entries` row without fabricating a parallel row.
+    home_nba_stats_team_id: Optional[str] = Field(default=None)
+    away_nba_stats_team_id: Optional[str] = Field(default=None)
     home_score: Optional[int] = Field(default=None)
     away_score: Optional[int] = Field(default=None)
     status: SummerLeagueGameStatus = Field(
@@ -299,6 +319,11 @@ class SummerLeagueGame(SQLModel, table=True):  # type: ignore[call-arg]
             server_default=SummerLeagueGameStatus.UNKNOWN.value,
         ),
     )
+    # Honest raw provider status text (e.g. "Final/OT", "PPD", "Qtr 3 - 4:12"),
+    # kept alongside the coarse `status` enum bucket since the enum alone
+    # cannot distinguish an OT final from a regulation final, or a postponed
+    # game from a merely-scheduled one.
+    status_text: Optional[str] = Field(default=None)
     source_quality: SummerLeagueDataQuality = Field(
         default=SummerLeagueDataQuality.RAW_ONLY,
         sa_column=Column(

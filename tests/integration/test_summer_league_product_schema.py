@@ -178,3 +178,51 @@ async def test_product_schema_requires_unique_nba_stats_person_id(
 
     with pytest.raises(IntegrityError):
         await db_session.flush()
+
+
+@pytest.mark.asyncio
+async def test_legacy_game_with_null_tip_datetime_remains_valid(
+    db_session: AsyncSession,
+) -> None:
+    """Rows written before scoreboard ingest (ticket #515) keep a null tip_datetime."""
+    competition, _, game = await _seed_game_context(db_session)
+
+    assert game.tip_datetime is None
+
+    fetched = await db_session.get(SummerLeagueGame, game.id)
+    assert fetched is not None
+    assert fetched.tip_datetime is None
+    assert fetched.status == SummerLeagueGameStatus.FINAL
+    # Untouched sibling column stays populated -- the migration didn't disturb it.
+    assert fetched.competition_id == competition.id
+
+
+@pytest.mark.asyncio
+async def test_game_tip_datetime_and_in_progress_status_roundtrip(
+    db_session: AsyncSession,
+) -> None:
+    """tip_datetime persists as UTC and IN_PROGRESS roundtrips through the enum column."""
+    competition, team, _ = await _seed_game_context(db_session)
+    tip = datetime(2026, 7, 12, 22, 0, 0)
+
+    live_game = SummerLeagueGame(
+        competition_id=competition.id,  # type: ignore[arg-type]
+        nba_stats_game_id="1522400099",
+        game_date=date(2026, 7, 12),
+        home_team_entry_id=team.id,
+        tip_datetime=tip,
+        status=SummerLeagueGameStatus.IN_PROGRESS,
+        source_quality=SummerLeagueDataQuality.FULL,
+    )
+    db_session.add(live_game)
+    await db_session.flush()
+    await db_session.refresh(live_game)
+
+    assert live_game.id is not None
+    assert live_game.status == SummerLeagueGameStatus.IN_PROGRESS
+    assert live_game.tip_datetime == tip
+
+    fetched = await db_session.get(SummerLeagueGame, live_game.id)
+    assert fetched is not None
+    assert fetched.status == SummerLeagueGameStatus.IN_PROGRESS
+    assert fetched.tip_datetime == tip

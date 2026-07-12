@@ -10,10 +10,12 @@ import pytest
 
 from app.services.summer_league.raw_ingestion import (
     GAME_ENDPOINTS,
+    REQUIRED_GAME_ENDPOINTS,
     RawIngestionOptions,
     SummerLeagueRequiredGamelogError,
     SummerLeagueRawIngestor,
     extract_game_ids,
+    is_required_game_endpoint,
 )
 from app.services.summer_league.raw_store import SummerLeagueRawStore
 
@@ -88,6 +90,34 @@ def _endpoint_payload(endpoint: str, game_id: str) -> dict[str, object]:
             }
         ]
     }
+
+
+def test_required_game_endpoints_are_exactly_the_box_score_endpoints() -> None:
+    """The critical set is the three box-score endpoints, nothing else.
+
+    Guards the single source of truth `live_ingestion.refresh_selected_games`
+    reads to decide `LiveIngestionReport.required_errors` -- pbp/shotchart
+    must stay outside it (non-blocking), while every box-score endpoint must
+    be inside it (blocks freshness).
+    """
+    assert REQUIRED_GAME_ENDPOINTS == {
+        "boxscoretraditionalv2",
+        "boxscoreadvancedv2",
+        "boxscorescoringv2",
+    }
+    assert REQUIRED_GAME_ENDPOINTS < set(GAME_ENDPOINTS)
+
+
+@pytest.mark.parametrize("endpoint", sorted(REQUIRED_GAME_ENDPOINTS))
+def test_is_required_game_endpoint_true_for_box_score_endpoints(endpoint: str) -> None:
+    """Every box-score endpoint classifies as required."""
+    assert is_required_game_endpoint(endpoint) is True
+
+
+@pytest.mark.parametrize("endpoint", ["playbyplayv2", "shotchartdetail", "unknownendpoint"])
+def test_is_required_game_endpoint_false_for_non_box_score_endpoints(endpoint: str) -> None:
+    """pbp/shotchart (and anything unrecognized) classify as non-blocking."""
+    assert is_required_game_endpoint(endpoint) is False
 
 
 def test_extract_game_ids_deduplicates_in_gamelog_order() -> None:
@@ -301,6 +331,113 @@ def test_fetch_year_league_uses_force_when_writing_existing_snapshots(
 
     payload = json.loads(existing.read_text())
     assert payload["resultSets"][0]["name"] == "LeagueGameLog"
+
+
+def test_fetch_year_league_game_ids_fetches_only_those_exact_ids(
+    tmp_path: Path,
+) -> None:
+    """Explicit game_ids scopes per-game endpoint calls to exactly those IDs.
+
+    Ticket #531: a targeted live refresh names specific game IDs directly,
+    bypassing the season gamelog's discovered list entirely.
+    """
+    client = FakeNBAStatsClient()
+    store = SummerLeagueRawStore(tmp_path)
+    ingestor = SummerLeagueRawIngestor(client=client, store=store, sleep=lambda _: None)
+
+    manifest = ingestor.fetch_year_league(
+        RawIngestionOptions(
+            year=2024, league_id="15", game_ids=("1522400001", "9999999999")
+        )
+    )
+
+    game_calls = [call for call in client.calls if call[0] in GAME_ENDPOINTS]
+    assert {params["GameID"] for _, params in game_calls} == {
+        "1522400001",
+        "9999999999",
+    }
+    assert len(game_calls) == 2 * len(GAME_ENDPOINTS)
+    # The season gamelog's own discovered list is untouched -- game_ids only
+    # scopes which games get per-game endpoint calls, not manifest metadata.
+    assert manifest.game_ids == ["1522400002", "1522400001"]
+
+
+def test_fetch_year_league_game_ids_empty_tuple_fetches_no_game_endpoints(
+    tmp_path: Path,
+) -> None:
+    """An empty game_ids tuple makes zero per-game network calls."""
+    client = FakeNBAStatsClient()
+    store = SummerLeagueRawStore(tmp_path)
+    ingestor = SummerLeagueRawIngestor(client=client, store=store, sleep=lambda _: None)
+
+    manifest = ingestor.fetch_year_league(
+        RawIngestionOptions(year=2024, league_id="15", game_ids=())
+    )
+
+    assert [call for call in client.calls if call[0] in GAME_ENDPOINTS] == []
+    assert manifest.files_written == [
+        "2024/15/leaguegamelog_team.json",
+        "2024/15/leaguegamelog_player.json",
+    ]
+
+
+def test_fetch_year_league_game_ids_none_preserves_existing_behavior(
+    tmp_path: Path,
+) -> None:
+    """game_ids=None (the default) is identical to the pre-#531 discovery path."""
+    client = FakeNBAStatsClient()
+    store = SummerLeagueRawStore(tmp_path)
+    ingestor = SummerLeagueRawIngestor(client=client, store=store, sleep=lambda _: None)
+
+    manifest = ingestor.fetch_year_league(
+        RawIngestionOptions(year=2024, league_id="15", limit_games=1)
+    )
+
+    game_calls = [call for call in client.calls if call[0] in GAME_ENDPOINTS]
+    assert {params["GameID"] for _, params in game_calls} == {"1522400002"}
+    assert manifest.game_ids == ["1522400002", "1522400001"]
+
+
+def test_fetch_year_league_game_ids_force_replaces_existing_files(
+    tmp_path: Path,
+) -> None:
+    """game_ids + force=True overwrites an existing snapshot for a named game.
+
+    This is the exact shape a live refresh needs: two selected game IDs
+    produce calls only for those IDs, and replace whatever was already on
+    disk rather than reusing a stale immutable-looking snapshot.
+    """
+    store = SummerLeagueRawStore(tmp_path)
+    stale_path = store.game_file(
+        year=2024, league_id="15", game_id="1522400001", endpoint="boxscoretraditionalv2"
+    )
+    store.write_json(stale_path, {"stale": True})
+    other_path = store.game_file(
+        year=2024, league_id="15", game_id="9999999999", endpoint="boxscoretraditionalv2"
+    )
+    assert not other_path.exists()
+
+    client = FakeNBAStatsClient()
+    ingestor = SummerLeagueRawIngestor(client=client, store=store, sleep=lambda _: None)
+
+    manifest = ingestor.fetch_year_league(
+        RawIngestionOptions(
+            year=2024,
+            league_id="15",
+            game_ids=("1522400001", "9999999999"),
+            force=True,
+        )
+    )
+
+    game_calls = [call for call in client.calls if call[0] in GAME_ENDPOINTS]
+    assert {params["GameID"] for _, params in game_calls} == {
+        "1522400001",
+        "9999999999",
+    }
+    refreshed = json.loads(stale_path.read_text())
+    assert refreshed != {"stale": True}
+    assert other_path.exists()
+    assert manifest.errors == []
 
 
 def test_fetch_year_league_reuses_existing_snapshots_without_requests(

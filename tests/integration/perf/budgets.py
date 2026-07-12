@@ -47,6 +47,29 @@ from __future__ import annotations
 # already-built board, bringing it to 43 here (and a larger win in prod, where
 # the loop cost scaled with the number of sources).
 ROUTE_BUDGETS: dict[str, int] = {
+    # `/` HAS TWO REGIMES -- this 52 covers only the OFF-WINDOW one:
+    #   * OFF-WINDOW (this budget, the year-round default): the Summer League
+    #     Desk (#508/#548) fires ONE `events` lookup by key, finds no active
+    #     event, and short-circuits to `None` before touching any other desk
+    #     table. `representative_dataset` seeds no events/T1-T4 rows, so THIS
+    #     test only ever measures this path -- 1 Desk query, well inside
+    #     #548's 5-Desk-query-per-state contract (see
+    #     `tests/integration/perf/test_desk_state_resolution_budget.py`, which
+    #     also separately proves the OTHER honest off-window shape -- a
+    #     dormant event whose `events` row already exists post-tick -- at 3).
+    #   * IN-WINDOW (during a live SL event, e.g. Vegas 2026 Jul 9-19): `/`
+    #     renders the full Desk. That composite is budgeted SEPARATELY in
+    #     `DESK_HOME_PAGE_BUDGETS` below and asserted by
+    #     `test_desk_home_inwindow_budget.py` (which seeds an active event) --
+    #     NOT here, because this fixture can't put the Desk in-window.
+    # #548 tightened the Desk's OWN added query cost (state resolution + the
+    # one snapshot read) to <=5 for every state (Off-window/Preview/Live/
+    # Recap/Wind-down) -- see `test_desk_state_resolution_budget.py`, which
+    # measures that cost in isolation via `get_desk_view_from_snapshot`
+    # directly rather than through the whole `/` route. This 52 and
+    # `DESK_HOME_PAGE_BUDGETS`'s numbers still include the repo's known,
+    # pre-existing `/` N+1 (see the module note above) -- these are regression
+    # ratchets on the WHOLE route, not a claim the page is N+1-free.
     "/": 52,
     "/news": 8,
     "/podcasts": 5,
@@ -110,4 +133,114 @@ ROUTE_BUDGETS: dict[str, int] = {
 # Kept here as a single source-of-truth reference for the max query count.
 ADMIN_ROUTE_BUDGETS: dict[str, int] = {
     "/admin/players/stubs": 10,
+}
+
+# Summer League Desk read service (#508) -- per-state query budgets for
+# `app.services.summer_league.desk_read.get_desk_payload`, asserted directly by
+# `tests/integration/test_sl_desk_home.py` (not by the generic, single-dataset
+# `test_route_query_budgets.py` above -- that harness's seeded dataset never
+# puts the Desk into an active state, so it only ever exercises "off_window").
+#
+# These are deliberately NOT folded into `ROUTE_BUDGETS["/"]`: doing so would
+# either force that budget absurdly high (to cover the richest state) or hide
+# a real per-state regression behind a single number that's only ever measured
+# against one (off-window) fixture. Each number below is the EXACT count
+# `tests/integration/test_sl_desk_home.py` measured against a minimal
+# one/two-game, one/two-player fixture; it does not scale with the number of
+# tracked players or games (no per-player, no per-game queries -- see
+# `desk_read.py`'s module docstring), so this is a regression ratchet on
+# *section count*, not on data volume.
+DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
+    # Event lookup only, then short-circuit before touching any other desk
+    # table -- the cheapest path by design.
+    "off_window": 1,
+    # Measured 16: state resolution (event + resolve_calendar_facts' own
+    # event/competitions/game_dates/today lookups = 5) + baseline_version (1)
+    # + freshness (1) + today's T4 slate (1) + games (1) + team entries (1) +
+    # hero's T3 subject lookup (1) + Class Tracker's 5 batched queries
+    # (roster/players/seasons/teams/grades -- #543: reads persisted T2 grades
+    # instead of T1 baselines, same query count).
+    "preview": 16,
+    # Measured 17: preview's queries + the live board's one batched
+    # top-performer query.
+    "live": 17,
+    # Measured 17: state resolution/baseline/freshness (7) + ledger_date (1)
+    # + ledger game logs/players/baselines/facts (4) + Class Tracker (5).
+    "recap": 17,
+    # Measured 13 (raised from 11 by #544 "zero-signal days retain their
+    # schedule"): state resolution/baseline/freshness (7) + T4 slate (1) +
+    # games (1) + team entries (1) -- the quiet path now fetches/builds the
+    # slate rows same as a signal-bearing day (only the HERO skips the
+    # game-based build) -- + quiet-slate hero's T2 + players_master lookup
+    # (2) + Class Tracker on an empty roster short-circuits after 1 query
+    # (roster probe returns nothing -- no players/seasons/teams/grades
+    # queries).
+    "quiet_slate": 13,
+}
+
+# Summer League Desk -- FULL in-window `/` PAGE budgets (#508 follow-up), per
+# resolved Desk state. Distinct from `DESK_HOME_QUERY_BUDGETS` above (which
+# budgets `get_desk_payload` in ISOLATION): these are the whole `/` render --
+# consensus hero, trending, news, podcasts, film room AND the active Desk --
+# and are asserted by `test_desk_home_inwindow_budget.py`, which layers an
+# active SL event on top of the full `representative_dataset`.
+#
+# Why this exists: `ROUTE_BUDGETS["/"]` (52) is measured against
+# `representative_dataset`, which seeds NO events/T1-T4 rows, so it only ever
+# exercises the Desk's OFF-WINDOW short-circuit (one `events` lookup, then
+# `None`). During the SL event itself (Vegas 2026: Jul 9-19) `/` is in-window
+# and renders the full Desk -- and nothing budgeted that composite until this
+# dict. The two regimes are:
+#   * OFF-WINDOW  -> `ROUTE_BUDGETS["/"] = 52` (the year-round default).
+#   * IN-WINDOW   -> these numbers (only during a live SL event).
+#
+# SNAPSHOT-BACKED (#551, launch-readiness item 10): the in-window `/` render no
+# longer live-assembles the Desk. `app.routes.ui.home` now calls
+# `desk_read.get_desk_view_from_snapshot`, which resolves the current
+# lifecycle/daily state fresh and then loads ONE already-materialized
+# `event_desk_render_snapshots` row -- the whole payload + player/matchup/
+# tracker-team view-context comes back decoded from that row's JSON columns,
+# with NO per-player/per-game/grade/storyline enrichment afterward.
+#
+# #548 TIGHTENED THIS FURTHER, from 57 to 55, by removing a genuine duplicate
+# query `_resolve_window_state` used to issue: it fetched the `events` row
+# itself, then called the framework's generic `resolve_calendar_facts`, which
+# turned around and re-fetched that SAME `events` row (plus a redundant full
+# `summer_league_competitions` row-fetch it also didn't need) via its own
+# internal `resolve_target_competitions` call, purely to re-derive
+# `competition_ids` that `_resolve_window_state` already had in hand from the
+# `events` row's own `calendar_ref`. `_resolve_window_state` now derives
+# `competition_ids` once, up front, and calls the new
+# `registry.calendar_facts_for_competition_ids` directly -- 2 queries
+# (game_dates + today's schedule/statuses) instead of the old path's 4
+# (redundant `events` refetch + competitions fetch + those same 2). Old
+# allowances REMOVED: this was 57 (state resolution 5 + 1 snapshot read = 6
+# Desk queries atop the 51-query non-Desk `/` base), down from the pre-#551
+# live-assembly total of 71. The Desk's own added cost per in-window request
+# is now state resolution (3: events lookup + 2 calendar-fact reads) + 1
+# snapshot read = 4 -- inside #548's <=5-Desk-query-per-state contract for
+# EVERY state (Off-window/Preview/Live/Recap/Wind-down), proven directly (in
+# isolation from the rest of `/`) by
+# `tests/integration/perf/test_desk_state_resolution_budget.py`. It does NOT
+# scale with tracked players or games -- the snapshot read is a single row
+# fetch regardless.
+#
+# NOTE: like `ROUTE_BUDGETS["/"]`, these totals still INCLUDE the repo's known,
+# pre-existing `/` N+1 (see the ROUTE_BUDGETS note above) -- they are NOT a
+# claim that the whole page is N+1-free, only a ratchet freezing the in-window
+# count at today's honestly-measured level so a NEW Desk regression can't creep
+# in unbudgeted. Numbers are the exact counts measured by
+# `test_desk_home_inwindow_budget.py`; do not tune code to round them.
+DESK_HOME_PAGE_BUDGETS: dict[str, int] = {
+    # Measured 55 (down from 57 pre-#548, 71 pre-#551): off-window `/`
+    # baseline (52, which already includes the single off-window `events`
+    # lookup) - 1 (that lookup) + 4 (state resolution 3 + one snapshot read).
+    # Live and Recap land on the SAME total now -- both replace their whole
+    # per-state assembly with the identical single-snapshot read path.
+    "live": 55,
+    # Measured 55: identical to Live here -- the snapshot-backed read is the
+    # same single-row fetch regardless of which state's variant it loads (the
+    # per-state assembly differences that used to make Live/Recap diverge now
+    # live entirely at tick-materialization time, off the request path).
+    "recap": 55,
 }

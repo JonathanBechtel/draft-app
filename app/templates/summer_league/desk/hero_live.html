@@ -1,0 +1,105 @@
+{# Summer League Desk -- Live hero (#509, extended #541): the key-matchup duel.
+
+   `desk_payload.hero.kind == "live_duel"`. Per-subject live box lines (PTS/
+   REB/AST/GmSc) live on `hero.subject_line`/`hero.subject_line_2` (#541) --
+   both subjects' tonight running lines, nullable pre-tip (em dash, never a
+   zero or an event/career total). The game-level score/status still live on
+   `DeskLiveBoardRow`, so this cross-references `desk_payload.live_board` by
+   `hero.game_id` for the running score and reuses that row's Top Performer
+   for a live-flavor stat chip. `headline`/`tagline` are already-rendered
+   commentary prose (#519) -- placed here, not re-worded. #}
+{% macro hero_line(line) %}
+<div class="desk__hero-statline">
+  <span><b>{% if line and line.pts is not none %}{{ line.pts }}{% else %}&mdash;{% endif %}</b> PTS</span>
+  <span><b>{% if line and line.reb is not none %}{{ line.reb }}{% else %}&mdash;{% endif %}</b> REB</span>
+  <span><b>{% if line and line.ast is not none %}{{ line.ast }}{% else %}&mdash;{% endif %}</b> AST</span>
+  <span><b>{% if line and line.gmsc is not none %}{{ '%.1f'|format(line.gmsc) }}{% else %}&mdash;{% endif %}</b> GmSc</span>
+</div>
+{% endmacro %}
+{% set hero = desk_payload.hero %}
+{% set p1 = desk_players.get(hero.subject_player_id) if hero.subject_player_id else None %}
+{% set p2 = desk_players.get(hero.subject_player_id_2) if hero.subject_player_id_2 else None %}
+{% set live_row = (desk_payload.live_board | selectattr('game_id', 'equalto', hero.game_id) | list | first) if hero.game_id else None %}
+<section class="card desk__hero desk__hero--live" data-desk-hero-kind="{{ hero.kind }}" aria-label="Summer League Desk live matchup">
+  <div class="scanlines"></div>
+  <div class="desk__hero-eyebrow">
+    <span>&#9679; Live &middot; Key Matchup</span>
+    {% if live_row and live_row.home_score is not none and live_row.away_score is not none %}
+    <span class="desk__hero-tip">{{ live_row.matchup_label }} &middot; {{ live_row.away_score }}&ndash;{{ live_row.home_score }}</span>
+    {% elif hero.game_id and hero.game_id in desk_matchups %}
+    {% set m = desk_matchups[hero.game_id] %}
+    <span class="desk__hero-tip">{{ m.away.abbrev }} @ {{ m.home.abbrev }}</span>
+    {% endif %}
+    <span class="desk__hero-tip desk__hero-tip--freshness">{{ desk_payload.freshness.as_of_et_label }}</span>
+  </div>
+
+  {% if p1 and p2 %}
+  <div class="desk__hero-stage">
+    <div class="desk__hero-player">
+      <div class="desk__hero-imgwrap">
+        <span class="desk__avatar">
+          {% if p1.photo_url %}<img src="{{ p1.photo_url }}" alt="">{% endif %}
+        </span>
+      </div>
+      <div class="desk__hero-name">
+        {% if p1.slug %}<a href="/players/{{ p1.slug }}/summer-league?ref=sl-desk" data-desk-placement="hero">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
+      </div>
+      <div class="desk__hero-meta">{{ p1.draft_tag }}</div>
+      {{ hero_line(hero.subject_line) }}
+    </div>
+    <div class="desk__hero-center">
+      <span class="desk__hero-vs">VS</span>
+    </div>
+    <div class="desk__hero-player">
+      <div class="desk__hero-imgwrap">
+        <span class="desk__avatar">
+          {% if p2.photo_url %}<img src="{{ p2.photo_url }}" alt="">{% endif %}
+        </span>
+      </div>
+      <div class="desk__hero-name">
+        {% if p2.slug %}<a href="/players/{{ p2.slug }}/summer-league?ref=sl-desk" data-desk-placement="hero">{{ p2.display_name }}</a>{% else %}{{ p2.display_name }}{% endif %}
+      </div>
+      <div class="desk__hero-meta">{{ p2.draft_tag }}</div>
+      {{ hero_line(hero.subject_line_2) }}
+    </div>
+  </div>
+  {% elif p1 %}
+  <div class="desk__hero-solo">
+    <div class="desk__hero-imgwrap">
+      <span class="desk__avatar desk__avatar--xl">
+        {% if p1.photo_url %}<img src="{{ p1.photo_url }}" alt="">{% endif %}
+      </span>
+    </div>
+    <div class="desk__hero-solo-body">
+      <div class="desk__hero-bigname">
+        {% if p1.slug %}<a href="/players/{{ p1.slug }}/summer-league?ref=sl-desk" data-desk-placement="hero">{{ p1.display_name }}</a>{% else %}{{ p1.display_name }}{% endif %}
+      </div>
+      <div class="desk__hero-meta">{{ p1.draft_tag }}</div>
+      {{ hero_line(hero.subject_line) }}
+    </div>
+  </div>
+  {% endif %}
+
+  <p class="desk__hero-tagline">
+    <span class="desk__hero-headline">{{ hero.headline }}</span>
+    {% if hero.tagline %} {{ hero.tagline }}{% endif %}
+  </p>
+
+  {% if live_row and live_row.top_performer_gmsc is not none %}
+  {% set tp = desk_players.get(live_row.top_performer_player_id) %}
+  <div class="desk__hero-chips">
+    <span class="desk__chip">
+      Top performer: {{ tp.display_name if tp else 'Player ' ~ live_row.top_performer_player_id }}
+      &middot; {{ '%.1f'|format(live_row.top_performer_gmsc) }} GmSc
+    </span>
+  </div>
+  {% endif %}
+
+  {% if hero.facts %}
+  <div class="desk__hero-chips">
+    {% for fact in hero.facts %}
+      {% if fact.chip %}<span class="desk__chip">{{ fact.chip }}</span>{% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
