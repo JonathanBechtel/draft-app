@@ -35,28 +35,26 @@ run than to wait up to an hour for the schedule.
   `draft-app-prod`.
 - Conda env: `conda activate draftguru` (or prefix commands with
   `conda run -n draftguru --no-capture-output`).
-- A `DATABASE_URL` for the **target environment** (stage or prod), not your local dev
-  DB. Get it from the Neon console for project `draftguru` (branch `dev` for staging vs.
-  a `production`-derived branch for prod), or `neonctl connection-string <branch> --project-id <draftguru-project-id>`.
-  Per `feedback_no_inline_env_chains` — never inline the URL into a single command; put
-  it in a dedicated, **gitignored** env file and point `scripts/with-db-env.sh` at it via
-  `ENV_FILE`:
+- **Staging is non-prod** — the same Neon branch (`dev`) your regular `.env` already
+  targets. Staging commands therefore need **no override**: use `scripts/with-db-env.sh`
+  (which sources `.env`) directly.
+- **Prod** is the only environment whose `DATABASE_URL` differs. Put the prod branch's
+  connection string in a dedicated, **gitignored** override file (never inline it, per
+  `feedback_no_inline_env_chains`) and point `scripts/with-db-env.sh` at it via `ENV_FILE`:
 
   ```bash
-  # one-time per environment, do NOT commit these files
-  cat > .env.sl-desk-stage <<'EOF'
-  DATABASE_URL=postgresql+asyncpg://...stage-neon-branch-connection-string...
-  SECRET_KEY=<any non-empty value -- only needed because importing app.config requires it>
-  EOF
-
+  # one-time, do NOT commit this file
   cat > .env.sl-desk-prod <<'EOF'
   DATABASE_URL=postgresql+asyncpg://...prod-neon-branch-connection-string...
-  SECRET_KEY=<any non-empty value>
+  SECRET_KEY=<any non-empty value -- only needed because importing app.config requires it>
   EOF
   ```
+  Get the prod branch URL from the Neon console for project `draftguru`, or
+  `neonctl connection-string <prod-branch> --project-id <draftguru-project-id>`.
 
-Every Job A / readiness command below is written as
-`ENV_FILE=.env.sl-desk-<env> scripts/with-db-env.sh conda run -n draftguru --no-capture-output <command>`.
+Staging Job A / readiness commands below use `scripts/with-db-env.sh conda run -n draftguru
+--no-capture-output <command>` (regular `.env`); prod commands add the
+`ENV_FILE=.env.sl-desk-prod` prefix.
 
 ---
 
@@ -68,7 +66,7 @@ Deliberate, one-time (or "rare refresh") step. Safe to re-run — each run write
 `baseline_version` and flips `is_active`; it never deletes prior versions.
 
 ```bash
-ENV_FILE=.env.sl-desk-stage scripts/with-db-env.sh conda run -n draftguru --no-capture-output \
+scripts/with-db-env.sh conda run -n draftguru --no-capture-output \
   python scripts/build_sl_cohort_baselines.py
 ```
 
@@ -77,7 +75,7 @@ Expected output: `Built Summer League cohort baselines: version=<...> (season_ra
 ### 1.2 Preflight — **[READ-ONLY]**
 
 ```bash
-ENV_FILE=.env.sl-desk-stage scripts/with-db-env.sh conda run -n draftguru --no-capture-output \
+scripts/with-db-env.sh conda run -n draftguru --no-capture-output \
   python scripts/check_sl_desk_readiness.py preflight
 ```
 
@@ -139,7 +137,7 @@ run, not a failure — it just means today isn't inside the SL calendar window).
 ### 1.5 Post-tick smoke check — **[READ-ONLY]**
 
 ```bash
-ENV_FILE=.env.sl-desk-stage scripts/with-db-env.sh conda run -n draftguru --no-capture-output \
+scripts/with-db-env.sh conda run -n draftguru --no-capture-output \
   python scripts/check_sl_desk_readiness.py post-tick
 ```
 
