@@ -1,7 +1,8 @@
 /**
- * Summer League Desk (#509, extended #556) -- page-scoped JS.
+ * Summer League Desk (#509, extended #556, tracker pagination pre-prod fix)
+ * -- page-scoped JS.
  *
- * Three independent, progressive-enhancement behaviors:
+ * Four independent, progressive-enhancement behaviors:
  *
  *   1. Morning slate disclosure -- collapses ONLY the trailing zero-signal
  *      tail of a 10+ game slate, and only after this script runs. The
@@ -13,7 +14,13 @@
  *      column, both directions, missing values last, name as the stable
  *      tiebreak. Pure client-side reorder: no request, no navigation.
  *
- *   3. Desk player-link click attribution -- fires exactly one `sl_desk_click`
+ *   3. Class Tracker pagination -- caps the VISIBLE rows to 15 at a time
+ *      (same pattern as #1: the server renders every row of the active
+ *      cohort/stat-view, up to `TRACKER_CAP`; JS is what limits what's on
+ *      screen). With JS disabled every row stays reachable in the flat,
+ *      unpaginated table. Re-sorting resets to page 1 over the new order.
+ *
+ *   4. Desk player-link click attribution -- fires exactly one `sl_desk_click`
  *      gtag event (this repo's one analytics mechanism -- see `base.html`)
  *      per click on a Desk player link, carrying `placement` (hero/tracker/
  *      ledger/live_board) and `daily_state`. Native `<a href>` navigation is
@@ -22,6 +29,7 @@
 document.addEventListener('DOMContentLoaded', function () {
   initSlateDisclosure();
   initTrackerSort();
+  initTrackerPagination();
   initDeskClickAnalytics();
 });
 
@@ -199,7 +207,99 @@ function initTrackerSort() {
     rows.forEach(function (row) {
       tbody.appendChild(row);
     });
+
+    // Re-sorting changes which 15 rows belong on "page 1" -- tell pagination
+    // (if it's active) to reset there over the freshly-sorted order.
+    table.dispatchEvent(new CustomEvent('desk:tracker-sorted'));
   }
+}
+
+/**
+ * Cap the Class Tracker's visible rows to `PAGE_SIZE` at a time, paginating
+ * client-side over the already-rendered rows (progressive enhancement --
+ * same pattern as `initSlateDisclosure`: the server renders every row of the
+ * active cohort/stat-view, unhidden, up to the backend's own cap; this only
+ * hides rows AFTER the script runs, so JS-disabled users can still reach
+ * every row in the flat table).
+ *
+ * Listens for `desk:tracker-sorted` (dispatched by `initTrackerSort` after
+ * every reorder) and resets to page 1 over the new order -- re-sorting
+ * re-paginates, per the ticket's requirement that the two features compose.
+ */
+function initTrackerPagination() {
+  var PAGE_SIZE = 15;
+  var table = document.querySelector('.desk__tracker-table');
+  if (!table) {
+    return;
+  }
+  var tbody = table.querySelector('tbody');
+  if (!tbody) {
+    return;
+  }
+  var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+  if (rows.length <= PAGE_SIZE) {
+    return; // Nothing to paginate -- every row already fits on one page.
+  }
+
+  var currentPage = 0;
+
+  function totalPages(rowCount) {
+    return Math.max(1, Math.ceil(rowCount / PAGE_SIZE));
+  }
+
+  function showPage(page) {
+    var liveRows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    var pages = totalPages(liveRows.length);
+    currentPage = Math.max(0, Math.min(page, pages - 1));
+    liveRows.forEach(function (row, idx) {
+      var onPage =
+        idx >= currentPage * PAGE_SIZE && idx < (currentPage + 1) * PAGE_SIZE;
+      if (onPage) {
+        row.removeAttribute('hidden');
+      } else {
+        row.setAttribute('hidden', '');
+      }
+    });
+    statusEl.textContent = 'Page ' + (currentPage + 1) + ' of ' + pages;
+    prevBtn.disabled = currentPage === 0;
+    nextBtn.disabled = currentPage >= pages - 1;
+  }
+
+  var pager = document.createElement('div');
+  pager.className = 'desk__tracker-pager';
+
+  var prevBtn = document.createElement('button');
+  prevBtn.type = 'button';
+  prevBtn.className = 'desk__tracker-pager-btn';
+  prevBtn.textContent = 'Prev';
+  prevBtn.addEventListener('click', function () {
+    showPage(currentPage - 1);
+  });
+
+  var statusEl = document.createElement('span');
+  statusEl.className = 'desk__tracker-pager-status';
+  statusEl.setAttribute('aria-live', 'polite');
+
+  var nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
+  nextBtn.className = 'desk__tracker-pager-btn';
+  nextBtn.textContent = 'Next';
+  nextBtn.addEventListener('click', function () {
+    showPage(currentPage + 1);
+  });
+
+  pager.appendChild(prevBtn);
+  pager.appendChild(statusEl);
+  pager.appendChild(nextBtn);
+
+  var section = document.getElementById('slDeskTracker') || table.closest('.card');
+  (section || table.parentNode).appendChild(pager);
+
+  table.addEventListener('desk:tracker-sorted', function () {
+    showPage(0);
+  });
+
+  showPage(0);
 }
 
 /**

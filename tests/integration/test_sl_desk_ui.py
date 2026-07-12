@@ -337,7 +337,14 @@ async def test_off_window_renders_archive_strip_only(app_client: AsyncClient) ->
 async def test_live_state_renders_live_board_with_em_dash_before_tip(
     app_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Live: hero + live tick board render; a not-yet-tipped game shows an em-dash."""
+    """Live: hero + live tick board render; a not-yet-tipped game never shows a blank cell.
+
+    Pre-prod blocker fix: a `scheduled` game with a known tip time renders an
+    honest "Tips H:MMpm ET" in the Top Performer cell (not the low-contrast,
+    easy-to-miss-as-blank em-dash the owner reported); a `scheduled` game
+    with NO known tip time (the genuinely rare case) still degrades to the
+    plain em-dash -- never a blank cell either way.
+    """
     now = datetime.utcnow()
     today = to_eastern_date(now)
 
@@ -368,7 +375,8 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
     )
 
     # A second, second-team pairing whose tip hasn't happened yet -- no game
-    # log exists for it, so its Top Performer cell must render an em-dash.
+    # log exists for it, so its Top Performer cell must render the scheduled
+    # game's tip time, not a blank cell.
     home2 = await _seed_team(db_session, competition, franchise_stats_id="1610612759")
     away2 = await _seed_team(db_session, competition, franchise_stats_id="1610612751")
     await _seed_game(
@@ -378,6 +386,21 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
         away2,
         game_date=today,
         tip_datetime=now + timedelta(hours=2),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+
+    # A third pairing scheduled with NO known tip time at all (the rarer,
+    # genuinely-unknown case) -- must still degrade to the plain em-dash,
+    # never a blank cell.
+    home3 = await _seed_team(db_session, competition, franchise_stats_id="1610612749")
+    away3 = await _seed_team(db_session, competition, franchise_stats_id="1610612752")
+    await _seed_game(
+        db_session,
+        competition,
+        home3,
+        away3,
+        game_date=today,
+        tip_datetime=None,
         status=SummerLeagueGameStatus.SCHEDULED,
     )
 
@@ -395,7 +418,11 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
     assert 'id="slDeskSection"' in html
     assert "desk__hero--live" in html
     assert 'class="desk__live-board"' in html
-    # Em-dash before tip: the not-yet-started game's Top Performer cell.
+    # Known tip time -> an honest "Tips H:MMpm ET" state, not a blank cell.
+    assert "desk__top-perf--tip" in html
+    assert "Tips " in html
+    assert " ET</span>" in html
+    # Unknown tip time -> the plain em-dash fallback, still never blank.
     assert "desk__top-perf--empty" in html
     assert "&mdash;" in html
     # The resolved game's top performer shows a real GmSc, not an em-dash.

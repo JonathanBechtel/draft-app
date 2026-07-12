@@ -95,11 +95,11 @@
   </div>
   {% endif %}
 
-  {% if hero.facts %}
-  <div class="desk__hero-chips">
-    {% for fact in hero.facts %}
-      {% if fact.chip %}<span class="desk__chip">{{ fact.chip }}</span>{% endif %}
-    {% endfor %}
-  </div>
-  {% endif %}
+  {# Owner feedback (pre-prod blocker): the hero used to dump EVERY raw
+     commentary fact (`hero.facts`, dozens of cryptic mono chip-strings) here
+     -- ~60% of the mobile screen and pure noise. The hero stays minimal: the
+     featured player(s), their running line, and the one rendered headline/
+     tagline sentence above. `hero.facts` still round-trips through the
+     render-snapshot codec (other consumers depend on it) -- this template
+     just no longer dumps it. #}
 </section>

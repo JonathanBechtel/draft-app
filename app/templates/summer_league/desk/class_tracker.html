@@ -15,7 +15,15 @@
    is a pure DOM reorder -- no request, no server round trip; cohort/stat-view
    stay server round-trip query-param state as before. Rows render pre-sorted
    GmSc desc from the backend (the initial `aria-sort="descending"` on that
-   header matches), and JS toggles ascending/descending from there. #}
+   header matches), and JS toggles ascending/descending from there.
+
+   Pagination (pre-prod fix, mirrors #556's slate-disclosure pattern): this
+   template ALWAYS renders every row of the active cohort (up to the
+   backend's `TRACKER_CAP` -- see `desk_read.py`), unhidden, no matter how
+   many. `summer-league-desk.js`'s `initTrackerPagination` is what caps the
+   VISIBLE rows to 15 per page after it runs -- with JS disabled, or before
+   it loads, every row in the flat table is reachable. Re-sorting resets to
+   page 1 over the new order (`desk:tracker-sorted` custom event). #}
 {% set tracker = desk_payload.tracker %}
 {% set is_undrafted_cohort = tracker.cohort == 'undrafted' %}
 {% set cohort_labels = [

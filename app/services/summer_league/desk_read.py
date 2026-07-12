@@ -849,6 +849,7 @@ def _build_live_board(
                 top_performer_player_id=top[0] if top else None,
                 top_performer_gmsc=top[1] if top else None,
                 read=_extract_prose(row.facts, surface=Surface.TICK_NOTE),
+                tip_datetime=game.tip_datetime if game else None,
             )
         )
     return out
