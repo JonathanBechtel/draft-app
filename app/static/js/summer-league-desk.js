@@ -270,6 +270,15 @@ function initTrackerToggles() {
     return;
   }
 
+  // Request token: the toggle bar stays clickable while a fragment fetch is
+  // in flight (`desk__tracker--loading` is a visual dimming only, not a
+  // click-lock), so a user can fire a second click before the first
+  // request's response arrives. Each fetch captures the token AT THE TIME
+  // IT STARTS; if a newer click has since bumped it, that response is
+  // stale and its `.then()` callback drops it instead of overwriting
+  // `#slDeskTrackerCard` with an out-of-order result.
+  var requestToken = 0;
+
   section.addEventListener('click', function (event) {
     var link = event.target.closest && event.target.closest('a[data-cohort], a[data-statview]');
     if (!link) {
@@ -286,6 +295,9 @@ function initTrackerToggles() {
     event.preventDefault();
     section.classList.add('desk__tracker--loading');
 
+    requestToken += 1;
+    var myToken = requestToken;
+
     var url = '/desk/tracker?cohort=' + encodeURIComponent(nextCohort) +
       '&statview=' + encodeURIComponent(nextStatview);
 
@@ -297,6 +309,9 @@ function initTrackerToggles() {
         return response.text();
       })
       .then(function (html) {
+        if (myToken !== requestToken) {
+          return; // A newer tab click superseded this response -- drop it.
+        }
         card.innerHTML = html;
         section.dataset.cohort = nextCohort;
         section.dataset.statview = nextStatview;
@@ -306,6 +321,9 @@ function initTrackerToggles() {
         initTrackerSort();
       })
       .catch(function () {
+        if (myToken !== requestToken) {
+          return; // Superseded -- the active click's own request governs.
+        }
         // Network/server failure -- fall back to the exact navigation the
         // clicked link's href already points at (what happens with JS off).
         section.classList.remove('desk__tracker--loading');
