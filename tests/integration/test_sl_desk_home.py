@@ -751,6 +751,8 @@ async def test_recap_state_builds_ledger_from_last_final_within_budget(
     assert ledger_row.player_id == player.id
     assert ledger_row.game_id == game.id
     assert ledger_row.gmsc > 0
+    # Box line (PTS) surfaces on the ledger row for the card layout (#recap redesign).
+    assert ledger_row.pts == 30
     assert 0.0 <= ledger_row.pctl <= 100.0
     assert ledger_row.grade in {g.value for g in SummerLeagueDeskGrade}
 

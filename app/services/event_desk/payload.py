@@ -152,6 +152,9 @@ class DeskLedgerRow:
     pctl: float
     grade: str
     read: Optional[str]
+    pts: Optional[int] = None
+    reb: Optional[int] = None
+    ast: Optional[int] = None
 
 
 @dataclass(frozen=True)

@@ -37,12 +37,11 @@
 
     {% if desk_payload.hero.kind == 'live_duel' %}
       {% include "summer_league/desk/hero_live.html" %}
-    {% elif desk_payload.hero.kind == 'performance_of_night' %}
-      {% include "summer_league/desk/hero_ledger.html" %}
-    {% else %}
-      {# Covers hero.kind == "marquee" (Morning face-off / single-subject
-         degrade) AND "quiet_slate" (class-leader fallback) -- both ship in
-         hero_morning.html per the ticket's file list. #}
+    {% elif desk_payload.hero.kind != 'performance_of_night' %}
+      {# Recap (performance_of_night) intentionally renders NO hero -- the
+         top-performer cards below lead the section instead. Everything else
+         (marquee Morning face-off / single-subject degrade / quiet_slate
+         class-leader fallback) ships in hero_morning.html. #}
       {% include "summer_league/desk/hero_morning.html" %}
     {% endif %}
 
@@ -55,7 +54,7 @@
     {% endif %}
 
     {% if desk_payload.daily_state == 'recap' and desk_payload.ledger %}
-      {% include "summer_league/desk/ledger_table.html" %}
+      {% include "summer_league/desk/ledger_cards.html" %}
     {% endif %}
 
     {% if desk_payload.tracker %}
