@@ -29,6 +29,19 @@ must exist *before* CI's preflight will let the machine get created, and (2) sta
 newly-created machine once for its first tick, since it's easier to verify one deliberate
 run than to wait up to an hour for the schedule.
 
+## Launch-day data dependency (verified during the 2026-07-12 dry-run)
+
+The Desk renders live content **only when the current slate's games exist with `tip_datetime`**. That value is populated **only** by the scoreboard/schedule ingest (`run_scoreboard_ingest`, the `scheduleleaguev2` feed) — **not** by the hourly box-score cron (`app.cli.summer_league_ingest_runner`), which reads `leaguegamelog` (played games only: no tips, no forward schedule). A DB with only box-score data resolves the Desk to **off-window / dormant** even mid-event.
+
+How the tick self-bootstraps (competition-window + #527 work):
+
+- `SummerLeagueCompetition.starts_on`/`ends_on` are now populated from game dates on every normalize/scoreboard ingest, so the #527 opening-morning bootstrap is no longer inert.
+- On a tick within the announce/pre-roll window with no games yet, `run_desk_tick` runs `run_scoreboard_ingest` first, pulls today/tomorrow's games **with tips**, then resolves Active and materializes live content.
+
+**Constraint:** `run_scoreboard_ingest` hits `stats.nba.com`, which needs curl_cffi Chrome impersonation and is **not reachable from every network** (reachable from the Fly cron machine; it was NOT from the local dry-run box). So the first *live* tick must run **on the deployed Fly machine**, not locally.
+
+Practical staging sequence: deploy the cron → its first tick (on Fly) bootstraps the current slate with tips and goes Active → confirm via `post-tick` readiness (full 72-variant matrix + fresh state) and by eyeballing the homepage (should show live Preview/Live/Recap, not the off-window strip).
+
 ## Prerequisites
 
 - `flyctl auth login` (or an existing session) with access to both `draft-app` and
