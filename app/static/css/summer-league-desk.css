@@ -589,3 +589,126 @@
 @media (max-width: 768px) {
   .desk__slate-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================================
+   Ledger as top-performer cards (#recap redesign) -- replaces the sparse table
+   AND the one-player "performance of the night" hero. The #1 performer is a
+   wide featured card carrying the visual lead the hero used to.
+   ========================================================================= */
+.desk__perf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.5rem;
+}
+.desk__perf-card {
+  position: relative;
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  background: var(--color-white);
+  border: 1px solid var(--color-slate-200);
+  border-radius: 0.85rem;
+  padding: 0.9rem 1rem 0.95rem;
+  box-shadow: 0 1px 3px rgba(2, 6, 23, 0.08);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.desk__perf-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -12px rgba(2, 6, 23, 0.35);
+}
+.desk__perf-card--lead {
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 1.2rem;
+  padding: 1.2rem 1.4rem;
+  border: none;
+  color: #fff;
+  background:
+    radial-gradient(130% 120% at 12% 10%, rgba(99, 102, 241, 0.5), transparent 60%),
+    linear-gradient(135deg, #0a1120 0%, #14113a 55%, #0a1120 100%);
+  box-shadow: 0 20px 44px -22px rgba(2, 6, 23, 0.85);
+}
+.desk__perf-rank {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.7rem;
+  font-family: var(--font-heading);
+  font-size: 0.95rem;
+  color: var(--color-slate-300);
+  line-height: 1;
+}
+.desk__perf-card--lead .desk__perf-rank { color: rgba(255, 255, 255, 0.32); font-size: 1.35rem; }
+.desk__perf-avatar { flex-shrink: 0; }
+.desk__perf-card--lead .desk__perf-avatar { box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9); }
+.desk__perf-body { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 0.55rem; }
+.desk__perf-info { min-width: 0; }
+.desk__perf-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.desk__perf-name {
+  font-family: var(--font-heading);
+  font-size: 1.05rem;
+  line-height: 1.1;
+  color: var(--color-slate-900);
+}
+.desk__perf-card--lead .desk__perf-name { font-size: 1.5rem; color: #fff; }
+.desk__perf-name a { color: inherit; text-decoration: none; }
+.desk__perf-name a:hover { text-decoration: underline; }
+.desk__perf-matchup {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--color-slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.desk__perf-card--lead .desk__perf-matchup { color: var(--color-slate-300); }
+.desk__perf-stats { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; }
+/* Lead card: name/read on the left, a big right-aligned GmSc scoreboard on the
+   right, so the wide featured card stays balanced even with no commentary. */
+.desk__perf-card--lead .desk__perf-body { flex-direction: row; align-items: center; gap: 1.5rem; }
+.desk__perf-card--lead .desk__perf-info { flex: 1; }
+.desk__perf-card--lead .desk__perf-stats { flex-direction: column; align-items: flex-end; gap: 0.45rem; flex-shrink: 0; text-align: right; }
+.desk__perf-gmsc {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--color-slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+.desk__perf-gmsc b { font-size: 1.5rem; color: var(--color-slate-900); font-variant-numeric: tabular-nums; }
+.desk__perf-gmsc-unit { position: relative; top: -0.05rem; }
+.desk__perf-card--lead .desk__perf-gmsc { color: var(--color-slate-300); }
+.desk__perf-card--lead .desk__perf-gmsc b { font-size: 2.1rem; color: #fff; }
+.desk__perf-read { margin-top: 0.55rem; font-size: 0.8rem; line-height: 1.4; color: var(--color-slate-600); }
+.desk__perf-card--lead .desk__perf-read { color: var(--color-slate-200); font-size: 0.9rem; max-width: 46rem; }
+
+@media (max-width: 640px) {
+  .desk__perf-grid { grid-template-columns: 1fr; }
+}
+/* Per-game box line on each performer card (PTS/REB/AST) -- adds real
+   information density, especially to the featured #1 card. */
+.desk__perf-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  color: var(--color-slate-500);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.desk__perf-line b { color: var(--color-slate-800); font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.desk__perf-card--lead .desk__perf-line { font-size: 0.82rem; color: var(--color-slate-300); margin-top: 0.2rem; gap: 0.1rem 1.1rem; }
+.desk__perf-card--lead .desk__perf-line b { color: #fff; font-size: 1.05rem; }
+/* Matchup on each card links to that game's box score. */
+a.desk__perf-matchup { text-decoration: none; transition: color 0.12s ease; }
+a.desk__perf-matchup:hover { color: var(--color-primary); text-decoration: underline; }
+.desk__perf-card--lead a.desk__perf-matchup:hover { color: #fff; }

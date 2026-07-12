@@ -351,8 +351,34 @@ async def get_latest_videos_by_tag(
     limit: int = 6,
 ) -> list[YouTubeVideoRead]:
     """Fetch latest videos for homepage modules."""
-    feed = await get_video_feed(db=db, limit=limit, offset=0, tag=tag)
-    return feed.items
+    duration_filter = (
+        YouTubeVideo.duration_seconds >= MIN_VIDEO_DURATION_SECONDS  # type: ignore[operator]
+    )
+    stmt = (
+        select(*_VIDEO_FEED_COLUMNS)  # type: ignore[call-overload]
+        .select_from(YouTubeVideo)
+        .join(
+            YouTubeChannel,
+            YouTubeChannel.id == YouTubeVideo.channel_id,  # type: ignore[arg-type]
+        )
+        .where(duration_filter)  # type: ignore[arg-type]
+        .order_by(
+            YouTubeVideo.published_at.desc(),  # type: ignore[attr-defined]
+            YouTubeVideo.__table__.c.id.desc(),  # type: ignore[attr-defined]
+        )
+        .limit(limit)
+    )
+    if tag:
+        tag_enum = coerce_video_tag(tag)
+        if tag_enum:
+            stmt = stmt.where(YouTubeVideo.tag == tag_enum)  # type: ignore[arg-type]
+
+    rows = (await db.execute(stmt)).mappings().all()
+    mentions = await _load_mentions_for_videos(db, [row["id"] for row in rows])
+    return [
+        _row_to_video_read(row, mentions=mentions)  # type: ignore[arg-type]
+        for row in rows
+    ]
 
 
 async def get_global_video_counts_by_tag(

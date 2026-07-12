@@ -96,6 +96,8 @@ async def get_news_feed(
     db: AsyncSession,
     limit: int = 20,
     offset: int = 0,
+    *,
+    include_total: bool = True,
 ) -> NewsFeedResponse:
     """Fetch paginated news feed with joined source info.
 
@@ -103,6 +105,8 @@ async def get_news_feed(
         db: Async database session
         limit: Maximum items to return
         offset: Number of items to skip
+        include_total: Whether to run the count query used by paginated
+            consumers. Homepage callers only render ``items`` and can skip it.
 
     Returns:
         NewsFeedResponse with items and pagination info
@@ -114,10 +118,11 @@ async def get_news_feed(
         .join(NewsSource, NewsSource.id == NewsItem.source_id)  # type: ignore[arg-type]
     )
 
-    # Count total items
-    count_query = select(func.count()).select_from(NewsItem)
-    count_result = await db.execute(count_query)
-    total = count_result.scalar() or 0
+    total = 0
+    if include_total:
+        count_query = select(func.count()).select_from(NewsItem)
+        count_result = await db.execute(count_query)
+        total = count_result.scalar() or 0
 
     # Fetch paginated items
     items_query = (

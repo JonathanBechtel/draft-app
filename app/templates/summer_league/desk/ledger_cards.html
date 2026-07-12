@@ -1,0 +1,51 @@
+{# Summer League Desk -- The Ledger as a card grid (replaces the sparse table
+   AND the post-event "performance of the night" hero). Each of last night's
+   top performers is an info-dense card for better visual flow; the #1 performer
+   is a wide featured card that carries the visual lead the hero used to.
+   Each card shows the per-game box line (PTS/REB/AST) that produced the GmSc,
+   links the player to their SL page and the matchup to that game's box score,
+   and renders `row.read` commentary prose (#519) when present. #}
+<section aria-label="Last night's top Summer League performers">
+  <h2 class="desk__section-title" style="border-left-color: var(--color-accent-indigo);">Last Night's Top Performers</h2>
+  <p class="desk__section-sub">All players -- drafted rookies, sophomores, and undrafted standouts -- scored against their cohort.</p>
+  <div class="desk__perf-grid">
+    {% for row in desk_payload.ledger %}
+    {% set p = desk_players.get(row.player_id) %}
+    <article class="desk__perf-card{{ ' desk__perf-card--lead' if loop.first }}"
+             data-player-id="{{ row.player_id }}" data-game-id="{{ row.game_id }}">
+      <span class="desk__perf-rank" aria-label="rank {{ loop.index }}">{{ loop.index }}</span>
+      <span class="desk__avatar {{ 'desk__avatar--xl' if loop.first else 'desk__avatar--lg' }} desk__perf-avatar">
+        {% if p and p.photo_url %}<img src="{{ p.photo_url }}" alt="">{% endif %}
+      </span>
+      <div class="desk__perf-body">
+        <div class="desk__perf-info">
+          <div class="desk__perf-head">
+            <span class="desk__perf-name">
+              {% if p and p.slug %}<a href="/players/{{ p.slug }}/summer-league?ref=sl-desk" data-desk-placement="ledger">{{ p.display_name }}</a>{% else %}{{ p.display_name if p else "Player " ~ row.player_id }}{% endif %}
+            </span>
+            {% if p %}
+            <span class="desk__status-tag {{ 'desk__status-tag--undrafted' if p.draft_tag == 'Undrafted' else 'desk__status-tag--pick' }}">{{ p.draft_tag }}</span>
+            {% endif %}
+            {% if row.game_id in desk_matchups %}
+            {% set m = desk_matchups[row.game_id] %}
+            <a class="desk__perf-matchup" href="/stats/summer-league/{{ desk_game_year }}/games/{{ row.game_id }}?ref=sl-desk" title="View box score">{{ m.away.abbrev }} @ {{ m.home.abbrev }} &rsaquo;</a>
+            {% endif %}
+          </div>
+          {% if row.pts is not none or row.reb is not none or row.ast is not none %}
+          <div class="desk__perf-line">
+            <span><b>{{ row.pts if row.pts is not none else '—' }}</b> PTS</span>
+            <span><b>{{ row.reb if row.reb is not none else '—' }}</b> REB</span>
+            <span><b>{{ row.ast if row.ast is not none else '—' }}</b> AST</span>
+          </div>
+          {% endif %}
+          {% if row.read %}<p class="desk__perf-read">{{ row.read }}</p>{% endif %}
+        </div>
+        <div class="desk__perf-stats">
+          <span class="desk__perf-gmsc"><b>{{ '%.1f'|format(row.gmsc) }}</b><span class="desk__perf-gmsc-unit">GmSc</span></span>
+          <span class="desk__pctl-chip desk__pctl-chip--{{ row.grade }}">{{ row.pctl | round(0, 'floor') | int }}th pctl</span>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
