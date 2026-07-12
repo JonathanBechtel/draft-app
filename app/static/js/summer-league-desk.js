@@ -1,7 +1,7 @@
 /**
- * Summer League Desk (#509, extended #556) -- page-scoped JS.
+ * Summer League Desk (#509, extended #556, #567) -- page-scoped JS.
  *
- * Three independent, progressive-enhancement behaviors:
+ * Four independent, progressive-enhancement behaviors:
  *
  *   1. Morning slate disclosure -- collapses ONLY the trailing zero-signal
  *      tail of a 10+ game slate, and only after this script runs. The
@@ -12,17 +12,31 @@
  *   2. Class Tracker column sort -- reorders `<tr>`s in the DOM by a numeric
  *      column, both directions, missing values last, name as the stable
  *      tiebreak. Pure client-side reorder: no request, no navigation.
+ *      Re-run after every tab switch (behavior 4) since the table is a
+ *      fresh DOM subtree each time.
  *
  *   3. Desk player-link click attribution -- fires exactly one `sl_desk_click`
  *      gtag event (this repo's one analytics mechanism -- see `base.html`)
  *      per click on a Desk player link, carrying `placement` (hero/tracker/
  *      ledger/live_board) and `daily_state`. Native `<a href>` navigation is
  *      untouched and works with analytics/JS fully disabled.
+ *
+ *   4. Class Tracker tab switch -- intercepts clicks on the cohort/stat-view
+ *      toggle links and fetches `GET /desk/tracker?cohort=..&statview=..`
+ *      (a fragment route reading the SAME single indexed snapshot row the
+ *      full page read) instead of following the link's full-page-navigation
+ *      href, then swaps the returned HTML into `#slDeskTrackerCard`. This is
+ *      what makes switching tabs cost one small fragment request instead of
+ *      re-running the whole `/` route's consensus/news/hero queries. Falls
+ *      back to real navigation (the href already on the link) on any fetch
+ *      failure, and works exactly as before -- a full page nav -- with JS
+ *      disabled.
  */
 document.addEventListener('DOMContentLoaded', function () {
   initSlateDisclosure();
   initTrackerSort();
   initDeskClickAnalytics();
+  initTrackerToggles();
 });
 
 /**
@@ -230,4 +244,121 @@ function initDeskClickAnalytics() {
     }
     // No preventDefault -- navigation always proceeds via the anchor's href.
   });
+}
+
+/**
+ * Intercept Class Tracker cohort/stat-view toggle clicks and fetch a fragment
+ * instead of following the link's full-page-navigation href.
+ *
+ * `#slDeskTracker`'s `data-cohort`/`data-statview` track the currently
+ * rendered combo; each toggle `<a>` carries `data-cohort` XOR `data-statview`
+ * for the value IT represents (`class_tracker.html`). A click resolves the
+ * OTHER axis from the section's current state, fetches `GET /desk/tracker`
+ * for the resulting pair, and swaps the response into `#slDeskTrackerCard`
+ * (the table/caption/empty-state fragment `class_tracker_table.html` renders
+ * -- never the toggle bar itself, so `.card`'s `.scanlines` overlay and the
+ * toggle buttons are untouched by the swap).
+ *
+ * On fetch failure, falls back to real navigation via the clicked link's own
+ * href -- the same destination a no-JS click would have taken -- rather than
+ * leaving the tab silently inert.
+ */
+function initTrackerToggles() {
+  var section = document.getElementById('slDeskTracker');
+  var card = document.getElementById('slDeskTrackerCard');
+  if (!section || !card) {
+    return;
+  }
+
+  section.addEventListener('click', function (event) {
+    var link = event.target.closest && event.target.closest('a[data-cohort], a[data-statview]');
+    if (!link) {
+      return;
+    }
+
+    var nextCohort = link.dataset.cohort || section.dataset.cohort;
+    var nextStatview = link.dataset.statview || section.dataset.statview;
+    if (nextCohort === section.dataset.cohort && nextStatview === section.dataset.statview) {
+      event.preventDefault(); // Already the active tab -- no-op, not a re-fetch.
+      return;
+    }
+
+    event.preventDefault();
+    section.classList.add('desk__tracker--loading');
+
+    var url = '/desk/tracker?cohort=' + encodeURIComponent(nextCohort) +
+      '&statview=' + encodeURIComponent(nextStatview);
+
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Class Tracker fragment fetch failed: ' + response.status);
+        }
+        return response.text();
+      })
+      .then(function (html) {
+        card.innerHTML = html;
+        section.dataset.cohort = nextCohort;
+        section.dataset.statview = nextStatview;
+        section.classList.remove('desk__tracker--loading');
+        updateTrackerToggleState(section, nextCohort, nextStatview);
+        updateTrackerHistoryUrl(nextCohort, nextStatview);
+        initTrackerSort();
+      })
+      .catch(function () {
+        // Network/server failure -- fall back to the exact navigation the
+        // clicked link's href already points at (what happens with JS off).
+        section.classList.remove('desk__tracker--loading');
+        window.location.href = link.href;
+      });
+  });
+}
+
+/**
+ * Sync the toggle bar's active state + hrefs to the newly-active
+ * (cohort, statview) pair after a client-side tab switch.
+ *
+ * Rewrites each link's `href` too (not just visual state) so a link a user
+ * middle-clicks/opens-in-a-new-tab after switching tabs still lands on the
+ * combo they're actually looking at, not the combo that was server-rendered
+ * on first page load.
+ */
+function updateTrackerToggleState(section, cohort, statview) {
+  var cohortLinks = Array.prototype.slice.call(section.querySelectorAll('.desk__tracker-toggle-btn'));
+  cohortLinks.forEach(function (a) {
+    var active = a.dataset.cohort === cohort;
+    a.classList.toggle('is-active', active);
+    a.setAttribute('aria-current', active ? 'true' : 'false');
+    a.setAttribute(
+      'href',
+      '/?cohort=' + encodeURIComponent(a.dataset.cohort) + '&statview=' + encodeURIComponent(statview) + '#slDeskTracker'
+    );
+  });
+
+  var statviewLinks = Array.prototype.slice.call(section.querySelectorAll('.desk__tracker-statview .slg-mode-btn'));
+  statviewLinks.forEach(function (a) {
+    a.classList.toggle('is-active', a.dataset.statview === statview);
+    a.setAttribute(
+      'href',
+      '/?cohort=' + encodeURIComponent(cohort) + '&statview=' + encodeURIComponent(a.dataset.statview) + '#slDeskTracker'
+    );
+  });
+}
+
+/**
+ * Reflect the active (cohort, statview) pair in the URL bar via
+ * `history.replaceState` (never `pushState`) -- keeps `/` reload- and
+ * share-friendly after a client-side switch without creating a back-button
+ * history entry for every tab click, which would desync from the DOM (a
+ * `popstate` back-navigation doesn't re-render; only an actual page load
+ * re-reads the URL's query params).
+ */
+function updateTrackerHistoryUrl(cohort, statview) {
+  if (!window.history || !window.history.replaceState) {
+    return;
+  }
+  var url = new URL(window.location.href);
+  url.searchParams.set('cohort', cohort);
+  url.searchParams.set('statview', statview);
+  window.history.replaceState(null, '', url.toString());
 }
