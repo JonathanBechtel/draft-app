@@ -421,6 +421,18 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
         async def flush(self) -> None:
             return None
 
+        async def execute(self, *_args: object, **_kwargs: object) -> object:
+            # refresh_competition_date_window (#6) runs one min/max query; this
+            # fake reports no dated games, so the date window is left untouched.
+            class _Result:
+                def one(self) -> tuple[None, None]:
+                    return (None, None)
+
+                def first(self) -> tuple[None, None]:
+                    return (None, None)
+
+            return _Result()
+
     async def fake_get_raw_run(*_args: object, **_kwargs: object) -> SummerLeagueRawRun:
         return raw_run
 

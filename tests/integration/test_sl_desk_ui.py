@@ -483,10 +483,10 @@ async def test_live_duel_hero_renders_both_running_lines_one_pretip_em_dash(
 # --------------------------------------------------------------------------- #
 # The Ledger (time-independent: forced by an all-final slate)
 # --------------------------------------------------------------------------- #
-async def test_recap_state_renders_ledger_table(
+async def test_recap_state_renders_top_performer_cards(
     app_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Recap: the performance-of-the-night hero + full Ledger table render."""
+    """Recap: the top-performer card grid renders (no post-event hero)."""
     now = datetime.utcnow()
     today = to_eastern_date(now)
 
@@ -533,17 +533,20 @@ async def test_recap_state_renders_ledger_table(
     html = response.text
 
     assert 'id="slDeskSection"' in html
-    assert "desk__hero--ledger" in html
-    assert 'class="desk__ledger-table"' in html
+    # Recap redesign: top-performer card grid + per-game box line, no hero.
+    assert "desk__perf-grid" in html
+    assert "desk__perf-card" in html
+    assert "desk__hero--ledger" not in html
+    assert "desk__perf-line" in html
     assert "desk__status-tag" in html
     assert "desk__pctl-chip" in html
     _assert_no_switcher_chrome(html)
     assert "?ref=sl-desk" in html
-    # #556: Desk player links (hero + Ledger row) route through the SL-scoped
-    # player page and carry placement attribution.
+    # #556: card player links route through the SL-scoped player page with
+    # placement attribution; the matchup links to that game's box score.
     assert "/summer-league?ref=sl-desk" in html
-    assert 'data-desk-placement="hero"' in html
     assert 'data-desk-placement="ledger"' in html
+    assert "/games/" in html
     assert 'data-desk-daily-state="recap"' in html
 
 
