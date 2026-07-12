@@ -3,6 +3,8 @@ name: PR Tests
 on:
   pull_request:
     branches: [ main ]
+  push:
+    branches: [ main ]
 
 permissions:
   contents: read
@@ -14,7 +16,7 @@ concurrency:
 jobs:
   tests-fork:
     # Safe path for PRs from forks: no secrets, ephemeral Postgres service
-    if: ${{ github.event.pull_request.head.repo.fork == true }}
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -122,8 +124,10 @@ jobs:
         run: diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=80
 
   tests-secrets:
-    # Same-repo PRs: use environment secrets from draft-app-stage
-    if: ${{ github.event.pull_request.head.repo.fork == false }}
+    # Same-repo PRs use environment secrets from draft-app-stage; also runs on
+    # push to main so a tested commit lands on main for the Actions/Codecov
+    # badges (pull_request runs are attributed to the head branch, not main).
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.fork == false }}
     runs-on: ubuntu-latest
     environment: draft-app-dev
     services:
@@ -234,4 +238,7 @@ jobs:
       - name: Patch coverage gate (diff-cover)
         # Fail the PR if fewer than 80% of newly changed app/ lines are covered.
         # Compares the working tree against the PR base branch (merge-base).
+        # Only meaningful for pull_request runs; a push-to-main run has no PR
+        # base branch to diff against.
+        if: github.event_name == 'pull_request'
         run: diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=80
