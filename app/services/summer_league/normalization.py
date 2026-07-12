@@ -9,7 +9,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.nba_teams import NbaTeam as _NbaTeam  # noqa: F401
@@ -358,6 +358,8 @@ async def normalize_competition_games(
         team_log_count += 1
 
     await db.flush()
+    await refresh_competition_date_window(db, competition_id=competition.id)
+    await db.flush()
     return SummerLeagueNormalizationReport(
         year=year,
         league_id=league_id,
@@ -367,6 +369,58 @@ async def normalize_competition_games(
         team_game_logs_upserted=team_log_count,
         data_quality=quality,
     )
+
+
+async def refresh_competition_date_window(
+    db: AsyncSession, *, competition_id: int
+) -> None:
+    """Recompute one competition's ``starts_on``/``ends_on`` from its games.
+
+    Recomputes from the *full* current ``summer_league_games`` set for
+    ``competition_id`` every time (rather than only widening), so the window
+    self-corrects as games are added, corrected, or rescheduled -- both the
+    normalize path (:func:`normalize_competition_games`) and the
+    scoreboard/schedule path
+    (:func:`app.services.summer_league.scoreboard_ingest.upsert_scoreboard_games`)
+    write games, so both call this after they do. Rows with a null
+    ``game_date`` are excluded from the aggregate. This is what unblocks the
+    Event Desk's opening-morning bootstrap (#527's
+    ``_needs_scoreboard_bootstrap`` / ``_synthetic_calendar_dates`` in
+    ``scripts/sl_desk_tick.py``), which derives its synthetic event window
+    from these two fields and was previously permanently inert because
+    nothing ever populated them.
+
+    Args:
+        db: Active database session (caller controls the transaction/commit;
+            this issues one bounded ``SELECT`` + attribute assignment and
+            never commits).
+        competition_id: The competition whose game dates should be
+            aggregated.
+
+    Note:
+        A competition with zero dated games is left untouched -- both fields
+        stay whatever they already were (typically null) rather than being
+        cleared, since an empty aggregate carries no information about the
+        event's actual window.
+    """
+    result = await db.execute(
+        select(
+            func.min(SummerLeagueGame.game_date),
+            func.max(SummerLeagueGame.game_date),
+        ).where(
+            SummerLeagueGame.competition_id == competition_id,  # type: ignore[arg-type]
+            SummerLeagueGame.game_date.is_not(None),  # type: ignore[union-attr]
+        )
+    )
+    min_date, max_date = result.one()
+    if min_date is None or max_date is None:
+        return
+    competition = await db.get(SummerLeagueCompetition, competition_id)
+    if competition is None:
+        return
+    competition.starts_on = min_date
+    competition.ends_on = max_date
+    competition.updated_at = _utc_now_naive()
 
 
 async def normalize_player_game_logs(
