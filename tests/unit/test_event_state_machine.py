@@ -3,8 +3,10 @@
 Covers: Live-always-wins, off-day Ledger persistence, the schedule-relative
 Ledger->Morning flip boundary (both LEAD- and FLOOR-dominant cases), the
 scheduled-tip fallback (clock past tip with stale statuses => Live), day rollover
-across two separate game days, DST-correct Eastern floor conversion, and the
-off-window `None` contract.
+across two separate game days, DST-correct Eastern floor conversion, the
+off-window `None` contract, and postponed/canceled games as a terminal,
+never-Live-triggering status (the #529/#530 follow-up: a postponed game's own past
+tip must never strand the day in Live, nor keep a mixed day from reaching Recap).
 """
 
 from __future__ import annotations
@@ -122,6 +124,72 @@ class TestScheduledTipFallback:
         now = datetime(2026, 7, 9, 22, 0)
         statuses = (GameStatus.FINAL,)
         assert inner_state(now, (first_tip,), statuses, event) == EventDailyState.RECAP
+
+
+class TestPostponedIsTerminalAndNeverLiveTriggering:
+    """#529/#530 follow-up: postponed/canceled is a terminal, non-Live status.
+
+    Per the provider contract (`registry.calendar_facts_for_competition_ids`), a
+    postponed/canceled game's tip is withheld from `schedule` entirely -- only its
+    terminal `GameStatus.POSTPONED` flows through in `statuses`. These tests exercise
+    `inner_state` against exactly that (already-filtered) shape of input, proving the
+    resolver itself never lets a postponed game keep a day Live or unresolved.
+    """
+
+    def test_postponed_only_day_is_recap_not_live_regardless_of_original_tip(
+        self,
+    ) -> None:
+        """The core regression: a day whose only game is postponed must read as an
+        off-day (Recap persists), never Live -- even hours after that game's
+        original (now-irrelevant) tip would have passed."""
+        event = _event()
+        for hour in (0, 9, 20, 23):
+            now = datetime(2026, 7, 9, hour, 0)
+            assert inner_state(now, (), (GameStatus.POSTPONED,), event) == (
+                EventDailyState.RECAP
+            )
+
+    def test_mixed_day_stays_preview_then_live_then_recap_around_postponed_game(
+        self,
+    ) -> None:
+        """One real game (evening tip) plus one postponed game (earlier, already-
+        past original tip, withheld from `schedule`): the day stays Preview right up
+        to the real tip -- never flips Live off the postponed game's own tip -- goes
+        Live at the real tip, then reaches Recap once the real game finals (the
+        postponed game staying postponed forever)."""
+        event = _event()
+        real_tip = datetime(2026, 7, 9, 23, 0)  # 19:00 EDT
+        # `schedule` only ever carries the real game's tip -- the postponed game's
+        # (earlier) tip is never in it, per the provider contract.
+        schedule = (real_tip,)
+
+        # After the LEAD-dominant flip (real_tip - 6h = 17:00 UTC) but hours before
+        # the real tip, and well after where the postponed game's own tip would have
+        # been -- must stay Preview, not jump to Live.
+        still_preview_at = datetime(2026, 7, 9, 18, 0)
+        pre_statuses = (GameStatus.SCHEDULED, GameStatus.POSTPONED)
+        assert inner_state(still_preview_at, schedule, pre_statuses, event) == (
+            EventDailyState.PREVIEW
+        )
+
+        assert inner_state(real_tip, schedule, pre_statuses, event) == (
+            EventDailyState.LIVE
+        )
+
+        after_final = datetime(2026, 7, 10, 2, 0)
+        post_statuses = (GameStatus.FINAL, GameStatus.POSTPONED)
+        assert inner_state(after_final, schedule, post_statuses, event) == (
+            EventDailyState.RECAP
+        )
+
+    def test_in_progress_real_game_with_postponed_sibling_still_live(self) -> None:
+        """Rule 1 (Live always wins) stays intact with a postponed game present
+        alongside a genuinely live one."""
+        event = _event()
+        now = datetime(2026, 7, 9, 8, 0)
+        schedule = (datetime(2026, 7, 9, 23, 0),)
+        statuses = (GameStatus.IN_PROGRESS, GameStatus.POSTPONED)
+        assert inner_state(now, schedule, statuses, event) == EventDailyState.LIVE
 
 
 class TestDayRollover:

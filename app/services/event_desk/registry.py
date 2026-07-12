@@ -38,6 +38,7 @@ from app.schemas.summer_league import (
 )
 from app.services.summer_league.scoreboard_ingest import (
     EVENT_KEY_SUMMER_LEAGUE,
+    _POSTPONED_OR_CANCELED_MARKERS,
     resolve_target_competitions,
 )
 from app.services.event_desk.timeutils import to_eastern_date
@@ -50,21 +51,52 @@ from app.services.event_desk.timeutils import to_eastern_date
 class GameStatus(str, Enum):
     """Event-agnostic game status the inner state machine (`state_machine.py`) reasons about.
 
-    Values mirror :class:`~app.schemas.summer_league.SummerLeagueGameStatus` 1:1 so a
-    per-event provider maps its native status enum with a trivial
-    ``GameStatus(status.value)`` cast (see :func:`_to_generic_status` below) — kept as
-    a distinct type so the inner state machine stays reusable by a future non-SL event
-    without importing Summer-League-specific schemas.
+    ``SCHEDULED``/``IN_PROGRESS``/``FINAL``/``UNKNOWN`` mirror
+    :class:`~app.schemas.summer_league.SummerLeagueGameStatus` 1:1 so a per-event
+    provider maps its native status enum with a trivial ``GameStatus(status.value)``
+    cast. ``POSTPONED`` has no such DB counterpart: the persisted
+    ``summer_league_games.status`` column collapses postponed/canceled games to
+    ``SCHEDULED`` (the honest signal only survives in ``status_text`` — see
+    `scoreboard_ingest.map_game_status`), so a provider must re-detect it from
+    ``status_text`` (see :func:`_to_generic_status`) rather than casting it. Kept as
+    a single terminal bucket covering both postponed *and* canceled games (the DB
+    doesn't distinguish the two either -- both trip
+    ``_POSTPONED_OR_CANCELED_MARKERS``). This is a distinct type (not a reuse of
+    ``SummerLeagueGameStatus``) so the inner state machine stays reusable by a future
+    non-SL event without importing Summer-League-specific schemas.
     """
 
     SCHEDULED = "scheduled"
     IN_PROGRESS = "in_progress"
     FINAL = "final"
     UNKNOWN = "unknown"
+    POSTPONED = "postponed"
 
 
-def _to_generic_status(status: SummerLeagueGameStatus) -> GameStatus:
-    """Map a Summer-League-native game status onto the event-agnostic :class:`GameStatus`."""
+def _to_generic_status(
+    status: SummerLeagueGameStatus, status_text: str | None = None
+) -> GameStatus:
+    """Map a Summer-League-native game status onto the event-agnostic :class:`GameStatus`.
+
+    Postponed/canceled games are persisted as ``SCHEDULED`` (see
+    `scoreboard_ingest.map_game_status`) with the honest signal retained only in
+    ``status_text``. Re-detecting it here -- via the same
+    ``_POSTPONED_OR_CANCELED_MARKERS`` substrings `map_game_status` checks -- promotes
+    those rows to the terminal :attr:`GameStatus.POSTPONED` so the inner state machine
+    (`state_machine.inner_state`) never treats a game that will never tip as
+    Live-triggering or perpetually unresolved.
+
+    Args:
+        status: The persisted `SummerLeagueGameStatus` code.
+        status_text: The row's raw ``status_text`` (e.g. ``"PPD"``), if any.
+
+    Returns:
+        :attr:`GameStatus.POSTPONED` when ``status_text`` matches a
+        postponed/canceled marker; otherwise the trivial 1:1 cast of ``status``.
+    """
+    text = (status_text or "").strip().lower()
+    if any(marker in text for marker in _POSTPONED_OR_CANCELED_MARKERS):
+        return GameStatus.POSTPONED
     return GameStatus(status.value)
 
 
@@ -312,14 +344,30 @@ async def calendar_facts_for_competition_ids(
     game_dates = tuple(sorted({row[0] for row in (await db.execute(dates_stmt)).all()}))
 
     today_stmt = select(  # type: ignore[call-overload]
-        SummerLeagueGame.tip_datetime, SummerLeagueGame.status
+        SummerLeagueGame.tip_datetime,
+        SummerLeagueGame.status,
+        SummerLeagueGame.status_text,
     ).where(
         SummerLeagueGame.competition_id.in_(competition_ids),  # type: ignore[attr-defined]
         SummerLeagueGame.game_date == today,  # type: ignore[arg-type]
     )
     today_rows = (await db.execute(today_stmt)).all()
-    today_schedule = tuple(tip for tip, _status in today_rows if tip is not None)
-    today_statuses = tuple(_to_generic_status(status) for _tip, status in today_rows)
+    generic_statuses = tuple(
+        (tip, _to_generic_status(status, status_text))
+        for tip, status, status_text in today_rows
+    )
+    # A postponed/canceled game's tip is deliberately withheld from the schedule
+    # `inner_state` uses for its Live-fallback/flip math (`first_tip = min(schedule)`)
+    # -- it will never tip, so it must never be *the* trigger for Live, nor keep the
+    # day from reading as an off-day/Recap once every other game has resolved. Its
+    # terminal `POSTPONED` status still flows through in `today_statuses` below (see
+    # `CalendarFacts.today_statuses`'s "not required to be pairwise-aligned" contract).
+    today_schedule = tuple(
+        tip
+        for tip, generic_status in generic_statuses
+        if tip is not None and generic_status != GameStatus.POSTPONED
+    )
+    today_statuses = tuple(generic_status for _tip, generic_status in generic_statuses)
 
     return CalendarFacts(
         game_dates=game_dates,

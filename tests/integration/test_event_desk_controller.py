@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.event_desk import Event, EventDailyState, EventDeskState, EventLifecyclePhase
 from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueGame, SummerLeagueGameStatus
 from app.services.event_desk.controller import run_event_desk_tick
+from app.services.event_desk.registry import GameStatus, calendar_facts_for_competition_ids
 from app.services.summer_league.scoreboard_ingest import EVENT_KEY_SUMMER_LEAGUE
 
 _YEAR = 2026
@@ -43,6 +44,7 @@ async def _make_game(
     tip_datetime: datetime | None,
     status: SummerLeagueGameStatus,
     suffix: str,
+    status_text: str | None = None,
 ) -> SummerLeagueGame:
     game = SummerLeagueGame(
         competition_id=competition_id,
@@ -50,6 +52,7 @@ async def _make_game(
         game_date=game_date,
         tip_datetime=tip_datetime,
         status=status,
+        status_text=status_text,
     )
     db.add(game)
     await db.flush()
@@ -196,3 +199,166 @@ async def test_tick_off_window_yields_no_home_owner_and_null_daily_state(
     assert states[0].lifecycle_phase == EventLifecyclePhase.DORMANT
     assert states[0].daily_state is None
     assert states[0].is_home_owner is False
+
+
+@pytest.mark.asyncio
+async def test_calendar_facts_excludes_postponed_tip_but_surfaces_postponed_status(
+    db_session: AsyncSession,
+) -> None:
+    """`calendar_facts_for_competition_ids` re-detects a postponed game from
+    ``status_text`` (persisted as `SCHEDULED` on the DB status column -- #529) and
+    withholds its tip from `today_schedule` while still surfacing the terminal
+    `GameStatus.POSTPONED` in `today_statuses` -- the provider-layer half of the
+    #529/#530 follow-up fix."""
+    competition = await _make_competition(db_session)
+    assert competition.id is not None
+    real_tip = datetime(2026, 7, 10, 23, 0)
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 10),
+        tip_datetime=real_tip,
+        status=SummerLeagueGameStatus.SCHEDULED,
+        suffix="0001",
+    )
+    postponed_tip = datetime(2026, 7, 10, 10, 0)
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 10),
+        tip_datetime=postponed_tip,
+        status=SummerLeagueGameStatus.SCHEDULED,
+        suffix="0002",
+        status_text="PPD",
+    )
+
+    facts = await calendar_facts_for_competition_ids(
+        db_session, competition_ids=[competition.id], today=date(2026, 7, 10)
+    )
+
+    # Only the real game's tip drives `first_tip` math -- the postponed game's
+    # (earlier) tip is withheld entirely.
+    assert facts.today_schedule == (real_tip,)
+    assert sorted(facts.today_statuses) == sorted(
+        (GameStatus.SCHEDULED, GameStatus.POSTPONED)
+    )
+
+
+@pytest.mark.asyncio
+async def test_tick_postponed_only_day_resolves_recap_not_live(
+    db_session: AsyncSession,
+) -> None:
+    """Core regression (#529/#530 follow-up): a day whose only game is postponed,
+    with its original tip already in the past, must resolve to Recap -- never get
+    stuck in Live forever off a game that will never tip."""
+    competition = await _make_competition(db_session)
+    assert competition.id is not None
+    # Gap-bridged cluster so Jul 10 sits inside one Active window (same shape as
+    # `test_tick_upserts_active_live_state_and_sl_owns_home` above).
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 5),
+        tip_datetime=datetime(2026, 7, 5, 19, 0),
+        status=SummerLeagueGameStatus.FINAL,
+        suffix="0001",
+    )
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 8),
+        tip_datetime=datetime(2026, 7, 8, 19, 0),
+        status=SummerLeagueGameStatus.FINAL,
+        suffix="0002",
+    )
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 10),
+        # Original tip is well in the past relative to `now` below -- pre-fix, this
+        # was the exact condition that stranded the day in Live forever.
+        tip_datetime=datetime(2026, 7, 10, 19, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+        suffix="0003",
+        status_text="PPD",
+    )
+
+    now = datetime(2026, 7, 10, 23, 0)  # hours past the postponed game's original tip
+    states = await run_event_desk_tick(db_session, now=now)
+
+    assert len(states) == 1
+    assert states[0].lifecycle_phase == EventLifecyclePhase.ACTIVE
+    assert states[0].daily_state == EventDailyState.RECAP
+
+
+@pytest.mark.asyncio
+async def test_tick_mixed_day_preview_then_live_then_recap_around_postponed_game(
+    db_session: AsyncSession,
+) -> None:
+    """A mixed day -- one real game plus one postponed game with an earlier past
+    tip -- must not flip Live off the postponed game's tip. It stays Preview until
+    the real game's own tip, goes Live there, then reaches Recap once the real game
+    finals (the postponed game staying postponed forever)."""
+    competition = await _make_competition(db_session)
+    assert competition.id is not None
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 5),
+        tip_datetime=datetime(2026, 7, 5, 19, 0),
+        status=SummerLeagueGameStatus.FINAL,
+        suffix="0001",
+    )
+    real_tip = datetime(2026, 7, 8, 23, 0)  # 19:00 EDT
+    real_game = await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 8),
+        tip_datetime=real_tip,
+        status=SummerLeagueGameStatus.SCHEDULED,
+        suffix="0002",
+    )
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 8),
+        # Earlier same-day tip -- pre-fix, `first_tip = min(schedule)` would have
+        # picked this one and flipped the whole day Live hours before the real tip.
+        tip_datetime=datetime(2026, 7, 8, 10, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+        suffix="0003",
+        status_text="PPD",
+    )
+
+    # After the flip (real tip - 6h lead = 17:00 UTC) but hours before the real tip
+    # and well after the postponed game's own past tip -- must stay Preview, not
+    # jump to Live off the postponed game.
+    still_preview_at = datetime(2026, 7, 8, 18, 0)
+    states = await run_event_desk_tick(db_session, now=still_preview_at)
+    assert states[0].daily_state == EventDailyState.PREVIEW
+
+    # `_upsert_event_desk_state` writes via a raw Core `INSERT ... ON CONFLICT`, which
+    # bypasses the ORM's unit-of-work: the `EventDeskState` instance from the prior
+    # tick stays resident (and unmodified-looking) in the session's identity map, so
+    # a later `select()` for the same row returns that same stale Python object
+    # rather than the just-written values (same repo-established gotcha handled in
+    # `test_sl_desk_render_snapshot_materialization.py` / `college_stats_service.py`'s
+    # own `db.expire_all()`). Multiple ticks per test, on the *same* session, need an
+    # explicit `expire_all()` between them so each tick's returned/queried row reads
+    # its own fresh write rather than a resident stale one.
+    db_session.expire_all()
+
+    # At the real game's own tip -- Live.
+    at_real_tip = real_tip
+    states = await run_event_desk_tick(db_session, now=at_real_tip)
+    assert states[0].daily_state == EventDailyState.LIVE
+
+    db_session.expire_all()
+
+    # The real game finals; the postponed game stays postponed -- Recap, not stuck
+    # Live off the still-unresolved-looking postponed game.
+    real_game.status = SummerLeagueGameStatus.FINAL
+    await db_session.flush()
+    after_final = datetime(2026, 7, 9, 1, 0)
+    states = await run_event_desk_tick(db_session, now=after_final)
+    assert states[0].daily_state == EventDailyState.RECAP

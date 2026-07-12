@@ -27,6 +27,11 @@ from app.services.event_desk.lifecycle import lifecycle_phase
 from app.services.event_desk.registry import DeskEvent, GameStatus
 from app.services.event_desk.timeutils import eastern_floor_to_utc
 
+# Statuses that count as "resolved" for rule 3's day-is-done check: a `final` game
+# played to completion, or a `postponed`/`canceled` game that will never tip. Both
+# are terminal and non-Live -- see `inner_state`'s rule 3/4 docstrings.
+_RESOLVED_STATUSES = (GameStatus.FINAL, GameStatus.POSTPONED)
+
 
 def _flip_time(first_tip: datetime, event: DeskEvent) -> datetime:
     """The Ledger->Morning flip instant: `max(first_tip - LEAD, MORNING_FLOOR_ET)`.
@@ -67,25 +72,40 @@ def inner_state(
     Rules (behavior spec §2), checked in order:
 
     1. **Live always wins** — any game `in_progress` -> `live`, unconditionally.
-    2. **Off-day** — no games scheduled today (`schedule` empty) -> `recap`
-       (Ledger persists all day; the flip never fires because there's no first tip
-       to be relative to).
-    3. **Today's last final** — every known game today is `final` -> `recap`
-       (Ledger persists into the evening/overnight).
+    2. **Off-day** — no *live-eligible* games scheduled today (`schedule` empty)
+       -> `recap` (Ledger persists all day; the flip never fires because there's no
+       first tip to be relative to). This also covers a **postponed/canceled-only**
+       day: a `POSTPONED` game's tip is withheld from `schedule` by the provider
+       (see `registry.calendar_facts_for_competition_ids`), so a day where the only
+       game(s) are postponed reads as an off-day, not a stuck `live` (the original
+       bug this terminal status fixes — a postponed game's past tip must never be
+       the thing keeping the day `live` forever).
+    3. **Today's last final** — every known game today is `final` *or*
+       `postponed`/`canceled` -> `recap` (Ledger persists into the
+       evening/overnight). Postponed/canceled games count as resolved here (they'll
+       never tip) so a mixed day — one real game plus a postponed one — still
+       reaches `recap` once the real game finals, instead of falling through to the
+       scheduled-tip fallback below and reading `live` forever off the postponed
+       game's stale/past tip.
     4. **Scheduled-tip fallback** — `now >= today's first tip` and not every game is
-       `final` -> `live`, even if no game is yet *marked* `in_progress` (a stale
-       tick shouldn't make the page claim "Morning" while games are actually
-       underway).
+       resolved (`final`/`postponed`/`canceled`) -> `live`, even if no game is yet
+       *marked* `in_progress` (a stale tick shouldn't make the page claim "Morning"
+       while games are actually underway). `first_tip` is `min(schedule)`, which —
+       per rule 2 — already excludes postponed/canceled games' tips, so a postponed
+       game's own (possibly past) tip can never be the trigger for this fallback.
     5. **The flip** — `now >= max(first_tip - LEAD, MORNING_FLOOR_ET)` -> `preview`
        (Morning Card); otherwise `recap` (last night's Ledger still shows, pre-flip).
 
     Args:
         now: The tick/request instant (naive UTC).
-        schedule: Naive-UTC tip times for every game on today's (Eastern-date)
-            slate. Empty on an off-day.
+        schedule: Naive-UTC tip times for today's (Eastern-date) *live-eligible*
+            games — postponed/canceled games' tips are expected to already be
+            excluded by the caller (see `registry.calendar_facts_for_competition_ids`).
+            Empty on an off-day (including a postponed/canceled-only day).
         statuses: Every known game status for today's slate, in the event-agnostic
             `GameStatus` vocabulary (need not be pairwise-aligned with `schedule` —
-            a game missing a tip time still contributes its status).
+            a game missing a tip time, including a postponed/canceled one, still
+            contributes its status).
         event: The event (for its lifecycle calendar + window priors).
 
     Returns:
@@ -101,10 +121,10 @@ def inner_state(
     if not schedule:
         return EventDailyState.RECAP
 
-    all_final = bool(statuses) and all(
-        status == GameStatus.FINAL for status in statuses
+    all_resolved = bool(statuses) and all(
+        status in _RESOLVED_STATUSES for status in statuses
     )
-    if all_final:
+    if all_resolved:
         return EventDailyState.RECAP
 
     first_tip = min(schedule)
