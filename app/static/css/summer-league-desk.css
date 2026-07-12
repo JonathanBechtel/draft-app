@@ -462,29 +462,6 @@
 .desk__pctl-chip--mid { background: var(--color-slate-100); color: var(--color-slate-600); border: 1px solid var(--color-slate-200); }
 .desk__pctl-chip--cold { background: #fff1f2; color: #be123c; border: 1px solid #fda4af; }
 
-/* ===== Off-window archive strip ===== */
-.desk__offwindow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  padding: 0.85rem 1.1rem;
-  margin: 1.4rem 0 2rem;
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  color: var(--color-slate-600);
-}
-.desk__offwindow-label { color: var(--color-slate-800); font-weight: 600; }
-.desk__offwindow-link {
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
-  color: var(--color-primary);
-  text-decoration: none;
-  white-space: nowrap;
-}
-.desk__offwindow-link:hover { text-decoration: underline; }
-
 /* ===== Class Tracker (#511) ===== */
 .desk__tracker-toggles {
   display: flex;

@@ -66,8 +66,9 @@ visitor sees the Ledger. There is **no user-facing state switcher**; the states 
 accounting. The schedule-relative flip changes *which single state is shown*, not a tab.
 (Last night's Ledger is simply what shows through the morning until the flip to Morning Card.)
 
-- **Off-window** (outside the SL calendar window): the module collapses to a single
-  archive strip above the news hero. **The window itself is the SL event's *lifecycle*** —
+- **Off-window** (outside the SL calendar window): the seasonal module renders nothing;
+  the standard news-first homepage returns. Summer League remains discoverable through
+  its evergreen stats pages and normal navigation. **The window itself is the SL event's *lifecycle*** —
   see `event-desk-framework.md`. SL is **event-instance #1**: the daily Morning/Live/Ledger
   machine here is the framework's *inner* machine; the on/off boundary is the *outer*
   lifecycle (Dormant→Announced→Warm-up→Active→Wind-down→Archived). SL's window config:
