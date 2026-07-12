@@ -467,6 +467,11 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
             source_endpoint=source_endpoint,
         )
 
+    async def fake_refresh_competition_date_window(
+        *_args: object, **_kwargs: object
+    ) -> None:
+        return None
+
     monkeypatch.setattr(service, "_get_raw_run", fake_get_raw_run)
     monkeypatch.setattr(service, "_get_raw_files", fake_get_raw_files)
     monkeypatch.setattr(service, "_upsert_competition", fake_upsert_competition)
@@ -478,6 +483,9 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
     monkeypatch.setattr(service, "_upsert_team_entry", fake_upsert_team_entry)
     monkeypatch.setattr(service, "_upsert_game", fake_upsert_game)
     monkeypatch.setattr(service, "_upsert_team_game_log", fake_upsert_team_game_log)
+    monkeypatch.setattr(
+        service, "refresh_competition_date_window", fake_refresh_competition_date_window
+    )
 
     report = await normalize_competition_games(
         FakeDb(),  # type: ignore[arg-type]
