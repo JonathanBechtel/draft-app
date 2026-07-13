@@ -1055,6 +1055,24 @@ async def compute_desk_storylines(
                 )
             )
 
+        # Live mode drops confirmed non-participants: a player with a box row
+        # for THIS game that shows no minutes (a DNP roster shell) did not play,
+        # so he is not an eligible storyline subject. Without this a rostered
+        # veteran who dressed but sat (e.g. Cam Reddish) still fires a Debut/
+        # Second-look trigger off his prior-year history and can outweigh
+        # everyone who played, hijacking the Live hero. A player with NO row yet
+        # is merely pre-tip -- kept, so an in-progress Duel between a logged
+        # prospect and a not-yet-checked-in one still fires (#541). Morning mode
+        # keeps the full active roster (its framing is a pre-tip prediction).
+        if mode == "live":
+            dnp_shell_ids = {
+                log.player_id
+                for log in tonight_logs_by_game.get(g.id, [])
+                if log.player_id is not None
+                and not (log.minutes_seconds is not None and log.minutes_seconds > 0)
+            }
+            slots = [slot for slot in slots if slot.player_id not in dnp_shell_ids]
+
         instances: list[TriggerInstance] = []
 
         duel = detect_duel(candidates=slots)
@@ -1146,6 +1164,14 @@ async def compute_desk_storylines(
             game_pctls: list[float] = []
             for log_row in tonight_logs_by_game.get(g.id, []):
                 if log_row.player_id is None or log_row.player_id not in roster_id_set:
+                    continue
+                # Same participation gate as the storyline slots above: a DNP
+                # shell (NULL minutes) would score a 0.0 GmSc percentile and, in
+                # a game where no tracked prospect actually played, drive the
+                # live re-rank off a non-participant. Only real lines count.
+                if not (
+                    log_row.minutes_seconds is not None and log_row.minutes_seconds > 0
+                ):
                     continue
                 player = player_by_id.get(log_row.player_id)
                 if player is None:
