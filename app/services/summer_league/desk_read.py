@@ -541,6 +541,7 @@ def _pick_hero_slate_row(
     games: dict[int, SummerLeagueGame],
     *,
     live: bool,
+    logs_by_game: Optional[Mapping[int, Sequence[SummerLeaguePlayerGameLog]]] = None,
 ) -> Optional[SummerLeagueDeskSlate]:
     """Pick the hero game (behavior spec §4).
 
@@ -549,18 +550,35 @@ def _pick_hero_slate_row(
     game that has since gone final -- "re-selected each tick -- if the marquee
     ended, a live game takes over." Falls back to the tick's own ``is_hero``/
     top-ranked row when nothing is currently in progress (e.g. between games).
+
+    An ``in_progress`` game with no logged box line yet -- one that just tipped,
+    or whose scoreboard status is stale ahead of the box-score feed -- has
+    nothing to headline, so it never wins the Live hero with em-dash lines.
+    Preference order: an in-progress game that HAS a real box line, else any
+    game with one (typically a just-final game), else the tick's own selection.
     """
     if not slate_rows:
         return None
     pool = slate_rows
     if live:
+        logs = logs_by_game or {}
+
+        def _has_box_data(row: SummerLeagueDeskSlate) -> bool:
+            return any(_played(log) for log in logs.get(row.game_id, []))
+
         in_progress = [
             row
             for row in slate_rows
             if (game := games.get(row.game_id)) is not None
             and game.status == SummerLeagueGameStatus.IN_PROGRESS
         ]
-        if in_progress:
+        live_with_data = [row for row in in_progress if _has_box_data(row)]
+        any_with_data = [row for row in slate_rows if _has_box_data(row)]
+        if live_with_data:
+            pool = live_with_data
+        elif any_with_data:
+            pool = any_with_data
+        elif in_progress:
             pool = in_progress
     for row in pool:
         if row.is_hero:
@@ -1788,7 +1806,9 @@ async def _assemble_desk_payload_body(
 
             hero_game_id: Optional[int] = None
             if not quiet:
-                hero_row = _pick_hero_slate_row(slate_rows, games, live=live)
+                hero_row = _pick_hero_slate_row(
+                    slate_rows, games, live=live, logs_by_game=logs_by_game
+                )
                 assert hero_row is not None  # slate_rows is non-empty here
                 hero_game_id = hero_row.game_id
                 hero = await _build_game_hero(
