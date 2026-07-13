@@ -1,6 +1,6 @@
 /**
- * Summer League Desk (#509, extended #556, tracker pagination pre-prod fix)
- * -- page-scoped JS.
+ * Summer League Desk (#509, extended #556, #567, tracker pagination pre-prod
+ * fix) -- page-scoped JS.
  *
  * Four independent, progressive-enhancement behaviors:
  *
@@ -13,6 +13,8 @@
  *   2. Class Tracker column sort -- reorders `<tr>`s in the DOM by a numeric
  *      column, both directions, missing values last, name as the stable
  *      tiebreak. Pure client-side reorder: no request, no navigation.
+ *      Re-run after every tab switch (behavior 4) since the table is a
+ *      fresh DOM subtree each time.
  *
  *   3. Class Tracker pagination -- caps the VISIBLE rows to 15 at a time
  *      (same pattern as #1: the server renders every row of the active
@@ -25,12 +27,24 @@
  *      per click on a Desk player link, carrying `placement` (hero/tracker/
  *      ledger/live_board) and `daily_state`. Native `<a href>` navigation is
  *      untouched and works with analytics/JS fully disabled.
+ *
+ *   4. Class Tracker tab switch -- intercepts clicks on the cohort/stat-view
+ *      toggle links and fetches `GET /desk/tracker?cohort=..&statview=..`
+ *      (a fragment route reading the SAME single indexed snapshot row the
+ *      full page read) instead of following the link's full-page-navigation
+ *      href, then swaps the returned HTML into `#slDeskTrackerCard`. This is
+ *      what makes switching tabs cost one small fragment request instead of
+ *      re-running the whole `/` route's consensus/news/hero queries. Falls
+ *      back to real navigation (the href already on the link) on any fetch
+ *      failure, and works exactly as before -- a full page nav -- with JS
+ *      disabled.
  */
 document.addEventListener('DOMContentLoaded', function () {
   initSlateDisclosure();
   initTrackerSort();
   initTrackerPagination();
   initDeskClickAnalytics();
+  initTrackerToggles();
 });
 
 /**
@@ -236,6 +250,20 @@ function initTrackerPagination() {
   if (!tbody) {
     return;
   }
+
+  // Idempotent re-init: a cohort/stat-view swap (#567) rebuilds the table, so
+  // `initTrackerToggles` calls this again on the fresh DOM. The pager lives on
+  // `#slDeskTracker` (outside the swapped `#slDeskTrackerCard`), so it is NOT
+  // wiped by the swap -- drop any pager from the previous render before
+  // deciding whether the new table needs one. Otherwise switching to a
+  // <=15-row cohort would strand a stale pager, and switching between two
+  // large cohorts would stack a second one.
+  var host = document.getElementById('slDeskTracker') || table.closest('.card') || table.parentNode;
+  var stalePager = host && host.querySelector('.desk__tracker-pager');
+  if (stalePager) {
+    stalePager.parentNode.removeChild(stalePager);
+  }
+
   var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
   if (rows.length <= PAGE_SIZE) {
     return; // Nothing to paginate -- every row already fits on one page.
@@ -292,8 +320,7 @@ function initTrackerPagination() {
   pager.appendChild(statusEl);
   pager.appendChild(nextBtn);
 
-  var section = document.getElementById('slDeskTracker') || table.closest('.card');
-  (section || table.parentNode).appendChild(pager);
+  host.appendChild(pager);
 
   table.addEventListener('desk:tracker-sorted', function () {
     showPage(0);
@@ -330,4 +357,145 @@ function initDeskClickAnalytics() {
     }
     // No preventDefault -- navigation always proceeds via the anchor's href.
   });
+}
+
+/**
+ * Intercept Class Tracker cohort/stat-view toggle clicks and fetch a fragment
+ * instead of following the link's full-page-navigation href.
+ *
+ * `#slDeskTracker`'s `data-cohort`/`data-statview` track the currently
+ * rendered combo; each toggle `<a>` carries `data-cohort` XOR `data-statview`
+ * for the value IT represents (`class_tracker.html`). A click resolves the
+ * OTHER axis from the section's current state, fetches `GET /desk/tracker`
+ * for the resulting pair, and swaps the response into `#slDeskTrackerCard`
+ * (the table/caption/empty-state fragment `class_tracker_table.html` renders
+ * -- never the toggle bar itself, so `.card`'s `.scanlines` overlay and the
+ * toggle buttons are untouched by the swap).
+ *
+ * On fetch failure, falls back to real navigation via the clicked link's own
+ * href -- the same destination a no-JS click would have taken -- rather than
+ * leaving the tab silently inert.
+ */
+function initTrackerToggles() {
+  var section = document.getElementById('slDeskTracker');
+  var card = document.getElementById('slDeskTrackerCard');
+  if (!section || !card) {
+    return;
+  }
+
+  // Request token: the toggle bar stays clickable while a fragment fetch is
+  // in flight (`desk__tracker--loading` is a visual dimming only, not a
+  // click-lock), so a user can fire a second click before the first
+  // request's response arrives. Each fetch captures the token AT THE TIME
+  // IT STARTS; if a newer click has since bumped it, that response is
+  // stale and its `.then()` callback drops it instead of overwriting
+  // `#slDeskTrackerCard` with an out-of-order result.
+  var requestToken = 0;
+
+  section.addEventListener('click', function (event) {
+    var link = event.target.closest && event.target.closest('a[data-cohort], a[data-statview]');
+    if (!link) {
+      return;
+    }
+
+    var nextCohort = link.dataset.cohort || section.dataset.cohort;
+    var nextStatview = link.dataset.statview || section.dataset.statview;
+    if (nextCohort === section.dataset.cohort && nextStatview === section.dataset.statview) {
+      event.preventDefault(); // Already the active tab -- no-op, not a re-fetch.
+      return;
+    }
+
+    event.preventDefault();
+    section.classList.add('desk__tracker--loading');
+
+    requestToken += 1;
+    var myToken = requestToken;
+
+    var url = '/desk/tracker?cohort=' + encodeURIComponent(nextCohort) +
+      '&statview=' + encodeURIComponent(nextStatview);
+
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error('Class Tracker fragment fetch failed: ' + response.status);
+        }
+        return response.text();
+      })
+      .then(function (html) {
+        if (myToken !== requestToken) {
+          return; // A newer tab click superseded this response -- drop it.
+        }
+        card.innerHTML = html;
+        section.dataset.cohort = nextCohort;
+        section.dataset.statview = nextStatview;
+        section.classList.remove('desk__tracker--loading');
+        updateTrackerToggleState(section, nextCohort, nextStatview);
+        updateTrackerHistoryUrl(nextCohort, nextStatview);
+        // The swap replaced the table with a fresh DOM subtree: re-attach BOTH
+        // client-side behaviors. Sort rebinds its header listeners; pagination
+        // rebuilds its pager over the new cohort's rows (idempotently -- see
+        // initTrackerPagination). Without the second call the swapped-in table
+        // would render every row unpaginated with a stale pager.
+        initTrackerSort();
+        initTrackerPagination();
+      })
+      .catch(function () {
+        if (myToken !== requestToken) {
+          return; // Superseded -- the active click's own request governs.
+        }
+        // Network/server failure -- fall back to the exact navigation the
+        // clicked link's href already points at (what happens with JS off).
+        section.classList.remove('desk__tracker--loading');
+        window.location.href = link.href;
+      });
+  });
+}
+
+/**
+ * Sync the toggle bar's active state + hrefs to the newly-active
+ * (cohort, statview) pair after a client-side tab switch.
+ *
+ * Rewrites each link's `href` too (not just visual state) so a link a user
+ * middle-clicks/opens-in-a-new-tab after switching tabs still lands on the
+ * combo they're actually looking at, not the combo that was server-rendered
+ * on first page load.
+ */
+function updateTrackerToggleState(section, cohort, statview) {
+  var cohortLinks = Array.prototype.slice.call(section.querySelectorAll('.desk__tracker-toggle-btn'));
+  cohortLinks.forEach(function (a) {
+    var active = a.dataset.cohort === cohort;
+    a.classList.toggle('is-active', active);
+    a.setAttribute('aria-current', active ? 'true' : 'false');
+    a.setAttribute(
+      'href',
+      '/?cohort=' + encodeURIComponent(a.dataset.cohort) + '&statview=' + encodeURIComponent(statview) + '#slDeskTracker'
+    );
+  });
+
+  var statviewLinks = Array.prototype.slice.call(section.querySelectorAll('.desk__tracker-statview .slg-mode-btn'));
+  statviewLinks.forEach(function (a) {
+    a.classList.toggle('is-active', a.dataset.statview === statview);
+    a.setAttribute(
+      'href',
+      '/?cohort=' + encodeURIComponent(cohort) + '&statview=' + encodeURIComponent(a.dataset.statview) + '#slDeskTracker'
+    );
+  });
+}
+
+/**
+ * Reflect the active (cohort, statview) pair in the URL bar via
+ * `history.replaceState` (never `pushState`) -- keeps `/` reload- and
+ * share-friendly after a client-side switch without creating a back-button
+ * history entry for every tab click, which would desync from the DOM (a
+ * `popstate` back-navigation doesn't re-render; only an actual page load
+ * re-reads the URL's query params).
+ */
+function updateTrackerHistoryUrl(cohort, statview) {
+  if (!window.history || !window.history.replaceState) {
+    return;
+  }
+  var url = new URL(window.location.href);
+  url.searchParams.set('cohort', cohort);
+  url.searchParams.set('statview', statview);
+  window.history.replaceState(null, '', url.toString());
 }

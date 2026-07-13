@@ -70,6 +70,14 @@ ROUTE_BUDGETS: dict[str, int] = {
     # `DESK_HOME_PAGE_BUDGETS`'s numbers still include the repo's known,
     # pre-existing `/` N+1 (see the module note above) -- these are regression
     # ratchets on the WHOLE route, not a claim the page is N+1-free.
+    "/": 52,
+    # Class Tracker tab-switch fragment (#567 JS fetch-and-swap): the SAME
+    # single indexed snapshot read `/` makes for the Desk's tracker section,
+    # nothing else — no consensus/news/hero queries. Off-window (this
+    # fixture), `_resolve_window_state` short-circuits on its one `events`
+    # lookup before touching any snapshot table, mirroring `/`'s off-window
+    # regime above.
+    "/desk/tracker": 1,
     "/": 32,
     "/news": 8,
     "/podcasts": 5,

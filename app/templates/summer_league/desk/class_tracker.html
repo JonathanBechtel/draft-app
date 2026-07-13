@@ -1,21 +1,32 @@
 {# Summer League Desk -- Class Tracker (#511): the pinned board beneath the
    current Desk state. Six cohort toggles + Box/Per-36/Per-100/Advanced stat
-   view, both server round-trips via query params on `/` (behavior spec §7 --
-   the SL Explorer's existing pattern; the six cohorts x four stat views are
-   NEVER preloaded client-side, only the active combination renders). Reuses
-   the Explorer's `.slg-mode-toggle`/`.slg-mode-btn` classes for the stat-view
-   toggle for visual parity (rules copied into summer-league-desk.css since
-   the Explorer's originals live in that template's own scoped <style> block).
+   view. `<a href>` toggles keep a real server round-trip via query params on
+   `/` as the no-JS fallback (behavior spec §7 -- the SL Explorer's existing
+   pattern), but with JS enabled `summer-league-desk.js`'s `initTrackerToggles`
+   intercepts the click and instead fetches `GET /desk/tracker?cohort=..&
+   statview=..` -- a fragment route that renders ONLY `class_tracker_table.html`
+   off the SAME single indexed snapshot row this page already read, no
+   consensus/news/hero re-query -- and swaps `#slDeskTrackerCard`'s contents in
+   place. `data-cohort`/`data-statview` on the section track the currently
+   rendered combo for that JS to diff against. The six cohorts x four stat
+   views are still never preloaded client-side; only the active combination is
+   ever in the DOM. Reuses the Explorer's `.slg-mode-toggle`/`.slg-mode-btn`
+   classes for the stat-view toggle for visual parity (rules copied into
+   summer-league-desk.css since the Explorer's originals live in that
+   template's own scoped <style> block).
 
    Column sort (#556): every numeric column is client-side sortable --
    `summer-league-desk.js` reads `data-sort-key` off each sortable `<th>` and
    `data-value` off the matching `<td>` (raw numeric string, empty when the
    underlying value is `None` -- missing values always sort last regardless
    of direction) and `data-name` off each `<tr>` (the stable tiebreak). This
-   is a pure DOM reorder -- no request, no server round trip; cohort/stat-view
-   stay server round-trip query-param state as before. Rows render pre-sorted
-   GmSc desc from the backend (the initial `aria-sort="descending"` on that
-   header matches), and JS toggles ascending/descending from there.
+   is a pure DOM reorder -- no request, no server round trip. Rows render
+   pre-sorted GmSc desc from the backend (the initial `aria-sort="descending"`
+   on that header matches), and JS toggles ascending/descending from there.
+   Cohort/stat-view switches (#567), by contrast, fetch a fresh fragment and
+   swap it into `#slDeskTrackerCard`, so sort AND pagination listeners are
+   re-attached after every swap since the table is a fresh DOM subtree each
+   time (`initTrackerToggles` re-runs both initializers on each fetch).
 
    Pagination (pre-prod fix, mirrors #556's slate-disclosure pattern): this
    template ALWAYS renders every row of the active cohort (up to the
@@ -25,7 +36,6 @@
    it loads, every row in the flat table is reachable. Re-sorting resets to
    page 1 over the new order (`desk:tracker-sorted` custom event). #}
 {% set tracker = desk_payload.tracker %}
-{% set is_undrafted_cohort = tracker.cohort == 'undrafted' %}
 {% set cohort_labels = [
      ('lottery', 'Lottery'), ('round1', 'Round 1'), ('round2', 'Round 2'),
      ('full_class', 'Full class'), ('sophomores', 'Sophomores'), ('undrafted', 'Undrafted')
@@ -34,9 +44,7 @@
      ('box', 'Box'), ('per36', 'Per 36'), ('per100', 'Per 100'), ('advanced', 'Advanced')
    ] %}
 
-{% macro cell(value, decimals=1) %}{% if value is none %}&mdash;{% else %}{{ ('%.' ~ decimals ~ 'f')|format(value) }}{% endif %}{% endmacro %}
-
-<section id="slDeskTracker" aria-label="Class Tracker">
+<section id="slDeskTracker" aria-label="Class Tracker" data-cohort="{{ tracker.cohort }}" data-statview="{{ tracker.stat_view }}">
   <h2 class="desk__section-title" style="border-left-color: var(--color-accent-amber);">Class Tracker</h2>
   <p class="desk__section-sub">Every tracked player's Summer League body of work so far, scored against his cohort.</p>
 
@@ -45,120 +53,23 @@
       {% for key, label in cohort_labels %}
       <a class="desk__tracker-toggle-btn{{ ' is-active' if tracker.cohort == key else '' }}"
          href="/?cohort={{ key }}&statview={{ tracker.stat_view }}#slDeskTracker"
+         data-cohort="{{ key }}"
          aria-current="{{ 'true' if tracker.cohort == key else 'false' }}">{{ label }}</a>
       {% endfor %}
     </div>
     <div class="slg-mode-toggle desk__tracker-statview" role="radiogroup" aria-label="Stat view">
       {% for key, label in statview_labels %}
       <a class="slg-mode-btn{{ ' is-active' if tracker.stat_view == key else '' }}"
-         href="/?cohort={{ tracker.cohort }}&statview={{ key }}#slDeskTracker">{{ label }}</a>
+         href="/?cohort={{ tracker.cohort }}&statview={{ key }}#slDeskTracker"
+         data-statview="{{ key }}">{{ label }}</a>
       {% endfor %}
     </div>
   </div>
 
   <div class="card" style="padding: 0.4rem 0.4rem 0.2rem;">
     <div class="scanlines"></div>
-    {% if tracker.rows %}
-    <div class="desk__table-scroll">
-      <table class="desk__tracker-table">
-        <thead>
-          <tr>
-            <th scope="col">Player</th>
-            <th scope="col" data-sort-key="gp">GP</th>
-            <th scope="col" data-sort-key="minutes">MIN</th>
-            <th scope="col" class="desk__tracker-th--active" data-sort-key="gmsc" aria-sort="descending">GmSc</th>
-            <th scope="col">{{ 'vs status cohort' if is_undrafted_cohort else 'vs cohort' }}</th>
-            {% if tracker.stat_view == 'advanced' %}
-            <th scope="col" data-sort-key="ts_pct">TS%</th>
-            <th scope="col" data-sort-key="efg_pct">eFG%</th>
-            <th scope="col" data-sort-key="usg_pct">USG%</th>
-            <th scope="col" data-sort-key="ast_pct">AST%</th>
-            <th scope="col" data-sort-key="tov_pct">TOV%</th>
-            <th scope="col" data-sort-key="trb_pct">REB%</th>
-            <th scope="col" data-sort-key="fg3ar">3PAr</th>
-            <th scope="col" data-sort-key="ftr">FTr</th>
-            <th scope="col" data-sort-key="ws82">WS/82</th>
-            <th scope="col" data-sort-key="bpm">BPM</th>
-            {% else %}
-            <th scope="col" data-sort-key="pts">PTS</th>
-            <th scope="col" data-sort-key="reb">REB</th>
-            <th scope="col" data-sort-key="ast">AST</th>
-            <th scope="col" data-sort-key="stl">STL</th>
-            <th scope="col" data-sort-key="blk">BLK</th>
-            <th scope="col" data-sort-key="tov">TOV</th>
-            <th scope="col" data-sort-key="fg_pct">FG%</th>
-            <th scope="col" data-sort-key="fg3_pct">3P%</th>
-            <th scope="col" data-sort-key="ft_pct">FT%</th>
-            {% endif %}
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in tracker.rows %}
-          {% set p = desk_players.get(row.player_id) %}
-          {% set team = desk_tracker_teams.get(row.player_id) %}
-          {% set sc = row.stat_columns %}
-          <tr data-player-id="{{ row.player_id }}" data-name="{{ row.display_name }}">
-            <td>
-              <div class="desk__name-cell">
-                <span class="desk__avatar desk__avatar--sm">
-                  {% if p and p.photo_url %}<img src="{{ p.photo_url }}" alt="">{% endif %}
-                </span>
-                {% if team and team.logo_url %}<img class="desk__team-logo desk__team-logo--sm" src="{{ team.logo_url }}" alt="{{ team.abbrev }}">{% endif %}
-                <div>
-                  <span class="desk__player-name">
-                    {% if p and p.slug %}<a href="/players/{{ p.slug }}/summer-league?ref=sl-desk" data-desk-placement="tracker">{{ row.display_name }}</a>{% else %}{{ row.display_name }}{% endif %}
-                  </span>
-                  <br>
-                  <span class="desk__tracker-identity">{{ row.identity_label }}</span>
-                </div>
-              </div>
-            </td>
-            <td class="tabular-nums" data-value="{{ row.gp }}">{{ row.gp }}</td>
-            <td class="tabular-nums" data-value="{{ row.minutes if row.gp else '' }}">{% if row.gp %}{{ cell(row.minutes) }}{% else %}&mdash;{% endif %}</td>
-            <td class="desk__gmsc-cell tabular-nums desk__tracker-th--active" data-value="{{ '' if row.gmsc is none else row.gmsc }}">{{ cell(row.gmsc) }}</td>
-            <td>
-              {% if row.grade %}
-              <span class="desk__pctl-chip desk__pctl-chip--{{ row.grade }}">{{ row.grade | capitalize }}</span>
-              {% else %}
-              &mdash;
-              {% endif %}
-            </td>
-            {% if tracker.stat_view == 'advanced' %}
-            <td class="tabular-nums" data-value="{{ '' if sc.ts_pct is none else sc.ts_pct }}">{{ cell(sc.ts_pct) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.efg_pct is none else sc.efg_pct }}">{{ cell(sc.efg_pct) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.usg_pct is none else sc.usg_pct }}">{{ cell(sc.usg_pct) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.ast_pct is none else sc.ast_pct }}">{{ cell(sc.ast_pct) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.tov_pct is none else sc.tov_pct }}">{{ cell(sc.tov_pct) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.trb_pct is none else sc.trb_pct }}">{{ cell(sc.trb_pct) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.fg3ar is none else sc.fg3ar }}">{{ cell(sc.fg3ar, 3) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.ftr is none else sc.ftr }}">{{ cell(sc.ftr, 3) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.ws82 is none else sc.ws82 }}">{{ cell(sc.ws82) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.bpm is none else sc.bpm }}">{{ cell(sc.bpm) }}</td>
-            {% else %}
-            <td class="tabular-nums" data-value="{{ '' if sc.pts is none else sc.pts }}">{{ cell(sc.pts) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.reb is none else sc.reb }}">{{ cell(sc.reb) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.ast is none else sc.ast }}">{{ cell(sc.ast) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.stl is none else sc.stl }}">{{ cell(sc.stl) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.blk is none else sc.blk }}">{{ cell(sc.blk) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.tov is none else sc.tov }}">{{ cell(sc.tov) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.fg_pct is none else sc.fg_pct }}">{{ cell(sc.fg_pct) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.fg3_pct is none else sc.fg3_pct }}">{{ cell(sc.fg3_pct) }}</td>
-            <td class="tabular-nums" data-value="{{ '' if sc.ft_pct is none else sc.ft_pct }}">{{ cell(sc.ft_pct) }}</td>
-            {% endif %}
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div id="slDeskTrackerCard">
+      {% include "summer_league/desk/class_tracker_table.html" %}
     </div>
-    <p class="desk__tracker-caption">
-      {% if tracker.truncated %}
-      Showing the top {{ tracker.rows | length }} of a larger cohort, ranked by GmSc.
-      {% else %}
-      Showing all {{ tracker.rows | length }} tracked player{{ 's' if tracker.rows | length != 1 else '' }} in this cohort.
-      {% endif %}
-    </p>
-    {% else %}
-    <div class="desk__tracker-empty">No tracked players in this cohort yet.</div>
-    {% endif %}
   </div>
 </section>

@@ -770,6 +770,70 @@ async def test_cohort_and_statview_toggles_round_trip_via_query_params(
     assert 'class="desk__tracker-toggle-btn is-active"' in html
     assert 'class="slg-mode-btn is-active"' in html
 
+    # #567: each toggle carries the data attribute `initTrackerToggles` reads
+    # to resolve the OTHER axis and build the fetch URL client-side.
+    assert 'data-cohort="lottery"' in html
+    assert 'data-statview="advanced"' in html
+
+
+# --------------------------------------------------------------------------- #
+# Class Tracker JS fetch-and-swap fragment route (#567): `/desk/tracker`
+# lets `summer-league-desk.js`'s `initTrackerToggles` switch tabs without a
+# full `/` navigation. It reads the identical snapshot row `/` does for the
+# same (cohort, statview) and renders ONLY `class_tracker_table.html` -- no
+# page chrome, no consensus/news/hero markup.
+# --------------------------------------------------------------------------- #
+async def test_tracker_fragment_route_matches_full_page_for_same_variant(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """`/desk/tracker?cohort=..&statview=..` renders the SAME table `/` does, chrome-free."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    year = today.year
+    competition = await _seed_recap_window(db_session, now=now)
+    team = await _seed_team(db_session, competition)
+
+    player = await _seed_player(
+        db_session, name="Fragment", draft_year=year, draft_round=2, draft_pick=5
+    )
+    await _roster_player(db_session, competition, team, player)
+    await _seed_season(db_session, competition=competition, player=player, year=year)
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+    await _materialize_desk_snapshots(db_session, now=now)
+
+    full_page = await app_client.get("/?cohort=round2&statview=advanced")
+    assert full_page.status_code == 200
+
+    fragment = await app_client.get("/desk/tracker?cohort=round2&statview=advanced")
+    assert fragment.status_code == 200
+    html = fragment.text
+
+    # Same variant's column set and row present.
+    assert 'data-sort-key="bpm">BPM</th>' in html
+    assert 'data-sort-key="ws82">WS/82</th>' in html
+    assert ">PTS</th>" not in html
+    assert "Fragment Test" in html
+
+    # No page chrome -- this is the table/caption fragment ONLY, never the
+    # toggle bar (that stays static across a client-side swap) or anything
+    # from outside the Desk.
+    assert "<html" not in html
+    assert 'id="slDeskTracker"' not in html
+    assert "desk__tracker-toggle-btn" not in html
+    assert "consensus-hero" not in html
+
+
+async def test_tracker_fragment_route_off_window_renders_empty_state(
+    app_client: AsyncClient,
+) -> None:
+    """No active SL event (or unmaterialized variant): fragment degrades to empty, not 500."""
+    response = await app_client.get("/desk/tracker?cohort=lottery&statview=box")
+    assert response.status_code == 200
+    assert "No tracked players in this cohort yet." in response.text
+    assert "<html" not in response.text
+
 
 async def test_tracker_row_deep_link_carries_ref_sl_desk(
     app_client: AsyncClient, db_session: AsyncSession
