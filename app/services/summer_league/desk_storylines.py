@@ -1165,6 +1165,14 @@ async def compute_desk_storylines(
             for log_row in tonight_logs_by_game.get(g.id, []):
                 if log_row.player_id is None or log_row.player_id not in roster_id_set:
                     continue
+                # Same participation gate as the storyline slots above: a DNP
+                # shell (NULL minutes) would score a 0.0 GmSc percentile and, in
+                # a game where no tracked prospect actually played, drive the
+                # live re-rank off a non-participant. Only real lines count.
+                if not (
+                    log_row.minutes_seconds is not None and log_row.minutes_seconds > 0
+                ):
+                    continue
                 player = player_by_id.get(log_row.player_id)
                 if player is None:
                     continue

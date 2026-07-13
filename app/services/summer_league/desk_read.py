@@ -690,15 +690,10 @@ async def _build_game_hero(
     game = games.get(hero_row.game_id)
     matchup = _matchup_label(game, teams)
     subject1, subject2 = await _hero_subjects_for_game(db, hero_row.game_id)
-    headline = _extract_prose(hero_row.facts, surface=Surface.HERO_TAGLINE) or (
-        f"Tonight's top storyline: {matchup}"
-    )
-    tagline = _extract_prose(hero_row.facts, surface=Surface.TICK_NOTE)
-    if tagline == headline:
-        tagline = None
 
     subject_line: Optional[DeskHeroLine] = None
     subject_line_2: Optional[DeskHeroLine] = None
+    swapped_off_dnp = False
     if kind == "live_duel":
         logs = logs_by_game or {}
         game_logs = list(logs.get(hero_row.game_id, []))
@@ -728,6 +723,7 @@ async def _build_game_hero(
             if top is not None:
                 subject1 = top[0]
                 subject2 = None
+                swapped_off_dnp = True
         if _is_dnp_shell(subject2):
             subject2 = None
         subject_line = _hero_line_from_logs(
@@ -737,6 +733,24 @@ async def _build_game_hero(
             logs, game_id=hero_row.game_id, player_id=subject2
         )
 
+    # The stored slate facts describe the tick's storyline subject. When we've
+    # swapped the headline off a DNP non-participant onto the game's real top
+    # performer, those facts (headline tagline, chips) describe the WRONG player,
+    # so drop them and use a neutral top-performer headline -- otherwise the hero
+    # shows one player's name/line under another's prose.
+    if swapped_off_dnp:
+        headline = f"Tonight's top performer: {matchup}"
+        tagline = None
+        facts: list[dict[str, object]] = []
+    else:
+        headline = _extract_prose(hero_row.facts, surface=Surface.HERO_TAGLINE) or (
+            f"Tonight's top storyline: {matchup}"
+        )
+        tagline = _extract_prose(hero_row.facts, surface=Surface.TICK_NOTE)
+        if tagline == headline:
+            tagline = None
+        facts = list(hero_row.facts or [])
+
     return DeskHero(
         kind=kind,
         game_id=hero_row.game_id,
@@ -744,7 +758,7 @@ async def _build_game_hero(
         subject_player_id_2=subject2,
         headline=headline,
         tagline=tagline,
-        facts=list(hero_row.facts or []),
+        facts=facts,
         subject_line=subject_line,
         subject_line_2=subject_line_2,
     )

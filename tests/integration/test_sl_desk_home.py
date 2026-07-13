@@ -1707,6 +1707,9 @@ async def test_live_hero_subject_falls_back_when_top_storyline_subject_did_not_p
         raw_player_name="SatOut",
         minutes_seconds=None,
     )
+    # The stored slate prose describes the DNP veteran (the tick's storyline
+    # subject) -- it must NOT survive onto the swapped-in real performer.
+    dnp_prose = "SatOut is authoring a statement Summer League."
     hero_row = SummerLeagueDeskSlate(
         game_date=game_date,
         competition_id=competition.id,
@@ -1714,7 +1717,7 @@ async def test_live_hero_subject_falls_back_when_top_storyline_subject_did_not_p
         total_weight=6800.0,
         rank=1,
         is_hero=True,
-        facts=[],
+        facts=[{"prose": dnp_prose, "selected_for": ["hero_tagline"]}],
     )
 
     hero = await _build_game_hero(
@@ -1731,3 +1734,8 @@ async def test_live_hero_subject_falls_back_when_top_storyline_subject_did_not_p
     assert hero.subject_player_id_2 is None
     assert hero.subject_line is not None
     assert hero.subject_line.pts == 24
+    # The stale DNP prose/facts are dropped so the real performer isn't shown
+    # under the non-participant's narrative.
+    assert dnp_prose not in (hero.headline or "")
+    assert hero.tagline is None
+    assert hero.facts == []
