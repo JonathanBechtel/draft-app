@@ -108,7 +108,7 @@ Normal path: push to `main` (or re-run the existing `fly-deploy-stage.yml` workf
 - Update the news/SL-ingestion/roster cron machines (existing behavior, unchanged).
 - Re-run the same preflight check from 1.2 against stage.
 - Since it now passes, **create** the `summer-league-desk-cron` machine (it doesn't
-  exist yet) from `fly.cron.desk.stage.toml`'s process command, on an hourly schedule.
+  exist yet) from `deploy/fly/fly.cron.desk.stage.toml`'s process command, on an hourly schedule.
 
 Watch the workflow run (`gh run watch` or the Actions UI) and confirm the
 "Deploy/update Summer League Desk cron machine (preflight-gated)" step actually created
@@ -118,7 +118,7 @@ If you'd rather do this by hand instead of waiting on CI (e.g. CI is down):
 
 ```bash
 # [MUTATES INFRA]
-flyctl deploy --config fly.toml --app draft-app
+flyctl deploy --config deploy/fly/fly.toml --app draft-app
 IMAGE=$(flyctl machine list --app draft-app --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
 flyctl machine run "$IMAGE" \
   --app draft-app \
@@ -199,7 +199,7 @@ Manual fallback if CI is unavailable:
 
 ```bash
 # [MUTATES INFRA]
-flyctl deploy --config fly.prod.toml --remote-only --app draft-app-prod
+flyctl deploy --config deploy/fly/fly.prod.toml --remote-only --app draft-app-prod
 IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
 flyctl machine run "$IMAGE" \
   --app draft-app-prod \

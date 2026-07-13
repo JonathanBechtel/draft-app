@@ -8,7 +8,7 @@
 #
 # Deployment:
 #   1. First, deploy the main app to build the image:
-#      flyctl deploy --config fly.prod.toml --app draft-app-prod
+#      flyctl deploy --config deploy/fly/fly.prod.toml --app draft-app-prod
 #
 #   2. Create the scheduled machine (one-time setup):
 #      IMAGE=$(flyctl machine list --app draft-app-prod --json | grep '"image":' | head -1 | sed 's/.*"image": "\([^"]*\)".*/\1/')

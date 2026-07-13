@@ -33,7 +33,7 @@
 #      scripts/with-db-env.sh conda run -n draftguru python scripts/build_sl_cohort_baselines.py
 #
 #   2. Deploy the main app to build/publish the image:
-#      flyctl deploy --config fly.prod.toml --app draft-app-prod
+#      flyctl deploy --config deploy/fly/fly.prod.toml --app draft-app-prod
 #
 #   3. Machine create-or-update is HANDLED BY CI (`.github/workflows/fly-deploy-prod.yml`,
 #      "Deploy/update Summer League Desk cron machine" step), but -- unlike staging --

@@ -77,7 +77,7 @@ jobs:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           flyctl deploy \
-            --config fly.prod.toml \
+            --config deploy/fly/fly.prod.toml \
             --remote-only \
             --app draft-app-prod
 
