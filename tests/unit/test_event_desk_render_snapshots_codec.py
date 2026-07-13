@@ -171,6 +171,10 @@ def _live_view() -> DeskView:
                 top_performer_player_id=None,
                 top_performer_gmsc=None,
                 read=None,
+                # Pre-prod blocker fix: a scheduled row's tip time round-trips
+                # through the codec so the Live board can render "Tips 7:00pm
+                # ET" instead of a bare em-dash.
+                tip_datetime=datetime(2026, 7, 10, 23, 0),
             ),
         ],
         ledger=[],
@@ -295,6 +299,63 @@ def test_serialize_desk_view_preserves_datetime_values() -> None:
     decoded_payload = deserialize_desk_payload(payload_json)
     assert decoded_payload.freshness.last_tick_at == datetime(2026, 7, 10, 19, 0)
     assert decoded_payload.slate[0].tip_datetime == datetime(2026, 7, 10, 23, 0)
+    # Pre-prod blocker fix: the Live board's own `tip_datetime` (distinct
+    # field from the slate row's) round-trips too.
+    assert decoded_payload.live_board[1].tip_datetime == datetime(2026, 7, 10, 23, 0)
+    assert decoded_payload.live_board[0].tip_datetime is None
+
+
+def test_deserialize_live_board_row_defaults_tip_datetime_none_for_pre_fix_snapshots() -> (
+    None
+):
+    """A row persisted before this fix has no `tip_datetime` key -- decodes to `None`.
+
+    Same backward-compat contract as `subject_line`/`subject_line_2` (#541):
+    `.get(...)`, not `data[...]`, so an old persisted snapshot never KeyErrors.
+    """
+    pre_fix_hero_json: dict[str, object] = {
+        "kind": "quiet_slate",
+        "game_id": None,
+        "subject_player_id": None,
+        "subject_player_id_2": None,
+        "headline": "Class leader.",
+        "tagline": None,
+        "facts": [],
+    }
+    payload = deserialize_desk_payload(
+        {
+            "daily_state": "live",
+            "is_home_owner": True,
+            "hero": pre_fix_hero_json,
+            "slate": [],
+            "live_board": [
+                {
+                    "game_id": 8,
+                    "matchup_label": "NYK vs MIA",
+                    "status": "scheduled",
+                    "home_score": None,
+                    "away_score": None,
+                    "top_performer_player_id": None,
+                    "top_performer_gmsc": None,
+                    "read": None,
+                    # No "tip_datetime" key -- simulates a pre-fix persisted row.
+                }
+            ],
+            "ledger": [],
+            "tracker": {
+                "cohort": "full_class",
+                "stat_view": "box",
+                "rows": [],
+                "truncated": False,
+            },
+            "freshness": {
+                "last_tick_at": None,
+                "next_tick_eta": None,
+                "as_of_et_label": "—",
+            },
+        }
+    )
+    assert payload.live_board[0].tip_datetime is None
 
 
 def test_serialize_desk_view_encodes_int_keyed_lookups_as_json_safe() -> None:

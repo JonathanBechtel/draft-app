@@ -134,6 +134,26 @@ def test_desk_live_board_row_pre_tip_has_no_top_performer() -> None:
     )
     assert row.top_performer_player_id is None
     assert row.read is None
+    # Not passed above -- defaults to `None`, same as a pre-fix row.
+    assert row.tip_datetime is None
+
+
+def test_desk_live_board_row_carries_tip_datetime_for_scheduled_games() -> None:
+    """Pre-prod blocker fix: a scheduled row's tip time is available for the Live
+    board to render an honest "Tips 7:00pm ET" instead of a bare em-dash.
+    """
+    row = DeskLiveBoardRow(
+        game_id=9,
+        matchup_label="CHA vs ORL",
+        status="scheduled",
+        home_score=None,
+        away_score=None,
+        top_performer_player_id=None,
+        top_performer_gmsc=None,
+        read=None,
+        tip_datetime=datetime(2026, 7, 9, 23, 0),
+    )
+    assert row.tip_datetime == datetime(2026, 7, 9, 23, 0)
 
 
 def test_desk_ledger_row_fields() -> None:

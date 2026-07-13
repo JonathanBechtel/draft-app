@@ -130,6 +130,10 @@ class DeskLiveBoardRow:
 
     `top_performer_*` fields are the highest-live-GmSc tracked player in the game so
     far; both are None pre-tip (rendered as an em-dash per behavior spec §1).
+    `tip_datetime` (pre-prod blocker fix) lets a still-`scheduled` row's Top
+    Performer cell render an honest "Tips 8:00 PM ET" instead of a bare
+    em-dash that mobile users read as a broken/blank cell -- naive UTC, same
+    shape as `SummerLeagueGame.tip_datetime` / `DeskSlateRow.tip_datetime`.
     """
 
     game_id: int
@@ -140,6 +144,7 @@ class DeskLiveBoardRow:
     top_performer_player_id: Optional[int]
     top_performer_gmsc: Optional[float]
     read: Optional[str]
+    tip_datetime: Optional[datetime] = None
 
 
 @dataclass(frozen=True)
