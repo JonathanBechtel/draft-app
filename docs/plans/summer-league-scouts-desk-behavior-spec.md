@@ -300,7 +300,7 @@ Most infrastructure already exists — reuse, don't rebuild:
 | `summer_league_metric_models` | the **versioned, offline-fit** pattern the baselines copy (`*_version`, `is_active`) |
 | `summer_league_metric_contexts` | per `(competition, year, venue)` context (pace, `adv_eligible`) |
 | draft slot (`players_master.draft_*`), consensus rank, `get_blended_leaders`, adaptive gate ladder | slot, prominence, venue-blend, mid-event calibration |
-| `fly.cron.roster.stage.toml` | hourly Fly cron template to clone |
+| `deploy/fly/fly.cron.roster.stage.toml` | hourly Fly cron template to clone |
 
 **Naming:** existing `summer_league/cohort.py` = *roster* cohort. Ours is the **slot-cohort
 baseline** (draft-slot comparison group) — keep the names distinct.

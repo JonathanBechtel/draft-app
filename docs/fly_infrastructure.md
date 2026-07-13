@@ -90,15 +90,19 @@ and Job A is **never run automatically**:
 
 ## Configuration Files
 
+All Fly config files live under `deploy/fly/` (not the repo root). Every `flyctl`
+invocation below assumes the repo root as the working directory, with `--config
+deploy/fly/<file>.toml` pointing at the relevant file.
+
 | File | Purpose |
 |------|---------|
-| `fly.toml` | Staging web app configuration |
-| `fly.prod.toml` | Production web app configuration |
-| `fly.cron.stage.toml` | Staging news-ingestion cron machine configuration |
-| `fly.cron.toml` | Production news-ingestion cron machine configuration |
-| `fly.cron.sl.stage.toml` / `fly.cron.sl.toml` | Staging / production Summer League ingestion cron |
-| `fly.cron.roster.stage.toml` / `fly.cron.roster.toml` | Staging / production Summer League roster cron |
-| `fly.cron.desk.stage.toml` / `fly.cron.desk.toml` | Staging / production Summer League Desk cron (readiness-gated -- see below) |
+| `deploy/fly/fly.toml` | Staging web app configuration |
+| `deploy/fly/fly.prod.toml` | Production web app configuration |
+| `deploy/fly/fly.cron.stage.toml` | Staging news-ingestion cron machine configuration |
+| `deploy/fly/fly.cron.toml` | Production news-ingestion cron machine configuration |
+| `deploy/fly/fly.cron.sl.stage.toml` / `deploy/fly/fly.cron.sl.toml` | Staging / production Summer League ingestion cron |
+| `deploy/fly/fly.cron.roster.stage.toml` / `deploy/fly/fly.cron.roster.toml` | Staging / production Summer League roster cron |
+| `deploy/fly/fly.cron.desk.stage.toml` / `deploy/fly/fly.cron.desk.toml` | Staging / production Summer League Desk cron (readiness-gated -- see below) |
 
 ---
 
@@ -128,7 +132,7 @@ and Job A is **never run automatically**:
   1. Checkout specified ref
   2. Run Alembic migrations
   3. Set secrets on prod app
-  4. Deploy via `flyctl deploy --config fly.prod.toml --remote-only --app draft-app-prod`
+  4. Deploy via `flyctl deploy --config deploy/fly/fly.prod.toml --remote-only --app draft-app-prod`
   5. Update news/Summer-League-ingestion/roster cron machines with latest app image
   6. Only when `enable_desk_cron` is `true`: run `scripts/check_sl_desk_readiness.py
      preflight` against prod (read-only); if it also passes, idempotently
@@ -164,7 +168,7 @@ Cron machines share the same Docker image as the main app. After each deploy, CI
 
 ```bash
 # Step 1: Deploy main app first
-flyctl deploy --config fly.prod.toml --app draft-app-prod
+flyctl deploy --config deploy/fly/fly.prod.toml --app draft-app-prod
 
 # Step 2: Extract app image and create cron machine
 IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
