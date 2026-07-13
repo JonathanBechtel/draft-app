@@ -13,12 +13,19 @@ from __future__ import annotations
 from app.schemas.summer_league import SummerLeaguePlayerGameLog
 from app.services.summer_league.desk_read import (
     _hero_line_from_logs,
+    _played,
     _top_performers_from_logs,
 )
 
 
 def _log(
-    *, game_id: int, player_id: int, pts: int, reb: int, ast: int
+    *,
+    game_id: int,
+    player_id: int,
+    pts: int,
+    reb: int,
+    ast: int,
+    minutes_seconds: int | None = 1200,
 ) -> SummerLeaguePlayerGameLog:
     return SummerLeaguePlayerGameLog(
         competition_id=1,
@@ -28,9 +35,24 @@ def _log(
         player_id=player_id,
         nba_stats_person_id=f"p{player_id}",
         raw_player_name=f"Player {player_id}",
+        minutes_seconds=minutes_seconds,
         pts=pts,
         reb=reb,
         ast=ast,
+    )
+
+
+def _dnp(*, game_id: int, player_id: int) -> SummerLeaguePlayerGameLog:
+    """A DNP/pre-tip roster shell: on the roster, NULL minutes and box stats."""
+    return SummerLeaguePlayerGameLog(
+        competition_id=1,
+        game_id=game_id,
+        team_entry_id=1,
+        source_player_id=1,
+        player_id=player_id,
+        nba_stats_person_id=f"p{player_id}",
+        raw_player_name=f"Player {player_id}",
+        minutes_seconds=None,
     )
 
 
@@ -48,7 +70,9 @@ def test_hero_line_from_logs_returns_real_pts_reb_ast_gmsc() -> None:
     assert line.gmsc == 20.8
 
 
-def test_hero_line_from_logs_pretip_subject_gets_all_none_line_not_missing_object() -> None:
+def test_hero_line_from_logs_pretip_subject_gets_all_none_line_not_missing_object() -> (
+    None
+):
     """A real subject with no logged row yet renders every field em-dash, not a dropped line."""
     line = _hero_line_from_logs({}, game_id=8, player_id=101)
     assert line is not None
@@ -97,3 +121,35 @@ def test_top_performers_from_logs_picks_highest_gmsc_per_game() -> None:
 
 def test_top_performers_from_logs_empty_input_returns_empty_dict() -> None:
     assert _top_performers_from_logs({}) == {}
+
+
+# --------------------------------------------------------------------------- #
+# _played / DNP-shell exclusion
+# --------------------------------------------------------------------------- #
+def test_played_true_for_real_minutes_false_for_dnp_shell() -> None:
+    assert _played(_log(game_id=8, player_id=1, pts=0, reb=0, ast=0)) is True
+    assert _played(_dnp(game_id=8, player_id=1)) is False
+    # A zero-minute line (checked in, subbed out immediately) is not a
+    # performance either.
+    assert (
+        _played(_log(game_id=8, player_id=1, pts=0, reb=0, ast=0, minutes_seconds=0))
+        is False
+    )
+
+
+def test_top_performers_from_logs_skips_dnp_shells() -> None:
+    """A DNP shell (0.0 GmSc) must never win the top-performer slot over a real line."""
+    logs_by_game = {
+        8: [
+            _dnp(game_id=8, player_id=999),  # rostered veteran, sat -> GmSc 0.0
+            _log(game_id=8, player_id=101, pts=9, reb=3, ast=2),
+        ]
+    }
+    top = _top_performers_from_logs(logs_by_game)
+    assert top[8] == (101, 10.4)  # 9 + 0.7*2, not the DNP's 0.0
+
+
+def test_top_performers_from_logs_all_dnp_game_has_no_performer() -> None:
+    """A pre-tip game with only roster shells yields no top performer, not a 0.0 one."""
+    logs_by_game = {8: [_dnp(game_id=8, player_id=1), _dnp(game_id=8, player_id=2)]}
+    assert _top_performers_from_logs(logs_by_game) == {}

@@ -35,10 +35,13 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskGrade,
     SummerLeagueDeskGrain,
     SummerLeagueDeskPlayerGrade,
+    SummerLeagueDeskSlate,
+    SummerLeagueDeskStoryline,
+    SummerLeagueDeskTriggerType,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.event_desk.registry import sync_summer_league_event
-from app.services.summer_league.desk_read import get_desk_payload
+from app.services.summer_league.desk_read import _build_game_hero, get_desk_payload
 from app.services.summer_league.metrics import game_score_line
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from scripts.sl_desk_tick import run_desk_tick
@@ -891,7 +894,18 @@ async def test_recap_ledger_renders_the_game_grain_percentile_not_event_grain(
         pts=30,
     )
     actual_gmsc = game_score_line(
-        pts=30, fgm=8, fga=15, ftm=2, fta=2, oreb=1, dreb=7, ast=5, stl=1, blk=0, tov=2, pf=2
+        pts=30,
+        fgm=8,
+        fga=15,
+        ftm=2,
+        fta=2,
+        oreb=1,
+        dreb=7,
+        ast=5,
+        stl=1,
+        blk=0,
+        tov=2,
+        pf=2,
     )
 
     # EVENT grain: every breakpoint sits ABOVE the actual GmSc -- ranking
@@ -1609,3 +1623,111 @@ async def test_freshness_stale_after_the_documented_cadence_multiple(
     assert payload.freshness.state == "stale"
     assert payload.freshness.as_of_et_label.endswith("-- stale")
     assert payload.freshness.last_tick_at == tick_now
+
+
+async def test_live_hero_subject_falls_back_when_top_storyline_subject_did_not_play(
+    db_session: AsyncSession,
+) -> None:
+    """A stored storyline whose subject DNP'd must not headline the Live hero.
+
+    Belt-and-suspenders for the read path: even if a stale/residual storyline
+    names a rostered player who never took the floor (a DNP shell -- the Cam
+    Reddish case), ``_build_game_hero`` swaps the headline to the game's actual
+    top performer so the LIVE key matchup never shows an em-dash line under a
+    non-participant's name. This defends the surface until the next tick rewrites
+    the stored storyline through the participation gate.
+    """
+    game_date = date(2026, 7, 10)
+    competition = await _seed_competition(db_session, year=2026)
+    home, away = (
+        await _seed_team(db_session, competition),
+        await _seed_team(db_session, competition),
+    )
+    game = await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=game_date,
+        tip_datetime=datetime(2026, 7, 10, 23, 0),
+        status=SummerLeagueGameStatus.IN_PROGRESS,
+    )
+    played = await _seed_player(
+        db_session, name="Played", draft_year=2026, draft_round=1, draft_pick=1
+    )
+    played_src = await _roster_player(db_session, competition, home, played)
+    dnp = await _seed_player(
+        db_session, name="SatOut", draft_year=2019, draft_round=1, draft_pick=10
+    )
+    dnp_src = await _roster_player(db_session, competition, home, dnp)
+
+    assert competition.id is not None and game.id is not None
+    assert home.id is not None and away.id is not None
+    assert played.id is not None and dnp.id is not None
+    assert played_src.id is not None and dnp_src.id is not None
+
+    # A stored storyline names the DNP veteran as the game's top subject -- the
+    # exact stale row a pre-fix tick would have written.
+    db_session.add(
+        SummerLeagueDeskStoryline(
+            game_date=game_date,
+            competition_id=competition.id,
+            game_id=game.id,
+            trigger_type=SummerLeagueDeskTriggerType.DEBUT,
+            subject_player_id=dnp.id,
+            base_weight=80,
+            magnitude=85,
+            weight=6800,
+        )
+    )
+    await db_session.flush()
+
+    # Tonight's lines: the veteran is a DNP shell (NULL minutes); the rookie
+    # actually played.
+    played_log = SummerLeaguePlayerGameLog(
+        competition_id=competition.id,
+        game_id=game.id,
+        team_entry_id=home.id,
+        source_player_id=played_src.id,
+        player_id=played.id,
+        nba_stats_person_id=played_src.nba_stats_person_id,
+        raw_player_name="Played",
+        minutes_seconds=1800,
+        pts=24,
+        reb=8,
+        ast=5,
+    )
+    dnp_log = SummerLeaguePlayerGameLog(
+        competition_id=competition.id,
+        game_id=game.id,
+        team_entry_id=home.id,
+        source_player_id=dnp_src.id,
+        player_id=dnp.id,
+        nba_stats_person_id=dnp_src.nba_stats_person_id,
+        raw_player_name="SatOut",
+        minutes_seconds=None,
+    )
+    hero_row = SummerLeagueDeskSlate(
+        game_date=game_date,
+        competition_id=competition.id,
+        game_id=game.id,
+        total_weight=6800.0,
+        rank=1,
+        is_hero=True,
+        facts=[],
+    )
+
+    hero = await _build_game_hero(
+        db_session,
+        hero_row,
+        {game.id: game},
+        {home.id: home, away.id: away},
+        kind="live_duel",
+        logs_by_game={game.id: [dnp_log, played_log]},
+    )
+
+    # Swapped off the DNP veteran onto the actual top performer, with a real line.
+    assert hero.subject_player_id == played.id
+    assert hero.subject_player_id_2 is None
+    assert hero.subject_line is not None
+    assert hero.subject_line.pts == 24

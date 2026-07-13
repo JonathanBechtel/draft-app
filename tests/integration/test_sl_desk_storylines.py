@@ -53,7 +53,9 @@ def _next_idx() -> int:
     return _N["i"]
 
 
-async def _seed_competition(db: AsyncSession, *, year: int = 2026) -> SummerLeagueCompetition:
+async def _seed_competition(
+    db: AsyncSession, *, year: int = 2026
+) -> SummerLeagueCompetition:
     comp = SummerLeagueCompetition(
         year=year,
         league_id="15",
@@ -66,7 +68,9 @@ async def _seed_competition(db: AsyncSession, *, year: int = 2026) -> SummerLeag
     return comp
 
 
-async def _seed_team(db: AsyncSession, competition: SummerLeagueCompetition) -> SummerLeagueTeamEntry:
+async def _seed_team(
+    db: AsyncSession, competition: SummerLeagueCompetition
+) -> SummerLeagueTeamEntry:
     idx = _next_idx()
     assert competition.id is not None
     team = SummerLeagueTeamEntry(
@@ -210,7 +214,12 @@ async def _seed_prior_game_log(
 ) -> None:
     """Seed one played prior game (game + box line ~18.4 GmSc) for a streak run."""
     game = await _seed_game(
-        db, competition, team, team, game_date=game_date, status=SummerLeagueGameStatus.FINAL
+        db,
+        competition,
+        team,
+        team,
+        game_date=game_date,
+        status=SummerLeagueGameStatus.FINAL,
     )
     idx = _next_idx()
     assert competition.id is not None
@@ -296,7 +305,9 @@ async def _seed_grade(
     return grade
 
 
-async def _seed_consensus_rank(db: AsyncSession, *, player: PlayerMaster, rank: int) -> None:
+async def _seed_consensus_rank(
+    db: AsyncSession, *, player: PlayerMaster, rank: int
+) -> None:
     assert player.id is not None
     snapshot = ConsensusSnapshot(
         draft_year=player.draft_year or 2026,
@@ -334,7 +345,9 @@ async def test_compute_desk_storylines_writes_debut_and_status_heat_for_undrafte
     away = await _seed_team(db_session, competition)
     game = await _seed_game(db_session, competition, home, away)
 
-    player = await _seed_player(db_session, name="Sleeper", draft_round=None, draft_pick=None)
+    player = await _seed_player(
+        db_session, name="Sleeper", draft_round=None, draft_pick=None
+    )
     source_player = await _roster_player(db_session, competition, home, player)
     # Debut (#539) fires only when tonight's game is the subject's canonical
     # first-qualifying game -- seed one qualifying box line on `game` itself.
@@ -440,7 +453,9 @@ async def test_compute_desk_storylines_writes_duel_for_two_prominent_prospects(
 
     assert len(result.slate) == 1
     duel_instances = [
-        i for i in result.slate[0].instances if i.trigger_type == SummerLeagueDeskTriggerType.DUEL
+        i
+        for i in result.slate[0].instances
+        if i.trigger_type == SummerLeagueDeskTriggerType.DUEL
     ]
     assert len(duel_instances) == 1
     duel = duel_instances[0]
@@ -524,8 +539,12 @@ async def test_compute_desk_storylines_falls_back_to_class_leader_when_no_games_
     """No games today -> empty slate + a quiet-slate class-leader hero (spec §4)."""
     competition = await _seed_competition(db_session)
 
-    leader = await _seed_player(db_session, name="ClassLeader", draft_round=1, draft_pick=1)
-    also_ran = await _seed_player(db_session, name="AlsoRan", draft_round=2, draft_pick=10)
+    leader = await _seed_player(
+        db_session, name="ClassLeader", draft_round=1, draft_pick=1
+    )
+    also_ran = await _seed_player(
+        db_session, name="AlsoRan", draft_round=2, draft_pick=10
+    )
     await _seed_grade(
         db_session,
         player=leader,
@@ -566,7 +585,9 @@ async def test_compute_desk_storylines_second_look_for_returning_player_and_no_d
     away = await _seed_team(db_session, competition)
     await _seed_game(db_session, competition, home, away)
 
-    player = await _seed_player(db_session, name="Sophomore", draft_round=1, draft_pick=10)
+    player = await _seed_player(
+        db_session, name="Sophomore", draft_round=1, draft_pick=10
+    )
     await _roster_player(db_session, competition, home, player)
 
     # Prior-year SL season (makes this a returner, not a debutant).
@@ -595,7 +616,11 @@ async def test_compute_desk_storylines_second_look_for_returning_player_and_no_d
         db_session, prior_competition, prior_home, player
     )
     prior_game = await _seed_game(
-        db_session, prior_competition, prior_home, prior_away, game_date=date(2025, 7, 10)
+        db_session,
+        prior_competition,
+        prior_home,
+        prior_away,
+        game_date=date(2025, 7, 10),
     )
     await _seed_game_log(
         db_session,
@@ -657,13 +682,25 @@ async def test_compute_desk_storylines_debut_fires_once_not_on_every_game_of_the
     day1 = date(2026, 7, 10)
     day2 = date(2026, 7, 12)  # == _GAME_DATE
     game1 = await _seed_game(
-        db_session, competition, home, away, game_date=day1, status=SummerLeagueGameStatus.FINAL
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=day1,
+        status=SummerLeagueGameStatus.FINAL,
     )
     game2 = await _seed_game(
-        db_session, competition, home, away, game_date=day2, status=SummerLeagueGameStatus.FINAL
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=day2,
+        status=SummerLeagueGameStatus.FINAL,
     )
 
-    player = await _seed_player(db_session, name="TwoGameDebut", draft_round=1, draft_pick=1)
+    player = await _seed_player(
+        db_session, name="TwoGameDebut", draft_round=1, draft_pick=1
+    )
     source_player = await _roster_player(db_session, competition, home, player)
 
     # Both games clear the per-game qualifying floor; game1 is chronologically
@@ -719,7 +756,9 @@ async def test_compute_desk_storylines_rerun_replaces_rather_than_duplicates_t3(
     away = await _seed_team(db_session, competition)
     game = await _seed_game(db_session, competition, home, away)
 
-    player = await _seed_player(db_session, name="Repeat", draft_round=None, draft_pick=None)
+    player = await _seed_player(
+        db_session, name="Repeat", draft_round=None, draft_pick=None
+    )
     source_player = await _roster_player(db_session, competition, home, player)
     # Debut (#539) fires only when tonight's game is the subject's canonical
     # first-qualifying game -- seed one qualifying box line on `game` itself.
@@ -806,7 +845,9 @@ async def test_compute_desk_storylines_writes_streak_from_prior_game_logs(
     away = await _seed_team(db_session, competition)
     today_game = await _seed_game(db_session, competition, home, away)
 
-    player = await _seed_player(db_session, name="Streaker", draft_round=1, draft_pick=1)
+    player = await _seed_player(
+        db_session, name="Streaker", draft_round=1, draft_pick=1
+    )
     source_player = await _roster_player(db_session, competition, home, player)
 
     # Breakpoints chosen so the seeded ~18.4-GmSc games rank >= 65th pctl and
@@ -890,18 +931,32 @@ async def test_compute_desk_storylines_live_orders_by_realized_tonight_line_not_
     weak_home = await _seed_team(db_session, competition)
     weak_away = await _seed_team(db_session, competition)
     weak_game = await _seed_game(
-        db_session, competition, weak_home, weak_away, status=SummerLeagueGameStatus.IN_PROGRESS
+        db_session,
+        competition,
+        weak_home,
+        weak_away,
+        status=SummerLeagueGameStatus.IN_PROGRESS,
     )
     strong_home = await _seed_team(db_session, competition)
     strong_away = await _seed_team(db_session, competition)
     strong_game = await _seed_game(
-        db_session, competition, strong_home, strong_away, status=SummerLeagueGameStatus.IN_PROGRESS
+        db_session,
+        competition,
+        strong_home,
+        strong_away,
+        status=SummerLeagueGameStatus.IN_PROGRESS,
     )
 
-    weak_player = await _seed_player(db_session, name="WeakLine", draft_round=1, draft_pick=1)
+    weak_player = await _seed_player(
+        db_session, name="WeakLine", draft_round=1, draft_pick=1
+    )
     weak_source = await _roster_player(db_session, competition, weak_home, weak_player)
-    strong_player = await _seed_player(db_session, name="StrongLine", draft_round=1, draft_pick=1)
-    strong_source = await _roster_player(db_session, competition, strong_home, strong_player)
+    strong_player = await _seed_player(
+        db_session, name="StrongLine", draft_round=1, draft_pick=1
+    )
+    strong_source = await _roster_player(
+        db_session, competition, strong_home, strong_player
+    )
 
     # Game-grain baseline both players' cohort ("game:1-4") ranks against.
     await _seed_baseline(
@@ -990,17 +1045,29 @@ async def test_compute_desk_storylines_live_reorders_on_next_tick_when_a_line_ch
     home_a = await _seed_team(db_session, competition)
     away_a = await _seed_team(db_session, competition)
     game_a = await _seed_game(
-        db_session, competition, home_a, away_a, status=SummerLeagueGameStatus.IN_PROGRESS
+        db_session,
+        competition,
+        home_a,
+        away_a,
+        status=SummerLeagueGameStatus.IN_PROGRESS,
     )
     home_b = await _seed_team(db_session, competition)
     away_b = await _seed_team(db_session, competition)
     game_b = await _seed_game(
-        db_session, competition, home_b, away_b, status=SummerLeagueGameStatus.IN_PROGRESS
+        db_session,
+        competition,
+        home_b,
+        away_b,
+        status=SummerLeagueGameStatus.IN_PROGRESS,
     )
 
-    player_a = await _seed_player(db_session, name="PlayerA", draft_round=1, draft_pick=1)
+    player_a = await _seed_player(
+        db_session, name="PlayerA", draft_round=1, draft_pick=1
+    )
     source_a = await _roster_player(db_session, competition, home_a, player_a)
-    player_b = await _seed_player(db_session, name="PlayerB", draft_round=1, draft_pick=1)
+    player_b = await _seed_player(
+        db_session, name="PlayerB", draft_round=1, draft_pick=1
+    )
     source_b = await _roster_player(db_session, competition, home_b, player_b)
 
     await _seed_baseline(
@@ -1135,3 +1202,108 @@ async def test_compute_desk_storylines_streak_reads_game_grain_not_event_grain(
     assert len(result.slate) == 1
     trigger_types = {i.trigger_type for i in result.slate[0].instances}
     assert SummerLeagueDeskTriggerType.STREAK in trigger_types
+
+
+async def test_compute_desk_storylines_live_excludes_dnp_roster_shell(
+    db_session: AsyncSession,
+) -> None:
+    """Live mode drops a rostered player who didn't actually appear (DNP shell).
+
+    Reproduces the Cam Reddish Live-hero hijack: a rostered veteran who dressed
+    but sat has a NULL-minutes box shell tonight, yet -- graded and debut-
+    eligible -- would otherwise fire a storyline and could outweigh everyone who
+    actually played. Both players here carry an identical grade + cohort
+    baseline, so absent the participation gate BOTH would be eligible subjects.
+    Live mode must generate storylines only for players who took the floor: the
+    teammate who played gets one, the DNP shell gets none.
+    """
+    competition = await _seed_competition(db_session)
+    home = await _seed_team(db_session, competition)
+    away = await _seed_team(db_session, competition)
+    game = await _seed_game(
+        db_session, competition, home, away, status=SummerLeagueGameStatus.IN_PROGRESS
+    )
+
+    await _seed_baseline(
+        db_session,
+        cohort_key="status:undrafted",
+        cohort_kind=SummerLeagueDeskCohortKind.STATUS,
+        breakpoints={"0": 0.0, "50": 10.0, "100": 30.0},
+        median_value=10.0,
+        mean_value=11.0,
+    )
+
+    played = await _seed_player(
+        db_session, name="Played", draft_round=None, draft_pick=None
+    )
+    played_src = await _roster_player(db_session, competition, home, played)
+    await _seed_game_log(
+        db_session,
+        competition=competition,
+        game=game,
+        team=home,
+        player=played,
+        source_player=played_src,
+    )
+    await _seed_grade(
+        db_session,
+        player=played,
+        competition=competition,
+        cohort_key="status:undrafted",
+        pctl=90.0,
+        subject_value=22.0,
+    )
+
+    dnp = await _seed_player(
+        db_session, name="Satout", draft_round=None, draft_pick=None
+    )
+    dnp_src = await _roster_player(db_session, competition, home, dnp)
+    # DNP roster shell on tonight's game: NULL minutes and box stats, exactly as
+    # the NBA feed records a player who dressed but never checked in.
+    assert competition.id is not None and game.id is not None
+    assert home.id is not None and dnp_src.id is not None and dnp.id is not None
+    db_session.add(
+        SummerLeaguePlayerGameLog(
+            competition_id=competition.id,
+            game_id=game.id,
+            team_entry_id=home.id,
+            source_player_id=dnp_src.id,
+            player_id=dnp.id,
+            nba_stats_person_id="srcpid-dnp",
+            raw_player_name=dnp.display_name or "DNP",
+            minutes_seconds=None,
+        )
+    )
+    await db_session.flush()
+    await _seed_grade(
+        db_session,
+        player=dnp,
+        competition=competition,
+        cohort_key="status:undrafted",
+        pctl=90.0,
+        subject_value=22.0,
+    )
+
+    result = await compute_desk_storylines(
+        db_session,
+        game_date=_GAME_DATE,
+        competition_id=competition.id,  # type: ignore[arg-type]
+        baseline_version=_BASELINE_VERSION,
+        mode="live",
+    )
+    assert result.slate  # the played teammate keeps the game on the slate
+
+    persisted = (
+        (
+            await db_session.execute(
+                select(SummerLeagueDeskStoryline).where(
+                    SummerLeagueDeskStoryline.game_id == game.id  # type: ignore[arg-type]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    subjects = {row.subject_player_id for row in persisted}
+    assert played.id in subjects, "the player who took the floor should still fire"
+    assert dnp.id not in subjects, "the DNP roster shell must not be a subject"
