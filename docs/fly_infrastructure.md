@@ -61,8 +61,10 @@ The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, 
   derived from it; any other cadence would make that freshness promise false.
 - **Config**: `fly.cron.desk.stage.toml` (stage) / `fly.cron.desk.toml` (prod).
 
-Unlike every other cron above, this machine's create-and-update is **readiness-gated**
-and Job A is **never run automatically**:
+Unlike every other cron above, this machine's **creation** is **readiness-gated** and
+Job A is **never run automatically**. Once the machine exists, keeping its image
+current on every deploy is unconditional, same as every other cron -- only the initial
+promotion decision is gated.
 
 - **Readiness check** (`scripts/check_sl_desk_readiness.py`, read-only, never writes) has
   two modes: `preflight` (run before creating/enabling the machine -- confirms this
@@ -75,14 +77,20 @@ and Job A is **never run automatically**:
   cohort-baseline builder. It is a deliberate, one-time human step run directly against
   an environment's database -- CI never invokes it, and the hourly tick itself raises
   loudly if no active baseline exists rather than building one.
-- **Staging**: `.github/workflows/fly-deploy-stage.yml` runs the preflight check on every
-  push-to-`main` deploy; only when it passes does the workflow idempotently
-  create-if-absent / update-if-present the `summer-league-desk-cron` machine. A failed
-  preflight skips that step without failing the deploy.
-- **Production**: `.github/workflows/fly-deploy-prod.yml` is double-gated -- the
-  `enable_desk_cron` `workflow_dispatch` input must be explicitly set `true` (a human
-  attesting staging already proved a successful tick) **and** production's own preflight
-  must pass, or the create/update step is skipped.
+- **Staging**: `.github/workflows/fly-deploy-stage.yml` unconditionally updates the
+  `summer-league-desk-cron` machine's image if it already exists on every
+  push-to-`main` deploy; runs the preflight check separately, and only when it passes
+  does the workflow idempotently create the machine the first time. A failed preflight
+  skips creation without failing the deploy.
+- **Production**: `.github/workflows/fly-deploy-prod.yml` unconditionally updates the
+  `summer-league-desk-cron` machine's image if it already exists on every deploy (same
+  as the news/SL-ingestion/roster crons). *Creating* the machine the first time is
+  double-gated -- the `enable_desk_cron` `workflow_dispatch` input must be explicitly
+  set `true` (a human attesting staging already proved a successful tick) **and**
+  production's own preflight must pass, or the create step is skipped. This means a
+  routine prod deploy (default `enable_desk_cron=false`) still keeps an
+  already-created Desk cron machine's code in sync -- the gate no longer has to be
+  re-asserted on every future deploy, only for the original promotion.
 - **Full runbook** (baseline build, manual first tick, smoke check, stage-to-prod
   promotion, rollback): `docs/plans/summer-league-desk-536-deploy-runbook.md`.
 
@@ -134,10 +142,14 @@ deploy/fly/<file>.toml` pointing at the relevant file.
   3. Set secrets on prod app
   4. Deploy via `flyctl deploy --config deploy/fly/fly.prod.toml --remote-only --app draft-app-prod`
   5. Update news/Summer-League-ingestion/roster cron machines with latest app image
-  6. Only when `enable_desk_cron` is `true`: run `scripts/check_sl_desk_readiness.py
-     preflight` against prod (read-only); if it also passes, idempotently
-     create-if-absent / update-if-present the Summer League Desk cron machine. Both
-     the input and the preflight must hold, or this step is skipped entirely.
+  6. Update the Summer League Desk cron machine's image too, unconditionally, if it
+     already exists (same as step 5) -- this does not depend on `enable_desk_cron`.
+  7. Only when `enable_desk_cron` is `true`: run `scripts/check_sl_desk_readiness.py
+     preflight` against prod (read-only); if it also passes, create the Summer League
+     Desk cron machine (idempotent create-if-absent -- a no-op if step 6 already found
+     it). Both the input and the preflight must hold, or this creation step is skipped
+     entirely; an already-existing machine's image was still refreshed in step 6
+     regardless.
 
 ### Review Apps (`.github/workflows/fly-deploy-review.yml`)
 

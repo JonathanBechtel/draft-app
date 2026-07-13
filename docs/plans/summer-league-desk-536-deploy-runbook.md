@@ -266,9 +266,11 @@ where the read-model left off (every write in the tick is an idempotent upsert).
 
 ## Ongoing operations (after initial launch)
 
-- **Every subsequent deploy** (stage automatic, prod via `enable_desk_cron=true`) just
-  refreshes the existing machine's image via `flyctl machine update` — no new machine,
-  no Job A re-run, gated on preflight still passing.
+- **Every subsequent deploy** refreshes the existing machine's image via
+  `flyctl machine update` unconditionally on both stage and prod (same as every other
+  cron) — no new machine, no Job A re-run. `enable_desk_cron` on prod only gates
+  *creating* the machine the first time; once it exists, routine prod deploys keep it
+  current without needing that flag set.
 - **Re-run Job A** only when the underlying history changes meaningfully (new season's
   data folded into 2017-2025 history, a window-rule change, or a manual data-quality
   fix) — never as part of a routine deploy. Re-running is always safe (writes a new

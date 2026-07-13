@@ -162,11 +162,32 @@ jobs:
             echo "No cron machine found or could not determine app image"
           fi
 
-      # #536 -- Summer League Desk cron machine. Double-gated, unlike every other cron
-      # in this workflow: (1) the `enable_desk_cron` workflow_dispatch input must be
-      # explicitly set true for this run -- a human attesting staging already proved a
-      # successful tick -- and (2) production's own read-only preflight check must
-      # still pass against the just-deployed prod database. Job A
+      # Unconditional, mirroring the "Update X cron machine (if exists)" steps above:
+      # once the Desk cron machine exists, every prod deploy keeps its image current,
+      # same as every other cron. Only *creating* the machine the first time is gated
+      # (see the two steps below) -- that's the deliberate human promotion decision;
+      # keeping an already-approved machine's code in sync isn't.
+      - name: Update Summer League Desk cron machine (if exists)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          APP_IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
+          CRON_MACHINE_ID=$(flyctl machine list --app draft-app-prod --json | jq -r '.[] | select(.name == "summer-league-desk-cron") | .id')
+          if [ -n "$CRON_MACHINE_ID" ] && [ -n "$APP_IMAGE" ] && [ "$APP_IMAGE" != "null" ]; then
+            echo "Updating Desk cron machine $CRON_MACHINE_ID with image: $APP_IMAGE"
+            flyctl machine update "$CRON_MACHINE_ID" \
+              --app draft-app-prod \
+              --image "$APP_IMAGE" \
+              --yes
+          else
+            echo "No Desk cron machine found yet (or could not determine app image) -- nothing to update"
+          fi
+
+      # #536 -- Summer League Desk cron machine *creation*, gated unlike every other
+      # cron in this workflow: (1) the `enable_desk_cron` workflow_dispatch input must
+      # be explicitly set true for this run -- a human attesting staging already
+      # proved a successful tick -- and (2) production's own read-only preflight check
+      # must still pass against the just-deployed prod database. Job A
       # (`scripts/build_sl_cohort_baselines.py`) is NEVER run here -- it's a
       # deliberate, one-time human step against prod (see
       # docs/plans/summer-league-desk-536-deploy-runbook.md).
@@ -182,14 +203,13 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Summer League Desk preflight failed; skipping Desk cron machine create/update this deploy."
+            echo "::warning::Summer League Desk preflight failed; skipping Desk cron machine creation this deploy."
           fi
 
-      # Idempotent create-if-absent / update-if-present so repeated deploys never
-      # duplicate the machine (mirrors the "Update X cron machine (if exists)" steps
-      # above, but this one also creates the machine the first time both gates pass,
-      # matching fly.cron.desk.toml's deployment doc).
-      - name: Deploy/update Summer League Desk cron machine (double-gated)
+      # Create-if-absent only -- the unconditional step above already refreshes an
+      # already-existing machine's image on every deploy, so this never needs to
+      # update, only create.
+      - name: Create Summer League Desk cron machine (gated)
         if: inputs.enable_desk_cron == true && steps.desk_preflight.outputs.ready == 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -197,13 +217,9 @@ jobs:
           APP_IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
           CRON_MACHINE_ID=$(flyctl machine list --app draft-app-prod --json | jq -r '.[] | select(.name == "summer-league-desk-cron") | .id')
           if [ -z "$APP_IMAGE" ] || [ "$APP_IMAGE" == "null" ]; then
-            echo "Could not determine app image; skipping Desk cron machine create/update"
+            echo "Could not determine app image; skipping Desk cron machine creation"
           elif [ -n "$CRON_MACHINE_ID" ]; then
-            echo "Updating Desk cron machine $CRON_MACHINE_ID with image: $APP_IMAGE"
-            flyctl machine update "$CRON_MACHINE_ID" \
-              --app draft-app-prod \
-              --image "$APP_IMAGE" \
-              --yes
+            echo "Desk cron machine $CRON_MACHINE_ID already exists; image already refreshed above"
           else
             echo "No Desk cron machine found; creating one (schedule=hourly)"
             flyctl machine run "$APP_IMAGE" \
