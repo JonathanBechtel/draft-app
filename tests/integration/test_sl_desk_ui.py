@@ -47,6 +47,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
+from app.services.event_desk.registry import sync_summer_league_event
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.desk_read import (
     get_desk_payload,
@@ -320,14 +321,42 @@ def _assert_no_switcher_chrome(html: str) -> None:
 # --------------------------------------------------------------------------- #
 # Off-window
 # --------------------------------------------------------------------------- #
-async def test_off_window_renders_archive_strip_only(app_client: AsyncClient) -> None:
-    """No active SL event -> the collapsed archive strip renders, no Desk module."""
+async def test_archived_event_restores_standard_homepage(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """After the recap tail, no seasonal stub remains above the homepage news hero."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    last_game_date = today - timedelta(days=3)
+    competition = await _seed_competition(db_session, today=today)
+    home = await _seed_team(
+        db_session, competition, franchise_stats_id="1610612747"
+    )
+    away = await _seed_team(
+        db_session, competition, franchise_stats_id="1610612744"
+    )
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=last_game_date,
+        tip_datetime=datetime.combine(last_game_date, datetime.min.time()),
+        status=SummerLeagueGameStatus.FINAL,
+        home_score=88,
+        away_score=80,
+    )
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+
     response = await app_client.get("/")
     assert response.status_code == 200
     html = response.text
-    assert 'class="card desk__offwindow"' in html
+    assert "desk__offwindow" not in html
     assert 'id="slDeskSection"' not in html
     assert "desk__hero" not in html
+    assert 'id="newsHeroSection"' in html
     _assert_no_switcher_chrome(html)
 
 

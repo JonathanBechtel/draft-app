@@ -162,8 +162,8 @@ async def home(
     # from a single indexed snapshot lookup instead of reassembling the page
     # query-by-query. A `None` payload means either the SL event's lifecycle
     # isn't currently active OR this exact variant hasn't been materialized
-    # yet -- both degrade to the same archive-strip treatment (behavior spec
-    # §2); the enrichment dicts degrade to empty in that case too.
+    # yet -- both degrade to the standard homepage with no seasonal Desk
+    # treatment (behavior spec §2); enrichment dicts are empty in that case too.
     # `now` is naive UTC (tzinfo stripped): the framework resolvers compare it
     # against `summer_league_games.tip_datetime`, which is naive UTC by repo
     # convention, so an aware value here would raise on the comparison. Building
@@ -457,7 +457,7 @@ async def home(
         "home.html",
         {
             "request": request,
-            # Summer League Desk (None/False off-window -> collapsed strip)
+            # Summer League Desk (None/False off-window -> no seasonal module)
             "desk_payload": desk_payload,
             "desk_window_open": desk_window_open,
             "desk_players": desk_view.players,
