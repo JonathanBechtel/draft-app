@@ -25,10 +25,10 @@ each state explicitly (seeded schedule/status + a mocked clock or test-only over
 ## A. Event lifecycle & state machine (the core contract)
 
 - **Outer lifecycle — the window turns the home takeover on/off.** In-window → the Desk owns
-  the home hero; out-of-window → collapses to a single archive strip and the standard home
-  page returns.
+  the home hero; out-of-window → the seasonal module disappears and the standard news-first
+  homepage returns.
   - Verify: dates in Dormant / Warm-up / Active / Wind-down / Archived (seed schedule + config).
-  - Expected: takeover only in Warm-up/Active/Wind-down; archive strip otherwise; the
+  - Expected: takeover only in Warm-up/Active/Wind-down; no Desk or seasonal stub otherwise; the
     Explorer/Leaders/game/player **stat pages render identically regardless of window** (never gated).
   - Evidence: screenshot per phase + DOM check that stat routes are unchanged off-window.
 

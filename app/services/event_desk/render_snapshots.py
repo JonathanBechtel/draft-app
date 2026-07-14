@@ -195,6 +195,7 @@ def _serialize_live_board_row(row: DeskLiveBoardRow) -> JsonDict:
         "top_performer_player_id": row.top_performer_player_id,
         "top_performer_gmsc": row.top_performer_gmsc,
         "read": row.read,
+        "tip_datetime": _dt_to_iso(row.tip_datetime),
     }
 
 
@@ -208,6 +209,10 @@ def _deserialize_live_board_row(data: JsonDict) -> DeskLiveBoardRow:
         top_performer_player_id=data["top_performer_player_id"],
         top_performer_gmsc=data["top_performer_gmsc"],
         read=data["read"],
+        # `.get(...)` (not `data[...]`) -- a row persisted before the
+        # scheduled-tip-time fix has no key; decodes to `None`, the same
+        # default a pre-fix `DeskLiveBoardRow` had.
+        tip_datetime=_iso_to_dt(data.get("tip_datetime")),
     )
 
 

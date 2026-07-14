@@ -29,7 +29,7 @@ Dormant → Announced → Warm-up → Active → Wind-down → Archived
 | Warm-up | within `pre_roll_days` of first game | teaser + participant/bracket reveals |
 | Active | games happening | **runs the inner machine** |
 | Wind-down | last final + `post_roll_days` tail | final recap persists |
-| Archived | tail elapsed | collapses to archive strip; evergreen stat pages remain |
+| Archived | tail elapsed | seasonal module disappears; evergreen stat pages remain |
 
 Transitions come from each event's **calendar + window priors** — the per-event knobs that
 replace SL's would-be hard-coded window:

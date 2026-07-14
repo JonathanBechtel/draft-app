@@ -1,7 +1,14 @@
 {# Summer League Desk -- Live tick board (#509): every game, its status, score,
    Top Performer (headshot + live GmSc; em-dash pre-tip per behavior spec §1),
    and the last tick's read. `row.read` is already-rendered commentary prose
-   (#519) -- placed here, never re-worded. #}
+   (#519) -- placed here, never re-worded.
+
+   Pre-prod blocker fix: a still-`scheduled` game has no Top Performer yet,
+   so the cell used to render a bare, very-low-contrast em-dash that mobile
+   users read as a broken/blank cell. It now renders the tip time (ET) when
+   known -- an honest "not started" state instead of a near-invisible dash --
+   falling back to the plain em-dash only when no tip time is known either
+   (e.g. an `in_progress`/`unknown` row with no resolved box-score line yet). #}
 <section>
   <h2 class="desk__section-title" style="border-left-color: var(--color-accent-cyan);">Every Game at the Last Tick</h2>
   <p class="desk__section-sub">Not play-by-play -- where every game and its top performer stand as of {{ desk_payload.freshness.as_of_et_label }}.</p>
@@ -57,6 +64,8 @@
                   <span class="desk__top-perf-gs">{{ '%.1f'|format(row.top_performer_gmsc) }} GmSc</span>
                 </span>
               </span>
+              {% elif row.status == 'scheduled' and row.tip_datetime %}
+              <span class="desk__top-perf--empty desk__top-perf--tip" title="Not yet tipped">Tips {{ row.tip_datetime | et_time }}</span>
               {% else %}
               <span class="desk__top-perf--empty" aria-label="No performance yet -- before tip" title="Before tip">&mdash;</span>
               {% endif %}

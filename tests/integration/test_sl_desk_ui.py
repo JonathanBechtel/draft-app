@@ -47,6 +47,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
+from app.services.event_desk.registry import sync_summer_league_event
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.desk_read import (
     get_desk_payload,
@@ -320,14 +321,42 @@ def _assert_no_switcher_chrome(html: str) -> None:
 # --------------------------------------------------------------------------- #
 # Off-window
 # --------------------------------------------------------------------------- #
-async def test_off_window_renders_archive_strip_only(app_client: AsyncClient) -> None:
-    """No active SL event -> the collapsed archive strip renders, no Desk module."""
+async def test_archived_event_restores_standard_homepage(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """After the recap tail, no seasonal stub remains above the homepage news hero."""
+    now = datetime.utcnow()
+    today = to_eastern_date(now)
+    last_game_date = today - timedelta(days=3)
+    competition = await _seed_competition(db_session, today=today)
+    home = await _seed_team(
+        db_session, competition, franchise_stats_id="1610612747"
+    )
+    away = await _seed_team(
+        db_session, competition, franchise_stats_id="1610612744"
+    )
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=last_game_date,
+        tip_datetime=datetime.combine(last_game_date, datetime.min.time()),
+        status=SummerLeagueGameStatus.FINAL,
+        home_score=88,
+        away_score=80,
+    )
+    await db_session.commit()
+    await sync_summer_league_event(db_session, today)
+    await db_session.commit()
+
     response = await app_client.get("/")
     assert response.status_code == 200
     html = response.text
-    assert 'class="card desk__offwindow"' in html
+    assert "desk__offwindow" not in html
     assert 'id="slDeskSection"' not in html
     assert "desk__hero" not in html
+    assert 'id="newsHeroSection"' in html
     _assert_no_switcher_chrome(html)
 
 
@@ -337,7 +366,14 @@ async def test_off_window_renders_archive_strip_only(app_client: AsyncClient) ->
 async def test_live_state_renders_live_board_with_em_dash_before_tip(
     app_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Live: hero + live tick board render; a not-yet-tipped game shows an em-dash."""
+    """Live: hero + live tick board render; a not-yet-tipped game never shows a blank cell.
+
+    Pre-prod blocker fix: a `scheduled` game with a known tip time renders an
+    honest "Tips H:MMpm ET" in the Top Performer cell (not the low-contrast,
+    easy-to-miss-as-blank em-dash the owner reported); a `scheduled` game
+    with NO known tip time (the genuinely rare case) still degrades to the
+    plain em-dash -- never a blank cell either way.
+    """
     now = datetime.utcnow()
     today = to_eastern_date(now)
 
@@ -368,7 +404,8 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
     )
 
     # A second, second-team pairing whose tip hasn't happened yet -- no game
-    # log exists for it, so its Top Performer cell must render an em-dash.
+    # log exists for it, so its Top Performer cell must render the scheduled
+    # game's tip time, not a blank cell.
     home2 = await _seed_team(db_session, competition, franchise_stats_id="1610612759")
     away2 = await _seed_team(db_session, competition, franchise_stats_id="1610612751")
     await _seed_game(
@@ -378,6 +415,21 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
         away2,
         game_date=today,
         tip_datetime=now + timedelta(hours=2),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+
+    # A third pairing scheduled with NO known tip time at all (the rarer,
+    # genuinely-unknown case) -- must still degrade to the plain em-dash,
+    # never a blank cell.
+    home3 = await _seed_team(db_session, competition, franchise_stats_id="1610612749")
+    away3 = await _seed_team(db_session, competition, franchise_stats_id="1610612752")
+    await _seed_game(
+        db_session,
+        competition,
+        home3,
+        away3,
+        game_date=today,
+        tip_datetime=None,
         status=SummerLeagueGameStatus.SCHEDULED,
     )
 
@@ -395,7 +447,11 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
     assert 'id="slDeskSection"' in html
     assert "desk__hero--live" in html
     assert 'class="desk__live-board"' in html
-    # Em-dash before tip: the not-yet-started game's Top Performer cell.
+    # Known tip time -> an honest "Tips H:MMpm ET" state, not a blank cell.
+    assert "desk__top-perf--tip" in html
+    assert "Tips " in html
+    assert " ET</span>" in html
+    # Unknown tip time -> the plain em-dash fallback, still never blank.
     assert "desk__top-perf--empty" in html
     assert "&mdash;" in html
     # The resolved game's top performer shows a real GmSc, not an em-dash.

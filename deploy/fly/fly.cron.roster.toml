@@ -1,27 +1,29 @@
-# fly.cron.sl.toml - Configuration for the production Summer League ingestion cron machine
+# fly.cron.roster.toml - Configuration for the production Summer League roster cron machine
 #
-# This defines a scheduled machine that runs incremental Summer League
-# game-data ingestion hourly (raw fetch -> backbone -> advanced metrics).
-# It shares the same Docker image as the main app but runs a different command.
+# This defines a scheduled machine that runs the Summer League roster
+# fetch + enrichment pipeline hourly (fetch -> load -> resolve -> external
+# ids -> headshots -> bio -> college stats), porting the brittle sprite
+# launchd job (scripts/poll_2026_satellite_rosters.sh) onto Fly. It shares
+# the same Docker image as the main app but runs a different command.
 #
 # NOTE: Fly.io scheduled machines only support: hourly, daily, weekly, monthly
 #       (not custom cron expressions like "*/30 * * * *")
 #
 # Deployment:
 #   1. First, deploy the main app to build the image:
-#      flyctl deploy --config fly.prod.toml --app draft-app-prod
+#      flyctl deploy --config deploy/fly/fly.prod.toml --app draft-app-prod
 #
 #   2. Create the scheduled machine (one-time setup):
 #      IMAGE=$(flyctl machine list --app draft-app-prod --json | grep '"image":' | head -1 | sed 's/.*"image": "\([^"]*\)".*/\1/')
 #      flyctl machine run $IMAGE \
 #        --app draft-app-prod \
 #        --schedule hourly \
-#        --name summer-league-ingestion-cron \
+#        --name summer-league-roster-cron \
 #        --region ewr \
 #        --memory 1024 \
 #        --cpus 1 \
 #        --entrypoint "/app/.venv/bin/python" \
-#        -- -m app.cli.summer_league_ingest_runner
+#        -- -m app.cli.summer_league_roster_runner
 #
 #   3. To update the machine after code changes (handled by GitHub Actions):
 #      flyctl machine update <machine-id> --app draft-app-prod --yes
@@ -36,9 +38,9 @@ primary_region = 'ewr'
 
 [build]
 
-# Override the default command to run the Summer League ingestion cron script
+# Override the default command to run the Summer League roster cron script
 [processes]
-  cron = "/app/.venv/bin/python -m app.cli.summer_league_ingest_runner"
+  cron = "/app/.venv/bin/python -m app.cli.summer_league_roster_runner"
 
 [[vm]]
   memory = '1024mb'

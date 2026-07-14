@@ -22,9 +22,19 @@
    of direction) and `data-name` off each `<tr>` (the stable tiebreak). This
    is a pure DOM reorder -- no request, no server round trip. Rows render
    pre-sorted GmSc desc from the backend (the initial `aria-sort="descending"`
-   on that header matches), and JS toggles ascending/descending from there;
-   sort listeners are re-attached after every cohort/stat-view swap since the
-   table is a fresh DOM subtree each time. #}
+   on that header matches), and JS toggles ascending/descending from there.
+   Cohort/stat-view switches (#567), by contrast, fetch a fresh fragment and
+   swap it into `#slDeskTrackerCard`, so sort AND pagination listeners are
+   re-attached after every swap since the table is a fresh DOM subtree each
+   time (`initTrackerToggles` re-runs both initializers on each fetch).
+
+   Pagination (pre-prod fix, mirrors #556's slate-disclosure pattern): this
+   template ALWAYS renders every row of the active cohort (up to the
+   backend's `TRACKER_CAP` -- see `desk_read.py`), unhidden, no matter how
+   many. `summer-league-desk.js`'s `initTrackerPagination` is what caps the
+   VISIBLE rows to 15 per page after it runs -- with JS disabled, or before
+   it loads, every row in the flat table is reachable. Re-sorting resets to
+   page 1 over the new order (`desk:tracker-sorted` custom event). #}
 {% set tracker = desk_payload.tracker %}
 {% set cohort_labels = [
      ('lottery', 'Lottery'), ('round1', 'Round 1'), ('round2', 'Round 2'),

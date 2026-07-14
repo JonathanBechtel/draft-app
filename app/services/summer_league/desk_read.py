@@ -541,6 +541,7 @@ def _pick_hero_slate_row(
     games: dict[int, SummerLeagueGame],
     *,
     live: bool,
+    logs_by_game: Optional[Mapping[int, Sequence[SummerLeaguePlayerGameLog]]] = None,
 ) -> Optional[SummerLeagueDeskSlate]:
     """Pick the hero game (behavior spec §4).
 
@@ -549,18 +550,35 @@ def _pick_hero_slate_row(
     game that has since gone final -- "re-selected each tick -- if the marquee
     ended, a live game takes over." Falls back to the tick's own ``is_hero``/
     top-ranked row when nothing is currently in progress (e.g. between games).
+
+    An ``in_progress`` game with no logged box line yet -- one that just tipped,
+    or whose scoreboard status is stale ahead of the box-score feed -- has
+    nothing to headline, so it never wins the Live hero with em-dash lines.
+    Preference order: an in-progress game that HAS a real box line, else any
+    game with one (typically a just-final game), else the tick's own selection.
     """
     if not slate_rows:
         return None
     pool = slate_rows
     if live:
+        logs = logs_by_game or {}
+
+        def _has_box_data(row: SummerLeagueDeskSlate) -> bool:
+            return any(_played(log) for log in logs.get(row.game_id, []))
+
         in_progress = [
             row
             for row in slate_rows
             if (game := games.get(row.game_id)) is not None
             and game.status == SummerLeagueGameStatus.IN_PROGRESS
         ]
-        if in_progress:
+        live_with_data = [row for row in in_progress if _has_box_data(row)]
+        any_with_data = [row for row in slate_rows if _has_box_data(row)]
+        if live_with_data:
+            pool = live_with_data
+        elif any_with_data:
+            pool = any_with_data
+        elif in_progress:
             pool = in_progress
     for row in pool:
         if row.is_hero:
@@ -672,23 +690,66 @@ async def _build_game_hero(
     game = games.get(hero_row.game_id)
     matchup = _matchup_label(game, teams)
     subject1, subject2 = await _hero_subjects_for_game(db, hero_row.game_id)
-    headline = _extract_prose(hero_row.facts, surface=Surface.HERO_TAGLINE) or (
-        f"Tonight's top storyline: {matchup}"
-    )
-    tagline = _extract_prose(hero_row.facts, surface=Surface.TICK_NOTE)
-    if tagline == headline:
-        tagline = None
 
     subject_line: Optional[DeskHeroLine] = None
     subject_line_2: Optional[DeskHeroLine] = None
+    swapped_off_dnp = False
     if kind == "live_duel":
         logs = logs_by_game or {}
+        game_logs = list(logs.get(hero_row.game_id, []))
+        logged_ids = {row.player_id for row in game_logs}
+        played_ids = {row.player_id for row in game_logs if _played(row)}
+
+        def _is_dnp_shell(player_id: Optional[int]) -> bool:
+            # A CONFIRMED non-participant: the subject has a box row for
+            # tonight's game but it shows no minutes (a DNP roster shell -- the
+            # rostered veteran who dressed but sat, e.g. Cam Reddish). A subject
+            # with NO row yet is merely pre-tip: keep them, their line renders
+            # em-dash until they log (#541), never dropped.
+            return (
+                player_id is not None
+                and player_id in logged_ids
+                and player_id not in played_ids
+            )
+
+        # A DNP-shell subject must not headline the LIVE key matchup with an
+        # em-dash line. Fall back to the game's real top performer (dropping the
+        # now-orphaned duel partner); a DNP-shell duel partner is likewise
+        # dropped. Pre-tip subjects (no row yet) are left untouched.
+        if _is_dnp_shell(subject1):
+            top = _top_performers_from_logs({hero_row.game_id: game_logs}).get(
+                hero_row.game_id
+            )
+            if top is not None:
+                subject1 = top[0]
+                subject2 = None
+                swapped_off_dnp = True
+        if _is_dnp_shell(subject2):
+            subject2 = None
         subject_line = _hero_line_from_logs(
             logs, game_id=hero_row.game_id, player_id=subject1
         )
         subject_line_2 = _hero_line_from_logs(
             logs, game_id=hero_row.game_id, player_id=subject2
         )
+
+    # The stored slate facts describe the tick's storyline subject. When we've
+    # swapped the headline off a DNP non-participant onto the game's real top
+    # performer, those facts (headline tagline, chips) describe the WRONG player,
+    # so drop them and use a neutral top-performer headline -- otherwise the hero
+    # shows one player's name/line under another's prose.
+    if swapped_off_dnp:
+        headline = f"Tonight's top performer: {matchup}"
+        tagline = None
+        facts: list[dict[str, object]] = []
+    else:
+        headline = _extract_prose(hero_row.facts, surface=Surface.HERO_TAGLINE) or (
+            f"Tonight's top storyline: {matchup}"
+        )
+        tagline = _extract_prose(hero_row.facts, surface=Surface.TICK_NOTE)
+        if tagline == headline:
+            tagline = None
+        facts = list(hero_row.facts or [])
 
     return DeskHero(
         kind=kind,
@@ -697,7 +758,7 @@ async def _build_game_hero(
         subject_player_id_2=subject2,
         headline=headline,
         tagline=tagline,
-        facts=list(hero_row.facts or []),
+        facts=facts,
         subject_line=subject_line,
         subject_line_2=subject_line_2,
     )
@@ -804,20 +865,34 @@ async def _fetch_game_logs_for_games(
     return dict(out)
 
 
+def _played(row: SummerLeaguePlayerGameLog) -> bool:
+    """Whether a box-score line represents a player who actually appeared.
+
+    The NBA feed lists a game's full roster; players who didn't dress or logged
+    a DNP get a shell line with ``minutes_seconds IS NULL`` and every box stat
+    ``NULL`` (Game Score would coalesce to 0.0). Those are not performances --
+    excluding them keeps DNP veterans off the Live top-performer/hero surfaces
+    and off the negative/zero Game Scores a shell line would otherwise imply.
+    """
+    return row.minutes_seconds is not None and row.minutes_seconds > 0
+
+
 def _top_performers_from_logs(
     logs_by_game: Mapping[int, Sequence[SummerLeaguePlayerGameLog]],
 ) -> dict[int, tuple[int, float]]:
     """Highest live GmSc tracked (resolved) player per game, from an already-fetched log set.
 
-    Simplification: scoped to every resolved (``player_id IS NOT NULL``) game
-    log line, not narrowed further to "actively rostered" -- a resolved player
-    in a live box score is, by construction, someone this app tracks. Pure
-    (no I/O) since :func:`_fetch_game_logs_for_games` already did the fetch.
+    Scoped to every resolved (``player_id IS NOT NULL``) line that represents an
+    actual appearance (:func:`_played`) -- a resolved player in a live box score
+    is, by construction, someone this app tracks, but a DNP/pre-tip shell line
+    (NULL minutes) is not a performance and must never win the top-performer
+    slot with a 0.0 Game Score. Pure (no I/O) since
+    :func:`_fetch_game_logs_for_games` already did the fetch.
     """
     best: dict[int, tuple[int, float]] = {}
     for game_id, rows in logs_by_game.items():
         for row in rows:
-            if row.player_id is None:
+            if row.player_id is None or not _played(row):
                 continue
             gmsc = round(game_score_from_row(row), 2)
             current = best.get(game_id)
@@ -849,6 +924,7 @@ def _build_live_board(
                 top_performer_player_id=top[0] if top else None,
                 top_performer_gmsc=top[1] if top else None,
                 read=_extract_prose(row.facts, surface=Surface.TICK_NOTE),
+                tip_datetime=game.tip_datetime if game else None,
             )
         )
     return out
@@ -1744,7 +1820,9 @@ async def _assemble_desk_payload_body(
 
             hero_game_id: Optional[int] = None
             if not quiet:
-                hero_row = _pick_hero_slate_row(slate_rows, games, live=live)
+                hero_row = _pick_hero_slate_row(
+                    slate_rows, games, live=live, logs_by_game=logs_by_game
+                )
                 assert hero_row is not None  # slate_rows is non-empty here
                 hero_game_id = hero_row.game_id
                 hero = await _build_game_hero(

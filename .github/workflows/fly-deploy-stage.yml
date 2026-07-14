@@ -60,7 +60,7 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          flyctl deploy --remote-only
+          flyctl deploy --config deploy/fly/fly.toml --remote-only
 
       # Reference data the recap joins against (idempotent — skips existing).
       - name: Seed reference data (NBA teams)
