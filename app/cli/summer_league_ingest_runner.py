@@ -85,7 +85,6 @@ from app.services.summer_league.normalization import (
     find_incomplete_team_box_game_ids,
     normalize_competition_games,
     normalize_pbp_events,
-    normalize_player_game_logs,
     normalize_shot_events,
 )
 from app.services.summer_league.raw_ingestion import (
@@ -502,11 +501,11 @@ async def _retry_incomplete_team_boxes(
 
     Network I/O runs with no transaction open (mirrors the main fetch step),
     so a slow or blocked NBA Stats response never leaves a DB transaction
-    idle. The retry transaction re-normalizes only competition/team and player
-    box rows; it deliberately does not rerun the full backbone's identity
-    resolution and embedding work. Existing source-player mappings remain local
-    to this database, and genuinely new unresolved identities are handled by the
-    next normal hourly backbone pass.
+    idle. The retry transaction re-normalizes only competition/team box rows;
+    it deliberately does not rerun player logs, identity resolution, embedding,
+    shot, or PBP work. The normal hourly backbone pass already populated player
+    lines from either per-game boxes or the complete season-gamelog fallback, so
+    the missing input to the advanced-metric gate is specifically the team box.
     """
     async with db.begin():
         incomplete_ids = await find_incomplete_team_box_game_ids(
@@ -554,19 +553,10 @@ async def _retry_incomplete_team_boxes(
                 league_id=league_id,
                 raw_root=RAW_ROOT,
             )
-            player_report = await normalize_player_game_logs(
-                db,
-                year=year,
-                league_id=league_id,
-                raw_root=RAW_ROOT,
-            )
             logger.info(
-                "L%s box normalization (retry pass): %d team rows, "
-                "%d player rows (%d skipped)",
+                "L%s team-box normalization (retry pass): %d team rows",
                 league_id,
                 competition_report.team_game_logs_upserted,
-                player_report.player_game_logs_upserted,
-                player_report.player_game_logs_skipped,
             )
     except Exception as exc:
         logger.error(
