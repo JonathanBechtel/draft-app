@@ -945,13 +945,17 @@ async def run_desk_tick(
             failure must never let the tick reach step 6 and claim fresh
             state (#530).
     """
-    resolved_now = now if now is not None else datetime.utcnow()
-
     # Serialize before either scheduled writer touches shared Summer League
     # identities/projections. The lower-priority full ingestor uses a
     # non-blocking attempt and skips its DB phase when this tick is active,
     # preventing the cross-cron source-player deadlock observed in production.
     await acquire_summer_league_writer_lock(db)
+
+    # A contended lock can delay the tick across a tip/final boundary. Read the
+    # production clock only after the wait so phase and freshness calculations
+    # describe the instant this transaction can actually begin its work. Tests
+    # keep their explicit deterministic override unchanged.
+    resolved_now = now if now is not None else datetime.utcnow()
 
     daily_state = await _resolve_daily_state(db, now=resolved_now)
 

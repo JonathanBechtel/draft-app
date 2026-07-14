@@ -56,6 +56,7 @@ from app.schemas.summer_league_desk import (
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.services.summer_league.raw_ingestion import GAME_ENDPOINTS
+import scripts.sl_desk_tick as desk_tick_module
 from scripts.sl_desk_tick import run_desk_tick
 
 _FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "summer_league"
@@ -580,6 +581,39 @@ async def test_desk_tick_off_window_is_a_no_op(db_session: AsyncSession) -> None
     assert state.lifecycle_phase == EventLifecyclePhase.DORMANT
     assert state.daily_state is None
     assert state.freshness_tick_at == now
+
+
+async def test_desk_tick_reads_runtime_clock_after_writer_lock(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lock wait cannot leave the tick using a stale pre-wait timestamp."""
+    lock_acquired = False
+    post_lock_now = datetime(2099, 1, 15, 12, 5)
+
+    async def _acquire_writer_lock(_db: AsyncSession) -> None:
+        nonlocal lock_acquired
+        lock_acquired = True
+
+    class _PostLockClock:
+        @classmethod
+        def utcnow(cls) -> datetime:
+            assert lock_acquired is True
+            return post_lock_now
+
+    monkeypatch.setattr(
+        desk_tick_module,
+        "acquire_summer_league_writer_lock",
+        _acquire_writer_lock,
+    )
+    monkeypatch.setattr(desk_tick_module, "datetime", _PostLockClock)
+
+    result = await desk_tick_module.run_desk_tick(db_session)
+    await db_session.commit()
+
+    assert result.now == post_lock_now
+    state = await _event_desk_state_for(db_session)
+    assert state.freshness_tick_at == post_lock_now
 
 
 async def test_desk_tick_bootstraps_scoreboard_on_first_morning_with_no_games_yet(
