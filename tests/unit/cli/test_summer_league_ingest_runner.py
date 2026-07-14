@@ -336,6 +336,45 @@ async def test_run_venue_retries_incomplete_team_boxes(
 
 
 @pytest.mark.asyncio
+async def test_run_venue_retry_yields_when_desk_writer_starts_during_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A retry rechecks the writer lock after network I/O and skips on contention."""
+    calls: list[str] = []
+    _patch_backbone_services(
+        monkeypatch,
+        calls,
+        incomplete_game_ids=("001",),
+    )
+    lock_results = iter((True, False))
+
+    async def _lock_available_then_busy(_db: object) -> bool:
+        return next(lock_results)
+
+    monkeypatch.setattr(
+        runner, "try_acquire_summer_league_writer_lock", _lock_available_then_busy
+    )
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=["001"]),
+            _FakeManifest(game_ids=["001"]),
+            _FakeManifest(game_ids=["001"]),
+        ]
+    )
+
+    result = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert result == (True, False)
+    assert calls == ["backbone", "shot", "pbp", "find_incomplete"]
+    assert len(ingestor.calls) == 3
+
+
+@pytest.mark.asyncio
 async def test_run_venue_skips_db_processing_while_desk_writer_is_active(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

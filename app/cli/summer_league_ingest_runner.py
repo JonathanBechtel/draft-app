@@ -501,11 +501,13 @@ async def _retry_incomplete_team_boxes(
 
     Network I/O runs with no transaction open (mirrors the main fetch step),
     so a slow or blocked NBA Stats response never leaves a DB transaction
-    idle. The retry transaction re-normalizes only competition/team box rows;
-    it deliberately does not rerun player logs, identity resolution, embedding,
-    shot, or PBP work. The normal hourly backbone pass already populated player
-    lines from either per-game boxes or the complete season-gamelog fallback, so
-    the missing input to the advanced-metric gate is specifically the team box.
+    idle. Because that releases the writer lock held by the initial backbone
+    transaction, the retry transaction reacquires it before writing. It
+    re-normalizes only competition/team box rows; it deliberately does not
+    rerun player logs, identity resolution, embedding, shot, or PBP work. The
+    normal hourly backbone pass already populated player lines from either
+    per-game boxes or the complete season-gamelog fallback, so the missing input
+    to the advanced-metric gate is specifically the team box.
     """
     async with db.begin():
         incomplete_ids = await find_incomplete_team_box_game_ids(
@@ -547,6 +549,12 @@ async def _retry_incomplete_team_boxes(
 
     try:
         async with db.begin():
+            if not await try_acquire_summer_league_writer_lock(db):
+                logger.info(
+                    "L%s: team-box retry skipped because the Desk writer is active",
+                    league_id,
+                )
+                return
             competition_report = await normalize_competition_games(
                 db,
                 year=year,
