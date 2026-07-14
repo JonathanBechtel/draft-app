@@ -1,0 +1,64 @@
+# 2025 NBA Draft — actual results (canonical source), Rounds 1 & 2.
+# Format: <overall_pick>\t<player name>\t<team abbr>. Team = selecting
+# team at the slot (trades not reflected in the chip); the team column is
+# optional and left blank when the selecting team is unknown. Load with:
+#   scripts/ingest_draft_results.py --file scripts/data/draft_results_2025.txt
+1	Cooper Flagg	DAL
+2	Dylan Harper	SAS
+3	VJ Edgecombe	PHI
+4	Kon Knueppel	CHA
+5	Ace Bailey	UTA
+6	Tre Johnson	WAS
+7	Jeremiah Fears	NOP
+8	Egor Demin	BKN
+9	Collin Murray-Boyles	TOR
+10	Khaman Maluach	PHX
+11	Cedric Coward	MEM
+12	Noa Essengue	CHI
+13	Derik Queen	NOP
+14	Carter Bryant	SAS
+15	Thomas Sorber	OKC
+16	Hansen Yang	POR
+17	Joan Beringer	MIN
+18	Walter Clayton Jr.	UTA
+19	Nolan Traore	BKN
+20	Kasparas Jakucionis	MIA
+21	Will Riley	WAS
+22	Drake Powell	BKN
+23	Asa Newell	ATL
+24	Nique Clifford	SAC
+25	Jase Richardson	ORL
+26	Ben Saraf	BKN
+27	Danny Wolf	BKN
+28	Hugo Gonzalez	BOS
+29	Liam McNeeley	CHA
+30	Yanic Konan Niederhauser	LAC
+31	Rasheer Fleming	PHX
+32	Noah Penda	ORL
+33	Sion James	CHA
+34	Ryan Kalkbrenner	CHA
+35	Johni Broome	PHI
+36	Adou Thiero	LAL
+37	Chaz Lanier	DET
+38	Kam Jones	IND
+39	Alijah Martin	TOR
+40	Micah Peavy	NOP
+41	Koby Brea	PHX
+42	Maxime Raynaud	SAC
+43	Jamir Watkins	WAS
+44	Brooks Barnhizer	OKC
+45	Rocco Zikarsky	MIN
+46	Amari Williams	BOS
+47	Bogoljub Markovic	MIL
+48	Javon Small	MEM
+49	Tyrese Proctor	CLE
+50	Kobe Sanders	LAC
+51	Mohamed Diawara	NYK
+52	Alex Toohey	GSW
+53	John Tonje	UTA
+54	Taelon Peter	IND
+55	Lachlan Olbrich	CHI
+56	Will Richard	GSW
+57	Max Shulga	BOS
+58	Saliou Niang	CLE
+59	Jahmai Mashack	MEM
