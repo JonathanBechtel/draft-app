@@ -83,7 +83,9 @@ from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.services.summer_league.normalization import (
     find_incomplete_team_box_game_ids,
+    normalize_competition_games,
     normalize_pbp_events,
+    normalize_player_game_logs,
     normalize_shot_events,
 )
 from app.services.summer_league.raw_ingestion import (
@@ -500,7 +502,11 @@ async def _retry_incomplete_team_boxes(
 
     Network I/O runs with no transaction open (mirrors the main fetch step),
     so a slow or blocked NBA Stats response never leaves a DB transaction
-    idle.
+    idle. The retry transaction re-normalizes only competition/team and player
+    box rows; it deliberately does not rerun the full backbone's identity
+    resolution and embedding work. Existing source-player mappings remain local
+    to this database, and genuinely new unresolved identities are handled by the
+    next normal hourly backbone pass.
     """
     async with db.begin():
         incomplete_ids = await find_incomplete_team_box_game_ids(
@@ -542,21 +548,29 @@ async def _retry_incomplete_team_boxes(
 
     try:
         async with db.begin():
-            backfill_options = SummerLeagueBackfillOptions(
+            competition_report = await normalize_competition_games(
+                db,
                 year=year,
                 league_id=league_id,
                 raw_root=RAW_ROOT,
-                create_stubs=True,
             )
-            report = await backfill_summer_league_backbone(db, backfill_options)
+            player_report = await normalize_player_game_logs(
+                db,
+                year=year,
+                league_id=league_id,
+                raw_root=RAW_ROOT,
+            )
             logger.info(
-                "L%s backbone (retry pass): %s",
+                "L%s box normalization (retry pass): %d team rows, "
+                "%d player rows (%d skipped)",
                 league_id,
-                summarize_backfill_report(report),
+                competition_report.team_game_logs_upserted,
+                player_report.player_game_logs_upserted,
+                player_report.player_game_logs_skipped,
             )
     except Exception as exc:
         logger.error(
-            "L%s backbone re-normalize (retry pass) failed: %s",
+            "L%s box re-normalize (retry pass) failed: %s",
             league_id,
             exc,
             exc_info=True,

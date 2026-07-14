@@ -179,6 +179,14 @@ def _patch_backbone_services(
         calls.append("pbp")
         return _FakePBPReport()
 
+    async def _fake_competition(_db: object, **_kwargs: object) -> object:
+        calls.append("competition")
+        return _FakeCompetitionReport()
+
+    async def _fake_player_logs(_db: object, **_kwargs: object) -> object:
+        calls.append("player_logs")
+        return _FakePlayerLogReport()
+
     async def _fake_find_incomplete(
         _db: object, *, competition_id: int
     ) -> list[str]:
@@ -190,6 +198,8 @@ def _patch_backbone_services(
     monkeypatch.setattr(runner, "summarize_backfill_report", lambda _r: "summary")
     monkeypatch.setattr(runner, "normalize_shot_events", _fake_shot)
     monkeypatch.setattr(runner, "normalize_pbp_events", _fake_pbp)
+    monkeypatch.setattr(runner, "normalize_competition_games", _fake_competition)
+    monkeypatch.setattr(runner, "normalize_player_game_logs", _fake_player_logs)
     monkeypatch.setattr(
         runner, "find_incomplete_team_box_game_ids", _fake_find_incomplete
     )
@@ -200,6 +210,15 @@ class _FakeCompetitionReport:
     """Minimal normalized-competition report carrying its local database ID."""
 
     competition_id: int = 123
+    team_game_logs_upserted: int = 4
+
+
+@dataclass
+class _FakePlayerLogReport:
+    """Minimal player-log report for the targeted retry pass."""
+
+    player_game_logs_upserted: int = 20
+    player_game_logs_skipped: int = 0
 
 
 @dataclass
@@ -319,7 +338,8 @@ async def test_run_venue_retries_incomplete_team_boxes(
         "shot",
         "pbp",
         "find_incomplete",
-        "backbone",
+        "competition",
+        "player_logs",
     ]
     assert len(ingestor.calls) == 3
     retry_options = ingestor.calls[2]
