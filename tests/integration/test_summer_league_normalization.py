@@ -20,6 +20,7 @@ from app.schemas.summer_league import (
 )
 from app.services.summer_league.audit import audit_summer_league_raw
 from app.services.summer_league.normalization import (
+    find_incomplete_team_box_game_ids,
     normalize_competition_games,
     refresh_competition_date_window,
 )
@@ -235,6 +236,168 @@ def _rewrite_team_gamelog_pts(raw_root: Path, *, magic_pts: int) -> None:
             }
         )
     )
+
+
+def _write_team_box(
+    raw_root: Path, *, include_team_stats: bool, team_minutes: str = "200:00"
+) -> None:
+    """(Re)write the fixture game's box-score files, with or without team rows.
+
+    Mirrors ``_write_fixture``'s box-score payloads but is safe to call on
+    its own (unlike ``_write_fixture``, which ``mkdir()``s without
+    ``exist_ok`` and cannot be re-run against the same ``raw_root``). Used to
+    simulate a per-game box fetched moments too early -- before NBA Stats
+    posted the official box, so ``TeamStats`` comes back empty -- and then a
+    later re-fetch landing the real rows.
+    """
+    game_dir = raw_root / "2024" / "15" / "games" / "1522400001"
+    team_rows = (
+        [
+            [
+                "1522400001",
+                1610612753,
+                "Magic",
+                "ORL",
+                team_minutes,
+                36,
+                76,
+                106,
+                27,
+            ],
+            [
+                "1522400001",
+                1610612739,
+                "Cavaliers",
+                "CLE",
+                team_minutes,
+                29,
+                81,
+                79,
+                -27,
+            ],
+        ]
+        if include_team_stats
+        else []
+    )
+    game_dir.joinpath("boxscoretraditionalv2.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set("PlayerStats", [], []),
+                    _result_set(
+                        "TeamStats",
+                        [
+                            "GAME_ID",
+                            "TEAM_ID",
+                            "TEAM_NAME",
+                            "TEAM_ABBREVIATION",
+                            "MIN",
+                            "FGM",
+                            "FGA",
+                            "PTS",
+                            "PLUS_MINUS",
+                        ],
+                        team_rows,
+                    ),
+                ]
+            }
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_find_incomplete_team_box_game_ids_flags_gamelog_fallback(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A game whose team box came from the gamelog fallback is flagged for retry.
+
+    Simulates a per-game box fetched before NBA Stats posted the official
+    box (empty ``TeamStats``), forcing ``normalize_competition_games`` to
+    build the team row from the season gamelog instead -- which never
+    carries team minutes.
+    """
+    _write_fixture(tmp_path)
+    _write_team_box(tmp_path, include_team_stats=False)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+
+    report = await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    incomplete = await find_incomplete_team_box_game_ids(
+        db_session, competition_id=report.competition_id
+    )
+    assert incomplete == ["1522400001"]
+
+    team_logs = (await db_session.execute(select(SummerLeagueTeamGameLog))).scalars().all()
+    assert len(team_logs) == 2
+    assert all(log.minutes is None for log in team_logs)
+    assert all(log.source_endpoint == "leaguegamelog_team" for log in team_logs)
+
+
+@pytest.mark.asyncio
+async def test_find_incomplete_team_box_game_ids_clears_once_box_score_lands(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """Re-normalizing after the real box score lands clears the flag.
+
+    Models the ingest runner's retry pass (#573): force-refetch the
+    still-incomplete game, then re-run normalization in the same run.
+    """
+    _write_fixture(tmp_path)
+    _write_team_box(tmp_path, include_team_stats=False)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+    report = await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+    assert await find_incomplete_team_box_game_ids(
+        db_session, competition_id=report.competition_id
+    ) == ["1522400001"]
+
+    _write_team_box(tmp_path, include_team_stats=True)
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    assert (
+        await find_incomplete_team_box_game_ids(
+            db_session, competition_id=report.competition_id
+        )
+        == []
+    )
+    team_logs = (await db_session.execute(select(SummerLeagueTeamGameLog))).scalars().all()
+    assert all(log.minutes == 200 for log in team_logs)
+    assert all(log.source_endpoint == "boxscoretraditionalv2" for log in team_logs)
+
+
+@pytest.mark.asyncio
+async def test_find_incomplete_team_box_game_ids_flags_partial_official_box(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """Official team rows below the metrics minutes floor remain retryable."""
+    _write_fixture(tmp_path)
+    _write_team_box(tmp_path, include_team_stats=True, team_minutes="100:00")
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+
+    report = await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    assert await find_incomplete_team_box_game_ids(
+        db_session, competition_id=report.competition_id
+    ) == ["1522400001"]
+    team_logs = (await db_session.execute(select(SummerLeagueTeamGameLog))).scalars().all()
+    assert all(log.minutes == 100 for log in team_logs)
+    assert all(log.source_endpoint == "boxscoretraditionalv2" for log in team_logs)
 
 
 @pytest.mark.asyncio

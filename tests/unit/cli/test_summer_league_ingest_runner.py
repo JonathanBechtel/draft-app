@@ -161,6 +161,7 @@ def _patch_backbone_services(
     calls: list[str],
     *,
     raise_in_backbone: bool = False,
+    incomplete_game_ids: tuple[str, ...] = (),
 ) -> None:
     """Monkeypatch the three DB-touching backbone/normalize services."""
 
@@ -168,7 +169,7 @@ def _patch_backbone_services(
         calls.append("backbone")
         if raise_in_backbone:
             raise RuntimeError("backbone boom")
-        return object()
+        return _FakeBackfillReport()
 
     async def _fake_shot(_db: object, **_kwargs: object) -> object:
         calls.append("shot")
@@ -178,10 +179,42 @@ def _patch_backbone_services(
         calls.append("pbp")
         return _FakePBPReport()
 
+    async def _fake_competition(_db: object, **_kwargs: object) -> object:
+        calls.append("competition")
+        return _FakeCompetitionReport()
+
+    async def _fake_find_incomplete(
+        _db: object, *, competition_id: int
+    ) -> list[str]:
+        assert competition_id == 123
+        calls.append("find_incomplete")
+        return list(incomplete_game_ids)
+
     monkeypatch.setattr(runner, "backfill_summer_league_backbone", _fake_backbone)
     monkeypatch.setattr(runner, "summarize_backfill_report", lambda _r: "summary")
     monkeypatch.setattr(runner, "normalize_shot_events", _fake_shot)
     monkeypatch.setattr(runner, "normalize_pbp_events", _fake_pbp)
+    monkeypatch.setattr(runner, "normalize_competition_games", _fake_competition)
+    monkeypatch.setattr(
+        runner, "find_incomplete_team_box_game_ids", _fake_find_incomplete
+    )
+
+
+@dataclass
+class _FakeCompetitionReport:
+    """Minimal normalized-competition report carrying its local database ID."""
+
+    competition_id: int = 123
+    team_game_logs_upserted: int = 4
+
+
+@dataclass
+class _FakeBackfillReport:
+    """Minimal backbone report used by the venue runner tests."""
+
+    competition_games: _FakeCompetitionReport | None = field(
+        default_factory=_FakeCompetitionReport
+    )
 
 
 @dataclass
@@ -257,7 +290,88 @@ async def test_run_venue_with_games_success(
     )
 
     assert (had_games, failed) == (True, False)
-    assert calls == ["backbone", "shot", "pbp"]
+    assert calls == ["backbone", "shot", "pbp", "find_incomplete"]
+
+
+@pytest.mark.asyncio
+async def test_run_venue_retries_incomplete_team_boxes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fallback team rows force-refresh exact game IDs before re-normalization."""
+    calls: list[str] = []
+    _patch_backbone_services(
+        monkeypatch,
+        calls,
+        incomplete_game_ids=("001", "002"),
+    )
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=["001", "002"]),  # refresh
+            _FakeManifest(game_ids=["001", "002"]),  # initial fetch
+            _FakeManifest(game_ids=["001", "002"]),  # forced retry
+        ]
+    )
+
+    had_games, failed = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert (had_games, failed) == (True, False)
+    assert calls == [
+        "backbone",
+        "shot",
+        "pbp",
+        "find_incomplete",
+        "competition",
+    ]
+    assert len(ingestor.calls) == 3
+    retry_options = ingestor.calls[2]
+    assert isinstance(retry_options, runner.RawIngestionOptions)
+    assert retry_options.force is True
+    assert retry_options.game_ids == ("001", "002")
+    assert retry_options.skip_endpoints == ("playbyplayv2", "shotchartdetail")
+
+
+@pytest.mark.asyncio
+async def test_run_venue_retry_yields_when_desk_writer_starts_during_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A retry rechecks the writer lock after network I/O and skips on contention."""
+    calls: list[str] = []
+    _patch_backbone_services(
+        monkeypatch,
+        calls,
+        incomplete_game_ids=("001",),
+    )
+    lock_results = iter((True, False))
+
+    async def _lock_available_then_busy(_db: object) -> bool:
+        return next(lock_results)
+
+    monkeypatch.setattr(
+        runner, "try_acquire_summer_league_writer_lock", _lock_available_then_busy
+    )
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=["001"]),
+            _FakeManifest(game_ids=["001"]),
+            _FakeManifest(game_ids=["001"]),
+        ]
+    )
+
+    result = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert result == (True, False)
+    assert calls == ["backbone", "shot", "pbp", "find_incomplete"]
+    assert len(ingestor.calls) == 3
 
 
 @pytest.mark.asyncio
