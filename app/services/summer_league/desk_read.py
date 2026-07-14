@@ -217,6 +217,22 @@ def _extract_prose(
     return None
 
 
+def _effective_game_status(
+    game: Optional[SummerLeagueGame], *, now: Optional[datetime]
+) -> SummerLeagueGameStatus:
+    """Resolve a display status with the Desk's scheduled-tip live fallback."""
+    if game is None:
+        return SummerLeagueGameStatus.UNKNOWN
+    if (
+        game.status == SummerLeagueGameStatus.SCHEDULED
+        and game.tip_datetime is not None
+        and now is not None
+        and now >= game.tip_datetime
+    ):
+        return SummerLeagueGameStatus.IN_PROGRESS
+    return game.status
+
+
 def _team_label(entry: Optional[SummerLeagueTeamEntry]) -> str:
     """Short display label for a team entry: abbreviation, falling back to name."""
     if entry is None:
@@ -592,6 +608,7 @@ def _build_slate_rows(
     teams: dict[int, SummerLeagueTeamEntry],
     *,
     exclude_game_id: Optional[int],
+    now: Optional[datetime] = None,
 ) -> list[DeskSlateRow]:
     """The Rest of Tonight's Slate: every game minus the hero (behavior spec §5)."""
     out: list[DeskSlateRow] = []
@@ -603,7 +620,7 @@ def _build_slate_rows(
             DeskSlateRow(
                 game_id=row.game_id,
                 matchup_label=_matchup_label(game, teams),
-                status=game.status.value if game else "unknown",
+                status=_effective_game_status(game, now=now).value,
                 tip_datetime=game.tip_datetime if game else None,
                 weight=row.total_weight,
                 read=_extract_prose(row.facts, surface=Surface.TICK_NOTE),
@@ -667,6 +684,21 @@ def _hero_line_from_logs(
                     gmsc=round(game_score_from_row(row), 2),
                 )
     return DeskHeroLine(pts=None, reb=None, ast=None, gmsc=None)
+
+
+def _live_hero_headline(
+    matchup: str,
+    subject_line: Optional[DeskHeroLine],
+    subject_line_2: Optional[DeskHeroLine],
+) -> str:
+    """Build live prose from the same game-grain lines displayed above it."""
+    first = subject_line.gmsc if subject_line is not None else None
+    second = subject_line_2.gmsc if subject_line_2 is not None else None
+    if first is not None and second is not None:
+        return f"Live Game Score: {first:.1f} vs {second:.1f} in {matchup}."
+    if first is not None:
+        return f"Live Game Score: {first:.1f} in {matchup}."
+    return f"Live now: {matchup}."
 
 
 async def _build_game_hero(
@@ -742,6 +774,14 @@ async def _build_game_hero(
         headline = f"Tonight's top performer: {matchup}"
         tagline = None
         facts: list[dict[str, object]] = []
+    elif kind == "live_duel":
+        # T4 commentary is event-grain (for example a multi-game average),
+        # while the hero stat line is tonight's game grain. Live prose must
+        # use the exact box lines displayed above it so two GmSc values cannot
+        # contradict each other on one card.
+        headline = _live_hero_headline(matchup, subject_line, subject_line_2)
+        tagline = None
+        facts = list(hero_row.facts or [])
     else:
         headline = _extract_prose(hero_row.facts, surface=Surface.HERO_TAGLINE) or (
             f"Tonight's top storyline: {matchup}"
@@ -907,6 +947,7 @@ def _build_live_board(
     games: dict[int, SummerLeagueGame],
     teams: dict[int, SummerLeagueTeamEntry],
     logs_by_game: Mapping[int, Sequence[SummerLeaguePlayerGameLog]],
+    now: Optional[datetime] = None,
 ) -> list[DeskLiveBoardRow]:
     """The Live Desk's all-games board -- every game, including the hero's."""
     top_by_game = _top_performers_from_logs(logs_by_game)
@@ -918,7 +959,7 @@ def _build_live_board(
             DeskLiveBoardRow(
                 game_id=row.game_id,
                 matchup_label=_matchup_label(game, teams),
-                status=game.status.value if game else "unknown",
+                status=_effective_game_status(game, now=now).value,
                 home_score=game.home_score if game else None,
                 away_score=game.away_score if game else None,
                 top_performer_player_id=top[0] if top else None,
@@ -1839,7 +1880,11 @@ async def _assemble_desk_payload_body(
             # as before -- "1-game day -> empty slate, hero carries it"
             # (behavior spec §5) only applies once a game IS the hero.
             slate = _build_slate_rows(
-                slate_rows, games, teams, exclude_game_id=hero_game_id
+                slate_rows,
+                games,
+                teams,
+                exclude_game_id=hero_game_id,
+                now=freshness.last_tick_at,
             )
             if live:
                 live_board = _build_live_board(
@@ -1847,6 +1892,7 @@ async def _assemble_desk_payload_body(
                     games=games,
                     teams=teams,
                     logs_by_game=logs_by_game,
+                    now=freshness.last_tick_at,
                 )
         # else: no games today at all -- slate/live_board stay empty; hero
         # falls through to the quiet-slate class-leader fallback below.

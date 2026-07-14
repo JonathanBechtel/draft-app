@@ -10,7 +10,7 @@ instances rather than a database fixture. See
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from app.schemas.summer_league import (
     SummerLeagueGame,
@@ -19,7 +19,9 @@ from app.schemas.summer_league import (
 )
 from app.schemas.summer_league_desk import SummerLeagueDeskSlate
 from app.services.summer_league.desk_read import (
+    _effective_game_status,
     _hero_line_from_logs,
+    _live_hero_headline,
     _pick_hero_slate_row,
     _played,
     _top_performers_from_logs,
@@ -109,6 +111,34 @@ def test_hero_line_from_logs_wrong_game_id_degrades_to_pretip_line() -> None:
     line = _hero_line_from_logs(logs_by_game, game_id=9, player_id=101)
     assert line is not None
     assert line.pts is None
+
+
+def test_scheduled_game_past_tip_displays_in_progress_at_snapshot_time() -> None:
+    """The board applies the same past-tip live fallback as the Desk state machine."""
+    game = SummerLeagueGame(
+        competition_id=1,
+        nba_stats_game_id="late-status",
+        tip_datetime=datetime(2026, 7, 14, 1, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+
+    assert (
+        _effective_game_status(game, now=datetime(2026, 7, 14, 1, 18))
+        == SummerLeagueGameStatus.IN_PROGRESS
+    )
+
+
+def test_live_hero_headline_uses_tonights_same_game_score() -> None:
+    """Live headline GmSc comes from the displayed box line, never an event average."""
+    line = _hero_line_from_logs(
+        {8: [_log(game_id=8, player_id=101, pts=18, reb=6, ast=4)]},
+        game_id=8,
+        player_id=101,
+    )
+
+    assert _live_hero_headline("MIA @ CLE", line, None) == (
+        "Live Game Score: 20.8 in MIA @ CLE."
+    )
 
 
 # --------------------------------------------------------------------------- #

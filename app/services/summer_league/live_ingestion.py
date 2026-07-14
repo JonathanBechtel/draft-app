@@ -1,15 +1,15 @@
-"""Targeted live raw refresh for Scheduled/In-Progress Summer League games.
+"""Targeted raw refresh for active and recently-final Summer League games.
 
 Launch-readiness plan item 2, ``docs/plans/summer-league-desk-launch-readiness.md``
 work-breakdown step 2 ("Targeted live box-score refresh"): the season raw
 ingestor (:mod:`app.services.summer_league.raw_ingestion`) either reuses
-whatever endpoint snapshot already exists on disk (fine for a Final game,
-stale for one still being played) or, with ``force=True``, redownloads every
+whatever endpoint snapshot already exists on disk (possibly stale for a live
+game or one that just finalized) or, with ``force=True``, redownloads every
 game in the whole season/LeagueID -- overkill for a single live tick and
 exactly the "redownloading history" this module exists to avoid.
 
 This module adds the missing middle: find the handful of games that are
-actually Scheduled/In-Progress within an active time window around "now",
+active or recently final within a time window around "now",
 group them by (year, LeagueID) the way raw ingestion is scoped, and force a
 fresh boxscore/pbp/shotchart pull for *only* those exact game IDs via
 :attr:`~app.services.summer_league.raw_ingestion.RawIngestionOptions.game_ids`
@@ -29,13 +29,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
+    SummerLeaguePlayerGameLog,
 )
 from app.services.summer_league.raw_ingestion import (
     NBAStatsJSONClient,
@@ -46,18 +47,23 @@ from app.services.summer_league.raw_ingestion import (
 )
 from app.services.summer_league.raw_store import SummerLeagueRawStore
 
-# A game counts as "live" for this refresh only when its status is one of
-# these -- Final games are done (their raw snapshot is immutable) and never
-# selected, matching the ticket's "skip Final ... games" requirement.
+# Include a scored Final still inside the bounded tip-time window only when it
+# has no normalized player lines. The scoreboard can flip to Final before the
+# provider's last box snapshot is available; excluding that gap permanently
+# stranded tonight's DAL-MEM game without a top performer. Healthy Finals and
+# synthetic/unscored state anchors are not re-fetched.
 # Fix #4: POSTPONED/CANCELED are deliberately absent -- a postponed game will
 # never tip, so its critical box-score endpoints (boxscoretraditionalv2 etc.)
 # would never return data. Selecting it here would trip fix #2's
 # fail-the-whole-tick guard for every tick in its window. Since `map_game_status`
 # now persists the real terminal status instead of collapsing it to SCHEDULED,
 # this tuple excludes it with no extra filtering needed.
-_LIVE_STATUSES = (SummerLeagueGameStatus.SCHEDULED, SummerLeagueGameStatus.IN_PROGRESS)
+_LIVE_STATUSES = (
+    SummerLeagueGameStatus.SCHEDULED,
+    SummerLeagueGameStatus.IN_PROGRESS,
+)
 
-# How far before/after "now" a Scheduled/In-Progress game still counts as
+# How far before/after "now" an eligible game still counts as
 # "active" and worth a forced refresh. #529 widened the schedule ingest to
 # the full active-event horizon (games days/weeks out), so status alone is
 # not enough -- a Scheduled game three weeks out is not "distant" by status,
@@ -82,7 +88,7 @@ def _naive_utc(value: datetime) -> datetime:
 
 @dataclass(frozen=True)
 class LiveGameSelection:
-    """One Scheduled/In-Progress game selected for a forced raw refresh."""
+    """One active/recently-final game selected for a forced raw refresh."""
 
     nba_stats_game_id: str
     year: int
@@ -138,13 +144,14 @@ async def select_active_window_games(
     window_before: timedelta = DEFAULT_WINDOW_BEFORE,
     window_after: timedelta = DEFAULT_WINDOW_AFTER,
 ) -> list[LiveGameSelection]:
-    """Select Scheduled/In-Progress games within an active window around ``now``.
+    """Select active/recently-final games within a bounded window around ``now``.
 
-    Final games are excluded by status. Games with no ``tip_datetime`` (only
-    possible for legacy rows that predate scoreboard ingest, #529) are
-    excluded too -- with no timestamp there is no way to tell "about to tip"
-    from "three weeks out," so they are conservatively treated as not
-    currently active rather than guessed at.
+    Recent Final games with no normalized player lines are included for a
+    closing box-score pull. Healthy Finals are skipped. Games with no
+    ``tip_datetime`` (only possible for legacy rows that predate scoreboard
+    ingest, #529) are excluded too -- with no timestamp there is no way to
+    tell "about to tip" from "three weeks out," so they are conservatively
+    treated as not currently active rather than guessed at.
 
     Args:
         db: Async database session.
@@ -161,6 +168,11 @@ async def select_active_window_games(
     resolved_now = _naive_utc(now)
     window_start = resolved_now - window_before
     window_end = resolved_now + window_after
+    has_player_lines = (
+        select(SummerLeaguePlayerGameLog.id)  # type: ignore[call-overload]
+        .where(SummerLeaguePlayerGameLog.game_id == SummerLeagueGame.id)
+        .exists()
+    )
 
     stmt = (
         select(  # type: ignore[call-overload]
@@ -173,7 +185,19 @@ async def select_active_window_games(
             SummerLeagueGame.competition_id == SummerLeagueCompetition.id,  # type: ignore[arg-type]
         )
         .where(
-            SummerLeagueGame.status.in_(_LIVE_STATUSES),  # type: ignore[attr-defined]
+            or_(
+                SummerLeagueGame.status.in_(_LIVE_STATUSES),  # type: ignore[attr-defined]
+                and_(
+                    SummerLeagueGame.status.in_(  # type: ignore[attr-defined]
+                        (SummerLeagueGameStatus.FINAL,)
+                    ),
+                    or_(
+                        SummerLeagueGame.home_score.is_not(None),  # type: ignore[union-attr]
+                        SummerLeagueGame.away_score.is_not(None),  # type: ignore[union-attr]
+                    ),
+                    ~has_player_lines,
+                ),
+            ),
             SummerLeagueGame.tip_datetime.is_not(None),  # type: ignore[union-attr]
             SummerLeagueGame.tip_datetime >= window_start,  # type: ignore[operator]
             SummerLeagueGame.tip_datetime <= window_end,  # type: ignore[operator]
@@ -308,7 +332,7 @@ async def run_live_ingestion(
     """Select active-window games and force-refresh their raw endpoints.
 
     The end-to-end entry point: resolve "now" from ``clock``,
-    select Scheduled/In-Progress games in the active window
+    select active/recently-final games in the active window
     (:func:`select_active_window_games`), and refresh exactly those
     (:func:`refresh_selected_games`). Never normalizes or writes any
     projection -- callers that need Desk state after this must run

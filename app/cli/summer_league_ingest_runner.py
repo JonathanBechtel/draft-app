@@ -95,6 +95,9 @@ from app.services.summer_league.scoreboard_ingest import (
     resolve_target_competitions,
     run_scoreboard_ingest,
 )
+from app.services.summer_league.write_lock import (
+    try_acquire_summer_league_writer_lock,
+)
 from app.utils.db_async import SessionLocal, dispose_engine
 
 # Configure logging for cron context
@@ -322,6 +325,9 @@ async def _refresh_schedule(
             logger.info("Schedule refresh: skipped (off-window)")
             return None
         async with db.begin():
+            if not await try_acquire_summer_league_writer_lock(db):
+                logger.info("Schedule refresh: skipped (Desk writer is active)")
+                return None
             report = await run_scoreboard_ingest(
                 db, today=to_eastern_date(now), client=client
             )
@@ -415,6 +421,12 @@ async def _run_venue(
 
     try:
         async with db.begin():
+            if not await try_acquire_summer_league_writer_lock(db):
+                logger.info(
+                    "L%s: skipping DB processing because the Desk writer is active",
+                    league_id,
+                )
+                return False, False
             backfill_options = SummerLeagueBackfillOptions(
                 year=year,
                 league_id=league_id,
@@ -514,14 +526,19 @@ async def main() -> int:
             if any_games:
                 try:
                     async with db.begin():
-                        summary = await rebuild_sl_metrics(db)
-                    logger.info(
-                        "SL metrics rebuild complete: %s player-seasons, "
-                        "%s contexts (%s adv-eligible pools)",
-                        summary["seasons"],
-                        summary["contexts"],
-                        summary["adv_pools"],
-                    )
+                        if await try_acquire_summer_league_writer_lock(db):
+                            summary = await rebuild_sl_metrics(db)
+                            logger.info(
+                                "SL metrics rebuild complete: %s player-seasons, "
+                                "%s contexts (%s adv-eligible pools)",
+                                summary["seasons"],
+                                summary["contexts"],
+                                summary["adv_pools"],
+                            )
+                        else:
+                            logger.info(
+                                "SL metrics rebuild skipped (Desk writer is active)"
+                            )
                 except Exception as exc:
                     failed = True
                     logger.error("SL metrics rebuild failed: %s", exc, exc_info=True)

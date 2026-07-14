@@ -237,6 +237,9 @@ from app.services.summer_league.scoreboard_ingest import (  # noqa: E402
     resolve_target_competitions,
     run_scoreboard_ingest,
 )
+from app.services.summer_league.write_lock import (  # noqa: E402
+    acquire_summer_league_writer_lock,
+)
 from app.utils.db_async import SessionLocal, engine  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -943,6 +946,12 @@ async def run_desk_tick(
             state (#530).
     """
     resolved_now = now if now is not None else datetime.utcnow()
+
+    # Serialize before either scheduled writer touches shared Summer League
+    # identities/projections. The lower-priority full ingestor uses a
+    # non-blocking attempt and skips its DB phase when this tick is active,
+    # preventing the cross-cron source-player deadlock observed in production.
+    await acquire_summer_league_writer_lock(db)
 
     daily_state = await _resolve_daily_state(db, now=resolved_now)
 

@@ -176,11 +176,20 @@ jobs:
           if [ -z "$APP_IMAGE" ] || [ "$APP_IMAGE" == "null" ]; then
             echo "Could not determine app image; skipping Desk cron machine create/update"
           elif [ -n "$CRON_MACHINE_ID" ]; then
-            echo "Updating Desk cron machine $CRON_MACHINE_ID with image: $APP_IMAGE"
-            flyctl machine update "$CRON_MACHINE_ID" \
+            echo "Waiting for Desk cron machine $CRON_MACHINE_ID to stop before updating"
+            if flyctl machine wait "$CRON_MACHINE_ID" \
               --app draft-app \
-              --image "$APP_IMAGE" \
-              --yes
+              --state stopped \
+              --wait-timeout 30m; then
+              echo "Updating stopped Desk cron machine with image: $APP_IMAGE"
+              flyctl machine update "$CRON_MACHINE_ID" \
+                --app draft-app \
+                --image "$APP_IMAGE" \
+                --skip-start \
+                --yes
+            else
+              echo "::warning::Desk cron machine did not stop within 30m; skipping its image update so the active tick is not interrupted."
+            fi
           else
             echo "No Desk cron machine found; creating one (schedule=hourly)"
             flyctl machine run "$APP_IMAGE" \
