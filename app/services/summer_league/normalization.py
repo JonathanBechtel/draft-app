@@ -371,6 +371,53 @@ async def normalize_competition_games(
     )
 
 
+async def find_incomplete_team_box_game_ids(
+    db: AsyncSession, *, competition_id: int
+) -> list[str]:
+    """Return ``nba_stats_game_id`` values whose team box used the gamelog fallback.
+
+    :func:`normalize_competition_games` falls back to a
+    :class:`~app.schemas.summer_league.SummerLeagueTeamGameLog` row built from
+    the season gamelog (``source_endpoint="leaguegamelog_team"``) whenever a
+    game's per-game ``boxscoretraditionalv2``/``boxscoreadvancedv2`` files
+    weren't on disk at normalize time. That fallback never carries team
+    ``minutes`` -- the season gamelog doesn't report it -- which permanently
+    blocks the competition's ``adv_eligible`` gate (see
+    ``app.services.summer_league.metrics``) even once real box scores exist.
+
+    The raw ingestor treats an on-disk per-game file as permanent
+    (``force=False`` skips anything already written), so a snapshot fetched
+    moments too early -- before NBA Stats finished posting the official box
+    for a just-finished game -- silently freezes that game on the fallback
+    forever with no other retry path. Callers (see
+    ``app.cli.summer_league_ingest_runner``) use this helper to force a
+    fresh per-game refetch for exactly the still-incomplete games, so the
+    gap self-heals on the next ingest run instead of persisting.
+
+    Args:
+        db: Async database session.
+        competition_id: The competition to scope the check to.
+
+    Returns:
+        Distinct ``nba_stats_game_id`` values for games with at least one
+        team row not sourced from ``boxscoretraditionalv2``. Empty when
+        every team row in the competition has a real box score.
+    """
+    stmt = (
+        select(SummerLeagueGame.nba_stats_game_id)  # type: ignore[call-overload]
+        .join(
+            SummerLeagueTeamGameLog,
+            SummerLeagueTeamGameLog.game_id == SummerLeagueGame.id,  # type: ignore[arg-type]
+        )
+        .where(SummerLeagueGame.competition_id == competition_id)  # type: ignore[arg-type]
+        .where(SummerLeagueTeamGameLog.source_endpoint != "boxscoretraditionalv2")
+        .distinct()
+        .order_by(SummerLeagueGame.nba_stats_game_id)
+    )
+    result = await db.execute(stmt)
+    return [row[0] for row in result.all() if row[0]]
+
+
 async def refresh_competition_date_window(
     db: AsyncSession, *, competition_id: int
 ) -> None:

@@ -82,6 +82,7 @@ from app.services.summer_league.endpoints import normalize_league_id
 from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.services.summer_league.normalization import (
+    find_incomplete_team_box_game_ids,
     normalize_pbp_events,
     normalize_shot_events,
 )
@@ -465,7 +466,101 @@ async def _run_venue(
         )
         return True, True
 
+    competition_id = (
+        report.competition_games.competition_id if report.competition_games else None
+    )
+    if competition_id is not None:
+        await _retry_incomplete_team_boxes(
+            db, ingestor, year=year, league_id=league_id, competition_id=competition_id
+        )
+
     return True, False
+
+
+async def _retry_incomplete_team_boxes(
+    db: AsyncSession,
+    ingestor: SummerLeagueRawIngestor,
+    *,
+    year: int,
+    league_id: str,
+    competition_id: int,
+) -> None:
+    """Force-refetch and re-normalize any game still on the team-box fallback.
+
+    The main fetch step above uses ``force=False``, so a per-game box-score
+    file fetched moments too early -- the game just finished, NBA Stats
+    hasn't posted the official box yet -- is cached forever and never
+    revisited. Every run, this closes that gap: any game whose team row is
+    still sourced from the season-gamelog fallback (see
+    :func:`~app.services.summer_league.normalization.find_incomplete_team_box_game_ids`,
+    which is how such a game is recognized -- it never carries team minutes)
+    gets one fresh, forced re-fetch and re-normalize pass. Bounded to a
+    single retry per run: a game still incomplete after the forced re-fetch
+    stays that way until the next scheduled run rather than looping here.
+
+    Network I/O runs with no transaction open (mirrors the main fetch step),
+    so a slow or blocked NBA Stats response never leaves a DB transaction
+    idle.
+    """
+    async with db.begin():
+        incomplete_ids = await find_incomplete_team_box_game_ids(
+            db, competition_id=competition_id
+        )
+    if not incomplete_ids:
+        return
+
+    logger.info(
+        "L%s: retrying %d game(s) still on the team-box fallback: %s",
+        league_id,
+        len(incomplete_ids),
+        ", ".join(incomplete_ids),
+    )
+    retry_options = RawIngestionOptions(
+        year=year,
+        league_id=league_id,
+        force=True,
+        game_ids=tuple(incomplete_ids),
+        skip_endpoints=("playbyplayv2", "shotchartdetail"),
+        delay_seconds=FETCH_DELAY_SECONDS,
+    )
+    try:
+        retry_manifest = ingestor.fetch_year_league(retry_options)
+    except Exception as exc:
+        logger.warning(
+            "L%s: retry re-fetch failed (%s: %s); will retry again next run",
+            league_id,
+            type(exc).__name__,
+            exc,
+        )
+        return
+    if retry_manifest.errors:
+        logger.warning(
+            "L%s: %d error(s) re-fetching incomplete games; will retry again next run",
+            league_id,
+            len(retry_manifest.errors),
+        )
+
+    try:
+        async with db.begin():
+            backfill_options = SummerLeagueBackfillOptions(
+                year=year,
+                league_id=league_id,
+                raw_root=RAW_ROOT,
+                create_stubs=True,
+            )
+            report = await backfill_summer_league_backbone(db, backfill_options)
+            logger.info(
+                "L%s backbone (retry pass): %s",
+                league_id,
+                summarize_backfill_report(report),
+            )
+    except Exception as exc:
+        logger.error(
+            "L%s backbone re-normalize (retry pass) failed: %s",
+            league_id,
+            exc,
+            exc_info=True,
+        )
 
 
 async def main() -> int:
