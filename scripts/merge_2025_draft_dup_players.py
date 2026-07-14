@@ -190,12 +190,35 @@ async def _resolve_id_by_name(conn: Any, display_name: str) -> tuple[int | None,
     return None, True
 
 
+async def _table_exists(conn: Any, table: str) -> bool:
+    """Return True when `table` exists in the public schema."""
+    found = (
+        await conn.execute(
+            text(
+                "SELECT 1 FROM information_schema.tables "
+                "WHERE table_schema = 'public' AND table_name = :t"
+            ),
+            {"t": table},
+        )
+    ).scalar()
+    return bool(found)
+
+
 async def run(dry_run: bool) -> None:
     url, connect_args = _mp._prepare_connection(os.environ["DATABASE_URL"])
     engine = create_async_engine(url, echo=False, connect_args=connect_args)
     print(f"Mode: {'DRY RUN' if dry_run else 'EXECUTE'}")
 
     async with engine.begin() as conn:
+        # player_embeddings exists in dev but not prod (per
+        # merge_prod_shooting_dup_players.py); an unguarded query against it
+        # raises UndefinedTable on prod, even in dry-run mode.
+        has_embeddings = await _table_exists(conn, "player_embeddings")
+        if not has_embeddings:
+            print(
+                "note: player_embeddings table absent (prod) — skipping embeddings step"
+            )
+
         for discard_name, keep_name, reason in MERGES:
             discard_id, discard_ambiguous = await _resolve_id_by_name(
                 conn, discard_name
@@ -253,27 +276,32 @@ async def run(dry_run: bool) -> None:
             # (non-cascade) FK to players_master and most dups own one. The canonical
             # already has its own embedding and player_embeddings.player_id is unique,
             # so we DELETE the dup's embedding rather than reassign it. Without this the
-            # final players_master delete would hit an FK violation.
-            emb = (
-                await conn.execute(
-                    text("SELECT count(*) FROM player_embeddings WHERE player_id = :d"),
-                    {"d": discard_id},
-                )
-            ).scalar()
-            if emb:
-                print(
-                    f"    player_embeddings.player_id: affected={emb}, delete={emb} (not in merge tool)"
-                )
+            # final players_master delete would hit an FK violation. Guarded because
+            # the table doesn't exist on prod.
+            if has_embeddings:
+                emb = (
+                    await conn.execute(
+                        text(
+                            "SELECT count(*) FROM player_embeddings WHERE player_id = :d"
+                        ),
+                        {"d": discard_id},
+                    )
+                ).scalar()
+                if emb:
+                    print(
+                        f"    player_embeddings.player_id: affected={emb}, delete={emb} (not in merge tool)"
+                    )
+                    if not dry_run:
+                        await conn.execute(
+                            text("DELETE FROM player_embeddings WHERE player_id = :d"),
+                            {"d": discard_id},
+                        )
 
             if dry_run:
                 print(
                     f"    WOULD ADD alias {discard_name!r} -> {keep_id}; WOULD DELETE player {discard_id}"
                 )
             else:
-                await conn.execute(
-                    text("DELETE FROM player_embeddings WHERE player_id = :d"),
-                    {"d": discard_id},
-                )
                 await _mp._ensure_alias(
                     conn, keep_id, discard_name, "2025_draft_class_dedup"
                 )
