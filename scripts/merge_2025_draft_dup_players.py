@@ -32,6 +32,16 @@ NOT call `_update_keep_player` -- every keep record already has the correct
 draft_year/draft_round/draft_pick (synced separately) and must not be
 rewritten.
 
+**Resolves by exact `display_name`, not hardcoded id.** Dev and prod
+`players_master` rows for the same person carry different surrogate ids
+(confirmed while auditing this class), so hardcoding the ids found in dev
+would be wrong -- and silently dangerous -- if this script were ever pointed
+at prod. A name that resolves to zero rows in the target DB is skipped
+("already absent"); a name that resolves to more than one row is skipped
+with an AMBIGUOUS warning rather than guessed, matching this repo's
+never-guess entity-resolution convention. Safe to run against either DB by
+pointing `DATABASE_URL` at it.
+
 Usage:
     scripts/with-db-env.sh conda run -n draftguru python scripts/merge_2025_draft_dup_players.py
     scripts/with-db-env.sh conda run -n draftguru python scripts/merge_2025_draft_dup_players.py --execute
@@ -98,56 +108,86 @@ _SL_CHILD_TABLES: tuple[Any, ...] = (
     _mp.ChildTable("summer_league_play_by_play_events", "person3_id"),
 )
 
-# (discard_id, keep_id, reason)
-MERGES: tuple[tuple[int, int, str], ...] = (
+# (discard_display_name, keep_display_name, reason) -- resolved to whichever
+# DB's own ids at run time; see module docstring for why this isn't
+# hardcoded ids.
+MERGES: tuple[tuple[str, str, str], ...] = (
     # Mention-extraction bare-surname stubs -- confirmed via matching `school`.
-    (5720, 1673, "'Edgecombe' stub (school=Baylor) -> VJ Edgecombe"),
-    (5394, 1673, "'V. J. Edgecombe' stub (school=Baylor) -> VJ Edgecombe"),
-    (5404, 1673, "'V.J. Edgecombe' stub (school=Baylor) -> VJ Edgecombe"),
-    (5724, 1682, "'Harper' stub (school=Rutgers) -> Dylan Harper"),
-    (5719, 1689, "'Knueppel' stub (school=Duke) -> Kon Knueppel"),
-    (5725, 1712, "'Queen' stub (school=Maryland) -> Derik Queen"),
+    ("Edgecombe", "VJ Edgecombe", "stub (school=Baylor) -> VJ Edgecombe"),
+    ("V. J. Edgecombe", "VJ Edgecombe", "stub (school=Baylor) -> VJ Edgecombe"),
+    ("V.J. Edgecombe", "VJ Edgecombe", "stub (school=Baylor) -> VJ Edgecombe"),
+    ("Harper", "Dylan Harper", "stub (school=Rutgers) -> Dylan Harper"),
+    ("Knueppel", "Kon Knueppel", "stub (school=Duke) -> Kon Knueppel"),
+    ("Queen", "Derik Queen", "stub (school=Maryland) -> Derik Queen"),
     (
-        5831,
-        1684,
-        "'Kasparas Jakucionius' stub (school=Illinois) -> Kasparas Jakucionis",
+        "Kasparas Jakucionius",
+        "Kasparas Jakucionis",
+        "stub (school=Illinois) -> Kasparas Jakucionis",
     ),
-    (5687, 1684, "'Kasparas Jakucions' stub (school=Illinois) -> Kasparas Jakucionis"),
-    (6296, 1663, "'Joan Berringer' typo stub -> Joan Beringer"),
-    (5601, 1680, "'Hugo Gonzalez' stub (Real Madrid) -> Hugo González"),
+    (
+        "Kasparas Jakucions",
+        "Kasparas Jakucionis",
+        "stub (school=Illinois) -> Kasparas Jakucionis",
+    ),
+    ("Joan Berringer", "Joan Beringer", "typo stub -> Joan Beringer"),
+    ("Hugo Gonzalez", "Hugo González", "stub (Real Madrid) -> Hugo González"),
     # BBRef/combine-import duplicates carrying real data (not throwaway stubs).
     (
-        1748,
-        1680,
-        "'Hugo (Excused - Not in Chicago) Gonzalez' corrupted-name record -> Hugo González",
+        "Hugo (Excused - Not in Chicago) Gonzalez",
+        "Hugo González",
+        "corrupted-name record -> Hugo González",
     ),
-    (1745, 1725, "Unaccented 'Nolan Traore' combine-import dup -> Nolan Traoré"),
     (
-        3074,
-        1730,
-        "'yangha01' BBRef-ID-as-name record (stale wrong draft_team) -> Hansen Yang",
+        "Nolan Traore",
+        "Nolan Traoré",
+        "unaccented combine-import dup -> Nolan Traoré",
+    ),
+    (
+        "yangha01",
+        "Hansen Yang",
+        "BBRef-ID-as-name record (stale wrong draft_team) -> Hansen Yang",
     ),
     # Unrelated-to-the-picks-list dup pairs, same class, same audit pass.
-    (5880, 1679, "'Vlad Goldin' stub (school=Michigan) -> Vladislav Goldin"),
-    (5539, 1692, "'RJ Luis' stub (school=St. John's) -> RJ Luis Jr."),
+    ("Vlad Goldin", "Vladislav Goldin", "stub (school=Michigan) -> Vladislav Goldin"),
+    ("RJ Luis", "RJ Luis Jr.", "stub (school=St. John's) -> RJ Luis Jr."),
     (
-        5806,
-        5511,
-        "'Cliff Omoruyi' stub -> 'Clifford Omoruyi' stub (fuller name, same school)",
+        "Cliff Omoruyi",
+        "Clifford Omoruyi",
+        "stub -> stub (fuller name, same school)",
     ),
     (
-        5829,
-        5525,
-        "'Igor Milcic Jr' typo stub -> 'Igor Milicic Jr.' (correct spelling, more mentions)",
+        "Igor Milcic Jr",
+        "Igor Milicic Jr.",
+        "typo stub -> correct spelling (more mentions)",
     ),
     (
-        5508,
-        5445,
-        "'Viktor Lahkin' typo stub -> 'Viktor Lakhin' (correct transliteration, more mentions)",
+        "Viktor Lahkin",
+        "Viktor Lakhin",
+        "typo stub -> correct transliteration (more mentions)",
     ),
-    (5630, 5850, "'Adama Alpha-Bal' stub -> 'Adama Bal' (same school, simpler name)"),
-    (5486, 5594, "'Wesley Cardet Jr' stub -> 'Wesley Cardet Jr.' (more mentions)"),
+    ("Adama Alpha-Bal", "Adama Bal", "stub -> stub (same school, simpler name)"),
+    ("Wesley Cardet Jr", "Wesley Cardet Jr.", "stub -> stub (more mentions)"),
 )
+
+
+async def _resolve_id_by_name(conn: Any, display_name: str) -> tuple[int | None, bool]:
+    """Look up a player id by exact `display_name`.
+
+    Returns `(id, ambiguous)`. `(None, False)` means no match (already
+    absent/never existed in this DB -- fine to skip). `(None, True)` means
+    more than one row shares this exact name -- never guessed, reported.
+    """
+    rows = (
+        await conn.execute(
+            text("SELECT id FROM players_master WHERE display_name = :name"),
+            {"name": display_name},
+        )
+    ).fetchall()
+    if len(rows) == 1:
+        return int(rows[0][0]), False
+    if len(rows) == 0:
+        return None, False
+    return None, True
 
 
 async def run(dry_run: bool) -> None:
@@ -156,15 +196,28 @@ async def run(dry_run: bool) -> None:
     print(f"Mode: {'DRY RUN' if dry_run else 'EXECUTE'}")
 
     async with engine.begin() as conn:
-        for discard_id, keep_id, reason in MERGES:
-            discard_name = await _mp._fetch_display_name(conn, discard_id)
-            keep_name = await _mp._fetch_display_name(conn, keep_id)
-            if discard_name is None:
-                print(f"\nskip {discard_id}: already absent")
-                continue
-            if keep_name is None:
+        for discard_name, keep_name, reason in MERGES:
+            discard_id, discard_ambiguous = await _resolve_id_by_name(
+                conn, discard_name
+            )
+            if discard_ambiguous:
                 print(
-                    f"\nSKIP: keep id {keep_id} not found — refusing to orphan {discard_id}"
+                    f"\nSKIP: {discard_name!r} matches multiple players — resolve manually"
+                )
+                continue
+            if discard_id is None:
+                print(f"\nskip {discard_name!r}: already absent")
+                continue
+
+            keep_id, keep_ambiguous = await _resolve_id_by_name(conn, keep_name)
+            if keep_ambiguous:
+                print(
+                    f"\nSKIP: keep name {keep_name!r} matches multiple players — refusing to orphan {discard_name!r}"
+                )
+                continue
+            if keep_id is None:
+                print(
+                    f"\nSKIP: keep {keep_name!r} not found — refusing to orphan {discard_name!r}"
                 )
                 continue
 
