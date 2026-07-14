@@ -326,11 +326,27 @@ async def test_find_incomplete_team_box_game_ids_flags_gamelog_fallback(
     report = await normalize_competition_games(
         db_session, year=2024, league_id="15", raw_root=tmp_path
     )
+    db_session.add(
+        SummerLeagueGame(
+            competition_id=report.competition_id,
+            nba_stats_game_id="1522400099",
+            status=SummerLeagueGameStatus.SCHEDULED,
+        )
+    )
+    db_session.add(
+        SummerLeagueGame(
+            competition_id=report.competition_id,
+            nba_stats_game_id="1522400098",
+            status=SummerLeagueGameStatus.FINAL,
+        )
+    )
+    await db_session.flush()
 
     incomplete = await find_incomplete_team_box_game_ids(
         db_session, competition_id=report.competition_id
     )
-    assert incomplete == ["1522400001"]
+    # The fallback and final zero-row games retry; the scheduled zero-row game does not.
+    assert incomplete == ["1522400001", "1522400098"]
 
     team_logs = (await db_session.execute(select(SummerLeagueTeamGameLog))).scalars().all()
     assert len(team_logs) == 2

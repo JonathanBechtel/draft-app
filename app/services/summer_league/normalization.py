@@ -9,7 +9,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.nba_teams import NbaTeam as _NbaTeam  # noqa: F401
@@ -388,6 +388,9 @@ async def find_incomplete_team_box_game_ids(
     An early official box can also contain fewer than two team rows or blank /
     partial minutes, so this uses the same two-rows-at-150-minutes predicate as
     the metrics completeness calculation rather than trusting the endpoint name.
+    Games with no team rows remain retryable once the scoreboard marks them
+    in-progress or final. Zero-row scheduled games are excluded because they
+    are normally future games that have not produced any box data to repair yet.
 
     The raw ingestor treats an on-disk per-game file as permanent
     (``force=False`` skips anything already written), so a snapshot fetched
@@ -403,9 +406,10 @@ async def find_incomplete_team_box_game_ids(
         competition_id: The competition to scope the check to.
 
     Returns:
-        Distinct ``nba_stats_game_id`` values for games without exactly two
-        team rows of at least ``MIN_COMPLETE_TEAM_MP`` minutes each. Empty
-        when every game passes the advanced-metrics completeness predicate.
+        Distinct ``nba_stats_game_id`` values for started games that do not have
+        exactly two team rows of at least ``MIN_COMPLETE_TEAM_MP`` minutes each.
+        Empty when every started game passes the advanced-metrics completeness
+        predicate.
     """
     stmt = (
         select(SummerLeagueGame.nba_stats_game_id)  # type: ignore[call-overload]
@@ -416,11 +420,23 @@ async def find_incomplete_team_box_game_ids(
         .where(SummerLeagueGame.competition_id == competition_id)  # type: ignore[arg-type]
         .group_by(SummerLeagueGame.id, SummerLeagueGame.nba_stats_game_id)
         .having(
-            or_(
-                func.count(SummerLeagueTeamGameLog.id)  # type: ignore[arg-type]
-                != 2,
-                func.min(func.coalesce(SummerLeagueTeamGameLog.minutes, 0))
-                < MIN_COMPLETE_TEAM_MP,
+            and_(
+                or_(
+                    func.count(SummerLeagueTeamGameLog.id)  # type: ignore[arg-type]
+                    != 2,
+                    func.min(func.coalesce(SummerLeagueTeamGameLog.minutes, 0))
+                    < MIN_COMPLETE_TEAM_MP,
+                ),
+                or_(
+                    func.count(SummerLeagueTeamGameLog.id)  # type: ignore[arg-type]
+                    > 0,
+                    SummerLeagueGame.status.in_(  # type: ignore[attr-defined]
+                        (
+                            SummerLeagueGameStatus.IN_PROGRESS,
+                            SummerLeagueGameStatus.FINAL,
+                        )
+                    ),
+                ),
             )
         )
         .order_by(SummerLeagueGame.nba_stats_game_id)
