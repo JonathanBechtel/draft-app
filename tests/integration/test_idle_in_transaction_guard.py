@@ -57,6 +57,7 @@ async def test_idle_in_transaction_timeout_reaps_abandoned_session(
 async def test_session_context_manager_leaves_no_idle_in_transaction(
     async_engine: AsyncEngine,
     session_factory: async_sessionmaker[AsyncSession],
+    test_schema: str,
 ) -> None:
     """A normal read/write session leaves no idle-in-transaction backend.
 
@@ -70,31 +71,41 @@ async def test_session_context_manager_leaves_no_idle_in_transaction(
     app_name = f"idle_guard_test_{uuid.uuid4().hex[:12]}"
     person_id = f"leak-{uuid.uuid4().hex[:8]}"
 
-    async with session_factory() as db:
-        await db.execute(text(f"SET application_name = '{app_name}'"))
-        # The exact query shape from the incident (read by person id)...
-        await db.execute(
-            text(
-                "SELECT id FROM summer_league_source_players "
-                "WHERE nba_stats_person_id = :pid"
-            ),
-            {"pid": person_id},
-        )
-        # ...followed by a write, so a transaction is genuinely open on exit.
-        await db.execute(
-            text(
-                "INSERT INTO summer_league_source_players "
-                "(nba_stats_person_id, raw_player_name, normalized_name, "
-                " first_seen_year, last_seen_year, created_at, updated_at) "
-                "VALUES (:pid, 'Leak Test', 'leak test', 2026, 2026, "
-                " now(), now())"
-            ),
-            {"pid": person_id},
-        )
-        # Intentionally no commit -- rely on the context manager to release.
-
-    # Observe from a separate backend so we never see our own transaction.
+    # Open the observer backend *first* and hold it for the whole test: with
+    # its connection checked out of the pool, ``session_factory()`` below is
+    # guaranteed a different backend, so the observing query can never land on
+    # (and accidentally clear) the very connection under test. It reads only
+    # the ``pg_stat_activity`` system view, so it needs no search_path.
     async with async_engine.connect() as observer:
+        async with session_factory() as db:
+            await db.execute(text(f"SET application_name = '{app_name}'"))
+            # The raw session_factory (unlike db_session) does not scope
+            # search_path, and the reaper test above may have invalidated the
+            # pooled connection -- so set it explicitly to the test schema
+            # where the app tables live.
+            await db.execute(text(f'SET search_path TO "{test_schema}"'))
+            # The exact query shape from the incident (read by person id)...
+            await db.execute(
+                text(
+                    "SELECT id FROM summer_league_source_players "
+                    "WHERE nba_stats_person_id = :pid"
+                ),
+                {"pid": person_id},
+            )
+            # ...followed by a write, so a transaction is genuinely open on exit.
+            await db.execute(
+                text(
+                    "INSERT INTO summer_league_source_players "
+                    "(nba_stats_person_id, raw_player_name, normalized_name, "
+                    " first_seen_year, last_seen_year, created_at, updated_at) "
+                    "VALUES (:pid, 'Leak Test', 'leak test', 2026, 2026, "
+                    " now(), now())"
+                ),
+                {"pid": person_id},
+            )
+            # Intentionally no commit -- rely on the context manager to release.
+
+        # Session closed; observe from the distinct, still-open backend.
         lingering = (
             await observer.exec_driver_sql(
                 "SELECT count(*) FROM pg_stat_activity "
