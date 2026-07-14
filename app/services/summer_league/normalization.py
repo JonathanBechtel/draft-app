@@ -9,7 +9,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.nba_teams import NbaTeam as _NbaTeam  # noqa: F401
@@ -41,6 +41,7 @@ from app.services.summer_league.nba_stats_client import (
     NBAStatsResultSet,
     extract_result_sets,
 )
+from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP
 
 
 # stats.nba.com occasionally corrupts boxscoretraditionalv2 minutes for a
@@ -374,7 +375,7 @@ async def normalize_competition_games(
 async def find_incomplete_team_box_game_ids(
     db: AsyncSession, *, competition_id: int
 ) -> list[str]:
-    """Return ``nba_stats_game_id`` values whose team box used the gamelog fallback.
+    """Return source game IDs whose team boxes fail the metrics completeness gate.
 
     :func:`normalize_competition_games` falls back to a
     :class:`~app.schemas.summer_league.SummerLeagueTeamGameLog` row built from
@@ -384,6 +385,9 @@ async def find_incomplete_team_box_game_ids(
     ``minutes`` -- the season gamelog doesn't report it -- which permanently
     blocks the competition's ``adv_eligible`` gate (see
     ``app.services.summer_league.metrics``) even once real box scores exist.
+    An early official box can also contain fewer than two team rows or blank /
+    partial minutes, so this uses the same two-rows-at-150-minutes predicate as
+    the metrics completeness calculation rather than trusting the endpoint name.
 
     The raw ingestor treats an on-disk per-game file as permanent
     (``force=False`` skips anything already written), so a snapshot fetched
@@ -399,19 +403,26 @@ async def find_incomplete_team_box_game_ids(
         competition_id: The competition to scope the check to.
 
     Returns:
-        Distinct ``nba_stats_game_id`` values for games with at least one
-        team row not sourced from ``boxscoretraditionalv2``. Empty when
-        every team row in the competition has a real box score.
+        Distinct ``nba_stats_game_id`` values for games without exactly two
+        team rows of at least ``MIN_COMPLETE_TEAM_MP`` minutes each. Empty
+        when every game passes the advanced-metrics completeness predicate.
     """
     stmt = (
         select(SummerLeagueGame.nba_stats_game_id)  # type: ignore[call-overload]
-        .join(
+        .outerjoin(
             SummerLeagueTeamGameLog,
             SummerLeagueTeamGameLog.game_id == SummerLeagueGame.id,  # type: ignore[arg-type]
         )
         .where(SummerLeagueGame.competition_id == competition_id)  # type: ignore[arg-type]
-        .where(SummerLeagueTeamGameLog.source_endpoint != "boxscoretraditionalv2")
-        .distinct()
+        .group_by(SummerLeagueGame.id, SummerLeagueGame.nba_stats_game_id)
+        .having(
+            or_(
+                func.count(SummerLeagueTeamGameLog.id)  # type: ignore[arg-type]
+                != 2,
+                func.min(func.coalesce(SummerLeagueTeamGameLog.minutes, 0))
+                < MIN_COMPLETE_TEAM_MP,
+            )
+        )
         .order_by(SummerLeagueGame.nba_stats_game_id)
     )
     result = await db.execute(stmt)

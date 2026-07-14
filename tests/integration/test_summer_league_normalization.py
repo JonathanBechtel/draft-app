@@ -238,7 +238,9 @@ def _rewrite_team_gamelog_pts(raw_root: Path, *, magic_pts: int) -> None:
     )
 
 
-def _write_team_box(raw_root: Path, *, include_team_stats: bool) -> None:
+def _write_team_box(
+    raw_root: Path, *, include_team_stats: bool, team_minutes: str = "200:00"
+) -> None:
     """(Re)write the fixture game's box-score files, with or without team rows.
 
     Mirrors ``_write_fixture``'s box-score payloads but is safe to call on
@@ -256,7 +258,7 @@ def _write_team_box(raw_root: Path, *, include_team_stats: bool) -> None:
                 1610612753,
                 "Magic",
                 "ORL",
-                "200:00",
+                team_minutes,
                 36,
                 76,
                 106,
@@ -267,7 +269,7 @@ def _write_team_box(raw_root: Path, *, include_team_stats: bool) -> None:
                 1610612739,
                 "Cavaliers",
                 "CLE",
-                "200:00",
+                team_minutes,
                 29,
                 81,
                 79,
@@ -371,6 +373,30 @@ async def test_find_incomplete_team_box_game_ids_clears_once_box_score_lands(
     )
     team_logs = (await db_session.execute(select(SummerLeagueTeamGameLog))).scalars().all()
     assert all(log.minutes == 200 for log in team_logs)
+    assert all(log.source_endpoint == "boxscoretraditionalv2" for log in team_logs)
+
+
+@pytest.mark.asyncio
+async def test_find_incomplete_team_box_game_ids_flags_partial_official_box(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """Official team rows below the metrics minutes floor remain retryable."""
+    _write_fixture(tmp_path)
+    _write_team_box(tmp_path, include_team_stats=True, team_minutes="100:00")
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+
+    report = await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    assert await find_incomplete_team_box_game_ids(
+        db_session, competition_id=report.competition_id
+    ) == ["1522400001"]
+    team_logs = (await db_session.execute(select(SummerLeagueTeamGameLog))).scalars().all()
+    assert all(log.minutes == 100 for log in team_logs)
     assert all(log.source_endpoint == "boxscoretraditionalv2" for log in team_logs)
 
 
