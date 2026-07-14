@@ -320,6 +320,15 @@ def parse_scoreboard_games(
             status = map_game_status(game.get("gameStatus"), status_text_raw)
             home_team = game.get("homeTeam") or {}
             away_team = game.get("awayTeam") or {}
+            home_score = _score_or_none(home_team.get("score"))
+            away_score = _score_or_none(away_team.get("score"))
+            # The schedule feed can briefly leave ``gameStatus=1`` in place
+            # after tip while already publishing real scores. A non-zero
+            # basketball score is authoritative proof that play has begun.
+            if status == SummerLeagueGameStatus.SCHEDULED and (
+                home_score is not None or away_score is not None
+            ):
+                status = SummerLeagueGameStatus.IN_PROGRESS
             games.append(
                 ScoreboardGame(
                     nba_stats_game_id=game_id,
@@ -333,8 +342,8 @@ def parse_scoreboard_games(
                     ),
                     home_nba_stats_team_id=_team_id_or_none(home_team.get("teamId")),
                     away_nba_stats_team_id=_team_id_or_none(away_team.get("teamId")),
-                    home_score=_score_or_none(home_team.get("score")),
-                    away_score=_score_or_none(away_team.get("score")),
+                    home_score=home_score,
+                    away_score=away_score,
                 )
             )
     return games

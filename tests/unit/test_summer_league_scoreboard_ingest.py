@@ -364,6 +364,35 @@ def test_parse_scoreboard_games_scheduled_game_score_is_none_not_zero() -> None:
     assert game.away_nba_stats_team_id is not None
 
 
+def test_parse_scoreboard_games_nonzero_score_overrides_stale_scheduled_code() -> None:
+    """A scored game is live even when the schedule feed leaves status code 1 stale."""
+    payload = {
+        "leagueSchedule": {
+            "gameDates": [
+                {
+                    "games": [
+                        {
+                            "gameId": "stale-live-1",
+                            "gameStatus": 1,
+                            "gameStatusText": "8:00 pm ET",
+                            "gameDateTimeUTC": "2026-07-14T00:00:00Z",
+                            "homeTeam": {"teamId": 1, "score": 51},
+                            "awayTeam": {"teamId": 2, "score": 43},
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+
+    games = parse_scoreboard_games(payload)
+
+    assert len(games) == 1
+    assert games[0].status == SummerLeagueGameStatus.IN_PROGRESS
+    assert games[0].home_score == 51
+    assert games[0].away_score == 43
+
+
 def test_parse_scoreboard_games_real_postponed_game_is_never_live() -> None:
     """The one real captured "PPD" game (2021 season) is parsed as POSTPONED.
 

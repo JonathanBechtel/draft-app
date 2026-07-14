@@ -1,7 +1,7 @@
 """Integration tests for targeted live raw refresh selection (ticket #531).
 
 Launch-readiness plan step 2 ("Targeted live box-score refresh"):
-``app.services.summer_league.live_ingestion`` selects Scheduled/In-Progress
+``app.services.summer_league.live_ingestion`` selects active/recently-final
 ``summer_league_games`` rows within an active time window and force-refreshes
 only those games' raw NBA Stats endpoints.
 
@@ -26,9 +26,17 @@ from pathlib import Path
 from typing import Mapping
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueGameStatus
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeagueGameStatus,
+    SummerLeaguePlayerGameLog,
+    SummerLeagueSourcePlayer,
+    SummerLeagueTeamEntry,
+)
 from app.services.summer_league.live_ingestion import (
     run_live_ingestion,
     select_active_window_games,
@@ -81,7 +89,9 @@ async def _competition(
     return comp
 
 
-async def _seed_real_games(db: AsyncSession, competition: SummerLeagueCompetition) -> None:
+async def _seed_real_games(
+    db: AsyncSession, competition: SummerLeagueCompetition
+) -> None:
     """Seed summer_league_games from the real captured 2026 live-capture fixture."""
     payload = _load_fixture(_REAL_LIVE_FIXTURE)
     games = parse_scoreboard_games(payload, target_dates=None)
@@ -140,24 +150,67 @@ async def test_select_active_window_games_selects_scheduled_within_window_only(
 
 
 @pytest.mark.asyncio
-async def test_select_active_window_games_excludes_final_games_even_inside_window(
+async def test_select_active_window_games_selects_only_finals_missing_player_lines(
     db_session: AsyncSession,
 ) -> None:
-    """A real Final game's tip_datetime falling inside the window is still excluded.
+    """Recent Finals get a closing pull only while player lines are still missing.
 
     All seven real Final games (2026-07-09 19:30 through 2026-07-10 03:00 UTC)
     fall inside this narrower window; no Scheduled game does (the next real
-    game tips at 2026-07-10 20:00 UTC) -- proving status, not just time, gates
-    selection.
+    game tips at 2026-07-10 20:00 UTC). One gets a normalized player line to
+    prove healthy Finals are skipped; the other six still need recovery.
     """
     comp = await _competition(db_session, year=2026, league_id="15", venue="las_vegas")
     await _seed_real_games(db_session, comp)
+    assert comp.id is not None
+    healthy_game = (
+        await db_session.execute(
+            select(SummerLeagueGame).where(
+                SummerLeagueGame.nba_stats_game_id == "1522600001"
+            )
+        )
+    ).scalar_one()
+    assert healthy_game.id is not None
+    team = SummerLeagueTeamEntry(
+        competition_id=comp.id,
+        nba_stats_team_id="healthy-final-team",
+        raw_team_name="Healthy Final Team",
+        team_slug="healthy-final-team",
+    )
+    source_player = SummerLeagueSourcePlayer(
+        nba_stats_person_id="healthy-final-player",
+        raw_player_name="Healthy Final Player",
+        normalized_name="healthy final player",
+    )
+    db_session.add_all([team, source_player])
+    await db_session.flush()
+    assert team.id is not None
+    assert source_player.id is not None
+    db_session.add(
+        SummerLeaguePlayerGameLog(
+            competition_id=comp.id,
+            game_id=healthy_game.id,
+            team_entry_id=team.id,
+            source_player_id=source_player.id,
+            nba_stats_person_id=source_player.nba_stats_person_id,
+            raw_player_name=source_player.raw_player_name,
+            pts=12,
+        )
+    )
     await db_session.commit()
 
     now = datetime(2026, 7, 10, 1, 0)
     selections = await select_active_window_games(db_session, now=now)
 
-    assert selections == []
+    assert len(selections) == 6
+    assert {selection.nba_stats_game_id for selection in selections} == {
+        "1522600002",
+        "1522600003",
+        "1522600004",
+        "1522600005",
+        "1522600006",
+        "1522600007",
+    }
 
 
 @pytest.mark.asyncio
@@ -205,7 +258,9 @@ async def test_select_active_window_games_scopes_to_the_requesting_competition_y
     """Two competitions' games are each tagged with their own year/LeagueID."""
     vegas = await _competition(db_session, year=2026, league_id="15", venue="las_vegas")
     await _seed_real_games(db_session, vegas)
-    other = await _competition(db_session, year=2025, league_id="13", venue="california")
+    other = await _competition(
+        db_session, year=2025, league_id="13", venue="california"
+    )
     assert other.id is not None
     await upsert_scoreboard_games(
         db_session,
@@ -242,11 +297,17 @@ async def test_run_live_ingestion_replaces_only_selected_games_with_no_live_netw
 
     store = SummerLeagueRawStore(tmp_path)
     stale_path = store.game_file(
-        year=2026, league_id="15", game_id="1522600008", endpoint="boxscoretraditionalv2"
+        year=2026,
+        league_id="15",
+        game_id="1522600008",
+        endpoint="boxscoretraditionalv2",
     )
     store.write_json(stale_path, {"stale": True})
     untouched_path = store.game_file(
-        year=2026, league_id="15", game_id="1522600001", endpoint="boxscoretraditionalv2"
+        year=2026,
+        league_id="15",
+        game_id="1522600001",
+        endpoint="boxscoretraditionalv2",
     )
     # 1522600001 is a real Final game from the fixture -- outside the active
     # window and must never be requested or written by a live-ingestion run.

@@ -23,7 +23,7 @@
 <section class="card desk__hero desk__hero--live" data-desk-hero-kind="{{ hero.kind }}" aria-label="Summer League Desk live matchup">
   <div class="scanlines"></div>
   <div class="desk__hero-eyebrow">
-    <span>&#9679; Live &middot; Key Matchup</span>
+    <span>&#9679; Live &middot; {% if p1 and p2 %}Key Matchup{% else %}Spotlight{% endif %}</span>
     {% if live_row and live_row.home_score is not none and live_row.away_score is not none %}
     <span class="desk__hero-tip">{{ live_row.matchup_label }} &middot; {{ live_row.away_score }}&ndash;{{ live_row.home_score }}</span>
     {% elif hero.game_id and hero.game_id in desk_matchups %}

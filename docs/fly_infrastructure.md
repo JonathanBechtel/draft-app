@@ -55,6 +55,10 @@ The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, 
 - **Resources**: 1 shared CPU, 1GB RAM
 - **Entrypoint**: `/app/.venv/bin/python scripts/sl_desk_tick.py`
 - **Region**: `ewr` (Newark)
+- **Writer priority**: the Desk takes a transaction-scoped PostgreSQL advisory lock
+  before its pipeline starts. The full Summer League ingestion cron uses the same
+  lock non-blockingly and skips overlapping DB phases, preventing cross-cron
+  normalization deadlocks while leaving raw downloads independent.
 - **Schedule**: Hourly in both environments -- not just a freshness preference, a
   correctness requirement. `app/services/event_desk/controller.py` hardcodes
   `TICK_INTERVAL = timedelta(hours=1)` and the Desk UI displays `next_tick_eta`
@@ -62,9 +66,9 @@ The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, 
 - **Config**: `fly.cron.desk.stage.toml` (stage) / `fly.cron.desk.toml` (prod).
 
 Unlike every other cron above, this machine's **creation** is **readiness-gated** and
-Job A is **never run automatically**. Once the machine exists, keeping its image
-current on every deploy is unconditional, same as every other cron -- only the initial
-promotion decision is gated.
+Job A is **never run automatically**. Once the machine exists, deploys keep its image
+current, but only after `flyctl machine wait --state stopped` confirms no tick is in
+flight. A deploy never terminates a Desk tick to refresh its image.
 
 - **Readiness check** (`scripts/check_sl_desk_readiness.py`, read-only, never writes) has
   two modes: `preflight` (run before creating/enabling the machine -- confirms this
@@ -77,14 +81,15 @@ promotion decision is gated.
   cohort-baseline builder. It is a deliberate, one-time human step run directly against
   an environment's database -- CI never invokes it, and the hourly tick itself raises
   loudly if no active baseline exists rather than building one.
-- **Staging**: `.github/workflows/fly-deploy-stage.yml` unconditionally updates the
-  `summer-league-desk-cron` machine's image if it already exists on every
-  push-to-`main` deploy; runs the preflight check separately, and only when it passes
-  does the workflow idempotently create the machine the first time. A failed preflight
-  skips creation without failing the deploy.
-- **Production**: `.github/workflows/fly-deploy-prod.yml` unconditionally updates the
-  `summer-league-desk-cron` machine's image if it already exists on every deploy (same
-  as the news/SL-ingestion/roster crons). *Creating* the machine the first time is
+- **Staging**: `.github/workflows/fly-deploy-stage.yml` waits for an existing
+  `summer-league-desk-cron` machine to stop before updating its image on a
+  push-to-`main` deploy; it runs the preflight check separately, and only when it
+  passes does the workflow idempotently create the machine the first time. A failed
+  preflight skips creation without failing the deploy.
+- **Production**: `.github/workflows/fly-deploy-prod.yml` likewise waits for an
+  existing Desk tick to stop before updating the cron image. If the machine does not
+  stop within 30 minutes, the workflow skips that image update instead of sending
+  `SIGINT` to live work. *Creating* the machine the first time is
   double-gated -- the `enable_desk_cron` `workflow_dispatch` input must be explicitly
   set `true` (a human attesting staging already proved a successful tick) **and**
   production's own preflight must pass, or the create step is skipped. This means a

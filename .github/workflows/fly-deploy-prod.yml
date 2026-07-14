@@ -162,11 +162,10 @@ jobs:
             echo "No cron machine found or could not determine app image"
           fi
 
-      # Unconditional, mirroring the "Update X cron machine (if exists)" steps above:
-      # once the Desk cron machine exists, every prod deploy keeps its image current,
-      # same as every other cron. Only *creating* the machine the first time is gated
-      # (see the two steps below) -- that's the deliberate human promotion decision;
-      # keeping an already-approved machine's code in sync isn't.
+      # Keep the approved Desk cron on the current image without interrupting an
+      # in-flight tick. `flyctl machine update` sends SIGINT to a running scheduled
+      # machine, so wait for its normal stop first; if it does not stop within the
+      # safety window, leave the old image in place for this deploy.
       - name: Update Summer League Desk cron machine (if exists)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
@@ -174,11 +173,20 @@ jobs:
           APP_IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
           CRON_MACHINE_ID=$(flyctl machine list --app draft-app-prod --json | jq -r '.[] | select(.name == "summer-league-desk-cron") | .id')
           if [ -n "$CRON_MACHINE_ID" ] && [ -n "$APP_IMAGE" ] && [ "$APP_IMAGE" != "null" ]; then
-            echo "Updating Desk cron machine $CRON_MACHINE_ID with image: $APP_IMAGE"
-            flyctl machine update "$CRON_MACHINE_ID" \
+            echo "Waiting for Desk cron machine $CRON_MACHINE_ID to stop before updating"
+            if flyctl machine wait "$CRON_MACHINE_ID" \
               --app draft-app-prod \
-              --image "$APP_IMAGE" \
-              --yes
+              --state stopped \
+              --wait-timeout 30m; then
+              echo "Updating stopped Desk cron machine with image: $APP_IMAGE"
+              flyctl machine update "$CRON_MACHINE_ID" \
+                --app draft-app-prod \
+                --image "$APP_IMAGE" \
+                --skip-start \
+                --yes
+            else
+              echo "::warning::Desk cron machine did not stop within 30m; skipping its image update so the active tick is not interrupted."
+            fi
           else
             echo "No Desk cron machine found yet (or could not determine app image) -- nothing to update"
           fi
@@ -219,7 +227,7 @@ jobs:
           if [ -z "$APP_IMAGE" ] || [ "$APP_IMAGE" == "null" ]; then
             echo "Could not determine app image; skipping Desk cron machine creation"
           elif [ -n "$CRON_MACHINE_ID" ]; then
-            echo "Desk cron machine $CRON_MACHINE_ID already exists; image already refreshed above"
+            echo "Desk cron machine $CRON_MACHINE_ID already exists; image update was handled above"
           else
             echo "No Desk cron machine found; creating one (schedule=hourly)"
             flyctl machine run "$APP_IMAGE" \

@@ -11,6 +11,18 @@ from app.cli import summer_league_ingest_runner as runner
 from app.schemas.summer_league import SummerLeagueCompetition
 
 
+@pytest.fixture(autouse=True)
+def _summer_league_writer_lock_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep unit fakes focused on runner behavior with an available DB writer lock."""
+
+    async def _available(_db: object) -> bool:
+        return True
+
+    monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _available)
+
+
 @dataclass
 class _FakeManifest:
     """Minimal stand-in for SummerLeagueRawManifest fetch results."""
@@ -249,6 +261,36 @@ async def test_run_venue_with_games_success(
 
 
 @pytest.mark.asyncio
+async def test_run_venue_skips_db_processing_while_desk_writer_is_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A busy Desk writer makes full ingestion yield before shared DB writes."""
+    calls: list[str] = []
+    _patch_backbone_services(monkeypatch, calls)
+
+    async def _busy(_db: object) -> bool:
+        return False
+
+    monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _busy)
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=["001"]),
+            _FakeManifest(game_ids=["001"]),
+        ]
+    )
+
+    result = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert result == (False, False)
+    assert calls == []
+
+
+@pytest.mark.asyncio
 async def test_run_venue_with_games_backbone_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -483,9 +525,7 @@ def test_synthetic_schedule_dates_spans_inclusive_range() -> None:
 
 def test_synthetic_schedule_dates_skips_unconfigured_competitions() -> None:
     """A competition missing either date contributes nothing."""
-    configured = _make_competition(
-        starts_on=date(2026, 7, 9), ends_on=date(2026, 7, 9)
-    )
+    configured = _make_competition(starts_on=date(2026, 7, 9), ends_on=date(2026, 7, 9))
     unconfigured = _make_competition(starts_on=None, ends_on=None)
     assert runner._synthetic_schedule_dates([configured, unconfigured]) == (
         date(2026, 7, 9),
@@ -499,9 +539,7 @@ def test_synthetic_schedule_dates_empty_for_no_competitions() -> None:
 
 def test_synthetic_schedule_dates_skips_inverted_range() -> None:
     """A data-quality edge case (ends_on before starts_on) contributes nothing."""
-    inverted = _make_competition(
-        starts_on=date(2026, 7, 19), ends_on=date(2026, 7, 9)
-    )
+    inverted = _make_competition(starts_on=date(2026, 7, 19), ends_on=date(2026, 7, 9))
     assert runner._synthetic_schedule_dates([inverted]) == ()
 
 

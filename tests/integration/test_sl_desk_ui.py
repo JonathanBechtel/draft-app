@@ -446,6 +446,9 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
 
     assert 'id="slDeskSection"' in html
     assert "desk__hero--live" in html
+    # A one-player hero is a Spotlight, not a misleading "Key Matchup" with
+    # nobody displayed on the other side.
+    assert "Live &middot; Spotlight" in html
     assert 'class="desk__live-board"' in html
     # Known tip time -> an honest "Tips H:MMpm ET" state, not a blank cell.
     assert "desk__top-perf--tip" in html
