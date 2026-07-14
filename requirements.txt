@@ -41,6 +41,7 @@ pydantic_core @ file:///Users/runner/miniforge3/conda-bld/bld/rattler-build_pyda
 Pygments @ file:///home/conda/feedstock_root/build_artifacts/pygments_1750615794071/work
 pytest==8.4.2
 pytest-asyncio==1.2.0
+pytest-xdist==3.8.0
 python-dotenv @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-dotenv_1750789290/work
 python-multipart @ file:///home/conda/feedstock_root/build_artifacts/python-multipart_1734420773152/work
 PyYAML @ file:///Users/runner/miniforge3/conda-bld/pyyaml_1737454693669/work
