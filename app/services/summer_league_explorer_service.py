@@ -1479,6 +1479,11 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     mode = params.get("mode", DEFAULT_MODE)
     if mode not in MODES:
         mode = DEFAULT_MODE
+    # A single game is already the native box-score interval.  Ignore a stale
+    # career-view rate mode when users switch into Game Finder so hidden form
+    # state cannot scale values while the UI presents raw game totals.
+    if grain == "per_game":
+        mode = DEFAULT_MODE
 
     # Sort keys are subject-specific; fall back to the subject's default.
     default_sort = _DEFAULT_SORT_BY_SUBJECT.get(subject, "pts")

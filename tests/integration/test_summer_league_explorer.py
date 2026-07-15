@@ -192,6 +192,9 @@ def test_parse_query_defaults_and_validation() -> None:
     assert q2.year_max is None  # invalid → filter off
     assert q2.page == 1  # clamped to >= 1
 
+    game_finder_query = parse_query({"grain": "per_game", "mode": "per_36"})
+    assert game_finder_query.mode == "per_game"
+
 
 # --------------------------------------------------------------------------- #
 # players subject
