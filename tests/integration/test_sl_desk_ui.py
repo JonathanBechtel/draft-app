@@ -450,6 +450,9 @@ async def test_live_state_renders_live_board_with_em_dash_before_tip(
     # nobody displayed on the other side.
     assert "Live &middot; Spotlight" in html
     assert 'class="desk__live-board"' in html
+    # Scheduled, scoreless rows have a dedicated mobile-card state: their
+    # empty score cell is removed while the tip time stays visible.
+    assert "desk__live-board-row--upcoming" in html
     # Known tip time -> an honest "Tips H:MMpm ET" state, not a blank cell.
     assert "desk__top-perf--tip" in html
     assert "Tips " in html
