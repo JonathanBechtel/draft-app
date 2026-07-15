@@ -187,6 +187,13 @@ jobs:
                 --image "$APP_IMAGE" \
                 --skip-start \
                 --yes
+              # `machine update` does not reliably re-arm Fly's hourly schedule for a
+              # scheduled machine left stopped -- confirmed by a prod incident where
+              # several same-night deploys each updated-and-left-stopped this machine
+              # and it then sat idle for 8+ hours with no further ticks. Starting it
+              # here both kicks off an immediate tick on the new image and re-arms
+              # the schedule.
+              flyctl machine start "$CRON_MACHINE_ID" --app draft-app
             else
               echo "::warning::Desk cron machine did not stop within 30m; skipping its image update so the active tick is not interrupted."
             fi
