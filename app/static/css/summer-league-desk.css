@@ -659,6 +659,7 @@
 .desk__perf-card {
   position: relative;
   display: flex;
+  min-width: 0;
   gap: 0.85rem;
   align-items: flex-start;
   background: var(--color-white);
@@ -710,6 +711,7 @@
   font-size: 1.05rem;
   line-height: 1.1;
   color: var(--color-slate-900);
+  min-width: 0;
 }
 .desk__perf-card--lead .desk__perf-name { font-size: 1.5rem; color: #fff; }
 .desk__perf-name a { color: inherit; text-decoration: none; }
@@ -747,6 +749,34 @@
 
 @media (max-width: 640px) {
   .desk__perf-grid { grid-template-columns: 1fr; }
+  /* The lead card's desktop row layout (avatar | info | fixed-width GmSc
+     column) has a non-shrinking min-content width (~443px, from the XL
+     avatar plus flex-shrink:0 stats column) that a grid item's default
+     `min-width: auto` won't let it shrink below -- it overflows the single
+     mobile column and takes the whole page with it instead of wrapping.
+     Stack it like the other cards. */
+  .desk__perf-card--lead {
+    grid-column: 1;
+    min-width: 0;
+    align-items: flex-start;
+  }
+  /* The 140px XL avatar (sized for a wide desktop row) leaves almost no
+     room for the name/stats column once the card is a single narrow phone
+     column -- shrink it in step with the row->column layout change below. */
+  .desk__perf-card--lead .desk__perf-avatar { width: 64px; height: 64px; }
+  .desk__perf-card--lead .desk__perf-body {
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 0;
+    gap: 0.55rem;
+  }
+  .desk__perf-card--lead .desk__perf-name { font-size: 1.15rem; }
+  .desk__perf-card--lead .desk__perf-stats {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: flex-start;
+    text-align: left;
+  }
 }
 /* Per-game box line on each performer card (PTS/REB/AST) -- adds real
    information density, especially to the featured #1 card. */

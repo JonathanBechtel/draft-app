@@ -1377,8 +1377,23 @@ tbody td {
 .tcard__sparkline {
   width: 100%;
   max-width: 160px;
+  min-width: 0;
   height: 28px;
   display: block;
+}
+
+/* At phone widths the fixed 96px photo column plus the body's reserved
+   right-padding (for the absolutely-positioned rank badge) leaves so little
+   room in the `auto 1fr` buzz row that the "auto" mentions-count column
+   alone can eat the whole track, squeezing the sparkline's 1fr track to
+   zero and letting the polyline render past the card edge instead of
+   shrinking (grid items don't shrink below content size without
+   `min-width: 0`, which the SVG has, but zero-width isn't a useful chart
+   either). Stack the count above the chart so it gets the full row width. */
+@media (max-width: 480px) {
+  .tcard__buzz {
+    grid-template-columns: 1fr;
+  }
 }
 
 .tcard__mix {
