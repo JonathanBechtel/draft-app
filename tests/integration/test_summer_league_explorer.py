@@ -83,6 +83,10 @@ async def _log(
     pts: int,
     games: int = 1,
     round_label: str | None = None,
+    fga: int | None = None,
+    fg3a: int = 0,
+    fta: int = 0,
+    tov: int = 0,
 ) -> None:
     """Add ``games`` identical box lines (30 MIN each) for one player."""
     for _ in range(games):
@@ -122,7 +126,10 @@ async def _log(
                 reb=5,
                 ast=3,
                 fgm=pts // 2,
-                fga=pts,
+                fga=fga if fga is not None else pts,
+                fg3a=fg3a,
+                fta=fta,
+                tov=tov,
             )
         )
     await db.flush()
@@ -1165,6 +1172,54 @@ async def test_game_finder_answers_second_rounder_single_game_query(
     assert {column.key for column in PER_GAME_FILTERABLE_COLUMNS} <= {
         column.key for column in result.columns
     }
+
+
+@pytest.mark.asyncio
+async def test_game_finder_box_rates_display_and_sort(db_session: AsyncSession) -> None:
+    """Game Finder computes and orders every displayed box-derived rate."""
+    high_rate = make_player("High", "Rate")
+    low_rate = make_player("Low", "Rate")
+    db_session.add_all([high_rate, low_rate])
+    await db_session.flush()
+
+    competition_id = await _comp(
+        db_session, year=2024, venue_slug="las_vegas", league_id="15"
+    )
+    team = await _team(db_session, comp_id=competition_id)
+    await _log(
+        db_session,
+        comp_id=competition_id,
+        team=team,
+        player=high_rate,
+        pts=20,
+        fga=10,
+        fta=5,
+        tov=1,
+    )
+    await _log(
+        db_session,
+        comp_id=competition_id,
+        team=team,
+        player=low_rate,
+        pts=20,
+        fga=20,
+        fta=0,
+        tov=5,
+    )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", sort="ftr"),
+    )
+
+    assert [row.label.split(" · ")[0] for row in result.rows] == [
+        "High Rate",
+        "Low Rate",
+    ]
+    assert result.rows[0].values["ftr"] == pytest.approx(0.5)
+    assert result.rows[0].values["tov_pct"] == pytest.approx(7.6)
+    assert result.rows[1].values["tov_pct"] == pytest.approx(20.0)
 
 
 @pytest.mark.asyncio
@@ -3956,6 +4011,10 @@ async def test_invalid_sort_coerces(db_session: AsyncSession) -> None:
     assert q_ts_pg.sort == "ts_pct", (
         f"ts_pct should be valid at per_game (box-derived), got {q_ts_pg.sort!r}"
     )
+
+    for box_rate in ("fg3ar", "ftr", "tov_pct"):
+        q_box_rate = parse_query({"sort": box_rate, "grain": "per_game"})
+        assert q_box_rate.sort == box_rate
 
     q_bpm_career = parse_query({"sort": "bpm", "grain": "career"})
     assert q_bpm_career.sort == "bpm", (
