@@ -410,7 +410,7 @@
    matchup and status lead, tip time replaces the empty score, and the read
    has the full card width. */
 @media (max-width: 620px) {
-  .desk__table-scroll { overflow-x: visible; }
+  .desk__live-board-scroll { overflow-x: visible; }
   .desk__live-board,
   .desk__live-board tbody { display: block; width: 100%; }
   .desk__live-board thead { display: none; }
