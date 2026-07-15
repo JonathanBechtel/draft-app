@@ -30,6 +30,7 @@ from app.schemas.summer_league_metrics import (
 )
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
+    PER_GAME_FILTERABLE_COLUMNS,
     _PLAYER_ADVANCED_COLUMNS,
     _is_single_competition,
     parse_query,
@@ -82,6 +83,10 @@ async def _log(
     pts: int,
     games: int = 1,
     round_label: str | None = None,
+    fga: int | None = None,
+    fg3a: int = 0,
+    fta: int = 0,
+    tov: int = 0,
 ) -> None:
     """Add ``games`` identical box lines (30 MIN each) for one player."""
     for _ in range(games):
@@ -121,7 +126,10 @@ async def _log(
                 reb=5,
                 ast=3,
                 fgm=pts // 2,
-                fga=pts,
+                fga=fga if fga is not None else pts,
+                fg3a=fg3a,
+                fta=fta,
+                tov=tov,
             )
         )
     await db.flush()
@@ -190,6 +198,9 @@ def test_parse_query_defaults_and_validation() -> None:
     assert q2.year_min == 2021
     assert q2.year_max is None  # invalid → filter off
     assert q2.page == 1  # clamped to >= 1
+
+    game_finder_query = parse_query({"grain": "per_game", "mode": "per_36"})
+    assert game_finder_query.mode == "per_game"
 
 
 # --------------------------------------------------------------------------- #
@@ -1158,6 +1169,57 @@ async def test_game_finder_answers_second_rounder_single_game_query(
     assert result.total == 1
     assert result.rows[0].label.startswith("Second Rounder ·")
     assert result.rows[0].values["pts"] == 30.0
+    assert {column.key for column in PER_GAME_FILTERABLE_COLUMNS} <= {
+        column.key for column in result.columns
+    }
+
+
+@pytest.mark.asyncio
+async def test_game_finder_box_rates_display_and_sort(db_session: AsyncSession) -> None:
+    """Game Finder computes and orders every displayed box-derived rate."""
+    high_rate = make_player("High", "Rate")
+    low_rate = make_player("Low", "Rate")
+    db_session.add_all([high_rate, low_rate])
+    await db_session.flush()
+
+    competition_id = await _comp(
+        db_session, year=2024, venue_slug="las_vegas", league_id="15"
+    )
+    team = await _team(db_session, comp_id=competition_id)
+    await _log(
+        db_session,
+        comp_id=competition_id,
+        team=team,
+        player=high_rate,
+        pts=20,
+        fga=10,
+        fta=5,
+        tov=1,
+    )
+    await _log(
+        db_session,
+        comp_id=competition_id,
+        team=team,
+        player=low_rate,
+        pts=20,
+        fga=20,
+        fta=0,
+        tov=5,
+    )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", sort="ftr"),
+    )
+
+    assert [row.label.split(" · ")[0] for row in result.rows] == [
+        "High Rate",
+        "Low Rate",
+    ]
+    assert result.rows[0].values["ftr"] == pytest.approx(0.5)
+    assert result.rows[0].values["tov_pct"] == pytest.approx(7.6)
+    assert result.rows[1].values["tov_pct"] == pytest.approx(20.0)
 
 
 @pytest.mark.asyncio
@@ -1177,6 +1239,7 @@ async def test_game_finder_hides_unsupported_advanced_metric_filter(
     assert "Game stat filters" in response.text
     assert '<option value="pts"' in response.text
     assert '<option value="per"' not in response.text
+    assert "TS%" in response.text
 
     parsed = parse_query(
         {
@@ -3825,15 +3888,19 @@ async def test_advanced_columns_present_and_sortable_all_grains(
         f"missing at per_competition: {adv_keys - pc_col_keys}"
     )
 
-    # Per_game grain: advanced composite columns NOT in result.columns.
+    # Per_game grain: only exact box-derived advanced rates are present; pooled
+    # composites and team/PBP-context rates remain unavailable for one game.
     pg = await run_explorer_query(
         db_session,
         ExplorerQuery(subject="players", grain="per_game"),
     )
     pg_col_keys = {c.key for c in pg.columns}
-    composite_adv_keys = {k for k in adv_keys if k != "ts_pct"}
-    assert pg_col_keys.isdisjoint(composite_adv_keys), (
-        f"per_game should not have composite adv columns: {pg_col_keys & composite_adv_keys}"
+    unsupported_advanced_keys = adv_keys - {
+        column.key for column in PER_GAME_FILTERABLE_COLUMNS
+    }
+    assert pg_col_keys.isdisjoint(unsupported_advanced_keys), (
+        "per_game should not have unavailable advanced columns: "
+        f"{pg_col_keys & unsupported_advanced_keys}"
     )
 
 
@@ -3944,6 +4011,10 @@ async def test_invalid_sort_coerces(db_session: AsyncSession) -> None:
     assert q_ts_pg.sort == "ts_pct", (
         f"ts_pct should be valid at per_game (box-derived), got {q_ts_pg.sort!r}"
     )
+
+    for box_rate in ("fg3ar", "ftr", "tov_pct"):
+        q_box_rate = parse_query({"sort": box_rate, "grain": "per_game"})
+        assert q_box_rate.sort == box_rate
 
     q_bpm_career = parse_query({"sort": "bpm", "grain": "career"})
     assert q_bpm_career.sort == "bpm", (

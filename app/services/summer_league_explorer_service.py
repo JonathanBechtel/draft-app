@@ -878,12 +878,20 @@ _COUNTING = (
     "ftm",
     "fta",
 )
+# Advanced metrics that a single game can calculate exactly from its own box score.
+_PER_GAME_SUPPORTED_ADVANCED_KEYS: frozenset[str] = frozenset(
+    {"ts_pct", "fg3ar", "ftr", "tov_pct"}
+)
 # Advanced composite keys not available in the per_game SELECT (game-log rows have no
-# pre-computed composite metrics).  Used by parse_query to coerce invalid per_game sorts.
+# pre-computed composite metrics). Used by parse_query to coerce invalid per_game sorts.
 _ADV_COMPOSITE_SORT_KEYS: frozenset[str] = frozenset(
     c.key
     for c in PLAYER_COLUMN_CATALOG
-    if c.group == _GROUP_ADVANCED and c.sortable and c.key != "ts_pct"
+    if (
+        c.group == _GROUP_ADVANCED
+        and c.sortable
+        and c.key not in _PER_GAME_SUPPORTED_ADVANCED_KEYS
+    )
 )
 
 
@@ -1102,6 +1110,16 @@ _PER_GAME_FILTERABLE_KEYS: frozenset[str] = (
 )
 PER_GAME_FILTERABLE_COLUMNS: list[ExplorerColumn] = [
     c for c in PLAYER_COLUMN_CATALOG if c.key in _PER_GAME_FILTERABLE_KEYS
+]
+
+# A Game Finder row is a single traditional box score, so it can display the
+# exact box-derived advanced rates alongside the normal box columns. Keep the
+# table and threshold vocabulary in lockstep: a metric that is filterable for
+# one game must also be visible in that game's result row.
+_PLAYER_GAME_STAT_COLUMNS: list[ExplorerColumn] = [
+    c
+    for c in PLAYER_COLUMN_CATALOG
+    if c.shown and (c.group != _GROUP_ADVANCED or c.key in _PER_GAME_FILTERABLE_KEYS)
 ]
 
 
@@ -1469,6 +1487,11 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     mode = params.get("mode", DEFAULT_MODE)
     if mode not in MODES:
         mode = DEFAULT_MODE
+    # A single game is already the native box-score interval.  Ignore a stale
+    # career-view rate mode when users switch into Game Finder so hidden form
+    # state cannot scale values while the UI presents raw game totals.
+    if grain == "per_game":
+        mode = DEFAULT_MODE
 
     # Sort keys are subject-specific; fall back to the subject's default.
     default_sort = _DEFAULT_SORT_BY_SUBJECT.get(subject, "pts")
@@ -1745,6 +1768,9 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
         # the summed box at any grain, like the shooting percentages above).
         "fg3ar": (round(float(r.fg3a or 0) / fga, 3) if fga else None),
         "ftr": (round(fta / fga, 3) if fga else None),
+        "tov_pct": _pct(
+            _safe_div(float(r.tov or 0), fga + 0.44 * fta + float(r.tov or 0))
+        ),
         "astd_pct": _astd_pct(r),
         "gmsc": scaled(gmsc_total),
     }
@@ -2678,6 +2704,9 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
         "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
         "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
         "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
+        "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",
+        "ftr": "fta * 1.0 / NULLIF(fga, 0)",
+        "tov_pct": "tov * 100.0 / NULLIF(fga + 0.44 * fta + tov, 0)",
         "min": "sec",
         "gp": "1",  # every row is 1 game; stable but well-defined
         # Single game: GmSc is the raw box score (gp=1), matching the displayed cell.
@@ -2708,7 +2737,7 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
     return ExplorerResult(
         subject="players",
         available=True,
-        columns=_PLAYER_STAT_COLUMNS,
+        columns=_PLAYER_GAME_STAT_COLUMNS,
         rows=rows,
         total=total,
         page=q.page,
