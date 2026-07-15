@@ -14,9 +14,10 @@ The pipeline turns raw box logs into a full advanced-stat basket per
   each pool averages 0.0), rather than borrowing NBA-fit constants.
 
 Pools with thin or incomplete box data are flagged ``adv_eligible=False``; for
-those, box/shooting stats plus the raw possession rates (``pace``, ``pts_per100``)
-are populated, while the league-relative / pool-calibrated composites (PER, ORtg,
-WS, BPM, usage/rebound %, …) are left ``None``.
+those, box/shooting stats plus raw possession and player/team-box rates
+(``pace``, ``pts_per100``, usage/rebound %, etc.) are populated. Only metrics that
+need a trustworthy league-wide calibration (PER, ORtg, WS, BPM, …) are left
+``None``.
 
 This module is pure computation plus a persistence orchestrator; it is invoked
 offline by ``scripts/rebuild_sl_metrics.py``, not on the request path.
@@ -643,31 +644,12 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
         m["pace"] = None
         m["pts_per100"] = None
 
-    # League-relative / pool-calibrated metrics only when the pool is eligible.
-    if not ctx.adv_eligible:
-        for k in (
-            "tov_pct",
-            "usg_pct",
-            "ast_pct",
-            "orb_pct",
-            "drb_pct",
-            "trb_pct",
-            "stl_pct",
-            "blk_pct",
-            "per",
-            "ortg",
-            "drtg",
-            "net",
-            "ows",
-            "dws",
-            "ws",
-            "ws40",
-            "ws82",
-        ):
-            m[k] = None
-        ps.aper = None
-        return
-
+    # Player/team-box rates use only this player's, team's, and opponent's box
+    # totals. They remain meaningful when the *league* pool is incomplete (for
+    # example, the NBA advanced feed can be available before team-minute fields
+    # meet the stricter league-calibration gate), so do not hide them behind
+    # ``adv_eligible``. This keeps the Class Tracker aligned with the Explorer
+    # and player surfaces during an in-progress Summer League.
     m["tov_pct"] = round(100.0 * _d(b.tov, b.fga + 0.44 * b.fta + b.tov), 1)
     m["usg_pct"] = round(
         100.0
@@ -683,6 +665,23 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     m["trb_pct"] = round(100.0 * _d(b.reb * tm_mp5, b.mp * (tm.reb + opp.reb)), 1)
     m["stl_pct"] = round(100.0 * _d(b.stl * tm_mp5, b.mp * opp_poss), 1)
     m["blk_pct"] = round(100.0 * _d(b.blk * tm_mp5, b.mp * (opp.fga - opp.fg3a)), 1)
+
+    # League-relative / pool-calibrated metrics only when the pool is eligible.
+    if not ctx.adv_eligible:
+        for k in (
+            "per",
+            "ortg",
+            "drtg",
+            "net",
+            "ows",
+            "dws",
+            "ws",
+            "ws40",
+            "ws82",
+        ):
+            m[k] = None
+        ps.aper = None
+        return
 
     uper = compute_uper(b, tm, ctx)
     ps.aper = _d(ctx.pace, tm_pace) * uper
