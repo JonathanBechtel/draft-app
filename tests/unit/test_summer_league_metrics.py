@@ -130,8 +130,18 @@ def test_game_score_from_row_handles_objects_and_mappings() -> None:
     from types import SimpleNamespace
 
     fields = dict(
-        pts=20, fgm=8, fga=15, ftm=3, fta=4, oreb=2, dreb=5,
-        ast=4, stl=2, blk=1, tov=2, pf=3,
+        pts=20,
+        fgm=8,
+        fga=15,
+        ftm=3,
+        fta=4,
+        oreb=2,
+        dreb=5,
+        ast=4,
+        stl=2,
+        blk=1,
+        tov=2,
+        pf=3,
     )
     expected = game_score_line(**fields)
     assert game_score_from_row(SimpleNamespace(**fields)) == expected
@@ -255,8 +265,8 @@ def test_bpm_split_reconstructs_bpm_and_centers_to_zero() -> None:
     assert abs(mean_bpm) < 0.06  # within rounding of zero
 
 
-def test_compute_metrics_blanks_composites_when_pool_ineligible() -> None:
-    """Ineligible pools keep box/shooting but null league-relative composites."""
+def test_compute_metrics_keeps_box_rates_when_pool_ineligible() -> None:
+    """Ineligible pools keep player/team-box rates but null calibrated composites."""
     ctx = LeagueContext(
         competition_id=1,
         year=2025,
@@ -273,9 +283,44 @@ def test_compute_metrics_blanks_composites_when_pool_ineligible() -> None:
         primary_team_entry_id=1,
         year=2025,
         venue="las_vegas",
-        box=_box(mp=100, pts=20, fgm=8, fga=15, fta=4, ftm=3, fg3m=2, fg3a=5, gp=4),
-        team=_box(mp=1000, pts=400, fgm=150, fga=320, fta=90, oreb=40, tov=60),
-        opp=_box(mp=1000, pts=390, fgm=148, fga=318, fta=88, oreb=38, tov=62),
+        box=_box(
+            mp=100,
+            pts=20,
+            fgm=8,
+            fga=15,
+            fta=4,
+            ftm=3,
+            fg3m=2,
+            fg3a=5,
+            oreb=2,
+            dreb=5,
+            reb=7,
+            ast=4,
+            tov=3,
+            gp=4,
+        ),
+        team=_box(
+            mp=1000,
+            pts=400,
+            fgm=150,
+            fga=320,
+            fta=90,
+            oreb=40,
+            dreb=120,
+            reb=160,
+            tov=60,
+        ),
+        opp=_box(
+            mp=1000,
+            pts=390,
+            fgm=148,
+            fga=318,
+            fta=88,
+            oreb=38,
+            dreb=118,
+            reb=156,
+            tov=62,
+        ),
     )
     compute_metrics(ps, ctx, ws_ppw_coeff=0.43)
     # Shooting/box still computed.
@@ -285,7 +330,12 @@ def test_compute_metrics_blanks_composites_when_pool_ineligible() -> None:
     # is ineligible, so per-100 works outside adv_eligible pools (issue #473).
     assert ps.metrics["pace"] is not None and ps.metrics["pace"] > 0
     assert ps.metrics["pts_per100"] is not None and ps.metrics["pts_per100"] > 0
-    # League-relative / pool-calibrated composites blanked.
+    # Player/team-box rates do not require a complete league pool.
+    assert ps.metrics["tov_pct"] == 15.2
+    assert ps.metrics["usg_pct"] is not None and ps.metrics["usg_pct"] > 0
+    assert ps.metrics["ast_pct"] is not None and ps.metrics["ast_pct"] > 0
+    assert ps.metrics["trb_pct"] is not None and ps.metrics["trb_pct"] > 0
+    # League-calibrated composites remain blanked.
     assert ps.metrics["per"] is None
     assert ps.metrics["ortg"] is None
     assert ps.metrics["ws"] is None
@@ -316,9 +366,7 @@ def test_line_rate_helpers_match_bbref_formulas() -> None:
     )
     # AST% = 100 * AST / ((MP/(TmMP/5)) * TmFGM - FGM); 30 of 240 team minutes.
     expected = 100.0 * 5 / ((30.0 / 48.0) * 40 - 6)
-    assert ast_pct_line(ast=5, fgm=6, mp=30, tm_mp=240, tm_fgm=40) == round(
-        expected, 1
-    )
+    assert ast_pct_line(ast=5, fgm=6, mp=30, tm_mp=240, tm_fgm=40) == round(expected, 1)
 
 
 def test_line_rate_helpers_match_season_compute() -> None:
@@ -388,9 +436,7 @@ def test_line_rate_helpers_match_season_compute() -> None:
         primary_team_entry_id=1,
         year=2025,
         venue="las_vegas",
-        box=_box(
-            mp=100, pts=60, fgm=22, fga=45, fta=12, ftm=10, ast=15, tov=8, gp=4
-        ),
+        box=_box(mp=100, pts=60, fgm=22, fga=45, fta=12, ftm=10, ast=15, tov=8, gp=4),
         team=team,
         opp=opp,
     )
@@ -412,18 +458,26 @@ def test_compute_metrics_skips_pace_when_pool_has_no_possession_data() -> None:
     pool — gated on the pool-level ctx.pace, not a per-row check.
     """
     ctx = LeagueContext(
-        competition_id=1, year=2016, venue="las_vegas", lg=Box(),
-        poss=0.0, team_games=0, adv_eligible=False,
+        competition_id=1,
+        year=2016,
+        venue="las_vegas",
+        lg=Box(),
+        poss=0.0,
+        team_games=0,
+        adv_eligible=False,
     )
     ctx.pace = 2.0  # skeletal pool: league pace far below any real basketball value
     ps = PlayerSeason(
-        player_id=1, competition_id=1, primary_team_entry_id=1,
-        year=2016, venue="las_vegas",
+        player_id=1,
+        competition_id=1,
+        primary_team_entry_id=1,
+        year=2016,
+        venue="las_vegas",
         box=_box(mp=100, pts=28, fgm=12, fga=24, fta=4, ftm=2, fg3m=2, fg3a=6, gp=3),
         team=_box(mp=1000, pts=400, fgm=150, fga=320, fta=90, oreb=40, tov=60),
         opp=_box(mp=1000, pts=390, fgm=148, fga=318, fta=88, oreb=38, tov=62),
     )
     compute_metrics(ps, ctx, ws_ppw_coeff=0.43)
-    assert ps.metrics["gmsc"] is not None      # box/shooting still fine
-    assert ps.metrics["pace"] is None          # possession rates suppressed
+    assert ps.metrics["gmsc"] is not None  # box/shooting still fine
+    assert ps.metrics["pace"] is None  # possession rates suppressed
     assert ps.metrics["pts_per100"] is None

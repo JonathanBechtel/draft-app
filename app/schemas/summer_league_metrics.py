@@ -105,9 +105,9 @@ class SummerLeagueMetricContext(SQLModel, table=True):  # type: ignore[call-arg]
 class SummerLeaguePlayerSeason(SQLModel, table=True):  # type: ignore[call-arg]
     """Materialized per-(player, competition) box totals and computed metrics.
 
-    ``adv_eligible`` mirrors the pool's flag: when ``False`` the league-relative
-    composite columns (PER/ORtg/DRtg/WS/BPM/...) are ``None`` and only the box,
-    shooting, and per-game columns are populated.
+    ``adv_eligible`` mirrors the pool's flag: when ``False`` only the
+    league-calibrated composite columns (PER/ORtg/DRtg/WS/BPM/...) are ``None``.
+    Box, shooting, possession, and player/team-box rate columns remain available.
     """
 
     __tablename__ = "summer_league_player_seasons"
