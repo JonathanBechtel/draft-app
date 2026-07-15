@@ -33,6 +33,7 @@ from app.services.summer_league_stats_service import (
 )
 from app.services.summer_league_explorer_service import (
     PLAYER_COLUMN_CATALOG,
+    PER_GAME_FILTERABLE_COLUMNS,
     get_player_drilldown_rows,
     parse_query,
     run_explorer_query,
@@ -281,7 +282,11 @@ async def summer_league_explorer(
         if request.query_params.get("partial")
         else "stats/summer-league/explorer.html"
     )
-    filterable_columns = [c for c in PLAYER_COLUMN_CATALOG if c.filterable]
+    filterable_columns = (
+        PER_GAME_FILTERABLE_COLUMNS
+        if query.subject == "players" and query.grain == "per_game"
+        else [c for c in PLAYER_COLUMN_CATALOG if c.filterable]
+    )
     return request.app.state.templates.TemplateResponse(
         template,
         {
