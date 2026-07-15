@@ -466,6 +466,7 @@ def _patch_main(
     events: dict[str, object] = {
         "venues": [],
         "rebuild_called": False,
+        "snapshots_refreshed": False,
         "disposed": False,
     }
 
@@ -485,6 +486,10 @@ def _patch_main(
     async def _fake_dispose() -> None:
         events["disposed"] = True
 
+    async def _fake_materialize_snapshots(_db: object) -> int:
+        events["snapshots_refreshed"] = True
+        return 72
+
     async def _fake_refresh_schedule(
         _db: object, *, now: object, client: object
     ) -> None:
@@ -493,6 +498,9 @@ def _patch_main(
 
     monkeypatch.setattr(runner, "_run_venue", _fake_run_venue)
     monkeypatch.setattr(runner, "rebuild_sl_metrics", _fake_rebuild)
+    monkeypatch.setattr(
+        runner, "materialize_desk_render_snapshots", _fake_materialize_snapshots
+    )
     monkeypatch.setattr(runner, "dispose_engine", _fake_dispose)
     monkeypatch.setattr(runner, "NBAStatsClient", _FakeClient)
     monkeypatch.setattr(runner, "SessionLocal", lambda: _FakeSessionLocal())
@@ -535,6 +543,7 @@ async def test_main_all_no_games_skips_rebuild(
     assert result == 0
     assert events["venues"] == ["13", "16", "15"]
     assert events["rebuild_called"] is False
+    assert events["snapshots_refreshed"] is False
     assert events["disposed"] is True
 
 
@@ -553,6 +562,7 @@ async def test_main_with_games_runs_rebuild_once(
 
     assert result == 0
     assert events["rebuild_called"] is True
+    assert events["snapshots_refreshed"] is True
     assert events["disposed"] is True
 
 
@@ -590,6 +600,7 @@ async def test_main_rebuild_failure_returns_one(
 
     assert result == 1
     assert events["rebuild_called"] is True
+    assert events["snapshots_refreshed"] is False
     assert events["disposed"] is True
 
 
