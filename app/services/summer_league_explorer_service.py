@@ -1104,6 +1104,16 @@ PER_GAME_FILTERABLE_COLUMNS: list[ExplorerColumn] = [
     c for c in PLAYER_COLUMN_CATALOG if c.key in _PER_GAME_FILTERABLE_KEYS
 ]
 
+# A Game Finder row is a single traditional box score, so it can display the
+# exact box-derived advanced rates alongside the normal box columns. Keep the
+# table and threshold vocabulary in lockstep: a metric that is filterable for
+# one game must also be visible in that game's result row.
+_PLAYER_GAME_STAT_COLUMNS: list[ExplorerColumn] = [
+    c
+    for c in PLAYER_COLUMN_CATALOG
+    if c.shown and (c.group != _GROUP_ADVANCED or c.key in _PER_GAME_FILTERABLE_KEYS)
+]
+
 
 def parse_metric_filters(params: dict[str, str]) -> list[MetricFilter]:
     """Parse ``fcol0/fop0/fval0`` … ``fcol2/fop2/fval2`` into validated filters.
@@ -2708,7 +2718,7 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
     return ExplorerResult(
         subject="players",
         available=True,
-        columns=_PLAYER_STAT_COLUMNS,
+        columns=_PLAYER_GAME_STAT_COLUMNS,
         rows=rows,
         total=total,
         page=q.page,

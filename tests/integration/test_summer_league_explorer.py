@@ -30,6 +30,7 @@ from app.schemas.summer_league_metrics import (
 )
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
+    PER_GAME_FILTERABLE_COLUMNS,
     _PLAYER_ADVANCED_COLUMNS,
     _is_single_competition,
     parse_query,
@@ -1158,6 +1159,9 @@ async def test_game_finder_answers_second_rounder_single_game_query(
     assert result.total == 1
     assert result.rows[0].label.startswith("Second Rounder ·")
     assert result.rows[0].values["pts"] == 30.0
+    assert {column.key for column in PER_GAME_FILTERABLE_COLUMNS} <= {
+        column.key for column in result.columns
+    }
 
 
 @pytest.mark.asyncio
@@ -1177,6 +1181,7 @@ async def test_game_finder_hides_unsupported_advanced_metric_filter(
     assert "Game stat filters" in response.text
     assert '<option value="pts"' in response.text
     assert '<option value="per"' not in response.text
+    assert "TS%" in response.text
 
     parsed = parse_query(
         {
@@ -3825,15 +3830,19 @@ async def test_advanced_columns_present_and_sortable_all_grains(
         f"missing at per_competition: {adv_keys - pc_col_keys}"
     )
 
-    # Per_game grain: advanced composite columns NOT in result.columns.
+    # Per_game grain: only exact box-derived advanced rates are present; pooled
+    # composites and team/PBP-context rates remain unavailable for one game.
     pg = await run_explorer_query(
         db_session,
         ExplorerQuery(subject="players", grain="per_game"),
     )
     pg_col_keys = {c.key for c in pg.columns}
-    composite_adv_keys = {k for k in adv_keys if k != "ts_pct"}
-    assert pg_col_keys.isdisjoint(composite_adv_keys), (
-        f"per_game should not have composite adv columns: {pg_col_keys & composite_adv_keys}"
+    unsupported_advanced_keys = adv_keys - {
+        column.key for column in PER_GAME_FILTERABLE_COLUMNS
+    }
+    assert pg_col_keys.isdisjoint(unsupported_advanced_keys), (
+        "per_game should not have unavailable advanced columns: "
+        f"{pg_col_keys & unsupported_advanced_keys}"
     )
 
 
