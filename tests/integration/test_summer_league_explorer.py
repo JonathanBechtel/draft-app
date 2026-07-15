@@ -1110,6 +1110,84 @@ async def test_grain_per_game_one_row_per_log(
     for row in result.rows:
         assert row.href is not None
         assert "/stats/summer-league/2024/games/" in row.href
+        assert " vs " in row.label
+
+
+@pytest.mark.asyncio
+async def test_game_finder_answers_second_rounder_single_game_query(
+    db_session: AsyncSession,
+) -> None:
+    """Game Finder returns one matching second-round Las Vegas performance.
+
+    This is the product question the Game Finder is designed to answer: how
+    often has a second-rounder scored at least 30 in Las Vegas Summer League?
+    """
+    second_rounder = make_player("Second", "Rounder")
+    second_rounder.draft_year, second_rounder.draft_round = 2024, 2
+    db_session.add(second_rounder)
+    await db_session.flush()
+    competition_id = await _comp(
+        db_session, year=2024, venue_slug="las_vegas", league_id="15"
+    )
+    team = await _team(db_session, comp_id=competition_id)
+    await _log(
+        db_session,
+        comp_id=competition_id,
+        team=team,
+        player=second_rounder,
+        pts=30,
+    )
+    await db_session.commit()
+
+    query = parse_query(
+        {
+            "subject": "players",
+            "grain": "per_game",
+            "venue": "las_vegas",
+            "draft_round": "2",
+            "fcol0": "pts",
+            "fop0": "gte",
+            "fval0": "30",
+            "fcol1": "fgm",
+            "fop1": "gte",
+            "fval1": "10",
+        }
+    )
+    result = await run_explorer_query(db_session, query)
+
+    assert result.total == 1
+    assert result.rows[0].label.startswith("Second Rounder ·")
+    assert result.rows[0].values["pts"] == 30.0
+
+
+@pytest.mark.asyncio
+async def test_game_finder_hides_unsupported_advanced_metric_filter(
+    db_session: AsyncSession,
+    app_client: AsyncClient,
+) -> None:
+    """Single-game search exposes box-score filters, not unavailable composites."""
+    await _seed(db_session)
+
+    response = await app_client.get(
+        "/stats/summer-league/explorer?subject=players&grain=per_game"
+    )
+
+    assert response.status_code == 200
+    assert "Game Finder" in response.text
+    assert "Game stat filters" in response.text
+    assert '<option value="pts"' in response.text
+    assert '<option value="per"' not in response.text
+
+    parsed = parse_query(
+        {
+            "subject": "players",
+            "grain": "per_game",
+            "fcol0": "per",
+            "fop0": "gte",
+            "fval0": "20",
+        }
+    )
+    assert parsed.metric_filters == []
 
 
 @pytest.mark.asyncio
@@ -3942,9 +4020,9 @@ async def test_metric_filter_invalid_inputs_graceful(
     assert r1.status_code == 200
     assert "2 results" in r1.text
 
-    # Non-filterable column (fgm is box but not filterable).
+    # Non-filterable catalog-only column (pace is not a player box metric).
     r2 = await app_client.get(
-        "/stats/summer-league/explorer?fcol0=fgm&fop0=gte&fval0=5"
+        "/stats/summer-league/explorer?fcol0=pace&fop0=gte&fval0=5"
     )
     assert r2.status_code == 200
     assert "2 results" in r2.text

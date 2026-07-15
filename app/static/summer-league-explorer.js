@@ -25,6 +25,7 @@
 
   // "Add filter" button — referenced in syncForm too, so hoist.
   var addBtn = document.getElementById("add-metric-filter");
+  var grainSelect = document.getElementById("grain-select");
 
   // ── Column-group toggle state ──────────────────────────────────────────────
   // Persists across AJAX swaps (lives in module scope, not the DOM).
@@ -139,6 +140,20 @@
     });
     load(form.action + "?" + clean.toString(), true);
   });
+
+  // Grain changes alter controls outside the swappable results fragment:
+  // the Game Finder uses a box-score-only metric menu and a distinct page
+  // heading/tab. Navigate normally so those persistent controls are rendered
+  // from the new grain rather than leaving stale advanced-metric options behind.
+  if (grainSelect) {
+    grainSelect.addEventListener("change", function () {
+      var clean = new URLSearchParams();
+      new URLSearchParams(new FormData(form)).forEach(function (v, k) {
+        if (v !== "") clean.append(k, v);
+      });
+      window.location.assign(form.action + "?" + clean.toString());
+    });
+  }
 
   // Mode segmented toggle: switching the view mode re-runs the query immediately
   // (the checked radio is part of the form, so the submit handler picks it up).

@@ -281,7 +281,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -351,7 +351,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -361,7 +361,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -371,7 +371,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -381,7 +381,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -403,7 +403,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -413,7 +413,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -423,7 +423,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -433,7 +433,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -443,7 +443,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -453,7 +453,7 @@ PLAYER_COLUMN_CATALOG: list[ExplorerColumn] = [
         _GROUP_BOX,
         _BUCKET_ADDITIVE,
         sortable=True,
-        filterable=False,
+        filterable=True,
         fmt="f1",
         shown=True,
     ),
@@ -1065,6 +1065,45 @@ _FILTERABLE_KEYS: frozenset[str] = frozenset(
     c.key for c in PLAYER_COLUMN_CATALOG if c.filterable
 )
 
+# A player-game row carries only the traditional box score. These filters can
+# be evaluated exactly from that one line; pool-calibrated composites and
+# team/PBP-context rates cannot. Keeping this vocabulary explicit prevents a
+# game-finder URL from appearing to apply a predicate that the data cannot
+# actually answer.
+_PER_GAME_UNSUPPORTED_FILTER_KEYS: frozenset[str] = frozenset(
+    {
+        "gp",
+        "per",
+        "ortg",
+        "drtg",
+        "net_rtg",
+        "obpm",
+        "dbpm",
+        "bpm",
+        "ws",
+        "ows",
+        "dws",
+        "ws40",
+        "ws82",
+        "vorp",
+        "vorp82",
+        "astd_pct",
+        "usg_pct",
+        "ast_pct",
+        "orb_pct",
+        "drb_pct",
+        "trb_pct",
+        "stl_pct",
+        "blk_pct",
+    }
+)
+_PER_GAME_FILTERABLE_KEYS: frozenset[str] = (
+    _FILTERABLE_KEYS - _PER_GAME_UNSUPPORTED_FILTER_KEYS
+)
+PER_GAME_FILTERABLE_COLUMNS: list[ExplorerColumn] = [
+    c for c in PLAYER_COLUMN_CATALOG if c.key in _PER_GAME_FILTERABLE_KEYS
+]
+
 
 def parse_metric_filters(params: dict[str, str]) -> list[MetricFilter]:
     """Parse ``fcol0/fop0/fval0`` … ``fcol2/fop2/fval2`` into validated filters.
@@ -1145,7 +1184,7 @@ def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
     if col in ("ws", "ows", "dws", "vorp"):
         return _op(func.sum(getattr(ps, col)))  # type: ignore[attr-defined]
     # Box counting stats — filter on career totals.
-    if col in ("pts", "reb", "ast", "stl", "blk", "tov", "gp"):
+    if col in (*_COUNTING, "plus_minus", "gp"):
         return _op(func.sum(getattr(ps, col)))  # type: ignore[attr-defined]
     # Minutes (career total in minutes).
     if col == "min":
@@ -1221,7 +1260,7 @@ def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
     ):
         return _op(getattr(ps, col))
     # Box counting season totals.
-    if col in ("pts", "reb", "ast", "stl", "blk", "tov", "gp"):
+    if col in (*_COUNTING, "plus_minus", "gp"):
         return _op(getattr(ps, col))
     # Minutes stored as minutes in the season table.
     if col == "min":
@@ -1253,8 +1292,10 @@ def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
 def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
     """WHERE condition for a metric filter at per_game grain.
 
-    Each row is a single game log. Advanced composites (per/ortg/bpm/ws/vorp)
-    are not stored on game logs and are silently skipped.
+    Each row is a single game log. The UI and query parser exclude advanced
+    composites (PER/ORtg/BPM/WS/VORP) plus team/PBP-context rates because they
+    are not stored on a game log. The ``None`` fallback remains defensive for
+    programmatic callers.
     """
 
     def _op(expr: Any) -> Any:
@@ -1262,7 +1303,7 @@ def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
 
     col = f.col
     # Per-game box stats (raw game log values — the displayed value in per_game mode).
-    if col in ("pts", "reb", "ast", "stl", "blk", "tov"):
+    if col in (*_COUNTING, "plus_minus"):
         return _op(getattr(pgl, col))
     # gp per row is always 1 — filter not meaningful; skip.
     if col == "gp":
@@ -1479,6 +1520,12 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     min_minutes = _to_int(params.get("min_min"))
     page = _to_int(params.get("page")) or 1
     metric_filters = parse_metric_filters(params)
+    if grain == "per_game":
+        metric_filters = [
+            metric_filter
+            for metric_filter in metric_filters
+            if metric_filter.col in _PER_GAME_FILTERABLE_KEYS
+        ]
 
     return ExplorerQuery(
         subject=subject,
@@ -2513,6 +2560,9 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
     comp = SummerLeagueCompetition
     pm = PlayerMaster
     game = SummerLeagueGame
+    player_team = aliased(SummerLeagueTeamEntry)
+    home_team = aliased(SummerLeagueTeamEntry)
+    away_team = aliased(SummerLeagueTeamEntry)
 
     conds: list[Any] = [pgl.player_id.isnot(None), pgl.minutes_seconds > 0]  # type: ignore[union-attr, operator]
     if q.year_min is not None:
@@ -2583,6 +2633,22 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
             pgl.dreb.label("dreb"),  # type: ignore[union-attr]
             pgl.pf.label("pf"),  # type: ignore[union-attr]
             pgl.plus_minus.label("plus_minus"),  # type: ignore[union-attr]
+            player_team.raw_team_abbreviation.label("team_abbr"),  # type: ignore[union-attr]
+            player_team.raw_team_name.label("team_name"),  # type: ignore[union-attr, attr-defined]
+            case(
+                (
+                    pgl.team_entry_id == game.home_team_entry_id,
+                    away_team.raw_team_abbreviation,
+                ),  # type: ignore[arg-type]
+                else_=home_team.raw_team_abbreviation,
+            ).label("opponent_abbr"),  # type: ignore[arg-type, attr-defined]
+            case(
+                (
+                    pgl.team_entry_id == game.home_team_entry_id,
+                    away_team.raw_team_name,
+                ),  # type: ignore[arg-type]
+                else_=home_team.raw_team_name,
+            ).label("opponent_name"),  # type: ignore[arg-type, attr-defined]
             # pace_sec: 0 for single-game rows (per_100 mode will show None)
             literal(0).label("pace_sec"),
         )  # type: ignore[call-overload, misc]
@@ -2590,13 +2656,13 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
         .join(comp, comp.id == pgl.competition_id)
         .join(pm, pm.id == pgl.player_id)
         .join(game, game.id == pgl.game_id)
+        .join(player_team, player_team.id == pgl.team_entry_id, isouter=True)
+        .join(home_team, home_team.id == game.home_team_entry_id, isouter=True)
+        .join(away_team, away_team.id == game.away_team_entry_id, isouter=True)
         .where(*conds)
     )
     if q.team_slug is not None:
-        te = SummerLeagueTeamEntry
-        stmt = stmt.join(te, pgl.team_entry_id == te.id).where(  # type: ignore[arg-type]
-            te.team_slug == q.team_slug
-        )
+        stmt = stmt.where(player_team.team_slug == q.team_slug)  # type: ignore[arg-type]
     stmt = _apply_position_filter(stmt, q)
     # Keep only game logs from each player's Nth-appearance year (rank derived from
     # the season table; the competition year is the join key here).
@@ -2627,11 +2693,13 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
     rows = []
     for r in raw:
         date_str = r.game_date.isoformat() if r.game_date else "—"
+        team_label = r.team_abbr or r.team_name or "Team"
+        opponent_label = r.opponent_abbr or r.opponent_name or "Opponent"
         # Build a namespace with gp=1 so _compute_player_values treats each row as one game.
         row_ns = _SingleGameRow(r)
         rows.append(
             ExplorerRow(
-                label=f"{r.display_name} · {date_str}",
+                label=f"{r.display_name} · {team_label} vs {opponent_label} · {date_str}",
                 href=f"/stats/summer-league/{r.year}/games/{r.game_id}",
                 values=_compute_player_values(row_ns, q.mode),
             )

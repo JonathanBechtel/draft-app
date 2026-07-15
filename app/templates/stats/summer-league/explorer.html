@@ -51,16 +51,25 @@
 
   <header class="slg-explorer-head">
     <p class="slg-eyebrow">Summer League</p>
-    <h1 class="slg-title">Explorer</h1>
+    <h1 class="slg-title">{{ 'Game Finder' if q.subject == 'players' and q.grain == 'per_game' else 'Explorer' }}</h1>
+    {% if q.subject == 'players' and q.grain == 'per_game' %}
+    <p class="slg-explorer-sub">Find every player performance in a Summer League game. Filter a single box score, then open the full game.</p>
+    <p class="slg-explorer-sub"><a href="/stats/summer-league/explorer?subject=players&grain=per_game&venue=las_vegas&draft_round=2&fcol0=pts&fop0=gte&fval0=30">Try: Las Vegas second-rounders with 30+ points</a></p>
+    {% else %}
     <p class="slg-explorer-sub">Build a custom query across every Summer League season. Sort any column; the URL is shareable.</p>
+    {% endif %}
   </header>
 
   {# Subject toggle #}
   <div class="slg-explorer-subjects">
-    {% for s in ['players', 'teams', 'games'] %}
-    <a class="slg-subject-tab {{ 'is-active' if q.subject == s else '' }}"
-       href="/stats/summer-league/explorer?subject={{ s }}">{{ s|capitalize }}</a>
-    {% endfor %}
+    <a class="slg-subject-tab {{ 'is-active' if q.subject == 'players' and q.grain != 'per_game' else '' }}"
+       href="/stats/summer-league/explorer?subject=players">Players</a>
+    <a class="slg-subject-tab {{ 'is-active' if q.subject == 'players' and q.grain == 'per_game' else '' }}"
+       href="/stats/summer-league/explorer?subject=players&grain=per_game">Game Finder</a>
+    <a class="slg-subject-tab {{ 'is-active' if q.subject == 'teams' else '' }}"
+       href="/stats/summer-league/explorer?subject=teams">Teams</a>
+    <a class="slg-subject-tab {{ 'is-active' if q.subject == 'games' else '' }}"
+       href="/stats/summer-league/explorer?subject=games">Matchups</a>
   </div>
 
   {# Query builder #}
@@ -211,7 +220,7 @@
     </div>
     {# ── Metric threshold filters (up to 3 rows) ──────────────────────────── #}
     <div class="slg-filter slg-filter--full" id="metric-filter-section">
-      <label class="slg-filter__label--metric">Stat filters</label>
+      <label class="slg-filter__label--metric">{{ 'Game stat filters' if q.grain == 'per_game' else 'Stat filters' }}</label>
       <div id="metric-filter-rows">
         {% for i in range(3) %}
         {%- set mf = q.metric_filters[i] if i < q.metric_filters|length else none -%}
