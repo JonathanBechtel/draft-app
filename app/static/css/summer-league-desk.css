@@ -403,6 +403,47 @@
 .desk__top-perf--empty { color: var(--color-slate-500); font-family: var(--font-mono); font-size: 0.9rem; white-space: nowrap; }
 .desk__top-perf--tip { font-size: 0.72rem; }
 
+/* On phones, the five-column live board squeezes its prose column to roughly
+   70px. Scheduled rows then become several hundred pixels tall, while their
+   pre-tip score/performer area looks like unused space. Keep the semantic
+   table for desktop, but present each mobile row as a compact game card:
+   matchup and status lead, tip time replaces the empty score, and the read
+   has the full card width. */
+@media (max-width: 620px) {
+  .desk__live-board-scroll { overflow-x: visible; }
+  .desk__live-board,
+  .desk__live-board tbody { display: block; width: 100%; }
+  .desk__live-board thead { display: none; }
+  .desk__live-board tbody { display: grid; gap: 0.65rem; }
+  .desk__live-board-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.55rem 0.75rem;
+    padding: 0.8rem;
+    border: 1px solid var(--color-slate-200);
+    border-radius: 0.65rem;
+    background: var(--color-white);
+  }
+  .desk__live-board td { padding: 0; border: 0; }
+  .desk__live-board-matchup { grid-column: 1; grid-row: 1; }
+  .desk__live-board-status { grid-column: 2; grid-row: 1; align-self: center; }
+  .desk__live-board-score { grid-column: 1 / -1; grid-row: 2; }
+  .desk__live-board-performer { grid-column: 1 / -1; grid-row: 3; }
+  .desk__live-board-read {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    border-top: 1px dashed var(--color-slate-200) !important;
+    padding-top: 0.55rem !important;
+    line-height: 1.45;
+  }
+  .desk__live-board-row--upcoming .desk__live-board-score { display: none; }
+  .desk__live-board-row--upcoming .desk__live-board-performer {
+    grid-row: 2;
+    color: var(--color-slate-600);
+  }
+  .desk__live-board-row--upcoming .desk__live-board-read { grid-row: 3; }
+}
+
 .desk__status-pill {
   font-family: var(--font-mono);
   font-size: 0.6rem;

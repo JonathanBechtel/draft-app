@@ -14,7 +14,7 @@
   <p class="desk__section-sub">Not play-by-play -- where every game and its top performer stand as of {{ desk_payload.freshness.as_of_et_label }}.</p>
   <div class="card" style="padding: 0.4rem 0.4rem 0.2rem;">
     <div class="scanlines"></div>
-    <div class="desk__table-scroll">
+    <div class="desk__table-scroll desk__live-board-scroll">
       <table class="desk__live-board">
         <thead>
           <tr>
@@ -27,8 +27,9 @@
         </thead>
         <tbody>
           {% for row in desk_payload.live_board %}
-          <tr data-game-id="{{ row.game_id }}">
-            <td>
+          <tr class="desk__live-board-row{% if row.status == 'scheduled' and row.home_score is none and row.away_score is none %} desk__live-board-row--upcoming{% endif %}"
+              data-game-id="{{ row.game_id }}">
+            <td class="desk__live-board-matchup">
               <span class="desk__matchup-cell">
                 {% if row.game_id in desk_matchups %}
                 {% set m = desk_matchups[row.game_id] %}
@@ -40,19 +41,19 @@
                 {% endif %}
               </span>
             </td>
-            <td>
+            <td class="desk__live-board-status">
               <span class="desk__status-pill desk__status-pill--{{ 'live' if row.status == 'in_progress' else ('final' if row.status == 'final' else 'upcoming') }}">
                 {{ row.status.replace('_', ' ') | title }}
               </span>
             </td>
-            <td class="desk__score-cell">
+            <td class="desk__live-board-score desk__score-cell">
               {% if row.home_score is not none and row.away_score is not none %}
                 {{ row.away_score }}&ndash;{{ row.home_score }}
               {% else %}
                 &mdash;
               {% endif %}
             </td>
-            <td>
+            <td class="desk__live-board-performer">
               {% if row.top_performer_gmsc is not none %}
               {% set tp = desk_players.get(row.top_performer_player_id) %}
               <span class="desk__top-perf">
@@ -70,7 +71,7 @@
               <span class="desk__top-perf--empty" aria-label="No performance yet -- before tip" title="Before tip">&mdash;</span>
               {% endif %}
             </td>
-            <td class="desk__read-cell">{{ row.read or "" }}</td>
+            <td class="desk__live-board-read desk__read-cell">{{ row.read or "" }}</td>
           </tr>
           {% endfor %}
         </tbody>
