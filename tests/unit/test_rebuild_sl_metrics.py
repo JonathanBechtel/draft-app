@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from scripts import rebuild_sl_metrics
+from app.services.event_desk import snapshot_materialization
 
 
 @pytest.mark.asyncio
@@ -38,12 +38,14 @@ async def test_full_metrics_rebuild_refreshes_all_desk_snapshot_variants(
     build_variants = AsyncMock(return_value=(42, variants))
     upsert_snapshots = AsyncMock()
     monkeypatch.setattr(
-        rebuild_sl_metrics, "build_desk_render_variants", build_variants
+        snapshot_materialization, "build_desk_render_variants", build_variants
     )
-    monkeypatch.setattr(rebuild_sl_metrics, "upsert_render_snapshots", upsert_snapshots)
+    monkeypatch.setattr(
+        snapshot_materialization, "upsert_render_snapshots", upsert_snapshots
+    )
 
     db = AsyncMock()
-    refreshed = await rebuild_sl_metrics._materialize_desk_render_snapshots(db)
+    refreshed = await snapshot_materialization.materialize_desk_render_snapshots(db)
 
     assert refreshed == 2
     build_variants.assert_awaited_once_with(db)
@@ -65,11 +67,15 @@ async def test_full_metrics_rebuild_skips_desk_snapshot_refresh_off_window(
     build_variants = AsyncMock(return_value=None)
     upsert_snapshots = AsyncMock()
     monkeypatch.setattr(
-        rebuild_sl_metrics, "build_desk_render_variants", build_variants
+        snapshot_materialization, "build_desk_render_variants", build_variants
     )
-    monkeypatch.setattr(rebuild_sl_metrics, "upsert_render_snapshots", upsert_snapshots)
+    monkeypatch.setattr(
+        snapshot_materialization, "upsert_render_snapshots", upsert_snapshots
+    )
 
-    refreshed = await rebuild_sl_metrics._materialize_desk_render_snapshots(AsyncMock())
+    refreshed = await snapshot_materialization.materialize_desk_render_snapshots(
+        AsyncMock()
+    )
 
     assert refreshed == 0
     upsert_snapshots.assert_not_awaited()

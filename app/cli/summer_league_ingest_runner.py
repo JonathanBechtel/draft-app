@@ -72,6 +72,9 @@ from app.schemas.event_desk import EventLifecyclePhase
 from app.schemas.summer_league import SummerLeagueCompetition
 from app.services.event_desk.lifecycle import lifecycle_phase
 from app.services.event_desk.registry import DeskEvent, SUMMER_LEAGUE_REGISTRATION
+from app.services.event_desk.snapshot_materialization import (
+    materialize_desk_render_snapshots,
+)
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.backfill import (
     SummerLeagueBackfillOptions,
@@ -635,12 +638,17 @@ async def main() -> int:
                     async with db.begin():
                         if await try_acquire_summer_league_writer_lock(db):
                             summary = await rebuild_sl_metrics(db)
+                            refreshed_snapshots = (
+                                await materialize_desk_render_snapshots(db)
+                            )
                             logger.info(
                                 "SL metrics rebuild complete: %s player-seasons, "
-                                "%s contexts (%s adv-eligible pools)",
+                                "%s contexts (%s adv-eligible pools); refreshed "
+                                "%s Desk render snapshots",
                                 summary["seasons"],
                                 summary["contexts"],
                                 summary["adv_pools"],
+                                refreshed_snapshots,
                             )
                         else:
                             logger.info(
