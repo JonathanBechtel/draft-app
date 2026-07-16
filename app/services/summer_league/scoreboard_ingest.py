@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from collections.abc import Awaitable, Callable
 from typing import Any, Iterable, Mapping
 
 from sqlalchemy import select
@@ -530,6 +531,8 @@ async def run_scoreboard_ingest(
     today: date | None = None,
     target_dates: Iterable[date] | None = None,
     client: NBAStatsClient | None = None,
+    before_fetch: Callable[[], Awaitable[None]] | None = None,
+    before_upsert: Callable[[], Awaitable[None]] | None = None,
 ) -> ScoreboardIngestReport:
     """Job B step 0 -- fetch and upsert the active event's SL schedule.
 
@@ -559,6 +562,13 @@ async def run_scoreboard_ingest(
         client: Optional injected :class:`NBAStatsClient` (tests only); when
             omitted a real client is opened for the duration of the run and
             closed afterward.
+        before_fetch: Optional caller-owned transaction boundary invoked before
+            each provider request. Long-running cron callers use it to ensure
+            network latency never leaves a transaction open; request code
+            leaves it unset.
+        before_upsert: Optional caller-owned write boundary invoked after a
+            provider response and before its persistence. Long-running cron
+            callers use it to reacquire a transaction-scoped writer lock.
 
     Returns:
         Aggregate counts across every resolved competition, plus any
@@ -577,6 +587,11 @@ async def run_scoreboard_ingest(
     active_client = client or NBAStatsClient()
     try:
         for competition in competitions:
+            # A scoreboard fetch can retry for minutes. Cron callers provide a
+            # boundary that releases any transaction (and advisory lock) before
+            # that external wait; request callers intentionally leave it unset.
+            if before_fetch is not None:
+                await before_fetch()
             try:
                 payload = active_client.fetch_json(
                     "scheduleleaguev2",
@@ -593,6 +608,8 @@ async def run_scoreboard_ingest(
             games = parse_scoreboard_games(payload, target_dates=target_dates)
             report.games_seen += len(games)
             assert competition.id is not None
+            if before_upsert is not None:
+                await before_upsert()
             created, updated, unresolved_team_ids = await upsert_scoreboard_games(
                 db, competition_id=competition.id, games=games
             )

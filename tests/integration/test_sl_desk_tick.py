@@ -405,7 +405,13 @@ async def test_desk_tick_writes_t2_t3_t4_and_event_desk_state_and_is_idempotent(
     session = FakeSession({"15": FakeResponse(_empty_schedule_payload())})
     client = NBAStatsClient(session=session)
 
-    result = await run_desk_tick(db_session, now=now, raw_root=tmp_path, client=client)
+    result = await run_desk_tick(
+        db_session,
+        now=now,
+        raw_root=tmp_path,
+        client=client,
+        release_transactions_for_network_io=True,
+    )
     await db_session.commit()
 
     assert result.dormant is False

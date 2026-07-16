@@ -27,7 +27,8 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Sequence
+from collections.abc import Awaitable, Callable
+from typing import Sequence
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -328,6 +329,7 @@ async def run_live_ingestion(
     window_after: timedelta = DEFAULT_WINDOW_AFTER,
     sleep: Callable[[float], None] = time.sleep,
     progress: Callable[[str], None] | None = None,
+    before_refresh: Callable[[], Awaitable[None]] | None = None,
 ) -> LiveIngestionReport:
     """Select active-window games and force-refresh their raw endpoints.
 
@@ -347,6 +349,10 @@ async def run_live_ingestion(
         window_after: How far after ``now`` a game may tip and still count.
         sleep: Injectable sleep function for tests.
         progress: Optional progress callback, forwarded to the ingestor.
+        before_refresh: Optional caller-owned transaction boundary invoked
+            after selecting the games and before any NBA Stats request.
+            Long-running cron callers use it to keep external I/O outside a
+            database transaction; request code leaves it unset.
 
     Returns:
         Aggregate selected/written/skipped/error counts.
@@ -355,6 +361,8 @@ async def run_live_ingestion(
     selections = await select_active_window_games(
         db, now=now, window_before=window_before, window_after=window_after
     )
+    if before_refresh is not None:
+        await before_refresh()
     return refresh_selected_games(
         selections, client=client, store=store, sleep=sleep, progress=progress
     )
