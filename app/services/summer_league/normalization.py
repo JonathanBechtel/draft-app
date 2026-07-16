@@ -1715,7 +1715,12 @@ async def _upsert_player_game_log(
     if source_player.id is None:
         raise RuntimeError("Source player id was not populated")
     row.source_player_id = source_player.id
-    row.player_id = source_player.canonical_player_id
+    # A live ingestion tick re-normalizes box scores before the separate
+    # resolution pass.  Do not let a transiently absent source-player link
+    # erase a previously resolved, completed game line; that makes the row
+    # disappear from the season aggregate until resolution catches up.
+    if source_player.canonical_player_id is not None or row.player_id is None:
+        row.player_id = source_player.canonical_player_id
     participation = await _ensure_participation(
         db,
         competition_id,
