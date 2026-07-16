@@ -334,6 +334,33 @@ async def test_run_live_ingestion_replaces_only_selected_games_with_no_live_netw
 
 
 @pytest.mark.asyncio
+async def test_run_live_ingestion_runs_boundary_only_when_refreshing_games(
+    db_session: AsyncSession, tmp_path: Path
+) -> None:
+    """The transaction boundary runs once before a non-empty provider refresh."""
+    comp = await _competition(db_session, year=2026, league_id="15", venue="las_vegas")
+    await _seed_real_games(db_session, comp)
+    await db_session.commit()
+
+    boundary_calls = 0
+
+    async def record_boundary() -> None:
+        nonlocal boundary_calls
+        boundary_calls += 1
+
+    await run_live_ingestion(
+        db_session,
+        client=FakeNBAStatsClient(),
+        store=SummerLeagueRawStore(tmp_path),
+        clock=lambda: datetime(2026, 7, 10, 19, 30),
+        sleep=lambda _: None,
+        before_refresh=record_boundary,
+    )
+
+    assert boundary_calls == 1
+
+
+@pytest.mark.asyncio
 async def test_run_live_ingestion_empty_selection_makes_no_network_calls(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
@@ -343,14 +370,22 @@ async def test_run_live_ingestion_empty_selection_makes_no_network_calls(
     await db_session.commit()
 
     client = FakeNBAStatsClient()
+    boundary_calls = 0
+
+    async def record_boundary() -> None:
+        nonlocal boundary_calls
+        boundary_calls += 1
+
     report = await run_live_ingestion(
         db_session,
         client=client,
         store=SummerLeagueRawStore(tmp_path),
         clock=lambda: datetime(2020, 1, 1, 0, 0),
         sleep=lambda _: None,
+        before_refresh=record_boundary,
     )
 
     assert client.calls == []
+    assert boundary_calls == 0
     assert report.selected == 0
     assert report.groups == 0
