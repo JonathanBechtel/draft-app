@@ -361,7 +361,11 @@ async def run_live_ingestion(
     selections = await select_active_window_games(
         db, now=now, window_before=window_before, window_after=window_after
     )
-    if before_refresh is not None:
+    # The caller's boundary releases a transaction-scoped writer lock.  Do
+    # that only when the refresh below will issue provider requests; an empty
+    # selection has no external I/O and must retain the caller's lock for its
+    # remaining projection writes.
+    if selections and before_refresh is not None:
         await before_refresh()
     return refresh_selected_games(
         selections, client=client, store=store, sleep=sleep, progress=progress
