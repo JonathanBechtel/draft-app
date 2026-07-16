@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
@@ -159,6 +159,16 @@ _BOX_INT_FIELDS = (
     "pts",
 )
 
+# NBA's player Advanced box endpoint supplies these player/team-box rates even
+# while the corresponding team Advanced rows are incomplete. Keep the source
+# names separate from the materialized season names: NBA calls total rebound
+# percentage ``REB_PCT`` while the app's metric schema uses ``trb_pct``.
+_SOURCE_RATE_COLUMNS: dict[str, str] = {
+    "usg_pct": "usg_pct",
+    "ast_pct": "ast_pct",
+    "trb_pct": "reb_pct",
+}
+
 
 def _d(num: float, den: float) -> float:
     """Safe divide: 0.0 when the denominator is zero (small-sample guard)."""
@@ -268,6 +278,10 @@ class PlayerSeason:
     raw_off: Optional[float] = None
     raw_def: Optional[float] = None
     raw_bpm: Optional[float] = None
+    # Minute-weighted NBA Advanced box rates, retained as the source of truth
+    # when present. They remain available before team-box completeness reaches
+    # the stricter pool-calibration threshold.
+    source_rates: dict[str, Optional[float]] = field(default_factory=dict)
     metrics: dict[str, Optional[float]] = field(default_factory=dict)
 
 
@@ -651,7 +665,7 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     # ``adv_eligible``. This keeps the Class Tracker aligned with the Explorer
     # and player surfaces during an in-progress Summer League.
     m["tov_pct"] = round(100.0 * _d(b.tov, b.fga + 0.44 * b.fta + b.tov), 1)
-    m["usg_pct"] = round(
+    computed_usg_pct = round(
         100.0
         * _d(
             (b.fga + 0.44 * b.fta + b.tov) * tm_mp5,
@@ -659,12 +673,21 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
         ),
         1,
     )
-    m["ast_pct"] = round(100.0 * _d(b.ast, _d(b.mp, tm_mp5) * tm.fgm - b.fgm), 1)
+    computed_ast_pct = round(100.0 * _d(b.ast, _d(b.mp, tm_mp5) * tm.fgm - b.fgm), 1)
     m["orb_pct"] = round(100.0 * _d(b.oreb * tm_mp5, b.mp * (tm.oreb + opp.dreb)), 1)
     m["drb_pct"] = round(100.0 * _d(b.dreb * tm_mp5, b.mp * (tm.dreb + opp.oreb)), 1)
-    m["trb_pct"] = round(100.0 * _d(b.reb * tm_mp5, b.mp * (tm.reb + opp.reb)), 1)
+    computed_trb_pct = round(100.0 * _d(b.reb * tm_mp5, b.mp * (tm.reb + opp.reb)), 1)
     m["stl_pct"] = round(100.0 * _d(b.stl * tm_mp5, b.mp * opp_poss), 1)
     m["blk_pct"] = round(100.0 * _d(b.blk * tm_mp5, b.mp * (opp.fga - opp.fg3a)), 1)
+    # The NBA player Advanced feed is authoritative for these values. Fall
+    # back to the equivalent box calculation for historical rows or sources
+    # that do not supply the advanced endpoint.
+    source_usg_pct = ps.source_rates.get("usg_pct")
+    source_ast_pct = ps.source_rates.get("ast_pct")
+    source_trb_pct = ps.source_rates.get("trb_pct")
+    m["usg_pct"] = source_usg_pct if source_usg_pct is not None else computed_usg_pct
+    m["ast_pct"] = source_ast_pct if source_ast_pct is not None else computed_ast_pct
+    m["trb_pct"] = source_trb_pct if source_trb_pct is not None else computed_trb_pct
 
     # League-relative / pool-calibrated metrics only when the pool is eligible.
     if not ctx.adv_eligible:
@@ -977,6 +1000,19 @@ async def _load(db: AsyncSession) -> tuple[Any, ...]:
         ).all()
     }
     sec: Any = pgl.minutes_seconds  # column expression for arithmetic/compare
+
+    def _source_rate_sum(metric: str) -> Any:
+        """Minute-weighted numerator for one NBA player Advanced rate."""
+        column = getattr(pgl, _SOURCE_RATE_COLUMNS[metric])
+        return func.sum(column * sec).label(f"{metric}_weighted")
+
+    def _source_rate_seconds(metric: str) -> Any:
+        """Eligible minutes for one NBA player Advanced rate."""
+        column = getattr(pgl, _SOURCE_RATE_COLUMNS[metric])
+        return func.sum(case((column.isnot(None), sec), else_=0)).label(
+            f"{metric}_seconds"
+        )
+
     player_rows = (
         await db.execute(
             select(  # type: ignore[call-overload]
@@ -987,6 +1023,8 @@ async def _load(db: AsyncSession) -> tuple[Any, ...]:
                 func.sum(sec).label("sec"),
                 *[func.sum(getattr(pgl, f)).label(f) for f in _BOX_INT_FIELDS],
                 func.sum(pgl.plus_minus).label("plus_minus"),
+                *[_source_rate_sum(metric) for metric in _SOURCE_RATE_COLUMNS],
+                *[_source_rate_seconds(metric) for metric in _SOURCE_RATE_COLUMNS],
             )
             .join(PlayerMaster, PlayerMaster.id == pgl.player_id)
             .where(pgl.player_id.isnot(None), sec > 0)  # type: ignore[union-attr]
@@ -1102,7 +1140,14 @@ async def compute(db: AsyncSession) -> ComputeResult:
         sec = float(r.sec or 0)
         cur = merged.get(key)
         if cur is None:
-            cur = {"box": Box(), "entry": r.team_entry_id, "sec": sec, "pm": 0.0}
+            cur = {
+                "box": Box(),
+                "entry": r.team_entry_id,
+                "sec": sec,
+                "pm": 0.0,
+                "source_rate_weighted": defaultdict(float),
+                "source_rate_seconds": defaultdict(float),
+            }
             merged[key] = cur
         bx = cur["box"]
         bx.gp += int(r.gp)
@@ -1110,6 +1155,13 @@ async def compute(db: AsyncSession) -> ComputeResult:
         cur["pm"] += float(r.plus_minus or 0)
         for f in _BOX_INT_FIELDS:
             setattr(bx, f, getattr(bx, f) + float(getattr(r, f) or 0))
+        for metric in _SOURCE_RATE_COLUMNS:
+            cur["source_rate_weighted"][metric] += float(
+                getattr(r, f"{metric}_weighted") or 0
+            )
+            cur["source_rate_seconds"][metric] += float(
+                getattr(r, f"{metric}_seconds") or 0
+            )
         if sec > cur["sec"]:
             cur["entry"] = r.team_entry_id
             cur["sec"] = sec
@@ -1118,6 +1170,14 @@ async def compute(db: AsyncSession) -> ComputeResult:
     for (cid, pid), v in merged.items():
         year, venue = comps[cid]
         entry = v["entry"]
+        source_rates = {
+            metric: (
+                round(100.0 * v["source_rate_weighted"][metric] / denominator, 1)
+                if (denominator := v["source_rate_seconds"][metric])
+                else None
+            )
+            for metric in _SOURCE_RATE_COLUMNS
+        }
         seasons.append(
             PlayerSeason(
                 player_id=pid,
@@ -1129,6 +1189,7 @@ async def compute(db: AsyncSession) -> ComputeResult:
                 team=team_box[entry],
                 opp=opp_box[entry],
                 pm=v["pm"],
+                source_rates=source_rates,
             )
         )
 
