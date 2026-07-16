@@ -1,8 +1,6 @@
-name: PR Tests
+name: Main Tests
 
 on:
-  pull_request:
-    branches: [ main ]
   push:
     branches: [ main ]
 
@@ -10,126 +8,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr-tests-${{ github.ref }}
+  group: main-tests-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  tests-fork:
-    # Safe path for PRs from forks: no secrets, ephemeral Postgres service
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true }}
+  tests-main:
+    # Test only merged main commits. Deploy workflows intentionally run no
+    # duplicate Python suite; they retain target-environment migrations and
+    # readiness checks only.
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: draftguru_test
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-    env:
-      # App/test config
-      ENV: stage
-      DEBUG: "0"
-      ACCESS_LOG: "0"
-      SQL_ECHO: "0"
-      AUTO_INIT_DB: "0"  # rely on Alembic + test fixtures
-      SECRET_KEY: test
-      # DB config (use service container)
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/draftguru_test
-      TEST_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/draftguru_test
-      PYTEST_ALLOW_DB: "1"
-      # CI runs against an ephemeral service container, so DATABASE_URL and
-      # TEST_DATABASE_URL intentionally point at the same DB. Allow it.
-      PYTEST_ALLOW_TEST_DB_EQUALS_DATABASE_URL: "1"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          # Full history so diff-cover can compare against the PR base branch.
-          fetch-depth: 0
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: |
-            pyproject.toml
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .[dev]
-
-      - name: Lint (ruff)
-        run: ruff check .
-
-      - name: Cache mypy incremental state
-        uses: actions/cache@v4
-        with:
-          path: .mypy_cache
-          key: mypy-${{ runner.os }}-py312-${{ hashFiles('pyproject.toml') }}
-          restore-keys: |
-            mypy-${{ runner.os }}-py312-
-
-      - name: Type check (mypy)
-        run: mypy app --ignore-missing-imports
-
-      - name: Reset test database (drop schema)
-        env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
-        run: |
-          python - <<'PY'
-          import os
-          import psycopg
-
-          raw_url = os.environ["DATABASE_URL"]
-          url = raw_url.replace("+asyncpg", "")
-          conn = psycopg.connect(url, autocommit=True)
-          with conn.cursor() as cur:
-              cur.execute("DROP SCHEMA IF EXISTS public CASCADE;")
-              cur.execute("CREATE SCHEMA public;")
-          conn.close()
-          print("Reset schema public in test database")
-          PY
-
-      - name: Alembic upgrade head
-        run: alembic upgrade heads
-
-      - name: Run tests
-        # Eight xdist workers overlap the DB-bound tests; each worker is its own
-        # pytest session, so the integration fixtures give every worker an
-        # isolated schema (see tests/integration/conftest.py test_schema).
-        run: |
-          nproc && free -h | head -2
-          pytest -q --ignore=tests/visual -n 8 --dist worksteal --cov=app --cov-report=xml --cov-report=term
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage.xml
-          flags: tests-fork
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Patch coverage gate (diff-cover)
-        # Fail the PR if fewer than 80% of newly changed app/ lines are covered.
-        # Compares the working tree against the PR base branch (merge-base).
-        run: diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=80
-
-  tests-secrets:
-    # Same-repo PRs use environment secrets from draft-app-stage; also runs on
-    # push to main so a tested commit lands on main for the Actions/Codecov
-    # badges (pull_request runs are attributed to the head branch, not main).
-    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.fork == false }}
-    runs-on: ubuntu-latest
-    environment: draft-app-dev
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -156,8 +43,7 @@ jobs:
       # CI runs against an ephemeral service container, so DATABASE_URL and
       # TEST_DATABASE_URL intentionally point at the same DB. Allow it.
       PYTEST_ALLOW_TEST_DB_EQUALS_DATABASE_URL: "1"
-      # SECRET_KEY may be provided by the environment; default to test if missing
-      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+      SECRET_KEY: test
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -192,12 +78,6 @@ jobs:
       - name: Type check (mypy)
         run: mypy app --ignore-missing-imports
 
-      - name: Default SECRET_KEY when missing
-        run: |
-          if [ -z "${{ secrets.SECRET_KEY }}" ]; then
-            echo "SECRET_KEY=test" >> $GITHUB_ENV
-          fi
-
       - name: Reset test database (drop schema)
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -231,14 +111,5 @@ jobs:
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
-          flags: tests-secrets
+          flags: tests-main
           fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Patch coverage gate (diff-cover)
-        # Fail the PR if fewer than 80% of newly changed app/ lines are covered.
-        # Compares the working tree against the PR base branch (merge-base).
-        # Only meaningful for pull_request runs; a push-to-main run has no PR
-        # base branch to diff against.
-        if: github.event_name == 'pull_request'
-        run: diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=80
