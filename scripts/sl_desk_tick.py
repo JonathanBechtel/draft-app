@@ -913,13 +913,13 @@ async def run_desk_tick(
     now: Optional[datetime] = None,
     raw_root: Path = DEFAULT_RAW_ROOT,
     client: Optional[NBAStatsClient] = None,
+    release_transactions_for_network_io: bool = False,
 ) -> DeskTickResult:
     """Job B -- the Summer League Desk hourly tick (module docstring has the full order).
 
-    Does not commit; the caller controls the transaction (mirrors every
-    other Summer League ingest/tick step in this repo -- ``main`` below
-    wraps this in ``async with db.begin()``, matching
-    ``scripts/build_sl_cohort_baselines.py``).
+    Does not commit by default; the caller controls the transaction. The
+    production cron passes ``release_transactions_for_network_io=True`` so
+    provider fetches never run while an idle database transaction is open.
 
     Args:
         db: Active database session (caller controls the transaction).
@@ -932,6 +932,11 @@ async def run_desk_tick(
             steps (they share one client/session); when omitted a real
             client is opened for the duration of those steps and closed
             afterward.
+        release_transactions_for_network_io: Commit completed read/write work
+            before provider requests, then reacquire the transaction-scoped
+            writer lock before normalized/projection writes. This is required
+            for long-running cron execution and is opt-in to preserve the
+            legacy test/service caller transaction contract.
 
     Returns:
         A :class:`DeskTickResult` summarizing every stage's outcome.
@@ -950,6 +955,10 @@ async def run_desk_tick(
     # non-blocking attempt and skips its DB phase when this tick is active,
     # preventing the cross-cron source-player deadlock observed in production.
     await acquire_summer_league_writer_lock(db)
+
+    async def reacquire_writer_lock() -> None:
+        """Start a short serialized write phase after external provider I/O."""
+        await acquire_summer_league_writer_lock(db)
 
     # A contended lock can delay the tick across a tip/final boundary. Read the
     # production clock only after the wait so phase and freshness calculations
@@ -970,7 +979,13 @@ async def run_desk_tick(
     bootstrap_report: Optional[ScoreboardIngestReport] = None
     if daily_state is None and await _needs_scoreboard_bootstrap(db, now=resolved_now):
         bootstrap_report = await run_scoreboard_ingest(
-            db, today=to_eastern_date(resolved_now), client=client
+            db,
+            today=to_eastern_date(resolved_now),
+            client=client,
+            before_fetch=db.commit if release_transactions_for_network_io else None,
+            before_upsert=(
+                reacquire_writer_lock if release_transactions_for_network_io else None
+            ),
         )
         daily_state = await _resolve_daily_state(db, now=resolved_now)
 
@@ -1005,6 +1020,13 @@ async def run_desk_tick(
 
     today = to_eastern_date(resolved_now)
 
+    # The transaction-scoped advisory lock above is intentionally released
+    # before provider I/O. Keeping it (and a DB transaction) open while NBA
+    # Stats retries can take minutes trips the production idle-in-transaction
+    # guard and leaves no healthy connection for the later write phase.
+    if release_transactions_for_network_io:
+        await db.commit()
+
     # Steps 0-1 share one NBA Stats client/session -- opened here (once) when
     # the caller didn't inject one, and always closed afterward, mirroring
     # the owns-client pattern each individual step manages internally when
@@ -1019,7 +1041,17 @@ async def run_desk_tick(
             scoreboard_report = bootstrap_report
         else:
             scoreboard_report = await run_scoreboard_ingest(
-                db, today=today, client=active_client
+                db,
+                today=today,
+                client=active_client,
+                before_fetch=(
+                    db.commit if release_transactions_for_network_io else None
+                ),
+                before_upsert=(
+                    reacquire_writer_lock
+                    if release_transactions_for_network_io
+                    else None
+                ),
             )
 
         # Step 1 -- targeted live raw refresh (#531/#530). Reads
@@ -1032,6 +1064,7 @@ async def run_desk_tick(
             client=active_client,
             store=SummerLeagueRawStore(raw_root),
             clock=lambda: resolved_now,
+            before_refresh=(db.commit if release_transactions_for_network_io else None),
         )
         if live_refresh_report.required_errors > 0:
             # A group's *required* season gamelog fetch failed outright for
@@ -1051,6 +1084,12 @@ async def run_desk_tick(
     finally:
         if owns_client:
             active_client.close()
+
+    # The commit before provider I/O released the transaction-scoped lock.
+    # Reacquire it before any normalized or Desk projection writes so the
+    # lower-priority ingestion cron still cannot interleave with this phase.
+    if release_transactions_for_network_io:
+        await acquire_summer_league_writer_lock(db)
 
     competitions = await resolve_target_competitions(db, today=today)
 
@@ -1197,11 +1236,20 @@ def _summarize(result: DeskTickResult) -> str:
 
 
 async def _run(args: argparse.Namespace) -> None:
-    """Open a session, run one tick inside a transaction, and print a summary."""
+    """Run one production tick without holding a transaction across NBA I/O."""
     now = datetime.fromisoformat(args.now) if args.now else None
     async with SessionLocal() as db:
-        async with db.begin():
-            result = await run_desk_tick(db, now=now, raw_root=args.raw_root)
+        try:
+            result = await run_desk_tick(
+                db,
+                now=now,
+                raw_root=args.raw_root,
+                release_transactions_for_network_io=True,
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
     print(_summarize(result), flush=True)
     await engine.dispose()
 
