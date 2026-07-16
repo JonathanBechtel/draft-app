@@ -7,6 +7,11 @@ gating that blanks league-relative stats for ineligible pools.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
+
+from app.services.summer_league import metrics as metrics_service
 from app.services.summer_league.metrics import (
     BPM_FEATURES,
     Box,
@@ -30,6 +35,121 @@ def _box(**kw: float) -> Box:
     for k, v in kw.items():
         setattr(b, k, v)
     return b
+
+
+class _FakeResult:
+    """Minimal async-result stand-in for the metrics loader unit test."""
+
+    def __init__(self, rows: list[object]) -> None:
+        self.rows = rows
+
+    def scalars(self) -> "_FakeResult":
+        return self
+
+    def __iter__(self):
+        return iter(self.rows)
+
+    def all(self) -> list[object]:
+        return self.rows
+
+
+class _FakeSession:
+    """Returns staged results for the five queries issued by ``_load``."""
+
+    def __init__(self, results: list[_FakeResult]) -> None:
+        self.results = iter(results)
+
+    async def execute(self, _statement: object) -> _FakeResult:
+        return next(self.results)
+
+
+@pytest.mark.asyncio
+async def test_load_selects_nba_source_rate_aggregates() -> None:
+    """The materializer requests minute-weighted NBA Advanced source rates."""
+    db = _FakeSession(
+        [
+            _FakeResult([SimpleNamespace(id=1, year=2026, venue_slug="las_vegas")]),
+            _FakeResult([]),
+            _FakeResult([]),
+            _FakeResult([(2, 60)]),
+            _FakeResult([]),
+        ]
+    )
+
+    comps, games, team_rows, team_minutes, player_rows = await metrics_service._load(  # type: ignore[arg-type]
+        db
+    )
+
+    assert comps == {1: (2026, "las_vegas")}
+    assert games == {}
+    assert team_rows == []
+    assert team_minutes == {2: 1.0}
+    assert player_rows == []
+
+
+@pytest.mark.asyncio
+async def test_compute_persists_minute_weighted_nba_source_rates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NBA Advanced rates override incomplete team-box fallback calculations."""
+    raw_row = SimpleNamespace(
+        competition_id=1,
+        player_id=7,
+        team_entry_id=2,
+        gp=3,
+        sec=1800,
+        plus_minus=0,
+        usg_pct_weighted=621.0,
+        usg_pct_seconds=1800,
+        ast_pct_weighted=270.0,
+        ast_pct_seconds=1800,
+        trb_pct_weighted=225.0,
+        trb_pct_seconds=1800,
+        **{field: 0 for field in metrics_service._BOX_INT_FIELDS},
+    )
+    raw_row.pts = 20
+    raw_row.fgm = 8
+    raw_row.fga = 15
+    raw_row.fta = 4
+    raw_row.ftm = 3
+    raw_row.fg3m = 2
+    raw_row.fg3a = 5
+    raw_row.reb = 7
+    raw_row.ast = 4
+    raw_row.tov = 3
+
+    async def fake_load(_db: object) -> tuple[object, ...]:
+        return ({1: (2026, "las_vegas")}, {}, [], {}, [raw_row])
+
+    async def empty_dict(_db: object) -> dict[object, object]:
+        return {}
+
+    context = LeagueContext(
+        competition_id=1,
+        year=2026,
+        venue="las_vegas",
+        lg=Box(),
+        poss=0.0,
+        team_games=0,
+        adv_eligible=False,
+    )
+    context.pace = 100.0
+    monkeypatch.setattr(metrics_service, "_load", fake_load)
+    monkeypatch.setattr(metrics_service, "_load_shot_diet", empty_dict)
+    monkeypatch.setattr(metrics_service, "_load_assisted_fg", empty_dict)
+    monkeypatch.setattr(
+        metrics_service,
+        "_build",
+        lambda *_args: ({2: _box(mp=1000)}, {2: _box(mp=1000)}, {}, {1: context}, {}),
+    )
+
+    result = await metrics_service.compute(object())  # type: ignore[arg-type]
+
+    season = result.seasons[0]
+    assert season.source_rates == {"usg_pct": 34.5, "ast_pct": 15.0, "trb_pct": 12.5}
+    assert season.metrics["usg_pct"] == 34.5
+    assert season.metrics["ast_pct"] == 15.0
+    assert season.metrics["trb_pct"] == 12.5
 
 
 def test_safe_divide_guards_zero() -> None:
@@ -310,6 +430,7 @@ def test_compute_metrics_keeps_box_rates_when_pool_ineligible() -> None:
             reb=160,
             tov=60,
         ),
+        source_rates={"usg_pct": 34.5, "ast_pct": 15.0, "trb_pct": 12.5},
         opp=_box(
             mp=1000,
             pts=390,
@@ -332,9 +453,9 @@ def test_compute_metrics_keeps_box_rates_when_pool_ineligible() -> None:
     assert ps.metrics["pts_per100"] is not None and ps.metrics["pts_per100"] > 0
     # Player/team-box rates do not require a complete league pool.
     assert ps.metrics["tov_pct"] == 15.2
-    assert ps.metrics["usg_pct"] is not None and ps.metrics["usg_pct"] > 0
-    assert ps.metrics["ast_pct"] is not None and ps.metrics["ast_pct"] > 0
-    assert ps.metrics["trb_pct"] is not None and ps.metrics["trb_pct"] > 0
+    assert ps.metrics["usg_pct"] == 34.5
+    assert ps.metrics["ast_pct"] == 15.0
+    assert ps.metrics["trb_pct"] == 12.5
     # League-calibrated composites remain blanked.
     assert ps.metrics["per"] is None
     assert ps.metrics["ortg"] is None
