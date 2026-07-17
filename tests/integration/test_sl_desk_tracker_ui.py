@@ -766,7 +766,8 @@ async def test_cohort_and_statview_toggles_round_trip_via_query_params(
     # Advanced column headers present (now carrying #556's sort attributes,
     # so match by inner text rather than the exact old bare `<th>` tag);
     # box-family headers are not.
-    assert 'data-sort-key="per">PER</th>' in html
+    assert 'data-sort-key="per"' in html
+    assert '>PER</th>' in html
     assert 'data-sort-key="bpm">BPM</th>' in html
     assert 'data-sort-key="ws82">WS/82</th>' in html
     assert ">PTS</th>" not in html
@@ -818,7 +819,8 @@ async def test_tracker_fragment_route_matches_full_page_for_same_variant(
     html = fragment.text
 
     # Same variant's column set and row present.
-    assert 'data-sort-key="per">PER</th>' in html
+    assert 'data-sort-key="per"' in html
+    assert '>PER</th>' in html
     assert 'data-sort-key="bpm">BPM</th>' in html
     assert 'data-sort-key="ws82">WS/82</th>' in html
     assert ">PTS</th>" not in html
