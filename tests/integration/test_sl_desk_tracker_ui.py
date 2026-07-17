@@ -5,7 +5,7 @@ within-round `draft_pick` boundary translated correctly -- see
 `app.services.summer_league.cohort_baselines`'s module docstring for the
 "draft_pick is WITHIN-ROUND" gotcha this repo hinges on), the Box/Per-36/
 Per-100/Advanced stat-view rescale (counting stats scale, shooting
-percentages stay invariant, BPM/WS82 em-dash when a pool isn't
+percentages stay invariant, PER/BPM/WS82 em-dash when a pool isn't
 `adv_eligible`), the cap-30 + truncation caption, GP=0 em-dashes, the
 Undrafted identity swap, `?ref=sl-desk` deep-linking, and the `/` query
 budget with cohort/statview params set.
@@ -276,6 +276,7 @@ async def _seed_season(
     ast_pct: float | None = None,
     tov_pct: float | None = None,
     trb_pct: float | None = None,
+    per: float | None = None,
     ws82: float | None = None,
     bpm: float | None = None,
     adv_eligible: bool = False,
@@ -306,6 +307,7 @@ async def _seed_season(
         ast_pct=ast_pct,
         tov_pct=tov_pct,
         trb_pct=trb_pct,
+        per=per,
         ws82=ws82,
         bpm=bpm,
         adv_eligible=adv_eligible,
@@ -523,13 +525,13 @@ async def test_stat_view_rescales_counting_stats_and_keeps_pct_invariant(
 
 
 # --------------------------------------------------------------------------- #
-# Advanced view: BPM/WS82 em-dash (None) when the pool isn't adv_eligible;
+# Advanced view: PER/BPM/WS82 em-dash (None) when the pool isn't adv_eligible;
 # real values when it is.
 # --------------------------------------------------------------------------- #
 async def test_advanced_view_bpm_null_when_not_adv_eligible(
     db_session: AsyncSession,
 ) -> None:
-    """BPM/WS82 render `None` (em-dash) for a non-adv_eligible pool; real otherwise."""
+    """PER/BPM/WS82 render `None` (em-dash) for a non-adv-eligible pool; real otherwise."""
     year = 2026
     now = datetime(2026, 7, 10, 20, 0)
     competition = await _seed_competition(db_session, year=year)
@@ -544,13 +546,14 @@ async def test_advanced_view_bpm_null_when_not_adv_eligible(
     await _roster_player(db_session, competition, team, ineligible)
     await _roster_player(db_session, competition, team, eligible)
 
-    # Ineligible pool: bpm/ws82/usg_pct etc. are None, matching how
+    # Ineligible pool: per/bpm/ws82/usg_pct etc. are None, matching how
     # `app.services.summer_league.metrics` writes a non-adv_eligible pool.
     await _seed_season(
         db_session,
         competition=competition,
         player=ineligible,
         year=year,
+        per=None,
         bpm=None,
         ws82=None,
         usg_pct=None,
@@ -561,6 +564,7 @@ async def test_advanced_view_bpm_null_when_not_adv_eligible(
         competition=competition,
         player=eligible,
         year=year,
+        per=18.4,
         bpm=4.2,
         ws82=6.5,
         usg_pct=24.0,
@@ -584,9 +588,11 @@ async def test_advanced_view_bpm_null_when_not_adv_eligible(
     )
     eligible_row = next(r for r in payload.tracker.rows if r.player_id == eligible.id)
 
+    assert ineligible_row.stat_columns["per"] is None
     assert ineligible_row.stat_columns["bpm"] is None
     assert ineligible_row.stat_columns["ws82"] is None
 
+    assert eligible_row.stat_columns["per"] == pytest.approx(18.4)
     assert eligible_row.stat_columns["bpm"] == pytest.approx(4.2)
     assert eligible_row.stat_columns["ws82"] == pytest.approx(6.5)
     assert eligible_row.stat_columns["usg_pct"] == pytest.approx(24.0)
@@ -760,6 +766,8 @@ async def test_cohort_and_statview_toggles_round_trip_via_query_params(
     # Advanced column headers present (now carrying #556's sort attributes,
     # so match by inner text rather than the exact old bare `<th>` tag);
     # box-family headers are not.
+    assert 'data-sort-key="per"' in html
+    assert '>PER</th>' in html
     assert 'data-sort-key="bpm">BPM</th>' in html
     assert 'data-sort-key="ws82">WS/82</th>' in html
     assert ">PTS</th>" not in html
@@ -811,6 +819,8 @@ async def test_tracker_fragment_route_matches_full_page_for_same_variant(
     html = fragment.text
 
     # Same variant's column set and row present.
+    assert 'data-sort-key="per"' in html
+    assert '>PER</th>' in html
     assert 'data-sort-key="bpm">BPM</th>' in html
     assert 'data-sort-key="ws82">WS/82</th>' in html
     assert ">PTS</th>" not in html
@@ -922,7 +932,7 @@ async def test_tracker_sort_metadata_rendered_box_view(
 async def test_tracker_sort_metadata_rendered_advanced_view(
     app_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """Advanced view: BPM/WS82 sort keys render; a None stat has an empty data-value."""
+    """Advanced view: PER/BPM/WS82 sort keys render; a None stat has an empty data-value."""
     now = datetime.utcnow()
     today = to_eastern_date(now)
     year = today.year
@@ -938,6 +948,7 @@ async def test_tracker_sort_metadata_rendered_advanced_view(
         competition=competition,
         player=ineligible,
         year=year,
+        per=None,
         bpm=None,
         ws82=None,
         adv_eligible=False,
@@ -954,6 +965,7 @@ async def test_tracker_sort_metadata_rendered_advanced_view(
     html = response.text
 
     for key in (
+        "per",
         "ts_pct",
         "efg_pct",
         "usg_pct",
@@ -966,7 +978,7 @@ async def test_tracker_sort_metadata_rendered_advanced_view(
         "bpm",
     ):
         assert f'data-sort-key="{key}"' in html, f"missing sort header for {key}"
-    # The ineligible player's BPM/WS82 are None -> empty data-value.
+    # The ineligible player's PER/BPM/WS82 are None -> empty data-value.
     assert 'data-value=""' in html
 
 

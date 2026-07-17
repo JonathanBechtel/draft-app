@@ -21,6 +21,7 @@
         <th scope="col" class="desk__tracker-th--active" data-sort-key="gmsc" aria-sort="descending">GmSc</th>
         <th scope="col">{{ 'vs status cohort' if is_undrafted_cohort else 'vs cohort' }}</th>
         {% if tracker.stat_view == 'advanced' %}
+        <th scope="col" data-sort-key="per" title="Player Efficiency Rating (pool mean 15.0)">PER</th>
         <th scope="col" data-sort-key="ts_pct">TS%</th>
         <th scope="col" data-sort-key="efg_pct">eFG%</th>
         <th scope="col" data-sort-key="usg_pct">USG%</th>
@@ -76,6 +77,7 @@
           {% endif %}
         </td>
         {% if tracker.stat_view == 'advanced' %}
+        <td class="tabular-nums" data-value="{{ '' if sc.per is none else sc.per }}">{{ cell(sc.per) }}</td>
         <td class="tabular-nums" data-value="{{ '' if sc.ts_pct is none else sc.ts_pct }}">{{ cell(sc.ts_pct) }}</td>
         <td class="tabular-nums" data-value="{{ '' if sc.efg_pct is none else sc.efg_pct }}">{{ cell(sc.efg_pct) }}</td>
         <td class="tabular-nums" data-value="{{ '' if sc.usg_pct is none else sc.usg_pct }}">{{ cell(sc.usg_pct) }}</td>
