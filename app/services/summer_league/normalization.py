@@ -1536,6 +1536,18 @@ async def _upsert_team_game_log(
         )
     )
     row = result.scalar_one_or_none()
+    # A targeted/live normalization can have only the season gamelog on disk
+    # while an earlier full ingestion already persisted the official per-game
+    # box.  The gamelog fallback has no team minutes, so replacing that richer
+    # row would silently make an otherwise complete competition ineligible for
+    # advanced metrics on a later tick.  Fallback data may create a missing
+    # row, but it must never downgrade an official box-score row.
+    if (
+        row is not None
+        and source_endpoint == "leaguegamelog_team"
+        and row.source_endpoint != "leaguegamelog_team"
+    ):
+        return row
     if row is None:
         row = SummerLeagueTeamGameLog(
             competition_id=competition_id,
