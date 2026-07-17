@@ -65,6 +65,36 @@ The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, 
   derived from it; any other cadence would make that freshness promise false.
 - **Config**: `fly.cron.desk.stage.toml` (stage) / `fly.cron.desk.toml` (prod).
 
+### Summer League writer coordination and recovery
+
+The Desk and full-ingestion cron are separate hourly machines which share
+normalized Summer League tables and derived Desk projections.  NBA/provider
+fetches must always run outside a database transaction and outside the shared
+PostgreSQL writer lock.  Only the short normalized-write and derivative phases
+are serialized.
+
+- The Desk is the higher-priority writer: it waits for the lock, then refreshes
+  the active event's scoped metrics and render snapshots.
+- The full ingestion job is lower priority: it never waits for the lock.  A
+  contended venue, team-box retry, or metrics/snapshot phase records durable
+  deferred reconciliation state in `summer_league_pipeline_states` and exits
+  safely.
+- The next full scheduled run checks that state.  Even with no newly discovered
+  games, it must acquire the lock, rebuild metrics, materialize snapshots, and
+  clear the deferral only after those steps complete in order.
+- Each cron emits `summer_league_pipeline_step` records with `job`, `run_id`,
+  `step`, `outcome`, and `duration_ms`, followed by a
+  `summer_league_pipeline_run` summary.  These records identify whether delay
+  was in provider fetch, lock acquisition, normalization, metrics, Desk
+  projections, or snapshots.
+
+For an incident, inspect the full-ingestion state row before forcing a rerun.
+`pending_reconciliation=true` means the next successful full run must catch up;
+do not clear it manually.  A state row with repeated `consecutive_deferrals`, a
+recent `last_failure_at`, or stale `last_metrics_rebuilt_at` /
+`last_snapshots_materialized_at` is the operational signal consumed by the
+notification work tracked in #600.
+
 Unlike every other cron above, this machine's **creation** is **readiness-gated** and
 Job A is **never run automatically**. Once the machine exists, deploys keep its image
 current, but only after `flyctl machine wait --state stopped` confirms no tick is in

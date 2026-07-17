@@ -132,6 +132,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from contextlib import nullcontext
 import os
 import sys
 from collections.abc import Sequence
@@ -231,6 +232,13 @@ from app.services.summer_league.normalization import (  # noqa: E402
     normalize_competition_games,
     normalize_player_game_logs,
 )
+from app.services.summer_league.pipeline_state import (  # noqa: E402
+    complete_pipeline,
+    record_pipeline_failure,
+)
+from app.services.summer_league.pipeline_telemetry import (  # noqa: E402
+    PipelineTelemetry,
+)
 from app.services.summer_league.raw_store import SummerLeagueRawStore  # noqa: E402
 from app.services.summer_league.scoreboard_ingest import (  # noqa: E402
     ScoreboardIngestReport,
@@ -240,6 +248,7 @@ from app.services.summer_league.scoreboard_ingest import (  # noqa: E402
 from app.services.summer_league.write_lock import (  # noqa: E402
     acquire_summer_league_writer_lock,
 )
+from app.schemas.summer_league_pipeline import SummerLeaguePipelineJob  # noqa: E402
 from app.utils.db_async import SessionLocal, engine  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -914,6 +923,7 @@ async def run_desk_tick(
     raw_root: Path = DEFAULT_RAW_ROOT,
     client: Optional[NBAStatsClient] = None,
     release_transactions_for_network_io: bool = False,
+    telemetry: PipelineTelemetry | None = None,
 ) -> DeskTickResult:
     """Job B -- the Summer League Desk hourly tick (module docstring has the full order).
 
@@ -937,6 +947,8 @@ async def run_desk_tick(
             writer lock before normalized/projection writes. This is required
             for long-running cron execution and is opt-in to preserve the
             legacy test/service caller transaction contract.
+        telemetry: Optional production-run timer that emits one structured
+            duration record for every major pipeline stage.
 
     Returns:
         A :class:`DeskTickResult` summarizing every stage's outcome.
@@ -954,11 +966,17 @@ async def run_desk_tick(
     # identities/projections. The lower-priority full ingestor uses a
     # non-blocking attempt and skips its DB phase when this tick is active,
     # preventing the cross-cron source-player deadlock observed in production.
-    await acquire_summer_league_writer_lock(db)
+    with telemetry.step("writer_lock_wait") if telemetry is not None else nullcontext():
+        await acquire_summer_league_writer_lock(db)
 
     async def reacquire_writer_lock() -> None:
         """Start a short serialized write phase after external provider I/O."""
-        await acquire_summer_league_writer_lock(db)
+        with (
+            telemetry.step("writer_lock_reacquire")
+            if telemetry is not None
+            else nullcontext()
+        ):
+            await acquire_summer_league_writer_lock(db)
 
     # A contended lock can delay the tick across a tip/final boundary. Read the
     # production clock only after the wait so phase and freshness calculations
@@ -978,15 +996,22 @@ async def run_desk_tick(
     # network-free guarantee for the truly dormant case.
     bootstrap_report: Optional[ScoreboardIngestReport] = None
     if daily_state is None and await _needs_scoreboard_bootstrap(db, now=resolved_now):
-        bootstrap_report = await run_scoreboard_ingest(
-            db,
-            today=to_eastern_date(resolved_now),
-            client=client,
-            before_fetch=db.commit if release_transactions_for_network_io else None,
-            before_upsert=(
-                reacquire_writer_lock if release_transactions_for_network_io else None
-            ),
-        )
+        with (
+            telemetry.step("bootstrap_scoreboard_ingest")
+            if telemetry is not None
+            else nullcontext()
+        ):
+            bootstrap_report = await run_scoreboard_ingest(
+                db,
+                today=to_eastern_date(resolved_now),
+                client=client,
+                before_fetch=db.commit if release_transactions_for_network_io else None,
+                before_upsert=(
+                    reacquire_writer_lock
+                    if release_transactions_for_network_io
+                    else None
+                ),
+            )
         daily_state = await _resolve_daily_state(db, now=resolved_now)
 
     if daily_state is None:
@@ -998,10 +1023,20 @@ async def run_desk_tick(
         # `materialized_variant_count=0` -- for a real off-window event; it
         # only actually writes rows here under a force-mode QA override that
         # fakes an in-window state this tick's OWN resolver above didn't see).
-        states = await run_event_desk_tick(db, now=resolved_now)
-        materialized_variant_count = await _materialize_render_snapshots(
-            db, now=resolved_now
-        )
+        with (
+            telemetry.step("event_desk_state")
+            if telemetry is not None
+            else nullcontext()
+        ):
+            states = await run_event_desk_tick(db, now=resolved_now)
+        with (
+            telemetry.step("snapshot_materialization")
+            if telemetry is not None
+            else nullcontext()
+        ):
+            materialized_variant_count = await _materialize_render_snapshots(
+                db, now=resolved_now
+            )
         return DeskTickResult(
             now=resolved_now,
             dormant=True,
@@ -1040,32 +1075,44 @@ async def run_desk_tick(
         if bootstrap_report is not None:
             scoreboard_report = bootstrap_report
         else:
-            scoreboard_report = await run_scoreboard_ingest(
-                db,
-                today=today,
-                client=active_client,
-                before_fetch=(
-                    db.commit if release_transactions_for_network_io else None
-                ),
-                before_upsert=(
-                    reacquire_writer_lock
-                    if release_transactions_for_network_io
-                    else None
-                ),
-            )
+            with (
+                telemetry.step("scoreboard_ingest")
+                if telemetry is not None
+                else nullcontext()
+            ):
+                scoreboard_report = await run_scoreboard_ingest(
+                    db,
+                    today=today,
+                    client=active_client,
+                    before_fetch=(
+                        db.commit if release_transactions_for_network_io else None
+                    ),
+                    before_upsert=(
+                        reacquire_writer_lock
+                        if release_transactions_for_network_io
+                        else None
+                    ),
+                )
 
         # Step 1 -- targeted live raw refresh (#531/#530). Reads
         # `summer_league_games` fresh (including anything step 0 -- or the
         # #527 bootstrap above -- just flushed this tick), so a Scheduled
         # game bootstrapped moments ago is already visible here; selection
         # is status/window-scoped, not tied to `competitions` below.
-        live_refresh_report = await run_live_ingestion(
-            db,
-            client=active_client,
-            store=SummerLeagueRawStore(raw_root),
-            clock=lambda: resolved_now,
-            before_refresh=(db.commit if release_transactions_for_network_io else None),
-        )
+        with (
+            telemetry.step("live_raw_refresh")
+            if telemetry is not None
+            else nullcontext()
+        ):
+            live_refresh_report = await run_live_ingestion(
+                db,
+                client=active_client,
+                store=SummerLeagueRawStore(raw_root),
+                clock=lambda: resolved_now,
+                before_refresh=(
+                    db.commit if release_transactions_for_network_io else None
+                ),
+            )
         if live_refresh_report.required_errors > 0:
             # A group's *required* season gamelog fetch failed outright for
             # games this tick actually selected -- every subsequent
@@ -1089,16 +1136,22 @@ async def run_desk_tick(
     # Reacquire it before any normalized or Desk projection writes so the
     # lower-priority ingestion cron still cannot interleave with this phase.
     if release_transactions_for_network_io:
-        await acquire_summer_league_writer_lock(db)
+        await reacquire_writer_lock()
 
-    competitions = await resolve_target_competitions(db, today=today)
+    with (
+        telemetry.step("resolve_target_competitions")
+        if telemetry is not None
+        else nullcontext()
+    ):
+        competitions = await resolve_target_competitions(db, today=today)
 
     # Step 2 -- normalize (existing normalizer; best-effort per competition).
     normalized_ids: list[int] = []
-    for competition in competitions:
-        assert competition.id is not None
-        if await _normalize_competition(db, competition, raw_root=raw_root):
-            normalized_ids.append(competition.id)
+    with telemetry.step("normalization") if telemetry is not None else nullcontext():
+        for competition in competitions:
+            assert competition.id is not None
+            if await _normalize_competition(db, competition, raw_root=raw_root):
+                normalized_ids.append(competition.id)
 
     # Step 2b -- scoped metrics rebuild (#523): refresh
     # summer_league_player_seasons for exactly the competitions normalize
@@ -1111,7 +1164,12 @@ async def run_desk_tick(
     # hour) skips the call entirely rather than issuing an empty-scope
     # rebuild.
     if normalized_ids:
-        await rebuild_sl_metrics(db, competition_ids=normalized_ids)
+        with (
+            telemetry.step("scoped_metrics_rebuild")
+            if telemetry is not None
+            else nullcontext()
+        ):
+            await rebuild_sl_metrics(db, competition_ids=normalized_ids)
 
     mode: Literal["morning", "live"] = (
         "morning" if daily_state == EventDailyState.PREVIEW else "live"
@@ -1120,55 +1178,62 @@ async def run_desk_tick(
     graded_player_ids: list[int] = []
     storyline_results: dict[int, StorylineTickResult] = {}
 
-    for competition in competitions:
-        assert competition.id is not None
-        competition_id = competition.id
+    with telemetry.step("desk_projections") if telemetry is not None else nullcontext():
+        for competition in competitions:
+            assert competition.id is not None
+            competition_id = competition.id
 
-        # Step 3 -- grades (T2). Bulk-graded (#548): one batched pass for the
-        # whole roster instead of a per-player `grade_player_event` loop --
-        # players with no data/baseline are silently omitted (see
-        # `grade_players_bulk`'s docstring), same skip semantics the old
-        # per-player try/except performed.
-        roster_player_ids = await _active_roster_player_ids(db, competition_id)
-        grade_by_player: dict[int, GradeRow] = await grade_players_bulk(
-            db, roster_player_ids, competition_id, baseline_version=baseline_version
-        )
-        graded_player_ids.extend(grade_by_player.keys())
+            # Step 3 -- grades (T2). Bulk-graded (#548): one batched pass for the
+            # whole roster instead of a per-player `grade_player_event` loop --
+            # players with no data/baseline are silently omitted (see
+            # `grade_players_bulk`'s docstring), same skip semantics the old
+            # per-player try/except performed.
+            roster_player_ids = await _active_roster_player_ids(db, competition_id)
+            grade_by_player: dict[int, GradeRow] = await grade_players_bulk(
+                db, roster_player_ids, competition_id, baseline_version=baseline_version
+            )
+            graded_player_ids.extend(grade_by_player.keys())
 
-        # Step 4 -- storylines (T3 + T4).
-        result = await compute_desk_storylines(
-            db,
-            game_date=today,
-            competition_id=competition_id,
-            baseline_version=baseline_version,
-            mode=mode,
-        )
-        storyline_results[competition_id] = result
+            # Step 4 -- storylines (T3 + T4).
+            result = await compute_desk_storylines(
+                db,
+                game_date=today,
+                competition_id=competition_id,
+                baseline_version=baseline_version,
+                mode=mode,
+            )
+            storyline_results[competition_id] = result
 
-        # Step 5 -- commentary (all eight #520 Facts onto T2 + grouped onto T4).
-        await _commentary_for_competition(
-            db,
-            competition=competition,
-            baseline_version=baseline_version,
-            game_date=today,
-            grade_by_player=grade_by_player,
-            slate=result.slate,
-        )
+            # Step 5 -- commentary (all eight #520 Facts onto T2 + grouped onto T4).
+            await _commentary_for_competition(
+                db,
+                competition=competition,
+                baseline_version=baseline_version,
+                game_date=today,
+                grade_by_player=grade_by_player,
+                slate=result.slate,
+            )
 
     # Step 6 -- render/state freshness: event_desk_state upsert (last;
     # reflects the freshly ingested scoreboard rather than the pre-tick
     # snapshot the step-0 pre-check saw, and is only reached once every
     # required step above has genuinely succeeded).
-    states = await run_event_desk_tick(db, now=resolved_now)
+    with telemetry.step("event_desk_state") if telemetry is not None else nullcontext():
+        states = await run_event_desk_tick(db, now=resolved_now)
 
     # Step 7 -- render snapshot materialization (#551, launch-readiness item
     # 10). The FINAL step, only reached once every required step above has
     # genuinely succeeded -- builds and atomically upserts the complete
     # Preview/Live/Recap x Tracker cohort/stat-view variant matrix so the
     # homepage never has to reassemble the Desk at request time.
-    materialized_variant_count = await _materialize_render_snapshots(
-        db, now=resolved_now
-    )
+    with (
+        telemetry.step("snapshot_materialization")
+        if telemetry is not None
+        else nullcontext()
+    ):
+        materialized_variant_count = await _materialize_render_snapshots(
+            db, now=resolved_now
+        )
 
     return DeskTickResult(
         now=resolved_now,
@@ -1238,18 +1303,38 @@ def _summarize(result: DeskTickResult) -> str:
 async def _run(args: argparse.Namespace) -> None:
     """Run one production tick without holding a transaction across NBA I/O."""
     now = datetime.fromisoformat(args.now) if args.now else None
+    telemetry = PipelineTelemetry(job="desk", logger=logger)
     async with SessionLocal() as db:
         try:
-            result = await run_desk_tick(
+            with telemetry.step("desk_tick"):
+                result = await run_desk_tick(
+                    db,
+                    now=now,
+                    raw_root=args.raw_root,
+                    release_transactions_for_network_io=True,
+                    telemetry=telemetry,
+                )
+            await complete_pipeline(
                 db,
-                now=now,
-                raw_root=args.raw_root,
-                release_transactions_for_network_io=True,
+                job=SummerLeaguePipelineJob.DESK,
+                metrics_rebuilt=bool(result.normalized_competition_ids),
+                snapshots_materialized=bool(result.materialized_variant_count),
             )
             await db.commit()
-        except Exception:
+        except Exception as exc:
             await db.rollback()
+            try:
+                async with db.begin():
+                    await record_pipeline_failure(
+                        db,
+                        job=SummerLeaguePipelineJob.DESK,
+                        reason=f"{type(exc).__name__}: {exc}",
+                    )
+            except Exception:
+                logger.exception("Could not record failed Summer League Desk tick")
+            telemetry.finish("failed")
             raise
+    telemetry.finish("succeeded")
     print(_summarize(result), flush=True)
     await engine.dispose()
 
