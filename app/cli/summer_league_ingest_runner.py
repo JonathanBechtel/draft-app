@@ -63,6 +63,7 @@ import logging
 import os
 import sys
 from collections.abc import Sequence
+from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -90,6 +91,13 @@ from app.services.summer_league.normalization import (
     normalize_pbp_events,
     normalize_shot_events,
 )
+from app.services.summer_league.pipeline_state import (
+    complete_pipeline,
+    defer_full_reconciliation,
+    full_reconciliation_is_pending,
+    record_pipeline_failure,
+)
+from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league.raw_ingestion import (
     RawIngestionOptions,
     SummerLeagueRawIngestor,
@@ -103,6 +111,7 @@ from app.services.summer_league.scoreboard_ingest import (
 from app.services.summer_league.write_lock import (
     try_acquire_summer_league_writer_lock,
 )
+from app.schemas.summer_league_pipeline import SummerLeaguePipelineJob
 from app.utils.db_async import SessionLocal, dispose_engine
 
 # Configure logging for cron context
@@ -123,6 +132,11 @@ FETCH_TIMEOUT_SECONDS = 30.0
 FETCH_DELAY_SECONDS = 0.7
 FETCH_RETRIES = 3
 FETCH_RETRY_DELAY_SECONDS = 2.0
+
+
+def _telemetry_step(telemetry: PipelineTelemetry | None, name: str):
+    """Return a timing context only when a production telemetry run is active."""
+    return telemetry.step(name) if telemetry is not None else nullcontext()
 
 
 def _resolve_year() -> int:
@@ -365,6 +379,7 @@ async def _run_venue(
     *,
     year: int,
     league_id: str,
+    telemetry: PipelineTelemetry | None = None,
 ) -> tuple[bool, bool]:
     """Incrementally fetch and process one Summer League venue.
 
@@ -373,6 +388,7 @@ async def _run_venue(
         ingestor: Raw NBA Stats ingestor (shared client/store across venues).
         year: Summer League season year.
         league_id: NBA Stats LeagueID for this venue.
+        telemetry: Optional structured-timing recorder for the production run.
 
     Returns:
         A ``(had_games, failed)`` tuple. ``had_games`` is True when at least
@@ -392,7 +408,8 @@ async def _run_venue(
             force=True,
             delay_seconds=FETCH_DELAY_SECONDS,
         )
-        refresh_manifest = ingestor.fetch_year_league(refresh_options)
+        with _telemetry_step(telemetry, f"venue:{league_id}:season_index_fetch"):
+            refresh_manifest = ingestor.fetch_year_league(refresh_options)
 
         if not refresh_manifest.game_ids:
             logger.info("L%s: no games yet", league_id)
@@ -406,7 +423,8 @@ async def _run_venue(
             force=False,
             delay_seconds=FETCH_DELAY_SECONDS,
         )
-        fetch_manifest = ingestor.fetch_year_league(fetch_options)
+        with _telemetry_step(telemetry, f"venue:{league_id}:game_fetch"):
+            fetch_manifest = ingestor.fetch_year_league(fetch_options)
         logger.info(
             "L%s: %d games discovered (%d files written, %d skipped, %d errors)",
             league_id,
@@ -425,45 +443,51 @@ async def _run_venue(
         return False, False
 
     try:
-        async with db.begin():
-            if not await try_acquire_summer_league_writer_lock(db):
-                logger.info(
-                    "L%s: skipping DB processing because the Desk writer is active",
-                    league_id,
+        with _telemetry_step(telemetry, f"venue:{league_id}:db_normalization"):
+            async with db.begin():
+                if not await try_acquire_summer_league_writer_lock(db):
+                    await defer_full_reconciliation(
+                        db,
+                        reason=f"venue:{league_id}:shared_write_phase_lock_contended",
+                    )
+                    logger.info(
+                        "L%s: deferred DB processing because the Desk writer is active; "
+                        "a later scheduled full run will reconcile it",
+                        league_id,
+                    )
+                    return False, False
+                backfill_options = SummerLeagueBackfillOptions(
+                    year=year,
+                    league_id=league_id,
+                    raw_root=RAW_ROOT,
+                    create_stubs=True,
                 )
-                return False, False
-            backfill_options = SummerLeagueBackfillOptions(
-                year=year,
-                league_id=league_id,
-                raw_root=RAW_ROOT,
-                create_stubs=True,
-            )
-            report = await backfill_summer_league_backbone(db, backfill_options)
-            logger.info(
-                "L%s backbone: %s", league_id, summarize_backfill_report(report)
-            )
+                report = await backfill_summer_league_backbone(db, backfill_options)
+                logger.info(
+                    "L%s backbone: %s", league_id, summarize_backfill_report(report)
+                )
 
-            shot_report = await normalize_shot_events(
-                db, year=year, league_id=league_id, raw_root=RAW_ROOT
-            )
-            logger.info(
-                "L%s shot events: %d upserted (%d/%d games with shots)",
-                league_id,
-                shot_report.shot_events_upserted,
-                shot_report.games_with_shots,
-                shot_report.games_processed,
-            )
+                shot_report = await normalize_shot_events(
+                    db, year=year, league_id=league_id, raw_root=RAW_ROOT
+                )
+                logger.info(
+                    "L%s shot events: %d upserted (%d/%d games with shots)",
+                    league_id,
+                    shot_report.shot_events_upserted,
+                    shot_report.games_with_shots,
+                    shot_report.games_processed,
+                )
 
-            pbp_report = await normalize_pbp_events(
-                db, year=year, league_id=league_id, raw_root=RAW_ROOT
-            )
-            logger.info(
-                "L%s PBP events: %d upserted (%d/%d games with PBP)",
-                league_id,
-                pbp_report.pbp_events_upserted,
-                pbp_report.games_with_pbp,
-                pbp_report.games_processed,
-            )
+                pbp_report = await normalize_pbp_events(
+                    db, year=year, league_id=league_id, raw_root=RAW_ROOT
+                )
+                logger.info(
+                    "L%s PBP events: %d upserted (%d/%d games with PBP)",
+                    league_id,
+                    pbp_report.pbp_events_upserted,
+                    pbp_report.games_with_pbp,
+                    pbp_report.games_processed,
+                )
     except Exception as exc:
         logger.error(
             "L%s backbone/normalization failed: %s", league_id, exc, exc_info=True
@@ -475,7 +499,12 @@ async def _run_venue(
     )
     if competition_id is not None:
         await _retry_incomplete_team_boxes(
-            db, ingestor, year=year, league_id=league_id, competition_id=competition_id
+            db,
+            ingestor,
+            year=year,
+            league_id=league_id,
+            competition_id=competition_id,
+            telemetry=telemetry,
         )
 
     return True, False
@@ -488,6 +517,7 @@ async def _retry_incomplete_team_boxes(
     year: int,
     league_id: str,
     competition_id: int,
+    telemetry: PipelineTelemetry | None = None,
 ) -> None:
     """Force-refetch and re-normalize any game still on the team-box fallback.
 
@@ -534,7 +564,8 @@ async def _retry_incomplete_team_boxes(
         delay_seconds=FETCH_DELAY_SECONDS,
     )
     try:
-        retry_manifest = ingestor.fetch_year_league(retry_options)
+        with _telemetry_step(telemetry, f"venue:{league_id}:team_box_refetch"):
+            retry_manifest = ingestor.fetch_year_league(retry_options)
     except Exception as exc:
         logger.warning(
             "L%s: retry re-fetch failed (%s: %s); will retry again next run",
@@ -551,24 +582,30 @@ async def _retry_incomplete_team_boxes(
         )
 
     try:
-        async with db.begin():
-            if not await try_acquire_summer_league_writer_lock(db):
-                logger.info(
-                    "L%s: team-box retry skipped because the Desk writer is active",
-                    league_id,
+        with _telemetry_step(telemetry, f"venue:{league_id}:team_box_normalization"):
+            async with db.begin():
+                if not await try_acquire_summer_league_writer_lock(db):
+                    await defer_full_reconciliation(
+                        db,
+                        reason=f"venue:{league_id}:team_box_retry_lock_contended",
+                    )
+                    logger.info(
+                        "L%s: team-box retry deferred because the Desk writer is active; "
+                        "a later scheduled full run will retry it",
+                        league_id,
+                    )
+                    return
+                competition_report = await normalize_competition_games(
+                    db,
+                    year=year,
+                    league_id=league_id,
+                    raw_root=RAW_ROOT,
                 )
-                return
-            competition_report = await normalize_competition_games(
-                db,
-                year=year,
-                league_id=league_id,
-                raw_root=RAW_ROOT,
-            )
-            logger.info(
-                "L%s team-box normalization (retry pass): %d team rows",
-                league_id,
-                competition_report.team_game_logs_upserted,
-            )
+                logger.info(
+                    "L%s team-box normalization (retry pass): %d team rows",
+                    league_id,
+                    competition_report.team_game_logs_upserted,
+                )
     except Exception as exc:
         logger.error(
             "L%s box re-normalize (retry pass) failed: %s",
@@ -587,6 +624,7 @@ async def main() -> int:
     """
     start_time = datetime.now(timezone.utc)
     client: NBAStatsClient | None = None
+    telemetry = PipelineTelemetry(job="full_ingestion", logger=logger)
 
     try:
         try:
@@ -594,6 +632,7 @@ async def main() -> int:
             league_ids = _resolve_league_ids()
         except ValueError as exc:
             logger.error("Invalid Summer League ingest configuration: %s", exc)
+            telemetry.finish("failed")
             return 1
 
         logger.info(
@@ -619,9 +658,14 @@ async def main() -> int:
 
         async with SessionLocal() as db:
             for league_id in league_ids:
-                had_games, venue_failed = await _run_venue(
-                    db, ingestor, year=year, league_id=league_id
-                )
+                with telemetry.step(f"venue:{league_id}"):
+                    had_games, venue_failed = await _run_venue(
+                        db,
+                        ingestor,
+                        year=year,
+                        league_id=league_id,
+                        telemetry=telemetry,
+                    )
                 any_games = any_games or had_games
                 failed = failed or venue_failed
 
@@ -631,40 +675,69 @@ async def main() -> int:
             # schedule feed still has fresh tip times to upsert. Reuses the
             # NBA Stats client already opened above; best-effort, so a
             # failure here never flips `failed`.
-            await _refresh_schedule(db, now=start_time, client=client)
+            with telemetry.step("schedule_refresh"):
+                await _refresh_schedule(db, now=start_time, client=client)
 
-            if any_games:
+            pending_reconciliation = await full_reconciliation_is_pending(db)
+            # The state read auto-begins a transaction.  End that read-only
+            # transaction before the explicit serialized derivative phase.
+            await db.commit()
+            if any_games or pending_reconciliation:
                 try:
-                    async with db.begin():
-                        if await try_acquire_summer_league_writer_lock(db):
-                            summary = await rebuild_sl_metrics(db)
-                            refreshed_snapshots = (
-                                await materialize_desk_render_snapshots(db)
-                            )
-                            logger.info(
-                                "SL metrics rebuild complete: %s player-seasons, "
-                                "%s contexts (%s adv-eligible pools); refreshed "
-                                "%s Desk render snapshots",
-                                summary["seasons"],
-                                summary["contexts"],
-                                summary["adv_pools"],
-                                refreshed_snapshots,
-                            )
-                        else:
-                            logger.info(
-                                "SL metrics rebuild skipped (Desk writer is active)"
-                            )
+                    with telemetry.step("metrics_and_snapshots"):
+                        async with db.begin():
+                            if await try_acquire_summer_league_writer_lock(db):
+                                summary = await rebuild_sl_metrics(db)
+                                refreshed_snapshots = (
+                                    await materialize_desk_render_snapshots(db)
+                                )
+                                logger.info(
+                                    "SL metrics rebuild complete: %s player-seasons, "
+                                    "%s contexts (%s adv-eligible pools); refreshed "
+                                    "%s Desk render snapshots",
+                                    summary["seasons"],
+                                    summary["contexts"],
+                                    summary["adv_pools"],
+                                    refreshed_snapshots,
+                                )
+                                await complete_pipeline(
+                                    db,
+                                    job=SummerLeaguePipelineJob.FULL_INGESTION,
+                                    metrics_rebuilt=True,
+                                    snapshots_materialized=True,
+                                )
+                            else:
+                                await defer_full_reconciliation(
+                                    db,
+                                    reason="metrics_and_snapshot_lock_contended",
+                                )
+                                logger.info(
+                                    "SL metrics rebuild deferred (Desk writer is active); "
+                                    "a later scheduled full run will reconcile it"
+                                )
                 except Exception as exc:
                     failed = True
                     logger.error("SL metrics rebuild failed: %s", exc, exc_info=True)
             else:
-                logger.info("No venue had games this run; skipping metrics rebuild")
+                logger.info(
+                    "No venue had games and no deferred reconciliation; "
+                    "skipping metrics rebuild"
+                )
+
+            if failed:
+                async with db.begin():
+                    await record_pipeline_failure(
+                        db,
+                        job=SummerLeaguePipelineJob.FULL_INGESTION,
+                        reason="one or more venue or derivative stages failed",
+                    )
     finally:
         if client is not None:
             client.close()
         await dispose_engine()
 
     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    telemetry.finish("failed" if failed else "succeeded")
     if failed:
         logger.error("Summer League ingestion finished with failures in %.1fs", elapsed)
         return 1
