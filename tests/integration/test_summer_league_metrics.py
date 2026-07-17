@@ -273,14 +273,23 @@ async def test_rebuild_is_idempotent(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_rebuild_excludes_live_game_until_it_is_final(
+@pytest.mark.parametrize(
+    "excluded_status",
+    [
+        SummerLeagueGameStatus.IN_PROGRESS,
+        SummerLeagueGameStatus.POSTPONED,
+        SummerLeagueGameStatus.CANCELED,
+    ],
+)
+async def test_rebuild_excludes_non_season_game_until_it_is_final(
     db_session: AsyncSession,
+    excluded_status: SummerLeagueGameStatus,
 ) -> None:
-    """Season metrics retain completed games and add a game only after finalization.
+    """Season metrics retain only games that are eligible for season totals.
 
     Historical games with the default UNKNOWN status remain in the pool. A
-    complete-looking live box must not change Tier-2 totals until its status
-    advances to FINAL.
+    complete-looking game that is live, postponed, or canceled must not change
+    Tier-2 totals until its status advances to FINAL.
     """
     competition_id = await _seed_pool(
         db_session,
@@ -306,7 +315,7 @@ async def test_rebuild_excludes_live_game_until_it_is_final(
         game_date=date(2026, 7, 10),
         home_team_entry_id=base_game.home_team_entry_id,
         away_team_entry_id=base_game.away_team_entry_id,
-        status=SummerLeagueGameStatus.IN_PROGRESS,
+        status=excluded_status,
     )
     db_session.add(live_game)
     await db_session.flush()

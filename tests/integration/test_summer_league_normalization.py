@@ -393,6 +393,38 @@ async def test_find_incomplete_team_box_game_ids_clears_once_box_score_lands(
 
 
 @pytest.mark.asyncio
+async def test_normalize_competition_games_never_downgrades_official_team_box(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A later partial pass cannot replace an official box with the fallback."""
+    _write_fixture(tmp_path)
+    _write_team_box(tmp_path, include_team_stats=True)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+    report = await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    _write_team_box(tmp_path, include_team_stats=False)
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    team_logs = (
+        await db_session.execute(
+            select(SummerLeagueTeamGameLog).where(
+                SummerLeagueTeamGameLog.competition_id == report.competition_id
+            )
+        )
+    ).scalars().all()
+    assert len(team_logs) == 2
+    assert all(log.minutes == 200 for log in team_logs)
+    assert all(log.source_endpoint == "boxscoretraditionalv2" for log in team_logs)
+
+
+@pytest.mark.asyncio
 async def test_find_incomplete_team_box_game_ids_flags_partial_official_box(
     db_session: AsyncSession,
     tmp_path: Path,
