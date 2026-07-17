@@ -1146,8 +1146,8 @@ def _ledger_hero(
 #   Box family (Box / Per-36 / Per-100): PTS/REB/AST/STL/BLK/TOV rescale by
 #     mode; FG%/3P%/FT% are recombined from pooled makes/attempts and are
 #     therefore rate-invariant across all three modes.
-#   Advanced: its own ten-column set (TS%/eFG%/USG%/AST%/TOV%/REB%/3PAr/FTr/
-#     WS82/BPM), constant regardless of the Box/Per-36/Per-100 toggle.
+#   Advanced: its own eleven-column set (PER/TS%/eFG%/USG%/AST%/TOV%/REB%/
+#     3PAr/FTr/WS82/BPM), constant regardless of the Box/Per-36/Per-100 toggle.
 # --------------------------------------------------------------------------- #
 
 # Box-family counting stats that rescale per Box/Per-36/Per-100 mode.
@@ -1163,6 +1163,7 @@ _BOX_PCT_KEYS: tuple[str, ...] = ("fg_pct", "fg3_pct", "ft_pct")
 # inputs, so BPM/WS82 naturally render `None` (em-dash) when every pooled
 # competition row for a player is ineligible -- no extra gating needed here.
 _ADV_RATE_COMPOSITE_KEYS: tuple[str, ...] = (
+    "per",
     "usg_pct",
     "ast_pct",
     "tov_pct",
@@ -1227,7 +1228,7 @@ def _build_stat_columns(
 
     Returns:
         A flat ``{column_key: value}`` dict -- the box-family nine-column set
-        for ``"box"``/``"per36"``/``"per100"``, or the advanced ten-column set
+        for ``"box"``/``"per36"``/``"per100"``, or the advanced eleven-column set
         for ``"advanced"``.
     """
     if stat_view == "advanced":
