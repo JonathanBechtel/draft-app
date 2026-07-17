@@ -39,6 +39,7 @@ from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
+    SummerLeagueGameStatus,
     SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
     SummerLeagueShotEvent,
@@ -78,6 +79,22 @@ _ZONE_TO_BUCKET: dict[str, str] = {
 }
 # corner3 tracks corner threes as a sub-bucket of three_rate.
 _CORNER3_ZONES: frozenset[str] = frozenset({"Left Corner 3", "Right Corner 3"})
+
+# Season aggregates intentionally lag live game reporting.  Current-game facts
+# continue to feed Desk Tier 1 directly, while Tier 2 (this materialized
+# season table) reflects only completed or historical games.  UNKNOWN is
+# deliberately included: historical backfills predate the scoreboard status
+# feed and use that schema default.
+_SEASON_EXCLUDED_GAME_STATUSES: tuple[SummerLeagueGameStatus, ...] = (
+    SummerLeagueGameStatus.SCHEDULED,
+    SummerLeagueGameStatus.IN_PROGRESS,
+)
+
+
+def _season_game_status_clause() -> Any:
+    """Return the SQL predicate selecting games eligible for season aggregates."""
+    game_status: Any = SummerLeagueGame.status
+    return game_status.notin_(_SEASON_EXCLUDED_GAME_STATUSES)
 
 
 def compute_shot_diet(
@@ -915,8 +932,13 @@ async def _load_shot_diet(
             SummerLeagueShotEvent.shot_zone_basic,
             func.count().label("fga"),
         )
+        .join(
+            SummerLeagueGame,
+            SummerLeagueGame.id == SummerLeagueShotEvent.game_id,  # type: ignore[arg-type]
+        )
         .where(SummerLeagueShotEvent.player_id.isnot(None))  # type: ignore[union-attr]
         .where(SummerLeagueShotEvent.shot_zone_basic.isnot(None))  # type: ignore[union-attr]
+        .where(_season_game_status_clause())
         .where(
             SummerLeagueShotEvent.shot_zone_basic.notin_(list(_EXCLUDED_ZONES))  # type: ignore[union-attr]
         )
@@ -960,9 +982,14 @@ async def _load_assisted_fg(
             .filter(SummerLeaguePlayByPlayEvent.person2_nba_id.is_(None))  # type: ignore[union-attr]
             .label("unast_fgm"),
         )
+        .join(
+            SummerLeagueGame,
+            SummerLeagueGame.id == SummerLeaguePlayByPlayEvent.game_id,  # type: ignore[arg-type]
+        )
         .where(
             SummerLeaguePlayByPlayEvent.event_msg_type == 1,  # type: ignore[arg-type]
             SummerLeaguePlayByPlayEvent.person1_id.isnot(None),  # type: ignore[union-attr]
+            _season_game_status_clause(),
         )
         .group_by(
             SummerLeaguePlayByPlayEvent.person1_id,
@@ -986,16 +1013,37 @@ async def _load(db: AsyncSession) -> tuple[Any, ...]:
     }
     games = {
         g.id: (g.home_team_entry_id, g.away_team_entry_id, g.home_score, g.away_score)
-        for g in (await db.execute(select(SummerLeagueGame))).scalars()
+        for g in (
+            await db.execute(
+                select(SummerLeagueGame).where(_season_game_status_clause())
+            )
+        ).scalars()
     }
-    team_rows = (await db.execute(select(tgl))).scalars().all()
+    team_rows = (
+        (
+            await db.execute(
+                select(tgl)
+                .join(
+                    SummerLeagueGame,
+                    SummerLeagueGame.id == tgl.game_id,  # type: ignore[arg-type]
+                )
+                .where(_season_game_status_clause())
+            )
+        )
+        .scalars()
+        .all()
+    )
     team_mp = {
         tid: (sec or 0) / 60.0
         for tid, sec in (
             await db.execute(
-                select(pgl.team_entry_id, func.sum(pgl.minutes_seconds)).group_by(  # type: ignore[call-overload]
-                    pgl.team_entry_id
+                select(pgl.team_entry_id, func.sum(pgl.minutes_seconds))  # type: ignore[call-overload]
+                .join(
+                    SummerLeagueGame,
+                    SummerLeagueGame.id == pgl.game_id,  # type: ignore[arg-type]
                 )
+                .where(_season_game_status_clause())
+                .group_by(pgl.team_entry_id)
             )
         ).all()
     }
@@ -1013,6 +1061,7 @@ async def _load(db: AsyncSession) -> tuple[Any, ...]:
             f"{metric}_seconds"
         )
 
+    pgl_player_id: Any = pgl.player_id
     player_rows = (
         await db.execute(
             select(  # type: ignore[call-overload]
@@ -1026,8 +1075,16 @@ async def _load(db: AsyncSession) -> tuple[Any, ...]:
                 *[_source_rate_sum(metric) for metric in _SOURCE_RATE_COLUMNS],
                 *[_source_rate_seconds(metric) for metric in _SOURCE_RATE_COLUMNS],
             )
+            .join(
+                SummerLeagueGame,
+                SummerLeagueGame.id == pgl.game_id,  # type: ignore[arg-type]
+            )
             .join(PlayerMaster, PlayerMaster.id == pgl.player_id)
-            .where(pgl.player_id.isnot(None), sec > 0)  # type: ignore[union-attr]
+            .where(
+                pgl_player_id.isnot(None),
+                sec > 0,
+                _season_game_status_clause(),
+            )
             .group_by(pgl.competition_id, pgl.player_id, pgl.team_entry_id)
         )
     ).all()

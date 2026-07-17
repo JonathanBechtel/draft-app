@@ -430,6 +430,17 @@ async def test_normalize_player_game_logs_is_idempotent_and_allows_unresolved(
     assert resolved_log.comment == "DNP - Coach's Decision"
     assert resolved_log.minutes_seconds is None
 
+    # The live ingest can arrive before a separate resolution pass. Its
+    # temporary missing source link must not remove this completed game from
+    # season metrics; a subsequent resolution pass remains authoritative.
+    resolved_source.canonical_player_id = None
+    await db_session.flush()
+    await normalize_player_game_logs(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+    await db_session.refresh(resolved_log)
+    assert resolved_log.player_id == player.id
+
 
 @pytest.mark.asyncio
 async def test_normalize_player_game_logs_wires_participation_bridge(
@@ -735,8 +746,10 @@ async def test_season_log_fallback_does_not_downgrade_existing_rows(
     db_session: AsyncSession,
     tmp_path: Path,
 ) -> None:
-    """The fallback never overwrites an existing per-game row, even when the
-    per-game snapshot is absent on a later run (guards against data downgrade)."""
+    """Prevent a season-log fallback from overwriting a richer per-game row.
+
+    This holds even when the per-game snapshot is absent on a later run.
+    """
     _write_season_log_fallback_fixture(tmp_path, include_per_game=True)
     await audit_summer_league_raw(
         db_session, raw_root=tmp_path, year=2013, league_id="15"
