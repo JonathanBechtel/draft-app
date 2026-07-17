@@ -88,6 +88,8 @@ _CORNER3_ZONES: frozenset[str] = frozenset({"Left Corner 3", "Right Corner 3"})
 _SEASON_EXCLUDED_GAME_STATUSES: tuple[SummerLeagueGameStatus, ...] = (
     SummerLeagueGameStatus.SCHEDULED,
     SummerLeagueGameStatus.IN_PROGRESS,
+    SummerLeagueGameStatus.POSTPONED,
+    SummerLeagueGameStatus.CANCELED,
 )
 
 
