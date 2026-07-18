@@ -271,6 +271,42 @@ async def test_snapshot_live_hero_overlay_uses_current_featured_game_lines(
 
 
 @pytest.mark.asyncio
+async def test_snapshot_live_hero_overlay_keeps_pretip_opponent_as_empty_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One current line must not drop the snapshot duel's other named player."""
+
+    async def _fetch(_db, *, game_ids):
+        assert game_ids == [8]
+        return desk_read._CurrentLiveSnapshotState(
+            games={8: _current_game(8)},
+            logs_by_game={
+                8: {101: _log(game_id=8, player_id=101, pts=22, reb=7, ast=3)}
+            },
+            players={},
+        )
+
+    monkeypatch.setattr(desk_read, "_fetch_current_live_snapshot_state", _fetch)
+    refreshed, _players = await desk_read._refresh_snapshot_live_state(
+        object(), _live_payload(), now=datetime(2026, 7, 10, 23, 10)
+    )
+
+    assert (refreshed.hero.subject_player_id, refreshed.hero.subject_player_id_2) == (
+        101,
+        102,
+    )
+    assert refreshed.hero.subject_line is not None
+    assert refreshed.hero.subject_line.pts == 22
+    assert refreshed.hero.subject_line_2 is not None
+    assert (
+        refreshed.hero.subject_line_2.pts,
+        refreshed.hero.subject_line_2.reb,
+        refreshed.hero.subject_line_2.ast,
+        refreshed.hero.subject_line_2.gmsc,
+    ) == (None, None, None, None)
+
+
+@pytest.mark.asyncio
 async def test_snapshot_live_hero_overlay_preserves_coherent_hero_without_current_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

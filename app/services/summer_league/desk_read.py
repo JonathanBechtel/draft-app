@@ -1214,11 +1214,35 @@ async def _refresh_snapshot_live_state(
         if len(subject_ids) == 2:
             break
 
+    # A live duel selected before tip can legitimately have only one current
+    # box row. Keep its other named subject as an honest all-em-dash line until
+    # a second real performer appears; dropping that side makes the matchup
+    # look broken and discards useful snapshot identity context. Two current
+    # performers still replace stale/DNP subjects through the ranked pass above.
+    if len(subject_ids) < 2 and selected_game_id == hero.game_id:
+        for player_id in (hero.subject_player_id, hero.subject_player_id_2):
+            if player_id is not None and player_id not in subject_ids:
+                subject_ids.append(player_id)
+            if len(subject_ids) == 2:
+                break
+
     subject_player_id = subject_ids[0]
     subject_player_id_2 = subject_ids[1] if len(subject_ids) > 1 else None
-    subject_line = _hero_line_from_row(selected_logs[subject_player_id])
+    subject_row = selected_logs.get(subject_player_id)
+    subject_line = (
+        _hero_line_from_row(subject_row)
+        if subject_row is not None and _played(subject_row)
+        else DeskHeroLine(pts=None, reb=None, ast=None, gmsc=None)
+    )
+    subject_row_2 = (
+        selected_logs.get(subject_player_id_2)
+        if subject_player_id_2 is not None
+        else None
+    )
     subject_line_2 = (
-        _hero_line_from_row(selected_logs[subject_player_id_2])
+        _hero_line_from_row(subject_row_2)
+        if subject_row_2 is not None and _played(subject_row_2)
+        else DeskHeroLine(pts=None, reb=None, ast=None, gmsc=None)
         if subject_player_id_2 is not None
         else None
     )
