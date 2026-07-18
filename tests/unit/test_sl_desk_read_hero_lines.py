@@ -11,6 +11,7 @@ instances rather than a database fixture. See
 from __future__ import annotations
 
 from datetime import date, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -323,6 +324,53 @@ async def test_snapshot_live_hero_overlay_skips_non_live_or_gameless_payloads(
     )
     assert refreshed_preview is preview
     assert refreshed_no_games is no_games
+
+
+@pytest.mark.asyncio
+async def test_snapshot_reader_can_skip_live_overlay_for_tracker_fragment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tracker-only reads keep the decoded snapshot and avoid mutable live queries."""
+    now = datetime(2026, 7, 10, 23, 10)
+
+    async def _resolve(_db, *, now, require_owner):
+        return SimpleNamespace(
+            event_row=SimpleNamespace(id=1),
+            daily_state=desk_read.EventDailyState.LIVE,
+        )
+
+    async def _snapshot(_db, **_kwargs):
+        return SimpleNamespace(
+            payload_json={},
+            view_context_json={},
+            schema_version=1,
+            source_freshness_tick_at=now,
+            source_freshness_next_tick_eta=None,
+        )
+
+    def _deserialize(**_kwargs):
+        return desk_read.DeskView(
+            payload=_live_payload(), players={}, matchups={}, tracker_teams={}
+        )
+
+    async def _unexpected_overlay(*_args, **_kwargs):
+        raise AssertionError("tracker fragment must not query mutable live facts")
+
+    monkeypatch.setattr(desk_read, "_resolve_window_state", _resolve)
+    monkeypatch.setattr(desk_read, "_refresh_snapshot_live_state", _unexpected_overlay)
+    monkeypatch.setattr(
+        "app.services.event_desk.render_snapshots.get_render_snapshot", _snapshot
+    )
+    monkeypatch.setattr(
+        "app.services.event_desk.render_snapshots.deserialize_desk_view", _deserialize
+    )
+
+    view = await desk_read.get_desk_view_from_snapshot(
+        object(), now=now, refresh_live_state=False
+    )
+
+    assert view.payload is not None
+    assert view.payload.hero == _live_payload().hero
 
 
 @pytest.mark.asyncio

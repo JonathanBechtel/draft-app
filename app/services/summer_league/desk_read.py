@@ -2394,6 +2394,7 @@ async def get_desk_view_from_snapshot(
     now: Optional[datetime] = None,
     tracker_cohort: str = DEFAULT_TRACKER_COHORT,
     tracker_stat_view: str = DEFAULT_TRACKER_STAT_VIEW,
+    refresh_live_state: bool = True,
 ) -> DeskView:
     """The fast, snapshot-backed read `app.routes.ui.home` calls in place of `get_desk_view`.
 
@@ -2433,6 +2434,9 @@ async def get_desk_view_from_snapshot(
         tracker_cohort: One of `TRACKER_COHORTS`; falls back to
             `DEFAULT_TRACKER_COHORT` when unset/unrecognized.
         tracker_stat_view: One of `TRACKER_STAT_VIEWS`; same fallback.
+        refresh_live_state: Whether to overlay mutable live-game facts. The
+            tracker-only fragment disables this because it does not render the
+            hero or live board.
 
     Returns:
         The matching `DeskView`, or an empty one (`payload=None`, empty
@@ -2509,6 +2513,8 @@ async def get_desk_view_from_snapshot(
         now=resolved_now,
     )
     payload = dataclass_replace(view.payload, freshness=fresh)
+    if not refresh_live_state:
+        return dataclass_replace(view, payload=payload)
     payload, live_players = await _refresh_snapshot_live_state(
         db, payload, now=resolved_now
     )

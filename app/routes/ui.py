@@ -517,7 +517,11 @@ async def desk_tracker_partial(
     """
     now_naive_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     desk_view = await get_desk_view_from_snapshot(
-        db, now=now_naive_utc, tracker_cohort=cohort, tracker_stat_view=statview
+        db,
+        now=now_naive_utc,
+        tracker_cohort=cohort,
+        tracker_stat_view=statview,
+        refresh_live_state=False,
     )
     if desk_view.payload is not None:
         tracker = desk_view.payload.tracker
