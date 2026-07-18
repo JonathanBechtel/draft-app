@@ -72,6 +72,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
+    SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -677,13 +678,18 @@ def _hero_line_from_logs(
     if game_id is not None:
         for row in logs_by_game.get(game_id, []):
             if row.player_id == player_id:
-                return DeskHeroLine(
-                    pts=row.pts,
-                    reb=row.reb,
-                    ast=row.ast,
-                    gmsc=round(game_score_from_row(row), 2),
-                )
+                return _hero_line_from_row(row)
     return DeskHeroLine(pts=None, reb=None, ast=None, gmsc=None)
+
+
+def _hero_line_from_row(row: SummerLeaguePlayerGameLog) -> DeskHeroLine:
+    """Build one running hero line from an already identity-matched log row."""
+    return DeskHeroLine(
+        pts=row.pts,
+        reb=row.reb,
+        ast=row.ast,
+        gmsc=round(game_score_from_row(row), 2),
+    )
 
 
 def _live_hero_headline(
@@ -905,7 +911,7 @@ async def _fetch_game_logs_for_games(
     return dict(out)
 
 
-def _played(row: SummerLeaguePlayerGameLog) -> bool:
+def _played(row: Optional[SummerLeaguePlayerGameLog]) -> bool:
     """Whether a box-score line represents a player who actually appeared.
 
     The NBA feed lists a game's full roster; players who didn't dress or logged
@@ -914,7 +920,132 @@ def _played(row: SummerLeaguePlayerGameLog) -> bool:
     excluding them keeps DNP veterans off the Live top-performer/hero surfaces
     and off the negative/zero Game Scores a shell line would otherwise imply.
     """
-    return row.minutes_seconds is not None and row.minutes_seconds > 0
+    if row is None:
+        return False
+    if row.minutes_seconds is not None:
+        return row.minutes_seconds > 0
+
+    comment = (row.comment or "").strip().upper()
+    if any(
+        marker in comment
+        for marker in ("DNP", "DID NOT PLAY", "INACTIVE", "NOT WITH TEAM")
+    ):
+        return False
+
+    # NBA Stats can briefly publish a box row with a blank MIN while positive
+    # counting stats are already present. Numeric zeroes alone are not proof
+    # of an appearance: some DNP/pre-tip shells use zeroes instead of NULLs.
+    return any(
+        (getattr(row, field_name) or 0) > 0
+        for field_name in (
+            "pts",
+            "fgm",
+            "fga",
+            "reb",
+            "ast",
+            "stl",
+            "blk",
+            "tov",
+            "pf",
+        )
+    )
+
+
+@dataclass(frozen=True)
+class _CurrentLiveSnapshotState:
+    """Mutable live facts overlaid onto an otherwise immutable render snapshot."""
+
+    games: dict[int, SummerLeagueGame]
+    logs_by_game: dict[int, dict[int, SummerLeaguePlayerGameLog]]
+    players: dict[int, dict]
+
+
+def _player_view_context(player: PlayerMaster) -> dict:
+    """Build the template identity context shared by snapshot and live reads."""
+    assert player.id is not None
+    if player.draft_round is None:
+        draft_tag = "Undrafted"
+    else:
+        overall = draft_slot_fallback(player.draft_round, player.draft_pick)
+        draft_tag = f"Pick {overall}" if overall else "Drafted"
+    return {
+        "display_name": player.display_name or f"Player {player.id}",
+        "slug": player.slug,
+        "photo_url": (
+            get_player_image_url(player_id=player.id, slug=player.slug, style="default")
+            if player.slug
+            else get_placeholder_url(
+                player.display_name,
+                player_id=player.id,
+                width=160,
+                height=160,
+            )
+        ),
+        "position": player.position,
+        "draft_tag": draft_tag,
+    }
+
+
+async def _fetch_current_live_snapshot_state(
+    db: AsyncSession, *, game_ids: Sequence[int]
+) -> _CurrentLiveSnapshotState:
+    """Fetch current games, resolved box lines, and identities in one round trip.
+
+    Source-player canonical identity is authoritative when the denormalized
+    game-log ``player_id`` is NULL or stale. Selecting the complete snapshot
+    slate lets the request path move the hero to an active game with real data
+    instead of repeatedly refreshing subjects selected by an old tick.
+    """
+    if not game_ids:
+        return _CurrentLiveSnapshotState(games={}, logs_by_game={}, players={})
+
+    effective_player_id = func.coalesce(
+        SummerLeagueSourcePlayer.canonical_player_id,
+        SummerLeaguePlayerGameLog.player_id,
+    )
+    stmt = (
+        select(  # type: ignore[call-overload]
+            SummerLeagueGame,
+            SummerLeaguePlayerGameLog,
+            SummerLeagueSourcePlayer.canonical_player_id,
+            PlayerMaster,
+        )
+        .outerjoin(
+            SummerLeaguePlayerGameLog,
+            SummerLeaguePlayerGameLog.game_id == SummerLeagueGame.id,
+        )
+        .outerjoin(
+            SummerLeagueSourcePlayer,
+            SummerLeagueSourcePlayer.id == SummerLeaguePlayerGameLog.source_player_id,
+        )
+        .outerjoin(
+            PlayerMaster,
+            PlayerMaster.id == effective_player_id,
+        )
+        .where(SummerLeagueGame.id.in_(game_ids))  # type: ignore[union-attr]
+        .order_by(SummerLeagueGame.id, SummerLeaguePlayerGameLog.id)
+    )
+    rows = (await db.execute(stmt)).all()
+    games: dict[int, SummerLeagueGame] = {}
+    logs_by_game: dict[int, dict[int, SummerLeaguePlayerGameLog]] = defaultdict(dict)
+    players: dict[int, dict] = {}
+    for game, log, source_player_id, player in rows:
+        if game.id is None:
+            continue
+        games[game.id] = game
+        if log is None:
+            continue
+        canonical_player_id = source_player_id or log.player_id
+        if canonical_player_id is None:
+            continue
+        logs_by_game[game.id][int(canonical_player_id)] = log
+        if player is not None and player.id is not None:
+            players[player.id] = _player_view_context(player)
+    return _CurrentLiveSnapshotState(
+        games=games,
+        logs_by_game=dict(logs_by_game),
+        players=players,
+    )
 
 
 def _top_performers_from_logs(
@@ -969,6 +1100,187 @@ def _build_live_board(
             )
         )
     return out
+
+
+def _ranked_current_performers(
+    logs_by_player: Mapping[int, SummerLeaguePlayerGameLog],
+) -> list[tuple[int, SummerLeaguePlayerGameLog, float]]:
+    """Rank canonically resolved players with real appearances by Game Score."""
+    performers = [
+        (player_id, row, round(game_score_from_row(row), 2))
+        for player_id, row in logs_by_player.items()
+        if _played(row)
+    ]
+    performers.sort(key=lambda item: (-item[2], item[0]))
+    return performers
+
+
+async def _refresh_snapshot_live_state(
+    db: AsyncSession, payload: DeskPayload, *, now: datetime
+) -> tuple[DeskPayload, dict[int, dict]]:
+    """Overlay one coherent current live projection onto the hourly snapshot.
+
+    The hourly snapshot remains authoritative for expensive commentary and
+    tracker content. One bounded request-time query refreshes all mutable game
+    facts, reselects an active hero from the snapshot's ranked slate, resolves
+    both player identities, and supplies any newly selected player context.
+    """
+    if payload.daily_state != EventDailyState.LIVE.value:
+        return payload, {}
+    hero = payload.hero
+
+    ordered_game_ids = list(dict.fromkeys(row.game_id for row in payload.live_board))
+    if hero.game_id is not None and hero.game_id not in ordered_game_ids:
+        ordered_game_ids.insert(0, hero.game_id)
+    for row in payload.slate:
+        if row.game_id not in ordered_game_ids:
+            ordered_game_ids.append(row.game_id)
+    if not ordered_game_ids:
+        return payload, {}
+
+    current = await _fetch_current_live_snapshot_state(db, game_ids=ordered_game_ids)
+
+    refreshed_live_board: list[DeskLiveBoardRow] = []
+    for snapshot_row in payload.live_board:
+        game = current.games.get(snapshot_row.game_id)
+        ranked = _ranked_current_performers(
+            current.logs_by_game.get(snapshot_row.game_id, {})
+        )
+        top = ranked[0] if ranked else None
+        refreshed_live_board.append(
+            dataclass_replace(
+                snapshot_row,
+                status=(
+                    _effective_game_status(game, now=now).value
+                    if game is not None
+                    else snapshot_row.status
+                ),
+                home_score=game.home_score
+                if game is not None
+                else snapshot_row.home_score,
+                away_score=game.away_score
+                if game is not None
+                else snapshot_row.away_score,
+                tip_datetime=game.tip_datetime
+                if game is not None
+                else snapshot_row.tip_datetime,
+                top_performer_player_id=(
+                    top[0] if top is not None else snapshot_row.top_performer_player_id
+                ),
+                top_performer_gmsc=(
+                    top[2] if top is not None else snapshot_row.top_performer_gmsc
+                ),
+            )
+        )
+
+    ranked_by_game = {
+        game_id: _ranked_current_performers(current.logs_by_game.get(game_id, {}))
+        for game_id in ordered_game_ids
+    }
+    games_with_data = [
+        game_id for game_id in ordered_game_ids if ranked_by_game[game_id]
+    ]
+    in_progress_with_data = [
+        game_id
+        for game_id in games_with_data
+        if (game := current.games.get(game_id)) is not None
+        and _effective_game_status(game, now=now) == SummerLeagueGameStatus.IN_PROGRESS
+    ]
+    hero_pool = in_progress_with_data or games_with_data
+
+    if not hero_pool:
+        # A failed/partial ingestion read must not erase the last coherent hero.
+        return (
+            dataclass_replace(payload, live_board=refreshed_live_board),
+            current.players,
+        )
+
+    selected_game_id = hero.game_id if hero.game_id in hero_pool else hero_pool[0]
+    selected_logs = current.logs_by_game.get(selected_game_id, {})
+    ranked_players = ranked_by_game[selected_game_id]
+
+    subject_ids: list[int] = []
+    if hero.kind == "live_duel" and selected_game_id == hero.game_id:
+        for player_id in (hero.subject_player_id, hero.subject_player_id_2):
+            if (
+                player_id is not None
+                and player_id in selected_logs
+                and _played(selected_logs[player_id])
+            ):
+                subject_ids.append(player_id)
+    for player_id, _row, _gmsc in ranked_players:
+        if player_id not in subject_ids:
+            subject_ids.append(player_id)
+        if len(subject_ids) == 2:
+            break
+
+    # A live duel selected before tip can legitimately have only one current
+    # box row. Keep its other named subject as an honest all-em-dash line until
+    # a second real performer appears; dropping that side makes the matchup
+    # look broken and discards useful snapshot identity context. Two current
+    # performers still replace stale/DNP subjects through the ranked pass above.
+    if len(subject_ids) < 2 and selected_game_id == hero.game_id:
+        for player_id in (hero.subject_player_id, hero.subject_player_id_2):
+            if player_id is not None and player_id not in subject_ids:
+                subject_ids.append(player_id)
+            if len(subject_ids) == 2:
+                break
+
+    subject_player_id = subject_ids[0]
+    subject_player_id_2 = subject_ids[1] if len(subject_ids) > 1 else None
+    subject_row = selected_logs.get(subject_player_id)
+    subject_line = (
+        _hero_line_from_row(subject_row)
+        if subject_row is not None and _played(subject_row)
+        else DeskHeroLine(pts=None, reb=None, ast=None, gmsc=None)
+    )
+    subject_row_2 = (
+        selected_logs.get(subject_player_id_2)
+        if subject_player_id_2 is not None
+        else None
+    )
+    subject_line_2 = (
+        _hero_line_from_row(subject_row_2)
+        if subject_row_2 is not None and _played(subject_row_2)
+        else DeskHeroLine(pts=None, reb=None, ast=None, gmsc=None)
+        if subject_player_id_2 is not None
+        else None
+    )
+    matchup = next(
+        (
+            row.matchup_label
+            for row in refreshed_live_board
+            if row.game_id == selected_game_id
+        ),
+        "TBD",
+    )
+    subjects_changed = (
+        hero.kind != "live_duel"
+        or selected_game_id != hero.game_id
+        or subject_player_id != hero.subject_player_id
+        or subject_player_id_2 != hero.subject_player_id_2
+    )
+
+    refreshed_hero = dataclass_replace(
+        hero,
+        kind="live_duel",
+        game_id=selected_game_id,
+        subject_player_id=subject_player_id,
+        subject_player_id_2=subject_player_id_2,
+        headline=_live_hero_headline(matchup, subject_line, subject_line_2),
+        tagline=None,
+        facts=[] if subjects_changed else hero.facts,
+        subject_line=subject_line,
+        subject_line_2=subject_line_2,
+    )
+    return (
+        dataclass_replace(
+            payload,
+            hero=refreshed_hero,
+            live_board=refreshed_live_board,
+        ),
+        current.players,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1568,24 +1880,7 @@ async def get_desk_view_context(
         for p in player_rows:
             if p.id is None:
                 continue
-            if p.draft_round is None:
-                draft_tag = "Undrafted"
-            else:
-                overall = draft_slot_fallback(p.draft_round, p.draft_pick)
-                draft_tag = f"Pick {overall}" if overall else "Drafted"
-            players[p.id] = {
-                "display_name": p.display_name or f"Player {p.id}",
-                "slug": p.slug,
-                "photo_url": (
-                    get_player_image_url(player_id=p.id, slug=p.slug, style="default")
-                    if p.slug
-                    else get_placeholder_url(
-                        p.display_name, player_id=p.id, width=160, height=160
-                    )
-                ),
-                "position": p.position,
-                "draft_tag": draft_tag,
-            }
+            players[p.id] = _player_view_context(p)
 
     matchups: dict[int, dict] = {}
     if game_ids:
@@ -2123,6 +2418,7 @@ async def get_desk_view_from_snapshot(
     now: Optional[datetime] = None,
     tracker_cohort: str = DEFAULT_TRACKER_COHORT,
     tracker_stat_view: str = DEFAULT_TRACKER_STAT_VIEW,
+    refresh_live_state: bool = True,
 ) -> DeskView:
     """The fast, snapshot-backed read `app.routes.ui.home` calls in place of `get_desk_view`.
 
@@ -2132,10 +2428,10 @@ async def get_desk_view_from_snapshot(
     then does exactly ONE indexed lookup
     (`app.services.event_desk.render_snapshots.get_render_snapshot`) for the
     matching `(event_id, daily_state, tracker_cohort, tracker_stat_view)`
-    variant. Never queries `players_master`, `summer_league_games`,
-    `summer_league_desk_player_grades`, or any other per-player/per-game
-    table after that point -- the entire payload/view-context is decoded
-    straight out of the snapshot row's JSON columns.
+    variant. Live reads make one additional batched lookup for the snapshot
+    slate's current games, canonical player-game rows, and player identities so
+    a pre-tip snapshot can acquire actual box data and reselect an active hero
+    before the next hourly tick. Preview and Recap remain snapshot-only.
 
     **Never falls back to `get_desk_view`'s full assembly.** A missing
     snapshot (this exact variant hasn't been materialized yet -- e.g. the
@@ -2162,6 +2458,9 @@ async def get_desk_view_from_snapshot(
         tracker_cohort: One of `TRACKER_COHORTS`; falls back to
             `DEFAULT_TRACKER_COHORT` when unset/unrecognized.
         tracker_stat_view: One of `TRACKER_STAT_VIEWS`; same fallback.
+        refresh_live_state: Whether to overlay mutable live-game facts. The
+            tracker-only fragment disables this because it does not render the
+            hero or live board.
 
     Returns:
         The matching `DeskView`, or an empty one (`payload=None`, empty
@@ -2238,7 +2537,14 @@ async def get_desk_view_from_snapshot(
         now=resolved_now,
     )
     payload = dataclass_replace(view.payload, freshness=fresh)
-    return dataclass_replace(view, payload=payload)
+    if not refresh_live_state:
+        return dataclass_replace(view, payload=payload)
+    payload, live_players = await _refresh_snapshot_live_state(
+        db, payload, now=resolved_now
+    )
+    players = dict(view.players)
+    players.update(live_players)
+    return dataclass_replace(view, payload=payload, players=players)
 
 
 __all__ = [

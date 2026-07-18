@@ -11,7 +11,18 @@ instances rather than a database fixture. See
 from __future__ import annotations
 
 from datetime import date, datetime
+from types import SimpleNamespace
 
+import pytest
+
+import app.services.summer_league.desk_read as desk_read
+from app.services.event_desk.payload import (
+    DeskFreshness,
+    DeskHero,
+    DeskLiveBoardRow,
+    DeskPayload,
+    DeskTrackerSection,
+)
 from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
@@ -63,6 +74,21 @@ def _dnp(*, game_id: int, player_id: int) -> SummerLeaguePlayerGameLog:
         nba_stats_person_id=f"p{player_id}",
         raw_player_name=f"Player {player_id}",
         minutes_seconds=None,
+    )
+
+
+def _current_game(
+    game_id: int, *, status: SummerLeagueGameStatus = SummerLeagueGameStatus.IN_PROGRESS
+) -> SummerLeagueGame:
+    """Build the current game shape consumed by the live snapshot overlay."""
+    return SummerLeagueGame(
+        id=game_id,
+        competition_id=1,
+        nba_stats_game_id=f"g{game_id}",
+        game_date=date(2026, 7, 10),
+        status=status,
+        home_score=40,
+        away_score=38,
     )
 
 
@@ -161,6 +187,361 @@ def test_top_performers_from_logs_empty_input_returns_empty_dict() -> None:
     assert _top_performers_from_logs({}) == {}
 
 
+def _live_payload(
+    *,
+    subject_player_id: int | None = 101,
+    subject_player_id_2: int | None = 102,
+    subject_line=None,
+    subject_line_2=None,
+) -> DeskPayload:
+    """Build the smallest snapshot payload needed by the Live overlay tests."""
+    hero = DeskHero(
+        kind="live_duel",
+        game_id=8,
+        subject_player_id=subject_player_id,
+        subject_player_id_2=subject_player_id_2,
+        headline="Live now: T2 @ T1.",
+        tagline="Tick read",
+        subject_line=subject_line,
+        subject_line_2=subject_line_2,
+    )
+    return DeskPayload(
+        daily_state="live",
+        is_home_owner=True,
+        hero=hero,
+        slate=[],
+        live_board=[
+            DeskLiveBoardRow(
+                game_id=8,
+                matchup_label="T2 @ T1",
+                status="in_progress",
+                home_score=40,
+                away_score=38,
+                top_performer_player_id=None,
+                top_performer_gmsc=None,
+                read=None,
+            )
+        ],
+        ledger=[],
+        tracker=DeskTrackerSection(cohort="full_class", stat_view="box"),
+        freshness=DeskFreshness(
+            last_tick_at=None,
+            next_tick_eta=None,
+            as_of_et_label="as of 7:00pm ET",
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_snapshot_live_hero_overlay_uses_current_featured_game_lines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The snapshot overlay replaces pre-tip lines and rewrites the headline."""
+
+    async def _fetch(_db, *, game_ids):
+        assert game_ids == [8]
+        return desk_read._CurrentLiveSnapshotState(
+            games={8: _current_game(8)},
+            logs_by_game={
+                8: {
+                    101: _log(game_id=8, player_id=101, pts=22, reb=7, ast=3),
+                    102: _log(game_id=8, player_id=102, pts=15, reb=4, ast=5),
+                }
+            },
+            players={},
+        )
+
+    monkeypatch.setattr(desk_read, "_fetch_current_live_snapshot_state", _fetch)
+    refreshed, _players = await desk_read._refresh_snapshot_live_state(
+        object(), _live_payload(), now=datetime(2026, 7, 10, 23, 10)
+    )
+
+    assert refreshed.hero.subject_line is not None
+    assert (refreshed.hero.subject_line.pts, refreshed.hero.subject_line.reb) == (
+        22,
+        7,
+    )
+    assert refreshed.hero.subject_line_2 is not None
+    assert (refreshed.hero.subject_line_2.pts, refreshed.hero.subject_line_2.ast) == (
+        15,
+        5,
+    )
+    assert refreshed.hero.headline == "Live Game Score: 24.1 vs 18.5 in T2 @ T1."
+    assert refreshed.hero.tagline is None
+
+
+@pytest.mark.asyncio
+async def test_snapshot_live_hero_overlay_keeps_pretip_opponent_as_empty_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One current line must not drop the snapshot duel's other named player."""
+
+    async def _fetch(_db, *, game_ids):
+        assert game_ids == [8]
+        return desk_read._CurrentLiveSnapshotState(
+            games={8: _current_game(8)},
+            logs_by_game={
+                8: {101: _log(game_id=8, player_id=101, pts=22, reb=7, ast=3)}
+            },
+            players={},
+        )
+
+    monkeypatch.setattr(desk_read, "_fetch_current_live_snapshot_state", _fetch)
+    refreshed, _players = await desk_read._refresh_snapshot_live_state(
+        object(), _live_payload(), now=datetime(2026, 7, 10, 23, 10)
+    )
+
+    assert (refreshed.hero.subject_player_id, refreshed.hero.subject_player_id_2) == (
+        101,
+        102,
+    )
+    assert refreshed.hero.subject_line is not None
+    assert refreshed.hero.subject_line.pts == 22
+    assert refreshed.hero.subject_line_2 is not None
+    assert (
+        refreshed.hero.subject_line_2.pts,
+        refreshed.hero.subject_line_2.reb,
+        refreshed.hero.subject_line_2.ast,
+        refreshed.hero.subject_line_2.gmsc,
+    ) == (None, None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_live_hero_overlay_preserves_coherent_hero_without_current_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty current response preserves the last coherent hero unchanged."""
+
+    async def _fetch(_db, *, game_ids):
+        assert game_ids == [8]
+        return desk_read._CurrentLiveSnapshotState(
+            games={8: _current_game(8)}, logs_by_game={}, players={}
+        )
+
+    monkeypatch.setattr(desk_read, "_fetch_current_live_snapshot_state", _fetch)
+    prior_line = desk_read.DeskHeroLine(pts=18, reb=6, ast=4, gmsc=20.8)
+    payload = _live_payload(subject_line=prior_line)
+    refreshed, _players = await desk_read._refresh_snapshot_live_state(
+        object(), payload, now=datetime(2026, 7, 10, 23, 10)
+    )
+
+    assert refreshed.hero == payload.hero
+
+
+@pytest.mark.asyncio
+async def test_snapshot_live_hero_overlay_skips_non_live_or_gameless_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preview and gameless snapshots remain untouched without a log query."""
+
+    async def _unexpected_fetch(_db, *, game_ids):
+        raise AssertionError("non-Live snapshots must not refresh box lines")
+
+    monkeypatch.setattr(
+        desk_read, "_fetch_current_live_snapshot_state", _unexpected_fetch
+    )
+    preview = desk_read.dataclass_replace(_live_payload(), daily_state="preview")
+    no_games = desk_read.dataclass_replace(
+        _live_payload(subject_player_id=None, subject_player_id_2=None),
+        hero=desk_read.dataclass_replace(
+            _live_payload().hero,
+            game_id=None,
+            subject_player_id=None,
+            subject_player_id_2=None,
+        ),
+        live_board=[],
+    )
+
+    refreshed_preview, _ = await desk_read._refresh_snapshot_live_state(
+        object(), preview, now=datetime(2026, 7, 10, 23, 10)
+    )
+    refreshed_no_games, _ = await desk_read._refresh_snapshot_live_state(
+        object(), no_games, now=datetime(2026, 7, 10, 23, 10)
+    )
+    assert refreshed_preview is preview
+    assert refreshed_no_games is no_games
+
+
+@pytest.mark.asyncio
+async def test_snapshot_reader_can_skip_live_overlay_for_tracker_fragment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tracker-only reads keep the decoded snapshot and avoid mutable live queries."""
+    now = datetime(2026, 7, 10, 23, 10)
+
+    async def _resolve(_db, *, now, require_owner):
+        return SimpleNamespace(
+            event_row=SimpleNamespace(id=1),
+            daily_state=desk_read.EventDailyState.LIVE,
+        )
+
+    async def _snapshot(_db, **_kwargs):
+        return SimpleNamespace(
+            payload_json={},
+            view_context_json={},
+            schema_version=1,
+            source_freshness_tick_at=now,
+            source_freshness_next_tick_eta=None,
+        )
+
+    def _deserialize(**_kwargs):
+        return desk_read.DeskView(
+            payload=_live_payload(), players={}, matchups={}, tracker_teams={}
+        )
+
+    async def _unexpected_overlay(*_args, **_kwargs):
+        raise AssertionError("tracker fragment must not query mutable live facts")
+
+    monkeypatch.setattr(desk_read, "_resolve_window_state", _resolve)
+    monkeypatch.setattr(desk_read, "_refresh_snapshot_live_state", _unexpected_overlay)
+    monkeypatch.setattr(
+        "app.services.event_desk.render_snapshots.get_render_snapshot", _snapshot
+    )
+    monkeypatch.setattr(
+        "app.services.event_desk.render_snapshots.deserialize_desk_view", _deserialize
+    )
+
+    view = await desk_read.get_desk_view_from_snapshot(
+        object(), now=now, refresh_live_state=False
+    )
+
+    assert view.payload is not None
+    assert view.payload.hero == _live_payload().hero
+
+
+@pytest.mark.asyncio
+async def test_live_state_matches_source_canonical_id_when_log_fk_lags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A resolved source row supplies a rendered line before its log FK catches up."""
+    row = _log(game_id=8, player_id=101, pts=22, reb=7, ast=3)
+    row.player_id = None
+    game = _current_game(8)
+
+    class _Result:
+        def all(self):
+            return [(game, row, 101, None)]
+
+    class _Session:
+        async def execute(self, _statement):
+            return _Result()
+
+    matched = await desk_read._fetch_current_live_snapshot_state(
+        _Session(), game_ids=[8]
+    )
+
+    assert matched.logs_by_game == {8: {101: row}}
+
+    async def _fetch(_db, *, game_ids):
+        assert game_ids == [8]
+        return matched
+
+    monkeypatch.setattr(desk_read, "_fetch_current_live_snapshot_state", _fetch)
+    payload = _live_payload(subject_player_id=101, subject_player_id_2=None)
+    refreshed, _players = await desk_read._refresh_snapshot_live_state(
+        object(), payload, now=datetime(2026, 7, 10, 23, 10)
+    )
+    assert refreshed.hero.subject_line is not None
+    assert refreshed.hero.subject_line.pts == 22
+
+
+@pytest.mark.asyncio
+async def test_live_state_reselects_active_game_with_current_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A completed snapshot hero yields to an active game with real box lines."""
+    payload = _live_payload()
+    payload = desk_read.dataclass_replace(
+        payload,
+        live_board=[
+            desk_read.dataclass_replace(payload.live_board[0], status="final"),
+            DeskLiveBoardRow(
+                game_id=9,
+                matchup_label="T4 @ T3",
+                status="in_progress",
+                home_score=31,
+                away_score=29,
+                top_performer_player_id=None,
+                top_performer_gmsc=None,
+                read=None,
+            ),
+        ],
+    )
+
+    async def _fetch(_db, *, game_ids):
+        assert game_ids == [8, 9]
+        return desk_read._CurrentLiveSnapshotState(
+            games={
+                8: _current_game(8, status=SummerLeagueGameStatus.FINAL),
+                9: _current_game(9),
+            },
+            logs_by_game={
+                9: {
+                    201: _log(game_id=9, player_id=201, pts=24, reb=5, ast=4),
+                    202: _log(game_id=9, player_id=202, pts=18, reb=8, ast=2),
+                }
+            },
+            players={201: {"display_name": "Player 201"}},
+        )
+
+    monkeypatch.setattr(desk_read, "_fetch_current_live_snapshot_state", _fetch)
+    refreshed, players = await desk_read._refresh_snapshot_live_state(
+        object(), payload, now=datetime(2026, 7, 10, 23, 10)
+    )
+
+    assert refreshed.hero.game_id == 9
+    assert (refreshed.hero.subject_player_id, refreshed.hero.subject_player_id_2) == (
+        201,
+        202,
+    )
+    assert refreshed.hero.subject_line is not None
+    assert refreshed.hero.subject_line.pts == 24
+    assert refreshed.hero.facts == []
+    assert players == {201: {"display_name": "Player 201"}}
+
+
+@pytest.mark.asyncio
+async def test_live_state_promotes_current_game_over_stale_quiet_hero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pre-tip quiet snapshot becomes a live game hero once box data exists."""
+    payload = _live_payload()
+    payload = desk_read.dataclass_replace(
+        payload,
+        hero=desk_read.dataclass_replace(
+            payload.hero,
+            kind="quiet_slate",
+            game_id=None,
+            subject_player_id=301,
+            subject_player_id_2=None,
+            subject_line=None,
+            subject_line_2=None,
+        ),
+    )
+
+    async def _fetch(_db, *, game_ids):
+        assert game_ids == [8]
+        return desk_read._CurrentLiveSnapshotState(
+            games={8: _current_game(8)},
+            logs_by_game={
+                8: {401: _log(game_id=8, player_id=401, pts=20, reb=6, ast=5)}
+            },
+            players={},
+        )
+
+    monkeypatch.setattr(desk_read, "_fetch_current_live_snapshot_state", _fetch)
+    refreshed, _players = await desk_read._refresh_snapshot_live_state(
+        object(), payload, now=datetime(2026, 7, 10, 23, 10)
+    )
+
+    assert refreshed.hero.kind == "live_duel"
+    assert refreshed.hero.game_id == 8
+    assert refreshed.hero.subject_player_id == 401
+    assert refreshed.hero.subject_player_id_2 is None
+    assert refreshed.hero.subject_line is not None
+    assert refreshed.hero.subject_line.pts == 20
+
+
 # --------------------------------------------------------------------------- #
 # _played / DNP-shell exclusion
 # --------------------------------------------------------------------------- #
@@ -173,6 +554,22 @@ def test_played_true_for_real_minutes_false_for_dnp_shell() -> None:
         _played(_log(game_id=8, player_id=1, pts=0, reb=0, ast=0, minutes_seconds=0))
         is False
     )
+
+
+def test_played_accepts_stat_bearing_row_with_blank_minutes() -> None:
+    """A transient blank MIN must not hide a player whose box stats are present."""
+    assert _played(
+        _log(game_id=8, player_id=1, pts=12, reb=3, ast=2, minutes_seconds=None)
+    )
+
+
+def test_played_rejects_zero_shell_and_dnp_comment_with_blank_minutes() -> None:
+    """Numeric zero shells and explicit DNP comments are not appearances."""
+    zero_shell = _log(game_id=8, player_id=1, pts=0, reb=0, ast=0, minutes_seconds=None)
+    assert _played(zero_shell) is False
+    zero_shell.comment = "DNP - Coach's Decision"
+    zero_shell.pts = 12
+    assert _played(zero_shell) is False
 
 
 def test_top_performers_from_logs_skips_dnp_shells() -> None:

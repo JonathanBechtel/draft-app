@@ -230,9 +230,10 @@ DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
 # the pre-#551
 # live-assembly total of 71. The Desk's own added cost per in-window request
 # is now state resolution (3: events lookup + 2 calendar-fact reads) + 1
-# snapshot read = 4 -- inside #548's <=5-Desk-query-per-state contract for
-# EVERY state (Off-window/Preview/Live/Recap/Wind-down), proven directly (in
-# isolation from the rest of `/`) by
+# snapshot read, plus one batched current-slate read for Live = 5 -- still
+# inside #548's <=5-Desk-query-per-state contract for EVERY state
+# (Off-window/Preview/Live/Recap/Wind-down), proven directly (in isolation from
+# the rest of `/`) by
 # `tests/integration/perf/test_desk_state_resolution_budget.py`. It does NOT
 # scale with tracked players or games -- the snapshot read is a single row
 # fetch regardless.
@@ -242,15 +243,15 @@ DESK_HOME_QUERY_BUDGETS: dict[str, int] = {
 # target of 15 statements; the remaining reductions require a larger homepage
 # read-model pass and production-like validation.
 DESK_HOME_PAGE_BUDGETS: dict[str, int] = {
-    # Measured 35 (down from 55 after the shared consensus/trending reads):
+    # Measured 36 for Live (one higher than the snapshot-only 35 after the
+    # shared consensus/trending reads) because current game, box-line, and
+    # player-identity facts are refreshed for the live slate on the request path.
     # off-window `/` baseline (32, which already includes the single off-window `events`
     # lookup) - 1 (that lookup) + 4 (state resolution 3 + one snapshot read).
-    # Live and Recap land on the SAME total now -- both replace their whole
-    # per-state assembly with the identical single-snapshot read path.
-    "live": 35,
-    # Measured 35: identical to Live here -- the snapshot-backed read is the
-    # same single-row fetch regardless of which state's variant it loads (the
-    # per-state assembly differences that used to make Live/Recap diverge now
-    # live entirely at tick-materialization time, off the request path).
+    # Live adds one current-slate lookup; Recap remains snapshot-only.
+    "live": 36,
+    # Measured 35: Recap remains snapshot-only; its per-state assembly
+    # differences live entirely at tick-materialization time, off the request
+    # path.
     "recap": 35,
 }

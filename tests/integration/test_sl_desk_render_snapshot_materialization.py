@@ -37,6 +37,7 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
+    SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
 )
@@ -634,6 +635,119 @@ async def test_tip_time_crossing_switches_state_without_another_tick(
     post_tip_view = await get_desk_view_from_snapshot(db_session, now=post_tip_now)
     assert post_tip_view.payload is not None
     assert post_tip_view.payload.daily_state == "live"
+
+
+async def test_live_snapshot_refreshes_featured_duel_from_current_box_lines(
+    db_session: AsyncSession, tmp_path
+) -> None:
+    """A pre-tip snapshot must pick up actual featured-game lines after tip."""
+    year = 2026
+    today = date(2026, 7, 10)
+    tip = datetime(2026, 7, 10, 23, 0)
+    pre_tip_now = datetime(2026, 7, 10, 15, 0)
+
+    comp = await _seed_competition(
+        db_session,
+        year=year,
+        starts_on=today - timedelta(days=2),
+        ends_on=today + timedelta(days=8),
+    )
+    home = await _seed_team(db_session, comp)
+    away = await _seed_team(db_session, comp)
+    game = await _seed_game(
+        db_session,
+        comp,
+        home,
+        away,
+        game_date=today,
+        tip_datetime=tip,
+        status=SummerLeagueGameStatus.SCHEDULED,
+    )
+    player_a = await _seed_roster_player(db_session, comp, home, year=year)
+    player_b = await _seed_roster_player(db_session, comp, away, year=year)
+    await _seed_baseline(db_session, baseline_version="snap-live-lines-v1")
+    await db_session.commit()
+
+    await run_desk_tick(
+        db_session,
+        now=pre_tip_now,
+        raw_root=tmp_path,
+        client=NBAStatsClient(session=_FakeSession()),
+    )
+    await db_session.commit()
+
+    sources = (
+        (
+            await db_session.execute(
+                select(SummerLeagueSourcePlayer).where(
+                    SummerLeagueSourcePlayer.canonical_player_id.in_(  # type: ignore[union-attr]
+                        [player_a.id, player_b.id]  # type: ignore[union-attr]
+                    )
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    source_by_player = {source.canonical_player_id: source for source in sources}
+    assert player_a.id in source_by_player and player_b.id in source_by_player
+
+    game.status = SummerLeagueGameStatus.IN_PROGRESS
+    game.home_score = 22
+    game.away_score = 19
+    db_session.add_all(
+        [
+            SummerLeaguePlayerGameLog(
+                competition_id=comp.id,
+                game_id=game.id,
+                team_entry_id=home.id,
+                source_player_id=source_by_player[player_a.id].id,
+                player_id=player_a.id,
+                nba_stats_person_id=source_by_player[player_a.id].nba_stats_person_id,
+                raw_player_name=player_a.display_name or "Player A",
+                minutes_seconds=900,
+                pts=22,
+                reb=7,
+                ast=3,
+            ),
+            SummerLeaguePlayerGameLog(
+                competition_id=comp.id,
+                game_id=game.id,
+                team_entry_id=away.id,
+                source_player_id=source_by_player[player_b.id].id,
+                # Exercise the live-read repair path: the source row is already
+                # canonically resolved, but the denormalized game-log FK has
+                # not caught up yet.
+                player_id=None,
+                nba_stats_person_id=source_by_player[player_b.id].nba_stats_person_id,
+                raw_player_name=player_b.display_name or "Player B",
+                minutes_seconds=840,
+                pts=15,
+                reb=4,
+                ast=5,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    view = await get_desk_view_from_snapshot(
+        db_session, now=tip + timedelta(minutes=10)
+    )
+    assert view.payload is not None
+    assert view.payload.daily_state == EventDailyState.LIVE.value
+    hero = view.payload.hero
+    assert {hero.subject_player_id, hero.subject_player_id_2} == {
+        player_a.id,
+        player_b.id,
+    }
+    assert hero.subject_line is not None
+    assert hero.subject_line.pts == 22
+    assert hero.subject_line.reb == 7
+    assert hero.subject_line.ast == 3
+    assert hero.subject_line_2 is not None
+    assert hero.subject_line_2.pts == 15
+    assert hero.subject_line_2.reb == 4
+    assert hero.subject_line_2.ast == 5
 
 
 # --------------------------------------------------------------------------- #
