@@ -391,8 +391,12 @@ async def test_trend_and_table_agree(
         f"{EXPLORER}?subject=competitions&profile_scope=season&trend_metric=offensive_rating"
     )
     assert resp.status_code == 200
-    # The offensive_rating value (104.9) appears both in the row table and trend.
-    assert "104.9" in resp.text
+    # The offensive_rating value (104.9) must appear in BOTH the results-table
+    # cell and the trend data table — i.e. at least twice. A single occurrence
+    # would mean the trend failed to render the selected metric, which this
+    # test exists to catch (a bare substring check would pass on the table
+    # alone and silently miss a missing trend).
+    assert resp.text.count("104.9") >= 2
 
 
 # --------------------------------------------------------------------------- #
@@ -411,10 +415,15 @@ async def test_partial_renders_fragment_only(
     assert "<html" not in resp.text.lower()
 
 
-async def test_csv_matches_html_values(
+async def test_csv_structure_scope_ids_values_and_definitions(
     app_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """CSV includes stable scope ids, values, coverage, freshness, version, defs."""
+    """CSV includes stable scope ids, values, coverage, freshness, version, defs.
+
+    Validates the CSV export contract's structure and self-describing trailer
+    (contract §6). CSV-vs-computed-value parity is proven separately by
+    ``test_summer_league_explorer.py::test_competitions_csv_and_table_values_agree``.
+    """
     await _seed(db_session)
     resp = await app_client.get(f"{EXPLORER}?subject=competitions&format=csv")
     assert resp.status_code == 200
