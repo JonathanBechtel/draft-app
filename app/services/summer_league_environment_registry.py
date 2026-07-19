@@ -173,8 +173,11 @@ _ENVIRONMENT: tuple[MetricDefinition, ...] = (
         key="estimated_possessions",
         label="Possessions / Team Game",
         section=MetricSection.ENVIRONMENT,
-        source_fields=("fga", "oreb", "tov", "fta"),
-        formula="(sum(fga) - sum(oreb) + sum(tov) + 0.44 * sum(fta)) / team_game_count",
+        source_fields=("fga", "fgm", "oreb", "dreb", "tov", "fta"),
+        # Pooled opponent-adjusted Box.poss at team-game grain, never a competing
+        # simple estimate (contract §4). Box.poss is the shared BBRef possession
+        # formula reused from app.services.summer_league.metrics.
+        formula="sum(Box.poss(team, opponent)) / team_game_count",
         denominator="team games; 0 -> None",
         unit=MetricUnit.POSSESSIONS,
         scale=1.0,
