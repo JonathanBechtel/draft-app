@@ -31,7 +31,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 
 from sqlalchemy import func, select
@@ -72,6 +72,8 @@ from app.services.summer_league_environment_registry import (
     MetricDefinition,
     MetricSection,
     METRIC_DEFINITIONS,
+    format_metric_value,
+    get_metric,
     safe_ratio,
 )
 
@@ -412,6 +414,228 @@ def registry_raw_value(
     if numerator_col is None:
         return None
     return safe_ratio(getattr(profile, numerator_col, None), profile.appeared_players)
+
+
+# ===========================================================================
+# #610 — page-ready DTO shaping for the season-hub and venue-page reuse.
+#
+# Contract §7: "Every consumer receives the same service DTO, values,
+# definitions, coverage, and calculation version; routes/templates never
+# recompute metrics." This section builds a compact, template-ready summary
+# from a single already-fetched current profile row — no additional query —
+# using the same shared registry primitives (``registry_raw_value``,
+# ``metric_coverage_for_profile``, ``format_metric_value``) the Explorer
+# consumes, so the season/venue modules can never diverge from the tab.
+# ===========================================================================
+
+# A current profile older than this is still served (never silently replaced
+# by request-time aggregation, contract §8) but flagged stale. Mirrors
+# ``summer_league_explorer_service.STALE_AFTER_HOURS``; kept as its own
+# constant here (rather than imported) because that module imports *this*
+# one, so importing back would be circular.
+PROFILE_STALE_AFTER_HOURS = 72
+
+# A curated headline subset for the compact season/venue module — the full
+# v1 metric/field-composition breakdown remains one click away in Explorer
+# (contract §7: the summary "never replaces or masquerades as" the full
+# surface). Order matches display order.
+_HEADLINE_ENVIRONMENT_KEYS: tuple[str, ...] = (
+    "pace_per_48",
+    "offensive_rating",
+    "three_attempt_share",
+    "turnover_rate",
+    "assisted_fg_rate",
+    "rim_attempt_share",
+)
+_HEADLINE_COMPOSITION_KEYS: tuple[str, ...] = (
+    "rookie_share",
+    "drafted_share",
+    "lottery_share",
+    "median_age",
+)
+
+
+@dataclass(frozen=True)
+class PageMetricView:
+    """One registry metric resolved for a compact page module.
+
+    Field names deliberately mirror the Explorer detail panel's
+    ``MetricValueView`` so both surfaces can share the same
+    ``metric_section``/``coverage_badge`` Jinja macros (no divergent markup).
+    """
+
+    key: str
+    label: str
+    formatted_value: str
+    unit: str
+    formula: str
+    denominator: str
+    interpretation: str
+    confidence_note: Optional[str]
+    coverage: str  # "complete" | "partial" | "unavailable"
+    covered: int
+    eligible: int
+    reason: Optional[str]
+
+
+@dataclass(frozen=True)
+class PageMetricSectionView:
+    """One labeled group of headline metrics for a page module."""
+
+    key: str
+    label: str
+    metrics: list[PageMetricView]
+
+
+@dataclass(frozen=True)
+class ProfileSummaryView:
+    """A compact, template-ready Competition Context summary for one profile.
+
+    Built once per page render from a single current profile row (contract
+    §9: at most one indexed profile read); every value, coverage verdict,
+    and version comes from the shared registry/service so it is identical to
+    the corresponding Explorer row (contract §7).
+    """
+
+    scope_key: str
+    scope_kind: str  # "season_all_competitions" | "competition"
+    year: int
+    competition_id: Optional[int]
+    venue_slug: Optional[str]
+    display_name: str
+    version: int
+    registry_version: str
+    calculated_at: Optional[datetime]
+    source_watermark: Optional[datetime]
+    is_stale: bool
+    included_competitions: int
+    final_games: int
+    scheduled_games: int
+    distinct_teams: int
+    appeared_players: int
+    appeared_unresolved: int
+    explorer_href: str
+    sections: list[PageMetricSectionView]
+
+
+def explorer_competitions_href(scope: EnvironmentScope) -> str:
+    """The canonical Explorer Competitions-tab URL for one scope (contract §6).
+
+    Args:
+        scope: The season or competition scope to link to.
+
+    Returns:
+        ``/stats/summer-league/explorer?subject=competitions&profile_scope=...``
+        with ``detail_year`` (season) or ``competition_id`` (competition) —
+        the exact identifiers the contract marks authoritative.
+    """
+    if scope.scope_kind == "season_all_competitions":
+        return (
+            "/stats/summer-league/explorer"
+            f"?subject=competitions&profile_scope=season&detail_year={scope.year}"
+        )
+    return (
+        "/stats/summer-league/explorer"
+        "?subject=competitions&profile_scope=competition"
+        f"&competition_id={scope.competition_id}"
+    )
+
+
+def _page_metric_view(
+    profile: EnvironmentProfile, definition: MetricDefinition
+) -> PageMetricView:
+    """Resolve one registry metric for ``profile`` into a page-module view."""
+    raw = registry_raw_value(profile, definition)
+    info = metric_coverage_for_profile(profile, definition)
+    return PageMetricView(
+        key=definition.key,
+        label=definition.label,
+        formatted_value=format_metric_value(definition.key, raw),
+        unit=definition.unit.value,
+        formula=definition.formula,
+        denominator=definition.denominator,
+        interpretation=definition.interpretation,
+        confidence_note=definition.confidence_note,
+        coverage=info.coverage,
+        covered=info.covered,
+        eligible=info.eligible,
+        reason=info.reason,
+    )
+
+
+def build_profile_summary_view(
+    profile: EnvironmentProfile,
+    *,
+    stale_after_hours: int = PROFILE_STALE_AFTER_HOURS,
+) -> ProfileSummaryView:
+    """Build the season-hub / venue-page summary DTO for one current profile.
+
+    Reads only the already-fetched ``profile`` row plus the shared registry —
+    no additional query (contract §9). Every metric's value/coverage/
+    definition is produced by the same primitives the Explorer detail panel
+    uses, so the module can never publish a divergent number (contract §7).
+
+    Args:
+        profile: A current :class:`SummerLeagueEnvironmentProfile` row,
+            already resolved by the caller via
+            :func:`get_current_profile_by_scope_key`.
+        stale_after_hours: Staleness threshold override (tests only); mirrors
+            the Explorer's ``STALE_AFTER_HOURS`` convention.
+
+    Returns:
+        A :class:`ProfileSummaryView` ready for the shared
+        ``competition_context_module`` Jinja macro.
+    """
+    scope = EnvironmentScope(
+        scope_kind="season_all_competitions"
+        if profile.scope_kind == SCOPE_KIND_SEASON
+        else "competition",
+        year=profile.year,
+        competition_id=profile.competition_id,
+        scope_key=profile.scope_key,
+    )
+    env_metrics = [
+        _page_metric_view(profile, get_metric(key))
+        for key in _HEADLINE_ENVIRONMENT_KEYS
+    ]
+    composition_metrics = [
+        _page_metric_view(profile, get_metric(key))
+        for key in _HEADLINE_COMPOSITION_KEYS
+    ]
+    now = datetime.utcnow()
+    is_stale = profile.calculated_at is not None and (
+        now - profile.calculated_at
+    ) > timedelta(hours=stale_after_hours)
+    return ProfileSummaryView(
+        scope_key=profile.scope_key,
+        scope_kind=profile.scope_kind,
+        year=profile.year,
+        competition_id=profile.competition_id,
+        venue_slug=profile.venue_slug,
+        display_name=profile.display_name,
+        version=profile.version,
+        registry_version=profile.registry_version,
+        calculated_at=profile.calculated_at,
+        source_watermark=profile.source_watermark,
+        is_stale=is_stale,
+        included_competitions=profile.included_competitions,
+        final_games=profile.final_games,
+        scheduled_games=profile.scheduled_games,
+        distinct_teams=profile.distinct_teams,
+        appeared_players=profile.appeared_players,
+        appeared_unresolved=profile.appeared_unresolved,
+        explorer_href=explorer_competitions_href(scope),
+        sections=[
+            PageMetricSectionView(
+                key="environment", label="How it played", metrics=env_metrics
+            ),
+            PageMetricSectionView(
+                key="composition",
+                label="Field composition",
+                metrics=composition_metrics,
+            ),
+        ],
+    )
 
 
 # ===========================================================================

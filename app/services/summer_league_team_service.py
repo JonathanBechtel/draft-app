@@ -80,6 +80,11 @@ class VenueDetail:
     date_end: Optional[str]
     data_quality: str
     standings: list[TeamStanding]
+    # The canonical SummerLeagueCompetition id this (year, venue_slug) pair
+    # resolves to — already available from the header lookup below, so
+    # Competition Context reuse (#610) can key its profile lookup off the
+    # exact competition edition without a second resolution query.
+    competition_id: int
 
 
 @dataclass
@@ -242,6 +247,7 @@ async def get_venue(
         date_end=_iso(header.ends_on),
         data_quality=_enum_str(header.data_quality),
         standings=standings,
+        competition_id=int(header.id),
     )
 
 

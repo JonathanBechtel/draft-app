@@ -9,7 +9,7 @@ position event-time-vs-canonical, first-time/returner, unknown attributes).
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -26,11 +26,16 @@ from app.services.summer_league_environment_service import (
     _PooledScope,
     _top_decile_share,
     _validate_candidate,
+    build_profile_summary_view,
+    explorer_competitions_href,
 )
 from app.schemas.summer_league_environment import (
     COVERAGE_COMPLETE,
     COVERAGE_PARTIAL,
     COVERAGE_UNAVAILABLE,
+    SCOPE_KIND_COMPETITION,
+    SCOPE_KIND_SEASON,
+    SummerLeagueEnvironmentProfile,
 )
 
 
@@ -403,3 +408,116 @@ def test_registry_metric_count_covered() -> None:
     pool = _comp_pool(2025)
     candidate = _build_candidate(pool, {})
     assert len(candidate.coverage) == len(METRICS_BY_KEY)
+
+
+# --------------------------------------------------------------------------- #
+# Page-ready DTO shaping for season/venue reuse (#610)
+# --------------------------------------------------------------------------- #
+def _season_profile(**overrides: object) -> SummerLeagueEnvironmentProfile:
+    """A minimal *season_all_competitions* profile row, no DB required."""
+    defaults: dict[str, object] = dict(
+        id=1,
+        scope_key="season:2025",
+        scope_kind=SCOPE_KIND_SEASON,
+        year=2025,
+        competition_id=None,
+        venue_slug=None,
+        display_name="2025 Summer League (All Competitions)",
+        version=3,
+        is_current=True,
+        registry_version="2026.07.1",
+        included_competitions=2,
+        final_games=4,
+        scheduled_games=1,
+        distinct_teams=6,
+        box_complete_games=4,
+        shot_covered_games=1,
+        appeared_players=42,
+        appeared_unresolved=2,
+    )
+    defaults.update(overrides)
+    return SummerLeagueEnvironmentProfile(**defaults)  # type: ignore[arg-type]
+
+
+def test_explorer_competitions_href_season_scope() -> None:
+    """A season scope links to the Explorer with `profile_scope=season`."""
+    href = explorer_competitions_href(EnvironmentScope.for_season(2025))
+    assert href == (
+        "/stats/summer-league/explorer"
+        "?subject=competitions&profile_scope=season&detail_year=2025"
+    )
+
+
+def test_explorer_competitions_href_competition_scope() -> None:
+    """A competition scope links to the Explorer with `profile_scope=competition`."""
+    href = explorer_competitions_href(EnvironmentScope.for_competition(77, 2025))
+    assert href == (
+        "/stats/summer-league/explorer"
+        "?subject=competitions&profile_scope=competition&competition_id=77"
+    )
+
+
+def test_build_profile_summary_view_season_identity_and_link() -> None:
+    """A season profile's summary carries the right identity + Explorer link."""
+    profile = _season_profile(
+        pace_per_48=94.5, offensive_rating=110.2, rim_attempt_share=None
+    )
+    view = build_profile_summary_view(profile)
+    assert view.scope_key == "season:2025"
+    assert view.scope_kind == SCOPE_KIND_SEASON
+    assert view.included_competitions == 2
+    assert view.explorer_href == (
+        "/stats/summer-league/explorer"
+        "?subject=competitions&profile_scope=season&detail_year=2025"
+    )
+
+
+def test_build_profile_summary_view_competition_identity_and_link() -> None:
+    """A competition profile's summary carries the right identity + Explorer link."""
+    profile = _season_profile(
+        id=2,
+        scope_key="competition:77",
+        scope_kind=SCOPE_KIND_COMPETITION,
+        competition_id=77,
+        venue_slug="las_vegas",
+        display_name="2025 las_vegas",
+        included_competitions=1,
+    )
+    view = build_profile_summary_view(profile)
+    assert view.scope_key == "competition:77"
+    assert view.scope_kind == SCOPE_KIND_COMPETITION
+    assert view.competition_id == 77
+    assert view.explorer_href == (
+        "/stats/summer-league/explorer"
+        "?subject=competitions&profile_scope=competition&competition_id=77"
+    )
+
+
+def test_build_profile_summary_view_partial_metric_does_not_suppress_complete() -> None:
+    """A partial-coverage headline metric stays individually unavailable.
+
+    It never hides a sibling metric with complete coverage (contract §3).
+    """
+    # box_complete_games == final_games -> BOX coverage complete.
+    # shot_covered_games (1) < final_games (4) -> SHOT coverage partial.
+    profile = _season_profile(pace_per_48=94.5, rim_attempt_share=None)
+    view = build_profile_summary_view(profile)
+    env = next(s for s in view.sections if s.key == "environment")
+    by_key = {m.key: m for m in env.metrics}
+
+    pace = by_key["pace_per_48"]
+    assert pace.coverage == COVERAGE_COMPLETE
+    assert pace.formatted_value == "94.5"
+
+    rim = by_key["rim_attempt_share"]
+    assert rim.coverage == COVERAGE_PARTIAL
+    assert rim.formatted_value == "—"  # em dash — never a fabricated zero
+    assert rim.reason is not None
+
+
+def test_build_profile_summary_view_stale_flag() -> None:
+    """`is_stale` flips once `calculated_at` exceeds the freshness threshold."""
+    fresh = _season_profile(calculated_at=datetime.utcnow() - timedelta(hours=1))
+    stale = _season_profile(calculated_at=datetime.utcnow() - timedelta(hours=200))
+    assert build_profile_summary_view(fresh, stale_after_hours=72).is_stale is False
+    assert build_profile_summary_view(stale, stale_after_hours=72).is_stale is True
