@@ -4,6 +4,7 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-competitions.css') }}">
 <style>
 .slg-hidden { display: none; }
 .slg-metric-filter-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.3rem; }
@@ -51,33 +52,50 @@
 
   <header class="slg-explorer-head">
     <p class="slg-eyebrow">Summer League</p>
-    <h1 class="slg-title">{{ 'Game Finder' if q.subject == 'players' and q.grain == 'per_game' else 'Explorer' }}</h1>
+    <h1 class="slg-title">{{ 'Game Finder' if q.subject == 'players' and q.grain == 'per_game' else ('Competition Context' if q.subject == 'competitions' else 'Explorer') }}</h1>
     {% if q.subject == 'players' and q.grain == 'per_game' %}
     <p class="slg-explorer-sub">Find every player performance in a Summer League game. Filter a single box score, then open the full game.</p>
     <p class="slg-explorer-sub"><a href="/stats/summer-league/explorer?subject=players&grain=per_game&venue=las_vegas&draft_round=2&fcol0=pts&fop0=gte&fval0=30">Try: Las Vegas second-rounders with 30+ points</a></p>
+    {% elif q.subject == 'competitions' %}
+    <p class="slg-explorer-sub">How each Summer League environment actually played — pooled pace, shooting, and field composition per season or per competition. Every rate is recomputed from raw totals; coverage and freshness are disclosed.</p>
     {% else %}
     <p class="slg-explorer-sub">Build a custom query across every Summer League season. Sort any column; the URL is shareable.</p>
     {% endif %}
   </header>
 
   {# Subject toggle #}
-  <div class="slg-explorer-subjects">
-    <a class="slg-subject-tab {{ 'is-active' if q.subject == 'players' and q.grain != 'per_game' else '' }}"
-       href="/stats/summer-league/explorer?subject=players">Players</a>
-    <a class="slg-subject-tab {{ 'is-active' if q.subject == 'players' and q.grain == 'per_game' else '' }}"
-       href="/stats/summer-league/explorer?subject=players&grain=per_game">Game Finder</a>
+  <nav class="slg-explorer-subjects" aria-label="Explorer views">
+    {%- set is_players = q.subject == 'players' and q.grain != 'per_game' -%}
+    {%- set is_finder = q.subject == 'players' and q.grain == 'per_game' -%}
+    <a class="slg-subject-tab {{ 'is-active' if is_players else '' }}"
+       href="/stats/summer-league/explorer?subject=players" {% if is_players %}aria-current="page"{% endif %}>Players</a>
+    <a class="slg-subject-tab {{ 'is-active' if is_finder else '' }}"
+       href="/stats/summer-league/explorer?subject=players&grain=per_game" {% if is_finder %}aria-current="page"{% endif %}>Game Finder</a>
     <a class="slg-subject-tab {{ 'is-active' if q.subject == 'teams' else '' }}"
-       href="/stats/summer-league/explorer?subject=teams">Teams</a>
+       href="/stats/summer-league/explorer?subject=teams" {% if q.subject == 'teams' %}aria-current="page"{% endif %}>Teams</a>
     <a class="slg-subject-tab {{ 'is-active' if q.subject == 'games' else '' }}"
-       href="/stats/summer-league/explorer?subject=games">Matchups</a>
-  </div>
+       href="/stats/summer-league/explorer?subject=games" {% if q.subject == 'games' %}aria-current="page"{% endif %}>Matchups</a>
+    <a class="slg-subject-tab {{ 'is-active' if q.subject == 'competitions' else '' }}"
+       href="/stats/summer-league/explorer?subject=competitions" {% if q.subject == 'competitions' %}aria-current="page"{% endif %}>Competitions</a>
+  </nav>
 
   {# Query builder #}
   <form class="slg-explorer-form" method="get" action="/stats/summer-league/explorer" id="explorer-form">
     <input type="hidden" name="subject" value="{{ q.subject }}">
     <input type="hidden" name="sort" value="{{ q.sort }}">
     <input type="hidden" name="dir" value="{{ q.direction }}">
+    {% if q.subject != 'competitions' and q.competition_id %}
+    {# Carries a Competition Context handoff's authoritative competition_id
+       (#609, contract §6/§7) through every later form submit/AJAX swap on
+       this subject (mode toggle, filter changes, sort, pager) — without a
+       real form field here, submitting the form would silently drop it
+       since FormData only serializes named controls. #}
+    <input type="hidden" name="competition_id" value="{{ q.competition_id }}">
+    {% endif %}
 
+    {% if q.subject == 'competitions' %}
+    {% include "stats/summer-league/_explorer_competition_controls.html" %}
+    {% else %}
     <div class="slg-filter">
       <label for="ex-year-min">From year</label>
       <select id="ex-year-min" name="year_min">
@@ -243,6 +261,7 @@
       <button type="button" class="slg-add-filter-btn" id="add-metric-filter">+ Add filter</button>
     </div>
     {% endif %}
+    {% endif %}{# /subject == competitions branch #}
     <div class="slg-filter slg-filter--actions">
       <button type="submit" class="slg-explorer-run">Run query</button>
     </div>

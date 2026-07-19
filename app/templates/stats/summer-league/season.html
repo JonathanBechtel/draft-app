@@ -5,9 +5,10 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-competitions.css') }}">
 {% endblock %}
 
-{% from 'stats/summer-league/_sl_macros.html' import year_strip, leader_board, game_rows, pager %}
+{% from 'stats/summer-league/_sl_macros.html' import year_strip, leader_board, game_rows, pager, competition_context_module %}
 
 {% block content %}
 <main class="container slg-page">
@@ -42,6 +43,15 @@
     </a>
     {% endfor %}
   </section>
+
+  {# All-competitions Competition Context summary — explicitly labeled so it
+     never masquerades as (or replaces) the venue portfolio above. #}
+  {{ competition_context_module(
+       'Summer League · All competitions',
+       year ~ ' All-Competitions Summary',
+       season_profile,
+       'Competition Context profiles have not been published for ' ~ year ~ ' yet.'
+  ) }}
 
   {# Leaderboards #}
   <section class="slg-leaders">

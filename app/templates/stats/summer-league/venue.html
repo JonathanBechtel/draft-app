@@ -5,9 +5,10 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-competitions.css') }}">
 {% endblock %}
 
-{% from 'stats/summer-league/_sl_macros.html' import leader_board, game_rows, pager, team_logo %}
+{% from 'stats/summer-league/_sl_macros.html' import leader_board, game_rows, pager, team_logo, competition_context_module %}
 
 {% block content %}
 <main class="container slg-page">
@@ -23,6 +24,15 @@
       <span class="slg-quality slg-quality--{{ detail.data_quality }}">{{ detail.data_quality | replace('_', ' ') }}</span>
     </p>
   </header>
+
+  {# Exact single-competition Competition Context module — resolved by this
+     page's stable competition_id, never by venue label alone. #}
+  {{ competition_context_module(
+       'Summer League · Competition profile',
+       detail.venue ~ ' ' ~ detail.year ~ ' Environment',
+       venue_profile,
+       'A Competition Context profile has not been published for this competition yet.'
+  ) }}
 
   {# Championship bracket (Las Vegas only) #}
   {% macro bracket_match(g, year) %}

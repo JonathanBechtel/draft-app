@@ -1,5 +1,62 @@
 {# Shared macros for the Summer League landing and season-hub pages. #}
 
+{% from "stats/summer-league/_explorer_competition_macros.html" import metric_section, stale_badge %}
+
+{# Shared Competition Context summary module (ticket #610), used by both the
+   season hub's all-competitions summary and the venue page's exact
+   single-competition module. `profile` is a `ProfileSummaryView` (built by
+   `summer_league_environment_service.build_profile_summary_view`) or `None`
+   when no profile has been published yet — the neutral unavailable state.
+   Reuses the Explorer detail panel's own `metric_section` macro so headline
+   metrics, coverage badges, and definitions can never render differently
+   between the two surfaces (contract §7). #}
+{% macro competition_context_module(eyebrow, title, profile, unavailable_hint) %}
+<section class="slg-comp-detail" aria-labelledby="comp-summary-title">
+  <header class="slg-comp-detail__head">
+    <div>
+      <p class="slg-eyebrow">{{ eyebrow }}</p>
+      <h2 class="slg-comp-detail__title" id="comp-summary-title">{{ title }}</h2>
+    </div>
+    {% if profile %}
+    <div class="slg-comp-detail__actions">
+      {% if profile.is_stale %}
+      {{ stale_badge() }}
+      {% endif %}
+      <a class="slg-comp-detail__hub" href="{{ profile.explorer_href }}">View full profile in Explorer &rarr;</a>
+    </div>
+    {% endif %}
+  </header>
+
+  {% if profile %}
+  <dl class="slg-comp-facts">
+    {% if profile.scope_kind == 'season_all_competitions' %}
+    <div><dt>Included competitions</dt><dd>{{ profile.included_competitions }}</dd></div>
+    {% endif %}
+    <div><dt>Final games</dt><dd>{{ profile.final_games }}</dd></div>
+    <div><dt>Scheduled / not-final</dt><dd>{{ profile.scheduled_games }}</dd></div>
+    <div><dt>Teams</dt><dd>{{ profile.distinct_teams }}</dd></div>
+    <div><dt>Players (resolved)</dt><dd>{{ profile.appeared_players }}{% if profile.appeared_unresolved %} <span class="slg-comp-unresolved">+{{ profile.appeared_unresolved }} unresolved</span>{% endif %}</dd></div>
+  </dl>
+
+  {% for section in profile.sections %}
+  <div class="slg-comp-section">
+    <h3 class="slg-comp-section__title">{{ section.label }}</h3>
+    {{ metric_section(section) }}
+  </div>
+  {% endfor %}
+
+  <dl class="slg-comp-facts slg-comp-facts--freshness">
+    <div><dt>Calculated</dt><dd>{{ profile.calculated_at.strftime('%Y-%m-%d %H:%M UTC') if profile.calculated_at else '—' }}</dd></div>
+    <div><dt>Calc version</dt><dd>v{{ profile.version }}</dd></div>
+    <div><dt>Registry</dt><dd>{{ profile.registry_version }}</dd></div>
+  </dl>
+  <p class="slg-comp-conf__scopekey">Stable scope key: <code>{{ profile.scope_key }}</code></p>
+  {% else %}
+  <p class="slg-comp-hint">{{ unavailable_hint }}</p>
+  {% endif %}
+</section>
+{% endmacro %}
+
 {# Horizontal year strip; `active` is the current year or none. #}
 {% macro year_strip(years, active) %}
 <nav class="slg-yearstrip" aria-label="Summer League seasons">
