@@ -3,8 +3,6 @@ name: PR Tests
 on:
   pull_request:
     branches: [ main ]
-  push:
-    branches: [ main ]
 
 permissions:
   contents: read
@@ -124,10 +122,8 @@ jobs:
         run: diff-cover coverage.xml --compare-branch=origin/${{ github.base_ref }} --fail-under=80
 
   tests-secrets:
-    # Same-repo PRs use environment secrets from draft-app-stage; also runs on
-    # push to main so a tested commit lands on main for the Actions/Codecov
-    # badges (pull_request runs are attributed to the head branch, not main).
-    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.fork == false }}
+    # Same-repo PRs use environment secrets from draft-app-dev.
+    if: ${{ github.event.pull_request.head.repo.fork == false }}
     runs-on: ubuntu-latest
     environment: draft-app-dev
     services:
