@@ -164,6 +164,29 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Competition Context Explorer -- freshness threshold for the "stale"
+    # badge on published environment profiles (implementation contract §8:
+    # "A profile beyond the configured freshness threshold remains readable
+    # as the last good version but displays a stale badge; it is never
+    # silently replaced by request-time aggregation."). Compared against
+    # ``SummerLeagueEnvironmentProfile.calculated_at`` by
+    # ``app.services.summer_league.environment_refresh.is_environment_profile_stale``,
+    # the single shared source of truth other surfaces (#607/#608 reads)
+    # should call rather than re-deriving the threshold. Default (48h)
+    # tolerates a quiet weekend/off-cycle gap during an active event without
+    # false-positiving, while still catching a genuinely stuck incremental
+    # refresh. A dormant/historical profile computed long ago will always
+    # read as stale under this simple age check -- that is intentional
+    # honesty ("last computed on <date>"), not a bug; see the runbook.
+    summer_league_environment_stale_after_hours: int = Field(
+        default=48,
+        validation_alias=AliasChoices("SUMMER_LEAGUE_ENVIRONMENT_STALE_AFTER_HOURS"),
+        description=(
+            "Hours after a Competition Context profile's calculated_at "
+            "before public reads display a stale badge."
+        ),
+    )
+
     @property
     def is_dev(self) -> bool:
         return self.env == "dev" or self.debug is True
