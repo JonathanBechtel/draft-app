@@ -3,6 +3,14 @@
    uses profile_scope / coverage / trend_metric / detail_year / competition_id
    and never the player grain param (contract §6). #}
 
+{# Shared stale-profile badge: last good version is still served (never
+   silently replaced by request-time aggregation, contract §8), but flagged.
+   Used by the Explorer detail panel and the season/venue summary module so
+   the wording can never drift between the two surfaces. #}
+{%- macro stale_badge() -%}
+<span class="slg-comp-stale" role="status" title="Served from the last good version; a fresher rebuild has not published">⚠ Stale — last good version</span>
+{%- endmacro -%}
+
 {# Serialize competition query state to a querystring. Any of sort/direction/
    page/detail_year/competition_id may be overridden; pass drop_detail=True to
    clear both detail selectors (used by the "close profile" affordance and by

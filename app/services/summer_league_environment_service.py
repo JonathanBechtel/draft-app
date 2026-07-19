@@ -67,6 +67,7 @@ from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
 from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import (
     FIELD_COMPOSITION_ATTRIBUTES,
+    PROFILE_STALE_AFTER_HOURS,
     REGISTRY_VERSION,
     CoverageSource,
     MetricDefinition,
@@ -428,13 +429,6 @@ def registry_raw_value(
 # consumes, so the season/venue modules can never diverge from the tab.
 # ===========================================================================
 
-# A current profile older than this is still served (never silently replaced
-# by request-time aggregation, contract §8) but flagged stale. Mirrors
-# ``summer_league_explorer_service.STALE_AFTER_HOURS``; kept as its own
-# constant here (rather than imported) because that module imports *this*
-# one, so importing back would be circular.
-PROFILE_STALE_AFTER_HOURS = 72
-
 # A curated headline subset for the compact season/venue module — the full
 # v1 metric/field-composition breakdown remains one click away in Explorer
 # (contract §7: the summary "never replaces or masquerades as" the full
@@ -579,8 +573,8 @@ def build_profile_summary_view(
         profile: A current :class:`SummerLeagueEnvironmentProfile` row,
             already resolved by the caller via
             :func:`get_current_profile_by_scope_key`.
-        stale_after_hours: Staleness threshold override (tests only); mirrors
-            the Explorer's ``STALE_AFTER_HOURS`` convention.
+        stale_after_hours: Staleness threshold override (tests only);
+            defaults to the shared registry ``PROFILE_STALE_AFTER_HOURS``.
 
     Returns:
         A :class:`ProfileSummaryView` ready for the shared

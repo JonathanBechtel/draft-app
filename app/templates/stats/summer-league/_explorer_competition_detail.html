@@ -2,7 +2,7 @@
    Rendered inside _explorer_competition_results.html when a detail is resolved
    (contract §6/§7). Sections: Identity & format · Field composition · How it
    played · Performance landscape · Data confidence. #}
-{% from "stats/summer-league/_explorer_competition_macros.html" import comp_qs, coverage_badge, metric_section %}
+{% from "stats/summer-league/_explorer_competition_macros.html" import comp_qs, coverage_badge, metric_section, stale_badge %}
 {% set q = result.query %}
 {% set env_section = detail.sections | selectattr('key', 'equalto', 'environment') | first %}
 {% set landscape_section = detail.sections | selectattr('key', 'equalto', 'landscape') | first %}
@@ -16,7 +16,7 @@
     </div>
     <div class="slg-comp-detail__actions">
       {% if detail.is_stale %}
-      <span class="slg-comp-stale" role="status" title="Served from the last good version; a fresher rebuild has not published">⚠ Stale — last good version</span>
+      {{ stale_badge() }}
       {% endif %}
       <a class="slg-comp-detail__hub" href="{{ detail.href }}">View scope hub →</a>
       <a class="slg-comp-detail__close" href="{{ comp_qs(result.query, drop_detail=True) }}" aria-label="Close profile">✕ Close</a>

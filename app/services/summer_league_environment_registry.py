@@ -88,6 +88,15 @@ class ScopeEligibility(str, Enum):
 # Bump when any formula/denominator/rounding/coverage rule changes.
 REGISTRY_VERSION = "2026.07.1"
 
+# A current profile older than this is still served (never silently replaced
+# by request-time aggregation, contract §8) but flagged stale. Public v1
+# surfaces (Explorer, context strips, season/venue reuse) share this fixed
+# default; the operational refresh pipeline's own configurable threshold
+# (``settings.summer_league_environment_stale_after_hours``) is a separate,
+# tighter tripwire for the incremental-refresh job itself, not for what a
+# reader is shown.
+PROFILE_STALE_AFTER_HOURS = 72
+
 # Field-composition attributes with per-attribute known/unknown coverage.
 FIELD_COMPOSITION_ATTRIBUTES: tuple[str, ...] = (
     "draft",

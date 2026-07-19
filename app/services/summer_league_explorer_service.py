@@ -79,6 +79,7 @@ from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_environment_registry import (
     METRIC_DEFINITIONS,
+    PROFILE_STALE_AFTER_HOURS,
     CoverageSource,
     MetricDefinition,
     MetricSection,
@@ -114,12 +115,12 @@ DEFAULT_PROFILE_SCOPE = "season"
 COVERAGE_STATES = ("all", "box_complete", "shot_complete", "pbp_complete")
 DEFAULT_COVERAGE_STATE = "all"
 DEFAULT_TREND_METRIC = "pace_per_48"
-# A current profile older than this is still served (never silently replaced
-# by request-time aggregation, contract §8) but flagged stale. Not yet backed
-# by a configured setting (that lands with #618's operational wiring); a fixed
-# v1 default here is deliberately conservative for a project refreshed a few
-# times a day during a live event.
-STALE_AFTER_HOURS = 72
+# Re-exported for backward compatibility with existing call sites/tests;
+# the shared value now lives on the registry (`PROFILE_STALE_AFTER_HOURS`)
+# so every public v1 surface (Explorer, context strips, season/venue reuse)
+# agrees on one staleness threshold instead of three independently-hardcoded
+# copies.
+STALE_AFTER_HOURS = PROFILE_STALE_AFTER_HOURS
 _ALL_METRIC_KEYS: frozenset[str] = frozenset(d.key for d in METRIC_DEFINITIONS)
 
 # Subjects that accept a competition-scope handoff (#609, contract §6/§7):
