@@ -16,6 +16,7 @@
 {%- if q.year_min %}&year_min={{ q.year_min }}{% endif %}
 {%- if q.year_max %}&year_max={{ q.year_max }}{% endif %}
 {%- if q.venue %}&venue={{ q.venue }}{% endif %}
+{%- if q.competition_id %}&competition_id={{ q.competition_id }}{% endif %}
 {%- if q.draft_class %}&draft_class={{ q.draft_class }}{% endif %}
 {%- if q.draft_round %}&draft_round={{ q.draft_round }}{% endif %}
 {%- if q.draft_pick_min %}&draft_pick_min={{ q.draft_pick_min }}{% endif %}
@@ -41,6 +42,32 @@
     <a href="/stats/summer-league/explorer?subject=players">Players</a> view.
   </p>
   {% else %}
+
+  {# ── Competition Context strip (#609, contract §7) ──────────────────────
+     Rendered only when the current query resolves to exactly one approved
+     profile scope (a pinned year with no venue/competition_id, or an
+     explicit competition_id). Never shown for the competitions subject
+     itself — that tab IS the Competition Context surface. #}
+  {% if result.context_strip %}
+  <div class="slg-context-strip{{ ' slg-context-strip--stale' if result.context_strip.is_stale else '' }}" role="note">
+    <span class="slg-context-strip__eyebrow">Competition Context</span>
+    <a class="slg-context-strip__label" href="{{ result.context_strip.href }}">{{ result.context_strip.label }}</a>
+    {% for metric_label, metric_value in result.context_strip.headline %}
+    <span class="slg-context-strip__metric">
+      <span class="slg-context-strip__metric-label">{{ metric_label }}</span>
+      <span class="slg-context-strip__metric-value">{{ metric_value }}</span>
+    </span>
+    {% endfor %}
+    {% if result.context_strip.is_stale %}
+    <span class="slg-context-strip__badge" title="This profile has not refreshed recently">Stale</span>
+    {% endif %}
+  </div>
+  {% elif result.context_strip_unavailable %}
+  <p class="slg-context-strip slg-context-strip--empty">
+    Competition Context is not published for this scope yet.
+    <a href="/stats/summer-league/explorer?subject=competitions">Browse Competitions</a> to pick a profile.
+  </p>
+  {% endif %}
 
   {# ── Eligibility banners ─────────────────────────────────────────────── #}
 
@@ -69,7 +96,7 @@
 
   {# Per_competition grain: single-comp warning OR multi-comp N-of-M banner. #}
   {% if result.query.grain == 'per_competition' %}
-    {%- set is_single_comp = result.query.year_min == result.query.year_max and result.query.year_min and result.query.venue -%}
+    {%- set is_single_comp = result.query.competition_id or (result.query.year_min == result.query.year_max and result.query.year_min and result.query.venue) -%}
     {% if is_single_comp and not result.adv_eligible %}
   <div class="slg-explorer-banner slg-explorer-banner--warn" role="alert">
     <span class="slg-explorer-banner__icon">&#9888;</span>

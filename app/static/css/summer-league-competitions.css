@@ -88,6 +88,18 @@
 .slg-comp-detail__actions { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .slg-comp-detail__hub, .slg-comp-detail__close { font-family: var(--font-mono, monospace); font-size: 0.8rem; text-decoration: none; color: var(--color-slate-600, #475569); }
 .slg-comp-detail__hub:hover, .slg-comp-detail__close:hover { color: var(--color-accent-emerald, #10b981); }
+.slg-comp-detail__handoffs { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.slg-comp-detail__handoffs-label { font-family: var(--font-mono, monospace); font-size: 0.7rem; text-transform: uppercase; color: var(--color-slate-500, #64748b); }
+.slg-comp-detail__handoffs a {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  text-decoration: none;
+  color: var(--color-accent-emerald, #10b981);
+  border: 1px solid var(--color-accent-emerald, #10b981);
+  border-radius: 4px;
+  padding: 0.1rem 0.5rem;
+}
+.slg-comp-detail__handoffs a:hover { background: var(--color-accent-emerald, #10b981); color: var(--color-white, #fff); }
 .slg-comp-stale {
   font-family: var(--font-mono, monospace);
   font-size: 0.72rem;
@@ -182,10 +194,61 @@
 .slg-comp-trend__table { margin-top: 0.8rem; max-width: 32rem; }
 .slg-comp-trend__tablecap { font-family: var(--font-mono, monospace); font-size: 0.72rem; text-transform: uppercase; color: var(--color-slate-500, #64748b); text-align: left; padding-bottom: 0.3rem; }
 
+/* ── Context strip (Players/Teams/Matchups handoff, #609) ───────────────────
+   Compact, linked summary of the one approved Competition Context profile
+   the current query resolves to. Never shown on the competitions subject
+   itself — that tab IS the Competition Context surface. */
+.slg-context-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  margin-bottom: 0.9rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--color-slate-200, #e2e8f0);
+  border-left: 3px solid var(--color-accent-emerald, #10b981);
+  border-radius: 6px;
+  background: var(--color-slate-50, #f8fafc);
+  font-size: 0.85rem;
+}
+.slg-context-strip--stale { border-left-color: var(--color-amber-500, #f59e0b); }
+.slg-context-strip--empty {
+  display: block;
+  color: var(--color-slate-500, #64748b);
+  border-left-color: var(--color-slate-300, #cbd5e1);
+}
+.slg-context-strip__eyebrow {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-slate-500, #64748b);
+}
+.slg-context-strip__label { font-weight: 600; color: var(--color-slate-900, #0f172a); text-decoration: none; }
+.slg-context-strip__label:hover { text-decoration: underline; }
+.slg-context-strip__metric { display: inline-flex; align-items: baseline; gap: 0.3rem; }
+.slg-context-strip__metric-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--color-slate-500, #64748b);
+}
+.slg-context-strip__metric-value { font-family: var(--font-mono, monospace); font-weight: 600; color: var(--color-slate-800, #1e293b); }
+.slg-context-strip__badge {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  color: var(--color-amber-700, #b45309);
+  border: 1px solid var(--color-amber-500, #f59e0b);
+  border-radius: 3px;
+  padding: 0 0.3rem;
+}
+
 /* ── Mobile ──────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .slg-comp-detail { padding: 0.9rem; }
   .slg-comp-metrics, .slg-comp-attrs, .slg-comp-conf { grid-template-columns: 1fr; }
   .slg-comp-facts { grid-template-columns: repeat(2, 1fr); }
+  .slg-context-strip { flex-direction: column; align-items: flex-start; }
   .slg-scope-btn { flex: 1 1 auto; text-align: center; }
 }

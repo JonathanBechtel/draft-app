@@ -85,6 +85,7 @@ from app.services.summer_league_environment_registry import (
     MetricUnit,
     filterable_metric_keys,
     format_metric_value,
+    get_metric,
     metrics_for_scope,
     sortable_metric_keys,
 )
@@ -120,6 +121,16 @@ DEFAULT_TREND_METRIC = "pace_per_48"
 # times a day during a live event.
 STALE_AFTER_HOURS = 72
 _ALL_METRIC_KEYS: frozenset[str] = frozenset(d.key for d in METRIC_DEFINITIONS)
+
+# Subjects that accept a competition-scope handoff (#609, contract §6/§7):
+# Players/Teams/Matchups may carry a validated competition_id and render a
+# compact context strip back to the resolved Competition Context profile.
+# "games" is the Matchups subject in the UI.
+_CONTEXT_HANDOFF_SUBJECTS = ("players", "teams", "games")
+# Registry metrics shown as the strip's compact headline (contract §7: "every
+# consumer receives the same service DTO... routes/templates never recompute
+# metrics" — these are raw profile columns read verbatim via registry_raw_value).
+_CONTEXT_STRIP_HEADLINE_METRICS = ("pace_per_48", "offensive_rating")
 
 DEFAULT_MIN_GAMES = 2
 DEFAULT_MIN_MINUTES = 60
@@ -1870,6 +1881,28 @@ class CompetitionTrend:
     points: list[TrendPoint] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class ContextStripView:
+    """Compact Competition Context handoff for Players/Teams/Matchups (contract §7).
+
+    Rendered only when the current query resolves to exactly one approved
+    profile scope — a single pinned year with no venue/competition_id
+    (``season:<year>``) or an explicit ``competition_id`` (``competition:<id>``).
+    Every value here is read verbatim off the shared
+    ``SummerLeagueEnvironmentProfile`` (via ``registry_raw_value`` /
+    ``format_metric_value``) — the same values, definitions, and version the
+    Competitions tab and CSV consume; nothing is recomputed in this module or
+    in a template (contract §7: "routes/templates never recompute metrics").
+    """
+
+    scope_kind: str  # "season_all_competitions" | "competition"
+    scope_key: str
+    label: str  # profile.display_name, e.g. "2025 Las Vegas Summer League"
+    href: str  # the season/venue hub page for this exact profile
+    headline: list[tuple[str, str]]  # [(metric label, formatted value), ...]
+    is_stale: bool
+
+
 @dataclass
 class ExplorerResult:
     """A rendered Explorer query: columns, rows, pagination, and facets."""
@@ -1897,6 +1930,17 @@ class ExplorerResult:
     # None when no detail/trend is selected or resolvable (contract §6).
     competition_detail: Optional[CompetitionDetail] = None
     competition_trend: Optional[CompetitionTrend] = None
+    # Players/Teams/Matchups only (#609, contract §7): the compact linked
+    # environment strip for the resolved profile, or None when the query is
+    # unscoped/ambiguous/multi-year (no context rendered) or when a candidate
+    # scope resolves to no current profile (stale/missing — see
+    # ``context_strip_unavailable``).
+    context_strip: Optional[ContextStripView] = None
+    # True when the query names a candidate single-profile scope (a pinned
+    # year or an explicit competition_id) but no current profile exists for
+    # it yet — distinct from an out-of-range/ambiguous query, which leaves
+    # both this and ``context_strip`` at their default (nothing shown).
+    context_strip_unavailable: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -2027,6 +2071,15 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         # detail_year selector never coexists with it (contract §6).
         if competition_id is not None:
             detail_year = None
+    elif subject in _CONTEXT_HANDOFF_SUBJECTS and competition_id is not None:
+        # Players/Teams/Matchups (#609): a competition-scope handoff link
+        # carries an authoritative competition_id. Clear year/venue so a
+        # stale/inconsistent range from earlier form state can never narrow
+        # (or appear to broaden) the pinned competition — competition_id
+        # alone is a complete, exact filter (contract §6).
+        year_min = None
+        year_max = None
+        venue = None
 
     return ExplorerQuery(
         subject=subject,
@@ -2496,6 +2549,8 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         conds.append(ps.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
         conds.append(ps.venue_slug == q.venue)
+    if q.competition_id is not None:
+        conds.append(ps.competition_id == q.competition_id)  # type: ignore[arg-type]
     if q.undrafted:
         conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
     else:
@@ -2727,11 +2782,15 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 
 
 def _is_single_competition(q: ExplorerQuery) -> bool:
-    """Return True when the query pins exactly one competition (one year, one venue).
+    """Return True when the query pins exactly one competition.
 
-    Both year_min == year_max (pinned to a single year) and a non-None venue are
-    required.  This is the only case where pool-calibrated composites are valid.
+    Either an explicit, authoritative ``competition_id`` (a #609 Competition
+    Context handoff) or the older year_min == year_max + venue pinning pins
+    exactly one competition — both are cases where pool-calibrated composites
+    are valid.
     """
+    if q.competition_id is not None:
+        return True
     return (
         q.year_min is not None
         and q.year_max is not None
@@ -2756,6 +2815,25 @@ async def _fetch_adv_eligible(db: AsyncSession, year: int, venue_slug: str) -> b
     return bool(row[0]) if row is not None else False
 
 
+async def _fetch_adv_eligible_by_competition(
+    db: AsyncSession, competition_id: int
+) -> bool:
+    """Look up the adv_eligible flag by stable competition id (#609 handoff scope).
+
+    Used instead of :func:`_fetch_adv_eligible` when the query pins its scope
+    via an authoritative ``competition_id`` rather than year+venue (those are
+    cleared during canonicalization for a competition-scope handoff, contract §6).
+    """
+    ctx = SummerLeagueMetricContext
+    result = await db.execute(
+        select(ctx.adv_eligible)  # type: ignore[call-overload]
+        .where(ctx.competition_id == competition_id)  # type: ignore[arg-type]
+        .limit(1)
+    )
+    row = result.one_or_none()
+    return bool(row[0]) if row is not None else False
+
+
 async def _fetch_adv_counts(db: AsyncSession, q: ExplorerQuery) -> tuple[int, int]:
     """Count eligible and total competitions in the query scope for the N-of-M banner.
 
@@ -2773,12 +2851,18 @@ async def _fetch_adv_counts(db: AsyncSession, q: ExplorerQuery) -> tuple[int, in
     """
     ctx = SummerLeagueMetricContext
     conds: list[Any] = []
-    if q.year_min is not None:
-        conds.append(ctx.year >= q.year_min)  # type: ignore[arg-type]
-    if q.year_max is not None:
-        conds.append(ctx.year <= q.year_max)  # type: ignore[arg-type]
-    if q.venue:
-        conds.append(ctx.venue_slug == q.venue)
+    if q.competition_id is not None:
+        # Authoritative competition-scope handoff (#609): year/venue are
+        # cleared during canonicalization, so filter on the stable id directly
+        # rather than falling through to an unfiltered (all-competitions) count.
+        conds.append(ctx.competition_id == q.competition_id)  # type: ignore[arg-type]
+    else:
+        if q.year_min is not None:
+            conds.append(ctx.year >= q.year_min)  # type: ignore[arg-type]
+        if q.year_max is not None:
+            conds.append(ctx.year <= q.year_max)  # type: ignore[arg-type]
+        if q.venue:
+            conds.append(ctx.venue_slug == q.venue)
 
     # Single grouped query: total rows + eligible rows via a conditional sum. Folding
     # these into one statement keeps the route's query budget tight (one count query,
@@ -2831,6 +2915,8 @@ async def _query_players_per_competition(
         conds.append(ps.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
         conds.append(ps.venue_slug == q.venue)
+    if q.competition_id is not None:
+        conds.append(ps.competition_id == q.competition_id)  # type: ignore[arg-type]
     if q.undrafted:
         conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
     else:
@@ -2987,7 +3073,11 @@ async def _query_players_per_competition(
 
     # Determine adv_eligible for single-competition scope.
     pool_adv_eligible = False
-    if single_comp and q.year_min is not None and q.venue is not None:
+    if single_comp and q.competition_id is not None:
+        pool_adv_eligible = await _fetch_adv_eligible_by_competition(
+            db, q.competition_id
+        )
+    elif single_comp and q.year_min is not None and q.venue is not None:
         pool_adv_eligible = await _fetch_adv_eligible(db, q.year_min, q.venue)
 
     # N-of-M counts for the eligibility banner.
@@ -3084,6 +3174,8 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
         conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
         conds.append(comp.venue_slug == q.venue)
+    if q.competition_id is not None:
+        conds.append(comp.id == q.competition_id)  # type: ignore[arg-type]
     if q.undrafted:
         conds.append(pm.draft_year.is_(None))  # type: ignore[union-attr]
     else:
@@ -3306,6 +3398,8 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
         conds.append(comp.venue_slug == q.venue)
+    if q.competition_id is not None:
+        conds.append(comp.id == q.competition_id)  # type: ignore[arg-type]
 
     entry_rows = (
         await db.execute(
@@ -3449,6 +3543,8 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         conds.append(comp.year <= q.year_max)  # type: ignore[arg-type]
     if q.venue:
         conds.append(comp.venue_slug == q.venue)
+    if q.competition_id is not None:
+        conds.append(comp.id == q.competition_id)  # type: ignore[arg-type]
     if q.round_type is not None:
         conds.append(game.round_label == q.round_type)
 
@@ -4269,6 +4365,96 @@ async def get_player_drilldown_rows(
 
 
 # --------------------------------------------------------------------------- #
+# Context strip (Players/Teams/Matchups handoff, #609, contract §6/§7)
+# --------------------------------------------------------------------------- #
+
+
+def _profile_href(profile: SummerLeagueEnvironmentProfile) -> str:
+    """The season/venue hub page for exactly this profile's scope.
+
+    Mirrors ``_competition_href`` (the same link the Competitions tab computes
+    for its own rows) so the strip and the Competitions tab never diverge on
+    where a scope "lives" — season scope resolves to the season hub, a named
+    competition resolves to its venue hub.
+    """
+    if profile.scope_kind == SCOPE_KIND_SEASON:
+        return f"/stats/summer-league/{profile.year}"
+    return f"/stats/summer-league/{profile.year}/{profile.venue_slug}"
+
+
+def _context_strip_headline(
+    profile: SummerLeagueEnvironmentProfile,
+) -> list[tuple[str, str]]:
+    """Format the strip's 1-2 headline metrics straight off the profile row.
+
+    Reads only already-fetched columns via ``registry_raw_value`` /
+    ``format_metric_value`` (both pure, no query) — never recomputes a metric
+    (contract §7). A metric whose coverage left it NULL is skipped rather than
+    shown as a fabricated zero/dash pair.
+    """
+    out: list[tuple[str, str]] = []
+    for key in _CONTEXT_STRIP_HEADLINE_METRICS:
+        definition = get_metric(key)
+        raw = registry_raw_value(profile, definition)
+        if raw is None:
+            continue
+        out.append((definition.label, format_metric_value(key, raw)))
+    return out
+
+
+def _build_context_strip(profile: SummerLeagueEnvironmentProfile) -> ContextStripView:
+    """Resolve one current profile row into the compact strip payload."""
+    now = datetime.utcnow()
+    is_stale = profile.calculated_at is not None and (
+        now - profile.calculated_at
+    ) > timedelta(hours=STALE_AFTER_HOURS)
+    return ContextStripView(
+        scope_kind=profile.scope_kind,
+        scope_key=profile.scope_key,
+        label=profile.display_name,
+        href=_profile_href(profile),
+        headline=_context_strip_headline(profile),
+        is_stale=is_stale,
+    )
+
+
+async def _resolve_context_strip(
+    db: AsyncSession, q: ExplorerQuery
+) -> tuple[Optional[ContextStripView], bool]:
+    """Resolve the Players/Teams/Matchups context strip for the current query.
+
+    Returns ``(strip, unavailable)``. A strip renders only when the query's
+    year/venue/competition_id params resolve to exactly one of the two
+    approved profile scopes (contract §6/§7):
+
+    * an explicit ``competition_id`` (authoritative; ``parse_query`` already
+      clears any stale venue/year alongside it for these subjects), or
+    * a single pinned year (``year_min == year_max``) with no venue set.
+
+    Multi-year ranges, an unpinned year, or a venue selected without a
+    competition_id are ambiguous by the contract's own examples and resolve
+    to ``(None, False)`` — no extra query fires for that (very common, wide
+    open) case, so the default/unscoped Explorer render stays at its existing
+    query budget. When a candidate scope *is* named but no current profile
+    has been published for it yet (stale/missing), this returns
+    ``(None, True)`` so the template can show a minimal "no context yet"
+    affordance instead of silently rendering nothing.
+    """
+    if q.subject not in _CONTEXT_HANDOFF_SUBJECTS:
+        return None, False
+    if q.competition_id is not None:
+        scope_key = competition_scope_key(q.competition_id)
+    elif q.year_min is not None and q.year_min == q.year_max and q.venue is None:
+        scope_key = season_scope_key(q.year_min)
+    else:
+        return None, False
+    profile = await get_current_profile_by_scope_key(db, scope_key)
+    if profile is None:
+        return None, True
+    return _build_context_strip(profile), False
+
+
+# --------------------------------------------------------------------------- #
 # Dispatch
 # --------------------------------------------------------------------------- #
 
@@ -4291,14 +4477,14 @@ async def run_explorer_query(db: AsyncSession, q: ExplorerQuery) -> ExplorerResu
             result = await _query_players_per_game(db, q)
         else:  # career (default)
             result = await _query_players(db, q)
-        result.facets = facets
-        return result
-
-    if q.subject == "teams":
+    elif q.subject == "teams":
         result = await _query_teams(db, q)
-        result.facets = facets
-        return result
+    else:
+        result = await _query_games(db, q)
 
-    result = await _query_games(db, q)
     result.facets = facets
+    (
+        result.context_strip,
+        result.context_strip_unavailable,
+    ) = await _resolve_context_strip(db, q)
     return result

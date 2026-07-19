@@ -84,6 +84,14 @@
     <input type="hidden" name="subject" value="{{ q.subject }}">
     <input type="hidden" name="sort" value="{{ q.sort }}">
     <input type="hidden" name="dir" value="{{ q.direction }}">
+    {% if q.subject != 'competitions' and q.competition_id %}
+    {# Carries a Competition Context handoff's authoritative competition_id
+       (#609, contract §6/§7) through every later form submit/AJAX swap on
+       this subject (mode toggle, filter changes, sort, pager) — without a
+       real form field here, submitting the form would silently drop it
+       since FormData only serializes named controls. #}
+    <input type="hidden" name="competition_id" value="{{ q.competition_id }}">
+    {% endif %}
 
     {% if q.subject == 'competitions' %}
     {% include "stats/summer-league/_explorer_competition_controls.html" %}

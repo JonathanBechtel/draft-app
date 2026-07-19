@@ -23,6 +23,20 @@
     </div>
   </header>
 
+  {# ── Scope-preserving handoffs (#609, contract §6/§7) ─────────────────────
+     Carry the exact approved profile scope — a pinned year for a season, an
+     authoritative competition_id for a competition — into the other Explorer
+     subjects. Never year+venue: parse_query canonicalizes competition_id as
+     authoritative and clears venue/year for these subjects, so this is the
+     one link shape that always resolves back to this exact profile. #}
+  {% set handoff_qs = ('competition_id=' ~ detail.competition_id) if detail.scope_kind == 'competition' else ('year_min=' ~ detail.year ~ '&year_max=' ~ detail.year) %}
+  <nav class="slg-comp-detail__handoffs" aria-label="View this scope in other Explorer views">
+    <span class="slg-comp-detail__handoffs-label">View this scope in:</span>
+    <a href="/stats/summer-league/explorer?subject=players&{{ handoff_qs }}">Players</a>
+    <a href="/stats/summer-league/explorer?subject=teams&{{ handoff_qs }}">Teams</a>
+    <a href="/stats/summer-league/explorer?subject=games&{{ handoff_qs }}">Matchups</a>
+  </nav>
+
   {# ── 1. Identity & format ─────────────────────────────────────────────── #}
   <div class="slg-comp-section">
     <h3 class="slg-comp-section__title">Identity &amp; format</h3>
