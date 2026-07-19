@@ -133,6 +133,19 @@ ROUTE_BUDGETS: dict[str, int] = {
     # prior all-rows-in-Python approach.
     # +1 for _fetch_adv_counts: the N-of-M banner (#406) needs eligible_n + total_m over
     # SummerLeagueMetricContext, folded into a single grouped count query.
+    #
+    # This 10 is measured against the default subject=players render only.
+    # `subject=competitions` (#607, Competition Context) dispatches to a
+    # completely different, cheaper read path — one facet query (year/venue
+    # from current profiles only, skipping the 7 player/team facet reads
+    # above), one list query, plus at most one detail lookup + one membership
+    # read + one venue-series trend read when requested — and is NOT
+    # exercised by this generic harness: `representative_dataset` seeds no
+    # `summer_league_environment_profiles` rows, so a competitions request
+    # here would only ever measure the trivial empty-result path. It is
+    # measured for real (against a populated Competition Context seed,
+    # asserting <=10) by
+    # `tests/integration/test_summer_league_explorer.py::test_competitions_route_query_budget`.
     "/stats/summer-league/explorer": 10,
 }
 
