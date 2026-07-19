@@ -35,8 +35,8 @@ from datetime import date, datetime, timezone
 from typing import Any, Literal, Optional
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.player_status import PlayerStatus

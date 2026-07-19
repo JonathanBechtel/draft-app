@@ -175,15 +175,9 @@ async def refresh_environment_profiles_for_year(
     try:
         if telemetry is not None:
             with telemetry.step(f"environment_refresh:year:{year}"):
-                # rebuild_environment_profiles is typed against sqlmodel's
-                # AsyncSession subclass; every session this app actually
-                # constructs (app.utils.db_async.SessionLocal) is the plain
-                # sqlalchemy.ext.asyncio.AsyncSession this module (and every
-                # other Summer League pipeline module) types against -- both
-                # work identically at runtime.
-                result = await rebuild_environment_profiles(db, year=year)  # type: ignore[arg-type]
+                result = await rebuild_environment_profiles(db, year=year)
         else:
-            result = await rebuild_environment_profiles(db, year=year)  # type: ignore[arg-type]
+            result = await rebuild_environment_profiles(db, year=year)
     except Exception as exc:  # noqa: BLE001 -- isolate any refresh failure
         outcome.duration_seconds = (
             datetime.now(timezone.utc) - started
