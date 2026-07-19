@@ -596,6 +596,43 @@ async def test_desk_tick_off_window_is_a_no_op(db_session: AsyncSession) -> None
     assert state.freshness_tick_at == now
 
 
+async def test_desk_tick_writer_lock_wait_ms_is_a_distinct_telemetry_field(
+    db_session: AsyncSession,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """#629: the writer_lock_wait step logs writer_lock_wait_ms as its own field.
+
+    Uses the same fast, network-free off-window path as
+    `test_desk_tick_off_window_is_a_no_op` -- the writer lock is
+    uncontended, so this proves the field is present and well-formed on the
+    ordinary success path, distinct from (not folded into) the step's
+    generic `duration_ms`.
+    """
+    now = datetime(2099, 1, 15, 12, 0)
+    telemetry_logger = logging.getLogger("test_sl_desk_tick_writer_lock_wait_ms")
+    telemetry = PipelineTelemetry(job="desk", logger=telemetry_logger)
+
+    with caplog.at_level(logging.INFO, logger=telemetry_logger.name):
+        result = await run_desk_tick(db_session, now=now, telemetry=telemetry)
+    await db_session.commit()
+
+    assert result.dormant is True
+
+    wait_step_logs = [
+        record.getMessage()
+        for record in caplog.records
+        if "step=writer_lock_wait " in record.getMessage()
+        or record.getMessage().endswith("step=writer_lock_wait")
+    ]
+    assert len(wait_step_logs) == 1
+    message = wait_step_logs[0]
+    assert "outcome=succeeded" in message
+    assert "writer_lock_wait_ms=" in message
+    # The field is a real, non-negative measured duration, not a placeholder.
+    wait_ms = float(message.rsplit("writer_lock_wait_ms=", 1)[1].split()[0])
+    assert wait_ms >= 0.0
+
+
 async def test_desk_tick_reads_runtime_clock_after_writer_lock(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,

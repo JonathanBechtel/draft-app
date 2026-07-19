@@ -77,6 +77,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,6 +100,7 @@ from app.services.summer_league.manifest import SummerLeagueRawManifest
 from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.services.summer_league.batch_progress import (
+    count_pending_batch_games,
     get_completed_batch_game_ids,
     invalidate_batch_progress,
     record_batch_progress,
@@ -178,9 +180,50 @@ EVENT_BATCH_SIZE = 8
 DESK_BACKOFF_SECONDS = 0.5
 
 
-def _telemetry_step(telemetry: PipelineTelemetry | None, name: str):
-    """Return a timing context only when a production telemetry run is active."""
-    return telemetry.step(name) if telemetry is not None else nullcontext()
+def _telemetry_step(telemetry: PipelineTelemetry | None, name: str, **fields: object):
+    """Return a timing context only when a production telemetry run is active.
+
+    ``fields`` are forwarded to :meth:`PipelineTelemetry.step` unchanged (a
+    no-op when ``telemetry`` is ``None``, matching that case's existing
+    ``nullcontext()`` behavior). The yielded value is the same as
+    ``telemetry.step``'s own: the mutable extra-fields dict when telemetry is
+    active, or ``None`` from ``nullcontext()`` otherwise -- callers that want
+    to add fields discovered mid-step (e.g. ``writer_lock_wait_ms``,
+    ``games_processed``) must guard on ``is not None`` before writing to it.
+    """
+    return telemetry.step(name, **fields) if telemetry is not None else nullcontext()
+
+
+async def _try_acquire_writer_lock_timed(
+    db: AsyncSession, step_fields: dict[str, object] | None
+) -> bool:
+    """Attempt the non-blocking writer lock, timing the attempt as its own field.
+
+    Mirrors ``scripts/sl_desk_tick.py``'s ``_acquire_writer_lock_timed`` for
+    this module's non-blocking ``try_acquire_summer_league_writer_lock``
+    primitive: even though an uncontended ``pg_try_advisory_xact_lock`` call
+    resolves near-instantly, recording it under the same distinct
+    ``writer_lock_wait_ms`` field name keeps every writer-lock attempt in
+    this pipeline greppable the same way, and makes a genuinely slow attempt
+    (e.g. Postgres itself under load) visible instead of being invisible
+    inside a batch step's generic ``duration_ms``.
+
+    Args:
+        db: Active database session.
+        step_fields: The dict yielded by the enclosing ``telemetry.step(...)``
+            call (see :func:`_telemetry_step`), or ``None`` when no
+            production telemetry run is active.
+
+    Returns:
+        Whether the lock was acquired.
+    """
+    started_at = perf_counter()
+    acquired = await try_acquire_summer_league_writer_lock(db)
+    if step_fields is not None:
+        step_fields["writer_lock_wait_ms"] = round(
+            (perf_counter() - started_at) * 1000, 1
+        )
+    return acquired
 
 
 def _resolve_year() -> int:
@@ -488,6 +531,7 @@ async def _run_batched_phase(
     normalize: Callable[..., Awaitable[Any]],
     describe: Callable[[Any], str],
     telemetry: PipelineTelemetry | None,
+    events_processed: Callable[[Any], int] | None = None,
 ) -> bool:
     """Normalize ``game_ids`` for one phase in small, independently committed batches.
 
@@ -514,6 +558,13 @@ async def _run_batched_phase(
         normalize: ``normalize_shot_events`` or ``normalize_pbp_events``.
         describe: Formats one batch's report into a log message.
         telemetry: Optional structured-timing recorder for the production run.
+        events_processed: Extracts the batch's upserted-event count from its
+            report (``report.shot_events_upserted`` or
+            ``report.pbp_events_upserted``) for the per-batch
+            ``events_processed`` telemetry field. ``None`` (the default,
+            used by tests that call this function directly with
+            ``telemetry=None``) skips that one field -- ``games_processed``
+            is still recorded whenever the report carries it.
 
     Returns:
         True once every remaining batch was attempted and committed this
@@ -542,9 +593,9 @@ async def _run_batched_phase(
         await _yield_to_desk_if_waiting(db)
         with _telemetry_step(
             telemetry, f"venue:{league_id}:{phase.value}_batch_{batch_index}"
-        ):
+        ) as step_fields:
             async with db.begin():
-                if not await try_acquire_summer_league_writer_lock(db):
+                if not await _try_acquire_writer_lock_timed(db, step_fields):
                     await defer_full_reconciliation(
                         db,
                         reason=f"venue:{league_id}:{phase.value}_batch_lock_contended",
@@ -573,6 +624,12 @@ async def _run_batched_phase(
                     phase=phase,
                     game_ids=batch,
                 )
+                if step_fields is not None:
+                    games_processed = getattr(report, "games_processed", None)
+                    if games_processed is not None:
+                        step_fields["games_processed"] = games_processed
+                    if events_processed is not None:
+                        step_fields["events_processed"] = events_processed(report)
                 logger.info("L%s %s", league_id, describe(report))
     return True
 
@@ -671,6 +728,77 @@ async def _reconcile_batch_progress(
             )
 
 
+async def _log_batch_backlog(
+    db: AsyncSession,
+    *,
+    year: int,
+    league_id: str,
+    discovered_game_ids: Sequence[str],
+    telemetry: PipelineTelemetry | None,
+) -> None:
+    """Log the SHOT/PBP dirty-game backlog left outstanding for this venue.
+
+    Surfaces :func:`~app.services.summer_league.batch_progress.count_pending_batch_games`
+    (#626) as a queryable/loggable metric (this ticket's scope item) rather
+    than something an operator can only infer from raw file timestamps.
+    Runs from the caller's ``finally`` block so the backlog is reported
+    whether this venue's batched phases fully completed, were deferred by
+    lock contention, or raised -- the deferred/failed cases are exactly when
+    this number matters most.
+
+    Best-effort: a read failure here is logged and swallowed rather than
+    turning an otherwise-successful (or already-failed, independently
+    reported) venue run into a failure over a metrics read.
+
+    Args:
+        db: Async database session with no open transaction.
+        year: Summer League season year.
+        league_id: NBA Stats LeagueID for this venue.
+        discovered_game_ids: This run's full discovered game-id universe for
+            the venue (``game_ids_universe`` in :func:`_run_venue`).
+        telemetry: Optional structured-timing recorder for the production run.
+    """
+    try:
+        shot_pending = await count_pending_batch_games(
+            db,
+            year=year,
+            league_id=league_id,
+            phase=SummerLeagueBatchPhase.SHOT,
+            discovered_game_ids=discovered_game_ids,
+        )
+        await db.commit()  # close the read's autobegun transaction
+        pbp_pending = await count_pending_batch_games(
+            db,
+            year=year,
+            league_id=league_id,
+            phase=SummerLeagueBatchPhase.PBP,
+            discovered_game_ids=discovered_game_ids,
+        )
+        await db.commit()
+    except Exception as exc:
+        logger.warning(
+            "L%s: failed to compute batch backlog (%s: %s)",
+            league_id,
+            type(exc).__name__,
+            exc,
+        )
+        return
+
+    with _telemetry_step(
+        telemetry,
+        f"venue:{league_id}:batch_backlog",
+        shot_pending=shot_pending,
+        pbp_pending=pbp_pending,
+    ):
+        pass
+    logger.info(
+        "L%s: batch backlog shot_pending=%d pbp_pending=%d",
+        league_id,
+        shot_pending,
+        pbp_pending,
+    )
+
+
 async def _run_venue(
     db: AsyncSession,
     ingestor: SummerLeagueRawIngestor,
@@ -765,9 +893,11 @@ async def _run_venue(
     # instant it commits instead of staying held across the whole venue.
     await _yield_to_desk_if_waiting(db)
     try:
-        with _telemetry_step(telemetry, f"venue:{league_id}:backbone_normalization"):
+        with _telemetry_step(
+            telemetry, f"venue:{league_id}:backbone_normalization"
+        ) as step_fields:
             async with db.begin():
-                if not await try_acquire_summer_league_writer_lock(db):
+                if not await _try_acquire_writer_lock_timed(db, step_fields):
                     await defer_full_reconciliation(
                         db,
                         reason=f"venue:{league_id}:shared_write_phase_lock_contended",
@@ -813,6 +943,7 @@ async def _run_venue(
             game_ids=game_ids_universe,
             normalize=normalize_shot_events,
             describe=_describe_shot_report,
+            events_processed=lambda report: report.shot_events_upserted,
             telemetry=telemetry,
         )
         if not shot_completed_fully:
@@ -828,6 +959,7 @@ async def _run_venue(
             game_ids=game_ids_universe,
             normalize=normalize_pbp_events,
             describe=_describe_pbp_report,
+            events_processed=lambda report: report.pbp_events_upserted,
             telemetry=telemetry,
         )
         if not pbp_completed_fully:
@@ -837,6 +969,18 @@ async def _run_venue(
             "L%s shot/PBP normalization failed: %s", league_id, exc, exc_info=True
         )
         return True, True
+    finally:
+        # Best-effort, always runs (success, deferral, or exception): the
+        # dirty-game backlog left outstanding is exactly the observability
+        # gap this ticket closes -- an operator can otherwise only infer it
+        # from raw file timestamps. See `_log_batch_backlog`.
+        await _log_batch_backlog(
+            db,
+            year=year,
+            league_id=league_id,
+            discovered_game_ids=game_ids_universe,
+            telemetry=telemetry,
+        )
 
     competition_id = (
         report.competition_games.competition_id if report.competition_games else None
@@ -927,9 +1071,11 @@ async def _retry_incomplete_team_boxes(
 
     await _yield_to_desk_if_waiting(db)
     try:
-        with _telemetry_step(telemetry, f"venue:{league_id}:team_box_normalization"):
+        with _telemetry_step(
+            telemetry, f"venue:{league_id}:team_box_normalization"
+        ) as step_fields:
             async with db.begin():
-                if not await try_acquire_summer_league_writer_lock(db):
+                if not await _try_acquire_writer_lock_timed(db, step_fields):
                     await defer_full_reconciliation(
                         db,
                         reason=f"venue:{league_id}:team_box_retry_lock_contended",
@@ -1032,9 +1178,9 @@ async def main() -> int:
             await db.commit()
             if any_games or pending_reconciliation:
                 try:
-                    with telemetry.step("metrics_and_snapshots"):
+                    with telemetry.step("metrics_and_snapshots") as step_fields:
                         async with db.begin():
-                            if await try_acquire_summer_league_writer_lock(db):
+                            if await _try_acquire_writer_lock_timed(db, step_fields):
                                 summary = await rebuild_sl_metrics(db)
                                 refreshed_snapshots = (
                                     await materialize_desk_render_snapshots(db)

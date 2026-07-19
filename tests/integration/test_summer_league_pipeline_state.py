@@ -24,6 +24,7 @@ from app.services.summer_league.pipeline_state import (
     complete_pipeline,
     defer_full_reconciliation,
     full_reconciliation_is_pending,
+    get_pipeline_freshness,
     record_pipeline_failure,
 )
 
@@ -100,6 +101,66 @@ async def test_pipeline_failure_is_queryable_without_erasing_pending_work(
     state = (await db_session.execute(select(SummerLeaguePipelineState))).scalar_one()
     assert state.last_outcome == SummerLeaguePipelineOutcome.FAILED
     assert state.last_failure_reason == "metrics rebuild failed: database unavailable"
+
+
+# ---------------------------------------------------------------------------
+# get_pipeline_freshness -- Desk-specific freshness distinguishable from
+# FULL_INGESTION's (#629)
+# ---------------------------------------------------------------------------
+
+
+async def test_get_pipeline_freshness_none_before_a_job_has_ever_run(
+    db_session: AsyncSession,
+) -> None:
+    """A job that has never completed/deferred/failed has no durable state yet."""
+    assert (
+        await get_pipeline_freshness(db_session, SummerLeaguePipelineJob.DESK) is None
+    )
+
+
+async def test_desk_and_full_ingestion_freshness_are_independently_tracked(
+    db_session: AsyncSession,
+) -> None:
+    """Desk and FULL_INGESTION freshness never leak into each other's row.
+
+    The Desk tick's own last-succeeded/materialized timestamps never leak
+    into FULL_INGESTION's row, and vice versa -- each scheduled writer's
+    freshness is distinguishable by `job`, not folded into one shared row.
+    """
+    desk_completed = datetime(2026, 7, 19, 18, 0)
+    full_completed = datetime(2026, 7, 19, 12, 0)
+
+    await complete_pipeline(
+        db_session,
+        job=SummerLeaguePipelineJob.DESK,
+        metrics_rebuilt=False,
+        snapshots_materialized=True,
+        now=desk_completed,
+    )
+    await complete_pipeline(
+        db_session,
+        job=SummerLeaguePipelineJob.FULL_INGESTION,
+        metrics_rebuilt=True,
+        snapshots_materialized=True,
+        now=full_completed,
+    )
+    await db_session.commit()
+
+    desk_state = await get_pipeline_freshness(db_session, SummerLeaguePipelineJob.DESK)
+    full_state = await get_pipeline_freshness(
+        db_session, SummerLeaguePipelineJob.FULL_INGESTION
+    )
+
+    assert desk_state is not None and full_state is not None
+    assert desk_state.last_succeeded_at == desk_completed
+    assert desk_state.last_snapshots_materialized_at == desk_completed
+    assert (
+        desk_state.last_metrics_rebuilt_at is None
+    )  # Desk tick never rebuilds metrics
+
+    assert full_state.last_succeeded_at == full_completed
+    assert full_state.last_snapshots_materialized_at == full_completed
+    assert full_state.last_metrics_rebuilt_at == full_completed
 
 
 # ---------------------------------------------------------------------------
@@ -309,24 +370,15 @@ async def test_invalidate_batch_progress_scoped_to_phase_year_and_league(
         )
         == set()
     )
-    assert (
-        await get_completed_batch_game_ids(
-            db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.PBP
-        )
-        == {"1522600001"}
-    )
-    assert (
-        await get_completed_batch_game_ids(
-            db_session, year=2026, league_id="13", phase=SummerLeagueBatchPhase.SHOT
-        )
-        == {"1522600001"}
-    )
-    assert (
-        await get_completed_batch_game_ids(
-            db_session, year=2025, league_id="15", phase=SummerLeagueBatchPhase.SHOT
-        )
-        == {"1522600001"}
-    )
+    assert await get_completed_batch_game_ids(
+        db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.PBP
+    ) == {"1522600001"}
+    assert await get_completed_batch_game_ids(
+        db_session, year=2026, league_id="13", phase=SummerLeagueBatchPhase.SHOT
+    ) == {"1522600001"}
+    assert await get_completed_batch_game_ids(
+        db_session, year=2025, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+    ) == {"1522600001"}
 
 
 async def test_invalidate_batch_progress_none_deletes_every_row_for_the_slice(
@@ -361,12 +413,9 @@ async def test_invalidate_batch_progress_none_deletes_every_row_for_the_slice(
         == set()
     )
     # PBP is untouched -- full reconciliation invalidates one phase at a time.
-    assert (
-        await get_completed_batch_game_ids(
-            db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.PBP
-        )
-        == {"1522600001"}
-    )
+    assert await get_completed_batch_game_ids(
+        db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.PBP
+    ) == {"1522600001"}
 
 
 async def test_invalidate_batch_progress_empty_game_ids_is_a_no_op(
@@ -391,12 +440,9 @@ async def test_invalidate_batch_progress_empty_game_ids_is_a_no_op(
     )
     await db_session.commit()
 
-    assert (
-        await get_completed_batch_game_ids(
-            db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.SHOT
-        )
-        == {"1522600001"}
-    )
+    assert await get_completed_batch_game_ids(
+        db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+    ) == {"1522600001"}
 
 
 # ---------------------------------------------------------------------------

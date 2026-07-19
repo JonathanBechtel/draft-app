@@ -38,6 +38,9 @@ def _summer_league_writer_lock_available(
     async def _no_completed_batches(_db: object, **_kwargs: object) -> set[str]:
         return set()
 
+    async def _no_pending_batches(_db: object, **_kwargs: object) -> int:
+        return 0
+
     async def _record_batch_progress(_db: object, **_kwargs: object) -> None:
         return None
 
@@ -51,6 +54,7 @@ def _summer_league_writer_lock_available(
     monkeypatch.setattr(runner, "record_pipeline_failure", _record_failure)
     monkeypatch.setattr(runner, "desk_is_waiting", _not_waiting)
     monkeypatch.setattr(runner, "get_completed_batch_game_ids", _no_completed_batches)
+    monkeypatch.setattr(runner, "count_pending_batch_games", _no_pending_batches)
     monkeypatch.setattr(runner, "record_batch_progress", _record_batch_progress)
     monkeypatch.setattr(runner, "invalidate_batch_progress", _invalidate_batch_progress)
 
@@ -188,7 +192,9 @@ def test_resolve_league_ids_all_blank_raises(
 # ---------------------------------------------------------------------------
 
 
-def test_full_reconcile_requested_defaults_false(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_full_reconcile_requested_defaults_false(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Absent SL_INGEST_FULL_RECONCILE -> routine dirty-detection-only path."""
     monkeypatch.delenv("SL_INGEST_FULL_RECONCILE", raising=False)
     assert runner._full_reconcile_requested() is False
@@ -564,9 +570,7 @@ async def test_run_venue_skips_already_completed_batch_games(
     )
     game_ids = ["001", "002", "003"]
 
-    async def _completed(
-        _db: object, *, phase: object, **_kwargs: object
-    ) -> set[str]:
+    async def _completed(_db: object, *, phase: object, **_kwargs: object) -> set[str]:
         if phase == runner.SummerLeagueBatchPhase.SHOT:
             return {"001"}
         return set()
