@@ -44,6 +44,12 @@ from app.schemas.summer_league_environment import (
     SCOPE_KIND_COMPETITION,
     SCOPE_KIND_SEASON,
 )
+from app.services.summer_league_environment_service import (
+    build_profile_summary_view,
+    competition_scope_key,
+    get_current_profile_by_scope_key,
+    season_scope_key,
+)
 from app.services.summer_league_franchise_service import get_franchise_history
 from app.services.summer_league_leaders_service import get_leaders
 from app.services.summer_league_season_service import (
@@ -549,6 +555,19 @@ async def summer_league_season(
         db, year=year, page=page, page_size=SCHEDULE_PAGE_SIZE
     )
 
+    # All-competitions Competition Context summary (#610): one indexed current-
+    # profile read, reusing the #607 read contract — never a second aggregation
+    # (contract §7/§9). `None` when no profile has been published yet; the
+    # template renders a neutral unavailable state rather than an error.
+    season_profile_row = await get_current_profile_by_scope_key(
+        db, season_scope_key(year)
+    )
+    season_profile = (
+        build_profile_summary_view(season_profile_row)
+        if season_profile_row is not None
+        else None
+    )
+
     return request.app.state.templates.TemplateResponse(
         "stats/summer-league/season.html",
         {
@@ -558,6 +577,7 @@ async def summer_league_season(
             "overview": overview,
             "leaders": leaders,
             "schedule": schedule,
+            "season_profile": season_profile,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },
@@ -583,6 +603,20 @@ async def summer_league_venue(
         db, year=year, venue_slug=venue, page=page, page_size=SCHEDULE_PAGE_SIZE
     )
 
+    # Exact single-competition Competition Context module (#610): resolved by
+    # `detail.competition_id` — the canonical id `get_venue` already looked up
+    # from (year, venue_slug) — never by venue label alone, so two editions
+    # that happen to share a label/venue_slug across years can never leak into
+    # each other's profile. One indexed current-profile read (contract §9).
+    venue_profile_row = await get_current_profile_by_scope_key(
+        db, competition_scope_key(detail.competition_id)
+    )
+    venue_profile = (
+        build_profile_summary_view(venue_profile_row)
+        if venue_profile_row is not None
+        else None
+    )
+
     return request.app.state.templates.TemplateResponse(
         "stats/summer-league/venue.html",
         {
@@ -591,6 +625,7 @@ async def summer_league_venue(
             "bracket": bracket,
             "leaders": leaders,
             "schedule": schedule,
+            "venue_profile": venue_profile,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

@@ -117,9 +117,14 @@ ROUTE_BUDGETS: dict[str, int] = {
     # walks the ladder in Python (competition list + has-rows probe + rows ≤ 3).
     "/stats/summer-league/leaders": 5,
     # +1 each: the season/venue mini leader boards retry once at 1+ GP when the
-    # standard gate matches nobody (early-competition fallback).
-    "/stats/summer-league/{year}": 8,
-    "/stats/summer-league/{year}/{venue}": 8,
+    # standard gate matches nobody (early-competition fallback), worst case 8.
+    # +1 more (max 9): both pages also resolve their Competition Context
+    # profile (get_current_profile_by_scope_key, one indexed current-profile
+    # read; the venue page keys it off the competition_id get_venue's header
+    # lookup already resolved) — contract §9's "at most one
+    # indexed profile read, max expected budget 9" for season/venue reuse.
+    "/stats/summer-league/{year}": 9,
+    "/stats/summer-league/{year}/{venue}": 9,
     # Header + schedule + stats roster + announced roster (A4 pre-event preview,
     # one indexed read on summer_league_participation by team_entry_id) = 4.
     "/stats/summer-league/{year}/{venue}/{team}": 4,
