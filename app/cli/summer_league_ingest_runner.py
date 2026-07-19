@@ -52,6 +52,17 @@ Environment overrides:
     SL_INGEST_YEAR - four-digit Summer League year (default: 2026)
     SL_INGEST_LEAGUE_IDS - comma-separated NBA Stats LeagueIDs
         (default: "13,16,15")
+    SL_INGEST_FULL_RECONCILE - when set to a truthy value ("1", "true",
+        "yes"), forces a complete shot/PBP reprocess for every venue this
+        run by clearing all of that venue/year's durable batch-progress
+        rows (see app.services.summer_league.batch_progress) before the
+        batched phases run, bypassing the "already completed, skip it"
+        filter entirely. An operator escape hatch for repair -- e.g. after
+        a raw-snapshot backfill/migration that could have silently changed
+        already-normalized games without this module's ordinary dirty-game
+        detection (dirty_game_ids_from_manifest) ever seeing it happen.
+        Default: unset (routine incremental runs rely on dirty detection
+        alone).
 
 Exit codes:
     0 - Success, including the pre-tip-off/no-games no-op case
@@ -84,10 +95,12 @@ from app.services.summer_league.backfill import (
     summarize_backfill_report,
 )
 from app.services.summer_league.endpoints import normalize_league_id
+from app.services.summer_league.manifest import SummerLeagueRawManifest
 from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.services.summer_league.batch_progress import (
     get_completed_batch_game_ids,
+    invalidate_batch_progress,
     record_batch_progress,
 )
 from app.services.summer_league.normalization import (
@@ -108,6 +121,7 @@ from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league.raw_ingestion import (
     RawIngestionOptions,
     SummerLeagueRawIngestor,
+    dirty_game_ids_from_manifest,
 )
 from app.services.summer_league.raw_store import SummerLeagueRawStore
 from app.services.summer_league.scoreboard_ingest import (
@@ -217,6 +231,22 @@ def _resolve_league_ids() -> list[str]:
     if not league_ids:
         raise ValueError("No Summer League LeagueIDs resolved for ingestion")
     return league_ids
+
+
+_TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _full_reconcile_requested() -> bool:
+    """Whether ``SL_INGEST_FULL_RECONCILE`` requests a full batch-progress reprocess.
+
+    See the module docstring's env-var documentation. Absent/blank/falsy
+    (``"0"``, ``"false"``, ``"no"``, ``"off"``) all resolve to ``False`` --
+    the ordinary dirty-detection-only path.
+    """
+    raw = os.getenv("SL_INGEST_FULL_RECONCILE")
+    if not raw or not raw.strip():
+        return False
+    return raw.strip().lower() in _TRUTHY_ENV_VALUES
 
 
 # Outer lifecycle phases worth an NBA Stats schedule-feed round-trip: the
@@ -547,6 +577,100 @@ async def _run_batched_phase(
     return True
 
 
+async def _reconcile_batch_progress(
+    db: AsyncSession,
+    *,
+    year: int,
+    league_id: str,
+    fetch_manifest: SummerLeagueRawManifest,
+    full_reconcile: bool,
+) -> None:
+    """Invalidate stale batch-progress rows before the batched shot/PBP phases run.
+
+    ``SummerLeagueBatchProgress`` rows are durable but not permanent (see
+    that table's docstring): once written, a game is skipped on every later
+    run, which is what makes a routine run against an unchanged venue cheap.
+    But that same permanence means a completed game whose raw file changes
+    later -- a forced re-fetch correcting a bad box score, a corrected
+    PBP/shot-chart snapshot -- would otherwise be silently skipped forever.
+    This closes that gap via two independent triggers, both clearing
+    progress rows so :func:`_run_batched_phase`'s existing ``remaining``
+    filter naturally reprocesses the affected games with no change needed
+    to that filter itself:
+
+    * Dirty-game detection (routine runs): any game whose
+      ``shotchartdetail``/``playbyplayv2`` raw file was actually rewritten
+      this run (see
+      ``app.services.summer_league.raw_ingestion.dirty_game_ids_from_manifest``)
+      has its SHOT/PBP progress marker cleared, scoped per-phase to the
+      endpoint that phase actually reads -- a rewritten box-score file alone
+      never invalidates SHOT/PBP progress, since neither phase reads it.
+    * ``SL_INGEST_FULL_RECONCILE`` (operator escape hatch): clears every
+      SHOT/PBP progress row for this venue/year outright, forcing a
+      complete reprocess regardless of what changed on disk.
+
+    This table is only ever written by this cron runner (never by the
+    Summer League Desk tick), so this opens its own short transaction
+    directly rather than going through the shared-writer-lock dance the
+    Desk-coordinated phases below use.
+
+    Args:
+        db: Async database session with no open transaction.
+        year: Summer League season year.
+        league_id: NBA Stats LeagueID for this venue.
+        fetch_manifest: This run's per-game fetch manifest.
+        full_reconcile: Whether ``SL_INGEST_FULL_RECONCILE`` is set for this run.
+    """
+    async with db.begin():
+        if full_reconcile:
+            await invalidate_batch_progress(
+                db, year=year, league_id=league_id, phase=SummerLeagueBatchPhase.SHOT
+            )
+            await invalidate_batch_progress(
+                db, year=year, league_id=league_id, phase=SummerLeagueBatchPhase.PBP
+            )
+            logger.info(
+                "L%s: SL_INGEST_FULL_RECONCILE set; cleared all shot/PBP batch "
+                "progress for %s",
+                league_id,
+                year,
+            )
+            return
+
+        shot_dirty = dirty_game_ids_from_manifest(
+            fetch_manifest, endpoints=("shotchartdetail",)
+        )
+        pbp_dirty = dirty_game_ids_from_manifest(
+            fetch_manifest, endpoints=("playbyplayv2",)
+        )
+        if shot_dirty:
+            await invalidate_batch_progress(
+                db,
+                year=year,
+                league_id=league_id,
+                phase=SummerLeagueBatchPhase.SHOT,
+                game_ids=shot_dirty,
+            )
+            logger.info(
+                "L%s: invalidated SHOT batch progress for %d dirty game(s)",
+                league_id,
+                len(shot_dirty),
+            )
+        if pbp_dirty:
+            await invalidate_batch_progress(
+                db,
+                year=year,
+                league_id=league_id,
+                phase=SummerLeagueBatchPhase.PBP,
+                game_ids=pbp_dirty,
+            )
+            logger.info(
+                "L%s: invalidated PBP batch progress for %d dirty game(s)",
+                league_id,
+                len(pbp_dirty),
+            )
+
+
 async def _run_venue(
     db: AsyncSession,
     ingestor: SummerLeagueRawIngestor,
@@ -554,6 +678,7 @@ async def _run_venue(
     year: int,
     league_id: str,
     telemetry: PipelineTelemetry | None = None,
+    full_reconcile: bool = False,
 ) -> tuple[bool, bool]:
     """Incrementally fetch and process one Summer League venue.
 
@@ -567,12 +692,20 @@ async def _run_venue(
     a waiting Desk tick, see :func:`_yield_to_desk_if_waiting`) at every
     phase and batch boundary.
 
+    Before the batched shot/PBP phases run, :func:`_reconcile_batch_progress`
+    invalidates any stale durable progress markers -- dirty games detected
+    from this run's fetch manifest, or every marker outright under
+    ``SL_INGEST_FULL_RECONCILE`` -- so a corrected raw file is reprocessed
+    rather than silently skipped forever (see that function's docstring).
+
     Args:
         db: Async database session shared across venues this run.
         ingestor: Raw NBA Stats ingestor (shared client/store across venues).
         year: Summer League season year.
         league_id: NBA Stats LeagueID for this venue.
         telemetry: Optional structured-timing recorder for the production run.
+        full_reconcile: Whether ``SL_INGEST_FULL_RECONCILE`` is set for this
+            run (see :func:`_full_reconcile_requested`).
 
     Returns:
         A ``(had_games, failed)`` tuple. ``had_games`` is True when at least
@@ -665,6 +798,13 @@ async def _run_venue(
     # independently committed per-game batches -- see `_run_batched_phase`.
     game_ids_universe = sorted(set(fetch_manifest.game_ids))
     try:
+        await _reconcile_batch_progress(
+            db,
+            year=year,
+            league_id=league_id,
+            fetch_manifest=fetch_manifest,
+            full_reconcile=full_reconcile,
+        )
         shot_completed_fully = await _run_batched_phase(
             db,
             year=year,
@@ -839,11 +979,13 @@ async def main() -> int:
             logger.error("Invalid Summer League ingest configuration: %s", exc)
             telemetry.finish("failed")
             return 1
+        full_reconcile = _full_reconcile_requested()
 
         logger.info(
-            "Starting Summer League ingestion: year=%s league_ids=%s",
+            "Starting Summer League ingestion: year=%s league_ids=%s full_reconcile=%s",
             year,
             ",".join(league_ids),
+            full_reconcile,
         )
 
         failed = False
@@ -870,6 +1012,7 @@ async def main() -> int:
                         year=year,
                         league_id=league_id,
                         telemetry=telemetry,
+                        full_reconcile=full_reconcile,
                     )
                 any_games = any_games or had_games
                 failed = failed or venue_failed

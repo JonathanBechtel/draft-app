@@ -37,15 +37,23 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.cli import summer_league_ingest_runner as runner
-from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueGame
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeagueShotEvent,
+)
 from app.schemas.summer_league_pipeline import SummerLeagueBatchPhase
 from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.batch_progress import get_completed_batch_game_ids
+from app.services.summer_league.batch_progress import (
+    get_completed_batch_game_ids,
+    invalidate_batch_progress,
+)
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.services.summer_league.normalization import (
     normalize_competition_games,
     normalize_shot_events,
 )
+from app.services.summer_league.raw_ingestion import dirty_game_ids_from_manifest
 from app.services.summer_league.write_lock import (
     try_acquire_summer_league_writer_lock,
 )
@@ -746,3 +754,286 @@ async def test_refresh_schedule_cold_start_no_configured_window_makes_no_network
 
     assert result is None
     assert (await db_session.execute(select(SummerLeagueGame))).scalars().all() == []
+
+
+# ---------------------------------------------------------------------------
+# Dirty-game reprocessing (ticket #626): closes the gap ticket #625 opened --
+# SummerLeagueBatchProgress rows durably skip an already-completed game on
+# every later run, but that permanence meant a game whose raw file changed
+# again (a forced re-fetch correcting a bad snapshot) was silently skipped
+# forever. These tests prove the fix end-to-end against a real Postgres
+# session, reusing the resumability fixture (three games, one shot event
+# each) already established above.
+# ---------------------------------------------------------------------------
+
+
+async def test_dirty_game_reprocessed_after_raw_shotchart_correction(
+    db_session: AsyncSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A completed game's corrected shotchartdetail file is reprocessed, not skipped forever.
+
+    A clean run completes SHOT batching for all three games. Game 1's
+    shotchartdetail.json is then rewritten with a corrected shot outcome
+    (made -> missed), mirroring what a forced re-fetch (e.g.
+    `_retry_incomplete_team_boxes`-style correction) would produce.
+    `dirty_game_ids_from_manifest` + `invalidate_batch_progress` clear only
+    that game's SHOT progress row; a subsequent `_run_batched_phase` call
+    must then reprocess exactly that one game -- updating the existing shot
+    row in place (same id, `made` flipped) -- while leaving the other two
+    untouched games' rows alone.
+    """
+    monkeypatch.setattr(runner, "RAW_ROOT", tmp_path)
+    _write_resumability_fixture(tmp_path)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+    await db_session.flush()
+    await db_session.commit()
+
+    # Clean run: all three games' SHOT batches commit.
+    completed_fully = await runner._run_batched_phase(
+        db_session,
+        year=2024,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=_RESUME_GAME_IDS,
+        normalize=normalize_shot_events,
+        describe=lambda _report: "",
+        telemetry=None,
+    )
+    assert completed_fully is True
+    completed = await get_completed_batch_game_ids(
+        db_session, year=2024, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+    )
+    assert completed == set(_RESUME_GAME_IDS)
+
+    corrected_game_id = _RESUME_GAME_IDS[0]
+    before = (
+        await db_session.execute(
+            select(SummerLeagueShotEvent).where(
+                SummerLeagueShotEvent.nba_stats_game_id  # type: ignore[arg-type]
+                == corrected_game_id
+            )
+        )
+    ).scalar_one()
+    assert before.made is True
+
+    # Simulate a corrected raw snapshot: the shot flips from made to missed.
+    corrected_path = (
+        tmp_path
+        / "2024"
+        / "15"
+        / "games"
+        / corrected_game_id
+        / "shotchartdetail.json"
+    )
+    corrected_payload = json.loads(corrected_path.read_text())
+    row = corrected_payload["resultSets"][0]["rowSet"][0]
+    made_index = _RESUME_SHOT_HEADERS.index("SHOT_MADE_FLAG")
+    row[made_index] = 0
+    corrected_path.write_text(json.dumps(corrected_payload))
+
+    # The manifest a real forced re-fetch would have produced: only the
+    # corrected game's shotchartdetail file was actually written this time.
+    fetch_manifest = _FakeManifest(game_ids=list(_RESUME_GAME_IDS))
+    fetch_manifest.files_written = [
+        f"2024/15/games/{corrected_game_id}/shotchartdetail.json"
+    ]
+
+    dirty_shot_ids = dirty_game_ids_from_manifest(
+        fetch_manifest,  # type: ignore[arg-type]
+        endpoints=("shotchartdetail",),
+    )
+    assert dirty_shot_ids == {corrected_game_id}
+    await invalidate_batch_progress(
+        db_session,
+        year=2024,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=dirty_shot_ids,
+    )
+    await db_session.commit()
+
+    # Only the corrected game is now in the "remaining" set for SHOT.
+    resumed_batches: list[set[str]] = []
+
+    async def _recording_normalize(db: AsyncSession, **kwargs: object) -> object:
+        resumed_batches.append(set(kwargs.get("game_ids") or set()))  # type: ignore[call-overload]
+        return await normalize_shot_events(db, **kwargs)  # type: ignore[arg-type]
+
+    completed_fully = await runner._run_batched_phase(
+        db_session,
+        year=2024,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=_RESUME_GAME_IDS,
+        normalize=_recording_normalize,
+        describe=lambda _report: "",
+        telemetry=None,
+    )
+
+    assert completed_fully is True
+    assert resumed_batches == [{corrected_game_id}]
+
+    after = (
+        await db_session.execute(
+            select(SummerLeagueShotEvent).where(
+                SummerLeagueShotEvent.nba_stats_game_id  # type: ignore[arg-type]
+                == corrected_game_id
+            )
+        )
+    ).scalar_one()
+    assert after.id == before.id  # same row updated in place, not duplicated
+    assert after.made is False
+
+    # The other two, untouched games' rows are unaffected -- one row per game.
+    all_shots = (
+        (await db_session.execute(select(SummerLeagueShotEvent))).scalars().all()
+    )
+    assert len(all_shots) == len(_RESUME_GAME_IDS)
+
+
+async def test_unchanged_venue_second_run_processes_zero_games(
+    db_session: AsyncSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression guard on #625: an unchanged venue's second run touches ~0 games."""
+    monkeypatch.setattr(runner, "RAW_ROOT", tmp_path)
+    _write_resumability_fixture(tmp_path)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+    await db_session.flush()
+    await db_session.commit()
+
+    first_batches: list[set[str]] = []
+
+    async def _recording_first(db: AsyncSession, **kwargs: object) -> object:
+        first_batches.append(set(kwargs.get("game_ids") or set()))  # type: ignore[call-overload]
+        return await normalize_shot_events(db, **kwargs)  # type: ignore[arg-type]
+
+    await runner._run_batched_phase(
+        db_session,
+        year=2024,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=_RESUME_GAME_IDS,
+        normalize=_recording_first,
+        describe=lambda _report: "",
+        telemetry=None,
+    )
+    assert first_batches == [set(_RESUME_GAME_IDS)]
+
+    # Second run: same discovered universe, nothing rewritten -- no dirty
+    # detection would have anything to invalidate here either.
+    fetch_manifest = _FakeManifest(game_ids=list(_RESUME_GAME_IDS))
+    assert dirty_game_ids_from_manifest(fetch_manifest) == set()  # type: ignore[arg-type]
+
+    second_batches: list[set[str]] = []
+
+    async def _recording_second(db: AsyncSession, **kwargs: object) -> object:
+        second_batches.append(set(kwargs.get("game_ids") or set()))  # type: ignore[call-overload]
+        return await normalize_shot_events(db, **kwargs)  # type: ignore[arg-type]
+
+    completed_fully = await runner._run_batched_phase(
+        db_session,
+        year=2024,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=_RESUME_GAME_IDS,
+        normalize=_recording_second,
+        describe=lambda _report: "",
+        telemetry=None,
+    )
+
+    assert completed_fully is True
+    assert second_batches == []  # zero games processed -- nothing new, nothing dirty
+
+
+async def test_full_reconcile_reprocesses_every_completed_game(
+    db_session: AsyncSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SL_INGEST_FULL_RECONCILE clears all progress and forces a complete reprocess.
+
+    Exercises `runner._reconcile_batch_progress` directly with
+    `full_reconcile=True` and a fetch manifest with nothing dirty -- proving
+    the full-reconciliation path is independent of, and overrides, ordinary
+    dirty detection.
+    """
+    monkeypatch.setattr(runner, "RAW_ROOT", tmp_path)
+    _write_resumability_fixture(tmp_path)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+    await db_session.flush()
+    await db_session.commit()
+
+    await runner._run_batched_phase(
+        db_session,
+        year=2024,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=_RESUME_GAME_IDS,
+        normalize=normalize_shot_events,
+        describe=lambda _report: "",
+        telemetry=None,
+    )
+    completed = await get_completed_batch_game_ids(
+        db_session, year=2024, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+    )
+    assert completed == set(_RESUME_GAME_IDS)
+    await db_session.commit()
+
+    # No raw files changed -- an unmodified fetch manifest -- yet
+    # full_reconcile=True must still clear every progress row.
+    fetch_manifest = _FakeManifest(game_ids=list(_RESUME_GAME_IDS))
+
+    await runner._reconcile_batch_progress(
+        db_session,
+        year=2024,
+        league_id="15",
+        fetch_manifest=fetch_manifest,  # type: ignore[arg-type]
+        full_reconcile=True,
+    )
+    await db_session.commit()
+
+    assert (
+        await get_completed_batch_game_ids(
+            db_session, year=2024, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+        )
+        == set()
+    )
+
+    resumed_batches: list[set[str]] = []
+
+    async def _recording_normalize(db: AsyncSession, **kwargs: object) -> object:
+        resumed_batches.append(set(kwargs.get("game_ids") or set()))  # type: ignore[call-overload]
+        return await normalize_shot_events(db, **kwargs)  # type: ignore[arg-type]
+
+    completed_fully = await runner._run_batched_phase(
+        db_session,
+        year=2024,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=_RESUME_GAME_IDS,
+        normalize=_recording_normalize,
+        describe=lambda _report: "",
+        telemetry=None,
+    )
+
+    assert completed_fully is True
+    assert resumed_batches == [set(_RESUME_GAME_IDS)]  # every game reprocessed

@@ -15,7 +15,9 @@ from app.schemas.summer_league_pipeline import (
     SummerLeaguePipelineState,
 )
 from app.services.summer_league.batch_progress import (
+    count_pending_batch_games,
     get_completed_batch_game_ids,
+    invalidate_batch_progress,
     record_batch_progress,
 )
 from app.services.summer_league.pipeline_state import (
@@ -218,3 +220,248 @@ async def test_record_batch_progress_empty_game_ids_is_a_no_op(
         db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.SHOT
     )
     assert completed == set()
+
+
+# ---------------------------------------------------------------------------
+# invalidate_batch_progress
+# ---------------------------------------------------------------------------
+
+
+async def test_invalidate_batch_progress_deletes_only_the_named_games(
+    db_session: AsyncSession,
+) -> None:
+    """Invalidating a subset of games clears exactly those rows, nothing else.
+
+    Proves the core correctness gap this ticket closes: a game whose row is
+    deleted here re-enters `get_completed_batch_game_ids`'s complement (the
+    "remaining" set `_run_batched_phase` computes) on the very next read.
+    """
+    await record_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=["1522600001", "1522600002", "1522600003"],
+    )
+    await db_session.commit()
+
+    await invalidate_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=["1522600002"],
+    )
+    await db_session.commit()
+
+    remaining = await get_completed_batch_game_ids(
+        db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+    )
+    assert remaining == {"1522600001", "1522600003"}
+
+
+async def test_invalidate_batch_progress_scoped_to_phase_year_and_league(
+    db_session: AsyncSession,
+) -> None:
+    """Invalidation never touches a different phase, year, or league slice."""
+    await record_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=["1522600001"],
+    )
+    await record_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.PBP,
+        game_ids=["1522600001"],
+    )
+    await record_batch_progress(
+        db_session,
+        year=2026,
+        league_id="13",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=["1522600001"],
+    )
+    await record_batch_progress(
+        db_session,
+        year=2025,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=["1522600001"],
+    )
+    await db_session.commit()
+
+    await invalidate_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=["1522600001"],
+    )
+    await db_session.commit()
+
+    assert (
+        await get_completed_batch_game_ids(
+            db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+        )
+        == set()
+    )
+    assert (
+        await get_completed_batch_game_ids(
+            db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.PBP
+        )
+        == {"1522600001"}
+    )
+    assert (
+        await get_completed_batch_game_ids(
+            db_session, year=2026, league_id="13", phase=SummerLeagueBatchPhase.SHOT
+        )
+        == {"1522600001"}
+    )
+    assert (
+        await get_completed_batch_game_ids(
+            db_session, year=2025, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+        )
+        == {"1522600001"}
+    )
+
+
+async def test_invalidate_batch_progress_none_deletes_every_row_for_the_slice(
+    db_session: AsyncSession,
+) -> None:
+    """game_ids=None (full-reconciliation mode) clears every row for one phase/venue/year."""
+    await record_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=["1522600001", "1522600002"],
+    )
+    await record_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.PBP,
+        game_ids=["1522600001"],
+    )
+    await db_session.commit()
+
+    await invalidate_batch_progress(
+        db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+    )
+    await db_session.commit()
+
+    assert (
+        await get_completed_batch_game_ids(
+            db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+        )
+        == set()
+    )
+    # PBP is untouched -- full reconciliation invalidates one phase at a time.
+    assert (
+        await get_completed_batch_game_ids(
+            db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.PBP
+        )
+        == {"1522600001"}
+    )
+
+
+async def test_invalidate_batch_progress_empty_game_ids_is_a_no_op(
+    db_session: AsyncSession,
+) -> None:
+    """An empty explicit game_ids iterable deletes nothing, mirroring record_batch_progress."""
+    await record_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=["1522600001"],
+    )
+    await db_session.commit()
+
+    await invalidate_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=[],
+    )
+    await db_session.commit()
+
+    assert (
+        await get_completed_batch_game_ids(
+            db_session, year=2026, league_id="15", phase=SummerLeagueBatchPhase.SHOT
+        )
+        == {"1522600001"}
+    )
+
+
+# ---------------------------------------------------------------------------
+# count_pending_batch_games
+# ---------------------------------------------------------------------------
+
+
+async def test_count_pending_batch_games_reflects_a_partial_run(
+    db_session: AsyncSession,
+) -> None:
+    """Backlog count reflects discovered-but-not-yet-completed games."""
+    await record_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=["1522600001"],
+    )
+    await db_session.commit()
+
+    pending = await count_pending_batch_games(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        discovered_game_ids=["1522600001", "1522600002", "1522600003"],
+    )
+
+    assert pending == 2
+
+
+async def test_count_pending_batch_games_zero_when_everything_complete(
+    db_session: AsyncSession,
+) -> None:
+    """A fully-completed slice has zero backlog."""
+    await record_batch_progress(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        game_ids=["1522600001", "1522600002"],
+    )
+    await db_session.commit()
+
+    pending = await count_pending_batch_games(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        discovered_game_ids=["1522600001", "1522600002"],
+    )
+
+    assert pending == 0
+
+
+async def test_count_pending_batch_games_empty_discovered_set_is_zero(
+    db_session: AsyncSession,
+) -> None:
+    """No discovered games at all -- zero backlog without a DB round trip's worth of noise."""
+    pending = await count_pending_batch_games(
+        db_session,
+        year=2026,
+        league_id="15",
+        phase=SummerLeagueBatchPhase.SHOT,
+        discovered_game_ids=[],
+    )
+
+    assert pending == 0

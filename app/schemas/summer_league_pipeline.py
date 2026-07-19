@@ -109,13 +109,17 @@ class SummerLeagueBatchProgress(SQLModel, table=True):  # type: ignore[call-arg]
     ticket exists to prevent -- see
     ``docs/plans/summer-league-cron-desk-starvation-spec.md``).
 
-    Rows are permanent once written: unlike team-box files (which the ingest
-    runner force-refetches on its incomplete-box retry pass), shot/PBP raw
-    snapshots never change once fetched, so a completed game never needs to
-    be reprocessed for these two phases. This also gives routine runs a free
-    "changed games only" property -- a game already marked complete here is
-    skipped on every later run, so only newly-discovered games are ever
-    normalized again.
+    Rows are durable but not permanent: on a routine run, a game already
+    marked complete here is skipped on every later run, so only
+    newly-discovered games are ever normalized again -- giving routine runs
+    a free "changed games only" property. But should a completed game's raw
+    snapshot later change (a forced re-fetch correcting a bad box score, a
+    corrected PBP/shot-chart snapshot, or an explicit repair run), its row
+    must be deleted first via
+    ``app.services.summer_league.batch_progress.invalidate_batch_progress``
+    -- see ``app.services.summer_league.raw_ingestion.dirty_game_ids_from_manifest``
+    and ``app.cli.summer_league_ingest_runner``'s dirty-detection wiring --
+    or that game would otherwise be silently skipped forever.
     """
 
     __tablename__ = "summer_league_batch_progress"

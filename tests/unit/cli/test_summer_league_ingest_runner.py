@@ -41,6 +41,9 @@ def _summer_league_writer_lock_available(
     async def _record_batch_progress(_db: object, **_kwargs: object) -> None:
         return None
 
+    async def _invalidate_batch_progress(_db: object, **_kwargs: object) -> None:
+        return None
+
     monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _available)
     monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
     monkeypatch.setattr(runner, "full_reconciliation_is_pending", _pending)
@@ -49,6 +52,7 @@ def _summer_league_writer_lock_available(
     monkeypatch.setattr(runner, "desk_is_waiting", _not_waiting)
     monkeypatch.setattr(runner, "get_completed_batch_game_ids", _no_completed_batches)
     monkeypatch.setattr(runner, "record_batch_progress", _record_batch_progress)
+    monkeypatch.setattr(runner, "invalidate_batch_progress", _invalidate_batch_progress)
 
 
 @dataclass
@@ -177,6 +181,35 @@ def test_resolve_league_ids_all_blank_raises(
     monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", " , , ")
     with pytest.raises(ValueError):
         runner._resolve_league_ids()
+
+
+# ---------------------------------------------------------------------------
+# _full_reconcile_requested
+# ---------------------------------------------------------------------------
+
+
+def test_full_reconcile_requested_defaults_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Absent SL_INGEST_FULL_RECONCILE -> routine dirty-detection-only path."""
+    monkeypatch.delenv("SL_INGEST_FULL_RECONCILE", raising=False)
+    assert runner._full_reconcile_requested() is False
+
+
+@pytest.mark.parametrize("value", ["1", "true", "True", "yes", "on"])
+def test_full_reconcile_requested_truthy_values(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """A truthy SL_INGEST_FULL_RECONCILE value requests full reconciliation."""
+    monkeypatch.setenv("SL_INGEST_FULL_RECONCILE", value)
+    assert runner._full_reconcile_requested() is True
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", "off", "  "])
+def test_full_reconcile_requested_falsy_values(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """A falsy/blank SL_INGEST_FULL_RECONCILE value does not request it."""
+    monkeypatch.setenv("SL_INGEST_FULL_RECONCILE", value)
+    assert runner._full_reconcile_requested() is False
 
 
 # ---------------------------------------------------------------------------
@@ -560,6 +593,129 @@ async def test_run_venue_skips_already_completed_batch_games(
 
 
 @pytest.mark.asyncio
+async def test_run_venue_invalidates_dirty_shot_and_pbp_progress_independently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rewritten shotchartdetail/playbyplayv2 file invalidates only its own phase.
+
+    Proves the endpoint-scoped dirty detection wired into `_run_venue`: game
+    "001"'s rewritten shotchartdetail file invalidates its SHOT progress
+    only; game "002"'s rewritten playbyplayv2 file invalidates its PBP
+    progress only. A box-score-only rewrite (game "003") invalidates
+    neither.
+    """
+    calls: list[str] = []
+    _patch_backbone_services(monkeypatch, calls)
+    invalidate_calls: list[dict[str, object]] = []
+
+    async def _record_invalidate(
+        _db: object, *, phase: object, game_ids: object = None, **_kwargs: object
+    ) -> None:
+        invalidate_calls.append({"phase": phase, "game_ids": game_ids})
+
+    monkeypatch.setattr(runner, "invalidate_batch_progress", _record_invalidate)
+
+    game_ids = ["001", "002", "003"]
+    fetch_manifest = _FakeManifest(
+        game_ids=list(game_ids),
+        files_written=[
+            "2026/15/games/001/shotchartdetail.json",
+            "2026/15/games/002/playbyplayv2.json",
+            "2026/15/games/003/boxscoretraditionalv2.json",
+        ],
+    )
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=list(game_ids)),  # refresh
+            fetch_manifest,  # fetch
+        ]
+    )
+
+    had_games, failed = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert (had_games, failed) == (True, False)
+    assert invalidate_calls == [
+        {"phase": runner.SummerLeagueBatchPhase.SHOT, "game_ids": {"001"}},
+        {"phase": runner.SummerLeagueBatchPhase.PBP, "game_ids": {"002"}},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_venue_no_dirty_files_invalidates_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A routine run with no rewritten per-game files never calls invalidation."""
+    calls: list[str] = []
+    _patch_backbone_services(monkeypatch, calls)
+    invalidate_calls: list[object] = []
+
+    async def _record_invalidate(_db: object, **kwargs: object) -> None:
+        invalidate_calls.append(kwargs)
+
+    monkeypatch.setattr(runner, "invalidate_batch_progress", _record_invalidate)
+
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=["001"]),
+            _FakeManifest(game_ids=["001"]),  # nothing in files_written
+        ]
+    )
+
+    had_games, failed = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert (had_games, failed) == (True, False)
+    assert invalidate_calls == []
+
+
+@pytest.mark.asyncio
+async def test_run_venue_full_reconcile_clears_all_progress_regardless_of_dirty_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """full_reconcile=True clears every SHOT/PBP row, ignoring dirty detection."""
+    calls: list[str] = []
+    _patch_backbone_services(monkeypatch, calls)
+    invalidate_calls: list[dict[str, object]] = []
+
+    async def _record_invalidate(
+        _db: object, *, phase: object, game_ids: object = None, **_kwargs: object
+    ) -> None:
+        invalidate_calls.append({"phase": phase, "game_ids": game_ids})
+
+    monkeypatch.setattr(runner, "invalidate_batch_progress", _record_invalidate)
+
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=["001"]),
+            _FakeManifest(game_ids=["001"]),  # no dirty files at all
+        ]
+    )
+
+    had_games, failed = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+        full_reconcile=True,
+    )
+
+    assert (had_games, failed) == (True, False)
+    assert invalidate_calls == [
+        {"phase": runner.SummerLeagueBatchPhase.SHOT, "game_ids": None},
+        {"phase": runner.SummerLeagueBatchPhase.PBP, "game_ids": None},
+    ]
+
+
+@pytest.mark.asyncio
 async def test_run_venue_backs_off_before_batch_when_desk_is_waiting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -638,6 +794,7 @@ def _patch_main(
         "rebuild_called": False,
         "snapshots_refreshed": False,
         "disposed": False,
+        "full_reconcile_flags": [],
     }
 
     async def _fake_run_venue(
@@ -647,10 +804,13 @@ def _patch_main(
         year: int,
         league_id: str,
         telemetry: object | None = None,
+        full_reconcile: bool = False,
     ) -> tuple[bool, bool]:
         assert telemetry is not None
         assert isinstance(events["venues"], list)
         events["venues"].append(league_id)
+        assert isinstance(events["full_reconcile_flags"], list)
+        events["full_reconcile_flags"].append(full_reconcile)
         return venue_results[league_id]
 
     async def _fake_rebuild(_db: object) -> dict[str, int]:
@@ -721,6 +881,25 @@ async def test_main_all_no_games_skips_rebuild(
     assert events["rebuild_called"] is False
     assert events["snapshots_refreshed"] is False
     assert events["disposed"] is True
+    assert events["full_reconcile_flags"] == [False, False, False]
+
+
+@pytest.mark.asyncio
+async def test_main_propagates_full_reconcile_env_var_to_every_venue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SL_INGEST_FULL_RECONCILE=1 is resolved once and passed to every venue."""
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "13,15")
+    monkeypatch.setenv("SL_INGEST_FULL_RECONCILE", "1")
+    events = _patch_main(
+        monkeypatch,
+        venue_results={"13": (False, False), "15": (True, False)},
+    )
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["full_reconcile_flags"] == [True, True]
 
 
 @pytest.mark.asyncio
