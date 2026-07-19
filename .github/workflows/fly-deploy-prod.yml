@@ -165,8 +165,12 @@ jobs:
       # Keep the approved Desk cron on the current image without interrupting an
       # in-flight tick. `flyctl machine update` sends SIGINT to a running scheduled
       # machine, so wait for its normal stop first; if it does not stop within the
-      # safety window, leave the old image in place for this deploy.
+      # safety window, leave the old image in place for this deploy -- the
+      # reconciliation step immediately below gets a second, shorter chance, and the
+      # final verification step at the end of this job fails the deploy check (not
+      # just a warning) if the machine is still drifted after that.
       - name: Update Summer League Desk cron machine (if exists)
+        id: desk_cron_update
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
@@ -190,12 +194,31 @@ jobs:
               # sat idle for 8+ hours with no further ticks. Starting it here both kicks
               # off an immediate tick on the new image and re-arms the schedule.
               flyctl machine start "$CRON_MACHINE_ID" --app draft-app-prod
+              echo "timed_out=false" >> "$GITHUB_OUTPUT"
             else
-              echo "::warning::Desk cron machine did not stop within 30m; skipping its image update so the active tick is not interrupted."
+              echo "::warning::Desk cron machine did not stop within 30m; skipping its image update so the active tick is not interrupted. The reconciliation step below will retry once it stops."
+              echo "timed_out=true" >> "$GITHUB_OUTPUT"
             fi
           else
             echo "No Desk cron machine found yet (or could not determine app image) -- nothing to update"
+            echo "timed_out=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Second chance for the stop-wait-timeout case above: the in-flight tick that
+      # blocked the deploy-time update has had more time to finish by now. Bounded to
+      # 10 more minutes -- this is a follow-up retry, not another full 30-minute wait.
+      # If the machine still hasn't stopped, the post-deploy verification step at the
+      # end of this job will fail the check rather than leave drift unnoticed.
+      - name: Reconcile Summer League Desk cron machine (retry after stop-wait timeout)
+        if: steps.desk_cron_update.outputs.timed_out == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          python scripts/reconcile_cron_image.py \
+            --app draft-app-prod \
+            --machine summer-league-desk-cron \
+            --wait-timeout-s 600 || \
+            echo "::warning::Desk cron reconciliation retry did not land; the post-deploy verification step will fail the check if it is still drifted."
 
       # #536 -- Summer League Desk cron machine *creation*, gated unlike every other
       # cron in this workflow: (1) the `enable_desk_cron` workflow_dispatch input must
@@ -246,3 +269,23 @@ jobs:
               --entrypoint "/app/.venv/bin/python" \
               -- scripts/sl_desk_tick.py
           fi
+
+      # Post-deploy verification (spec: docs/plans/summer-league-cron-desk-starvation-spec.md
+      # proposed work #5) -- fails this deploy check, rather than a silent ::warning::, if
+      # any Summer League cron machine is left on a stale image digest after every
+      # update/reconcile step above has run. summer-league-desk-cron is the one machine
+      # allowed to be entirely absent (it's readiness-gated per #536 and may never have
+      # been promoted to this environment) -- but if it exists, drift on it fails the check
+      # exactly like the other two. This is the closing net for the stop-wait-timeout case
+      # above: even if the reconciliation retry also couldn't land the update, this step
+      # makes that drift a failed check instead of something a human has to notice later.
+      - name: Verify Summer League cron image digests (post-deploy)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          python scripts/verify_cron_image_digests.py \
+            --app draft-app-prod \
+            --machine summer-league-ingestion-cron \
+            --machine summer-league-desk-cron \
+            --machine summer-league-roster-cron \
+            --optional-machine summer-league-desk-cron
