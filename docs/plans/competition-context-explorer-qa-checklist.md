@@ -5,6 +5,7 @@
 **Sources:**
 
 - First-release outline: `docs/plans/competition-context-explorer-first-release.md`
+- Implementation contract: `docs/plans/competition-context-explorer-implementation-contract.md`
 - Product direction: `docs/plans/event-environment-intelligence-pitch.md`
 - Comparison policy: `docs/plans/event-environment-comparison-and-outcomes-framework.md`
 
@@ -69,7 +70,8 @@ admin action is required.
     fixtures/seeded records with each coverage state.
   - Expected: each control returns only profiles meeting that requirement. A box-complete
     row with missing shot coverage remains available in the box view but has null shot
-    metrics, not zeros.
+    metrics, not zeros. PBP completeness is an informational v1 filter and does not gate
+    box-derived assisted-FG rate.
   - Evidence: integration test and rendered coverage badges.
 
 - Metric threshold filters compose with scope filters.
@@ -91,8 +93,7 @@ admin action is required.
   - Expected: points per team game, possessions/pace per 48, offensive rating, 3PA share,
     3P%, free-throw rate, offensive-rebound rate, turnover rate, assisted-FG rate,
     score-margin/OT distribution, rim share, and rim FG% render with units.
-  - Evidence: screenshot, column catalog assertion, and CSV/header assertion if export
-    ships in the same release.
+  - Evidence: screenshot, column catalog assertion, and CSV/header assertion.
 
 - The reader-requested terms have accurate group-level definitions.
   - Verify: inspect labels/tooltips/footnotes.
@@ -103,10 +104,10 @@ admin action is required.
 
 - Field-composition facts are useful and honest.
   - Verify: inspect a profile with drafted, undrafted, rookie, and returner players.
-  - Expected: distinct players, rookie/returner, drafted/undrafted, draft-slot bands,
-    age/position/origin distributions, and team representation render only where source
-    data supports them. Missing identity attributes are labeled as unknown/coverage gaps,
-    not silently dropped from a denominator.
+  - Expected: distinct players, first-time/returner, drafted-entering-event/not-yet-drafted,
+    draft-slot bands, age/position/origin distributions, and team representation render
+    only where source data supports them. Missing identity attributes are labeled as
+    unknown/coverage gaps, not silently dropped from a denominator.
   - Evidence: seeded integration fixture and visible breakdown.
 
 - Performance-landscape content remains descriptive.
@@ -148,9 +149,10 @@ admin action is required.
 
 - Partial coverage produces an honest metric-level unavailable state.
   - Verify: seed missing shot or PBP inputs while retaining complete boxes.
-  - Expected: box-derived metrics continue to render; affected shot/PBP metrics render
-    em dash/unavailable plus coverage explanation. No denominator-zero, stale fallback,
-    or fabricated 0.0% is shown.
+  - Expected: box-derived metrics continue to render; affected shot metrics render em
+    dash/unavailable plus coverage explanation. Missing PBP changes its informational
+    badge/filter state but does not blank `AST / FGM`. No denominator-zero, stale fallback,
+    partial extrapolation, or fabricated 0.0% is shown.
   - Evidence: negative-case integration test and screenshot.
 
 - Profile rebuilds are deterministic and preserve raw facts.
@@ -167,6 +169,12 @@ admin action is required.
     unit, and show gaps rather than interpolating unsupported years.
   - Evidence: chart-data vs. table assertion and visual capture.
 
+- Competition trends never combine unrelated venues.
+  - Verify: open individual-competition view with and without one venue selected.
+  - Expected: the unfiltered table prompts for a venue before rendering a trend; a
+    selected venue renders one supported point per year with visible gaps.
+  - Evidence: chart/table scope assertion and URL.
+
 - Selected scope carries into existing Explorer subjects.
   - Verify: open a season profile and navigate to Players, Teams, and Matchups; repeat
     from an individual competition.
@@ -180,6 +188,13 @@ admin action is required.
   - Expected: the same view, filters, detail identity, table, and no-data/coverage state
     render server-side.
   - Evidence: cold-load and JS-disabled screenshots.
+
+- Stable URL identifiers follow the implementation contract.
+  - Verify: load season detail by `detail_year` and competition detail by
+    `competition_id`; provide inconsistent stale venue/year parameters.
+  - Expected: projection row IDs are never exposed, `competition_id` is authoritative,
+    and stale parameters are cleared rather than broadening the scope.
+  - Evidence: canonicalized URL and exact profile identity assertion.
 
 - The tab feeds reusable public surfaces without divergent calculations.
   - Verify: compare a profile’s selected facts with the corresponding venue/tournament
@@ -216,9 +231,25 @@ admin action is required.
 - The new tab meets the Explorer query budget.
   - Verify: run `conda run -n draftguru make perf` for the default season list, filtered
     season trend, individual-competition list, and one detail/profile route.
-  - Expected: no N+1 query pattern; any intentional budget update is documented in
-    `tests/integration/perf/budgets.py`.
+  - Expected: list/trend/detail stays at or below 10 queries, `partial=1` costs no more
+    than full render, subject-specific facets avoid irrelevant player facet reads, and no
+    N+1 pattern exists. Season/venue reuse adds at most one indexed read for an expected
+    route ceiling of 9. Budgets are documented in `tests/integration/perf/budgets.py`.
   - Evidence: perf output.
+
+- Rebuild publication preserves the last good profile.
+  - Verify: seed a current profile, force a replacement validation failure, then run a
+    successful version change and an idempotent retry.
+  - Expected: failure leaves the prior current version readable; success atomically
+    switches one current version; retry creates no duplicate current scope.
+  - Evidence: integration assertion, rebuild logs, and current-profile uniqueness check.
+
+- Historical backfill and incremental refresh are operationally complete.
+  - Verify: run the documented historical backfill and the normal post-materialization
+    incremental path against deterministic data.
+  - Expected: requested/built/skipped/failed and coverage counts are emitted, stale state
+    is visible, and the runbook documents rebuild, rollback, and recovery.
+  - Evidence: command output, coverage report, and runbook review.
 
 - New reads are indexed on a production-like database.
   - Verify: run `conda run -n draftguru make explain ROUTE=<each new profile route>`
