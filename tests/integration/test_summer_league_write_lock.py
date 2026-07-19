@@ -24,6 +24,28 @@ async def _set_schema(session: AsyncSession, test_schema: str) -> None:
     await session.commit()
 
 
+async def _pin_schema(session: AsyncSession, test_schema: str) -> None:
+    """Pin ``search_path`` on the current transaction's connection.
+
+    The writer lock keys off ``hashtext(current_schema())`` (see
+    :mod:`app.services.summer_league.write_lock`), so a cross-session
+    contention test only actually contends when both sessions resolve the
+    *same* ``current_schema()`` on the exact connections that acquire the
+    lock. A plain ``SET search_path`` + commit before ``begin()`` (see
+    :func:`_set_schema`) sets the path on whatever connection that statement
+    ran on, but the pool can hand the following ``begin()`` a different
+    connection whose ``search_path`` still defaults to ``public`` -- so the
+    two sessions silently key their advisory locks off different schemas and
+    never contend (the lock is acquired by both, no timeout, no handoff).
+    This only bites on a cold pool; once earlier tests have set the path on
+    every pooled connection the flake disappears, which is exactly the kind
+    of order-dependent, warm-only pass this pins shut. Issuing ``SET LOCAL``
+    as the first statement inside the lock transaction guarantees the path is
+    set on the same connection the lock is acquired on.
+    """
+    await session.execute(text(f'SET LOCAL search_path TO "{test_schema}"'))
+
+
 @pytest.mark.asyncio
 async def test_writer_lock_blocks_a_second_transaction_in_the_same_schema(
     session_factory: async_sessionmaker[AsyncSession],
@@ -36,11 +58,14 @@ async def test_writer_lock_blocks_a_second_transaction_in_the_same_schema(
         await desk.commit()
         await ingestion.commit()
         async with desk.begin():
+            await _pin_schema(desk, test_schema)
             await acquire_summer_league_writer_lock(desk)
             async with ingestion.begin():
+                await _pin_schema(ingestion, test_schema)
                 assert await try_acquire_summer_league_writer_lock(ingestion) is False
 
         async with ingestion.begin():
+            await _pin_schema(ingestion, test_schema)
             assert await try_acquire_summer_league_writer_lock(ingestion) is True
 
 
@@ -53,6 +78,7 @@ async def test_bounded_acquire_succeeds_immediately_when_lock_is_free(
     async with session_factory() as db:
         await _set_schema(db, test_schema)
         async with db.begin():
+            await _pin_schema(db, test_schema)
             started_at = monotonic()
             await acquire_summer_league_writer_lock_bounded(db, max_wait_seconds=5.0)
             elapsed = monotonic() - started_at
@@ -69,9 +95,11 @@ async def test_bounded_acquire_raises_timeout_when_lock_stays_held(
         await _set_schema(holder, test_schema)
         await _set_schema(waiter, test_schema)
         async with holder.begin():
+            await _pin_schema(holder, test_schema)
             await acquire_summer_league_writer_lock(holder)
 
             async with waiter.begin():
+                await _pin_schema(waiter, test_schema)
                 max_wait_seconds = 1.0
                 started_at = monotonic()
                 with pytest.raises(SummerLeagueWriterLockTimeout):
@@ -105,6 +133,7 @@ async def test_bounded_acquire_succeeds_once_holder_releases_before_deadline(
 
         async def _hold_then_release() -> None:
             async with holder.begin():
+                await _pin_schema(holder, test_schema)
                 await acquire_summer_league_writer_lock(holder)
                 holder_ready.set()
                 await asyncio.sleep(0.3)
@@ -116,6 +145,7 @@ async def test_bounded_acquire_succeeds_once_holder_releases_before_deadline(
             # contention (and later success), not a lucky race.
             await holder_ready.wait()
             async with waiter.begin():
+                await _pin_schema(waiter, test_schema)
                 await acquire_summer_league_writer_lock_bounded(
                     waiter, max_wait_seconds=5.0
                 )
@@ -141,15 +171,19 @@ async def test_desk_waiting_signal_is_visible_cross_session_until_cleared(
         await _set_schema(ingestion, test_schema)
 
         async with ingestion.begin():
+            await _pin_schema(ingestion, test_schema)
             assert await desk_is_waiting(ingestion) is False
 
         async with desk.begin():
+            await _pin_schema(desk, test_schema)
             assert await mark_desk_waiting(desk) is True
 
             async with ingestion.begin():
+                await _pin_schema(ingestion, test_schema)
                 assert await desk_is_waiting(ingestion) is True
 
             await clear_desk_waiting(desk)
 
             async with ingestion.begin():
+                await _pin_schema(ingestion, test_schema)
                 assert await desk_is_waiting(ingestion) is False
