@@ -245,14 +245,27 @@ It is deterministic and set-based rather than issuing per-profile/per-player que
 
 Publication requirements:
 
-1. Build and validate the new profile version inside a transaction or staging boundary.
-2. Acquire the established Summer League advisory/write lock before changing current
-   projections.
-3. Insert the new version and atomically switch `is_current`; readers retain the last good
-   profile if calculation or validation fails.
-4. Never mutate raw Summer League facts.
-5. Emit requested/built/skipped/failed scope counts, metric coverage counts, version,
+1. Begin the rebuild transaction and acquire the established transaction-scoped Summer
+   League advisory/write lock **before** reading any source fact, derived metric, current
+   profile, or input watermark used by the rebuild.
+2. Hold that same lock and transaction through source loading, watermark capture,
+   calculation, validation, version insertion, and the current-version switch. Do not
+   commit, release the lock, or move calculation reads to another session between those
+   steps.
+3. Insert the validated version and atomically switch `is_current`; one commit publishes
+   both. Any failure rolls back the candidate and leaves the prior current profile
+   readable.
+4. An incremental refresh invoked from the existing locked metrics/materialization phase
+   reuses that session and transaction. A manual or standalone rebuild opens its own
+   transaction and acquires the same lock before its first input read.
+5. Never mutate raw Summer League facts.
+6. Emit requested/built/skipped/failed scope counts, metric coverage counts, version,
    input watermark, duration, and failure reasons.
+
+This ordering is mandatory because the existing lock uses `pg_advisory_xact_lock`. Atomic
+publication alone is insufficient: reading inputs before acquiring the lock could combine
+raw facts and derived metrics from different writer snapshots even if the final row switch
+is atomic.
 
 The historical backfill runs before public modules are enabled. The normal Summer League
 pipeline invokes an incremental profile rebuild after normalized facts/advanced metrics

@@ -244,6 +244,16 @@ admin action is required.
     switches one current version; retry creates no duplicate current scope.
   - Evidence: integration assertion, rebuild logs, and current-profile uniqueness check.
 
+- Rebuild input reads and publication share one writer-lock transaction.
+  - Verify: coordinate two database sessions so a raw/metrics writer attempts to change
+    an input while a profile rebuild is paused after acquiring the transaction-scoped
+    Summer League writer lock; repeat with the writer holding the lock first.
+  - Expected: the competing writer blocks or the rebuild waits before its first input
+    read. The published profile's values and input watermark describe one committed fact
+    set; no mixed raw/derived snapshot can be published.
+  - Evidence: concurrency integration test with synchronization barriers, watermark/value
+    parity assertions, and lock acquisition logs.
+
 - Historical backfill and incremental refresh are operationally complete.
   - Verify: run the documented historical backfill and the normal post-materialization
     incremental path against deterministic data.
