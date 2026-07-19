@@ -143,6 +143,7 @@ async def async_engine(
     from app.schemas import draft_results  # noqa: F401
     from app.schemas import summer_league  # noqa: F401
     from app.schemas import summer_league_metrics  # noqa: F401
+    from app.schemas import summer_league_environment  # noqa: F401
     from app.schemas import summer_league_desk  # noqa: F401
     from app.schemas import event_desk  # noqa: F401
     from app.schemas import event_desk_render_snapshot  # noqa: F401

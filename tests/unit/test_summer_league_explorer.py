@@ -10,19 +10,35 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from datetime import datetime, timedelta
+
+from app.schemas.summer_league_environment import SummerLeagueEnvironmentProfile
 from app.services.summer_league.metrics import Box, game_score
+from app.services.summer_league_environment_registry import get_metric
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     PAGE_SIZE,
+    STALE_AFTER_HOURS,
+    _COMPETITION_FILTERABLE_KEYS,
     _PLAYER_ADVANCED_COLUMNS,
     _PLAYER_STAT_COLUMNS,
+    _build_profile_view,
     _build_result,
+    _build_trend,
     _compute_player_values,
     _is_single_competition,
+    _passes_coverage_filter,
+    _passes_metric_filter,
     _player_sort_expr,
+    _sort_competition_views,
+    _view_to_detail,
+    _view_to_row,
     parse_query,
+    parse_metric_filters,
+    competition_columns,
     ExplorerColumn,
     ExplorerRow,
+    MetricFilter,
     _SORT_KEYS_BY_SUBJECT,
 )
 
@@ -473,3 +489,304 @@ def test_parse_query_accepts_advanced_sort_keys() -> None:
             }
         )
         assert q.sort == col.key, f"expected sort={col.key!r}, got {q.sort!r}"
+
+
+# --------------------------------------------------------------------------- #
+# Competition Context (subject="competitions", ticket #607)
+# --------------------------------------------------------------------------- #
+
+
+def _profile(**overrides: object) -> SummerLeagueEnvironmentProfile:
+    """A minimal, unpersisted profile row for pure-Python read-adapter tests."""
+    defaults: dict[str, object] = dict(
+        id=1,
+        scope_key="season:2024",
+        scope_kind="season_all_competitions",
+        year=2024,
+        competition_id=None,
+        venue_slug=None,
+        display_name="2024 Summer League (All Competitions)",
+        version=1,
+        is_current=True,
+        registry_version="2026.07.1",
+        included_competitions=2,
+        final_games=20,
+        scheduled_games=0,
+        box_complete_games=20,
+        shot_covered_games=20,
+        pbp_covered_games=0,
+        games_with_score=20,
+        games_with_known_ot=20,
+        appeared_players=100,
+        appeared_unresolved=10,
+        rookie_count=40,
+        returner_count=60,
+        drafted_count=50,
+        undrafted_count=50,
+        first_round_count=20,
+        second_round_count=30,
+        lottery_count=10,
+        teams_represented=6,
+        median_age=21.5,
+        # A representative box-derived metric.
+        pace_per_48=95.5,
+        offensive_rating=1.05,  # stored as a raw ratio-like value for this test
+        three_attempt_share=0.35,
+        calculated_at=datetime.utcnow(),
+    )
+    defaults.update(overrides)
+    return SummerLeagueEnvironmentProfile(**defaults)  # type: ignore[arg-type]
+
+
+def test_parse_query_competitions_defaults() -> None:
+    """subject=competitions defaults to season scope, coverage=all, sort=year, min_gp=0."""
+    q = parse_query({"subject": "competitions"})
+    assert q.subject == "competitions"
+    assert q.profile_scope == "season"
+    assert q.coverage == "all"
+    assert q.sort == "year"
+    assert q.min_games == 0
+    assert q.competition_id is None
+    assert q.detail_year is None
+
+
+def test_parse_query_competitions_season_clears_venue_and_competition_id() -> None:
+    """Season scope canonicalization clears venue/competition_id (contract §6)."""
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "season",
+            "venue": "las_vegas",
+            "competition_id": "7",
+        }
+    )
+    assert q.profile_scope == "season"
+    assert q.venue is None
+    assert q.competition_id is None
+
+
+def test_parse_query_competitions_competition_id_clears_detail_year() -> None:
+    """competition_id is authoritative for detail; a stale detail_year is dropped."""
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": "42",
+            "detail_year": "2019",
+        }
+    )
+    assert q.competition_id == 42
+    assert q.detail_year is None
+
+
+def test_parse_query_competitions_invalid_profile_scope_and_coverage_degrade() -> None:
+    """Garbage profile_scope/coverage/trend_metric degrade to defaults, never raise."""
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "bogus",
+            "coverage": "bogus",
+            "trend_metric": "not_a_metric",
+        }
+    )
+    assert q.profile_scope == "season"
+    assert q.coverage == "all"
+    assert q.trend_metric is None
+
+
+def test_parse_query_competitions_valid_trend_metric_accepted() -> None:
+    """A registered metric key is accepted verbatim as trend_metric."""
+    q = parse_query({"subject": "competitions", "trend_metric": "pace_per_48"})
+    assert q.trend_metric == "pace_per_48"
+
+
+def test_parse_query_competitions_min_gp_explicit_zero_still_zero() -> None:
+    """An explicit min_gp=0 round-trips (distinguishing 'unset' from 'zero')."""
+    q = parse_query({"subject": "competitions", "min_gp": "5"})
+    assert q.min_games == 5
+
+
+def test_parse_metric_filters_uses_registry_keys_for_competitions() -> None:
+    """A player-only key (e.g. 'pts') is not a valid competitions threshold column,
+    but a registry metric key (e.g. 'pace_per_48') is — the same fcol/fop/fval
+    contract, different valid-key vocabulary per subject (contract §6).
+    """
+    params = {"fcol0": "pace_per_48", "fop0": "gte", "fval0": "90"}
+    filters = parse_metric_filters(params, _COMPETITION_FILTERABLE_KEYS)
+    assert filters == [MetricFilter(col="pace_per_48", op=">=", value=90.0)]
+
+    filters_player_key = parse_metric_filters(params.copy() | {"fcol0": "pts"}, _COMPETITION_FILTERABLE_KEYS)
+    assert filters_player_key == []
+
+
+def test_competition_columns_season_scope_has_no_venue_column() -> None:
+    """A season profile pools every venue, so venue is not a per-row column."""
+    cols = {c.key for c in competition_columns("season_all_competitions")}
+    assert "venue" not in cols
+    assert "year" in cols
+    assert "pace_per_48" in cols
+
+
+def test_competition_columns_competition_scope_has_venue_column() -> None:
+    cols = {c.key for c in competition_columns("competition")}
+    assert "venue" in cols
+
+
+def test_competition_columns_only_registry_metrics_are_filterable() -> None:
+    """Identity/meta columns (year, scope_key, ...) are never threshold-filterable —
+    thresholds are restricted to registry-certified metrics (contract §6).
+    """
+    cols = competition_columns("competition")
+    filterable = {c.key for c in cols if c.filterable}
+    assert filterable == _COMPETITION_FILTERABLE_KEYS
+    assert "year" not in filterable
+    assert "scope_key" not in filterable
+
+
+def test_build_profile_view_box_gated_metric_partial_when_undercovered() -> None:
+    """box_complete_games < final_games -> partial coverage for a box-gated metric."""
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    profile = _profile(final_games=20, box_complete_games=10)
+    defs = metrics_for_scope("season_all_competitions")
+    view = _build_profile_view(profile, defs)
+    assert view.coverage["pace_per_48"].coverage == "partial"
+    assert view.coverage["pace_per_48"].covered == 10
+    assert view.coverage["pace_per_48"].eligible == 20
+
+
+def test_build_profile_view_composition_share_computed_from_counts() -> None:
+    """Composition shares (stored=False) are derived on read from count columns."""
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    profile = _profile(rookie_count=40, appeared_players=100)
+    defs = metrics_for_scope("season_all_competitions")
+    view = _build_profile_view(profile, defs)
+    assert view.raw_values["rookie_share"] == 0.4
+
+
+def test_passes_coverage_filter_box_complete() -> None:
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    complete = _build_profile_view(
+        _profile(final_games=20, box_complete_games=20), metrics_for_scope("season_all_competitions")
+    )
+    partial = _build_profile_view(
+        _profile(final_games=20, box_complete_games=5), metrics_for_scope("season_all_competitions")
+    )
+    assert _passes_coverage_filter(complete, "box_complete") is True
+    assert _passes_coverage_filter(partial, "box_complete") is False
+    assert _passes_coverage_filter(partial, "all") is True
+
+
+def test_passes_metric_filter_rejects_null_and_partial_values() -> None:
+    """Thresholds never fire on a null or partial-coverage metric (contract §6)."""
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    defs = metrics_for_scope("season_all_competitions")
+    definition = get_metric("pace_per_48")
+
+    partial_view = _build_profile_view(
+        _profile(final_games=20, box_complete_games=5, pace_per_48=None), defs
+    )
+    f = MetricFilter(col="pace_per_48", op=">=", value=50.0)
+    assert _passes_metric_filter(partial_view, definition, f) is False
+
+    complete_view = _build_profile_view(
+        _profile(final_games=20, box_complete_games=20, pace_per_48=95.5), defs
+    )
+    assert _passes_metric_filter(complete_view, definition, f) is True
+    assert (
+        _passes_metric_filter(
+            complete_view, definition, MetricFilter(col="pace_per_48", op="<=", value=50.0)
+        )
+        is False
+    )
+
+
+def test_sort_competition_views_nulls_last_both_directions() -> None:
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    defs = metrics_for_scope("season_all_competitions")
+    metric_by_key = {d.key: d for d in defs}
+    high = _build_profile_view(
+        _profile(scope_key="season:2024", year=2024, final_games=20, box_complete_games=20, pace_per_48=100.0),
+        defs,
+    )
+    low = _build_profile_view(
+        _profile(scope_key="season:2023", year=2023, final_games=20, box_complete_games=20, pace_per_48=80.0),
+        defs,
+    )
+    null_cov = _build_profile_view(
+        _profile(scope_key="season:2022", year=2022, final_games=20, box_complete_games=0, pace_per_48=None),
+        defs,
+    )
+    views = [null_cov, low, high]
+
+    desc = _sort_competition_views(views, "pace_per_48", "desc", metric_by_key)
+    assert [v.year for v in desc] == [2024, 2023, 2022]
+
+    asc = _sort_competition_views(views, "pace_per_48", "asc", metric_by_key)
+    assert [v.year for v in asc] == [2023, 2024, 2022]
+
+
+def test_build_trend_has_visible_gaps_for_uncertified_years() -> None:
+    """One point per surviving year; a non-complete year is a None gap, not a zero."""
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    defs = metrics_for_scope("season_all_competitions")
+    definition = get_metric("pace_per_48")
+    covered = _build_profile_view(
+        _profile(scope_key="season:2024", year=2024, final_games=20, box_complete_games=20, pace_per_48=95.5),
+        defs,
+    )
+    uncovered = _build_profile_view(
+        _profile(scope_key="season:2023", year=2023, final_games=20, box_complete_games=0, pace_per_48=None),
+        defs,
+    )
+    trend = _build_trend(
+        "pace_per_48", definition, [uncovered, covered], scope_kind="season_all_competitions", venue_slug=None
+    )
+    assert [p.year for p in trend.points] == [2023, 2024]
+    assert trend.points[0].value is None
+    assert trend.points[0].coverage == "unavailable"
+    assert trend.points[1].value == 95.5
+    assert trend.points[1].coverage == "complete"
+
+
+def test_view_to_row_scales_ratio_metrics_for_display() -> None:
+    """three_attempt_share is stored as a 0-1 ratio; the row value is display-scaled."""
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    defs = metrics_for_scope("season_all_competitions")
+    metric_by_key = {d.key: d for d in defs}
+    view = _build_profile_view(
+        _profile(final_games=20, box_complete_games=20, three_attempt_share=0.35), defs
+    )
+    row = _view_to_row(view, metric_by_key)
+    assert row.values["three_attempt_share"] == 35.0
+    assert row.href == "/stats/summer-league/2024"
+
+
+def test_view_to_detail_is_stale_past_threshold() -> None:
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    defs = metrics_for_scope("season_all_competitions")
+    metric_by_key = {d.key: d for d in defs}
+    stale_profile = _profile(
+        calculated_at=datetime.utcnow() - timedelta(hours=STALE_AFTER_HOURS + 1)
+    )
+    fresh_profile = _profile(calculated_at=datetime.utcnow())
+    stale_view = _build_profile_view(stale_profile, defs)
+    fresh_view = _build_profile_view(fresh_profile, defs)
+
+    stale_detail = _view_to_detail(stale_view, metric_by_key, [], [])
+    fresh_detail = _view_to_detail(fresh_view, metric_by_key, [], [])
+    assert stale_detail.is_stale is True
+    assert fresh_detail.is_stale is False
+    # The five-section metric grouping is populated for the detail panel.
+    assert {s.key for s in fresh_detail.sections} == {
+        "environment",
+        "landscape",
+        "composition",
+    }

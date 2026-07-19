@@ -11,6 +11,9 @@ reference frame—including NBA context—is appropriate, and scopes the longer-
 `docs/plans/player-longitudinal-evidence-layer-pitch.md` describes the reusable player
 evidence timeline that connects observations at events to later stages of a career.
 
+**First-release implementation contract:**
+`docs/plans/competition-context-explorer-implementation-contract.md`
+
 > This replaces the narrow idea of an Explorer-only “Summer League versus NBA”
 > comparison. The comparison remains useful, but it is one optional lens inside a
 > broader event-intelligence product.
@@ -40,7 +43,7 @@ user-selected operation over two profiles—not a hard-coded feature destination
 | Team entries, records, scores, bracket | team entries + games/schedule | How large was the field, what was the format, and how much did games vary? |
 | Team box totals plus pace/ratings | `SummerLeagueTeamGameLog` | How fast, efficient, assist-heavy, turnover-prone, or three-heavy was play? |
 | Player box lines and advanced materializations | player game logs + player seasons | Who carried the field; how concentrated was production; what did the distribution look like? |
-| Shot events and play-by-play | shot/PBP spokes | Where did shots come from, how did they convert, and what is the assist/unassisted mix? |
+| Shot events and play-by-play | shot/PBP spokes | Where did shots come from, how did they convert, and which later possession-level facts can be certified? |
 | Draft slot, class, age, country, position, college, status | canonical player/profile/participation data | Who was in the field: rookies, returners, drafted/undrafted, positions, origins? |
 | Participation and affiliation assertions | journey-graph backbone | Which players/teams were actually present, even before box-score appearance? |
 | Cohort percentiles and Desk facts | existing Desk/metrics projections | How unusual were individual performances relative to relevant peers? |
@@ -128,7 +131,7 @@ the companion framework, rather than embedded as a one-size-fits-all NBA compari
 | **Explorer → Competitions** | Discovery, filtering, sorting, and shareable Competition or all-competitions Season Profiles. |
 | **Explorer → Players/Teams/Games** | Small context strip only when one event is selected; link to that Event Profile. |
 | **Venue/tournament page** | Primary “Event at a glance” module: identity, field, style, confidence, and a link into the Explorer profile. |
-| **Season hub** | A portfolio of event cards, not a blended style average; shows how each venue/event differed and links into each profile. |
+| **Season hub** | An explicitly labeled all-competitions summary alongside the existing portfolio of event/venue cards; the aggregate never replaces or masquerades as one venue. |
 | **Landing page** | Latest-event snapshot with data-confidence/freshness; avoids duplicating the full profile. |
 | **Summer League Desk** | Reuses event profile facts for computed, sourceable context; it does not invent an editorial layer. |
 
@@ -140,7 +143,9 @@ the companion framework, rather than embedded as a one-size-fits-all NBA compari
 - **Rates recompute from totals.** Never average team percentages, player percentages,
   or event rates unweighted.
 - **Data confidence is metric-specific.** A competition may support box-style facts but
-  not shot-diet or assisted-FG facts. Missing coverage is a product state, not a zero.
+  not shot-diet facts. Assisted-FG rate is box-derived `AST / FGM`; PBP completeness is
+  informational in v1 until a PBP-only metric is registered. Missing coverage is a
+  product state, not a zero.
 - **Comparison requires shared definitions.** Each profile records formula version and
   source coverage; a comparison only renders metrics comparable across both inputs.
 - **Tournament standings are context, not a player-development thesis.** Format and game
@@ -179,6 +184,9 @@ Classify every candidate fact by grain, source, denominator, historical coverage
 whether it can be compared across editions. Define the minimum viable profile separately
 for box-only, shot-chart, and PBP-complete events.
 
+This is an implementation prerequisite, not optional discovery. It produces a repeatable
+coverage report before the profile schema/aggregation tickets proceed.
+
 ### Phase 1 — Summer League Event Profile from current facts
 
 Ship identity/format, field composition, core team environment, and data confidence for
@@ -187,7 +195,8 @@ each full Summer League competition. This is valuable without NBA ingestion.
 ### Phase 2 — Explorer Events subject and home-page reuse
 
 Let users discover/sort events; add compact profile modules to venue/tournament and
-season pages. Keep the season hub as a portfolio of events, not a false blended league.
+season pages. Keep the season hub's event portfolio and add an explicitly labeled pooled
+season summary rather than presenting that summary as one venue.
 
 ### Phase 3 — Comparison lenses
 
@@ -200,16 +209,18 @@ Once profiles accumulate, introduce transparent percentile/trend annotations suc
 “fastest Las Vegas edition since 2019” or “largest returning-player share in the tracked
 era.” Every insight links to its profile, source, and method.
 
-## Decisions to make before ticketing
+## First-release decisions
 
-1. Which field-composition facts are sufficiently complete across historical Summer
-   League to be v1 profile metrics?
-2. Should an Event Profile be public for partial/box-only history with a reduced set of
-   sections, or only for fully covered events?
-3. What should count as the first comparison baseline: prior edition, trailing historical
-   distribution, or both?
-4. Which home-page modules deserve a compact profile now versus simple links until the
-   Explorer Events subject is proven?
+1. A pre-implementation audit determines which historical field-composition facts are
+   publishable and documents unknown coverage; it never silently infers missing history.
+2. Partial/box-only profiles remain public with independently nullable metrics and visible
+   coverage. Partial numerators are not extrapolated.
+3. Comparison lenses, including prior-edition and NBA references, are deferred. The first
+   release ships native profiles and trends only.
+4. First-release reuse is limited to Explorer context strips plus season and venue pages.
+   Landing-page and Desk modules remain later consumers.
+5. The implementation contract freezes metric formulas, event-time field semantics,
+   stable URLs, version publication, query ceilings, CSV parity, and operational refresh.
 
 ## Why this is worth the wider umbrella
 
