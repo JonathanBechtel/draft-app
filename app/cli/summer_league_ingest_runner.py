@@ -62,10 +62,11 @@ import asyncio
 import logging
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -85,7 +86,13 @@ from app.services.summer_league.backfill import (
 from app.services.summer_league.endpoints import normalize_league_id
 from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics
 from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.summer_league.batch_progress import (
+    get_completed_batch_game_ids,
+    record_batch_progress,
+)
 from app.services.summer_league.normalization import (
+    SummerLeaguePBPEventReport,
+    SummerLeagueShotEventReport,
     find_incomplete_team_box_game_ids,
     normalize_competition_games,
     normalize_pbp_events,
@@ -109,9 +116,13 @@ from app.services.summer_league.scoreboard_ingest import (
     run_scoreboard_ingest,
 )
 from app.services.summer_league.write_lock import (
+    desk_is_waiting,
     try_acquire_summer_league_writer_lock,
 )
-from app.schemas.summer_league_pipeline import SummerLeaguePipelineJob
+from app.schemas.summer_league_pipeline import (
+    SummerLeagueBatchPhase,
+    SummerLeaguePipelineJob,
+)
 from app.utils.db_async import SessionLocal, dispose_engine
 
 # Configure logging for cron context
@@ -132,6 +143,25 @@ FETCH_TIMEOUT_SECONDS = 30.0
 FETCH_DELAY_SECONDS = 0.7
 FETCH_RETRIES = 3
 FETCH_RETRY_DELAY_SECONDS = 2.0
+
+# Shot/PBP normalization batch size: how many games' worth of events get
+# normalized and committed per db.begin()/advisory-lock lifetime. Small
+# enough that the writer lock is released frequently -- bounding how long a
+# single venue can starve a waiting Desk tick to roughly one batch's
+# duration instead of the whole venue's (the 87.7-minute production
+# incident this module's docstring and
+# docs/plans/summer-league-cron-desk-starvation-spec.md exist to prevent) --
+# while staying large enough that per-batch transaction/lock-acquisition
+# overhead doesn't dominate on a routine, mostly-already-normalized run.
+EVENT_BATCH_SIZE = 8
+
+# Bounded back-off applied before a batch's writer-lock reacquisition
+# attempt when the Desk tick is currently signaling it's waiting for the
+# lock (see app.services.summer_league.write_lock.desk_is_waiting). Gives
+# the higher-priority Desk tick a clear window to win the lock instead of
+# this lower-priority writer immediately racing it again at every batch
+# boundary.
+DESK_BACKOFF_SECONDS = 0.5
 
 
 def _telemetry_step(telemetry: PipelineTelemetry | None, name: str):
@@ -373,6 +403,150 @@ async def _refresh_schedule(
         return None
 
 
+async def _yield_to_desk_if_waiting(db: AsyncSession) -> None:
+    """Back off briefly before a phase/batch's lock attempt if the Desk is waiting.
+
+    Called immediately before every writer-lock (re)acquisition attempt in
+    this module -- the backbone phase, each shot/PBP batch, and the
+    team-box retry pass -- so this lower-priority writer cooperatively
+    yields to a Desk tick that is actively waiting instead of immediately
+    racing it for the lock again at every one of these boundaries.
+
+    Checking :func:`~app.services.summer_league.write_lock.desk_is_waiting`
+    autobegins a lightweight transaction on this session (SQLAlchemy async
+    "autobegin"); commit it here -- a no-op for the DB, nothing was written
+    -- before the caller opens its own ``db.begin()``, mirroring
+    ``_refresh_schedule``'s handling of the identical gotcha.
+
+    Args:
+        db: Active database session with no open transaction.
+    """
+    waiting = await desk_is_waiting(db)
+    await db.commit()
+    if waiting:
+        await asyncio.sleep(DESK_BACKOFF_SECONDS)
+
+
+def _chunked(items: Sequence[str], size: int) -> list[list[str]]:
+    """Split ``items`` into consecutive chunks of at most ``size`` elements."""
+    return [list(items[i : i + size]) for i in range(0, len(items), size)]
+
+
+def _describe_shot_report(report: SummerLeagueShotEventReport) -> str:
+    """Format one shot-event batch report for logging."""
+    return (
+        f"shot events: {report.shot_events_upserted} upserted "
+        f"({report.games_with_shots}/{report.games_processed} games with shots)"
+    )
+
+
+def _describe_pbp_report(report: SummerLeaguePBPEventReport) -> str:
+    """Format one PBP-event batch report for logging."""
+    return (
+        f"PBP events: {report.pbp_events_upserted} upserted "
+        f"({report.games_with_pbp}/{report.games_processed} games with PBP)"
+    )
+
+
+async def _run_batched_phase(
+    db: AsyncSession,
+    *,
+    year: int,
+    league_id: str,
+    phase: SummerLeagueBatchPhase,
+    game_ids: Sequence[str],
+    normalize: Callable[..., Awaitable[Any]],
+    describe: Callable[[Any], str],
+    telemetry: PipelineTelemetry | None,
+) -> bool:
+    """Normalize ``game_ids`` for one phase in small, independently committed batches.
+
+    Reads durable per-game progress (see
+    :mod:`app.services.summer_league.batch_progress`) first so a run
+    resumed after a crash/interruption only reprocesses games that were
+    never committed for this phase -- and, as a side effect, a routine run
+    against an already-fully-normalized venue only ever processes newly
+    discovered games. Each batch then commits in its own
+    ``db.begin()``/advisory-lock lifetime, releasing the writer lock
+    between batches and checking :func:`_yield_to_desk_if_waiting` before
+    each reacquisition, so one venue's shot/PBP volume can never again hold
+    the lock for the venue's full duration (the 87.7-minute production
+    incident this module exists to prevent).
+
+    Args:
+        db: Async database session shared across this venue's phases.
+        year: Summer League season year.
+        league_id: NBA Stats LeagueID for this venue.
+        phase: Which batched phase this call is running.
+        game_ids: The venue's full discovered game-id universe this run;
+            games already durably completed for this phase are filtered
+            out internally before batching.
+        normalize: ``normalize_shot_events`` or ``normalize_pbp_events``.
+        describe: Formats one batch's report into a log message.
+        telemetry: Optional structured-timing recorder for the production run.
+
+    Returns:
+        True once every remaining batch was attempted and committed this
+        run (including the trivial case of zero remaining games). False if
+        a batch could not acquire the writer lock -- reconciliation was
+        deferred for it, and the caller must stop this venue's pipeline for
+        the rest of this run since a later scheduled run resumes from
+        exactly the durable progress this call already committed.
+    """
+    completed_ids = await get_completed_batch_game_ids(
+        db, year=year, league_id=league_id, phase=phase
+    )
+    await db.commit()  # close the read's autobegun transaction
+    remaining = [game_id for game_id in game_ids if game_id not in completed_ids]
+    if not remaining:
+        logger.info(
+            "L%s: %s normalization has nothing new to process (%d already complete)",
+            league_id,
+            phase.value,
+            len(completed_ids),
+        )
+        return True
+
+    batches = _chunked(remaining, EVENT_BATCH_SIZE)
+    for batch_index, batch in enumerate(batches, start=1):
+        await _yield_to_desk_if_waiting(db)
+        with _telemetry_step(
+            telemetry, f"venue:{league_id}:{phase.value}_batch_{batch_index}"
+        ):
+            async with db.begin():
+                if not await try_acquire_summer_league_writer_lock(db):
+                    await defer_full_reconciliation(
+                        db,
+                        reason=f"venue:{league_id}:{phase.value}_batch_lock_contended",
+                    )
+                    logger.info(
+                        "L%s: %s normalization deferred at batch %d/%d because the "
+                        "Desk writer is active; a later scheduled run will resume "
+                        "the remaining games",
+                        league_id,
+                        phase.value,
+                        batch_index,
+                        len(batches),
+                    )
+                    return False
+                report = await normalize(
+                    db,
+                    year=year,
+                    league_id=league_id,
+                    raw_root=RAW_ROOT,
+                    game_ids=set(batch),
+                )
+                await record_batch_progress(
+                    db,
+                    year=year,
+                    league_id=league_id,
+                    phase=phase,
+                    game_ids=batch,
+                )
+                logger.info("L%s %s", league_id, describe(report))
+    return True
+
+
 async def _run_venue(
     db: AsyncSession,
     ingestor: SummerLeagueRawIngestor,
@@ -382,6 +556,16 @@ async def _run_venue(
     telemetry: PipelineTelemetry | None = None,
 ) -> tuple[bool, bool]:
     """Incrementally fetch and process one Summer League venue.
+
+    Backbone normalization, shot normalization, and PBP normalization each
+    run in their own transaction/advisory-lock lifetime -- shot and PBP
+    further split into small per-game batches via :func:`_run_batched_phase`
+    -- instead of one venue-wide ``db.begin()`` block. This is what bounds
+    how long this lower-priority writer can starve the hourly Summer League
+    Desk tick: previously the whole block ran for as long as 87.7 minutes in
+    production; now the lock is released and reacquired (yielding first to
+    a waiting Desk tick, see :func:`_yield_to_desk_if_waiting`) at every
+    phase and batch boundary.
 
     Args:
         db: Async database session shared across venues this run.
@@ -394,8 +578,9 @@ async def _run_venue(
         A ``(had_games, failed)`` tuple. ``had_games`` is True when at least
         one game was discovered for this venue this run. ``failed`` is True
         only for a genuine processing failure that happened *after* games
-        were found -- fetch-stage errors are folded into ``had_games=False``
-        since there is nothing to process either way.
+        were found -- fetch-stage errors and lock-contention deferrals are
+        folded into non-failure outcomes since there is nothing more to do
+        this run either way.
     """
     try:
         # Step 1: refresh the season index only (limit_games=0 skips all
@@ -442,8 +627,12 @@ async def _run_venue(
         )
         return False, False
 
+    # Phase A: backbone normalization -- its own transaction/lock lifetime,
+    # separated from shot/PBP below so the writer lock is released the
+    # instant it commits instead of staying held across the whole venue.
+    await _yield_to_desk_if_waiting(db)
     try:
-        with _telemetry_step(telemetry, f"venue:{league_id}:db_normalization"):
+        with _telemetry_step(telemetry, f"venue:{league_id}:backbone_normalization"):
             async with db.begin():
                 if not await try_acquire_summer_league_writer_lock(db):
                     await defer_full_reconciliation(
@@ -466,31 +655,46 @@ async def _run_venue(
                 logger.info(
                     "L%s backbone: %s", league_id, summarize_backfill_report(report)
                 )
-
-                shot_report = await normalize_shot_events(
-                    db, year=year, league_id=league_id, raw_root=RAW_ROOT
-                )
-                logger.info(
-                    "L%s shot events: %d upserted (%d/%d games with shots)",
-                    league_id,
-                    shot_report.shot_events_upserted,
-                    shot_report.games_with_shots,
-                    shot_report.games_processed,
-                )
-
-                pbp_report = await normalize_pbp_events(
-                    db, year=year, league_id=league_id, raw_root=RAW_ROOT
-                )
-                logger.info(
-                    "L%s PBP events: %d upserted (%d/%d games with PBP)",
-                    league_id,
-                    pbp_report.pbp_events_upserted,
-                    pbp_report.games_with_pbp,
-                    pbp_report.games_processed,
-                )
     except Exception as exc:
         logger.error(
-            "L%s backbone/normalization failed: %s", league_id, exc, exc_info=True
+            "L%s backbone normalization failed: %s", league_id, exc, exc_info=True
+        )
+        return True, True
+
+    # Phases B & C: shot / PBP normalization, chunked into small
+    # independently committed per-game batches -- see `_run_batched_phase`.
+    game_ids_universe = sorted(set(fetch_manifest.game_ids))
+    try:
+        shot_completed_fully = await _run_batched_phase(
+            db,
+            year=year,
+            league_id=league_id,
+            phase=SummerLeagueBatchPhase.SHOT,
+            game_ids=game_ids_universe,
+            normalize=normalize_shot_events,
+            describe=_describe_shot_report,
+            telemetry=telemetry,
+        )
+        if not shot_completed_fully:
+            # Already deferred by `_run_batched_phase`; stop here rather
+            # than immediately racing the Desk again for the PBP phase.
+            return True, False
+
+        pbp_completed_fully = await _run_batched_phase(
+            db,
+            year=year,
+            league_id=league_id,
+            phase=SummerLeagueBatchPhase.PBP,
+            game_ids=game_ids_universe,
+            normalize=normalize_pbp_events,
+            describe=_describe_pbp_report,
+            telemetry=telemetry,
+        )
+        if not pbp_completed_fully:
+            return True, False
+    except Exception as exc:
+        logger.error(
+            "L%s shot/PBP normalization failed: %s", league_id, exc, exc_info=True
         )
         return True, True
 
@@ -581,6 +785,7 @@ async def _retry_incomplete_team_boxes(
             len(retry_manifest.errors),
         )
 
+    await _yield_to_desk_if_waiting(db)
     try:
         with _telemetry_step(telemetry, f"venue:{league_id}:team_box_normalization"):
             async with db.begin():

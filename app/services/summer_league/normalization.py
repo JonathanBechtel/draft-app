@@ -646,6 +646,7 @@ async def normalize_shot_events(
     league_id: str,
     raw_root: Path,
     limit_games: int | None = None,
+    game_ids: set[str] | None = None,
 ) -> SummerLeagueShotEventReport:
     """Normalize shot events from shotchartdetail snapshots for one slice.
 
@@ -662,7 +663,15 @@ async def normalize_shot_events(
         year: Competition year.
         league_id: NBA.com LeagueID string.
         raw_root: Root directory for raw NBA Stats snapshots.
-        limit_games: Optional cap on games processed (for testing).
+        limit_games: Optional cap on the first N discovered games (by manifest
+            order) processed -- test-only, see :func:`_limited_game_ids`.
+        game_ids: Optional explicit set of game IDs to process, e.g. one
+            batch of a larger venue (see
+            ``app.cli.summer_league_ingest_runner``). Distinct from
+            ``limit_games``: this selects an arbitrary subset rather than a
+            prefix of the discovery order. When both are given, only games
+            satisfying both filters are processed. ``None`` (the default)
+            processes every game, exactly like before this parameter existed.
 
     Returns:
         Structured report with upsert counts.
@@ -672,11 +681,14 @@ async def normalize_shot_events(
         raise RuntimeError("Competition id was not populated")
 
     season_dir = raw_root / f"{year}/{league_id}"
-    limited_game_ids = _limited_game_ids(
-        raw_root=raw_root,
-        year=year,
-        league_id=league_id,
-        limit_games=limit_games,
+    effective_game_ids = _combine_game_id_filters(
+        _limited_game_ids(
+            raw_root=raw_root,
+            year=year,
+            league_id=league_id,
+            limit_games=limit_games,
+        ),
+        game_ids,
     )
     games_by_source_id = await _games_by_source_id(db, competition.id)
     teams_by_source_id = await _teams_by_source_id(db, competition.id)
@@ -691,7 +703,7 @@ async def normalize_shot_events(
     box_rows_by_game: dict[str, list[ParsedPlayerBoxRow]] = {}
     for box_row in (
         *parse_player_gamelog_box_rows(season_dir / "leaguegamelog_player.json"),
-        *parse_player_box_rows(season_dir, game_ids=limited_game_ids),
+        *parse_player_box_rows(season_dir, game_ids=effective_game_ids),
     ):
         box_rows_by_game.setdefault(box_row.game_id, []).append(box_row)
 
@@ -700,7 +712,7 @@ async def normalize_shot_events(
     games_with_shots = 0
     games_root = season_dir / "games"
 
-    for game_dir in _iter_game_dirs(games_root, limited_game_ids):
+    for game_dir in _iter_game_dirs(games_root, effective_game_ids):
         nba_game_id = game_dir.name
         shot_path = game_dir / "shotchartdetail.json"
         if not shot_path.exists():
@@ -760,8 +772,16 @@ async def normalize_shot_events(
 
     await db.flush()
 
-    # Set availability from actual parsed rows, not file presence.
-    competition.shotchart_available = games_with_shots > 0
+    # Set availability from actual parsed rows, not file presence. A batch
+    # call (``game_ids`` set) only ever raises the flag -- it must never
+    # downgrade it back to False just because *this batch's* games happened
+    # to have no shots while an earlier, already-committed batch did. Only a
+    # whole-venue call (``game_ids=None``, matching prior behavior exactly)
+    # may set it back to False.
+    if games_with_shots > 0:
+        competition.shotchart_available = True
+    elif game_ids is None:
+        competition.shotchart_available = False
     competition.updated_at = _utc_now_naive()
     await db.flush()
 
@@ -782,6 +802,7 @@ async def normalize_pbp_events(
     league_id: str,
     raw_root: Path,
     limit_games: int | None = None,
+    game_ids: set[str] | None = None,
 ) -> SummerLeaguePBPEventReport:
     """Normalize PBP events from playbyplayv2 snapshots for one slice.
 
@@ -800,7 +821,15 @@ async def normalize_pbp_events(
         year: Competition year.
         league_id: NBA.com LeagueID string.
         raw_root: Root directory for raw NBA Stats snapshots.
-        limit_games: Optional cap on games processed (for testing).
+        limit_games: Optional cap on the first N discovered games (by manifest
+            order) processed -- test-only, see :func:`_limited_game_ids`.
+        game_ids: Optional explicit set of game IDs to process, e.g. one
+            batch of a larger venue (see
+            ``app.cli.summer_league_ingest_runner``). Distinct from
+            ``limit_games``: this selects an arbitrary subset rather than a
+            prefix of the discovery order. When both are given, only games
+            satisfying both filters are processed. ``None`` (the default)
+            processes every game, exactly like before this parameter existed.
 
     Returns:
         Structured report with upsert counts.
@@ -810,11 +839,14 @@ async def normalize_pbp_events(
         raise RuntimeError("Competition id was not populated")
 
     season_dir = raw_root / f"{year}/{league_id}"
-    limited_game_ids = _limited_game_ids(
-        raw_root=raw_root,
-        year=year,
-        league_id=league_id,
-        limit_games=limit_games,
+    effective_game_ids = _combine_game_id_filters(
+        _limited_game_ids(
+            raw_root=raw_root,
+            year=year,
+            league_id=league_id,
+            limit_games=limit_games,
+        ),
+        game_ids,
     )
     games_by_source_id = await _games_by_source_id(db, competition.id)
     raw_files_by_game = await _pbp_raw_files_by_game(
@@ -827,7 +859,7 @@ async def normalize_pbp_events(
     games_with_pbp = 0
     games_root = season_dir / "games"
 
-    for game_dir in _iter_game_dirs(games_root, limited_game_ids):
+    for game_dir in _iter_game_dirs(games_root, effective_game_ids):
         nba_game_id = game_dir.name
         pbp_path = game_dir / "playbyplayv2.json"
         if not pbp_path.exists():
@@ -866,8 +898,14 @@ async def normalize_pbp_events(
 
     await db.flush()
 
-    # Set availability from actual parsed rows, not file presence.
-    competition.pbp_available = games_with_pbp > 0
+    # Set availability from actual parsed rows, not file presence. A batch
+    # call (``game_ids`` set) only ever raises the flag -- see the matching
+    # comment in :func:`normalize_shot_events` for why it must never
+    # downgrade a flag an earlier, already-committed batch already raised.
+    if games_with_pbp > 0:
+        competition.pbp_available = True
+    elif game_ids is None:
+        competition.pbp_available = False
     competition.updated_at = _utc_now_naive()
     await db.flush()
 
@@ -1234,6 +1272,36 @@ def _limited_game_ids(
     payload = _read_payload(manifest_path)
     game_ids = [str(value) for value in payload.get("game_ids") or []]
     return set(game_ids[:limit_games])
+
+
+def _combine_game_id_filters(
+    limited_game_ids: set[str] | None,
+    game_ids: set[str] | None,
+) -> set[str] | None:
+    """Merge the test-only ``limit_games`` prefix filter with an explicit batch filter.
+
+    Both :func:`normalize_shot_events` and :func:`normalize_pbp_events`
+    accept two independent, optional game-id restrictions: ``limit_games``
+    (a first-N-by-manifest-order prefix, used only by tests) and ``game_ids``
+    (an arbitrary caller-selected subset, used by
+    ``app.cli.summer_league_ingest_runner`` to process one batch of a
+    venue). Neither set alone means "process everything"; only both being
+    ``None`` does.
+
+    Args:
+        limited_game_ids: The resolved ``limit_games`` prefix, or ``None``.
+        game_ids: The caller's explicit batch filter, or ``None``.
+
+    Returns:
+        ``None`` when neither filter is set (process every game); otherwise
+        the intersection when both are set, or whichever single filter is
+        set.
+    """
+    if limited_game_ids is None:
+        return game_ids
+    if game_ids is None:
+        return limited_game_ids
+    return limited_game_ids & game_ids
 
 
 def _filter_team_gamelog_rows(

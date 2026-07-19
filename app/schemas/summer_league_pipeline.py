@@ -31,6 +31,23 @@ class SummerLeaguePipelineOutcome(str, Enum):
     FAILED = "failed"
 
 
+class SummerLeagueBatchPhase(str, Enum):
+    """A per-game normalization phase tracked for batch-resumability.
+
+    Backbone normalization is not represented here -- it runs in one
+    ``db.begin()`` block per venue per run (not chunked into game-id
+    batches) and is already fully idempotent on retry, so it needs no
+    durable per-game progress marker. Shot and PBP normalization *are*
+    chunked into small game-id batches (see
+    ``app.cli.summer_league_ingest_runner``), so a crash/interruption
+    partway through a venue needs to know exactly which games already
+    committed for each of these two phases.
+    """
+
+    SHOT = "shot"
+    PBP = "pbp"
+
+
 class SummerLeaguePipelineState(SQLModel, table=True):  # type: ignore[call-arg]
     """Durable freshness and retry state for one Summer League cron job.
 
@@ -77,3 +94,58 @@ class SummerLeaguePipelineState(SQLModel, table=True):  # type: ignore[call-arg]
     )
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+
+
+class SummerLeagueBatchProgress(SQLModel, table=True):  # type: ignore[call-arg]
+    """Durable per-game completion marker for one batched normalization phase.
+
+    Each row records that ``game_id`` (an ``nba_stats_game_id``) has been
+    successfully committed for ``phase`` within one ``year``/``league_id``
+    slice. ``app.cli.summer_league_ingest_runner`` reads this set before
+    planning a phase's batches so a crash/interruption partway through a
+    venue's shot/PBP normalization resumes only the games that were not yet
+    committed, instead of replaying an entire venue inside one long-lived
+    advisory-lock transaction (the 87.7-minute production incident this
+    ticket exists to prevent -- see
+    ``docs/plans/summer-league-cron-desk-starvation-spec.md``).
+
+    Rows are permanent once written: unlike team-box files (which the ingest
+    runner force-refetches on its incomplete-box retry pass), shot/PBP raw
+    snapshots never change once fetched, so a completed game never needs to
+    be reprocessed for these two phases. This also gives routine runs a free
+    "changed games only" property -- a game already marked complete here is
+    skipped on every later run, so only newly-discovered games are ever
+    normalized again.
+    """
+
+    __tablename__ = "summer_league_batch_progress"
+    __table_args__ = (
+        UniqueConstraint(
+            "year",
+            "league_id",
+            "phase",
+            "game_id",
+            name="uq_summer_league_batch_progress_game",
+        ),
+        Index(
+            "ix_summer_league_batch_progress_scope",
+            "year",
+            "league_id",
+            "phase",
+        ),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    year: int = Field(nullable=False)
+    league_id: str = Field(nullable=False, max_length=8)
+    phase: SummerLeagueBatchPhase = Field(
+        sa_column=Column(
+            SAEnum(
+                SummerLeagueBatchPhase,
+                name="summer_league_batch_phase_enum",
+            ),
+            nullable=False,
+        )
+    )
+    game_id: str = Field(nullable=False, max_length=32)
+    completed_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)

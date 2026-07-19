@@ -78,10 +78,11 @@ def _shot_row(
     team_id: int = 1610612753,
     shot_made_flag: int = 1,
     shot_type: str = "3PT Field Goal",
+    game_id: str = "1522400001",
 ) -> list[object]:
     return [
         "Shot Chart Detail",
-        "1522400001",
+        game_id,
         event_id,
         player_id,
         player_name,
@@ -204,6 +205,139 @@ async def _setup_competition(db: AsyncSession, raw_root: Path) -> None:
     await audit_summer_league_raw(db, raw_root=raw_root, year=2024, league_id="15")
     await normalize_competition_games(db, year=2024, league_id="15", raw_root=raw_root)
     await db.flush()
+
+
+def _write_two_game_season_skeleton(raw_root: Path) -> tuple[Path, Path]:
+    """Write manifest + team gamelog + minimal box files for two games.
+
+    Mirrors :func:`_write_season_skeleton` but with a second game
+    (``1522400002``) so ``game_ids``-filtered batch calls to
+    ``normalize_shot_events`` have more than one game to select between.
+    """
+    run_dir = raw_root / "2024" / "15"
+    game_dir_1 = run_dir / "games" / "1522400001"
+    game_dir_2 = run_dir / "games" / "1522400002"
+    game_dir_1.mkdir(parents=True)
+    game_dir_2.mkdir(parents=True)
+
+    run_dir.joinpath("manifest.json").write_text(
+        json.dumps(
+            {
+                "year": 2024,
+                "league_id": "15",
+                "venue": "las_vegas",
+                "team_gamelog_rows": 4,
+                "player_gamelog_rows": 0,
+                "game_ids": ["1522400001", "1522400002"],
+                "game_count": 2,
+                "errors": [],
+            }
+        )
+    )
+    run_dir.joinpath("leaguegamelog_team.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "LeagueGameLog",
+                        [
+                            "TEAM_ID",
+                            "TEAM_ABBREVIATION",
+                            "TEAM_NAME",
+                            "GAME_ID",
+                            "GAME_DATE",
+                            "MATCHUP",
+                            "PTS",
+                        ],
+                        [
+                            [
+                                1610612753,
+                                "ORL",
+                                "Orlando Magic",
+                                "1522400001",
+                                "2024-07-12",
+                                "ORL vs. CLE",
+                                106,
+                            ],
+                            [
+                                1610612739,
+                                "CLE",
+                                "Cleveland Cavaliers",
+                                "1522400001",
+                                "2024-07-12",
+                                "CLE @ ORL",
+                                79,
+                            ],
+                            [
+                                1610612753,
+                                "ORL",
+                                "Orlando Magic",
+                                "1522400002",
+                                "2024-07-13",
+                                "ORL vs. CLE",
+                                100,
+                            ],
+                            [
+                                1610612739,
+                                "CLE",
+                                "Cleveland Cavaliers",
+                                "1522400002",
+                                "2024-07-13",
+                                "CLE @ ORL",
+                                90,
+                            ],
+                        ],
+                    )
+                ]
+            }
+        )
+    )
+    run_dir.joinpath("leaguegamelog_player.json").write_text(
+        json.dumps({"resultSets": []})
+    )
+
+    for game_dir in (game_dir_1, game_dir_2):
+        game_id = game_dir.name
+        game_dir.joinpath("boxscoretraditionalv2.json").write_text(
+            json.dumps(
+                {
+                    "resultSets": [
+                        _result_set(
+                            "TeamStats",
+                            [
+                                "GAME_ID",
+                                "TEAM_ID",
+                                "TEAM_NAME",
+                                "TEAM_ABBREVIATION",
+                                "MIN",
+                                "PTS",
+                            ],
+                            [
+                                [game_id, 1610612753, "Magic", "ORL", "200:00", 106],
+                                [game_id, 1610612739, "Cavaliers", "CLE", "200:00", 79],
+                            ],
+                        ),
+                        _result_set("PlayerStats", [], []),
+                    ]
+                }
+            )
+        )
+        game_dir.joinpath("boxscoreadvancedv2.json").write_text(
+            json.dumps(
+                {
+                    "resultSets": [
+                        _result_set("PlayerStats", [], []),
+                        _result_set("TeamStats", [], []),
+                    ]
+                }
+            )
+        )
+        game_dir.joinpath("boxscorescoringv2.json").write_text(
+            json.dumps({"resultSets": [_result_set("sqlPlayersScoring", [], [])]})
+        )
+        game_dir.joinpath("playbyplayv2.json").write_text(json.dumps({"resultSets": []}))
+
+    return game_dir_1, game_dir_2
 
 
 @pytest.mark.asyncio
@@ -663,3 +797,136 @@ async def test_normalize_shot_events_updates_raw_file_parse_status(
 
     assert raw_file is not None
     assert raw_file.parse_status == SummerLeagueRawFileStatus.PARSED
+
+
+@pytest.mark.asyncio
+async def test_normalize_shot_events_game_ids_filters_to_explicit_batch(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """``game_ids`` restricts normalization to an explicit subset, e.g. one batch.
+
+    Two games each carry a shot row. Calling with ``game_ids={game 1}`` only
+    normalizes that game; a second call with ``game_ids={game 2}`` covers the
+    rest with no duplicates -- proving the batched-call contract
+    ``app.cli.summer_league_ingest_runner`` relies on (distinct from
+    ``limit_games``, which selects a manifest-order prefix rather than an
+    arbitrary subset).
+    """
+    game_dir_1, game_dir_2 = _write_two_game_season_skeleton(tmp_path)
+    for game_dir, game_id, event_id, player_id, player_name in (
+        (game_dir_1, "1522400001", 1, 1640001, "Player A"),
+        (game_dir_2, "1522400002", 2, 1640002, "Player B"),
+    ):
+        game_dir.joinpath("shotchartdetail.json").write_text(
+            json.dumps(
+                {
+                    "resultSets": [
+                        _result_set(
+                            "Shot_Chart_Detail",
+                            SHOT_HEADERS,
+                            [
+                                _shot_row(
+                                    event_id=event_id,
+                                    player_id=player_id,
+                                    player_name=player_name,
+                                    game_id=game_id,
+                                )
+                            ],
+                        )
+                    ]
+                }
+            )
+        )
+    await _setup_competition(db_session, tmp_path)
+
+    report1 = await normalize_shot_events(
+        db_session,
+        year=2024,
+        league_id="15",
+        raw_root=tmp_path,
+        game_ids={"1522400001"},
+    )
+    assert report1.games_processed == 1
+    assert report1.shot_events_upserted == 1
+
+    shots_after_first = (
+        (await db_session.execute(select(SummerLeagueShotEvent))).scalars().all()
+    )
+    assert {s.nba_stats_game_id for s in shots_after_first} == {"1522400001"}
+
+    report2 = await normalize_shot_events(
+        db_session,
+        year=2024,
+        league_id="15",
+        raw_root=tmp_path,
+        game_ids={"1522400002"},
+    )
+    assert report2.games_processed == 1
+    assert report2.shot_events_upserted == 1
+
+    shots_after_second = (
+        (await db_session.execute(select(SummerLeagueShotEvent))).scalars().all()
+    )
+    assert {s.nba_stats_game_id for s in shots_after_second} == {
+        "1522400001",
+        "1522400002",
+    }
+    assert len(shots_after_second) == 2
+
+
+@pytest.mark.asyncio
+async def test_normalize_shot_events_batch_call_never_downgrades_availability_flag(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A batch call with zero shots in its subset must not clear an already-set flag.
+
+    Only a whole-venue call (``game_ids=None``) may set
+    ``shotchart_available`` back to False -- a batch call (``game_ids`` set)
+    must only ever raise it, never downgrade it just because *this batch's*
+    games happened to have none while an earlier, already-committed batch
+    did.
+    """
+    game_dir_1, game_dir_2 = _write_two_game_season_skeleton(tmp_path)
+    game_dir_1.joinpath("shotchartdetail.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "Shot_Chart_Detail",
+                        SHOT_HEADERS,
+                        [_shot_row(event_id=1, player_id=1640001, player_name="Player A")],
+                    )
+                ]
+            }
+        )
+    )
+    game_dir_2.joinpath("shotchartdetail.json").write_text(
+        json.dumps({"resultSets": [_result_set("Shot_Chart_Detail", SHOT_HEADERS, [])]})
+    )
+    await _setup_competition(db_session, tmp_path)
+
+    await normalize_shot_events(
+        db_session,
+        year=2024,
+        league_id="15",
+        raw_root=tmp_path,
+        game_ids={"1522400001"},
+    )
+    competition_after_first = (
+        await db_session.execute(select(SummerLeagueCompetition))
+    ).scalar_one()
+    assert competition_after_first.shotchart_available is True
+
+    await normalize_shot_events(
+        db_session,
+        year=2024,
+        league_id="15",
+        raw_root=tmp_path,
+        game_ids={"1522400002"},
+    )
+    competition_after_second = (
+        await db_session.execute(select(SummerLeagueCompetition))
+    ).scalar_one()
+    assert competition_after_second.shotchart_available is True

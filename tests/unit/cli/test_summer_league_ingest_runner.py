@@ -32,11 +32,23 @@ def _summer_league_writer_lock_available(
     async def _record_failure(_db: object, **_kwargs: object) -> None:
         return None
 
+    async def _not_waiting(_db: object) -> bool:
+        return False
+
+    async def _no_completed_batches(_db: object, **_kwargs: object) -> set[str]:
+        return set()
+
+    async def _record_batch_progress(_db: object, **_kwargs: object) -> None:
+        return None
+
     monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _available)
     monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
     monkeypatch.setattr(runner, "full_reconciliation_is_pending", _pending)
     monkeypatch.setattr(runner, "complete_pipeline", _complete)
     monkeypatch.setattr(runner, "record_pipeline_failure", _record_failure)
+    monkeypatch.setattr(runner, "desk_is_waiting", _not_waiting)
+    monkeypatch.setattr(runner, "get_completed_batch_game_ids", _no_completed_batches)
+    monkeypatch.setattr(runner, "record_batch_progress", _record_batch_progress)
 
 
 @dataclass
@@ -178,6 +190,8 @@ def _patch_backbone_services(
     *,
     raise_in_backbone: bool = False,
     incomplete_game_ids: tuple[str, ...] = (),
+    shot_batches: list[set[str]] | None = None,
+    pbp_batches: list[set[str]] | None = None,
 ) -> None:
     """Monkeypatch the three DB-touching backbone/normalize services."""
 
@@ -187,12 +201,16 @@ def _patch_backbone_services(
             raise RuntimeError("backbone boom")
         return _FakeBackfillReport()
 
-    async def _fake_shot(_db: object, **_kwargs: object) -> object:
+    async def _fake_shot(_db: object, **kwargs: object) -> object:
         calls.append("shot")
+        if shot_batches is not None:
+            shot_batches.append(set(kwargs.get("game_ids") or set()))  # type: ignore[call-overload]
         return _FakeShotReport()
 
-    async def _fake_pbp(_db: object, **_kwargs: object) -> object:
+    async def _fake_pbp(_db: object, **kwargs: object) -> object:
         calls.append("pbp")
+        if pbp_batches is not None:
+            pbp_batches.append(set(kwargs.get("game_ids") or set()))  # type: ignore[call-overload]
         return _FakePBPReport()
 
     async def _fake_competition(_db: object, **_kwargs: object) -> object:
@@ -360,13 +378,19 @@ async def test_run_venue_retry_yields_when_desk_writer_starts_during_fetch(
         calls,
         incomplete_game_ids=("001",),
     )
-    lock_results = iter((True, False))
+    attempts = {"n": 0}
 
-    async def _lock_available_then_busy(_db: object) -> bool:
-        return next(lock_results)
+    async def _lock_available_until_retry(_db: object) -> bool:
+        # A single-game venue makes exactly three writer-lock attempts
+        # before the team-box retry's own reacquisition: one for the
+        # backbone phase, one for the (single-batch) shot phase, and one
+        # for the (single-batch) PBP phase. Only the fourth attempt -- the
+        # retry's own -- should find the Desk writer active.
+        attempts["n"] += 1
+        return attempts["n"] <= 3
 
     monkeypatch.setattr(
-        runner, "try_acquire_summer_league_writer_lock", _lock_available_then_busy
+        runner, "try_acquire_summer_league_writer_lock", _lock_available_until_retry
     )
     ingestor = _FakeIngestor(
         [
@@ -447,6 +471,132 @@ async def test_run_venue_with_games_backbone_raises(
 
     assert (had_games, failed) == (True, True)
     assert calls == ["backbone"]  # failed before shot/pbp
+
+
+@pytest.mark.asyncio
+async def test_run_venue_batches_shot_and_pbp_normalization_by_game_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A venue with more games than the batch size normalizes shot/PBP in chunks.
+
+    ``EVENT_BATCH_SIZE`` is 8; a 10-game venue should call
+    ``normalize_shot_events``/``normalize_pbp_events`` twice each, with the
+    game IDs partitioned into an 8-game batch then a 2-game batch --
+    independently committed rather than one call covering the whole venue.
+    """
+    calls: list[str] = []
+    shot_batches: list[set[str]] = []
+    pbp_batches: list[set[str]] = []
+    _patch_backbone_services(
+        monkeypatch, calls, shot_batches=shot_batches, pbp_batches=pbp_batches
+    )
+    game_ids = [f"{i:03d}" for i in range(1, 11)]  # 10 games > batch size (8)
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=list(game_ids)),  # refresh
+            _FakeManifest(game_ids=list(game_ids)),  # fetch
+        ]
+    )
+
+    had_games, failed = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert (had_games, failed) == (True, False)
+    assert calls.count("shot") == 2
+    assert calls.count("pbp") == 2
+    assert shot_batches == [set(game_ids[:8]), set(game_ids[8:])]
+    assert pbp_batches == [set(game_ids[:8]), set(game_ids[8:])]
+
+
+@pytest.mark.asyncio
+async def test_run_venue_skips_already_completed_batch_games(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Games already durably marked complete for a phase are excluded from its batches.
+
+    Proves the resumability contract at the call-structure level: a game ID
+    ``get_completed_batch_game_ids`` reports as already done for one phase
+    never reappears in that phase's batch, while an independent phase with
+    no completed games still gets the full set.
+    """
+    calls: list[str] = []
+    shot_batches: list[set[str]] = []
+    pbp_batches: list[set[str]] = []
+    _patch_backbone_services(
+        monkeypatch, calls, shot_batches=shot_batches, pbp_batches=pbp_batches
+    )
+    game_ids = ["001", "002", "003"]
+
+    async def _completed(
+        _db: object, *, phase: object, **_kwargs: object
+    ) -> set[str]:
+        if phase == runner.SummerLeagueBatchPhase.SHOT:
+            return {"001"}
+        return set()
+
+    monkeypatch.setattr(runner, "get_completed_batch_game_ids", _completed)
+
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=list(game_ids)),
+            _FakeManifest(game_ids=list(game_ids)),
+        ]
+    )
+
+    had_games, failed = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert (had_games, failed) == (True, False)
+    assert shot_batches == [{"002", "003"}]
+    assert pbp_batches == [{"001", "002", "003"}]
+
+
+@pytest.mark.asyncio
+async def test_run_venue_backs_off_before_batch_when_desk_is_waiting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A waiting Desk tick triggers a bounded sleep before the next lock attempt."""
+    calls: list[str] = []
+    _patch_backbone_services(monkeypatch, calls)
+    waiting_checks = {"n": 0}
+
+    async def _waiting_once(_db: object) -> bool:
+        waiting_checks["n"] += 1
+        # Only the backbone phase's own check reports the Desk waiting.
+        return waiting_checks["n"] == 1
+
+    sleep_calls: list[float] = []
+
+    async def _fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr(runner, "desk_is_waiting", _waiting_once)
+    monkeypatch.setattr(runner.asyncio, "sleep", _fake_sleep)
+
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=["001"]),
+            _FakeManifest(game_ids=["001"]),
+        ]
+    )
+
+    had_games, failed = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert (had_games, failed) == (True, False)
+    assert sleep_calls == [runner.DESK_BACKOFF_SECONDS]
 
 
 # ---------------------------------------------------------------------------
