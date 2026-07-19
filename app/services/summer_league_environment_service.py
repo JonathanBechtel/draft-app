@@ -68,6 +68,7 @@ from app.services.summer_league.write_lock import acquire_summer_league_writer_l
 from app.services.summer_league_environment_registry import (
     REGISTRY_VERSION,
     CoverageSource,
+    MetricDefinition,
     MetricSection,
     METRIC_DEFINITIONS,
     safe_ratio,
@@ -141,15 +142,42 @@ def competition_scope_key(competition_id: int) -> str:
     return f"competition:{competition_id}"
 
 
-async def get_environment_profile(
-    db: AsyncSession, scope: EnvironmentScope
+async def get_current_profile_by_scope_key(
+    db: AsyncSession, scope_key: str
 ) -> Optional[EnvironmentProfile]:
-    """Return the single *current* profile for a scope, or ``None``.
+    """Return the single *current* profile for a raw stable ``scope_key``.
 
     Explicitly selects the one row flagged ``is_current`` for the scope key; a
     partial unique index guarantees at most one such row exists, so no ordering
     tie-break is needed. Returns ``None`` when no current profile is published
     yet (readers should then present a stale/empty state, never fabricate one).
+
+    Unlike :func:`get_environment_profile`, this does not require building an
+    :class:`EnvironmentScope` (which needs a year) — useful for the Explorer's
+    ``competition_id``-only detail lookups (#607), where the year is not known
+    until the row is resolved.
+
+    Args:
+        db: Async session.
+        scope_key: The stable ``season:<year>`` / ``competition:<competition_id>``
+            key to resolve.
+
+    Returns:
+        The current :class:`SummerLeagueEnvironmentProfile`, or ``None``.
+    """
+    result = await db.execute(
+        select(SummerLeagueEnvironmentProfile).where(
+            col(SummerLeagueEnvironmentProfile.scope_key) == scope_key,
+            col(SummerLeagueEnvironmentProfile.is_current).is_(True),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_environment_profile(
+    db: AsyncSession, scope: EnvironmentScope
+) -> Optional[EnvironmentProfile]:
+    """Return the single *current* profile for a scope, or ``None``.
 
     Args:
         db: Async session.
@@ -158,13 +186,201 @@ async def get_environment_profile(
     Returns:
         The current :class:`SummerLeagueEnvironmentProfile`, or ``None``.
     """
+    return await get_current_profile_by_scope_key(db, scope.scope_key)
+
+
+async def list_current_profiles(
+    db: AsyncSession,
+    *,
+    scope_kind: ScopeKind,
+    year_min: Optional[int] = None,
+    year_max: Optional[int] = None,
+    venue_slug: Optional[str] = None,
+) -> list[EnvironmentProfile]:
+    """Every *current* profile for one scope kind, optionally year/venue-scoped.
+
+    One indexed query (``ix_sl_environment_profiles_kind_year`` plus the
+    partial ``is_current`` unique index) regardless of how many years/
+    competitions match — never a per-scope loop (contract §9). A season scope
+    never carries a venue (an all-competitions season pools every venue in the
+    year); ``venue_slug`` is only honored for ``scope_kind="competition"``.
+
+    Args:
+        db: Async session.
+        scope_kind: ``"season_all_competitions"`` or ``"competition"``.
+        year_min: Optional inclusive lower year bound.
+        year_max: Optional inclusive upper year bound.
+        venue_slug: Optional venue filter (competition scope only).
+
+    Returns:
+        Current profiles matching the scope, ordered by year ascending.
+    """
+    stored_kind = (
+        SCOPE_KIND_COMPETITION if scope_kind == "competition" else SCOPE_KIND_SEASON
+    )
+    conds = [
+        col(SummerLeagueEnvironmentProfile.scope_kind) == stored_kind,
+        col(SummerLeagueEnvironmentProfile.is_current).is_(True),
+    ]
+    if year_min is not None:
+        conds.append(col(SummerLeagueEnvironmentProfile.year) >= year_min)
+    if year_max is not None:
+        conds.append(col(SummerLeagueEnvironmentProfile.year) <= year_max)
+    if venue_slug is not None and stored_kind == SCOPE_KIND_COMPETITION:
+        conds.append(col(SummerLeagueEnvironmentProfile.venue_slug) == venue_slug)
     result = await db.execute(
-        select(SummerLeagueEnvironmentProfile).where(
-            col(SummerLeagueEnvironmentProfile.scope_key) == scope.scope_key,
-            col(SummerLeagueEnvironmentProfile.is_current).is_(True),
+        select(SummerLeagueEnvironmentProfile)
+        .where(*conds)
+        .order_by(col(SummerLeagueEnvironmentProfile.year))
+    )
+    return list(result.scalars())
+
+
+async def list_season_membership(
+    db: AsyncSession, profile_id: int
+) -> list[SummerLeagueEnvironmentSeasonMembership]:
+    """Every competition pooled into one season (all-competitions) profile.
+
+    Args:
+        db: Async session.
+        profile_id: The season profile's primary key.
+
+    Returns:
+        Membership rows ordered by venue then year (stable display order).
+    """
+    result = await db.execute(
+        select(SummerLeagueEnvironmentSeasonMembership)
+        .where(col(SummerLeagueEnvironmentSeasonMembership.profile_id) == profile_id)
+        .order_by(
+            col(SummerLeagueEnvironmentSeasonMembership.venue_slug),
+            col(SummerLeagueEnvironmentSeasonMembership.year),
         )
     )
-    return result.scalar_one_or_none()
+    return list(result.scalars())
+
+
+@dataclass(frozen=True)
+class MetricCoverageInfo:
+    """A metric's read-time coverage verdict, counts, and reason for one profile."""
+
+    metric_key: str
+    coverage: str
+    covered: int
+    eligible: int
+    reason: Optional[str]
+
+
+def _covered_eligible_for_source(
+    profile: EnvironmentProfile, source: CoverageSource
+) -> tuple[int, int]:
+    """Return ``(covered, eligible)`` game/identity counts for a coverage source.
+
+    Read-time derivation from the profile's own stored disclosure counts —
+    mirrors the aggregation-time pairing in :func:`_coverage_for_source` so a
+    profile's coverage never needs a separate per-metric query (contract §9).
+    """
+    final_games = profile.final_games
+    if source is CoverageSource.BOX:
+        return profile.box_complete_games, final_games
+    if source is CoverageSource.SHOT:
+        return profile.shot_covered_games, final_games
+    if source is CoverageSource.SCORE:
+        return profile.games_with_score, final_games
+    if source is CoverageSource.OT_STATE:
+        return profile.games_with_known_ot, final_games
+    if source is CoverageSource.PBP:
+        return profile.pbp_covered_games, final_games
+    # IDENTITY: an appeared player is "covered" when resolved to a canonical id.
+    resolved = profile.appeared_players
+    eligible = resolved + profile.appeared_unresolved
+    return resolved, eligible
+
+
+def coverage_for_source(
+    profile: EnvironmentProfile, source: CoverageSource
+) -> tuple[str, int, int]:
+    """Return ``(verdict, covered, eligible)`` for one coverage source.
+
+    Read-time-only: uses the profile's own stored counts, never a query.
+
+    Args:
+        profile: A current profile row.
+        source: Which input's coverage to evaluate.
+
+    Returns:
+        ``(verdict, covered, eligible)`` where ``verdict`` is
+        ``"complete"``/``"partial"``/``"unavailable"``.
+    """
+    covered, eligible = _covered_eligible_for_source(profile, source)
+    return _coverage_verdict(covered, eligible), covered, eligible
+
+
+def metric_coverage_for_profile(
+    profile: EnvironmentProfile, definition: MetricDefinition
+) -> MetricCoverageInfo:
+    """The read-time coverage verdict for one registry metric on one profile.
+
+    Args:
+        profile: A current profile row.
+        definition: The metric's registry definition.
+
+    Returns:
+        A :class:`MetricCoverageInfo` with the verdict, counts, and reason.
+    """
+    verdict, covered, eligible = coverage_for_source(
+        profile, definition.coverage_source
+    )
+    reason = _coverage_reason(definition.coverage_source, verdict, covered, eligible)
+    return MetricCoverageInfo(
+        metric_key=definition.key,
+        coverage=verdict,
+        covered=covered,
+        eligible=eligible,
+        reason=reason,
+    )
+
+
+# Composition share metrics (stored=False) map to the numerator count column
+# they are computed from at read time; the denominator is always
+# ``appeared_players``. ``median_age`` is stored=True and is not included here.
+_COMPOSITION_SHARE_NUMERATOR_COLUMN: dict[str, str] = {
+    "rookie_share": "rookie_count",
+    "returner_share": "returner_count",
+    "drafted_share": "drafted_count",
+    "undrafted_share": "undrafted_count",
+    "first_round_share": "first_round_count",
+    "second_round_share": "second_round_count",
+    "lottery_share": "lottery_count",
+}
+
+
+def registry_raw_value(
+    profile: EnvironmentProfile, definition: MetricDefinition
+) -> Optional[float]:
+    """The unscaled canonical value of one registry metric on one profile.
+
+    Stored metrics (``definition.stored``) read their typed profile column
+    directly — already ``NULL`` when coverage was not ``complete`` at build
+    time for box/shot/score/OT-gated metrics (contract §3). Derived
+    composition shares (``stored=False``) are computed on read from the
+    profile's persisted count columns; this never re-aggregates raw facts
+    (contract §9) and is safe to call for every row in a list response.
+
+    Args:
+        profile: A current profile row.
+        definition: The metric's registry definition.
+
+    Returns:
+        The raw (unscaled, e.g. 0-1 for a ratio) value, or ``None`` when
+        undefined.
+    """
+    if definition.stored:
+        value = getattr(profile, definition.key, None)
+        return None if value is None else float(value)
+    numerator_col = _COMPOSITION_SHARE_NUMERATOR_COLUMN.get(definition.key)
+    if numerator_col is None:
+        return None
+    return safe_ratio(getattr(profile, numerator_col, None), profile.appeared_players)
 
 
 # ===========================================================================

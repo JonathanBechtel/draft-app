@@ -42,7 +42,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, Optional
 
 from sqlalchemy import and_, case, func, literal, nulls_last, or_, select, text
@@ -64,17 +64,59 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
+from app.schemas.summer_league_environment import (
+    COVERAGE_COMPLETE,
+    SCOPE_KIND_COMPETITION,
+    SCOPE_KIND_SEASON,
+    SummerLeagueEnvironmentProfile,
+)
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
+from app.services.summer_league_environment_registry import (
+    METRIC_DEFINITIONS,
+    CoverageSource,
+    MetricDefinition,
+    MetricSection,
+    MetricUnit,
+    filterable_metric_keys,
+    metrics_for_scope,
+    sortable_metric_keys,
+)
+from app.services.summer_league_environment_service import (
+    coverage_for_source,
+    competition_scope_key,
+    get_current_profile_by_scope_key,
+    list_current_profiles,
+    list_season_membership,
+    metric_coverage_for_profile,
+    registry_raw_value,
+    season_scope_key,
+)
 from app.services.summer_league_games_service import _venue_label
 from app.utils.country import canonical_country, country_variants
 
-SUBJECTS = ("players", "teams", "games")
+SUBJECTS = ("players", "teams", "games", "competitions")
 DEFAULT_SUBJECT = "players"
+
+# Competition Context (subject=competitions) constants — see the frozen
+# implementation contract (docs/plans/competition-context-explorer-
+# implementation-contract.md §6/§8/§9).
+PROFILE_SCOPES = ("season", "competition")
+DEFAULT_PROFILE_SCOPE = "season"
+COVERAGE_STATES = ("all", "box_complete", "shot_complete", "pbp_complete")
+DEFAULT_COVERAGE_STATE = "all"
+DEFAULT_TREND_METRIC = "pace_per_48"
+# A current profile older than this is still served (never silently replaced
+# by request-time aggregation, contract §8) but flagged stale. Not yet backed
+# by a configured setting (that lands with #618's operational wiring); a fixed
+# v1 default here is deliberately conservative for a project refreshed a few
+# times a day during a live event.
+STALE_AFTER_HOURS = 72
+_ALL_METRIC_KEYS: frozenset[str] = frozenset(d.key for d in METRIC_DEFINITIONS)
 
 DEFAULT_MIN_GAMES = 2
 DEFAULT_MIN_MINUTES = 60
@@ -845,10 +887,204 @@ _GAME_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("margin", "Margin"),
 ]
 
+# --------------------------------------------------------------------------- #
+# Competition Context columns (subject="competitions") — registry-driven.
+#
+# One row is an already-pooled current profile (season or competition), so the
+# player catalog's roll-up ``bucket`` semantics do not apply here; every
+# ``ExplorerColumn`` below keeps the dataclass default bucket, which is unused
+# for this subject. Metric columns are generated from the shared registry
+# (``app.services.summer_league_environment_registry``) so a metric is never
+# defined twice (contract §4); identity/meta columns are fixed.
+# --------------------------------------------------------------------------- #
+_GROUP_IDENTITY = "identity"
+_GROUP_ENVIRONMENT = "environment"
+_GROUP_LANDSCAPE = "landscape"
+_GROUP_COMPOSITION = "composition"
+_GROUP_META = "meta"
+
+_SECTION_TO_GROUP: dict[MetricSection, str] = {
+    MetricSection.ENVIRONMENT: _GROUP_ENVIRONMENT,
+    MetricSection.LANDSCAPE: _GROUP_LANDSCAPE,
+    MetricSection.COMPOSITION: _GROUP_COMPOSITION,
+}
+
+
+def _competition_metric_fmt(definition: MetricDefinition) -> str:
+    """Display-format hint for a registry metric, derived from its unit/rounding."""
+    if definition.unit is MetricUnit.RATIO:
+        return "pct"
+    if definition.rounding <= 0:
+        return "int"
+    return f"f{definition.rounding}"
+
+
+def _competition_metric_columns(scope_kind: str) -> list[ExplorerColumn]:
+    """Registry-driven metric columns valid for one profile scope kind."""
+    return [
+        ExplorerColumn(
+            key=d.key,
+            label=d.label,
+            group=_SECTION_TO_GROUP[d.section],
+            sortable=d.sortable,
+            filterable=d.filterable,
+            fmt=_competition_metric_fmt(d),
+            shown=True,
+        )
+        for d in metrics_for_scope(scope_kind)
+    ]
+
+
+# Fixed identity columns describing the pooled scope itself (never registry
+# thresholds — contract §6 restricts fcol/fop/fval to "registry-certified"
+# metrics, so these stay filterable=False regardless of subject state).
+_COMPETITION_IDENTITY_COLUMNS: list[ExplorerColumn] = [
+    ExplorerColumn("year", "Year", _GROUP_IDENTITY, sortable=True, fmt="int"),
+    ExplorerColumn(
+        "included_competitions", "Comps", _GROUP_IDENTITY, sortable=True, fmt="int"
+    ),
+    ExplorerColumn(
+        "final_games", "Final GP", _GROUP_IDENTITY, sortable=True, fmt="int"
+    ),
+    ExplorerColumn(
+        "scheduled_games", "Scheduled", _GROUP_IDENTITY, sortable=False, fmt="int"
+    ),
+    ExplorerColumn(
+        "appeared_players", "Players", _GROUP_IDENTITY, sortable=True, fmt="int"
+    ),
+    ExplorerColumn(
+        "appeared_unresolved", "Unresolved", _GROUP_IDENTITY, sortable=False, fmt="int"
+    ),
+]
+
+# CSV/export-only freshness + coverage-summary columns (contract §6: "CSV and
+# HTML use the same result contract" — these ride the same generic column/row
+# machinery the CSV writer already consumes, no route/template change needed).
+_COMPETITION_META_COLUMNS: list[ExplorerColumn] = [
+    ExplorerColumn(
+        "scope_key", "Scope Key", _GROUP_META, sortable=False, fmt="raw", numeric=False
+    ),
+    ExplorerColumn("version", "Version", _GROUP_META, sortable=False, fmt="int"),
+    ExplorerColumn(
+        "registry_version",
+        "Registry Version",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+    ExplorerColumn(
+        "calculated_at",
+        "Calculated At",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+    ExplorerColumn(
+        "source_watermark",
+        "Source Watermark",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+    ExplorerColumn(
+        "coverage_box",
+        "Box Coverage",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+    ExplorerColumn(
+        "coverage_shot",
+        "Shot Coverage",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+    ExplorerColumn(
+        "coverage_score",
+        "Score Coverage",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+    ExplorerColumn(
+        "coverage_ot",
+        "OT Coverage",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+    ExplorerColumn(
+        "coverage_identity",
+        "Identity Coverage",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+    ExplorerColumn(
+        "coverage_pbp",
+        "PBP Coverage",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+]
+
+
+def competition_columns(scope_kind: str) -> list[ExplorerColumn]:
+    """Full result-column set for a Competition Context profile scope kind.
+
+    Order: identity → (venue, competition scope only) → registry metrics
+    (environment, landscape, composition) → CSV/export freshness+coverage.
+    Competition requests never load the seven player/team facet queries or
+    columns (draft/country/position/team) — contract §9.
+    """
+    columns = list(_COMPETITION_IDENTITY_COLUMNS)
+    if scope_kind == SCOPE_KIND_COMPETITION:
+        columns.insert(
+            1,
+            ExplorerColumn(
+                "venue",
+                "Venue",
+                _GROUP_IDENTITY,
+                sortable=False,
+                fmt="raw",
+                numeric=False,
+            ),
+        )
+    columns += _competition_metric_columns(scope_kind)
+    columns += _COMPETITION_META_COLUMNS
+    return columns
+
+
+# Registry metric keys eligible for fcol/fop/fval thresholds and for sort,
+# reusing the Explorer's existing indexed contract rather than a parallel
+# metric-specific param vocabulary (contract §6).
+_COMPETITION_FILTERABLE_KEYS: frozenset[str] = frozenset(filterable_metric_keys())
+_COMPETITION_IDENTITY_SORT_KEYS: frozenset[str] = frozenset(
+    c.key for c in _COMPETITION_IDENTITY_COLUMNS if c.sortable
+)
+_COMPETITION_SORT_KEYS: frozenset[str] = _COMPETITION_IDENTITY_SORT_KEYS | frozenset(
+    sortable_metric_keys()
+)
+
 _COLUMNS_BY_SUBJECT: dict[str, list[ExplorerColumn]] = {
     "players": _PLAYER_STAT_COLUMNS,
     "teams": _TEAM_STAT_COLUMNS,
     "games": _GAME_STAT_COLUMNS,
+    # Representative default (competition scope, the richer of the two) for
+    # generic fallbacks (e.g. _empty_result); the real per-request column set
+    # is scope-kind-aware and built by competition_columns() in _query_competitions.
+    "competitions": competition_columns(SCOPE_KIND_COMPETITION),
 }
 _SORT_KEYS_BY_SUBJECT: dict[str, set[str]] = {
     s: {c.key for c in cols} for s, cols in _COLUMNS_BY_SUBJECT.items()
@@ -856,10 +1092,12 @@ _SORT_KEYS_BY_SUBJECT: dict[str, set[str]] = {
 # Players sort keys: generated from the catalog's sortable flag.
 # Covers box, shooting, and advanced (ts_pct, per, ortg, drtg, bpm, ws, vorp) columns.
 _SORT_KEYS_BY_SUBJECT["players"] = {c.key for c in PLAYER_COLUMN_CATALOG if c.sortable}
+_SORT_KEYS_BY_SUBJECT["competitions"] = set(_COMPETITION_SORT_KEYS)
 _DEFAULT_SORT_BY_SUBJECT: dict[str, str] = {
     "players": "pts",
     "teams": "diff",
     "games": "total",
+    "competitions": "year",
 }
 _COUNTING = (
     "pts",
@@ -1123,16 +1361,26 @@ _PLAYER_GAME_STAT_COLUMNS: list[ExplorerColumn] = [
 ]
 
 
-def parse_metric_filters(params: dict[str, str]) -> list[MetricFilter]:
+def parse_metric_filters(
+    params: dict[str, str], valid_keys: frozenset[str] = _FILTERABLE_KEYS
+) -> list[MetricFilter]:
     """Parse ``fcol0/fop0/fval0`` … ``fcol2/fop2/fval2`` into validated filters.
 
-    Accepts up to 3 indexed filter rows. Each filter needs a filterable catalog
-    key (``fcol{i}``), a valid operator (``fop{i}``: ``"gte"`` or ``"lte"``), and a
-    numeric threshold (``fval{i}``). Invalid predicates are silently dropped —
-    this function never raises; other valid filters still apply.
+    Accepts up to 3 indexed filter rows. Each filter needs a filterable key
+    (``fcol{i}``) present in ``valid_keys``, a valid operator (``fop{i}``:
+    ``"gte"`` or ``"lte"``), and a numeric threshold (``fval{i}``). Invalid
+    predicates are silently dropped — this function never raises; other valid
+    filters still apply.
+
+    ``valid_keys`` defaults to the player catalog's filterable columns; the
+    Competition Context subject (#607) passes the registry's
+    ``filterable_metric_keys()`` instead, so ``fcol``/``fop``/``fval`` stay one
+    shared contract across subjects rather than parallel per-subject params
+    (implementation contract §6).
 
     Args:
         params: Raw URL query-string params (one value per key).
+        valid_keys: The set of column/metric keys eligible for this subject.
 
     Returns:
         List of up to 3 validated :class:`MetricFilter` instances (may be empty).
@@ -1145,7 +1393,7 @@ def parse_metric_filters(params: dict[str, str]) -> list[MetricFilter]:
         val_str = params.get(f"fval{i}", "").strip()
         if not col or not op_raw or not val_str:
             continue
-        if col not in _FILTERABLE_KEYS:
+        if col not in valid_keys:
             continue
         op = _OP_MAP.get(op_raw)
         if op is None:
@@ -1402,6 +1650,24 @@ class ExplorerQuery:
     # the drill-down endpoint so it can reuse ``_query_players_per_competition``.
     player_slug: Optional[str] = None
 
+    # ----------------------------------------------------------------- #
+    # Competition Context (subject="competitions" only; contract §6).
+    # ----------------------------------------------------------------- #
+    # "season" (one row per all-competitions year) or "competition" (one row
+    # per named competition edition). Canonicalized during parsing: a season
+    # scope always clears venue/competition_id.
+    profile_scope: str = DEFAULT_PROFILE_SCOPE
+    # "all" | "box_complete" | "shot_complete" | "pbp_complete" — filters rows
+    # to those whose overall input coverage for that source is complete.
+    coverage: str = DEFAULT_COVERAGE_STATE
+    # Registered metric key charted by the trend panel.
+    trend_metric: Optional[str] = None
+    # Stable SummerLeagueCompetition.id — authoritative for competition detail
+    # (never a projection row id). Set together with profile_scope="competition".
+    competition_id: Optional[int] = None
+    # Selects which season row the detail panel shows (profile_scope="season").
+    detail_year: Optional[int] = None
+
 
 @dataclass
 class ExplorerRow:
@@ -1432,6 +1698,77 @@ class ExplorerFacets:
     round_types: list[str] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class MetricCoverageView:
+    """One metric's read-time coverage disclosure (contract §3)."""
+
+    metric_key: str
+    label: str
+    coverage: str  # "complete" | "partial" | "unavailable"
+    covered: int
+    eligible: int
+    reason: Optional[str]
+
+
+@dataclass(frozen=True)
+class CompetitionMembershipRow:
+    """One competition pooled into a selected season profile (contract §2)."""
+
+    competition_id: int
+    year: int
+    venue_slug: Optional[str]
+    final_games: int
+
+
+@dataclass
+class CompetitionDetail:
+    """Full read-contract payload for one selected Competition Context profile.
+
+    Carries everything the contract requires beyond the sortable table row:
+    stable identifiers, raw+scaled values, per-metric coverage, season
+    membership, and freshness/version — the same DTO CSV and HTML consume
+    (contract §6/§7).
+    """
+
+    scope_key: str
+    scope_kind: str  # "season_all_competitions" | "competition"
+    year: int
+    competition_id: Optional[int]
+    venue_slug: Optional[str]
+    display_name: str
+    version: int
+    registry_version: str
+    calculated_at: Optional[datetime]
+    source_watermark: Optional[datetime]
+    is_stale: bool
+    href: str
+    # Display-scaled values (e.g. 0-100 for a ratio metric), keyed by registry
+    # metric key — the same scaling `format_metric_value` applies for display.
+    values: dict[str, Optional[float]]
+    coverage: dict[str, MetricCoverageView]
+    membership: list[CompetitionMembershipRow] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class TrendPoint:
+    """One trend-chart point; ``value is None`` renders as a visible gap."""
+
+    year: int
+    value: Optional[float]
+    coverage: str
+
+
+@dataclass
+class CompetitionTrend:
+    """A chart-ready metric series for the Competition Context trend panel."""
+
+    metric_key: str
+    label: str
+    scope_kind: str  # "season_all_competitions" | "competition"
+    venue_slug: Optional[str]
+    points: list[TrendPoint] = field(default_factory=list)
+
+
 @dataclass
 class ExplorerResult:
     """A rendered Explorer query: columns, rows, pagination, and facets."""
@@ -1454,6 +1791,11 @@ class ExplorerResult:
     # N-of-M counts for the eligibility banner.
     adv_eligible_n: int = 0  # competitions in scope with adv_eligible=True
     adv_eligible_m: int = 0  # total competitions in scope with a metric context row
+    # Competition Context (subject="competitions"): the selected detail row
+    # (by detail_year or competition_id) and the chart-ready trend series.
+    # None when no detail/trend is selected or resolvable (contract §6).
+    competition_detail: Optional[CompetitionDetail] = None
+    competition_trend: Optional[CompetitionTrend] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -1542,13 +1884,48 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     min_games = _to_int(params.get("min_gp"))
     min_minutes = _to_int(params.get("min_min"))
     page = _to_int(params.get("page")) or 1
-    metric_filters = parse_metric_filters(params)
+
+    is_competitions = subject == "competitions"
+    metric_filters = parse_metric_filters(
+        params, _COMPETITION_FILTERABLE_KEYS if is_competitions else _FILTERABLE_KEYS
+    )
     if grain == "per_game":
         metric_filters = [
             metric_filter
             for metric_filter in metric_filters
             if metric_filter.col in _PER_GAME_FILTERABLE_KEYS
         ]
+
+    # Competition Context state (subject="competitions" only; contract §6).
+    # ``min_gp`` defaults to 0 here (not DEFAULT_MIN_GAMES=2) — an empty
+    # in-progress/canceled season is a visible zero, never a hidden row
+    # (contract §2/§3), unless the caller explicitly raises the floor.
+    profile_scope_raw = params.get("profile_scope", DEFAULT_PROFILE_SCOPE)
+    profile_scope = (
+        profile_scope_raw
+        if profile_scope_raw in PROFILE_SCOPES
+        else DEFAULT_PROFILE_SCOPE
+    )
+    coverage_raw = params.get("coverage", DEFAULT_COVERAGE_STATE)
+    coverage = (
+        coverage_raw if coverage_raw in COVERAGE_STATES else DEFAULT_COVERAGE_STATE
+    )
+    trend_metric_raw = params.get("trend_metric") or None
+    trend_metric = trend_metric_raw if trend_metric_raw in _ALL_METRIC_KEYS else None
+    competition_id = _to_int(params.get("competition_id"))
+    detail_year = _to_int(params.get("detail_year"))
+    if is_competitions:
+        # Season scope always clears venue/competition_id during
+        # canonicalization — an all-competitions profile pools every venue,
+        # so a stale venue/competition_id can never narrow (or appear to
+        # narrow) that scope (contract §6).
+        if profile_scope == "season":
+            venue = None
+            competition_id = None
+        # competition_id is authoritative for competition detail; a stale
+        # detail_year selector never coexists with it (contract §6).
+        if competition_id is not None:
+            detail_year = None
 
     return ExplorerQuery(
         subject=subject,
@@ -1568,13 +1945,22 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         undrafted=undrafted,
         age_min=_to_int(params.get("age_min")),
         age_max=_to_int(params.get("age_max")),
-        min_games=min_games if min_games is not None else DEFAULT_MIN_GAMES,
+        min_games=(
+            min_games
+            if min_games is not None
+            else (0 if is_competitions else DEFAULT_MIN_GAMES)
+        ),
         min_minutes=min_minutes if min_minutes is not None else DEFAULT_MIN_MINUTES,
         mode=mode,
         sort=sort,
         direction=direction,
         page=max(1, page),
         metric_filters=metric_filters,
+        profile_scope=profile_scope,
+        coverage=coverage,
+        trend_metric=trend_metric,
+        competition_id=competition_id,
+        detail_year=detail_year,
     )
 
 
@@ -3034,6 +3420,499 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 
 
 # --------------------------------------------------------------------------- #
+# Competition Context (subject="competitions", ticket #607)
+#
+# One row is an already-pooled *current* profile (season or competition) read
+# from `summer_league_environment_profiles`/`_season_memberships` — never raw
+# game/shot/PBP facts (contract §9: "no raw fact aggregation on request").
+# Filtering, sorting, coverage-state, threshold predicates, and trend/detail
+# selection all run in Python over an already-fetched, small (<=~60 row)
+# candidate set — the same "fetch once, sort+slice in Python" shape
+# `_query_teams`/`_build_result` already use for another small-cardinality
+# subject, and it keeps the whole dispatch (list + trend + detail) inside a
+# handful of indexed reads well under the 10-query route budget.
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class _CompetitionProfileView:
+    """One current profile's registry values + coverage, resolved read-time."""
+
+    profile_id: int
+    scope_key: str
+    scope_kind: str
+    year: int
+    competition_id: Optional[int]
+    venue_slug: Optional[str]
+    display_name: str
+    version: int
+    registry_version: str
+    calculated_at: Optional[datetime]
+    source_watermark: Optional[datetime]
+    included_competitions: int
+    final_games: int
+    scheduled_games: int
+    appeared_players: int
+    appeared_unresolved: int
+    # metric_key -> raw (unscaled) canonical value.
+    raw_values: dict[str, Optional[float]]
+    # metric_key -> per-metric coverage disclosure.
+    coverage: dict[str, MetricCoverageView]
+    # CoverageSource -> (verdict, covered, eligible), for the coverage= filter
+    # and the CSV/detail coverage-summary columns.
+    source_coverage: dict[CoverageSource, tuple[str, int, int]]
+
+
+def _scaled_registry_value(
+    definition: MetricDefinition, raw: Optional[float]
+) -> Optional[float]:
+    """Display-scaled value (e.g. 0-100 for a ratio) matching ``format_metric_value``."""
+    if raw is None:
+        return None
+    return round(raw * definition.scale, definition.rounding)
+
+
+_ALL_COVERAGE_SOURCES: tuple[CoverageSource, ...] = (
+    CoverageSource.BOX,
+    CoverageSource.SHOT,
+    CoverageSource.SCORE,
+    CoverageSource.OT_STATE,
+    CoverageSource.PBP,
+    CoverageSource.IDENTITY,
+)
+
+
+def _build_profile_view(
+    profile: SummerLeagueEnvironmentProfile, metric_defs: Sequence[MetricDefinition]
+) -> _CompetitionProfileView:
+    """Resolve one current profile row into its full read-contract payload.
+
+    Every value/coverage verdict is derived from the profile's own stored
+    columns (:func:`registry_raw_value` / :func:`metric_coverage_for_profile`
+    / :func:`coverage_for_source`, all in ``summer_league_environment_service``)
+    — no additional query per row, so this is safe to call over an entire
+    fetched candidate list.
+    """
+    raw_values: dict[str, Optional[float]] = {}
+    coverage: dict[str, MetricCoverageView] = {}
+    for d in metric_defs:
+        raw_values[d.key] = registry_raw_value(profile, d)
+        info = metric_coverage_for_profile(profile, d)
+        coverage[d.key] = MetricCoverageView(
+            metric_key=info.metric_key,
+            label=d.label,
+            coverage=info.coverage,
+            covered=info.covered,
+            eligible=info.eligible,
+            reason=info.reason,
+        )
+    source_coverage = {
+        source: coverage_for_source(profile, source) for source in _ALL_COVERAGE_SOURCES
+    }
+    return _CompetitionProfileView(
+        profile_id=profile.id,  # type: ignore[arg-type]
+        scope_key=profile.scope_key,
+        scope_kind=profile.scope_kind,
+        year=profile.year,
+        competition_id=profile.competition_id,
+        venue_slug=profile.venue_slug,
+        display_name=profile.display_name,
+        version=profile.version,
+        registry_version=profile.registry_version,
+        calculated_at=profile.calculated_at,
+        source_watermark=profile.source_watermark,
+        included_competitions=profile.included_competitions,
+        final_games=profile.final_games,
+        scheduled_games=profile.scheduled_games,
+        appeared_players=profile.appeared_players,
+        appeared_unresolved=profile.appeared_unresolved,
+        raw_values=raw_values,
+        coverage=coverage,
+        source_coverage=source_coverage,
+    )
+
+
+_COVERAGE_FILTER_SOURCE: dict[str, CoverageSource] = {
+    "box_complete": CoverageSource.BOX,
+    "shot_complete": CoverageSource.SHOT,
+    "pbp_complete": CoverageSource.PBP,
+}
+
+
+def _passes_coverage_filter(view: _CompetitionProfileView, coverage_state: str) -> bool:
+    """Whether a profile's overall input coverage satisfies ``coverage=``."""
+    if coverage_state == "all":
+        return True
+    source = _COVERAGE_FILTER_SOURCE.get(coverage_state)
+    if source is None:
+        return True
+    verdict, _covered, _eligible = view.source_coverage[source]
+    return verdict == COVERAGE_COMPLETE
+
+
+def _passes_metric_filter(
+    view: _CompetitionProfileView, definition: MetricDefinition, f: MetricFilter
+) -> bool:
+    """A threshold predicate never fires on a null/partial metric (contract §6)."""
+    raw = view.raw_values.get(f.col)
+    if raw is None or view.coverage[f.col].coverage != COVERAGE_COMPLETE:
+        return False
+    scaled = _scaled_registry_value(definition, raw)
+    if scaled is None:
+        return False
+    return scaled >= f.value if f.op == ">=" else scaled <= f.value
+
+
+def _competition_sort_value(
+    view: _CompetitionProfileView, sort: str, metric_by_key: dict[str, MetricDefinition]
+) -> Optional[float]:
+    definition = metric_by_key.get(sort)
+    if definition is not None:
+        return _scaled_registry_value(definition, view.raw_values.get(sort))
+    value = getattr(view, sort, None)
+    return float(value) if isinstance(value, (int, float)) else None
+
+
+def _sort_competition_views(
+    views: list[_CompetitionProfileView],
+    sort: str,
+    direction: str,
+    metric_by_key: dict[str, MetricDefinition],
+) -> list[_CompetitionProfileView]:
+    """Nulls-last sort by a registry metric or identity column (Python-side)."""
+    reverse = direction == "desc"
+    ordered = list(views)
+    ordered.sort(
+        key=lambda v: (
+            (val := _competition_sort_value(v, sort, metric_by_key)) is None,
+            (-(val or 0.0) if reverse else (val or 0.0)),
+        )
+    )
+    return ordered
+
+
+def _coverage_summary_label(
+    view: _CompetitionProfileView, source: CoverageSource
+) -> str:
+    verdict, covered, eligible = view.source_coverage[source]
+    return f"{verdict} ({covered}/{eligible})"
+
+
+def _competition_href(view: _CompetitionProfileView) -> str:
+    """The exact scope link a Player/Team/Matchup context strip would resolve to."""
+    if view.scope_kind == SCOPE_KIND_SEASON:
+        return f"/stats/summer-league/{view.year}"
+    return f"/stats/summer-league/{view.year}/{view.venue_slug}"
+
+
+def _view_to_row(
+    view: _CompetitionProfileView, metric_by_key: dict[str, MetricDefinition]
+) -> ExplorerRow:
+    values: dict[str, Any] = {
+        "year": view.year,
+        "included_competitions": view.included_competitions,
+        "final_games": view.final_games,
+        "scheduled_games": view.scheduled_games,
+        "appeared_players": view.appeared_players,
+        "appeared_unresolved": view.appeared_unresolved,
+        "scope_key": view.scope_key,
+        "version": view.version,
+        "registry_version": view.registry_version,
+        "calculated_at": (
+            view.calculated_at.isoformat() if view.calculated_at is not None else None
+        ),
+        "source_watermark": (
+            view.source_watermark.isoformat()
+            if view.source_watermark is not None
+            else None
+        ),
+        "coverage_box": _coverage_summary_label(view, CoverageSource.BOX),
+        "coverage_shot": _coverage_summary_label(view, CoverageSource.SHOT),
+        "coverage_score": _coverage_summary_label(view, CoverageSource.SCORE),
+        "coverage_ot": _coverage_summary_label(view, CoverageSource.OT_STATE),
+        "coverage_identity": _coverage_summary_label(view, CoverageSource.IDENTITY),
+        "coverage_pbp": _coverage_summary_label(view, CoverageSource.PBP),
+    }
+    if view.scope_kind == SCOPE_KIND_COMPETITION:
+        values["venue"] = _venue_label(view.venue_slug) if view.venue_slug else None
+    for key, definition in metric_by_key.items():
+        values[key] = _scaled_registry_value(definition, view.raw_values.get(key))
+    return ExplorerRow(
+        label=view.display_name, href=_competition_href(view), values=values
+    )
+
+
+def _view_to_detail(
+    view: _CompetitionProfileView,
+    metric_by_key: dict[str, MetricDefinition],
+    membership: list[CompetitionMembershipRow],
+) -> CompetitionDetail:
+    now = datetime.utcnow()
+    is_stale = view.calculated_at is not None and (
+        now - view.calculated_at
+    ) > timedelta(hours=STALE_AFTER_HOURS)
+    values = {
+        key: _scaled_registry_value(definition, view.raw_values.get(key))
+        for key, definition in metric_by_key.items()
+    }
+    return CompetitionDetail(
+        scope_key=view.scope_key,
+        scope_kind=view.scope_kind,
+        year=view.year,
+        competition_id=view.competition_id,
+        venue_slug=view.venue_slug,
+        display_name=view.display_name,
+        version=view.version,
+        registry_version=view.registry_version,
+        calculated_at=view.calculated_at,
+        source_watermark=view.source_watermark,
+        is_stale=is_stale,
+        href=_competition_href(view),
+        values=values,
+        coverage=view.coverage,
+        membership=membership,
+    )
+
+
+def _build_trend(
+    metric_key: str,
+    definition: MetricDefinition,
+    views: Sequence[_CompetitionProfileView],
+    *,
+    scope_kind: str,
+    venue_slug: Optional[str],
+) -> CompetitionTrend:
+    """One chart point per surviving year (contract §6): gaps stay visible.
+
+    A "surviving" year is one with a current profile in ``views``; among
+    those, ``value`` is ``None`` (a gap) whenever that year's metric is not
+    ``complete`` — never coerced to zero and never interpolated.
+    """
+    ordered = sorted(views, key=lambda v: v.year)
+    points = [
+        TrendPoint(
+            year=v.year,
+            value=_scaled_registry_value(definition, v.raw_values.get(metric_key)),
+            coverage=v.coverage[metric_key].coverage,
+        )
+        for v in ordered
+    ]
+    return CompetitionTrend(
+        metric_key=metric_key,
+        label=definition.label,
+        scope_kind=scope_kind,
+        venue_slug=venue_slug,
+        points=points,
+    )
+
+
+async def _get_competition_facets(db: AsyncSession) -> ExplorerFacets:
+    """Year/venue choices sourced from current profiles only (contract §9).
+
+    Deliberately skips the seven player/team facet reads (draft classes,
+    positions, countries, teams, round types) that are irrelevant to
+    Competition Context — one query total.
+    """
+    rows = (
+        await db.execute(
+            select(  # type: ignore[call-overload]
+                SummerLeagueEnvironmentProfile.year,
+                SummerLeagueEnvironmentProfile.venue_slug,
+            )
+            .where(SummerLeagueEnvironmentProfile.is_current.is_(True))  # type: ignore[attr-defined]
+            .distinct()
+        )
+    ).all()
+    years = sorted({int(y) for y, _venue in rows}, reverse=True)
+    venue_slugs = sorted({v for _y, v in rows if v is not None})
+    return ExplorerFacets(
+        years=years, venues=[(v, _venue_label(v)) for v in venue_slugs]
+    )
+
+
+async def _resolve_competition_detail(
+    db: AsyncSession, competition_id: int, metric_defs: Sequence[MetricDefinition]
+) -> Optional[_CompetitionProfileView]:
+    """Authoritative single-competition detail lookup by stable id (contract §6).
+
+    Always resolved directly by scope key — independent of any active year/
+    venue filter — so a stale/inconsistent filter can never suppress or
+    redirect an explicit ``competition_id`` request.
+    """
+    profile = await get_current_profile_by_scope_key(
+        db,
+        competition_scope_key(competition_id),  # type: ignore[arg-type]
+    )
+    if profile is None:
+        return None
+    return _build_profile_view(profile, metric_defs)
+
+
+async def _resolve_season_detail(
+    db: AsyncSession, year: int, metric_defs: Sequence[MetricDefinition]
+) -> Optional[_CompetitionProfileView]:
+    """Season detail lookup by year, falling back to a direct fetch (contract §6)."""
+    profile = await get_current_profile_by_scope_key(db, season_scope_key(year))  # type: ignore[arg-type]
+    if profile is None:
+        return None
+    return _build_profile_view(profile, metric_defs)
+
+
+async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
+    """Read-only Competition Context query for subject="competitions".
+
+    List, coverage/threshold filters, sort, pagination, selected detail,
+    membership, and trend — all sourced from current versioned profiles
+    (contract §2/§6/§9).
+    """
+    scope_kind = (
+        SCOPE_KIND_COMPETITION
+        if q.profile_scope == "competition"
+        else SCOPE_KIND_SEASON
+    )
+    columns = competition_columns(scope_kind)
+    metric_defs = metrics_for_scope(scope_kind)
+    metric_by_key = {d.key: d for d in metric_defs}
+
+    profiles = await list_current_profiles(
+        db,  # type: ignore[arg-type]
+        scope_kind="competition"
+        if scope_kind == SCOPE_KIND_COMPETITION
+        else "season_all_competitions",
+        year_min=q.year_min,
+        year_max=q.year_max,
+        venue_slug=q.venue if scope_kind == SCOPE_KIND_COMPETITION else None,
+    )
+    views = [_build_profile_view(p, metric_defs) for p in profiles]
+
+    # Coverage-state filter (Python; derived from stored counts, no query).
+    views = [v for v in views if _passes_coverage_filter(v, q.coverage)]
+
+    # Registry-certified metric thresholds (fcol/fop/fval — contract §6).
+    for f in q.metric_filters:
+        definition = metric_by_key.get(f.col)
+        if definition is None:
+            continue
+        views = [v for v in views if _passes_metric_filter(v, definition, f)]
+
+    # Minimum completed games (existing min_gp param; contract §2/§3).
+    if q.min_games:
+        views = [v for v in views if v.final_games >= q.min_games]
+
+    filtered_views = views
+    sorted_views = _sort_competition_views(
+        filtered_views, q.sort, q.direction, metric_by_key
+    )
+
+    total = len(sorted_views)
+    if q.paginate:
+        start = (q.page - 1) * PAGE_SIZE
+        page_views = sorted_views[start : start + PAGE_SIZE]
+        has_next = start + PAGE_SIZE < total
+    else:
+        page_views = sorted_views
+        has_next = False
+
+    rows = [_view_to_row(v, metric_by_key) for v in page_views]
+
+    result = ExplorerResult(
+        subject="competitions",
+        available=True,
+        columns=columns,
+        rows=rows,
+        total=total,
+        page=q.page,
+        page_size=PAGE_SIZE,
+        has_next=has_next,
+        facets=ExplorerFacets(),  # filled by run_explorer_query
+        query=q,
+    )
+
+    # ---- Selected detail (authoritative resolution, independent of the
+    # active filter/pagination scope — contract §6) ----
+    detail_view: Optional[_CompetitionProfileView] = None
+    if scope_kind == SCOPE_KIND_COMPETITION and q.competition_id is not None:
+        detail_view = await _resolve_competition_detail(
+            db, q.competition_id, metric_defs
+        )
+    elif scope_kind == SCOPE_KIND_SEASON and q.detail_year is not None:
+        detail_view = next((v for v in filtered_views if v.year == q.detail_year), None)
+        if detail_view is None:
+            detail_view = await _resolve_season_detail(db, q.detail_year, metric_defs)
+
+    if detail_view is not None:
+        membership: list[CompetitionMembershipRow] = []
+        if detail_view.scope_kind == SCOPE_KIND_SEASON:
+            membership_rows = await list_season_membership(
+                db,
+                detail_view.profile_id,  # type: ignore[arg-type]
+            )
+            membership = [
+                CompetitionMembershipRow(
+                    competition_id=m.competition_id,
+                    year=m.year,
+                    venue_slug=m.venue_slug,
+                    final_games=m.final_games,
+                )
+                for m in membership_rows
+            ]
+        result.competition_detail = _view_to_detail(
+            detail_view, metric_by_key, membership
+        )
+
+    # ---- Trend (contract §6: season = one line across years; competition =
+    # only after a venue/series is resolved, never blending unrelated
+    # competitions into one line) ----
+    trend_key = q.trend_metric or DEFAULT_TREND_METRIC
+    trend_definition = metric_by_key.get(trend_key)
+    if trend_definition is not None:
+        if scope_kind == SCOPE_KIND_SEASON:
+            result.competition_trend = _build_trend(
+                trend_key,
+                trend_definition,
+                filtered_views,
+                scope_kind=SCOPE_KIND_SEASON,
+                venue_slug=None,
+            )
+        else:
+            resolved_venue = q.venue or (
+                detail_view.venue_slug if detail_view is not None else None
+            )
+            if resolved_venue is not None:
+                if q.venue is not None:
+                    # The list query already scoped to this venue; reuse it
+                    # rather than re-querying.
+                    series_views = filtered_views
+                else:
+                    # competition_id resolved a venue the list wasn't scoped
+                    # to (authoritative detail, contract §6) — fetch that
+                    # venue's full series directly.
+                    series_profiles = await list_current_profiles(
+                        db,
+                        scope_kind="competition",
+                        venue_slug=resolved_venue,  # type: ignore[arg-type]
+                    )
+                    series_views = [
+                        v
+                        for v in (
+                            _build_profile_view(p, metric_defs) for p in series_profiles
+                        )
+                        if _passes_coverage_filter(v, q.coverage)
+                    ]
+                result.competition_trend = _build_trend(
+                    trend_key,
+                    trend_definition,
+                    series_views,
+                    scope_kind=SCOPE_KIND_COMPETITION,
+                    venue_slug=resolved_venue,
+                )
+            # else: unfiltered competition table — prompt for a venue rather
+            # than blending unrelated competitions into one line (no trend).
+
+    return result
+
+
+# --------------------------------------------------------------------------- #
 # Shared helpers
 # --------------------------------------------------------------------------- #
 
@@ -3149,6 +4028,13 @@ async def get_player_drilldown_rows(
 
 async def run_explorer_query(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     """Run the Explorer query for the requested subject and attach facets."""
+    if q.subject == "competitions":
+        # Competition requests load subject-specific facets only — never the
+        # seven player/team facet queries below (contract §9).
+        result = await _query_competitions(db, q)
+        result.facets = await _get_competition_facets(db)
+        return result
+
     facets = await get_facets(db)
 
     if q.subject == "players":
