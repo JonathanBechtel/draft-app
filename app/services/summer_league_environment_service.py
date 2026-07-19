@@ -66,6 +66,7 @@ from app.schemas.summer_league_environment import (
 from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
 from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import (
+    FIELD_COMPOSITION_ATTRIBUTES,
     REGISTRY_VERSION,
     CoverageSource,
     MetricDefinition,
@@ -257,6 +258,36 @@ async def list_season_membership(
         )
     )
     return list(result.scalars())
+
+
+async def list_field_composition(
+    db: AsyncSession, profile_id: int
+) -> list[SummerLeagueEnvironmentFieldComposition]:
+    """Per-attribute known/unknown/total counts for one profile (contract §5).
+
+    One indexed query over ``summer_league_environment_field_composition`` —
+    called only when a detail profile is selected, never per list row, so it
+    stays inside the Explorer query budget (contract §9). Every distribution
+    discloses known, unknown, and total so a missing attribute never silently
+    leaves a denominator.
+
+    Args:
+        db: Async session.
+        profile_id: The selected profile's primary key.
+
+    Returns:
+        Field-composition rows in registry attribute order
+        (draft, age, position, origin).
+    """
+    result = await db.execute(
+        select(SummerLeagueEnvironmentFieldComposition).where(
+            col(SummerLeagueEnvironmentFieldComposition.profile_id) == profile_id
+        )
+    )
+    rows = list(result.scalars())
+    order = {key: i for i, key in enumerate(FIELD_COMPOSITION_ATTRIBUTES)}
+    rows.sort(key=lambda r: order.get(r.attribute_key, len(order)))
+    return rows
 
 
 @dataclass(frozen=True)

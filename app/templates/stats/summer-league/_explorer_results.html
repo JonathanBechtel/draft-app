@@ -1,5 +1,8 @@
 {# Explorer results: result count, sortable table, pagination.
    Rendered standalone for ?partial=1 (JS swap) and included by explorer.html. #}
+{% if result.subject == 'competitions' %}
+{% include "stats/summer-league/_explorer_competition_results.html" %}
+{% else %}
 
 {%- macro n1(v) -%}{{ '%.1f' % v if v is not none else '—' }}{%- endmacro -%}
 {%- macro n2(v) -%}{{ '%.2f' % v if v is not none else '—' }}{%- endmacro -%}
@@ -159,3 +162,4 @@
   {% endif %}
   {% endif %}
 </div>
+{% endif %}

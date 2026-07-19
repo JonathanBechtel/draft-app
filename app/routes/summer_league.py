@@ -34,9 +34,15 @@ from app.services.summer_league_stats_service import (
 from app.services.summer_league_explorer_service import (
     PLAYER_COLUMN_CATALOG,
     PER_GAME_FILTERABLE_COLUMNS,
+    competition_filterable_columns,
     get_player_drilldown_rows,
     parse_query,
     run_explorer_query,
+)
+from app.services.summer_league_environment_registry import metrics_for_scope
+from app.schemas.summer_league_environment import (
+    SCOPE_KIND_COMPETITION,
+    SCOPE_KIND_SEASON,
 )
 from app.services.summer_league_franchise_service import get_franchise_history
 from app.services.summer_league_leaders_service import get_leaders
@@ -194,6 +200,7 @@ def _explorer_csv(result: object) -> StreamingResponse:
         "players": "Player",
         "teams": "Team",
         "games": "Game",
+        "competitions": "Scope",
     }.get(result.subject, "Name")
 
     buf = io.StringIO()
@@ -211,13 +218,53 @@ def _explorer_csv(result: object) -> StreamingResponse:
             ]
         )
 
+    # Competition Context CSV also ships the metric definition dictionary so the
+    # export is self-describing (contract §6: values + definitions/units +
+    # coverage + freshness + version, matching the HTML detail definitions).
+    if result.subject == "competitions":
+        scope_kind = (
+            SCOPE_KIND_COMPETITION
+            if result.query.profile_scope == "competition"
+            else SCOPE_KIND_SEASON
+        )
+        writer.writerow([])
+        writer.writerow(["# Metric definitions"])
+        writer.writerow(
+            [
+                "metric_key",
+                "label",
+                "unit",
+                "scale",
+                "formula",
+                "denominator",
+                "required_coverage",
+                "interpretation",
+            ]
+        )
+        for definition in metrics_for_scope(scope_kind):
+            writer.writerow(
+                [
+                    definition.key,
+                    definition.label,
+                    definition.unit.value,
+                    definition.scale,
+                    definition.formula,
+                    definition.denominator,
+                    definition.coverage_source.value,
+                    definition.interpretation,
+                ]
+            )
+
     buf.seek(0)
+    filename = (
+        "summer-league-competitions.csv"
+        if result.subject == "competitions"
+        else "summer-league-explorer.csv"
+    )
     return StreamingResponse(
         iter([buf.getvalue()]),
         media_type="text/csv",
-        headers={
-            "Content-Disposition": 'attachment; filename="summer-league-explorer.csv"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -282,11 +329,19 @@ async def summer_league_explorer(
         if request.query_params.get("partial")
         else "stats/summer-league/explorer.html"
     )
-    filterable_columns = (
-        PER_GAME_FILTERABLE_COLUMNS
-        if query.subject == "players" and query.grain == "per_game"
-        else [c for c in PLAYER_COLUMN_CATALOG if c.filterable]
-    )
+    if query.subject == "competitions":
+        scope_kind = (
+            SCOPE_KIND_COMPETITION
+            if query.profile_scope == "competition"
+            else SCOPE_KIND_SEASON
+        )
+        # Registry-certified metric thresholds only (contract §6); these double
+        # as the trend-metric choices since every v1 metric is chartable.
+        filterable_columns = competition_filterable_columns(scope_kind)
+    elif query.subject == "players" and query.grain == "per_game":
+        filterable_columns = PER_GAME_FILTERABLE_COLUMNS
+    else:
+        filterable_columns = [c for c in PLAYER_COLUMN_CATALOG if c.filterable]
     return request.app.state.templates.TemplateResponse(
         template,
         {

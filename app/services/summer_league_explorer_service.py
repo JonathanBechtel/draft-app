@@ -68,6 +68,7 @@ from app.schemas.summer_league_environment import (
     COVERAGE_COMPLETE,
     SCOPE_KIND_COMPETITION,
     SCOPE_KIND_SEASON,
+    SummerLeagueEnvironmentFieldComposition,
     SummerLeagueEnvironmentProfile,
 )
 from app.schemas.summer_league_metrics import (
@@ -83,6 +84,7 @@ from app.services.summer_league_environment_registry import (
     MetricSection,
     MetricUnit,
     filterable_metric_keys,
+    format_metric_value,
     metrics_for_scope,
     sortable_metric_keys,
 )
@@ -91,6 +93,7 @@ from app.services.summer_league_environment_service import (
     competition_scope_key,
     get_current_profile_by_scope_key,
     list_current_profiles,
+    list_field_composition,
     list_season_membership,
     metric_coverage_for_profile,
     registry_raw_value,
@@ -1066,6 +1069,18 @@ def competition_columns(scope_kind: str) -> list[ExplorerColumn]:
     return columns
 
 
+def competition_filterable_columns(
+    scope_kind: str = SCOPE_KIND_COMPETITION,
+) -> list[ExplorerColumn]:
+    """Registry-certified metric columns offered as fcol/fop/fval thresholds.
+
+    Only metrics marked ``filterable`` for the selected scope kind (contract §6:
+    Competition requests accept only registry entries marked filterable). Used by
+    the route to populate the stat-filter dropdowns for subject=competitions.
+    """
+    return [c for c in _competition_metric_columns(scope_kind) if c.filterable]
+
+
 # Registry metric keys eligible for fcol/fop/fval thresholds and for sort,
 # reusing the Explorer's existing indexed contract rather than a parallel
 # metric-specific param vocabulary (contract §6).
@@ -1717,7 +1732,76 @@ class CompetitionMembershipRow:
     competition_id: int
     year: int
     venue_slug: Optional[str]
+    venue_label: Optional[str]
     final_games: int
+    href: str
+
+
+@dataclass(frozen=True)
+class FieldCompositionAttributeView:
+    """One field-composition attribute's known/unknown/total disclosure (§5).
+
+    Every attribute exposes known, unknown, and total counts so a missing
+    attribute is disclosed rather than silently dropped from a denominator.
+    ``distribution`` is an optional bucket->count histogram (draft bands,
+    position groups, origin) surfaced in the detail drilldown.
+    """
+
+    attribute_key: str  # "draft" | "age" | "position" | "origin"
+    label: str
+    known: int
+    unknown: int
+    total: int
+    distribution: Optional[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class SourceCoverageView:
+    """One input source's read-time coverage verdict + counts (Data confidence)."""
+
+    source: (
+        str  # CoverageSource value: "box"|"shot"|"score"|"ot_state"|"pbp"|"identity"
+    )
+    label: str
+    verdict: str  # "complete" | "partial" | "unavailable"
+    covered: int
+    eligible: int
+    informational: bool  # True for PBP (never gates a displayed v1 metric)
+
+
+@dataclass(frozen=True)
+class MetricValueView:
+    """One registry metric fully resolved for the detail panel (contract §4/§6).
+
+    Every metric exposes its label, unit, formula/denominator, coverage verdict,
+    and interpretation — the honest definition surface the contract requires.
+    ``formatted_value`` is the display string (em dash when uncovered, ``%`` for
+    ratios); templates render it verbatim so no unit logic leaks into Jinja.
+    """
+
+    key: str
+    label: str
+    formatted_value: str
+    unit: str
+    formula: str
+    denominator: str
+    interpretation: str
+    confidence_note: Optional[str]
+    coverage: str  # "complete" | "partial" | "unavailable"
+    covered: int
+    eligible: int
+    reason: Optional[str]
+    filterable: bool
+    sortable: bool
+
+
+@dataclass(frozen=True)
+class MetricSectionView:
+    """One profile-detail section grouping registry metrics (contract §4)."""
+
+    key: str  # "environment" | "landscape" | "composition"
+    label: str
+    metrics: list[MetricValueView]
 
 
 @dataclass
@@ -1735,6 +1819,7 @@ class CompetitionDetail:
     year: int
     competition_id: Optional[int]
     venue_slug: Optional[str]
+    venue_label: Optional[str]
     display_name: str
     version: int
     registry_version: str
@@ -1742,10 +1827,26 @@ class CompetitionDetail:
     source_watermark: Optional[datetime]
     is_stale: bool
     href: str
+    # Identity & format scalars (contract §2/§5).
+    included_competitions: int
+    final_games: int
+    scheduled_games: int
+    distinct_teams: int
+    teams_represented: int
+    participation_count: Optional[int]
+    player_games: int
+    appeared_players: int
+    appeared_unresolved: int
     # Display-scaled values (e.g. 0-100 for a ratio metric), keyed by registry
     # metric key — the same scaling `format_metric_value` applies for display.
     values: dict[str, Optional[float]]
     coverage: dict[str, MetricCoverageView]
+    # Ordered, fully-formatted metric sections (How it played / Performance
+    # landscape / Field composition) — the definition-bearing detail surface.
+    sections: list[MetricSectionView] = field(default_factory=list)
+    # Per-input coverage for the Data confidence section (box/shot/score/ot/pbp/identity).
+    source_coverage: list[SourceCoverageView] = field(default_factory=list)
+    field_composition: list[FieldCompositionAttributeView] = field(default_factory=list)
     membership: list[CompetitionMembershipRow] = field(default_factory=list)
 
 
@@ -3452,6 +3553,10 @@ class _CompetitionProfileView:
     included_competitions: int
     final_games: int
     scheduled_games: int
+    distinct_teams: int
+    teams_represented: int
+    participation_count: Optional[int]
+    player_games: int
     appeared_players: int
     appeared_unresolved: int
     # metric_key -> raw (unscaled) canonical value.
@@ -3524,6 +3629,10 @@ def _build_profile_view(
         included_competitions=profile.included_competitions,
         final_games=profile.final_games,
         scheduled_games=profile.scheduled_games,
+        distinct_teams=profile.distinct_teams,
+        teams_represented=profile.teams_represented,
+        participation_count=profile.participation_count,
+        player_games=profile.player_games,
         appeared_players=profile.appeared_players,
         appeared_unresolved=profile.appeared_unresolved,
         raw_values=raw_values,
@@ -3610,6 +3719,9 @@ def _view_to_row(
 ) -> ExplorerRow:
     values: dict[str, Any] = {
         "year": view.year,
+        # Non-column helpers the template reads to build in-Explorer detail links
+        # (never rendered as a table cell; identity columns own the display).
+        "competition_id": view.competition_id,
         "included_competitions": view.included_competitions,
         "final_games": view.final_games,
         "scheduled_games": view.scheduled_games,
@@ -3642,10 +3754,119 @@ def _view_to_row(
     )
 
 
+# Human labels for the six coverage sources shown in the Data confidence section.
+_SOURCE_LABELS: dict[CoverageSource, str] = {
+    CoverageSource.BOX: "Box score",
+    CoverageSource.SHOT: "Shot chart",
+    CoverageSource.SCORE: "Final score",
+    CoverageSource.OT_STATE: "Overtime state",
+    CoverageSource.PBP: "Play-by-play",
+    CoverageSource.IDENTITY: "Player identity",
+}
+
+# Human labels for the four field-composition attributes (contract §5).
+_FIELD_ATTRIBUTE_LABELS: dict[str, str] = {
+    "draft": "Draft status",
+    "age": "Age",
+    "position": "Position",
+    "origin": "College / international origin",
+}
+
+
+def _source_coverage_views(
+    view: _CompetitionProfileView,
+) -> list[SourceCoverageView]:
+    """The six input sources as ordered, labeled coverage disclosures."""
+    out: list[SourceCoverageView] = []
+    for source in _ALL_COVERAGE_SOURCES:
+        verdict, covered, eligible = view.source_coverage[source]
+        out.append(
+            SourceCoverageView(
+                source=source.value,
+                label=_SOURCE_LABELS[source],
+                verdict=verdict,
+                covered=covered,
+                eligible=eligible,
+                informational=source is CoverageSource.PBP,
+            )
+        )
+    return out
+
+
+def _field_composition_views(
+    rows: Sequence[SummerLeagueEnvironmentFieldComposition],
+) -> list[FieldCompositionAttributeView]:
+    """Field-composition rows as labeled known/unknown/total disclosures (§5)."""
+    return [
+        FieldCompositionAttributeView(
+            attribute_key=r.attribute_key,
+            label=_FIELD_ATTRIBUTE_LABELS.get(r.attribute_key, r.attribute_key.title()),
+            known=r.known,
+            unknown=r.unknown,
+            total=r.total,
+            distribution=r.distribution,
+        )
+        for r in rows
+    ]
+
+
+# Ordered detail sections and their display labels (contract §4 five-section
+# profile: Identity & format and Data confidence are rendered from scalars, so
+# only the three registry-metric sections are grouped here).
+_METRIC_SECTION_LABELS: list[tuple[MetricSection, str]] = [
+    (MetricSection.ENVIRONMENT, "How it played"),
+    (MetricSection.LANDSCAPE, "Performance landscape"),
+    (MetricSection.COMPOSITION, "Field composition"),
+]
+
+
+def _metric_value_view(
+    view: _CompetitionProfileView, definition: MetricDefinition
+) -> MetricValueView:
+    """Resolve one metric into its labeled, formatted, definition-bearing view."""
+    raw = view.raw_values.get(definition.key)
+    cov = view.coverage[definition.key]
+    return MetricValueView(
+        key=definition.key,
+        label=definition.label,
+        formatted_value=format_metric_value(definition.key, raw),
+        unit=definition.unit.value,
+        formula=definition.formula,
+        denominator=definition.denominator,
+        interpretation=definition.interpretation,
+        confidence_note=definition.confidence_note,
+        coverage=cov.coverage,
+        covered=cov.covered,
+        eligible=cov.eligible,
+        reason=cov.reason,
+        filterable=definition.filterable,
+        sortable=definition.sortable,
+    )
+
+
+def _metric_sections(
+    view: _CompetitionProfileView, metric_by_key: dict[str, MetricDefinition]
+) -> list[MetricSectionView]:
+    """Group this scope's registry metrics into ordered detail sections."""
+    sections: list[MetricSectionView] = []
+    for section, label in _METRIC_SECTION_LABELS:
+        metrics = [
+            _metric_value_view(view, d)
+            for d in metric_by_key.values()
+            if d.section is section
+        ]
+        if metrics:
+            sections.append(
+                MetricSectionView(key=section.value, label=label, metrics=metrics)
+            )
+    return sections
+
+
 def _view_to_detail(
     view: _CompetitionProfileView,
     metric_by_key: dict[str, MetricDefinition],
     membership: list[CompetitionMembershipRow],
+    field_composition: list[FieldCompositionAttributeView],
 ) -> CompetitionDetail:
     now = datetime.utcnow()
     is_stale = view.calculated_at is not None and (
@@ -3661,6 +3882,7 @@ def _view_to_detail(
         year=view.year,
         competition_id=view.competition_id,
         venue_slug=view.venue_slug,
+        venue_label=_venue_label(view.venue_slug) if view.venue_slug else None,
         display_name=view.display_name,
         version=view.version,
         registry_version=view.registry_version,
@@ -3668,8 +3890,20 @@ def _view_to_detail(
         source_watermark=view.source_watermark,
         is_stale=is_stale,
         href=_competition_href(view),
+        included_competitions=view.included_competitions,
+        final_games=view.final_games,
+        scheduled_games=view.scheduled_games,
+        distinct_teams=view.distinct_teams,
+        teams_represented=view.teams_represented,
+        participation_count=view.participation_count,
+        player_games=view.player_games,
+        appeared_players=view.appeared_players,
+        appeared_unresolved=view.appeared_unresolved,
         values=values,
         coverage=view.coverage,
+        sections=_metric_sections(view, metric_by_key),
+        source_coverage=_source_coverage_views(view),
+        field_composition=field_composition,
         membership=membership,
     )
 
@@ -3852,12 +4086,25 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
                     competition_id=m.competition_id,
                     year=m.year,
                     venue_slug=m.venue_slug,
+                    venue_label=_venue_label(m.venue_slug) if m.venue_slug else None,
                     final_games=m.final_games,
+                    # Open the exact single-competition profile in Explorer.
+                    href=(
+                        "/stats/summer-league/explorer?subject=competitions"
+                        f"&profile_scope=competition&competition_id={m.competition_id}"
+                    ),
                 )
                 for m in membership_rows
             ]
+        field_rows = await list_field_composition(
+            db,
+            detail_view.profile_id,  # type: ignore[arg-type]
+        )
         result.competition_detail = _view_to_detail(
-            detail_view, metric_by_key, membership
+            detail_view,
+            metric_by_key,
+            membership,
+            _field_composition_views(field_rows),
         )
 
     # ---- Trend (contract §6: season = one line across years; competition =

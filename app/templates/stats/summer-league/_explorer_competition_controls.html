@@ -1,0 +1,86 @@
+{# Competition Context scope controls (subject=competitions).
+   Rendered inside the shared explorer form. Uses profile_scope / coverage /
+   min_gp / venue and the registry-certified fcol/fop/fval thresholds — never
+   the player grain param (contract §6). #}
+{% set q = result.query %}
+
+{# Preserve the charted trend metric across a filter re-run (the trend-panel
+   form owns the visible control; this hidden field keeps it from resetting). #}
+{% if q.trend_metric %}<input type="hidden" name="trend_metric" value="{{ q.trend_metric }}">{% endif %}
+
+{# Profile-scope toggle — changes which controls are meaningful (venue is only
+   valid for individual competitions), so it navigates rather than AJAX-swaps. #}
+<div class="slg-filter slg-filter--full">
+  <label id="ex-scope-label">View</label>
+  <div class="slg-scope-toggle" role="radiogroup" aria-labelledby="ex-scope-label">
+    {% for val, lbl in [('season', 'Summer League seasons'), ('competition', 'Individual competitions')] %}
+    <label class="slg-scope-btn{{ ' is-active' if q.profile_scope == val else '' }}">
+      <input type="radio" name="profile_scope" value="{{ val }}" {{ 'checked' if q.profile_scope == val else '' }}>{{ lbl }}
+    </label>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="slg-filter">
+  <label for="ex-year-min">From year</label>
+  <select id="ex-year-min" name="year_min">
+    <option value="">Earliest</option>
+    {% for y in result.facets.years %}<option value="{{ y }}" {{ 'selected' if q.year_min == y else '' }}>{{ y }}</option>{% endfor %}
+  </select>
+</div>
+<div class="slg-filter">
+  <label for="ex-year-max">To year</label>
+  <select id="ex-year-max" name="year_max">
+    <option value="">Latest</option>
+    {% for y in result.facets.years %}<option value="{{ y }}" {{ 'selected' if q.year_max == y else '' }}>{{ y }}</option>{% endfor %}
+  </select>
+</div>
+
+{% if q.profile_scope == 'competition' %}
+<div class="slg-filter">
+  <label for="ex-venue">Venue</label>
+  <select id="ex-venue" name="venue">
+    <option value="">All venues</option>
+    {% for slug, label in result.facets.venues %}<option value="{{ slug }}" {{ 'selected' if q.venue == slug else '' }}>{{ label }}</option>{% endfor %}
+  </select>
+</div>
+{% endif %}
+
+<div class="slg-filter">
+  <label for="ex-min-gp" title="Minimum completed (final) games; scheduled/in-progress games never count">Min final games</label>
+  <input id="ex-min-gp" type="number" name="min_gp" min="0" value="{{ q.min_games }}">
+</div>
+
+<div class="slg-filter">
+  <label for="ex-coverage" title="Filter to profiles whose input coverage is complete for a source. PBP is informational and never gates a displayed metric.">Coverage</label>
+  <select id="ex-coverage" name="coverage">
+    {% for val, lbl in [('all', 'All'), ('box_complete', 'Box complete'), ('shot_complete', 'Shot-chart complete'), ('pbp_complete', 'PBP complete (info)')] %}
+    <option value="{{ val }}" {{ 'selected' if q.coverage == val else '' }}>{{ lbl }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+{# ── Metric threshold filters (registry-certified; up to 3 rows) ─────────── #}
+<div class="slg-filter slg-filter--full" id="metric-filter-section">
+  <label class="slg-filter__label--metric">Metric filters</label>
+  <div id="metric-filter-rows">
+    {% for i in range(3) %}
+    {%- set mf = q.metric_filters[i] if i < q.metric_filters|length else none -%}
+    <div class="slg-metric-filter-row{% if mf is none and i > 0 %} slg-hidden{% endif %}" id="metric-filter-row-{{ i }}">
+      <select name="fcol{{ i }}" class="slg-metric-filter-col">
+        <option value="">— metric —</option>
+        {% for col in filterable_columns %}
+        <option value="{{ col.key }}"{{ ' selected' if mf and mf.col == col.key else '' }}>{{ col.label }}</option>
+        {% endfor %}
+      </select>
+      <select name="fop{{ i }}" class="slg-metric-filter-op">
+        <option value="gte"{{ ' selected' if mf and mf.op == '>=' else '' }}>&ge;</option>
+        <option value="lte"{{ ' selected' if mf and mf.op == '<=' else '' }}>&le;</option>
+      </select>
+      <input type="number" name="fval{{ i }}" class="slg-metric-filter-val"
+             value="{{ mf.value if mf else '' }}" step="any" placeholder="value">
+    </div>
+    {% endfor %}
+  </div>
+  <button type="button" class="slg-add-filter-btn" id="add-metric-filter">+ Add filter</button>
+</div>
