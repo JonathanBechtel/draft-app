@@ -2,7 +2,7 @@
  * Summer League Desk (#509, extended #556, #567, tracker pagination pre-prod
  * fix) -- page-scoped JS.
  *
- * Four independent, progressive-enhancement behaviors:
+ * Six independent, progressive-enhancement behaviors:
  *
  *   1. Morning slate disclosure -- collapses ONLY the trailing zero-signal
  *      tail of a 10+ game slate, and only after this script runs. The
@@ -28,7 +28,7 @@
  *      ledger/live_board) and `daily_state`. Native `<a href>` navigation is
  *      untouched and works with analytics/JS fully disabled.
  *
- *   4. Class Tracker tab switch -- intercepts clicks on the cohort/stat-view
+ *   5. Class Tracker tab switch -- intercepts clicks on the cohort/stat-view
  *      toggle links and fetches `GET /desk/tracker?cohort=..&statview=..`
  *      (a fragment route reading the SAME single indexed snapshot row the
  *      full page read) instead of following the link's full-page-navigation
@@ -38,6 +38,10 @@
  *      back to real navigation (the href already on the link) on any fetch
  *      failure, and works exactly as before -- a full page nav -- with JS
  *      disabled.
+ *
+ *   6. Live refresh -- reloads an open Live Desk once per minute while the
+ *      tab is visible. The active tracker cohort/stat-view survives because
+ *      tab switches keep those values in the page URL.
  */
 document.addEventListener('DOMContentLoaded', function () {
   initSlateDisclosure();
@@ -45,7 +49,26 @@ document.addEventListener('DOMContentLoaded', function () {
   initTrackerPagination();
   initDeskClickAnalytics();
   initTrackerToggles();
+  initLiveDeskRefresh();
 });
+
+/**
+ * Keep an already-open Live Desk moving as normalized game data arrives.
+ *
+ * Preview and Recap never schedule a reload. Hidden tabs also skip it; the
+ * next visible interval refreshes instead of waking a background page.
+ */
+function initLiveDeskRefresh() {
+  var desk = document.getElementById('slDeskSection');
+  if (!desk || desk.dataset.deskDailyState !== 'live') {
+    return;
+  }
+  window.setInterval(function () {
+    if (!document.hidden) {
+      window.location.reload();
+    }
+  }, 60000);
+}
 
 /**
  * Collapse the trailing zero-signal tail of a 10+ game Morning slate.

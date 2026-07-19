@@ -20,7 +20,23 @@ def _summer_league_writer_lock_available(
     async def _available(_db: object) -> bool:
         return True
 
+    async def _defer(_db: object, **_kwargs: object) -> None:
+        return None
+
+    async def _pending(_db: object) -> bool:
+        return False
+
+    async def _complete(_db: object, **_kwargs: object) -> None:
+        return None
+
+    async def _record_failure(_db: object, **_kwargs: object) -> None:
+        return None
+
     monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _available)
+    monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
+    monkeypatch.setattr(runner, "full_reconciliation_is_pending", _pending)
+    monkeypatch.setattr(runner, "complete_pipeline", _complete)
+    monkeypatch.setattr(runner, "record_pipeline_failure", _record_failure)
 
 
 @dataclass
@@ -183,9 +199,7 @@ def _patch_backbone_services(
         calls.append("competition")
         return _FakeCompetitionReport()
 
-    async def _fake_find_incomplete(
-        _db: object, *, competition_id: int
-    ) -> list[str]:
+    async def _fake_find_incomplete(_db: object, *, competition_id: int) -> list[str]:
         assert competition_id == 123
         calls.append("find_incomplete")
         return list(incomplete_game_ids)
@@ -378,14 +392,19 @@ async def test_run_venue_retry_yields_when_desk_writer_starts_during_fetch(
 async def test_run_venue_skips_db_processing_while_desk_writer_is_active(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A busy Desk writer makes full ingestion yield before shared DB writes."""
+    """A busy Desk writer defers full reconciliation before shared DB writes."""
     calls: list[str] = []
+    deferred_reasons: list[str] = []
     _patch_backbone_services(monkeypatch, calls)
 
     async def _busy(_db: object) -> bool:
         return False
 
+    async def _defer(_db: object, *, reason: str) -> None:
+        deferred_reasons.append(reason)
+
     monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _busy)
+    monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
     ingestor = _FakeIngestor(
         [
             _FakeManifest(game_ids=["001"]),
@@ -402,6 +421,7 @@ async def test_run_venue_skips_db_processing_while_desk_writer_is_active(
 
     assert result == (False, False)
     assert calls == []
+    assert deferred_reasons == ["venue:15:shared_write_phase_lock_contended"]
 
 
 @pytest.mark.asyncio
@@ -471,8 +491,14 @@ def _patch_main(
     }
 
     async def _fake_run_venue(
-        _db: object, _ingestor: object, *, year: int, league_id: str
+        _db: object,
+        _ingestor: object,
+        *,
+        year: int,
+        league_id: str,
+        telemetry: object | None = None,
     ) -> tuple[bool, bool]:
+        assert telemetry is not None
         assert isinstance(events["venues"], list)
         events["venues"].append(league_id)
         return venue_results[league_id]
@@ -564,6 +590,26 @@ async def test_main_with_games_runs_rebuild_once(
     assert events["rebuild_called"] is True
     assert events["snapshots_refreshed"] is True
     assert events["disposed"] is True
+
+
+@pytest.mark.asyncio
+async def test_main_drains_a_deferred_reconciliation_without_new_games(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prior lock deferral forces the next full run to rebuild and refresh snapshots."""
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "15")
+    events = _patch_main(monkeypatch, venue_results={"15": (False, False)})
+
+    async def _pending(_db: object) -> bool:
+        return True
+
+    monkeypatch.setattr(runner, "full_reconciliation_is_pending", _pending)
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["rebuild_called"] is True
+    assert events["snapshots_refreshed"] is True
 
 
 @pytest.mark.asyncio

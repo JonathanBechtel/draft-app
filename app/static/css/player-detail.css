@@ -396,11 +396,12 @@
 /* Headline stats row: PPG / RPG / APG */
 .stats-headline-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
 .stat-hero {
+  min-width: 0;
   background: var(--color-slate-50);
   border: 1px solid var(--color-slate-200);
   border-radius: 0.5rem;
@@ -2019,6 +2020,14 @@
   }
 
   /* College stats responsive */
+  .stats-headline-row {
+    gap: 0.5rem;
+  }
+
+  .stat-hero {
+    padding-inline: 0.375rem;
+  }
+
   .stat-hero__value {
     font-size: 1.75rem;
   }
