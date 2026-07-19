@@ -20,13 +20,15 @@ No live network calls: the NBA Stats client is always given a fake
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.schemas.event_desk import (
     Event,
@@ -55,7 +57,12 @@ from app.schemas.summer_league_desk import (
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league.raw_ingestion import GAME_ENDPOINTS
+from app.services.summer_league.write_lock import (
+    SummerLeagueWriterLockTimeout,
+    acquire_summer_league_writer_lock,
+)
 import scripts.sl_desk_tick as desk_tick_module
 from scripts.sl_desk_tick import run_desk_tick
 
@@ -597,7 +604,9 @@ async def test_desk_tick_reads_runtime_clock_after_writer_lock(
     lock_acquired = False
     post_lock_now = datetime(2099, 1, 15, 12, 5)
 
-    async def _acquire_writer_lock(_db: AsyncSession) -> None:
+    async def _acquire_writer_lock_bounded(
+        _db: AsyncSession, *, max_wait_seconds: float
+    ) -> None:
         nonlocal lock_acquired
         lock_acquired = True
 
@@ -609,8 +618,8 @@ async def test_desk_tick_reads_runtime_clock_after_writer_lock(
 
     monkeypatch.setattr(
         desk_tick_module,
-        "acquire_summer_league_writer_lock",
-        _acquire_writer_lock,
+        "acquire_summer_league_writer_lock_bounded",
+        _acquire_writer_lock_bounded,
     )
     monkeypatch.setattr(desk_tick_module, "datetime", _PostLockClock)
 
@@ -1046,3 +1055,81 @@ async def test_desk_tick_optional_pbp_or_shotchart_failure_does_not_abort(
     assert result.live_refresh_report.errors >= 1
     states = (await db_session.execute(select(EventDeskState))).scalars().all()
     assert len(states) >= 1
+
+
+async def test_desk_tick_bounded_lock_wait_times_out_when_writer_lock_is_held(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    test_schema: str,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """#622: the Desk tick fails fast (not hangs) when the writer lock is held elsewhere.
+
+    A long-running lower-priority writer (e.g. full ingestion) can hold the
+    shared Summer League writer lock for well over an hour (the production
+    incident this ticket fixes). Before this change, the Desk tick's
+    blocking ``acquire_summer_league_writer_lock`` call would wait
+    indefinitely; now it must give up within ``writer_lock_max_wait_seconds``
+    and raise ``SummerLeagueWriterLockTimeout``, and the existing
+    ``writer_lock_wait`` telemetry step must still fire (with
+    ``outcome=failed``) so the timeout is observable in logs -- this
+    ticket's timing data is a strict superset of the pre-existing step, not
+    a new metric. A later tick, once the lock is free, must succeed
+    normally: the timeout is a retry-next-scheduled-run condition, not a
+    lasting failure.
+    """
+    now = datetime(2099, 1, 15, 12, 0)  # fully off-window; dormant once it runs.
+
+    # Pin `db_session` to a connection genuinely primed with `test_schema`
+    # before `holder` (a second, concurrently live session below) forces the
+    # pool to hand out a second physical connection. Without this, the
+    # connection SQLAlchemy autobegins for `db_session` the first time
+    # `run_desk_tick` touches it below can be a brand-new, un-primed
+    # connection whose `current_schema()` isn't `test_schema` -- silently
+    # keying its advisory-lock attempts off the wrong schema and making the
+    # two sessions contend on unrelated locks instead of the same one.
+    # Deliberately left uncommitted so the autobegun transaction (and its
+    # checked-out connection) stays pinned to `db_session` through the
+    # `run_desk_tick` call below.
+    await db_session.execute(text(f'SET search_path TO "{test_schema}"'))
+
+    async with session_factory() as holder:
+        await holder.execute(text(f'SET search_path TO "{test_schema}"'))
+        await holder.commit()
+        async with holder.begin():
+            await acquire_summer_league_writer_lock(holder)
+
+            telemetry_logger = logging.getLogger("test_sl_desk_tick_bounded_wait")
+            telemetry = PipelineTelemetry(job="desk", logger=telemetry_logger)
+
+            max_wait_seconds = 0.5
+            started_at = monotonic()
+            with caplog.at_level(logging.INFO, logger=telemetry_logger.name):
+                with pytest.raises(SummerLeagueWriterLockTimeout):
+                    await run_desk_tick(
+                        db_session,
+                        now=now,
+                        telemetry=telemetry,
+                        writer_lock_max_wait_seconds=max_wait_seconds,
+                    )
+            elapsed = monotonic() - started_at
+            # Bounded, not hanging: returns close to (never wildly past) the
+            # configured deadline -- proves the fix, not just the exception type.
+            assert max_wait_seconds <= elapsed < max_wait_seconds + 2.0
+
+    # The timeout raised from inside an autobegun transaction on `db_session`;
+    # leave it clean for the next tick below (mirrors `_run`'s own rollback
+    # on any tick failure).
+    await db_session.rollback()
+
+    wait_step_logs = [record.getMessage() for record in caplog.records]
+    assert any(
+        "step=writer_lock_wait" in msg and "outcome=failed" in msg
+        for msg in wait_step_logs
+    )
+
+    # A later tick, once the lock is free (the `holder` transaction above has
+    # exited), succeeds normally rather than staying wedged.
+    result = await run_desk_tick(db_session, now=now)
+    await db_session.commit()
+    assert result.dormant is True
