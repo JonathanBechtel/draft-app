@@ -51,7 +51,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
-from app.config import settings
 from app.schemas.summer_league_environment import SummerLeagueEnvironmentProfile
 from app.schemas.summer_league_pipeline import SummerLeaguePipelineJob
 from app.services.summer_league.pipeline_state import (
@@ -60,6 +59,7 @@ from app.services.summer_league.pipeline_state import (
 )
 from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
+from app.services.summer_league_environment_registry import is_profile_stale
 from app.services.summer_league_environment_service import (
     EnvironmentRebuildResult,
     rebuild_environment_profiles,
@@ -260,13 +260,10 @@ def is_environment_profile_stale(
 ) -> bool:
     """Whether a profile's last computation exceeds the configured freshness threshold.
 
-    Single source of truth for the "stale badge" behavior (contract §8): a
-    profile beyond the threshold stays the last good, readable version --
-    this only flags it for display, it never triggers a request-time
-    recompute or replacement. ``calculated_at`` (and other stored profile
-    timestamps) are naive UTC, matching the schema's
-    ``TIMESTAMP WITHOUT TIME ZONE`` columns; a naive input here is treated as
-    UTC rather than the local zone.
+    Thin re-export of :func:`app.services.summer_league_environment_registry.
+    is_profile_stale` (the actual single source of truth, callable from every
+    public surface without a circular import back into this pipeline module).
+    Kept here under its original name for existing call sites/tests.
 
     Args:
         calculated_at: The profile's ``SummerLeagueEnvironmentProfile.calculated_at``.
@@ -276,14 +273,7 @@ def is_environment_profile_stale(
         ``True`` once ``now - calculated_at`` exceeds
         ``settings.summer_league_environment_stale_after_hours``.
     """
-    reference = now if now is not None else datetime.now(timezone.utc)
-    if reference.tzinfo is None:
-        reference = reference.replace(tzinfo=timezone.utc)
-    calculated = calculated_at
-    if calculated.tzinfo is None:
-        calculated = calculated.replace(tzinfo=timezone.utc)
-    threshold_seconds = settings.summer_league_environment_stale_after_hours * 3600
-    return (reference - calculated).total_seconds() > threshold_seconds
+    return is_profile_stale(calculated_at, now=now)
 
 
 @dataclass

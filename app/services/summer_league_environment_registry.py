@@ -41,8 +41,11 @@ the Phase-0 coverage audit):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
+
+from app.config import settings
 
 
 class MetricSection(str, Enum):
@@ -88,14 +91,57 @@ class ScopeEligibility(str, Enum):
 # Bump when any formula/denominator/rounding/coverage rule changes.
 REGISTRY_VERSION = "2026.07.1"
 
-# A current profile older than this is still served (never silently replaced
-# by request-time aggregation, contract §8) but flagged stale. Public v1
-# surfaces (Explorer, context strips, season/venue reuse) share this fixed
-# default; the operational refresh pipeline's own configurable threshold
-# (``settings.summer_league_environment_stale_after_hours``) is a separate,
-# tighter tripwire for the incremental-refresh job itself, not for what a
-# reader is shown.
+# A literal threshold value for tests that want to assert boundary behavior
+# at a known number (see is_profile_stale's stale_after_hours override).
+# Runtime staleness reads settings.summer_league_environment_stale_after_hours
+# instead -- see is_profile_stale below.
 PROFILE_STALE_AFTER_HOURS = 72
+
+
+def is_profile_stale(
+    calculated_at: Optional[datetime],
+    *,
+    stale_after_hours: Optional[int] = None,
+    now: Optional[datetime] = None,
+) -> bool:
+    """Whether a profile's last computation exceeds the freshness threshold.
+
+    Single source of truth for the public "stale badge" behavior (contract
+    §8) -- called by the Explorer detail panel, cross-subject context strips,
+    and the season/venue summary module so they can never disagree on
+    whether a given profile reads as stale. A profile beyond the threshold
+    stays the last good, readable version; this only flags it for display,
+    it never triggers a request-time recompute or replacement.
+
+    Args:
+        calculated_at: The profile's stored computation timestamp, or
+            ``None`` for a profile that has never published (never stale).
+        stale_after_hours: Explicit threshold override (tests only);
+            defaults to the live
+            ``settings.summer_league_environment_stale_after_hours``, so an
+            operator-configured threshold actually reaches every public
+            surface rather than a hardcoded value only the refresh
+            pipeline's own tripwire sees.
+        now: Reference instant; defaults to the real current time (UTC).
+
+    Returns:
+        ``True`` once ``now - calculated_at`` exceeds the threshold.
+    """
+    if calculated_at is None:
+        return False
+    reference = now if now is not None else datetime.now(timezone.utc)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+    calculated = calculated_at
+    if calculated.tzinfo is None:
+        calculated = calculated.replace(tzinfo=timezone.utc)
+    threshold_hours = (
+        stale_after_hours
+        if stale_after_hours is not None
+        else settings.summer_league_environment_stale_after_hours
+    )
+    return (reference - calculated).total_seconds() > threshold_hours * 3600
+
 
 # Field-composition attributes with per-attribute known/unknown coverage.
 FIELD_COMPOSITION_ATTRIBUTES: tuple[str, ...] = (

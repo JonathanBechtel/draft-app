@@ -31,10 +31,11 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Literal, Optional
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col
 
@@ -67,7 +68,6 @@ from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
 from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import (
     FIELD_COMPOSITION_ATTRIBUTES,
-    PROFILE_STALE_AFTER_HOURS,
     REGISTRY_VERSION,
     CoverageSource,
     MetricDefinition,
@@ -75,6 +75,7 @@ from app.services.summer_league_environment_registry import (
     METRIC_DEFINITIONS,
     format_metric_value,
     get_metric,
+    is_profile_stale,
     safe_ratio,
 )
 
@@ -560,7 +561,7 @@ def _page_metric_view(
 def build_profile_summary_view(
     profile: EnvironmentProfile,
     *,
-    stale_after_hours: int = PROFILE_STALE_AFTER_HOURS,
+    stale_after_hours: Optional[int] = None,
 ) -> ProfileSummaryView:
     """Build the season-hub / venue-page summary DTO for one current profile.
 
@@ -574,7 +575,9 @@ def build_profile_summary_view(
             already resolved by the caller via
             :func:`get_current_profile_by_scope_key`.
         stale_after_hours: Staleness threshold override (tests only);
-            defaults to the shared registry ``PROFILE_STALE_AFTER_HOURS``.
+            defaults to the live
+            ``settings.summer_league_environment_stale_after_hours`` via
+            :func:`~app.services.summer_league_environment_registry.is_profile_stale`.
 
     Returns:
         A :class:`ProfileSummaryView` ready for the shared
@@ -596,10 +599,9 @@ def build_profile_summary_view(
         _page_metric_view(profile, get_metric(key))
         for key in _HEADLINE_COMPOSITION_KEYS
     ]
-    now = datetime.utcnow()
-    is_stale = profile.calculated_at is not None and (
-        now - profile.calculated_at
-    ) > timedelta(hours=stale_after_hours)
+    is_stale = is_profile_stale(
+        profile.calculated_at, stale_after_hours=stale_after_hours
+    )
     return ProfileSummaryView(
         scope_key=profile.scope_key,
         scope_kind=profile.scope_kind,
@@ -1147,6 +1149,7 @@ class _PooledScope:
     # Pooled game/box/score/shot/pbp totals.
     final_games: int = 0
     scheduled_games: int = 0
+    other_games: int = 0
     box_complete_games: int = 0
     shot_covered_games: int = 0
     pbp_covered_games: int = 0
@@ -1187,6 +1190,7 @@ class _PooledScope:
         for member in self.members:
             self.final_games += member.final_games
             self.scheduled_games += member.scheduled_games
+            self.other_games += member.other_games
             self.box_complete_games += member.box_complete_games
             self.shot_covered_games += len(member.shot_covered_game_ids)
             self.pbp_covered_games += len(member.pbp_covered_game_ids)
@@ -1588,7 +1592,13 @@ def _build_candidate(
         registry_version=REGISTRY_VERSION,
         included_competitions=max(1, len(pooled.members)),
         final_games=pooled.final_games,
-        scheduled_games=pooled.scheduled_games,
+        # The persisted column is the "Scheduled / not-final" disclosure
+        # (contract §3): every non-final game, not just SCHEDULED status --
+        # scheduled_games and other_games (in-progress/postponed/canceled/
+        # unknown) are split at the per-competition level for finer-grained
+        # future use but combine here so a live/postponed/canceled slate
+        # never silently disappears from schedule/status counts.
+        scheduled_games=pooled.scheduled_games + pooled.other_games,
         distinct_teams=len(pooled.team_entry_ids),
         box_complete_games=pooled.box_complete_games,
         shot_covered_games=pooled.shot_covered_games,
@@ -1861,8 +1871,16 @@ async def rebuild_environment_profiles(
         try:
             candidate = _build_candidate(pooled, attributes)
             _validate_candidate(candidate)
-            await _publish_candidate(db, candidate)
-        except (ValueError, AssertionError) as exc:
+            # A SAVEPOINT around the one call that writes: if publication
+            # raises a genuine DB error (constraint violation, etc.), rolling
+            # back to the savepoint undoes only this scope's writes and
+            # leaves the session usable for sibling scopes and the caller's
+            # own failure handling -- an uncaught DB error here would
+            # otherwise poison the whole outer transaction (shared with the
+            # rest of the locked ingest pipeline phase), not just this scope.
+            async with db.begin_nested():
+                await _publish_candidate(db, candidate)
+        except (ValueError, AssertionError, SQLAlchemyError) as exc:
             result.failed_scopes += 1
             result.failures[pooled.scope.scope_key] = str(exc)
             continue

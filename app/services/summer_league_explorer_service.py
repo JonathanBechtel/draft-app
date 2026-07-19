@@ -42,7 +42,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, Callable, Optional
 
 from sqlalchemy import and_, case, func, literal, nulls_last, or_, select, text
@@ -87,6 +87,7 @@ from app.services.summer_league_environment_registry import (
     filterable_metric_keys,
     format_metric_value,
     get_metric,
+    is_profile_stale,
     metrics_for_scope,
     sortable_metric_keys,
 )
@@ -3965,10 +3966,7 @@ def _view_to_detail(
     membership: list[CompetitionMembershipRow],
     field_composition: list[FieldCompositionAttributeView],
 ) -> CompetitionDetail:
-    now = datetime.utcnow()
-    is_stale = view.calculated_at is not None and (
-        now - view.calculated_at
-    ) > timedelta(hours=STALE_AFTER_HOURS)
+    is_stale = is_profile_stale(view.calculated_at)
     values = {
         key: _scaled_registry_value(definition, view.raw_values.get(key))
         for key, definition in metric_by_key.items()
@@ -4405,10 +4403,7 @@ def _context_strip_headline(
 
 def _build_context_strip(profile: SummerLeagueEnvironmentProfile) -> ContextStripView:
     """Resolve one current profile row into the compact strip payload."""
-    now = datetime.utcnow()
-    is_stale = profile.calculated_at is not None and (
-        now - profile.calculated_at
-    ) > timedelta(hours=STALE_AFTER_HOURS)
+    is_stale = is_profile_stale(profile.calculated_at)
     return ContextStripView(
         scope_kind=profile.scope_kind,
         scope_key=profile.scope_key,

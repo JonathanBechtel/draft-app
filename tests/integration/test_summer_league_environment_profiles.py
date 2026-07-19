@@ -160,8 +160,8 @@ async def _final_game(
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     game_date: date,
-    home_score: int,
-    away_score: int,
+    home_score: int | None,
+    away_score: int | None,
     status: SummerLeagueGameStatus = SummerLeagueGameStatus.FINAL,
     status_text: str | None = None,
 ) -> SummerLeagueGame:
@@ -337,6 +337,59 @@ async def test_competition_projection_matches_pooled_source(
         db_session, EnvironmentScope.for_season(2025)
     )
     assert season is None
+
+
+async def test_non_final_games_disclosed_in_scheduled_count(
+    db_session: AsyncSession,
+) -> None:
+    """SCHEDULED plus IN_PROGRESS/POSTPONED/CANCELED/UNKNOWN all disclose as
+    "Scheduled / not-final" (contract §3) -- none silently vanish from
+    pooling just because only SCHEDULED status has its own accumulator.
+    """
+    comp_id, _ = await _seed_competition(
+        db_session, year=2025, venue="las_vegas", league_id="15", n_games=1
+    )
+    comp = (
+        await db_session.execute(
+            select(SummerLeagueCompetition).where(
+                SummerLeagueCompetition.id == comp_id
+            )
+        )
+    ).scalar_one()
+    team_a = await _team(db_session, comp_id, 3)
+    team_b = await _team(db_session, comp_id, 4)
+    # One of each non-final status alongside the one FINAL game already seeded.
+    for status in (
+        SummerLeagueGameStatus.SCHEDULED,
+        SummerLeagueGameStatus.IN_PROGRESS,
+        SummerLeagueGameStatus.POSTPONED,
+        SummerLeagueGameStatus.CANCELED,
+        SummerLeagueGameStatus.UNKNOWN,
+    ):
+        await _final_game(
+            db_session,
+            comp_id=comp_id,
+            home=team_a,
+            away=team_b,
+            game_date=comp.starts_on,
+            home_score=None,
+            away_score=None,
+            status=status,
+        )
+    await db_session.commit()
+
+    async with db_session.begin():
+        result = await rebuild_environment_profiles(db_session, competition_id=comp_id)
+    assert result.built_scopes == 1
+    assert result.failed_scopes == 0
+
+    profile = await get_environment_profile(
+        db_session, EnvironmentScope.for_competition(comp_id, 2025)
+    )
+    assert profile is not None
+    assert profile.final_games == 1
+    # All 5 non-final statuses disclosed, not just the literal SCHEDULED one.
+    assert profile.scheduled_games == 5
 
 
 # --------------------------------------------------------------------------- #

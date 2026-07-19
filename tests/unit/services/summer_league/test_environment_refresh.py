@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from app.services import summer_league_environment_registry as registry_mod
 from app.services.summer_league import environment_refresh as refresh_mod
 from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league_environment_service import EnvironmentRebuildResult
@@ -59,7 +60,7 @@ def test_is_environment_profile_stale_within_threshold(
 ) -> None:
     """A profile computed well inside the threshold is not stale."""
     monkeypatch.setattr(
-        refresh_mod.settings, "summer_league_environment_stale_after_hours", 48
+        registry_mod.settings, "summer_league_environment_stale_after_hours", 48
     )
     now = datetime(2026, 7, 19, 12, 0, tzinfo=timezone.utc)
     calculated_at = now - timedelta(hours=10)
@@ -71,7 +72,7 @@ def test_is_environment_profile_stale_past_threshold(
 ) -> None:
     """A profile computed beyond the threshold is flagged stale."""
     monkeypatch.setattr(
-        refresh_mod.settings, "summer_league_environment_stale_after_hours", 48
+        registry_mod.settings, "summer_league_environment_stale_after_hours", 48
     )
     now = datetime(2026, 7, 19, 12, 0, tzinfo=timezone.utc)
     calculated_at = now - timedelta(hours=49)
@@ -83,7 +84,7 @@ def test_is_environment_profile_stale_exactly_at_threshold_is_not_stale(
 ) -> None:
     """The boundary itself (exactly the threshold) is not yet stale (strict >)."""
     monkeypatch.setattr(
-        refresh_mod.settings, "summer_league_environment_stale_after_hours", 48
+        registry_mod.settings, "summer_league_environment_stale_after_hours", 48
     )
     now = datetime(2026, 7, 19, 12, 0, tzinfo=timezone.utc)
     calculated_at = now - timedelta(hours=48)
@@ -95,7 +96,7 @@ def test_is_environment_profile_stale_naive_timestamps_treated_as_utc(
 ) -> None:
     """Naive datetimes (as stored on the schema) are compared as UTC, not local time."""
     monkeypatch.setattr(
-        refresh_mod.settings, "summer_league_environment_stale_after_hours", 48
+        registry_mod.settings, "summer_league_environment_stale_after_hours", 48
     )
     now_naive = datetime(2026, 7, 19, 12, 0)  # no tzinfo, mirrors stored calculated_at
     calculated_naive = now_naive - timedelta(hours=49)
