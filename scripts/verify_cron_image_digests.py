@@ -19,20 +19,33 @@ a human has to notice by manually diffing machine images.
 
 **Never writes.** Only calls ``flyctl machine list --json`` (a read).
 
+Also importable as a routine, non-deploy-gated monitoring check
+(:func:`run_monitoring_check`, or ``--report-only`` from the CLI): unlike
+:func:`verify_cron_image_digests` (deploy-gating -- returns just the
+mismatched names, and the CLI's default mode exits 1 on drift),
+:func:`run_monitoring_check` always completes and logs one structured record
+per machine via the module logger, so a periodic monitoring cron can run this
+same digest check on a schedule and have drift show up as a greppable log
+line without failing the job that observed it.
+
 Run:
   python scripts/verify_cron_image_digests.py --app draft-app-prod
   python scripts/verify_cron_image_digests.py --app draft-app-prod \\
       --machine summer-league-desk-cron --optional-machine summer-league-desk-cron
+  python scripts/verify_cron_image_digests.py --app draft-app-prod --report-only
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import logging
 import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence
+
+logger = logging.getLogger(__name__)
 
 # The three Summer League cron machines this ticket's spec names explicitly.
 # `summer-league-desk-cron` is readiness-gated (#536) and may legitimately not
@@ -199,6 +212,70 @@ def verify_cron_image_digests(
     return [status.name for status in statuses if not status.matches]
 
 
+def _log_machine_status(status: MachineImageStatus) -> None:
+    """Emit one structured log record for a machine's digest comparison.
+
+    Mirrors ``PipelineTelemetry.step``'s "one structured log record per
+    observation" philosophy (see
+    ``app.services.summer_league.pipeline_telemetry``), but this script runs
+    as a standalone ``flyctl``-shelling CLI outside the async DB pipeline --
+    no ``AsyncSession``, no pipeline ``job``/``run_id`` -- so it cannot
+    import and use ``PipelineTelemetry`` directly. This is the comparable
+    structured line for that context: greppable ``key=value`` fields, one
+    record per machine, logged through the standard ``logging`` module
+    (rather than ``print``, which :func:`main`'s CLI report continues to use
+    for the human-readable summary) so it composes with whatever log
+    aggregation the calling cron already has.
+    """
+    outcome = (
+        "matched" if status.matches else ("missing" if not status.found else "drift")
+    )
+    logger.info(
+        "summer_league_cron_image_status machine=%s outcome=%s "
+        "current_image=%s expected_image=%s",
+        status.name,
+        outcome,
+        status.current_image,
+        status.expected_image,
+    )
+
+
+def run_monitoring_check(
+    app: str, expected_machine_names: Optional[Sequence[str]] = None
+) -> list[MachineImageStatus]:
+    """Non-failing routine check: log every machine's current-vs-desired digest.
+
+    Unlike :func:`verify_cron_image_digests` (deploy-gating -- returns only
+    the mismatched/missing names, for a caller that wants to fail a deploy
+    on drift), this is meant for a periodic monitoring cron: it logs one
+    structured record (:func:`_log_machine_status`) per machine -- matched
+    ones included, not just drifted ones, since routine monitoring wants
+    full visibility -- and never raises or signals failure over drift
+    itself. Only an actual inability to query Fly (:class:`FlyctlError`)
+    propagates; that is a real operational problem this check cannot paper
+    over.
+
+    Args:
+        app: Fly app name, e.g. ``"draft-app-prod"``.
+        expected_machine_names: Cron machine names to check; defaults to
+            :data:`DEFAULT_SUMMER_LEAGUE_CRON_MACHINES`.
+
+    Returns:
+        Every machine's :class:`MachineImageStatus`, for a caller that wants
+        to do more than log (e.g. push to a dashboard/metrics sink).
+
+    Raises:
+        FlyctlError: if ``flyctl machine list`` cannot be run or its output
+            can't be parsed.
+    """
+    names = expected_machine_names or DEFAULT_SUMMER_LEAGUE_CRON_MACHINES
+    machines = _run_flyctl_machine_list(app)
+    statuses = build_machine_statuses(machines, names)
+    for status in statuses:
+        _log_machine_status(status)
+    return statuses
+
+
 def _format_report(statuses: list[MachineImageStatus]) -> str:
     """Human-readable, CI-log-friendly rendering of the per-machine statuses."""
     lines = ["Summer League cron image digest verification:"]
@@ -248,6 +325,17 @@ def build_parser() -> argparse.ArgumentParser:
             "regardless of this flag."
         ),
     )
+    parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help=(
+            "Run as a non-failing routine monitoring check (see "
+            "run_monitoring_check): log every machine's current-vs-desired "
+            "digest and always exit 0, even on drift. For a periodic "
+            "monitoring cron -- the default (gating) mode below still exits "
+            "1 on drift and remains the right choice for post-deploy CI."
+        ),
+    )
     return parser
 
 
@@ -257,6 +345,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     expected_machine_names = args.machines or list(DEFAULT_SUMMER_LEAGUE_CRON_MACHINES)
     optional_machines = set(args.optional_machines)
+
+    if args.report_only:
+        try:
+            statuses = run_monitoring_check(args.app, expected_machine_names)
+        except FlyctlError as exc:
+            print(f"::error::{exc}", flush=True)
+            return 1
+        print(_format_report(statuses), flush=True)
+        return 0
 
     try:
         machines = _run_flyctl_machine_list(args.app)
