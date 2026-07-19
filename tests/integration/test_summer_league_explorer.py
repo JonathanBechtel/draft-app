@@ -7,6 +7,8 @@ pagination, the partial (JS-swap) render path, and the not-yet-available subject
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import date
 
 import pytest
@@ -5611,13 +5613,25 @@ async def test_competitions_csv_and_table_values_agree(
         "/stats/summer-league/explorer"
         "?subject=competitions&profile_scope=competition&format=csv"
     )
-    lines = resp.text.splitlines()
-    header = lines[0].split(",")
+    # Parse with csv.reader (not a naive comma-split): quoted fields may
+    # contain commas (e.g. metric interpretation text), and the export
+    # appends a blank separator line before the "# Metric definitions"
+    # trailer (contract §6), which a plain str.split(",") mishandles.
+    all_rows = list(csv.reader(io.StringIO(resp.text)))
+    header = all_rows[0]
     year_idx = header.index("Year")
-    matching = [line for line in lines[1:] if line.split(",")[year_idx] == "2024" and "Las Vegas" in line]
+    data_rows: list[list[str]] = []
+    for row in all_rows[1:]:
+        if not row:  # blank separator before the "# Metric definitions" trailer
+            break
+        data_rows.append(row)
+    matching = [
+        row for row in data_rows
+        if len(row) > year_idx and row[year_idx] == "2024" and "Las Vegas" in row
+    ]
     assert matching, "expected a 2024 Las Vegas CSV row"
     final_gp_idx = header.index("Final GP")
-    assert matching[0].split(",")[final_gp_idx] == str(vegas_row.values["final_games"])
+    assert matching[0][final_gp_idx] == str(vegas_row.values["final_games"])
 
 
 @pytest.mark.asyncio
