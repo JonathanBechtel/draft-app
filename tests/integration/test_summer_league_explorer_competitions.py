@@ -170,6 +170,41 @@ async def test_invalid_metric_filter_degrades_safely(
     assert "2024 Summer League" in resp.text  # unfiltered result still shows
 
 
+async def test_invalid_metric_filter_shows_visible_validation_state(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A dropped predicate is never silent — the page names what was ignored
+    (ticket #636). Both a bogus key and an incomplete predicate surface."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&fcol0=not_a_metric&fop0=gte&fval0=abc"
+    )
+    assert resp.status_code == 200
+    assert "could not be applied and were ignored" in resp.text
+    assert "not_a_metric" in resp.text
+
+    resp2 = await app_client.get(
+        f"{EXPLORER}?subject=competitions&fcol0=pace_per_48"  # fop0/fval0 missing
+    )
+    assert resp2.status_code == 200
+    assert "could not be applied and were ignored" in resp2.text
+
+
+async def test_malformed_year_range_recorded_year_max_still_applies(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A malformed year_min never erases a valid, sibling year_max constraint."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=season&year_min=nope&year_max=2024"
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    assert "could not be applied and were ignored" in html
+    assert "2024 Summer League" in html
+    assert "2025 Summer League" not in html  # year_max=2024 still narrows the list
+
+
 # --------------------------------------------------------------------------- #
 # Detail — identity, five sections, membership, definitions, coverage
 # --------------------------------------------------------------------------- #
@@ -232,6 +267,62 @@ async def test_competition_id_authoritative_over_stale_year(
     result = await run_explorer_query(db_session, q)
     assert result.competition_detail is not None
     assert result.competition_detail.year == 2025
+
+
+async def test_competition_id_canonicalizes_stale_venue_after_resolution(
+    db_session: AsyncSession,
+) -> None:
+    """An inconsistent venue is cleared/corrected only after competition_id
+    resolves — never left in place to narrow the list away from (or blend the
+    trend series away from) the competition the link names (ticket #636)."""
+    refs = await _seed(db_session)
+    cid = refs.competition_ids["cc2024"]  # california_classic, not las_vegas
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": str(cid),
+            "venue": "las_vegas",
+        }
+    )
+    assert q.venue == "las_vegas"  # parse_query alone can't resolve identity
+    result = await run_explorer_query(db_session, q)
+    assert result.competition_detail is not None
+    assert result.competition_detail.competition_id == cid
+    assert result.competition_detail.venue_slug == "california_classic"
+    # Canonicalized in place: the list/trend downstream now agree with detail.
+    assert q.venue == "california_classic"
+    assert q.validation_errors
+    labels = {r.label for r in result.rows}
+    assert "2024 California Classic" in labels
+    # The stale las_vegas constraint never silently narrowed the corrected
+    # list away from the authoritative competition, nor broadened it to
+    # include every las_vegas edition unrelated to this competition_id.
+    assert "2024 Las Vegas" not in labels
+
+
+async def test_competition_id_canonicalizes_stale_year_range(
+    db_session: AsyncSession,
+) -> None:
+    """An inconsistent year range is cleared, never broadened, once
+    competition_id resolves to a year outside it (ticket #636)."""
+    refs = await _seed(db_session)
+    cid = refs.competition_ids["cc2024"]  # year 2024
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": str(cid),
+            "year_min": "2025",
+            "year_max": "2025",
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    assert result.competition_detail is not None
+    assert result.competition_detail.year == 2024
+    assert q.year_min is None
+    assert q.year_max is None
+    assert q.validation_errors
 
 
 async def test_every_metric_exposes_definition(
@@ -462,7 +553,9 @@ async def test_empty_scope_no_rows_no_error(
 async def test_unknown_competition_id_no_detail(
     db_session: AsyncSession,
 ) -> None:
-    """An unknown competition_id resolves no detail rather than erroring."""
+    """An unknown competition_id resolves no detail rather than erroring, and
+    never falls through to the unrelated, unscoped competition table — the
+    exact silent-broadening bug this ticket fixes (contract §6; #636)."""
     await _seed(db_session)
     q = parse_query(
         {
@@ -473,6 +566,75 @@ async def test_unknown_competition_id_no_detail(
     )
     result = await run_explorer_query(db_session, q)
     assert result.competition_detail is None
+    assert result.competition_not_found is True
+    # Proves the old broadening behavior is impossible: no unrelated rows,
+    # no unfiltered "every competition" fallback.
+    assert result.rows == []
+    assert result.total == 0
+    assert result.competition_trend is None
+
+
+async def test_unknown_competition_id_html_shows_error_not_full_table(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The rendered page explains the problem and never shows the full,
+    unrelated competition table for a stale/mistyped competition_id link."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=competition&competition_id=999999"
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    assert "could not be found" in html.lower()
+    # None of the seed's other competitions leak into a "broadened" table.
+    # ("2025 Las Vegas" is not checked here — it also appears verbatim in the
+    # page's static "e.g. 2025 Las Vegas" row-grain hint copy, so that
+    # substring isn't a reliable signal of a leaked table row.)
+    assert "0 results" in html
+    assert "2024 Las Vegas" not in html
+    assert "2024 California Classic" not in html
+
+
+async def test_unknown_competition_id_partial_agrees_with_full_page(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The ``?partial=1`` fragment shows the same not-found state as the full
+    page — full, partial, and (checked separately) CSV never disagree."""
+    await _seed(db_session)
+    full = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=competition&competition_id=999999"
+    )
+    partial = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=competition&competition_id=999999&partial=1"
+    )
+    assert full.status_code == 200
+    assert partial.status_code == 200
+    assert "could not be found" in full.text.lower()
+    assert "could not be found" in partial.text.lower()
+
+
+async def test_unknown_competition_id_csv_has_no_rows_and_explains(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """CSV export shares the same validation/canonicalization path as HTML —
+    an unknown competition_id never ships an unrelated CSV of every
+    competition, and the export explains why the sheet is empty."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=competition"
+        "&competition_id=999999&format=csv"
+    )
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.text)))
+    header, data_rows = rows[0], rows[1:]
+    assert header[0] == "Scope"
+    # No data rows for any competition — the header is immediately followed
+    # by the explanatory notes block.
+    assert data_rows[0] == []
+    assert data_rows[1] == ["# Notes"]
+    assert "could not be found" in data_rows[2][0].lower()
+    assert "2024 Las Vegas" not in resp.text
+    assert "2024 California Classic" not in resp.text
 
 
 async def test_html_render_within_query_budget(

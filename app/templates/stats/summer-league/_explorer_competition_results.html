@@ -19,9 +19,35 @@
     {% endif %}
   </p>
 
+  {# ── Invalid-parameter validation state (ticket #636) ───────────────────
+     Malformed identifiers/ranges/metric keys and incomplete predicates are
+     dropped during parsing, but never silently — this banner names exactly
+     what was ignored so a stale/mistyped shared link can never look like it
+     applied cleanly. #}
+  {% if q.validation_errors %}
+  <div class="slg-explorer-banner slg-explorer-banner--warn" role="alert">
+    <span class="slg-explorer-banner__icon">&#9888;</span>
+    <span class="slg-explorer-banner__text">
+      Some parameters in this link could not be applied and were ignored:
+      <ul class="slg-comp-validation-list">
+        {% for message in q.validation_errors %}<li>{{ message }}</li>{% endfor %}
+      </ul>
+    </span>
+  </div>
+  {% endif %}
+
+  {# ── Unknown competition_id: explicit error state, never an unrelated
+     unscoped table (contract §6; ticket #636) ────────────────────────────── #}
+  {% if result.competition_not_found %}
+  <p class="slg-empty slg-comp-not-found" role="alert">
+    This competition could not be found. It may have been removed, or the link may be out of date.
+    <a href="/stats/summer-league/explorer?subject=competitions">Browse all competitions</a>.
+  </p>
+  {% endif %}
+
   {# Competition scope with no venue selected: prompt before charting a trend
      so unrelated venues are never blended into one line (contract §6). #}
-  {% if is_competition_scope and not q.venue and not detail %}
+  {% if is_competition_scope and not q.venue and not detail and not result.competition_not_found %}
   <p class="slg-comp-hint">Pick a venue or open a competition to chart a single-series trend. The table below still lists every competition edition.</p>
   {% endif %}
 
@@ -75,7 +101,13 @@
             {% endfor %}
           </tr>
           {% else %}
-          <tr><td colspan="{{ table_cols|length + 1 }}" class="slg-empty">No competition profiles match these filters.{% if q.coverage != 'all' or q.metric_filters %} Try relaxing coverage or stat thresholds.{% endif %}</td></tr>
+          <tr><td colspan="{{ table_cols|length + 1 }}" class="slg-empty">
+            {%- if result.competition_not_found -%}
+            The requested competition could not be found.
+            {%- else -%}
+            No competition profiles match these filters.{% if q.coverage != 'all' or q.metric_filters %} Try relaxing coverage or stat thresholds.{% endif %}
+            {%- endif -%}
+          </td></tr>
           {% endfor %}
         </tbody>
       </table>

@@ -47,6 +47,22 @@
 }
 .slg-comp-na { color: var(--color-slate-400, #94a3b8); }
 
+/* ── Invalid-parameter validation state (ticket #636) ────────────────────── */
+.slg-comp-validation-list {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+.slg-comp-not-found {
+  font-size: 0.85rem;
+  color: var(--color-amber-800, #92400e);
+  background: var(--color-amber-50, #fffbeb);
+  border-left: 3px solid var(--color-amber-400, #fbbf24);
+  padding: 0.6rem 0.9rem;
+  border-radius: 0 4px 4px 0;
+  margin: 0.4rem 0;
+}
+.slg-comp-not-found a { color: inherit; font-weight: 600; }
+
 /* ── Row table extras ────────────────────────────────────────────────────── */
 .slg-comp-table tbody tr.is-selected th.slg-explorer__label,
 .slg-comp-table tbody tr.is-selected td {

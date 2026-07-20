@@ -224,6 +224,24 @@ def _explorer_csv(result: object) -> StreamingResponse:
             ]
         )
 
+    # Competition Context CSV surfaces the same invalid-parameter notes as the
+    # HTML view so a downloaded export never looks cleaner than the page it
+    # came from (ticket #636; contract §6).
+    if result.subject == "competitions" and (
+        result.competition_not_found or result.query.validation_errors
+    ):
+        writer.writerow([])
+        writer.writerow(["# Notes"])
+        if result.competition_not_found:
+            writer.writerow(
+                [
+                    "This competition could not be found. It may have been "
+                    "removed, or the link may be out of date."
+                ]
+            )
+        for message in result.query.validation_errors:
+            writer.writerow([message])
+
     # Competition Context CSV also ships the metric definition dictionary so the
     # export is self-describing (contract §6: values + definitions/units +
     # coverage + freshness + version, matching the HTML detail definitions).

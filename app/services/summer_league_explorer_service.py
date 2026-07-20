@@ -1390,15 +1390,18 @@ _PLAYER_GAME_STAT_COLUMNS: list[ExplorerColumn] = [
 
 
 def parse_metric_filters(
-    params: dict[str, str], valid_keys: frozenset[str] = _FILTERABLE_KEYS
+    params: dict[str, str],
+    valid_keys: frozenset[str] = _FILTERABLE_KEYS,
+    errors: Optional[list[str]] = None,
 ) -> list[MetricFilter]:
     """Parse ``fcol0/fop0/fval0`` … ``fcol2/fop2/fval2`` into validated filters.
 
     Accepts up to 3 indexed filter rows. Each filter needs a filterable key
     (``fcol{i}``) present in ``valid_keys``, a valid operator (``fop{i}``:
-    ``"gte"`` or ``"lte"``), and a numeric threshold (``fval{i}``). Invalid
-    predicates are silently dropped — this function never raises; other valid
-    filters still apply.
+    ``"gte"`` or ``"lte"``), and a numeric threshold (``fval{i}``). Invalid or
+    incomplete predicates are dropped — this function never raises; other
+    valid filters still apply and are never broadened by a sibling row's
+    failure.
 
     ``valid_keys`` defaults to the player catalog's filterable columns; the
     Competition Context subject (#607) passes the registry's
@@ -1409,6 +1412,11 @@ def parse_metric_filters(
     Args:
         params: Raw URL query-string params (one value per key).
         valid_keys: The set of column/metric keys eligible for this subject.
+        errors: When provided, a human-readable note is appended for every row
+            that was *attempted* (at least one of ``fcol``/``fop``/``fval``
+            set) but dropped — unknown key, bad operator, non-numeric value,
+            or an incomplete predicate (ticket #636). A fully blank row is not
+            an error; it was simply never used.
 
     Returns:
         List of up to 3 validated :class:`MetricFilter` instances (may be empty).
@@ -1419,16 +1427,30 @@ def parse_metric_filters(
         col = params.get(f"fcol{i}", "").strip()
         op_raw = params.get(f"fop{i}", "").strip()
         val_str = params.get(f"fval{i}", "").strip()
+        if not col and not op_raw and not val_str:
+            continue
         if not col or not op_raw or not val_str:
+            if errors is not None:
+                errors.append(f"Filter {i + 1} is incomplete and was ignored.")
             continue
         if col not in valid_keys:
+            if errors is not None:
+                errors.append(f"'{col}' is not a valid filter metric and was ignored.")
             continue
         op = _OP_MAP.get(op_raw)
         if op is None:
+            if errors is not None:
+                errors.append(
+                    f"'{op_raw}' is not a valid filter operator and was ignored."
+                )
             continue
         try:
             value = float(val_str)
         except ValueError:
+            if errors is not None:
+                errors.append(
+                    f"'{val_str}' is not a valid number for filter {i + 1} and was ignored."
+                )
             continue
         filters.append(MetricFilter(col=col, op=op, value=value))
     return filters
@@ -1695,6 +1717,11 @@ class ExplorerQuery:
     competition_id: Optional[int] = None
     # Selects which season row the detail panel shows (profile_scope="season").
     detail_year: Optional[int] = None
+    # Human-readable notes for malformed/unknown identifiers, ranges, metric
+    # keys, and incomplete predicates that were dropped during parsing or
+    # canonicalization. Rendered as a visible banner so a stale/mistyped
+    # shared link never *looks* like it applied cleanly (ticket #636).
+    validation_errors: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -1943,6 +1970,12 @@ class ExplorerResult:
     # it yet — distinct from an out-of-range/ambiguous query, which leaves
     # both this and ``context_strip`` at their default (nothing shown).
     context_strip_unavailable: bool = False
+    # True when subject="competitions", profile_scope="competition", and the
+    # requested ``competition_id`` does not resolve to any current profile
+    # (unknown/removed/stale link). Rows are forced empty in this case — the
+    # list never falls through to an unrelated, unscoped competition table
+    # (ticket #636; contract §6).
+    competition_not_found: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -2011,8 +2044,20 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     round_type = params.get("round_type") or None
     undrafted = params.get("undrafted") == "1"
 
-    year_min = _to_int(params.get("year_min"))
-    year_max = _to_int(params.get("year_max"))
+    # Malformed identifiers/ranges are dropped (mirrors every other degrade-off
+    # param below) but the drop is recorded so the Competition Context surface
+    # can show a visible validation state instead of a silent no-op (#636).
+    validation_errors: list[str] = []
+
+    def _to_int_tracked(key: str, label: str) -> Optional[int]:
+        raw = params.get(key)
+        value = _to_int(raw)
+        if raw and value is None:
+            validation_errors.append(f"'{raw}' is not a valid {label} and was ignored.")
+        return value
+
+    year_min = _to_int_tracked("year_min", "year")
+    year_max = _to_int_tracked("year_max", "year")
 
     # Advanced composite sort keys (PER/ORtg/DRtg/BPM/WS/VORP) are computed by the
     # career and per_competition queries but NOT available in the per_game SELECT
@@ -2028,13 +2073,15 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     if draft_class is not None and draft_class > _max_plausible_draft_class():
         draft_class = None
 
-    min_games = _to_int(params.get("min_gp"))
+    min_games = _to_int_tracked("min_gp", "game count")
     min_minutes = _to_int(params.get("min_min"))
     page = _to_int(params.get("page")) or 1
 
     is_competitions = subject == "competitions"
     metric_filters = parse_metric_filters(
-        params, _COMPETITION_FILTERABLE_KEYS if is_competitions else _FILTERABLE_KEYS
+        params,
+        _COMPETITION_FILTERABLE_KEYS if is_competitions else _FILTERABLE_KEYS,
+        errors=validation_errors if is_competitions else None,
     )
     if grain == "per_game":
         metric_filters = [
@@ -2059,8 +2106,12 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     )
     trend_metric_raw = params.get("trend_metric") or None
     trend_metric = trend_metric_raw if trend_metric_raw in _ALL_METRIC_KEYS else None
-    competition_id = _to_int(params.get("competition_id"))
-    detail_year = _to_int(params.get("detail_year"))
+    if is_competitions and trend_metric_raw and trend_metric is None:
+        validation_errors.append(
+            f"'{trend_metric_raw}' is not a registered metric and was ignored."
+        )
+    competition_id = _to_int_tracked("competition_id", "competition identifier")
+    detail_year = _to_int_tracked("detail_year", "year")
     if is_competitions:
         # Season scope always clears venue/competition_id during
         # canonicalization — an all-competitions profile pools every venue,
@@ -2117,6 +2168,7 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         trend_metric=trend_metric,
         competition_id=competition_id,
         detail_year=detail_year,
+        validation_errors=validation_errors,
     )
 
 
@@ -4103,6 +4155,48 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
     metric_defs = metrics_for_scope(scope_kind)
     metric_by_key = {d.key: d for d in metric_defs}
 
+    # ---- Competition identity resolves first, before the list is scoped
+    # (contract §6; ticket #636). ``competition_id`` is authoritative:
+    #   * unknown/removed id -> fail safe with an explicit empty state; the
+    #     list must never fall through to an unrelated, unscoped table just
+    #     because the detail panel came up empty.
+    #   * resolved id -> any inconsistent venue/year the caller also supplied
+    #     is stale relative to the authoritative identity and is *cleared*,
+    #     never left in place to silently narrow the list away from (or the
+    #     trend series away from) the very competition the link named.
+    detail_view: Optional[_CompetitionProfileView] = None
+    if scope_kind == SCOPE_KIND_COMPETITION and q.competition_id is not None:
+        detail_view = await _resolve_competition_detail(
+            db, q.competition_id, metric_defs
+        )
+        if detail_view is None:
+            return ExplorerResult(
+                subject="competitions",
+                available=True,
+                columns=columns,
+                rows=[],
+                total=0,
+                page=1,
+                page_size=PAGE_SIZE,
+                has_next=False,
+                facets=ExplorerFacets(),  # filled by run_explorer_query
+                query=q,
+                competition_not_found=True,
+            )
+        if q.venue is not None and q.venue != detail_view.venue_slug:
+            q.validation_errors.append(
+                "The venue filter did not match the selected competition and was cleared."
+            )
+            q.venue = detail_view.venue_slug
+        if (q.year_min is not None and detail_view.year < q.year_min) or (
+            q.year_max is not None and detail_view.year > q.year_max
+        ):
+            q.validation_errors.append(
+                "The year range did not include the selected competition and was cleared."
+            )
+            q.year_min = None
+            q.year_max = None
+
     profiles = await list_current_profiles(
         db,  # type: ignore[arg-type]
         scope_kind="competition"
@@ -4158,13 +4252,10 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
     )
 
     # ---- Selected detail (authoritative resolution, independent of the
-    # active filter/pagination scope — contract §6) ----
-    detail_view: Optional[_CompetitionProfileView] = None
-    if scope_kind == SCOPE_KIND_COMPETITION and q.competition_id is not None:
-        detail_view = await _resolve_competition_detail(
-            db, q.competition_id, metric_defs
-        )
-    elif scope_kind == SCOPE_KIND_SEASON and q.detail_year is not None:
+    # active filter/pagination scope — contract §6). Competition detail was
+    # already resolved above (identity-first ordering); only season detail
+    # remains to look up here. ----
+    if scope_kind == SCOPE_KIND_SEASON and q.detail_year is not None:
         detail_view = next((v for v in filtered_views if v.year == q.detail_year), None)
         if detail_view is None:
             detail_view = await _resolve_season_detail(db, q.detail_year, metric_defs)
