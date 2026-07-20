@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.nba_teams import NbaTeam as _NbaTeam  # noqa: F401
@@ -55,6 +56,14 @@ from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP
 # positions under 300 total minutes).
 MAX_PLAUSIBLE_PLAYER_SECONDS = 70 * 60
 MAX_PLAUSIBLE_TEAM_MINUTES = 350
+
+# Row count per chunked INSERT ... ON CONFLICT statement issued by the bulk
+# shot/PBP upsert helpers below (#627). Batches are already bounded to
+# EVENT_BATCH_SIZE=8 games by the ingest runner (#625), so a single chunk
+# normally covers a whole call; chunking is kept for the explicit
+# full-reconciliation path (``game_ids=None``), which can still process a
+# whole venue -- and its ~10k shot events -- in one call.
+BULK_UPSERT_CHUNK_SIZE = 500
 
 
 @dataclass(frozen=True)
@@ -206,6 +215,20 @@ class ParsedPBPEvent:
     person2_nba_id: str | None
     person3_nba_id: str | None
     description: str | None
+
+
+@dataclass(frozen=True)
+class _SourcePlayerRef:
+    """Lightweight identity + resolution snapshot for one bulk-upserted source player.
+
+    Returned by :func:`_bulk_upsert_source_players` instead of a full
+    ``SummerLeagueSourcePlayer`` ORM instance -- the shot-event row builder
+    only ever needs the row's ``id`` (FK target) and ``canonical_player_id``
+    (copied onto the shot's ``player_id``).
+    """
+
+    id: int
+    canonical_player_id: int | None
 
 
 @dataclass(frozen=True)
@@ -639,6 +662,35 @@ async def normalize_player_game_logs(
     )
 
 
+def _raise_availability_flag(
+    competition: SummerLeagueCompetition,
+    attr: str,
+    *,
+    has_events: bool,
+    game_ids: set[str] | None,
+) -> None:
+    """Set availability from actual parsed rows, not file presence.
+
+    Shared by :func:`normalize_shot_events`/:func:`normalize_pbp_events`. A
+    batch call (``game_ids`` set) only ever raises the flag -- it must never
+    downgrade it back to ``False`` just because *this batch's* games
+    happened to have no events while an earlier, already-committed batch
+    did. Only a whole-venue call (``game_ids=None``, matching prior behavior
+    exactly) may set it back to ``False``.
+
+    Args:
+        competition: The competition row to update in place.
+        attr: ``"shotchart_available"`` or ``"pbp_available"``.
+        has_events: Whether this call's batch had at least one parsed event.
+        game_ids: The batch's game-id filter, or ``None`` for a whole-venue
+            call.
+    """
+    if has_events:
+        setattr(competition, attr, True)
+    elif game_ids is None:
+        setattr(competition, attr, False)
+
+
 async def normalize_shot_events(
     db: AsyncSession,
     *,
@@ -646,6 +698,7 @@ async def normalize_shot_events(
     league_id: str,
     raw_root: Path,
     limit_games: int | None = None,
+    game_ids: set[str] | None = None,
 ) -> SummerLeagueShotEventReport:
     """Normalize shot events from shotchartdetail snapshots for one slice.
 
@@ -662,7 +715,15 @@ async def normalize_shot_events(
         year: Competition year.
         league_id: NBA.com LeagueID string.
         raw_root: Root directory for raw NBA Stats snapshots.
-        limit_games: Optional cap on games processed (for testing).
+        limit_games: Optional cap on the first N discovered games (by manifest
+            order) processed -- test-only, see :func:`_limited_game_ids`.
+        game_ids: Optional explicit set of game IDs to process, e.g. one
+            batch of a larger venue (see
+            ``app.cli.summer_league_ingest_runner``). Distinct from
+            ``limit_games``: this selects an arbitrary subset rather than a
+            prefix of the discovery order. When both are given, only games
+            satisfying both filters are processed. ``None`` (the default)
+            processes every game, exactly like before this parameter existed.
 
     Returns:
         Structured report with upsert counts.
@@ -672,11 +733,14 @@ async def normalize_shot_events(
         raise RuntimeError("Competition id was not populated")
 
     season_dir = raw_root / f"{year}/{league_id}"
-    limited_game_ids = _limited_game_ids(
-        raw_root=raw_root,
-        year=year,
-        league_id=league_id,
-        limit_games=limit_games,
+    effective_game_ids = _combine_game_id_filters(
+        _limited_game_ids(
+            raw_root=raw_root,
+            year=year,
+            league_id=league_id,
+            limit_games=limit_games,
+        ),
+        game_ids,
     )
     games_by_source_id = await _games_by_source_id(db, competition.id)
     teams_by_source_id = await _teams_by_source_id(db, competition.id)
@@ -691,16 +755,21 @@ async def normalize_shot_events(
     box_rows_by_game: dict[str, list[ParsedPlayerBoxRow]] = {}
     for box_row in (
         *parse_player_gamelog_box_rows(season_dir / "leaguegamelog_player.json"),
-        *parse_player_box_rows(season_dir, game_ids=limited_game_ids),
+        *parse_player_box_rows(season_dir, game_ids=effective_game_ids),
     ):
         box_rows_by_game.setdefault(box_row.game_id, []).append(box_row)
 
-    total_upserted = 0
     games_processed = 0
     games_with_shots = 0
     games_root = season_dir / "games"
 
-    for game_dir in _iter_game_dirs(games_root, limited_game_ids):
+    # Pass 1: parse + crosswalk-remap every game's shots up front (no DB
+    # writes yet). ``pending`` holds every shot row this call will write,
+    # paired with its already-resolved ``SummerLeagueGame`` row, so the
+    # identity/write passes below can operate on the whole batch at once
+    # instead of once per event (#627).
+    pending: list[tuple[SummerLeagueGame, ParsedShotEvent]] = []
+    for game_dir in _iter_game_dirs(games_root, effective_game_ids):
         nba_game_id = game_dir.name
         shot_path = game_dir / "shotchartdetail.json"
         if not shot_path.exists():
@@ -732,36 +801,80 @@ async def normalize_shot_events(
             continue
 
         games_with_shots += 1
-        for shot_row in shot_rows:
-            source_player = await _upsert_source_player(
-                db,
-                ParsedPlayerGamelogRow(
-                    nba_stats_person_id=shot_row.nba_stats_person_id,
-                    raw_player_name=shot_row.raw_player_name,
-                    nba_stats_team_id=shot_row.nba_stats_team_id,
-                ),
-                year=year,
-            )
-            await db.flush()
+        pending.extend((game, shot_row) for shot_row in shot_rows)
 
-            team = teams_by_source_id.get(shot_row.nba_stats_team_id)
-            if team is None or team.id is None or source_player.id is None:
-                continue
+    # Pass 2: preload/bulk-upsert every distinct source-player identity this
+    # batch touches in one chunked statement (mirrors ``_upsert_source_player``
+    # semantics exactly -- last-row-wins per person id, same as the row loop
+    # it replaces, since a dict keyed by person id keeps only the final
+    # write). Note this runs even for a shot whose team never resolves below,
+    # matching the original loop's unconditional ``_upsert_source_player``
+    # call before its team/source-player guard.
+    identities: dict[str, ParsedPlayerGamelogRow] = {}
+    for _game, shot_row in pending:
+        identities[shot_row.nba_stats_person_id] = ParsedPlayerGamelogRow(
+            nba_stats_person_id=shot_row.nba_stats_person_id,
+            raw_player_name=shot_row.raw_player_name,
+            nba_stats_team_id=shot_row.nba_stats_team_id,
+        )
+    source_refs = await _bulk_upsert_source_players(db, identities, year=year)
 
-            await _upsert_shot_event(
-                db,
-                competition.id,
-                game.id,
-                team.id,
-                source_player,
-                shot_row,
-            )
-            total_upserted += 1
+    # Pass 3: build one row per shot (last-row-wins per (game, event) key,
+    # matching the idempotent upsert it replaces) and write the whole batch
+    # via chunked INSERT ... ON CONFLICT.
+    total_upserted = 0
+    now = _utc_now_naive()
+    shot_event_rows: dict[tuple[str, int], dict[str, Any]] = {}
+    for game, shot_row in pending:
+        source_ref = source_refs.get(shot_row.nba_stats_person_id)
+        team = teams_by_source_id.get(shot_row.nba_stats_team_id)
+        if team is None or team.id is None or source_ref is None:
+            continue
 
+        total_upserted += 1
+        key = (shot_row.nba_stats_game_id, shot_row.nba_stats_game_event_id)
+        shot_event_rows[key] = {
+            "game_id": game.id,
+            "competition_id": competition.id,
+            "team_entry_id": team.id,
+            "source_player_id": source_ref.id,
+            "player_id": source_ref.canonical_player_id,
+            "nba_stats_person_id": shot_row.nba_stats_person_id,
+            "nba_stats_game_id": shot_row.nba_stats_game_id,
+            "nba_stats_game_event_id": shot_row.nba_stats_game_event_id,
+            "period": shot_row.period,
+            "minutes_remaining": shot_row.minutes_remaining,
+            "seconds_remaining": shot_row.seconds_remaining,
+            "loc_x": shot_row.loc_x,
+            "loc_y": shot_row.loc_y,
+            "shot_distance": shot_row.shot_distance,
+            "shot_type": shot_row.shot_type,
+            "shot_zone_basic": shot_row.shot_zone_basic,
+            "shot_zone_area": shot_row.shot_zone_area,
+            "shot_zone_range": shot_row.shot_zone_range,
+            "action_type": shot_row.action_type,
+            "made": shot_row.made,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+    await _bulk_upsert_shot_events(db, list(shot_event_rows.values()))
+    # Flush first so any still-pending ORM changes (e.g. the raw_file
+    # parse_status/updated_at writes above) are persisted before expiring --
+    # expire() discards *unflushed* in-memory state, it does not flush it.
+    # Then expire only SummerLeagueSourcePlayer/SummerLeagueShotEvent
+    # instances (see :func:`_expire_written_instances`) -- see that
+    # function's docstring for why a blanket ``db.expire_all()`` is unsafe
+    # here.
     await db.flush()
+    _expire_written_instances(db, (SummerLeagueSourcePlayer, SummerLeagueShotEvent))
 
-    # Set availability from actual parsed rows, not file presence.
-    competition.shotchart_available = games_with_shots > 0
+    _raise_availability_flag(
+        competition,
+        "shotchart_available",
+        has_events=games_with_shots > 0,
+        game_ids=game_ids,
+    )
     competition.updated_at = _utc_now_naive()
     await db.flush()
 
@@ -782,6 +895,7 @@ async def normalize_pbp_events(
     league_id: str,
     raw_root: Path,
     limit_games: int | None = None,
+    game_ids: set[str] | None = None,
 ) -> SummerLeaguePBPEventReport:
     """Normalize PBP events from playbyplayv2 snapshots for one slice.
 
@@ -800,7 +914,15 @@ async def normalize_pbp_events(
         year: Competition year.
         league_id: NBA.com LeagueID string.
         raw_root: Root directory for raw NBA Stats snapshots.
-        limit_games: Optional cap on games processed (for testing).
+        limit_games: Optional cap on the first N discovered games (by manifest
+            order) processed -- test-only, see :func:`_limited_game_ids`.
+        game_ids: Optional explicit set of game IDs to process, e.g. one
+            batch of a larger venue (see
+            ``app.cli.summer_league_ingest_runner``). Distinct from
+            ``limit_games``: this selects an arbitrary subset rather than a
+            prefix of the discovery order. When both are given, only games
+            satisfying both filters are processed. ``None`` (the default)
+            processes every game, exactly like before this parameter existed.
 
     Returns:
         Structured report with upsert counts.
@@ -810,11 +932,14 @@ async def normalize_pbp_events(
         raise RuntimeError("Competition id was not populated")
 
     season_dir = raw_root / f"{year}/{league_id}"
-    limited_game_ids = _limited_game_ids(
-        raw_root=raw_root,
-        year=year,
-        league_id=league_id,
-        limit_games=limit_games,
+    effective_game_ids = _combine_game_id_filters(
+        _limited_game_ids(
+            raw_root=raw_root,
+            year=year,
+            league_id=league_id,
+            limit_games=limit_games,
+        ),
+        game_ids,
     )
     games_by_source_id = await _games_by_source_id(db, competition.id)
     raw_files_by_game = await _pbp_raw_files_by_game(
@@ -822,12 +947,13 @@ async def normalize_pbp_events(
         raw_run_id=competition.raw_run_id,
     )
 
-    total_upserted = 0
     games_processed = 0
     games_with_pbp = 0
     games_root = season_dir / "games"
 
-    for game_dir in _iter_game_dirs(games_root, limited_game_ids):
+    # Pass 1: parse every game's PBP rows up front (no DB writes yet).
+    pending: list[tuple[SummerLeagueGame, ParsedPBPEvent]] = []
+    for game_dir in _iter_game_dirs(games_root, effective_game_ids):
         nba_game_id = game_dir.name
         pbp_path = game_dir / "playbyplayv2.json"
         if not pbp_path.exists():
@@ -849,25 +975,80 @@ async def normalize_pbp_events(
             continue
 
         games_with_pbp += 1
-        for pbp_row in pbp_rows:
-            person1_id = await _resolve_actor_id(db, pbp_row.person1_nba_id)
-            person2_id = await _resolve_actor_id(db, pbp_row.person2_nba_id)
-            person3_id = await _resolve_actor_id(db, pbp_row.person3_nba_id)
-            await _upsert_pbp_event(
-                db,
-                competition.id,
-                game.id,
-                pbp_row,
-                person1_id=person1_id,
-                person2_id=person2_id,
-                person3_id=person3_id,
-            )
-            total_upserted += 1
+        pending.extend((game, pbp_row) for pbp_row in pbp_rows)
 
+    # Pass 2: preload every distinct actor id referenced anywhere in the
+    # batch's person1/person2/person3 columns in one chunked SELECT, instead
+    # of up to three SELECTs per row (mirrors ``_resolve_actor_id``'s
+    # lookup-only semantics -- never creates a source player).
+    actor_ids: set[str] = set()
+    for _game, pbp_row in pending:
+        for person_id in (
+            pbp_row.person1_nba_id,
+            pbp_row.person2_nba_id,
+            pbp_row.person3_nba_id,
+        ):
+            if person_id:
+                actor_ids.add(person_id)
+    actor_map = await _preload_actor_ids(db, actor_ids)
+
+    # Pass 3: build one row per PBP event (last-row-wins per (game, event_num)
+    # key, matching the idempotent upsert it replaces) and write the whole
+    # batch via chunked INSERT ... ON CONFLICT.
+    total_upserted = len(pending)
+    now = _utc_now_naive()
+    pbp_event_rows: dict[tuple[str, int], dict[str, Any]] = {}
+    for game, pbp_row in pending:
+        pbp_event_rows[(pbp_row.nba_stats_game_id, pbp_row.event_num)] = {
+            "game_id": game.id,
+            "competition_id": competition.id,
+            "nba_stats_game_id": pbp_row.nba_stats_game_id,
+            "event_num": pbp_row.event_num,
+            "period": pbp_row.period,
+            "clock": pbp_row.clock,
+            "event_msg_type": pbp_row.event_msg_type,
+            "home_score": pbp_row.home_score,
+            "away_score": pbp_row.away_score,
+            "score_margin": pbp_row.score_margin,
+            "person1_nba_id": pbp_row.person1_nba_id,
+            "person1_id": (
+                actor_map.get(pbp_row.person1_nba_id)
+                if pbp_row.person1_nba_id
+                else None
+            ),
+            "person2_nba_id": pbp_row.person2_nba_id,
+            "person2_id": (
+                actor_map.get(pbp_row.person2_nba_id)
+                if pbp_row.person2_nba_id
+                else None
+            ),
+            "person3_nba_id": pbp_row.person3_nba_id,
+            "person3_id": (
+                actor_map.get(pbp_row.person3_nba_id)
+                if pbp_row.person3_nba_id
+                else None
+            ),
+            "description": pbp_row.description,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+    await _bulk_upsert_pbp_events(db, list(pbp_event_rows.values()))
+    # Flush pending ORM changes before expiring, then expire only
+    # SummerLeagueSourcePlayer/SummerLeaguePlayByPlayEvent instances -- see
+    # :func:`_expire_written_instances` and the matching comment in
+    # :func:`normalize_shot_events`.
     await db.flush()
+    _expire_written_instances(
+        db, (SummerLeagueSourcePlayer, SummerLeaguePlayByPlayEvent)
+    )
 
-    # Set availability from actual parsed rows, not file presence.
-    competition.pbp_available = games_with_pbp > 0
+    _raise_availability_flag(
+        competition,
+        "pbp_available",
+        has_events=games_with_pbp > 0,
+        game_ids=game_ids,
+    )
     competition.updated_at = _utc_now_naive()
     await db.flush()
 
@@ -1234,6 +1415,36 @@ def _limited_game_ids(
     payload = _read_payload(manifest_path)
     game_ids = [str(value) for value in payload.get("game_ids") or []]
     return set(game_ids[:limit_games])
+
+
+def _combine_game_id_filters(
+    limited_game_ids: set[str] | None,
+    game_ids: set[str] | None,
+) -> set[str] | None:
+    """Merge the test-only ``limit_games`` prefix filter with an explicit batch filter.
+
+    Both :func:`normalize_shot_events` and :func:`normalize_pbp_events`
+    accept two independent, optional game-id restrictions: ``limit_games``
+    (a first-N-by-manifest-order prefix, used only by tests) and ``game_ids``
+    (an arbitrary caller-selected subset, used by
+    ``app.cli.summer_league_ingest_runner`` to process one batch of a
+    venue). Neither set alone means "process everything"; only both being
+    ``None`` does.
+
+    Args:
+        limited_game_ids: The resolved ``limit_games`` prefix, or ``None``.
+        game_ids: The caller's explicit batch filter, or ``None``.
+
+    Returns:
+        ``None`` when neither filter is set (process every game); otherwise
+        the intersection when both are set, or whichever single filter is
+        set.
+    """
+    if limited_game_ids is None:
+        return game_ids
+    if game_ids is None:
+        return limited_game_ids
+    return limited_game_ids & game_ids
 
 
 def _filter_team_gamelog_rows(
@@ -2110,58 +2321,203 @@ def _parse_shot_row(row_map: dict[str, Any]) -> ParsedShotEvent | None:
     )
 
 
-async def _upsert_shot_event(
+def chunked(items: list[Any], size: int) -> list[list[Any]]:
+    """Split ``items`` into consecutive chunks of at most ``size`` elements."""
+    return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+def _expire_written_instances(db: AsyncSession, models: tuple[type, ...]) -> None:
+    """Expire already-loaded instances of ``models`` still in this session.
+
+    The bulk upsert helpers above write via raw Core ``INSERT ... ON
+    CONFLICT``, which never touches the ORM identity map -- so an instance
+    of one of these tables already loaded into this session (by an earlier
+    phase sharing the same session, or by a caller/test holding a
+    reference) would otherwise keep serving its pre-upsert attribute values
+    indefinitely: this app's sessionmaker uses ``expire_on_commit=False``
+    (``app/utils/db_async.py``), so a commit alone does not clear that
+    staleness.
+
+    This is deliberately **not** ``db.expire_all()``. Expiring the whole
+    session marks every attribute of every loaded object -- including
+    primary keys, which are not exempt -- as needing a reload on next
+    access. In an async session that reload can only happen inside an
+    awaited call; a later *synchronous* attribute read on some unrelated,
+    already-loaded object (a ``PlayerMaster``, a ``SummerLeagueGame``, a
+    caller's own row -- anything sharing this session, not just the tables
+    this module writes) then raises
+    ``sqlalchemy.exc.MissingGreenlet: greenlet_spawn has not been called``
+    instead of quietly refreshing. Scoping expiry to exactly the mapped
+    classes these bulk writes touch keeps that blast radius to the rows
+    this module is actually responsible for.
+
+    Args:
+        db: Active database session.
+        models: Mapped classes to expire matching identity-map entries for
+            (e.g. ``(SummerLeagueSourcePlayer, SummerLeagueShotEvent)``).
+    """
+    for obj in list(db.identity_map.values()):
+        if isinstance(obj, models):
+            db.expire(obj)
+
+
+async def _bulk_upsert_source_players(
     db: AsyncSession,
-    competition_id: int,
-    game_id: int,
-    team_entry_id: int,
-    source_player: SummerLeagueSourcePlayer,
-    shot_row: ParsedShotEvent,
-) -> SummerLeagueShotEvent:
-    result = await db.execute(
-        select(SummerLeagueShotEvent).where(
-            SummerLeagueShotEvent.nba_stats_game_id == shot_row.nba_stats_game_id,  # type: ignore[arg-type]
-            SummerLeagueShotEvent.nba_stats_game_event_id
-            == shot_row.nba_stats_game_event_id,  # type: ignore[arg-type]
+    identities: dict[str, ParsedPlayerGamelogRow],
+    *,
+    year: int,
+) -> dict[str, _SourcePlayerRef]:
+    """Bulk upsert ``SummerLeagueSourcePlayer`` rows for a batch's identities.
+
+    Mirrors ``_upsert_source_player``'s semantics -- a new row is created
+    UNRESOLVED with ``first_seen_year``/``last_seen_year`` seeded from
+    ``year``; an existing row keeps its resolution fields
+    (``canonical_player_id``, ``resolution_status``, etc.) untouched and only
+    has its name/seen-year bounds refreshed -- but issues one chunked
+    ``INSERT ... ON CONFLICT ... RETURNING`` per call instead of a
+    SELECT-then-write per row.
+
+    Args:
+        db: Active database session.
+        identities: Distinct ``nba_stats_person_id`` -> parsed identity for
+            this batch (the caller keeps only the last occurrence per id,
+            matching the row loop this replaces).
+        year: Competition year, used to seed/extend first/last_seen_year.
+
+    Returns:
+        Map of ``nba_stats_person_id`` -> resolved ``(id,
+        canonical_player_id)`` for every identity supplied. Empty when
+        ``identities`` is empty.
+    """
+    if not identities:
+        return {}
+    now = _utc_now_naive()
+    table = getattr(SummerLeagueSourcePlayer, "__table__")
+    refs: dict[str, _SourcePlayerRef] = {}
+    for chunk in chunked(list(identities.values()), BULK_UPSERT_CHUNK_SIZE):
+        values = [
+            {
+                "nba_stats_person_id": row.nba_stats_person_id,
+                "raw_player_name": row.raw_player_name,
+                "normalized_name": _normalized_name_key(row.raw_player_name),
+                "first_seen_year": year,
+                "last_seen_year": year,
+                "canonical_player_id": None,
+                "resolution_status": SummerLeagueResolutionStatus.UNRESOLVED,
+                "resolution_confidence": None,
+                "resolution_candidates": None,
+                "resolved_at": None,
+                "resolved_by": None,
+                "created_at": now,
+                "updated_at": now,
+            }
+            for row in chunk
+        ]
+        insert_stmt = insert(table).values(values)
+        stmt = insert_stmt.on_conflict_do_update(
+            index_elements=["nba_stats_person_id"],
+            set_={
+                "raw_player_name": insert_stmt.excluded.raw_player_name,
+                "normalized_name": insert_stmt.excluded.normalized_name,
+                "first_seen_year": func.least(
+                    table.c.first_seen_year, insert_stmt.excluded.first_seen_year
+                ),
+                "last_seen_year": func.greatest(
+                    table.c.last_seen_year, insert_stmt.excluded.last_seen_year
+                ),
+                "updated_at": insert_stmt.excluded.updated_at,
+            },
+        ).returning(
+            table.c.nba_stats_person_id,
+            table.c.id,
+            table.c.canonical_player_id,
         )
+        result = await db.execute(stmt)
+        for person_id, source_id, canonical_id in result.all():
+            refs[person_id] = _SourcePlayerRef(
+                id=source_id, canonical_player_id=canonical_id
+            )
+    return refs
+
+
+async def _bulk_upsert(
+    db: AsyncSession,
+    table: Any,
+    rows: list[dict[str, Any]],
+    *,
+    index_elements: list[str],
+    mutable_columns: tuple[str, ...],
+) -> None:
+    """Chunked ``INSERT ... ON CONFLICT ... DO UPDATE`` for one event table.
+
+    Shared by :func:`_bulk_upsert_shot_events` and
+    :func:`_bulk_upsert_pbp_events` -- both replace a SELECT-then-write
+    per-event helper with the same chunk-and-upsert shape, differing only in
+    the target table, conflict key, and mutable column set.
+
+    Args:
+        db: Active database session.
+        table: SQLAlchemy Core table (``getattr(Model, "__table__")``).
+        rows: Fully-built column dicts, already deduped last-row-wins per
+            conflict key by the caller. A no-op when empty.
+        index_elements: Unique-constraint columns identifying one row.
+        mutable_columns: Columns to overwrite from the incoming row on
+            conflict.
+    """
+    if not rows:
+        return
+    for chunk in chunked(rows, BULK_UPSERT_CHUNK_SIZE):
+        stmt = insert(table).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=index_elements,
+            set_={col: getattr(stmt.excluded, col) for col in mutable_columns},
+        )
+        await db.execute(stmt)
+
+
+async def _bulk_upsert_shot_events(
+    db: AsyncSession,
+    rows: list[dict[str, Any]],
+) -> None:
+    """Chunked ``INSERT ... ON CONFLICT`` for shot events.
+
+    Keyed on the same ``(nba_stats_game_id, nba_stats_game_event_id)`` pair
+    as ``uq_summer_league_shot_events_game_event``, matching the
+    SELECT-then-write ``_upsert_shot_event`` helper this replaces.
+
+    Args:
+        db: Active database session.
+        rows: Fully-built column dicts (one per shot, already deduped
+            last-row-wins per key by the caller) matching
+            ``SummerLeagueShotEvent`` columns. A no-op when empty.
+    """
+    await _bulk_upsert(
+        db,
+        getattr(SummerLeagueShotEvent, "__table__"),
+        rows,
+        index_elements=["nba_stats_game_id", "nba_stats_game_event_id"],
+        mutable_columns=(
+            "game_id",
+            "competition_id",
+            "team_entry_id",
+            "source_player_id",
+            "player_id",
+            "nba_stats_person_id",
+            "period",
+            "minutes_remaining",
+            "seconds_remaining",
+            "loc_x",
+            "loc_y",
+            "shot_distance",
+            "shot_type",
+            "shot_zone_basic",
+            "shot_zone_area",
+            "shot_zone_range",
+            "action_type",
+            "made",
+            "updated_at",
+        ),
     )
-    row = result.scalar_one_or_none()
-    if row is None:
-        if source_player.id is None:
-            raise RuntimeError("Source player id was not populated")
-        row = SummerLeagueShotEvent(
-            game_id=game_id,
-            competition_id=competition_id,
-            team_entry_id=team_entry_id,
-            source_player_id=source_player.id,
-            nba_stats_person_id=shot_row.nba_stats_person_id,
-            nba_stats_game_id=shot_row.nba_stats_game_id,
-            nba_stats_game_event_id=shot_row.nba_stats_game_event_id,
-            made=shot_row.made,
-        )
-        db.add(row)
-    if source_player.id is None:
-        raise RuntimeError("Source player id was not populated")
-    row.game_id = game_id
-    row.competition_id = competition_id
-    row.team_entry_id = team_entry_id
-    row.source_player_id = source_player.id
-    row.player_id = source_player.canonical_player_id
-    row.nba_stats_person_id = shot_row.nba_stats_person_id
-    row.period = shot_row.period
-    row.minutes_remaining = shot_row.minutes_remaining
-    row.seconds_remaining = shot_row.seconds_remaining
-    row.loc_x = shot_row.loc_x
-    row.loc_y = shot_row.loc_y
-    row.shot_distance = shot_row.shot_distance
-    row.shot_type = shot_row.shot_type
-    row.shot_zone_basic = shot_row.shot_zone_basic
-    row.shot_zone_area = shot_row.shot_zone_area
-    row.shot_zone_range = shot_row.shot_zone_range
-    row.action_type = shot_row.action_type
-    row.made = shot_row.made
-    row.updated_at = _utc_now_naive()
-    return row
 
 
 def _parse_pbp_row(row_map: dict[str, Any]) -> ParsedPBPEvent | None:
@@ -2204,70 +2560,86 @@ def _parse_pbp_row(row_map: dict[str, Any]) -> ParsedPBPEvent | None:
     )
 
 
-async def _resolve_actor_id(
+async def _preload_actor_ids(
     db: AsyncSession,
-    nba_person_id: str | None,
-) -> int | None:
-    """Resolve an NBA Stats person ID to a canonical player FK via source players.
+    nba_person_ids: set[str],
+) -> dict[str, int | None]:
+    """Bulk-resolve NBA Stats person IDs to canonical player FKs via source players.
 
-    Looks up an existing SummerLeagueSourcePlayer; does not create one. Returns
-    the canonical_player_id if resolved, else None.
+    Mirrors ``_resolve_actor_id``'s lookup-only semantics (never creates a
+    source player) but issues one chunked ``SELECT ... WHERE
+    nba_stats_person_id IN (...)`` for the whole batch instead of up to
+    three SELECTs per PBP row.
+
+    Args:
+        db: Active database session.
+        nba_person_ids: Distinct non-empty actor IDs referenced anywhere in
+            the batch's person1/person2/person3 columns.
+
+    Returns:
+        Map of ``nba_stats_person_id`` -> ``canonical_player_id`` (may be
+        ``None`` for a resolved-but-unlinked source player). An id with no
+        matching source player row is simply absent from the map; callers
+        should use ``.get(id)`` and treat a missing key the same as
+        ``_resolve_actor_id``'s ``None`` return.
     """
-    if not nba_person_id:
-        return None
-    result = await db.execute(
-        select(SummerLeagueSourcePlayer).where(
-            SummerLeagueSourcePlayer.nba_stats_person_id == nba_person_id  # type: ignore[arg-type]
+    if not nba_person_ids:
+        return {}
+    mapping: dict[str, int | None] = {}
+    for chunk in chunked(sorted(nba_person_ids), BULK_UPSERT_CHUNK_SIZE):
+        result = await db.execute(
+            select(  # type: ignore[call-overload]
+                SummerLeagueSourcePlayer.nba_stats_person_id,
+                SummerLeagueSourcePlayer.canonical_player_id,
+            ).where(
+                SummerLeagueSourcePlayer.nba_stats_person_id.in_(chunk)  # type: ignore[attr-defined]
+            )
         )
-    )
-    source_player = result.scalar_one_or_none()
-    if source_player is None:
-        return None
-    return source_player.canonical_player_id
+        for person_id, canonical_id in result.all():
+            mapping[person_id] = canonical_id
+    return mapping
 
 
-async def _upsert_pbp_event(
+async def _bulk_upsert_pbp_events(
     db: AsyncSession,
-    competition_id: int,
-    game_id: int,
-    pbp_row: ParsedPBPEvent,
-    *,
-    person1_id: int | None,
-    person2_id: int | None,
-    person3_id: int | None,
-) -> SummerLeaguePlayByPlayEvent:
-    result = await db.execute(
-        select(SummerLeaguePlayByPlayEvent).where(
-            SummerLeaguePlayByPlayEvent.nba_stats_game_id == pbp_row.nba_stats_game_id,  # type: ignore[arg-type]
-            SummerLeaguePlayByPlayEvent.event_num == pbp_row.event_num,  # type: ignore[arg-type]
-        )
+    rows: list[dict[str, Any]],
+) -> None:
+    """Chunked ``INSERT ... ON CONFLICT`` for play-by-play events.
+
+    Keyed on the same ``(nba_stats_game_id, event_num)`` pair as
+    ``uq_summer_league_pbp_events_game_event_num``, matching the
+    SELECT-then-write ``_upsert_pbp_event`` helper this replaces.
+
+    Args:
+        db: Active database session.
+        rows: Fully-built column dicts (one per event, already deduped
+            last-row-wins per key by the caller) matching
+            ``SummerLeaguePlayByPlayEvent`` columns. A no-op when empty.
+    """
+    await _bulk_upsert(
+        db,
+        getattr(SummerLeaguePlayByPlayEvent, "__table__"),
+        rows,
+        index_elements=["nba_stats_game_id", "event_num"],
+        mutable_columns=(
+            "game_id",
+            "competition_id",
+            "period",
+            "clock",
+            "event_msg_type",
+            "home_score",
+            "away_score",
+            "score_margin",
+            "person1_nba_id",
+            "person1_id",
+            "person2_nba_id",
+            "person2_id",
+            "person3_nba_id",
+            "person3_id",
+            "description",
+            "updated_at",
+        ),
     )
-    row = result.scalar_one_or_none()
-    if row is None:
-        row = SummerLeaguePlayByPlayEvent(
-            game_id=game_id,
-            competition_id=competition_id,
-            nba_stats_game_id=pbp_row.nba_stats_game_id,
-            event_num=pbp_row.event_num,
-        )
-        db.add(row)
-    row.game_id = game_id
-    row.competition_id = competition_id
-    row.period = pbp_row.period
-    row.clock = pbp_row.clock
-    row.event_msg_type = pbp_row.event_msg_type
-    row.home_score = pbp_row.home_score
-    row.away_score = pbp_row.away_score
-    row.score_margin = pbp_row.score_margin
-    row.person1_nba_id = pbp_row.person1_nba_id
-    row.person1_id = person1_id
-    row.person2_nba_id = pbp_row.person2_nba_id
-    row.person2_id = person2_id
-    row.person3_nba_id = pbp_row.person3_nba_id
-    row.person3_id = person3_id
-    row.description = pbp_row.description
-    row.updated_at = _utc_now_naive()
-    return row
 
 
 async def _pbp_raw_files_by_game(

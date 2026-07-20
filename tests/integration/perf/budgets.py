@@ -70,7 +70,7 @@ ROUTE_BUDGETS: dict[str, int] = {
     # `DESK_HOME_PAGE_BUDGETS`'s numbers still include the repo's known,
     # pre-existing `/` N+1 (see the module note above) -- these are regression
     # ratchets on the WHOLE route, not a claim the page is N+1-free.
-    "/": 52,
+    "/": 32,
     # Class Tracker tab-switch fragment (#567 JS fetch-and-swap): the SAME
     # single indexed snapshot read `/` makes for the Desk's tracker section,
     # nothing else — no consensus/news/hero queries. Off-window (this
@@ -78,7 +78,6 @@ ROUTE_BUDGETS: dict[str, int] = {
     # lookup before touching any snapshot table, mirroring `/`'s off-window
     # regime above.
     "/desk/tracker": 1,
-    "/": 32,
     "/news": 8,
     "/podcasts": 5,
     # +1 over the prior 24 for the SL advanced-metrics read
@@ -153,6 +152,20 @@ ROUTE_BUDGETS: dict[str, int] = {
     # `tests/integration/test_summer_league_explorer.py::test_competitions_route_query_budget`.
     "/stats/summer-league/explorer": 10,
 }
+
+# Summer League Desk tick -- wall-clock duration budget (#629), per the
+# project's two-minute Desk-tick target (docs/plans/
+# summer-league-cron-desk-starvation-spec.md): the tick must stay well inside
+# that window even under writer-lock contention (bounded to
+# DEFAULT_WRITER_LOCK_MAX_WAIT_SECONDS=30s per wait, see
+# scripts/sl_desk_tick.py). Asserted by
+# tests/integration/perf/test_desk_tick_query_growth.py against a
+# synthetic/no-network fixture, so this is a CI-hardware regression ratchet
+# (catches an accidentally-reintroduced per-player/per-slot loop turning into
+# real wall-clock cost), not a literal prod SLA measurement -- prod's actual
+# two-minute budget also has to absorb real NBA Stats network I/O this
+# fixture never exercises.
+DESK_TICK_DURATION_BUDGET_MS = 120_000
 
 # Admin route budgets (authentication-gated; tested separately via
 # test_stubs_tab.py which sets up an admin session before rendering).

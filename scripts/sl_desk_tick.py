@@ -246,7 +246,7 @@ from app.services.summer_league.scoreboard_ingest import (  # noqa: E402
     run_scoreboard_ingest,
 )
 from app.services.summer_league.write_lock import (  # noqa: E402
-    acquire_summer_league_writer_lock,
+    acquire_summer_league_writer_lock_bounded_timed,
 )
 from app.schemas.summer_league_pipeline import SummerLeaguePipelineJob  # noqa: E402
 from app.utils.db_async import SessionLocal, engine  # noqa: E402
@@ -254,6 +254,15 @@ from app.utils.db_async import SessionLocal, engine  # noqa: E402
 logger = logging.getLogger(__name__)
 
 DEFAULT_RAW_ROOT = Path("data/raw/nba_stats/summer_league")
+
+# Maximum wall-clock time the Desk tick will wait for the shared writer lock
+# before giving up (#622 -- a long-running full-ingestion cron holding the
+# lock previously starved the Desk for over an hour). The Desk's total tick
+# budget is two minutes with providers healthy; this bound leaves ample room
+# for real work in both the initial acquire and each post-provider-I/O
+# reacquisition while still failing fast enough for the next scheduled tick
+# to retry promptly.
+DEFAULT_WRITER_LOCK_MAX_WAIT_SECONDS = 30.0
 
 # Roster statuses `desk_storylines.compute_desk_storylines` treats as "on the
 # active roster tonight" (mirrored here so grading covers the same universe
@@ -924,6 +933,7 @@ async def run_desk_tick(
     client: Optional[NBAStatsClient] = None,
     release_transactions_for_network_io: bool = False,
     telemetry: PipelineTelemetry | None = None,
+    writer_lock_max_wait_seconds: float = DEFAULT_WRITER_LOCK_MAX_WAIT_SECONDS,
 ) -> DeskTickResult:
     """Job B -- the Summer League Desk hourly tick (module docstring has the full order).
 
@@ -949,6 +959,10 @@ async def run_desk_tick(
             legacy test/service caller transaction contract.
         telemetry: Optional production-run timer that emits one structured
             duration record for every major pipeline stage.
+        writer_lock_max_wait_seconds: Maximum wall-clock time to wait for the
+            shared writer lock -- both the initial acquire and each
+            post-provider-I/O reacquisition -- before giving up (#622).
+            Defaults to :data:`DEFAULT_WRITER_LOCK_MAX_WAIT_SECONDS`.
 
     Returns:
         A :class:`DeskTickResult` summarizing every stage's outcome.
@@ -961,13 +975,28 @@ async def run_desk_tick(
             game it actually selected this tick -- a required refresh
             failure must never let the tick reach step 6 and claim fresh
             state (#530).
+        SummerLeagueWriterLockTimeout: The writer lock (initial acquire or a
+            post-provider-I/O reacquisition) was not obtained within
+            ``writer_lock_max_wait_seconds`` -- a long-running lower-priority
+            writer (typically full ingestion) is holding it. This is a
+            retry-next-scheduled-run condition, not a data-quality failure
+            (#622): the caller's transaction rolls back and no partial state
+            is ever claimed as fresh.
     """
     # Serialize before either scheduled writer touches shared Summer League
     # identities/projections. The lower-priority full ingestor uses a
     # non-blocking attempt and skips its DB phase when this tick is active,
     # preventing the cross-cron source-player deadlock observed in production.
-    with telemetry.step("writer_lock_wait") if telemetry is not None else nullcontext():
-        await acquire_summer_league_writer_lock(db)
+    # Bounded (#622): this tick must never block past an explicit maximum no
+    # matter how long a lower-priority writer holds the lock.
+    with (
+        telemetry.step("writer_lock_wait") if telemetry is not None else nullcontext()
+    ) as step_fields:
+        await acquire_summer_league_writer_lock_bounded_timed(
+            db,
+            max_wait_seconds=writer_lock_max_wait_seconds,
+            step_fields=step_fields,
+        )
 
     async def reacquire_writer_lock() -> None:
         """Start a short serialized write phase after external provider I/O."""
@@ -975,8 +1004,12 @@ async def run_desk_tick(
             telemetry.step("writer_lock_reacquire")
             if telemetry is not None
             else nullcontext()
-        ):
-            await acquire_summer_league_writer_lock(db)
+        ) as step_fields:
+            await acquire_summer_league_writer_lock_bounded_timed(
+                db,
+                max_wait_seconds=writer_lock_max_wait_seconds,
+                step_fields=step_fields,
+            )
 
     # A contended lock can delay the tick across a tip/final boundary. Read the
     # production clock only after the wait so phase and freshness calculations

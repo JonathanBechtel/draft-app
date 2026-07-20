@@ -89,9 +89,10 @@ def _pbp_row(
     score_margin: object = "2",
     player1_id: int = 1640001,
     player1_name: str = "Player A",
+    game_id: str = "1522400001",
 ) -> list[object]:
     return [
-        "1522400001",
+        game_id,
         event_num,
         1,
         period,
@@ -245,6 +246,141 @@ async def _setup_competition(db: AsyncSession, raw_root: Path) -> None:
     await audit_summer_league_raw(db, raw_root=raw_root, year=2024, league_id="15")
     await normalize_competition_games(db, year=2024, league_id="15", raw_root=raw_root)
     await db.flush()
+
+
+def _write_two_game_season_skeleton(raw_root: Path) -> tuple[Path, Path]:
+    """Write manifest + team gamelog + minimal box files for two games.
+
+    Mirrors :func:`_write_season_skeleton` but with a second game
+    (``1522400002``) so ``game_ids``-filtered batch calls to
+    ``normalize_pbp_events`` have more than one game to select between.
+    """
+    run_dir = raw_root / "2024" / "15"
+    game_dir_1 = run_dir / "games" / "1522400001"
+    game_dir_2 = run_dir / "games" / "1522400002"
+    game_dir_1.mkdir(parents=True)
+    game_dir_2.mkdir(parents=True)
+
+    run_dir.joinpath("manifest.json").write_text(
+        json.dumps(
+            {
+                "year": 2024,
+                "league_id": "15",
+                "venue": "las_vegas",
+                "team_gamelog_rows": 4,
+                "player_gamelog_rows": 0,
+                "game_ids": ["1522400001", "1522400002"],
+                "game_count": 2,
+                "errors": [],
+            }
+        )
+    )
+    run_dir.joinpath("leaguegamelog_team.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "LeagueGameLog",
+                        [
+                            "TEAM_ID",
+                            "TEAM_ABBREVIATION",
+                            "TEAM_NAME",
+                            "GAME_ID",
+                            "GAME_DATE",
+                            "MATCHUP",
+                            "PTS",
+                        ],
+                        [
+                            [
+                                1610612753,
+                                "ORL",
+                                "Orlando Magic",
+                                "1522400001",
+                                "2024-07-12",
+                                "ORL vs. CLE",
+                                106,
+                            ],
+                            [
+                                1610612739,
+                                "CLE",
+                                "Cleveland Cavaliers",
+                                "1522400001",
+                                "2024-07-12",
+                                "CLE @ ORL",
+                                79,
+                            ],
+                            [
+                                1610612753,
+                                "ORL",
+                                "Orlando Magic",
+                                "1522400002",
+                                "2024-07-13",
+                                "ORL vs. CLE",
+                                100,
+                            ],
+                            [
+                                1610612739,
+                                "CLE",
+                                "Cleveland Cavaliers",
+                                "1522400002",
+                                "2024-07-13",
+                                "CLE @ ORL",
+                                90,
+                            ],
+                        ],
+                    )
+                ]
+            }
+        )
+    )
+    run_dir.joinpath("leaguegamelog_player.json").write_text(
+        json.dumps({"resultSets": []})
+    )
+
+    for game_dir in (game_dir_1, game_dir_2):
+        game_id = game_dir.name
+        game_dir.joinpath("boxscoretraditionalv2.json").write_text(
+            json.dumps(
+                {
+                    "resultSets": [
+                        _result_set(
+                            "TeamStats",
+                            [
+                                "GAME_ID",
+                                "TEAM_ID",
+                                "TEAM_NAME",
+                                "TEAM_ABBREVIATION",
+                                "MIN",
+                                "PTS",
+                            ],
+                            [
+                                [game_id, 1610612753, "Magic", "ORL", "200:00", 106],
+                                [game_id, 1610612739, "Cavaliers", "CLE", "200:00", 79],
+                            ],
+                        ),
+                        _result_set("PlayerStats", [], []),
+                    ]
+                }
+            )
+        )
+        game_dir.joinpath("boxscoreadvancedv2.json").write_text(
+            json.dumps(
+                {
+                    "resultSets": [
+                        _result_set("PlayerStats", [], []),
+                        _result_set("TeamStats", [], []),
+                    ]
+                }
+            )
+        )
+        game_dir.joinpath("boxscorescoringv2.json").write_text(
+            json.dumps({"resultSets": [_result_set("sqlPlayersScoring", [], [])]})
+        )
+        game_dir.joinpath("shotchartdetail.json").write_text(
+            json.dumps({"resultSets": []})
+        )
+
+    return game_dir_1, game_dir_2
 
 
 @pytest.mark.asyncio
@@ -513,3 +649,154 @@ async def test_normalize_pbp_events_field_values_persisted(
     assert event.description == "Player A Dunk Shot (2 PTS)"
     # No canonical player resolution since source player doesn't exist in test DB
     assert event.person1_id is None
+
+
+@pytest.mark.asyncio
+async def test_normalize_pbp_events_game_ids_filters_to_explicit_batch(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """``game_ids`` restricts normalization to an explicit subset, e.g. one batch.
+
+    Two games each carry a PBP event. Calling with ``game_ids={game 1}``
+    only normalizes that game; a second call with ``game_ids={game 2}``
+    covers the rest with no duplicates -- proving the batched-call contract
+    ``app.cli.summer_league_ingest_runner`` relies on (distinct from
+    ``limit_games``, which selects a manifest-order prefix rather than an
+    arbitrary subset).
+    """
+    game_dir_1, game_dir_2 = _write_two_game_season_skeleton(tmp_path)
+    game_dir_1.joinpath("playbyplayv2.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "PlayByPlay",
+                        PBP_HEADERS,
+                        [
+                            _pbp_row(
+                                event_num=1,
+                                score=None,
+                                score_margin=None,
+                                game_id="1522400001",
+                            )
+                        ],
+                    )
+                ]
+            }
+        )
+    )
+    game_dir_2.joinpath("playbyplayv2.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "PlayByPlay",
+                        PBP_HEADERS,
+                        [
+                            _pbp_row(
+                                event_num=1,
+                                score=None,
+                                score_margin=None,
+                                game_id="1522400002",
+                            )
+                        ],
+                    )
+                ]
+            }
+        )
+    )
+    await _setup_competition(db_session, tmp_path)
+
+    report1 = await normalize_pbp_events(
+        db_session,
+        year=2024,
+        league_id="15",
+        raw_root=tmp_path,
+        game_ids={"1522400001"},
+    )
+    assert report1.games_processed == 1
+    assert report1.pbp_events_upserted == 1
+
+    events_after_first = (
+        (await db_session.execute(select(SummerLeaguePlayByPlayEvent))).scalars().all()
+    )
+    assert {e.nba_stats_game_id for e in events_after_first} == {"1522400001"}
+
+    report2 = await normalize_pbp_events(
+        db_session,
+        year=2024,
+        league_id="15",
+        raw_root=tmp_path,
+        game_ids={"1522400002"},
+    )
+    assert report2.games_processed == 1
+    assert report2.pbp_events_upserted == 1
+
+    events_after_second = (
+        (await db_session.execute(select(SummerLeaguePlayByPlayEvent))).scalars().all()
+    )
+    assert {e.nba_stats_game_id for e in events_after_second} == {
+        "1522400001",
+        "1522400002",
+    }
+    assert len(events_after_second) == 2
+    # No duplicate (game_id, event_num) pairs across the two batch calls
+    pairs = [(e.nba_stats_game_id, e.event_num) for e in events_after_second]
+    assert len(pairs) == len(set(pairs))
+
+
+@pytest.mark.asyncio
+async def test_normalize_pbp_events_batch_call_never_downgrades_availability_flag(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A batch call with zero PBP rows in its subset must not clear an already-set flag.
+
+    Only a whole-venue call (``game_ids=None``) may set ``pbp_available``
+    back to False -- a batch call (``game_ids`` set) must only ever raise
+    it, never downgrade it just because *this batch's* games happened to
+    have none while an earlier, already-committed batch did.
+    """
+    game_dir_1, game_dir_2 = _write_two_game_season_skeleton(tmp_path)
+    game_dir_1.joinpath("playbyplayv2.json").write_text(
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set(
+                        "PlayByPlay",
+                        PBP_HEADERS,
+                        [_pbp_row(event_num=1, score=None, score_margin=None)],
+                    )
+                ]
+            }
+        )
+    )
+    game_dir_2.joinpath("playbyplayv2.json").write_text(
+        json.dumps({"resultSets": [_result_set("PlayByPlay", PBP_HEADERS, [])]})
+    )
+    await _setup_competition(db_session, tmp_path)
+
+    await normalize_pbp_events(
+        db_session,
+        year=2024,
+        league_id="15",
+        raw_root=tmp_path,
+        game_ids={"1522400001"},
+    )
+    competition_after_first = (
+        await db_session.execute(select(SummerLeagueCompetition))
+    ).scalar_one()
+    assert competition_after_first.pbp_available is True
+
+    await normalize_pbp_events(
+        db_session,
+        year=2024,
+        league_id="15",
+        raw_root=tmp_path,
+        game_ids={"1522400002"},
+    )
+    competition_after_second = (
+        await db_session.execute(select(SummerLeagueCompetition))
+    ).scalar_one()
+    assert competition_after_second.pbp_available is True
