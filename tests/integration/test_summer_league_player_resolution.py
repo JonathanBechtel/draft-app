@@ -27,6 +27,10 @@ from app.services.player_mention_service import _normalized_name_key
 from app.services.summer_league.player_resolution import (
     NBA_STATS_SYSTEM,
     STUB_BIO_SOURCE,
+    apply_source_player_resolution_plan,
+    build_resolution_report,
+    prepare_source_player_resolution,
+    prepare_summer_league_player_resolutions,
     resolve_source_player,
     resolve_summer_league_players,
 )
@@ -559,3 +563,177 @@ async def test_batch_resolution_filters_by_year_and_league(
     assert report.exact_resolutions == 1
     assert await _log_player_id(db_session, person_id="1641008") == target_player.id
     assert await _log_player_id(db_session, person_id="1641009") is None
+
+
+# ---------------------------------------------------------------------------
+# Prepare/apply split (ticket #632): `resolve_source_player` and
+# `resolve_summer_league_players` are now thin compositions of a read-only,
+# provider-calling preparation step and a write-only apply step, so a caller
+# (the ingest cron) can run the preparation with no writer-lock transaction
+# held and batch the writes separately. These tests prove the split is
+# behavior-preserving: preparation alone writes nothing, and prepare+apply
+# together reach the exact same resolved state as the one-shot functions.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_prepare_source_player_resolution_performs_no_writes(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preparation alone (including the candidate-search call) writes nothing."""
+    competition, team, game = await _seed_game_context(db_session)
+    source_player = await _source_with_log(
+        db_session,
+        raw_name="Prepare Only Prospect",
+        person_id="1641010",
+        competition=competition,
+        team=team,
+        game=game,
+    )
+
+    async def fake_search(
+        db: AsyncSession,
+        query: str,
+        k: int = 5,
+    ) -> list[FakeCandidate]:
+        return []
+
+    monkeypatch.setattr(
+        "app.services.summer_league.player_resolution.find_candidate_players",
+        fake_search,
+    )
+
+    plan = await prepare_source_player_resolution(db_session, source_player)
+
+    assert plan.kind == "UNRESOLVED"
+    assert source_player.canonical_player_id is None
+    assert source_player.resolution_status == SummerLeagueResolutionStatus.UNRESOLVED
+    assert await _log_player_id(db_session, person_id="1641010") is None
+    assert await _external_id_count(db_session, person_id="1641010") == 0
+
+
+@pytest.mark.asyncio
+async def test_prepare_then_apply_matches_one_shot_resolve(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Split prepare+apply reaches the same resolved state as one-shot resolve.
+
+    Runs the VECTOR_CANDIDATE-then-stub path (the branch that calls candidate
+    search) through the split functions and cross-checks the result against
+    what `resolve_source_player` (prepare+apply composed) would already do for
+    an equivalent source player -- the two must agree bit-for-bit.
+    """
+    competition, team, game = await _seed_game_context(db_session)
+    weak_candidate = PlayerMaster(display_name="Weak Split Candidate")
+    db_session.add(weak_candidate)
+    await db_session.flush()
+    assert weak_candidate.id is not None
+
+    # Distinct raw names -- otherwise the first branch's stub creation would
+    # itself become an exact-name match for the second branch's lookup,
+    # masking the candidate-search path this test means to exercise.
+    split_player = await _source_with_log(
+        db_session,
+        raw_name="Split Stub Prospect One",
+        person_id="1641011",
+        competition=competition,
+        team=team,
+        game=game,
+    )
+    one_shot_player = await _source_with_log(
+        db_session,
+        raw_name="Split Stub Prospect Two",
+        person_id="1641012",
+        competition=competition,
+        team=team,
+        game=game,
+    )
+
+    async def fake_search(
+        db: AsyncSession,
+        query: str,
+        k: int = 5,
+    ) -> list[FakeCandidate]:
+        return [
+            FakeCandidate(
+                player_id=weak_candidate.id,  # type: ignore[arg-type]
+                display_name=weak_candidate.display_name,
+                school=None,
+                score=0.12,
+            )
+        ]
+
+    monkeypatch.setattr(
+        "app.services.summer_league.player_resolution.find_candidate_players",
+        fake_search,
+    )
+
+    plan = await prepare_source_player_resolution(db_session, split_player)
+    # Preparation performed no writes yet.
+    assert split_player.canonical_player_id is None
+    split_result = await apply_source_player_resolution_plan(
+        db_session, split_player, plan, create_stub=True
+    )
+
+    one_shot_result = await resolve_source_player(
+        db_session, one_shot_player, create_stub=True
+    )
+
+    assert split_result.status == one_shot_result.status == SummerLeagueResolutionStatus.STUB
+    assert split_result.stub_created is True
+    assert split_result.player_id != one_shot_result.player_id  # distinct new stubs
+    assert (
+        await _log_player_id(db_session, person_id="1641011") == split_result.player_id
+    )
+    assert (
+        await _log_player_id(db_session, person_id="1641012")
+        == one_shot_result.player_id
+    )
+    assert await _external_id_count(db_session, person_id="1641011") == 1
+    assert await _external_id_count(db_session, person_id="1641012") == 1
+
+
+@pytest.mark.asyncio
+async def test_prepare_batch_then_apply_matches_resolve_summer_league_players(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch prepare-then-apply reaches the same report as the one-shot batch call.
+
+    Mirrors `test_batch_resolution_filters_by_year_and_league` but drives the
+    ingest cron's actual call shape: `prepare_summer_league_player_resolutions`
+    (no writes) followed by `apply_source_player_resolution_plan` per pair.
+    """
+    competition, team, game = await _seed_game_context(db_session, year=2024, league_id="15")
+    exact_player = PlayerMaster(display_name="Prepare Batch Player")
+    db_session.add(exact_player)
+    await db_session.flush()
+    await _source_with_log(
+        db_session,
+        raw_name="Prepare Batch Player",
+        person_id="1641013",
+        competition=competition,
+        team=team,
+        game=game,
+    )
+
+    pairs = await prepare_summer_league_player_resolutions(
+        db_session, year=2024, league_id="15"
+    )
+    assert len(pairs) == 1
+    source_player, plan = pairs[0]
+    assert plan.kind == "EXACT"
+    # Preparation performed no writes yet.
+    assert source_player.canonical_player_id is None
+
+    results = [
+        await apply_source_player_resolution_plan(db_session, sp, p, create_stub=True)
+        for sp, p in pairs
+    ]
+    report = build_resolution_report(year=2024, league_id="15", results=results)
+
+    assert report.total_source_players == 1
+    assert report.exact_resolutions == 1
+    assert await _log_player_id(db_session, person_id="1641013") == exact_player.id

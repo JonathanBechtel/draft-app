@@ -19,7 +19,7 @@ from app.services.summer_league.player_resolution import (
     SummerLeagueResolutionCandidate,
     SummerLeagueResolutionResult,
     SummerLeagueCandidateSearchError,
-    _build_report,
+    build_resolution_report,
     _candidate_payloads,
     _collapse_whitespace,
     _create_stub_player,
@@ -320,7 +320,7 @@ def test_report_counts_methods_candidates_stubs_and_backfills() -> None:
         ),
     ]
 
-    report = _build_report(year=2024, league_id="15", results=results)
+    report = build_resolution_report(year=2024, league_id="15", results=results)
 
     assert report.total_source_players == 3
     assert report.resolved_source_players == 2

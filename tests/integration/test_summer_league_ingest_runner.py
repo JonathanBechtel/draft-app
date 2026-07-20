@@ -39,10 +39,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.cli import summer_league_ingest_runner as runner
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
+    SummerLeagueDataQuality,
     SummerLeagueGame,
+    SummerLeagueGameStatus,
+    SummerLeaguePlayerGameLog,
+    SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
+    SummerLeagueSourcePlayer,
+    SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_pipeline import SummerLeagueBatchPhase
+from app.services.player_mention_service import _normalized_name_key
 from app.services.summer_league.audit import audit_summer_league_raw
 from app.services.summer_league.batch_progress import (
     get_completed_batch_game_ids,
@@ -52,6 +59,9 @@ from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.services.summer_league.normalization import (
     normalize_competition_games,
     normalize_shot_events,
+)
+from app.services.summer_league.player_resolution import (
+    apply_source_player_resolution_plan as _real_apply_source_player_resolution_plan,
 )
 from app.services.summer_league.raw_ingestion import dirty_game_ids_from_manifest
 from app.services.summer_league.write_lock import (
@@ -443,6 +453,180 @@ async def test_run_venue_releases_writer_lock_between_phases(
         "between_shot_and_pbp": True,
         "during_pbp": False,
     }
+
+
+# ---------------------------------------------------------------------------
+# Identity-resolution lock-lifetime (ticket #632): the writer lock must not
+# be held while candidate search (this venue's Gemini-equivalent provider
+# call) runs, only while a resolution write batch actually persists its
+# results -- the July 19, 2026 incident's root cause was exactly the
+# opposite of this. `try_acquire_summer_league_writer_lock` is real; only the
+# backbone/shot/PBP business logic and the candidate-search provider call are
+# stubbed.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_pending_source_player(
+    db: AsyncSession,
+    *,
+    year: int,
+    league_id: str,
+    person_id: str,
+    raw_name: str,
+) -> SummerLeagueSourcePlayer:
+    """Seed one game-logged, still-unresolved source player for this venue/year."""
+    competition = SummerLeagueCompetition(
+        year=year,
+        league_id=league_id,
+        venue_slug=f"lock-lifetime-{_next_idx()}",
+        display_name=f"{year} Lock Lifetime Venue",
+        data_quality=SummerLeagueDataQuality.FULL,
+    )
+    db.add(competition)
+    await db.flush()
+    assert competition.id is not None
+
+    team = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id=f"999{_next_idx():04d}",
+        raw_team_name="Lock Lifetime Team",
+        raw_team_abbreviation="LLT",
+        team_slug=f"lock-lifetime-team-{_next_idx()}",
+    )
+    db.add(team)
+    await db.flush()
+    assert team.id is not None
+
+    game = SummerLeagueGame(
+        competition_id=competition.id,
+        nba_stats_game_id=f"lock-lifetime-{_next_idx()}",
+        game_date=date(year, 7, 12),
+        home_team_entry_id=team.id,
+        status=SummerLeagueGameStatus.FINAL,
+        source_quality=SummerLeagueDataQuality.FULL,
+    )
+    db.add(game)
+    await db.flush()
+    assert game.id is not None
+
+    source_player = SummerLeagueSourcePlayer(
+        nba_stats_person_id=person_id,
+        raw_player_name=raw_name,
+        normalized_name=_normalized_name_key(raw_name),
+        first_seen_year=year,
+        last_seen_year=year,
+        resolution_status=SummerLeagueResolutionStatus.UNRESOLVED,
+    )
+    db.add(source_player)
+    await db.flush()
+    assert source_player.id is not None
+
+    db.add(
+        SummerLeaguePlayerGameLog(
+            competition_id=competition.id,
+            game_id=game.id,
+            team_entry_id=team.id,
+            source_player_id=source_player.id,
+            player_id=None,
+            nba_stats_person_id=person_id,
+            raw_player_name=raw_name,
+            minutes_seconds=1200,
+            pts=10,
+            source_endpoint="boxscoretraditionalv2",
+        )
+    )
+    await db.flush()
+    return source_player
+
+
+async def test_run_venue_resolution_search_runs_without_lock_writes_hold_it(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    test_schema: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Candidate search runs lock-free; applying its result briefly holds the lock.
+
+    Regression test for ticket #632: the July 19, 2026 incident's root cause
+    was candidate search (this venue's Gemini-bound provider call) running
+    inside the same transaction/writer lock as the rest of backbone
+    normalization. A second session must be able to acquire the writer lock
+    *while candidate search is in flight*, and the source player's stub
+    creation must actually persist once the (lock-held) write batch runs.
+    """
+    source_player = await _seed_pending_source_player(
+        db_session,
+        year=2024,
+        league_id="15",
+        person_id="9641099",
+        raw_name="Lock Lifetime Prospect",
+    )
+    await db_session.commit()  # close the seeding autobegun transaction
+
+    lock_states: dict[str, bool] = {}
+
+    async def _fake_backbone(_db: object, _options: object) -> object:
+        return _FakeBackfillReport()
+
+    async def _fake_shot(_db: object, **_kwargs: object) -> object:
+        return _FakeShotReport()
+
+    async def _fake_pbp(_db: object, **_kwargs: object) -> object:
+        return _FakePBPReport()
+
+    async def _fake_candidate_search(
+        _db: object, _query: str, k: int = 5
+    ) -> list[object]:
+        lock_states["during_candidate_search"] = await _probe_writer_lock_is_free(
+            session_factory, test_schema
+        )
+        return []
+
+    async def _spy_apply_resolution_plan(
+        db_arg: AsyncSession, sp: object, plan: object, **kwargs: object
+    ) -> object:
+        lock_states["during_resolution_write"] = await _probe_writer_lock_is_free(
+            session_factory, test_schema
+        )
+        return await _real_apply_source_player_resolution_plan(
+            db_arg, sp, plan, **kwargs  # type: ignore[arg-type]
+        )
+
+    monkeypatch.setattr(runner, "backfill_summer_league_backbone", _fake_backbone)
+    monkeypatch.setattr(runner, "summarize_backfill_report", lambda _r: "summary")
+    monkeypatch.setattr(runner, "normalize_shot_events", _fake_shot)
+    monkeypatch.setattr(runner, "normalize_pbp_events", _fake_pbp)
+    monkeypatch.setattr(
+        "app.services.summer_league.player_resolution.find_candidate_players",
+        _fake_candidate_search,
+    )
+    monkeypatch.setattr(
+        runner, "apply_source_player_resolution_plan", _spy_apply_resolution_plan
+    )
+
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=["1522400001"]),  # refresh
+            _FakeManifest(game_ids=["1522400001"]),  # fetch
+        ]
+    )
+
+    had_games, failed = await runner._run_venue(
+        db_session,
+        ingestor,  # type: ignore[arg-type]
+        year=2024,
+        league_id="15",
+    )
+
+    assert (had_games, failed) == (True, False)
+    assert lock_states == {
+        "during_candidate_search": True,  # lock free -- no transaction held it
+        "during_resolution_write": False,  # lock held -- the write batch owns it
+    }
+
+    await db_session.refresh(source_player)
+    assert source_player.resolution_status == SummerLeagueResolutionStatus.STUB
+    assert source_player.canonical_player_id is not None
 
 
 # ---------------------------------------------------------------------------
