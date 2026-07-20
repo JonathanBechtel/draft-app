@@ -77,7 +77,6 @@ from collections.abc import Awaitable, Callable, Sequence
 from contextlib import nullcontext
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from time import perf_counter
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -112,6 +111,7 @@ from app.services.summer_league.batch_progress import (
 from app.services.summer_league.normalization import (
     SummerLeaguePBPEventReport,
     SummerLeagueShotEventReport,
+    chunked,
     find_incomplete_team_box_game_ids,
     normalize_competition_games,
     normalize_pbp_events,
@@ -136,8 +136,8 @@ from app.services.summer_league.scoreboard_ingest import (
     run_scoreboard_ingest,
 )
 from app.services.summer_league.write_lock import (
-    desk_is_waiting,
     try_acquire_summer_league_writer_lock,
+    try_acquire_summer_league_writer_lock_yielding,
 )
 from app.schemas.summer_league_pipeline import (
     SummerLeagueBatchPhase,
@@ -175,14 +175,6 @@ FETCH_RETRY_DELAY_SECONDS = 2.0
 # overhead doesn't dominate on a routine, mostly-already-normalized run.
 EVENT_BATCH_SIZE = 8
 
-# Bounded back-off applied before a batch's writer-lock reacquisition
-# attempt when the Desk tick is currently signaling it's waiting for the
-# lock (see app.services.summer_league.write_lock.desk_is_waiting). Gives
-# the higher-priority Desk tick a clear window to win the lock instead of
-# this lower-priority writer immediately racing it again at every batch
-# boundary.
-DESK_BACKOFF_SECONDS = 0.5
-
 
 def _telemetry_step(telemetry: PipelineTelemetry | None, name: str, **fields: object):
     """Return a timing context only when a production telemetry run is active.
@@ -196,38 +188,6 @@ def _telemetry_step(telemetry: PipelineTelemetry | None, name: str, **fields: ob
     ``games_processed``) must guard on ``is not None`` before writing to it.
     """
     return telemetry.step(name, **fields) if telemetry is not None else nullcontext()
-
-
-async def _try_acquire_writer_lock_timed(
-    db: AsyncSession, step_fields: dict[str, object] | None
-) -> bool:
-    """Attempt the non-blocking writer lock, timing the attempt as its own field.
-
-    Mirrors ``scripts/sl_desk_tick.py``'s ``_acquire_writer_lock_timed`` for
-    this module's non-blocking ``try_acquire_summer_league_writer_lock``
-    primitive: even though an uncontended ``pg_try_advisory_xact_lock`` call
-    resolves near-instantly, recording it under the same distinct
-    ``writer_lock_wait_ms`` field name keeps every writer-lock attempt in
-    this pipeline greppable the same way, and makes a genuinely slow attempt
-    (e.g. Postgres itself under load) visible instead of being invisible
-    inside a batch step's generic ``duration_ms``.
-
-    Args:
-        db: Active database session.
-        step_fields: The dict yielded by the enclosing ``telemetry.step(...)``
-            call (see :func:`_telemetry_step`), or ``None`` when no
-            production telemetry run is active.
-
-    Returns:
-        Whether the lock was acquired.
-    """
-    started_at = perf_counter()
-    acquired = await try_acquire_summer_league_writer_lock(db)
-    if step_fields is not None:
-        step_fields["writer_lock_wait_ms"] = round(
-            (perf_counter() - started_at) * 1000, 1
-        )
-    return acquired
 
 
 def _resolve_year() -> int:
@@ -480,35 +440,6 @@ async def _refresh_schedule(
         return None
 
 
-async def _yield_to_desk_if_waiting(db: AsyncSession) -> None:
-    """Back off briefly before a phase/batch's lock attempt if the Desk is waiting.
-
-    Called immediately before every writer-lock (re)acquisition attempt in
-    this module -- the backbone phase, each shot/PBP batch, and the
-    team-box retry pass -- so this lower-priority writer cooperatively
-    yields to a Desk tick that is actively waiting instead of immediately
-    racing it for the lock again at every one of these boundaries.
-
-    Checking :func:`~app.services.summer_league.write_lock.desk_is_waiting`
-    autobegins a lightweight transaction on this session (SQLAlchemy async
-    "autobegin"); commit it here -- a no-op for the DB, nothing was written
-    -- before the caller opens its own ``db.begin()``, mirroring
-    ``_refresh_schedule``'s handling of the identical gotcha.
-
-    Args:
-        db: Active database session with no open transaction.
-    """
-    waiting = await desk_is_waiting(db)
-    await db.commit()
-    if waiting:
-        await asyncio.sleep(DESK_BACKOFF_SECONDS)
-
-
-def _chunked(items: Sequence[str], size: int) -> list[list[str]]:
-    """Split ``items`` into consecutive chunks of at most ``size`` elements."""
-    return [list(items[i : i + size]) for i in range(0, len(items), size)]
-
-
 def _describe_shot_report(report: SummerLeagueShotEventReport) -> str:
     """Format one shot-event batch report for logging."""
     return (
@@ -546,10 +477,12 @@ async def _run_batched_phase(
     against an already-fully-normalized venue only ever processes newly
     discovered games. Each batch then commits in its own
     ``db.begin()``/advisory-lock lifetime, releasing the writer lock
-    between batches and checking :func:`_yield_to_desk_if_waiting` before
-    each reacquisition, so one venue's shot/PBP volume can never again hold
-    the lock for the venue's full duration (the 87.7-minute production
-    incident this module exists to prevent).
+    between batches via
+    :func:`~app.services.summer_league.write_lock.try_acquire_summer_league_writer_lock_yielding`
+    (which yields to a waiting Desk tick before each reacquisition), so one
+    venue's shot/PBP volume can never again hold the lock for the venue's
+    full duration (the 87.7-minute production incident this module exists to
+    prevent).
 
     Args:
         db: Async database session shared across this venue's phases.
@@ -592,14 +525,15 @@ async def _run_batched_phase(
         )
         return True
 
-    batches = _chunked(remaining, EVENT_BATCH_SIZE)
+    batches = chunked(remaining, EVENT_BATCH_SIZE)
     for batch_index, batch in enumerate(batches, start=1):
-        await _yield_to_desk_if_waiting(db)
         with _telemetry_step(
             telemetry, f"venue:{league_id}:{phase.value}_batch_{batch_index}"
         ) as step_fields:
             async with db.begin():
-                if not await _try_acquire_writer_lock_timed(db, step_fields):
+                if not await try_acquire_summer_league_writer_lock_yielding(
+                    db, step_fields
+                ):
                     await defer_full_reconciliation(
                         db,
                         reason=f"venue:{league_id}:{phase.value}_batch_lock_contended",
@@ -821,8 +755,9 @@ async def _run_venue(
     how long this lower-priority writer can starve the hourly Summer League
     Desk tick: previously the whole block ran for as long as 87.7 minutes in
     production; now the lock is released and reacquired (yielding first to
-    a waiting Desk tick, see :func:`_yield_to_desk_if_waiting`) at every
-    phase and batch boundary.
+    a waiting Desk tick, see
+    :func:`~app.services.summer_league.write_lock.try_acquire_summer_league_writer_lock_yielding`)
+    at every phase and batch boundary.
 
     Before the batched shot/PBP phases run, :func:`_reconcile_batch_progress`
     invalidates any stale durable progress markers -- dirty games detected
@@ -895,13 +830,14 @@ async def _run_venue(
     # Phase A: backbone normalization -- its own transaction/lock lifetime,
     # separated from shot/PBP below so the writer lock is released the
     # instant it commits instead of staying held across the whole venue.
-    await _yield_to_desk_if_waiting(db)
     try:
         with _telemetry_step(
             telemetry, f"venue:{league_id}:backbone_normalization"
         ) as step_fields:
             async with db.begin():
-                if not await _try_acquire_writer_lock_timed(db, step_fields):
+                if not await try_acquire_summer_league_writer_lock_yielding(
+                    db, step_fields
+                ):
                     await defer_full_reconciliation(
                         db,
                         reason=f"venue:{league_id}:shared_write_phase_lock_contended",
@@ -1073,13 +1009,14 @@ async def _retry_incomplete_team_boxes(
             len(retry_manifest.errors),
         )
 
-    await _yield_to_desk_if_waiting(db)
     try:
         with _telemetry_step(
             telemetry, f"venue:{league_id}:team_box_normalization"
         ) as step_fields:
             async with db.begin():
-                if not await _try_acquire_writer_lock_timed(db, step_fields):
+                if not await try_acquire_summer_league_writer_lock_yielding(
+                    db, step_fields
+                ):
                     await defer_full_reconciliation(
                         db,
                         reason=f"venue:{league_id}:team_box_retry_lock_contended",
@@ -1184,7 +1121,9 @@ async def main() -> int:
                 try:
                     with telemetry.step("metrics_and_snapshots") as step_fields:
                         async with db.begin():
-                            if await _try_acquire_writer_lock_timed(db, step_fields):
+                            if await try_acquire_summer_league_writer_lock_yielding(
+                                db, step_fields
+                            ):
                                 summary = await rebuild_sl_metrics(db)
                                 refreshed_snapshots = (
                                     await materialize_desk_render_snapshots(db)

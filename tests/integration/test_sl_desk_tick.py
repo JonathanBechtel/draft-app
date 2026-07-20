@@ -641,8 +641,11 @@ async def test_desk_tick_reads_runtime_clock_after_writer_lock(
     lock_acquired = False
     post_lock_now = datetime(2099, 1, 15, 12, 5)
 
-    async def _acquire_writer_lock_bounded(
-        _db: AsyncSession, *, max_wait_seconds: float
+    async def _acquire_writer_lock_bounded_timed(
+        _db: AsyncSession,
+        *,
+        max_wait_seconds: float,
+        step_fields: dict[str, object] | None = None,
     ) -> None:
         nonlocal lock_acquired
         lock_acquired = True
@@ -655,8 +658,8 @@ async def test_desk_tick_reads_runtime_clock_after_writer_lock(
 
     monkeypatch.setattr(
         desk_tick_module,
-        "acquire_summer_league_writer_lock_bounded",
-        _acquire_writer_lock_bounded,
+        "acquire_summer_league_writer_lock_bounded_timed",
+        _acquire_writer_lock_bounded_timed,
     )
     monkeypatch.setattr(desk_tick_module, "datetime", _PostLockClock)
 

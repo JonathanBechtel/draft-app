@@ -139,7 +139,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from time import perf_counter
 from typing import Literal, Optional
 
 from dotenv import load_dotenv
@@ -247,7 +246,7 @@ from app.services.summer_league.scoreboard_ingest import (  # noqa: E402
     run_scoreboard_ingest,
 )
 from app.services.summer_league.write_lock import (  # noqa: E402
-    acquire_summer_league_writer_lock_bounded,
+    acquire_summer_league_writer_lock_bounded_timed,
 )
 from app.schemas.summer_league_pipeline import SummerLeaguePipelineJob  # noqa: E402
 from app.utils.db_async import SessionLocal, engine  # noqa: E402
@@ -273,44 +272,6 @@ _ROSTER_ACTIVE_STATUSES = {
     AffiliationStatus.CONFIRMED,
     AffiliationStatus.ACTIVE,
 }
-
-
-async def _acquire_writer_lock_timed(
-    db: AsyncSession,
-    *,
-    max_wait_seconds: float,
-    step_fields: Optional[dict[str, object]],
-) -> None:
-    """Acquire the bounded writer lock, timing the wait as its own field.
-
-    ``PipelineTelemetry.step``'s own ``duration_ms`` already covers this
-    call when it is the entire body of a ``with telemetry.step(...)`` block
-    (the case both call sites below use), but that value is not visible to
-    the caller from inside the block -- this measures the identical wait
-    independently and, when telemetry is active (``step_fields`` is not
-    ``None``, i.e. not a bare ``nullcontext()``), stores it under the
-    distinct, greppable ``writer_lock_wait_ms`` field so a lock wait is never
-    folded into the generic step timing implicitly.
-
-    Args:
-        db: Active database session.
-        max_wait_seconds: Forwarded to
-            :func:`~app.services.summer_league.write_lock.acquire_summer_league_writer_lock_bounded`.
-        step_fields: The dict yielded by the enclosing ``telemetry.step(...)``
-            call, or ``None`` when no production telemetry run is active.
-
-    Raises:
-        SummerLeagueWriterLockTimeout: See
-            :func:`~app.services.summer_league.write_lock.acquire_summer_league_writer_lock_bounded`.
-    """
-    started_at = perf_counter()
-    await acquire_summer_league_writer_lock_bounded(
-        db, max_wait_seconds=max_wait_seconds
-    )
-    if step_fields is not None:
-        step_fields["writer_lock_wait_ms"] = round(
-            (perf_counter() - started_at) * 1000, 1
-        )
 
 
 @dataclass(frozen=True)
@@ -1031,7 +992,7 @@ async def run_desk_tick(
     with (
         telemetry.step("writer_lock_wait") if telemetry is not None else nullcontext()
     ) as step_fields:
-        await _acquire_writer_lock_timed(
+        await acquire_summer_league_writer_lock_bounded_timed(
             db,
             max_wait_seconds=writer_lock_max_wait_seconds,
             step_fields=step_fields,
@@ -1044,7 +1005,7 @@ async def run_desk_tick(
             if telemetry is not None
             else nullcontext()
         ) as step_fields:
-            await _acquire_writer_lock_timed(
+            await acquire_summer_league_writer_lock_bounded_timed(
                 db,
                 max_wait_seconds=writer_lock_max_wait_seconds,
                 step_fields=step_fields,

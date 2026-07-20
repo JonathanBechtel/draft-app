@@ -662,6 +662,35 @@ async def normalize_player_game_logs(
     )
 
 
+def _raise_availability_flag(
+    competition: SummerLeagueCompetition,
+    attr: str,
+    *,
+    has_events: bool,
+    game_ids: set[str] | None,
+) -> None:
+    """Set availability from actual parsed rows, not file presence.
+
+    Shared by :func:`normalize_shot_events`/:func:`normalize_pbp_events`. A
+    batch call (``game_ids`` set) only ever raises the flag -- it must never
+    downgrade it back to ``False`` just because *this batch's* games
+    happened to have no events while an earlier, already-committed batch
+    did. Only a whole-venue call (``game_ids=None``, matching prior behavior
+    exactly) may set it back to ``False``.
+
+    Args:
+        competition: The competition row to update in place.
+        attr: ``"shotchart_available"`` or ``"pbp_available"``.
+        has_events: Whether this call's batch had at least one parsed event.
+        game_ids: The batch's game-id filter, or ``None`` for a whole-venue
+            call.
+    """
+    if has_events:
+        setattr(competition, attr, True)
+    elif game_ids is None:
+        setattr(competition, attr, False)
+
+
 async def normalize_shot_events(
     db: AsyncSession,
     *,
@@ -840,16 +869,12 @@ async def normalize_shot_events(
     await db.flush()
     _expire_written_instances(db, (SummerLeagueSourcePlayer, SummerLeagueShotEvent))
 
-    # Set availability from actual parsed rows, not file presence. A batch
-    # call (``game_ids`` set) only ever raises the flag -- it must never
-    # downgrade it back to False just because *this batch's* games happened
-    # to have no shots while an earlier, already-committed batch did. Only a
-    # whole-venue call (``game_ids=None``, matching prior behavior exactly)
-    # may set it back to False.
-    if games_with_shots > 0:
-        competition.shotchart_available = True
-    elif game_ids is None:
-        competition.shotchart_available = False
+    _raise_availability_flag(
+        competition,
+        "shotchart_available",
+        has_events=games_with_shots > 0,
+        game_ids=game_ids,
+    )
     competition.updated_at = _utc_now_naive()
     await db.flush()
 
@@ -1018,14 +1043,12 @@ async def normalize_pbp_events(
         db, (SummerLeagueSourcePlayer, SummerLeaguePlayByPlayEvent)
     )
 
-    # Set availability from actual parsed rows, not file presence. A batch
-    # call (``game_ids`` set) only ever raises the flag -- see the matching
-    # comment in :func:`normalize_shot_events` for why it must never
-    # downgrade a flag an earlier, already-committed batch already raised.
-    if games_with_pbp > 0:
-        competition.pbp_available = True
-    elif game_ids is None:
-        competition.pbp_available = False
+    _raise_availability_flag(
+        competition,
+        "pbp_available",
+        has_events=games_with_pbp > 0,
+        game_ids=game_ids,
+    )
     competition.updated_at = _utc_now_naive()
     await db.flush()
 
@@ -2298,7 +2321,7 @@ def _parse_shot_row(row_map: dict[str, Any]) -> ParsedShotEvent | None:
     )
 
 
-def _chunked(items: list[Any], size: int) -> list[list[Any]]:
+def chunked(items: list[Any], size: int) -> list[list[Any]]:
     """Split ``items`` into consecutive chunks of at most ``size`` elements."""
     return [items[i : i + size] for i in range(0, len(items), size)]
 
@@ -2371,7 +2394,7 @@ async def _bulk_upsert_source_players(
     now = _utc_now_naive()
     table = getattr(SummerLeagueSourcePlayer, "__table__")
     refs: dict[str, _SourcePlayerRef] = {}
-    for chunk in _chunked(list(identities.values()), BULK_UPSERT_CHUNK_SIZE):
+    for chunk in chunked(list(identities.values()), BULK_UPSERT_CHUNK_SIZE):
         values = [
             {
                 "nba_stats_person_id": row.nba_stats_person_id,
@@ -2417,6 +2440,41 @@ async def _bulk_upsert_source_players(
     return refs
 
 
+async def _bulk_upsert(
+    db: AsyncSession,
+    table: Any,
+    rows: list[dict[str, Any]],
+    *,
+    index_elements: list[str],
+    mutable_columns: tuple[str, ...],
+) -> None:
+    """Chunked ``INSERT ... ON CONFLICT ... DO UPDATE`` for one event table.
+
+    Shared by :func:`_bulk_upsert_shot_events` and
+    :func:`_bulk_upsert_pbp_events` -- both replace a SELECT-then-write
+    per-event helper with the same chunk-and-upsert shape, differing only in
+    the target table, conflict key, and mutable column set.
+
+    Args:
+        db: Active database session.
+        table: SQLAlchemy Core table (``getattr(Model, "__table__")``).
+        rows: Fully-built column dicts, already deduped last-row-wins per
+            conflict key by the caller. A no-op when empty.
+        index_elements: Unique-constraint columns identifying one row.
+        mutable_columns: Columns to overwrite from the incoming row on
+            conflict.
+    """
+    if not rows:
+        return
+    for chunk in chunked(rows, BULK_UPSERT_CHUNK_SIZE):
+        stmt = insert(table).values(chunk)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=index_elements,
+            set_={col: getattr(stmt.excluded, col) for col in mutable_columns},
+        )
+        await db.execute(stmt)
+
+
 async def _bulk_upsert_shot_events(
     db: AsyncSession,
     rows: list[dict[str, Any]],
@@ -2433,37 +2491,33 @@ async def _bulk_upsert_shot_events(
             last-row-wins per key by the caller) matching
             ``SummerLeagueShotEvent`` columns. A no-op when empty.
     """
-    if not rows:
-        return
-    table = getattr(SummerLeagueShotEvent, "__table__")
-    mutable_columns = (
-        "game_id",
-        "competition_id",
-        "team_entry_id",
-        "source_player_id",
-        "player_id",
-        "nba_stats_person_id",
-        "period",
-        "minutes_remaining",
-        "seconds_remaining",
-        "loc_x",
-        "loc_y",
-        "shot_distance",
-        "shot_type",
-        "shot_zone_basic",
-        "shot_zone_area",
-        "shot_zone_range",
-        "action_type",
-        "made",
-        "updated_at",
+    await _bulk_upsert(
+        db,
+        getattr(SummerLeagueShotEvent, "__table__"),
+        rows,
+        index_elements=["nba_stats_game_id", "nba_stats_game_event_id"],
+        mutable_columns=(
+            "game_id",
+            "competition_id",
+            "team_entry_id",
+            "source_player_id",
+            "player_id",
+            "nba_stats_person_id",
+            "period",
+            "minutes_remaining",
+            "seconds_remaining",
+            "loc_x",
+            "loc_y",
+            "shot_distance",
+            "shot_type",
+            "shot_zone_basic",
+            "shot_zone_area",
+            "shot_zone_range",
+            "action_type",
+            "made",
+            "updated_at",
+        ),
     )
-    for chunk in _chunked(rows, BULK_UPSERT_CHUNK_SIZE):
-        stmt = insert(table).values(chunk)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["nba_stats_game_id", "nba_stats_game_event_id"],
-            set_={col: getattr(stmt.excluded, col) for col in mutable_columns},
-        )
-        await db.execute(stmt)
 
 
 def _parse_pbp_row(row_map: dict[str, Any]) -> ParsedPBPEvent | None:
@@ -2532,7 +2586,7 @@ async def _preload_actor_ids(
     if not nba_person_ids:
         return {}
     mapping: dict[str, int | None] = {}
-    for chunk in _chunked(sorted(nba_person_ids), BULK_UPSERT_CHUNK_SIZE):
+    for chunk in chunked(sorted(nba_person_ids), BULK_UPSERT_CHUNK_SIZE):
         result = await db.execute(
             select(  # type: ignore[call-overload]
                 SummerLeagueSourcePlayer.nba_stats_person_id,
@@ -2562,34 +2616,30 @@ async def _bulk_upsert_pbp_events(
             last-row-wins per key by the caller) matching
             ``SummerLeaguePlayByPlayEvent`` columns. A no-op when empty.
     """
-    if not rows:
-        return
-    table = getattr(SummerLeaguePlayByPlayEvent, "__table__")
-    mutable_columns = (
-        "game_id",
-        "competition_id",
-        "period",
-        "clock",
-        "event_msg_type",
-        "home_score",
-        "away_score",
-        "score_margin",
-        "person1_nba_id",
-        "person1_id",
-        "person2_nba_id",
-        "person2_id",
-        "person3_nba_id",
-        "person3_id",
-        "description",
-        "updated_at",
+    await _bulk_upsert(
+        db,
+        getattr(SummerLeaguePlayByPlayEvent, "__table__"),
+        rows,
+        index_elements=["nba_stats_game_id", "event_num"],
+        mutable_columns=(
+            "game_id",
+            "competition_id",
+            "period",
+            "clock",
+            "event_msg_type",
+            "home_score",
+            "away_score",
+            "score_margin",
+            "person1_nba_id",
+            "person1_id",
+            "person2_nba_id",
+            "person2_id",
+            "person3_nba_id",
+            "person3_id",
+            "description",
+            "updated_at",
+        ),
     )
-    for chunk in _chunked(rows, BULK_UPSERT_CHUNK_SIZE):
-        stmt = insert(table).values(chunk)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["nba_stats_game_id", "event_num"],
-            set_={col: getattr(stmt.excluded, col) for col in mutable_columns},
-        )
-        await db.execute(stmt)
 
 
 async def _pbp_raw_files_by_game(

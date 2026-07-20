@@ -41,8 +41,10 @@ def _summer_league_writer_lock_available(
     async def _record_failure(_db: object, **_kwargs: object) -> None:
         return None
 
-    async def _not_waiting(_db: object) -> bool:
-        return False
+    async def _available_yielding(
+        _db: object, _step_fields: object = None
+    ) -> bool:
+        return True
 
     async def _no_completed_batches(_db: object, **_kwargs: object) -> set[str]:
         return set()
@@ -62,11 +64,13 @@ def _summer_league_writer_lock_available(
         return _FakeEnvironmentRefreshOutcome()
 
     monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _available)
+    monkeypatch.setattr(
+        runner, "try_acquire_summer_league_writer_lock_yielding", _available_yielding
+    )
     monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
     monkeypatch.setattr(runner, "full_reconciliation_is_pending", _pending)
     monkeypatch.setattr(runner, "complete_pipeline", _complete)
     monkeypatch.setattr(runner, "record_pipeline_failure", _record_failure)
-    monkeypatch.setattr(runner, "desk_is_waiting", _not_waiting)
     monkeypatch.setattr(runner, "get_completed_batch_game_ids", _no_completed_batches)
     monkeypatch.setattr(runner, "count_pending_batch_games", _no_pending_batches)
     monkeypatch.setattr(runner, "record_batch_progress", _record_batch_progress)
@@ -436,7 +440,9 @@ async def test_run_venue_retry_yields_when_desk_writer_starts_during_fetch(
     )
     attempts = {"n": 0}
 
-    async def _lock_available_until_retry(_db: object) -> bool:
+    async def _lock_available_until_retry(
+        _db: object, _step_fields: object = None
+    ) -> bool:
         # A single-game venue makes exactly three writer-lock attempts
         # before the team-box retry's own reacquisition: one for the
         # backbone phase, one for the (single-batch) shot phase, and one
@@ -446,7 +452,9 @@ async def test_run_venue_retry_yields_when_desk_writer_starts_during_fetch(
         return attempts["n"] <= 3
 
     monkeypatch.setattr(
-        runner, "try_acquire_summer_league_writer_lock", _lock_available_until_retry
+        runner,
+        "try_acquire_summer_league_writer_lock_yielding",
+        _lock_available_until_retry,
     )
     ingestor = _FakeIngestor(
         [
@@ -477,13 +485,15 @@ async def test_run_venue_skips_db_processing_while_desk_writer_is_active(
     deferred_reasons: list[str] = []
     _patch_backbone_services(monkeypatch, calls)
 
-    async def _busy(_db: object) -> bool:
+    async def _busy(_db: object, _step_fields: object = None) -> bool:
         return False
 
     async def _defer(_db: object, *, reason: str) -> None:
         deferred_reasons.append(reason)
 
-    monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _busy)
+    monkeypatch.setattr(
+        runner, "try_acquire_summer_league_writer_lock_yielding", _busy
+    )
     monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
     ingestor = _FakeIngestor(
         [
@@ -734,46 +744,6 @@ async def test_run_venue_full_reconcile_clears_all_progress_regardless_of_dirty_
         {"phase": runner.SummerLeagueBatchPhase.SHOT, "game_ids": None},
         {"phase": runner.SummerLeagueBatchPhase.PBP, "game_ids": None},
     ]
-
-
-@pytest.mark.asyncio
-async def test_run_venue_backs_off_before_batch_when_desk_is_waiting(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A waiting Desk tick triggers a bounded sleep before the next lock attempt."""
-    calls: list[str] = []
-    _patch_backbone_services(monkeypatch, calls)
-    waiting_checks = {"n": 0}
-
-    async def _waiting_once(_db: object) -> bool:
-        waiting_checks["n"] += 1
-        # Only the backbone phase's own check reports the Desk waiting.
-        return waiting_checks["n"] == 1
-
-    sleep_calls: list[float] = []
-
-    async def _fake_sleep(seconds: float) -> None:
-        sleep_calls.append(seconds)
-
-    monkeypatch.setattr(runner, "desk_is_waiting", _waiting_once)
-    monkeypatch.setattr(runner.asyncio, "sleep", _fake_sleep)
-
-    ingestor = _FakeIngestor(
-        [
-            _FakeManifest(game_ids=["001"]),
-            _FakeManifest(game_ids=["001"]),
-        ]
-    )
-
-    had_games, failed = await runner._run_venue(
-        _FakeSession(),  # type: ignore[arg-type]
-        ingestor,  # type: ignore[arg-type]
-        year=2026,
-        league_id="15",
-    )
-
-    assert (had_games, failed) == (True, False)
-    assert sleep_calls == [runner.DESK_BACKOFF_SECONDS]
 
 
 # ---------------------------------------------------------------------------
