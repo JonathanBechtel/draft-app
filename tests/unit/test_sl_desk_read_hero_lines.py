@@ -501,6 +501,82 @@ async def test_live_state_reselects_active_game_with_current_data(
 
 
 @pytest.mark.asyncio
+async def test_live_board_read_regenerates_when_top_performer_gmsc_moves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live-refreshed Game Score past the snapshot's frozen prose swaps the read line."""
+    payload = _live_payload()
+    payload = desk_read.dataclass_replace(
+        payload,
+        live_board=[
+            desk_read.dataclass_replace(
+                payload.live_board[0],
+                top_performer_player_id=101,
+                top_performer_gmsc=18.5,
+                read="His 18.5 Game Score is the best mark in the cohort to date.",
+            )
+        ],
+    )
+
+    async def _fetch(_db, *, game_ids):
+        assert game_ids == [8]
+        return desk_read._CurrentLiveSnapshotState(
+            games={8: _current_game(8)},
+            logs_by_game={
+                8: {101: _log(game_id=8, player_id=101, pts=30, reb=8, ast=8)}
+            },
+            players={101: {"display_name": "Ace Prospect"}},
+        )
+
+    monkeypatch.setattr(desk_read, "_fetch_current_live_snapshot_state", _fetch)
+    refreshed, _players = await desk_read._refresh_snapshot_live_state(
+        object(), payload, now=datetime(2026, 7, 10, 23, 10)
+    )
+
+    row = refreshed.live_board[0]
+    assert row.top_performer_gmsc == 35.6
+    assert row.read == "Ace Prospect leads with a live 35.6 Game Score."
+
+
+@pytest.mark.asyncio
+async def test_live_board_read_unchanged_when_top_performer_gmsc_matches_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A still-accurate snapshot read (no drift since the last tick) is left alone."""
+    payload = _live_payload()
+    payload = desk_read.dataclass_replace(
+        payload,
+        live_board=[
+            desk_read.dataclass_replace(
+                payload.live_board[0],
+                top_performer_player_id=101,
+                top_performer_gmsc=24.1,
+                read="Leads all tonight's slate at 24.1 Game Score.",
+            )
+        ],
+    )
+
+    async def _fetch(_db, *, game_ids):
+        assert game_ids == [8]
+        return desk_read._CurrentLiveSnapshotState(
+            games={8: _current_game(8)},
+            logs_by_game={
+                8: {101: _log(game_id=8, player_id=101, pts=22, reb=7, ast=3)}
+            },
+            players={101: {"display_name": "Ace Prospect"}},
+        )
+
+    monkeypatch.setattr(desk_read, "_fetch_current_live_snapshot_state", _fetch)
+    refreshed, _players = await desk_read._refresh_snapshot_live_state(
+        object(), payload, now=datetime(2026, 7, 10, 23, 10)
+    )
+
+    row = refreshed.live_board[0]
+    assert row.top_performer_gmsc == 24.1
+    assert row.read == "Leads all tonight's slate at 24.1 Game Score."
+
+
+@pytest.mark.asyncio
 async def test_live_state_promotes_current_game_over_stale_quiet_hero(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
