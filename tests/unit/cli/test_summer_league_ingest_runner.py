@@ -252,14 +252,35 @@ def _patch_backbone_services(
     incomplete_game_ids: tuple[str, ...] = (),
     shot_batches: list[set[str]] | None = None,
     pbp_batches: list[set[str]] | None = None,
+    resolution_pairs: list[tuple[object, object]] | None = None,
 ) -> None:
-    """Monkeypatch the three DB-touching backbone/normalize services."""
+    """Monkeypatch the three DB-touching backbone/normalize services.
+
+    ``resolution_pairs`` defaults to empty -- Phase A2 (see
+    ``_run_resolution_phase``) then short-circuits before ever attempting the
+    writer lock, which is what keeps every existing exact-sequence/exact-
+    lock-attempt-count assertion in this module valid without having to
+    account for a new resolution step.
+    """
 
     async def _fake_backbone(_db: object, _options: object) -> object:
         calls.append("backbone")
         if raise_in_backbone:
             raise RuntimeError("backbone boom")
         return _FakeBackfillReport()
+
+    async def _fake_prepare_resolutions(
+        _db: object, **_kwargs: object
+    ) -> list[tuple[object, object]]:
+        return list(resolution_pairs or [])
+
+    async def _fake_apply_resolution_plan(
+        _db: object, _source_player: object, _plan: object, **_kwargs: object
+    ) -> object:
+        raise AssertionError(
+            "apply_source_player_resolution_plan should not run when "
+            "resolution_pairs is empty"
+        )
 
     async def _fake_shot(_db: object, **kwargs: object) -> object:
         calls.append("shot")
@@ -284,6 +305,12 @@ def _patch_backbone_services(
 
     monkeypatch.setattr(runner, "backfill_summer_league_backbone", _fake_backbone)
     monkeypatch.setattr(runner, "summarize_backfill_report", lambda _r: "summary")
+    monkeypatch.setattr(
+        runner, "prepare_summer_league_player_resolutions", _fake_prepare_resolutions
+    )
+    monkeypatch.setattr(
+        runner, "apply_source_player_resolution_plan", _fake_apply_resolution_plan
+    )
     monkeypatch.setattr(runner, "normalize_shot_events", _fake_shot)
     monkeypatch.setattr(runner, "normalize_pbp_events", _fake_pbp)
     monkeypatch.setattr(runner, "normalize_competition_games", _fake_competition)
@@ -512,6 +539,61 @@ async def test_run_venue_skips_db_processing_while_desk_writer_is_active(
     assert result == (False, False)
     assert calls == []
     assert deferred_reasons == ["venue:15:shared_write_phase_lock_contended"]
+
+
+@pytest.mark.asyncio
+async def test_run_venue_resolution_batch_defers_when_desk_writer_becomes_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Desk writer that grabs the lock during resolution defers just that batch.
+
+    Mirrors ``test_run_venue_skips_db_processing_while_desk_writer_is_active``
+    but for Phase A2 (see ``_run_resolution_phase``): backbone's own lock
+    acquisition succeeds, but the resolution write batch's does not, so the
+    venue stops before shot/PBP -- exactly like a shot/PBP batch deferral.
+    """
+    calls: list[str] = []
+    deferred_reasons: list[str] = []
+    _patch_backbone_services(
+        monkeypatch,
+        calls,
+        resolution_pairs=[(object(), object())],
+    )
+
+    attempts = {"n": 0}
+
+    async def _lock_busy_after_backbone(
+        _db: object, _step_fields: object = None
+    ) -> bool:
+        attempts["n"] += 1
+        return attempts["n"] == 1  # backbone succeeds; the resolution batch does not
+
+    async def _defer(_db: object, *, reason: str) -> None:
+        deferred_reasons.append(reason)
+
+    monkeypatch.setattr(
+        runner,
+        "try_acquire_summer_league_writer_lock_yielding",
+        _lock_busy_after_backbone,
+    )
+    monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
+    ingestor = _FakeIngestor(
+        [
+            _FakeManifest(game_ids=["001"]),  # refresh
+            _FakeManifest(game_ids=["001"]),  # fetch
+        ]
+    )
+
+    result = await runner._run_venue(
+        _FakeSession(),  # type: ignore[arg-type]
+        ingestor,  # type: ignore[arg-type]
+        year=2026,
+        league_id="15",
+    )
+
+    assert result == (True, False)
+    assert calls == ["backbone"]  # resolution deferred before shot/pbp ever ran
+    assert deferred_reasons == ["venue:15:resolution_batch_lock_contended"]
 
 
 @pytest.mark.asyncio

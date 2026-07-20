@@ -101,6 +101,13 @@ from app.services.summer_league.environment_refresh import (
 )
 from app.services.summer_league.manifest import SummerLeagueRawManifest
 from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics
+from app.services.summer_league.player_resolution import (
+    SummerLeagueResolutionReport,
+    SummerLeagueResolutionResult,
+    apply_source_player_resolution_plan,
+    build_resolution_report,
+    prepare_summer_league_player_resolutions,
+)
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.services.summer_league.batch_progress import (
     count_pending_batch_games,
@@ -174,6 +181,14 @@ FETCH_RETRY_DELAY_SECONDS = 2.0
 # while staying large enough that per-batch transaction/lock-acquisition
 # overhead doesn't dominate on a routine, mostly-already-normalized run.
 EVENT_BATCH_SIZE = 8
+
+# Identity-resolution write-batch size: how many prepared resolution plans
+# get applied and committed per db.begin()/advisory-lock lifetime. Mirrors
+# EVENT_BATCH_SIZE's reasoning -- the candidate-search/Gemini calls that used
+# to run inside this same lock happen up front in `_run_resolution_phase`'s
+# preparation pass, so this batch size only governs how long the lock is
+# held for the (fast, DB-only) writes.
+RESOLUTION_BATCH_SIZE = 8
 
 
 def _telemetry_step(telemetry: PipelineTelemetry | None, name: str, **fields: object):
@@ -456,6 +471,80 @@ def _describe_pbp_report(report: SummerLeaguePBPEventReport) -> str:
     )
 
 
+async def _run_lock_bounded_batches(
+    db: AsyncSession,
+    *,
+    league_id: str,
+    phase_label: str,
+    unit_label: str,
+    batches: Sequence[Sequence[Any]],
+    telemetry: PipelineTelemetry | None,
+    contention_reason: str,
+    process_batch: Callable[[Sequence[Any], dict[str, object] | None], Awaitable[None]],
+) -> bool:
+    """Run pre-chunked ``batches`` one at a time, each its own lock/transaction.
+
+    Shared lock-acquire/defer/telemetry loop behind both
+    :func:`_run_batched_phase` (shot/PBP normalization) and
+    :func:`_run_resolution_phase` (identity resolution): open ``db.begin()``,
+    try the writer lock (yielding first to a waiting Desk tick via
+    :func:`~app.services.summer_league.write_lock.try_acquire_summer_league_writer_lock_yielding`),
+    defer and stop on contention, otherwise run ``process_batch`` for this
+    batch and move on. Releasing the lock between batches is what bounds how
+    long either kind of lower-priority writer can starve the hourly Summer
+    League Desk tick (the 87.7-minute production incident this module exists
+    to prevent).
+
+    Args:
+        db: Async database session shared across this venue's phases.
+        league_id: NBA Stats LeagueID for this venue (log/telemetry only).
+        phase_label: Short label identifying this phase in telemetry step
+            names and log lines (e.g. ``"shot"``, ``"pbp"``, ``"resolution"``).
+        unit_label: Plural noun for the deferral log line (e.g. ``"games"``,
+            ``"source players"``).
+        batches: Pre-chunked work items; each inner sequence is one batch.
+        telemetry: Optional structured-timing recorder for the production run.
+        contention_reason: Passed to ``defer_full_reconciliation`` as
+            ``reason=f"venue:{league_id}:{contention_reason}"`` when a batch
+            cannot acquire the lock.
+        process_batch: Awaited with ``(batch, step_fields)`` inside the open
+            transaction once the lock is held; ``step_fields`` is the dict
+            yielded by the enclosing ``telemetry.step(...)`` call (or
+            ``None`` when no production telemetry run is active) for the
+            callback to add its own fields to.
+
+    Returns:
+        True once every batch was attempted and committed (including the
+        trivial case of zero batches). False if a batch could not acquire
+        the writer lock -- reconciliation was deferred for it, and the
+        caller should stop this venue's pipeline for the rest of this run.
+    """
+    for batch_index, batch in enumerate(batches, start=1):
+        with _telemetry_step(
+            telemetry, f"venue:{league_id}:{phase_label}_batch_{batch_index}"
+        ) as step_fields:
+            async with db.begin():
+                if not await try_acquire_summer_league_writer_lock_yielding(
+                    db, step_fields
+                ):
+                    await defer_full_reconciliation(
+                        db, reason=f"venue:{league_id}:{contention_reason}"
+                    )
+                    logger.info(
+                        "L%s: %s deferred at batch %d/%d because the Desk writer "
+                        "is active; a later scheduled run will resume the "
+                        "remaining %s",
+                        league_id,
+                        phase_label,
+                        batch_index,
+                        len(batches),
+                        unit_label,
+                    )
+                    return False
+                await process_batch(batch, step_fields)
+    return True
+
+
 async def _run_batched_phase(
     db: AsyncSession,
     *,
@@ -526,50 +615,117 @@ async def _run_batched_phase(
         return True
 
     batches = chunked(remaining, EVENT_BATCH_SIZE)
-    for batch_index, batch in enumerate(batches, start=1):
-        with _telemetry_step(
-            telemetry, f"venue:{league_id}:{phase.value}_batch_{batch_index}"
-        ) as step_fields:
-            async with db.begin():
-                if not await try_acquire_summer_league_writer_lock_yielding(
-                    db, step_fields
-                ):
-                    await defer_full_reconciliation(
-                        db,
-                        reason=f"venue:{league_id}:{phase.value}_batch_lock_contended",
-                    )
-                    logger.info(
-                        "L%s: %s normalization deferred at batch %d/%d because the "
-                        "Desk writer is active; a later scheduled run will resume "
-                        "the remaining games",
-                        league_id,
-                        phase.value,
-                        batch_index,
-                        len(batches),
-                    )
-                    return False
-                report = await normalize(
-                    db,
-                    year=year,
-                    league_id=league_id,
-                    raw_root=RAW_ROOT,
-                    game_ids=set(batch),
+
+    async def _process_batch(
+        batch: Sequence[str], step_fields: dict[str, object] | None
+    ) -> None:
+        report = await normalize(
+            db,
+            year=year,
+            league_id=league_id,
+            raw_root=RAW_ROOT,
+            game_ids=set(batch),
+        )
+        await record_batch_progress(
+            db,
+            year=year,
+            league_id=league_id,
+            phase=phase,
+            game_ids=batch,
+        )
+        if step_fields is not None:
+            games_processed = getattr(report, "games_processed", None)
+            if games_processed is not None:
+                step_fields["games_processed"] = games_processed
+            if events_processed is not None:
+                step_fields["events_processed"] = events_processed(report)
+        logger.info("L%s %s", league_id, describe(report))
+
+    return await _run_lock_bounded_batches(
+        db,
+        league_id=league_id,
+        phase_label=phase.value,
+        unit_label="games",
+        batches=batches,
+        telemetry=telemetry,
+        contention_reason=f"{phase.value}_batch_lock_contended",
+        process_batch=_process_batch,
+    )
+
+
+async def _run_resolution_phase(
+    db: AsyncSession,
+    *,
+    year: int,
+    league_id: str,
+    telemetry: PipelineTelemetry | None,
+) -> tuple[bool, SummerLeagueResolutionReport]:
+    """Resolve this venue's pending source players in small, lock-bounded batches.
+
+    Splits identity resolution into a preparation pass -- no transaction or
+    writer lock held, since this is where every candidate-search/Gemini call
+    for the venue happens -- and a write phase, chunked into small
+    independently committed batches exactly like :func:`_run_batched_phase`'s
+    shot/PBP normalization. This is what bounds identity resolution's share
+    of the 87.7-minute production incident this module exists to prevent:
+    previously ``resolve_summer_league_players`` ran every unresolved
+    player's candidate search (including Gemini calls) inside the same
+    venue-wide transaction/writer lock as the rest of backbone normalization.
+
+    Args:
+        db: Async database session with no open transaction.
+        year: Summer League season year.
+        league_id: NBA Stats LeagueID for this venue.
+        telemetry: Optional structured-timing recorder for the production run.
+
+    Returns:
+        A ``(completed_fully, report)`` tuple. ``completed_fully`` is False
+        when a write batch could not acquire the writer lock -- reconciliation
+        was deferred, and the caller should stop this venue's pipeline for
+        the rest of this run. A later scheduled run resumes correctly with no
+        extra bookkeeping: confirmed/stubbed source players from already-
+        committed batches durably drop out of the next run's candidate scope
+        (see ``_load_source_players``'s status filter), so only the
+        genuinely still-unresolved ones are re-prepared.
+    """
+    with _telemetry_step(telemetry, f"venue:{league_id}:resolution_preparation"):
+        pairs = await prepare_summer_league_player_resolutions(
+            db, year=year, league_id=league_id
+        )
+    await db.commit()  # close the preparation read's autobegun transaction
+
+    if not pairs:
+        logger.info("L%s: resolution has no pending source players", league_id)
+        return True, build_resolution_report(year=year, league_id=league_id, results=[])
+
+    results: list[SummerLeagueResolutionResult] = []
+    batches = chunked(pairs, RESOLUTION_BATCH_SIZE)
+
+    async def _process_batch(
+        batch: Sequence[tuple[Any, Any]], step_fields: dict[str, object] | None
+    ) -> None:
+        for source_player, plan in batch:
+            results.append(
+                await apply_source_player_resolution_plan(
+                    db, source_player, plan, create_stub=True
                 )
-                await record_batch_progress(
-                    db,
-                    year=year,
-                    league_id=league_id,
-                    phase=phase,
-                    game_ids=batch,
-                )
-                if step_fields is not None:
-                    games_processed = getattr(report, "games_processed", None)
-                    if games_processed is not None:
-                        step_fields["games_processed"] = games_processed
-                    if events_processed is not None:
-                        step_fields["events_processed"] = events_processed(report)
-                logger.info("L%s %s", league_id, describe(report))
-    return True
+            )
+        if step_fields is not None:
+            step_fields["source_players_processed"] = len(batch)
+
+    completed = await _run_lock_bounded_batches(
+        db,
+        league_id=league_id,
+        phase_label="resolution",
+        unit_label="source players",
+        batches=batches,
+        telemetry=telemetry,
+        contention_reason="resolution_batch_lock_contended",
+        process_batch=_process_batch,
+    )
+    return completed, build_resolution_report(
+        year=year, league_id=league_id, results=results
+    )
 
 
 async def _reconcile_batch_progress(
@@ -827,9 +983,11 @@ async def _run_venue(
         )
         return False, False
 
-    # Phase A: backbone normalization -- its own transaction/lock lifetime,
-    # separated from shot/PBP below so the writer lock is released the
-    # instant it commits instead of staying held across the whole venue.
+    # Phase A: backbone normalization (audit/competition/player-log rows --
+    # identity resolution is its own Phase A2 below) -- its own transaction/
+    # lock lifetime, separated from shot/PBP below so the writer lock is
+    # released the instant it commits instead of staying held across the
+    # whole venue.
     try:
         with _telemetry_step(
             telemetry, f"venue:{league_id}:backbone_normalization"
@@ -853,6 +1011,7 @@ async def _run_venue(
                     league_id=league_id,
                     raw_root=RAW_ROOT,
                     create_stubs=True,
+                    include_resolution=False,
                 )
                 report = await backfill_summer_league_backbone(db, backfill_options)
                 logger.info(
@@ -863,6 +1022,33 @@ async def _run_venue(
             "L%s backbone normalization failed: %s", league_id, exc, exc_info=True
         )
         return True, True
+
+    # Phase A2: identity resolution -- a preparation pass (candidate search,
+    # including every Gemini call for this venue) with no transaction or
+    # writer lock held, then small lock-bounded write batches. See
+    # `_run_resolution_phase`: the July 19, 2026 incident's root cause was
+    # exactly this candidate search running while the writer lock was held.
+    try:
+        resolution_completed, resolution_report = await _run_resolution_phase(
+            db, year=year, league_id=league_id, telemetry=telemetry
+        )
+        logger.info(
+            "L%s resolution: total=%d resolved=%d unresolved=%d stubs=%d",
+            league_id,
+            resolution_report.total_source_players,
+            resolution_report.resolved_source_players,
+            resolution_report.unresolved_source_players,
+            resolution_report.stubs_created,
+        )
+    except Exception as exc:
+        logger.error(
+            "L%s identity resolution failed: %s", league_id, exc, exc_info=True
+        )
+        return True, True
+    if not resolution_completed:
+        # Already deferred by `_run_resolution_phase`; stop here rather than
+        # immediately racing the Desk again for the shot/PBP phases.
+        return True, False
 
     # Phases B & C: shot / PBP normalization, chunked into small
     # independently committed per-game batches -- see `_run_batched_phase`.

@@ -7,7 +7,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from sqlalchemy import or_, select, update
 from sqlalchemy.engine import CursorResult
@@ -658,32 +658,93 @@ async def _collect_candidates(
     return _serialize_search_candidates(search_hits)
 
 
-async def resolve_source_player(
+SummerLeagueResolutionPlanKind = Literal[
+    "EXTERNAL_ID",
+    "EXISTING_SOURCE",
+    "EXACT",
+    "ALIAS",
+    "VECTOR_CANDIDATE",
+    "UNRESOLVED",
+    "CANDIDATE_SEARCH_FAILED",
+]
+
+# Plan kinds that confirm a match to an existing canonical player through a
+# simple, method-name-matches-status lookup (external id / exact / alias).
+# ``EXISTING_SOURCE`` is deliberately excluded: it preserves a caller-supplied
+# ``existing_status`` and a different ``method`` string, so it keeps its own
+# branch in :func:`apply_source_player_resolution_plan`.
+_CONFIRMED_MATCH_STATUSES: dict[
+    SummerLeagueResolutionPlanKind, SummerLeagueResolutionStatus
+] = {
+    "EXTERNAL_ID": SummerLeagueResolutionStatus.EXTERNAL_ID,
+    "EXACT": SummerLeagueResolutionStatus.EXACT,
+    "ALIAS": SummerLeagueResolutionStatus.ALIAS,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class SummerLeagueResolutionPlan:
+    """A precomputed, read-only resolution decision for one source player.
+
+    Produced by :func:`prepare_source_player_resolution`, which only reads
+    from the database and (for the ``candidates`` case) calls the Gemini
+    candidate-search API -- it performs no writes, so it is safe to run with
+    no transaction or writer-lock held. :func:`apply_source_player_resolution_plan`
+    consumes the plan and performs the actual writes inside a short,
+    lock-guarded transaction.
+
+    Attributes:
+        source_player_id: The ``SummerLeagueSourcePlayer.id`` this plan is for.
+        kind: Which resolution branch was decided (see
+            :data:`SummerLeagueResolutionPlanKind`).
+        player_id: The canonical player to link, for the confirmed-match kinds.
+        existing_status: The resolution status to preserve for
+            ``EXISTING_SOURCE`` (see :func:`prepare_source_player_resolution`).
+        candidates: Hybrid search candidates surfaced for
+            ``VECTOR_CANDIDATE``/``UNRESOLVED``.
+    """
+
+    source_player_id: int
+    kind: SummerLeagueResolutionPlanKind
+    player_id: int | None = None
+    existing_status: SummerLeagueResolutionStatus | None = None
+    candidates: list[SummerLeagueResolutionCandidate] = field(default_factory=list)
+
+
+async def prepare_source_player_resolution(
     db: AsyncSession,
     source_player: SummerLeagueSourcePlayer,
-    *,
-    create_stub: bool = False,
-) -> SummerLeagueResolutionResult:
-    """Resolve one Summer League source player through the configured cascade.
+) -> SummerLeagueResolutionPlan:
+    """Run the read-only resolution cascade for one source player.
 
-    The caller owns transaction scope. Confirmed resolutions update
-    ``source_player``, ensure the NBA Stats external ID exists, and backfill
-    existing Summer League player game logs.
+    Performs no database writes. The only network call in this cascade --
+    hybrid candidate search, which depends on the Gemini embedding API --
+    happens here, so callers must not hold a database transaction or the
+    Summer League advisory writer lock while awaiting this function.
+
+    Args:
+        db: Async database session.
+        source_player: The source player to evaluate.
+
+    Returns:
+        A :class:`SummerLeagueResolutionPlan` describing what
+        :func:`apply_source_player_resolution_plan` should persist.
+
+    Raises:
+        ValueError: If ``source_player.id`` or ``nba_stats_person_id`` is missing.
     """
-    if not source_player.nba_stats_person_id:
-        raise ValueError("source_player.nba_stats_person_id is required.")
+    if source_player.id is None or not source_player.nba_stats_person_id:
+        raise ValueError("source_player.id and nba_stats_person_id are required.")
 
     external_player_id = await _find_external_id_player(
         db,
         source_player.nba_stats_person_id,
     )
     if external_player_id is not None:
-        return await _confirm_resolution(
-            db,
-            source_player,
+        return SummerLeagueResolutionPlan(
+            source_player_id=source_player.id,
+            kind="EXTERNAL_ID",
             player_id=external_player_id,
-            status=SummerLeagueResolutionStatus.EXTERNAL_ID,
-            method=SummerLeagueResolutionStatus.EXTERNAL_ID.value,
         )
 
     if source_player.canonical_player_id is not None:
@@ -693,13 +754,11 @@ async def resolve_source_player(
             SummerLeagueResolutionStatus.VECTOR_CANDIDATE,
         }:
             existing_status = SummerLeagueResolutionStatus.MANUAL
-        return await _confirm_resolution(
-            db,
-            source_player,
+        return SummerLeagueResolutionPlan(
+            source_player_id=source_player.id,
+            kind="EXISTING_SOURCE",
             player_id=source_player.canonical_player_id,
-            status=existing_status,
-            method="EXISTING_SOURCE",
-            preserve_existing_attribution=True,
+            existing_status=existing_status,
         )
 
     exact_player_id = await _find_unique_normalized_display_match(
@@ -707,12 +766,10 @@ async def resolve_source_player(
         source_player.raw_player_name,
     )
     if exact_player_id is not None:
-        return await _confirm_resolution(
-            db,
-            source_player,
+        return SummerLeagueResolutionPlan(
+            source_player_id=source_player.id,
+            kind="EXACT",
             player_id=exact_player_id,
-            status=SummerLeagueResolutionStatus.EXACT,
-            method=SummerLeagueResolutionStatus.EXACT.value,
         )
 
     alias_player_id = await _find_unique_normalized_alias_match(
@@ -720,17 +777,87 @@ async def resolve_source_player(
         source_player.raw_player_name,
     )
     if alias_player_id is not None:
-        return await _confirm_resolution(
-            db,
-            source_player,
+        return SummerLeagueResolutionPlan(
+            source_player_id=source_player.id,
+            kind="ALIAS",
             player_id=alias_player_id,
-            status=SummerLeagueResolutionStatus.ALIAS,
-            method=SummerLeagueResolutionStatus.ALIAS.value,
         )
 
     try:
         candidates = await _collect_candidates(db, source_player)
     except SummerLeagueCandidateSearchError:
+        return SummerLeagueResolutionPlan(
+            source_player_id=source_player.id,
+            kind="CANDIDATE_SEARCH_FAILED",
+        )
+
+    if candidates and _has_serious_candidate(candidates):
+        return SummerLeagueResolutionPlan(
+            source_player_id=source_player.id,
+            kind="VECTOR_CANDIDATE",
+            candidates=candidates,
+        )
+
+    return SummerLeagueResolutionPlan(
+        source_player_id=source_player.id,
+        kind="UNRESOLVED",
+        candidates=candidates,
+    )
+
+
+async def apply_source_player_resolution_plan(
+    db: AsyncSession,
+    source_player: SummerLeagueSourcePlayer,
+    plan: SummerLeagueResolutionPlan,
+    *,
+    create_stub: bool = False,
+) -> SummerLeagueResolutionResult:
+    """Persist the outcome of a previously prepared resolution plan.
+
+    Performs only database writes -- no network calls -- so this is safe to
+    run inside a short transaction while holding the Summer League advisory
+    writer lock.
+
+    Args:
+        db: Async database session.
+        source_player: The same source player ``plan`` was prepared for.
+        plan: The decision from :func:`prepare_source_player_resolution`.
+        create_stub: Whether an unmatched, no-serious-candidate player should
+            get a new canonical stub player created for it.
+
+    Returns:
+        The persisted :class:`SummerLeagueResolutionResult`.
+
+    Raises:
+        ValueError: If ``plan`` was not prepared for this ``source_player``.
+    """
+    if source_player.id != plan.source_player_id:
+        raise ValueError("plan.source_player_id does not match source_player.id.")
+
+    if plan.kind in _CONFIRMED_MATCH_STATUSES:
+        assert plan.player_id is not None
+        status = _CONFIRMED_MATCH_STATUSES[plan.kind]
+        return await _confirm_resolution(
+            db,
+            source_player,
+            player_id=plan.player_id,
+            status=status,
+            method=status.value,
+        )
+
+    if plan.kind == "EXISTING_SOURCE":
+        assert plan.player_id is not None
+        assert plan.existing_status is not None
+        return await _confirm_resolution(
+            db,
+            source_player,
+            player_id=plan.player_id,
+            status=plan.existing_status,
+            method="EXISTING_SOURCE",
+            preserve_existing_attribution=True,
+        )
+
+    if plan.kind == "CANDIDATE_SEARCH_FAILED":
         now = datetime.utcnow()
         source_player.resolution_status = SummerLeagueResolutionStatus.UNRESOLVED
         source_player.resolution_confidence = None
@@ -745,16 +872,17 @@ async def resolve_source_player(
             status=SummerLeagueResolutionStatus.UNRESOLVED,
             method=CANDIDATE_SEARCH_FAILED_METHOD,
         )
-    if candidates and _has_serious_candidate(candidates):
+
+    if plan.kind == "VECTOR_CANDIDATE":
         now = datetime.utcnow()
         source_player.resolution_status = SummerLeagueResolutionStatus.VECTOR_CANDIDATE
         source_player.resolution_confidence = max(
-            candidate.score for candidate in candidates
+            candidate.score for candidate in plan.candidates
         )
-        source_player.resolution_candidates = _candidate_payloads(candidates)
+        source_player.resolution_candidates = _candidate_payloads(plan.candidates)
         source_player.updated_at = now
         db.add(source_player)
-        await ensure_pending_resolution_review(db, source_player, candidates)
+        await ensure_pending_resolution_review(db, source_player, plan.candidates)
         return SummerLeagueResolutionResult(
             source_player_id=source_player.id,
             nba_stats_person_id=source_player.nba_stats_person_id,
@@ -763,9 +891,11 @@ async def resolve_source_player(
             status=SummerLeagueResolutionStatus.VECTOR_CANDIDATE,
             method=SummerLeagueResolutionStatus.VECTOR_CANDIDATE.value,
             confidence=source_player.resolution_confidence,
-            candidates=candidates,
+            candidates=plan.candidates,
         )
 
+    # plan.kind == "UNRESOLVED"
+    assert plan.kind == "UNRESOLVED"
     if create_stub:
         stub_player_id = await _create_stub_player(db, source_player)
         return await _confirm_resolution(
@@ -780,12 +910,12 @@ async def resolve_source_player(
     now = datetime.utcnow()
     source_player.resolution_status = SummerLeagueResolutionStatus.UNRESOLVED
     source_player.resolution_confidence = (
-        max((candidate.score for candidate in candidates), default=0.0)
-        if candidates
+        max((candidate.score for candidate in plan.candidates), default=0.0)
+        if plan.candidates
         else None
     )
     source_player.resolution_candidates = (
-        _candidate_payloads(candidates) if candidates else None
+        _candidate_payloads(plan.candidates) if plan.candidates else None
     )
     source_player.updated_at = now
     db.add(source_player)
@@ -797,7 +927,28 @@ async def resolve_source_player(
         status=SummerLeagueResolutionStatus.UNRESOLVED,
         method=SummerLeagueResolutionStatus.UNRESOLVED.value,
         confidence=source_player.resolution_confidence,
-        candidates=candidates,
+        candidates=plan.candidates,
+    )
+
+
+async def resolve_source_player(
+    db: AsyncSession,
+    source_player: SummerLeagueSourcePlayer,
+    *,
+    create_stub: bool = False,
+) -> SummerLeagueResolutionResult:
+    """Resolve one Summer League source player through the configured cascade.
+
+    Convenience wrapper combining :func:`prepare_source_player_resolution` and
+    :func:`apply_source_player_resolution_plan` in one call. The caller owns
+    transaction scope. Prefer the split functions directly when the caller
+    must not hold a database transaction/writer lock across the candidate
+    search's Gemini call (see ``summer_league_ingest_runner``'s batched
+    resolution phase).
+    """
+    plan = await prepare_source_player_resolution(db, source_player)
+    return await apply_source_player_resolution_plan(
+        db, source_player, plan, create_stub=create_stub
     )
 
 
@@ -866,13 +1017,19 @@ async def _load_source_players(
     return list(result.scalars().all())
 
 
-def _build_report(
+def build_resolution_report(
     *,
     year: int | None,
     league_id: str | None,
     results: list[SummerLeagueResolutionResult],
 ) -> SummerLeagueResolutionReport:
-    """Build aggregate counters from individual resolution results."""
+    """Build aggregate counters from individual resolution results.
+
+    Public so callers that apply resolution plans in their own batches (e.g.
+    ``summer_league_ingest_runner``'s lock-bounded resolution phase) can build
+    the same aggregate report shape as :func:`resolve_summer_league_players`
+    from their own accumulated results.
+    """
     return SummerLeagueResolutionReport(
         year=year,
         league_id=league_id,
@@ -905,7 +1062,16 @@ async def resolve_summer_league_players(
     league_id: str | None = None,
     create_stubs: bool = False,
 ) -> SummerLeagueResolutionReport:
-    """Resolve Summer League source players in a selected batch scope."""
+    """Resolve Summer League source players in a selected batch scope.
+
+    Convenience wrapper for callers that run entirely inside one
+    caller-owned transaction (e.g. manual/admin scripts not subject to the
+    Summer League writer-lock lifetime budget). Callers that must not hold a
+    transaction/writer lock across candidate search's Gemini call should use
+    :func:`prepare_summer_league_player_resolutions` and
+    :func:`apply_source_player_resolution_plan` directly instead (see
+    ``summer_league_ingest_runner``'s batched resolution phase).
+    """
     source_players = await _load_source_players(db, year=year, league_id=league_id)
     results: list[SummerLeagueResolutionResult] = []
     for source_player in source_players:
@@ -916,4 +1082,36 @@ async def resolve_summer_league_players(
                 create_stub=create_stubs,
             )
         )
-    return _build_report(year=year, league_id=league_id, results=results)
+    return build_resolution_report(year=year, league_id=league_id, results=results)
+
+
+async def prepare_summer_league_player_resolutions(
+    db: AsyncSession,
+    *,
+    year: int | None = None,
+    league_id: str | None = None,
+) -> list[tuple[SummerLeagueSourcePlayer, SummerLeagueResolutionPlan]]:
+    """Load the selected batch scope and prepare a plan for each source player.
+
+    Performs no database writes -- safe to call with no writer-lock
+    transaction held. This is where every candidate-search/Gemini call for
+    the batch happens. Callers that need a bounded writer-lock lifetime
+    should chunk the returned pairs and pass each one to
+    :func:`apply_source_player_resolution_plan` inside its own short,
+    lock-guarded transaction.
+
+    Args:
+        db: Async database session with no open transaction.
+        year: Optional Summer League season year to scope the batch.
+        league_id: Optional NBA Stats LeagueID to scope the batch.
+
+    Returns:
+        ``(source_player, plan)`` pairs in the same order
+        :func:`resolve_summer_league_players` would process them.
+    """
+    source_players = await _load_source_players(db, year=year, league_id=league_id)
+    pairs: list[tuple[SummerLeagueSourcePlayer, SummerLeagueResolutionPlan]] = []
+    for source_player in source_players:
+        plan = await prepare_source_player_resolution(db, source_player)
+        pairs.append((source_player, plan))
+    return pairs
